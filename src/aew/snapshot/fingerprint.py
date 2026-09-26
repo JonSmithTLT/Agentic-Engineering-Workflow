@@ -122,6 +122,47 @@ def working_tree_id(workspace: Path) -> str:
         return git.out("write-tree", cwd=workspace, env=env)
 
 
+def index_tree_id(workspace: Path) -> str:
+    """Tree id of the workspace's index exactly as staged, written from a copy (the real index is untouched).
+
+    The complement of :func:`working_tree_id`, which reads working-file content and therefore cannot
+    see a change that exists only in the index (staged, then the working file restored) — foundation
+    review. Raises :class:`GitError` for unmerged entries; callers treat that as "unknown".
+    """
+    workspace = workspace.resolve()
+    real_index = Path(git.out("rev-parse", "--path-format=absolute", "--git-path", "index", cwd=workspace))
+    tmpdir = Path(tempfile.mkdtemp(prefix="aew-idx-"))
+    try:
+        tmp_index = tmpdir / "index"
+        if real_index.exists():
+            shutil.copy2(real_index, tmp_index)
+        return git.out("write-tree", cwd=workspace, env={"GIT_INDEX_FILE": str(tmp_index)})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def head_tree_id(workspace: Path) -> str:
+    head = git.rev_parse("HEAD", cwd=workspace)
+    return (git.out("rev-parse", f"{head}^{{tree}}", cwd=workspace) if head
+            else git.out("hash-object", "-t", "tree", "--stdin", cwd=workspace))
+
+
+def _changed(workspace: Path, a: str, b: str) -> set[str]:
+    raw = git.out("diff", "--name-only", "--no-renames", "-z", a, b, cwd=workspace)
+    return {p for p in raw.split(NUL) if p}
+
+
+def index_only_paths(workspace: Path) -> list[str]:
+    """Paths whose staged index entry matches neither HEAD nor the working copy.
+
+    That staged content exists nowhere else: ``git add`` of the working state would overwrite it and
+    removing the worktree would drop it.
+    """
+    workspace = workspace.resolve()
+    head, index, work = head_tree_id(workspace), index_tree_id(workspace), working_tree_id(workspace)
+    return sorted(_changed(workspace, head, index) & _changed(workspace, index, work))
+
+
 def evaluated_snapshot(
     workspace: Path,
     workspace_id: str,

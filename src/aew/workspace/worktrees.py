@@ -109,10 +109,12 @@ def remove(repo_root: Path, path: str) -> None:
 def inspect(path: str, base_commit: str | None) -> dict[str, Any]:
     """What a workspace holds, judged from content.
 
-    ``dirty`` is True when the working state (tracked + untracked-not-ignored, read from content with
-    index flags neutralized) differs from HEAD's tree, False when it is exactly HEAD, and None when that
-    cannot be established (e.g. sparse entries) — callers deciding on removal must treat None as dirty.
-    ``git status`` is deliberately not used: it honours assume-unchanged/skip-worktree (re-review B1).
+    ``dirty`` is True when either the working state (tracked + untracked-not-ignored, read from content
+    with index flags neutralized) or the index as staged differs from HEAD's tree, False when both are
+    exactly HEAD, and None when that cannot be established (sparse or unmerged entries) — callers
+    deciding on removal must treat None as dirty. ``git status`` is deliberately not used: it honours
+    assume-unchanged/skip-worktree (re-review B1). Both views are needed: working content cannot see a
+    change that exists only in the index (foundation review).
     """
     ws = Path(path)
     if not ws.exists():
@@ -120,9 +122,9 @@ def inspect(path: str, base_commit: str | None) -> dict[str, Any]:
     head = git.rev_parse("HEAD", cwd=ws)
     out: dict[str, Any] = {"exists": True, "head": head, "head_is_base": head == base_commit}
     try:
-        head_tree = (git.out("rev-parse", f"{head}^{{tree}}", cwd=ws) if head
-                     else git.out("hash-object", "-t", "tree", "--stdin", cwd=ws))
-        out["dirty"] = fingerprint.working_tree_id(ws) != head_tree
+        head_tree = fingerprint.head_tree_id(ws)
+        out["staged"] = fingerprint.index_tree_id(ws) != head_tree
+        out["dirty"] = out["staged"] or fingerprint.working_tree_id(ws) != head_tree
     except AEWError as exc:
         out["dirty"] = None
         out["dirty_unknown"] = exc.message

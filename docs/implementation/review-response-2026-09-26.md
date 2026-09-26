@@ -91,6 +91,13 @@ The follow-up probes are preserved unchanged in `tests/regression/test_remediati
 - No test that existed at `1d914cb` changed its expectations.
 - Full-suite results for this round are recorded in `docs/implementation/implementation-status.md`.
 
+## Foundation review (revision `f3fc4a3`): index-only work
+
+A further probe showed DONE cleanup deleting a workspace whose only late change existed in the Git index. The content check replaced the index copy's entries with working-file content, so staged-only work looked clean. The same `git add -A` at `prepare` would have overwritten such an entry.
+
+- **Fix:** workspace inspection compares HEAD with the index as staged as well as with the working content. `prepare` refuses staged content that matches neither HEAD nor the working copy. See the ADR-0004 addendum.
+- **Evidence:** the reviewer's two index-only probes, preserved unchanged in `tests/regression/test_foundation_review_2026_09_26.py`; `test_done_cleanup_retains_a_workspace_with_a_staged_only_deletion`, `test_prepare_refuses_staged_content_found_nowhere_else`, `test_a_fully_staged_change_prepares_normally`.
+
 ## Follow-ups (recorded, not done here)
 
 - An explicit `integrate abort` for a `publishing` record whose ref never moved. Today the path is to resolve the local conflict and run reconcile.

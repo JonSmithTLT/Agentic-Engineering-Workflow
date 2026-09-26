@@ -482,3 +482,45 @@ def test_manifest_reads_inside_a_session_never_reenter_the_lock(tmp_path):
         assert engine.store.held == 1
         assert engine.manifest["project"]["id"] == "calc"  # would deadlock/time out if it re-entered
     assert engine.store.held == 0
+
+
+# ------------------------------------------------------------------ foundation review (f3fc4a3): index-only work
+
+
+def test_done_cleanup_retains_a_workspace_with_a_staged_only_deletion(tmp_path):
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    git("rm", "-q", "--cached", "README.md", cwd=impl.workspace)  # the file stays in the working copy
+    p.lead("integrate", "publish", wid)
+    ws = unit(p, wid)["workspace"]
+    assert ws["status"] == "retained (differs from integrated commit)" and ws["retained"]["staged"] is True
+    assert impl.workspace.exists() and "README.md" not in git("ls-files", cwd=impl.workspace).split()
+    assert_control_invariants(p)
+
+
+def test_prepare_refuses_staged_content_found_nowhere_else(tmp_path):
+    """`git add` of the evaluated working state would overwrite a staged-only version: refuse, keep it."""
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    core = impl.workspace / "calc/core.py"
+    evaluated = core.read_text(encoding="utf-8")
+    core.write_text(evaluated + "# staged elsewhere\n", encoding="utf-8", newline="\n")
+    git("add", "calc/core.py", cwd=impl.workspace)
+    core.write_text(evaluated, encoding="utf-8", newline="\n")  # the evaluated snapshot is unchanged
+    res = p.aew("integrate", "prepare", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "INTEGRITY_ERROR" and res.error["details"]["paths"] == ["calc/core.py"]
+    assert "# staged elsewhere" in git("show", ":calc/core.py", cwd=impl.workspace)
+    git("restore", "--staged", "calc/core.py", cwd=impl.workspace)  # the operator drops the staged version
+    assert p.lead("integrate", "prepare", wid)["ok"]
+
+
+def test_a_fully_staged_change_prepares_normally(tmp_path):
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    git("add", "-A", cwd=impl.workspace)  # index == working copy: nothing exists only in the index
+    integ = prepare_and_validate(p, wid)
+    p.lead("integrate", "publish", wid)
+    assert unit(p, wid)["workspace"]["status"] == "integrated" and not impl.workspace.exists()
+    assert main_commit(p) == integ["candidate"]
+    assert_control_invariants(p)

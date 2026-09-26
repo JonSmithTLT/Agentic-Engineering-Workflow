@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import GitError, IntegrityError, StaleCandidate
+from aew.snapshot import fingerprint
 from aew.workspace import git
 
 AEW_EXCLUDE = ":(exclude).aew"
@@ -44,9 +45,12 @@ SYMLINK_MODE = "120000"
 def commit_workspace(workspace: Path, message: str) -> str:
     """Commit all non-AEW working changes in a Ticket workspace; return HEAD.
 
-    Refuses when the workspace index flags paths assume-unchanged or skip-worktree: `git add` would
-    silently leave such edits out of the Ticket commit (re-review B1). The flags are reported, never
-    cleared on the user's behalf.
+    Refuses, before touching the index, when committing would lose work:
+
+    * paths flagged assume-unchanged/skip-worktree — `git add` would silently leave their edits out of
+      the Ticket commit (re-review B1); the flags are reported, never cleared on the user's behalf;
+    * staged content that matches neither HEAD nor the working copy — `git add` would overwrite it, and
+      it exists nowhere else (foundation review).
     """
     flagged = [p for p, f in index_flags(workspace, None).items() if not p.startswith(".aew/")]
     if flagged:
@@ -54,6 +58,13 @@ def commit_workspace(workspace: Path, message: str) -> str:
             "the Ticket workspace index marks paths assume-unchanged/skip-worktree, so their edits would be left "
             "out of the Ticket commit; clear the flags (git update-index --no-assume-unchanged / "
             "--no-skip-worktree) and prepare again", workspace=str(workspace), paths=flagged[:50])
+    index_only = [p for p in fingerprint.index_only_paths(workspace) if not p.startswith(".aew/")]
+    if index_only:
+        raise IntegrityError(
+            "the Ticket workspace index holds staged content that matches neither HEAD nor the working copy; "
+            "committing the evaluated working state would overwrite it. Put the intended content in the working "
+            "copy (and re-verify) or drop the staged version (git restore --staged), then prepare again",
+            workspace=str(workspace), paths=index_only[:50])
     status = git.out("status", "--porcelain", "--untracked-files=normal", "--", ".", AEW_EXCLUDE, cwd=workspace)
     if status:
         git.git("add", "-A", "--", ".", AEW_EXCLUDE, cwd=workspace)

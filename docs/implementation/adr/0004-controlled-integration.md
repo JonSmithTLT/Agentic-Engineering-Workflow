@@ -62,3 +62,11 @@ The review found that the normal-path checks above did not hold across recovery 
   - While a candidate is `publishing`, every state change other than DONE is refused: run `aew integrate reconcile` first.
   - At DONE, the Ticket workspace is removed only if its HEAD is the integrated Ticket commit and it is clean. Otherwise it is **retained**, and `status`/`resume` report it as a contradiction. Integration cleanup never deletes newer engineering output.
   - Tested: review probe B1, the regression → re-verify → publish-new-work composition, a refused state change while publishing, a retained workspace, and a superseded unbound candidate.
+
+## Addendum 2026-09-26 — focused re-review of the remediation (B1 residual, M2 residual, R1)
+
+- **Cleanup decides from content (B1 residual).**
+  - Workspace removal at DONE no longer trusts `git status`, which honours assume-unchanged/skip-worktree.
+  - `worktrees.inspect` compares HEAD's tree with a tree built from the workspace **content**: tracked plus untracked-not-ignored, `.aew/` included, built in the same flag-neutralized temporary index as the fingerprint. The real index flags are preserved.
+  - Removal requires positive proof: HEAD is the integrated Ticket commit and the content equals it. Where content cannot be established (sparse entries), the workspace is retained ("content could not be verified") and reported.
+  - `prepare` refuses a Ticket workspace whose index marks paths assume-unchanged/skip-worktree, because `git add` would silently leave those edits out of the Ticket commit. The flags are reported, never cleared on the user's behalf.

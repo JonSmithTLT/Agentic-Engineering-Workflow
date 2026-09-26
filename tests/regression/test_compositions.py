@@ -324,3 +324,47 @@ def test_first_resume_after_a_crash_mid_manifest_apply_shows_the_committed_autho
     assert first["contradictions"] == []
     checks = {c["check"]: c["status"] for c in proj.aew("doctor", "--json").json["checks"]}
     assert checks["manifest"] == "PASS" and checks["manifest-pin"] == "PASS"
+
+
+# ------------------------------------------------------------------ re-review (e7e723c) residuals
+
+
+def test_prepare_refuses_a_workspace_index_that_hides_edits(tmp_path):
+    """B1 residual, neighbor path: `git add` would leave assume-unchanged edits out of the Ticket commit."""
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    git("update-index", "--assume-unchanged", "calc/core.py", cwd=impl.workspace)
+    res = p.aew("integrate", "prepare", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "INTEGRITY_ERROR" and "calc/core.py" in res.error["details"]["paths"]
+    assert unit(p, wid)["integration"] is None
+    assert git("ls-files", "-v", "calc/core.py", cwd=impl.workspace).startswith("h ")  # flags are not cleared for us
+
+
+def test_done_cleanup_retains_a_workspace_whose_content_cannot_be_verified(tmp_path):
+    """B1 residual: removal needs positive proof from content; a sparse entry makes that impossible."""
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    git("update-index", "--skip-worktree", "README.md", cwd=impl.workspace)
+    p.lead("integrate", "publish", wid)
+    ws = unit(p, wid)["workspace"]
+    assert ws["status"] == "retained (content could not be verified)" and "skip-worktree" in ws["retained"]["reason"]
+    assert impl.workspace.exists()
+    assert any("retained after integration" in c for c in p.ok("status", "--json")["contradictions"])
+    assert_control_invariants(p)
+
+
+def test_workspace_inspection_reads_content_not_index_flags(tmp_path):
+    from aew.workspace import worktrees
+
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    head = git("rev-parse", "HEAD", cwd=impl.workspace)
+    git("add", "-A", cwd=impl.workspace)
+    git("commit", "-qm", "wip", cwd=impl.workspace)
+    assert worktrees.inspect(str(impl.workspace), head)["dirty"] is False
+    git("update-index", "--assume-unchanged", "calc/core.py", cwd=impl.workspace)
+    (impl.workspace / "calc/core.py").write_text("# hidden edit\n", encoding="utf-8", newline="\n")
+    assert git("status", "--porcelain", cwd=impl.workspace) == ""  # what git status would have claimed
+    assert worktrees.inspect(str(impl.workspace), head)["dirty"] is True
+    assert git("ls-files", "-v", "calc/core.py", cwd=impl.workspace).startswith("h ")

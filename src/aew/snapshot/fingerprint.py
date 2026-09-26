@@ -108,6 +108,20 @@ def relevant_inputs_fingerprint(
     return f"git-tree:{tree}"
 
 
+def working_tree_id(workspace: Path) -> str:
+    """Tree id of everything Git would keep in a workspace, read from content.
+
+    Tracked plus untracked-not-ignored files — nothing excluded, ``.aew/`` included — built in the
+    same flag-neutralized temporary index as the fingerprint, so an assume-unchanged edit cannot
+    hide (re-review B1). Compared with ``HEAD^{tree}`` it answers "does this workspace hold anything
+    beyond its HEAD commit?". Raises :class:`IntegrityError` for sparse (skip-worktree) entries,
+    whose content is absent and so cannot be compared; callers must treat that as "unknown".
+    """
+    workspace = workspace.resolve()
+    with _working_index(workspace) as env:
+        return git.out("write-tree", cwd=workspace, env=env)
+
+
 def evaluated_snapshot(
     workspace: Path,
     workspace_id: str,

@@ -280,10 +280,11 @@ class IntegrationOps(ContextOps):
 
     @staticmethod
     def _settle_ticket_workspace(unit: dict[str, Any], ticket_commit: str) -> bool:
-        """At DONE: the Ticket workspace is removable only if it holds nothing beyond the integrated commit.
+        """At DONE: the Ticket workspace is removable only if its *content* is exactly the integrated commit.
 
-        Otherwise it is retained (and reported as a contradiction): newer engineering output is never
-        deleted by integration cleanup (review B1).
+        The decision reads file content with index flags neutralized (``worktrees.inspect``), never
+        ``git status``; if content cannot be verified, or differs, the workspace is retained and reported
+        as a contradiction. Integration cleanup never deletes newer engineering output (review B1, re-review).
         """
         ws = unit.get("workspace")
         if not ws:
@@ -292,11 +293,13 @@ class IntegrationOps(ContextOps):
         if not found.get("exists"):
             ws["status"] = "integrated"
             return False
-        if found["head"] == ticket_commit and not found["dirty"]:
+        if found["head"] == ticket_commit and found["dirty"] is False:
             ws["status"] = "integrated"
             return True
-        ws["status"] = "retained (differs from integrated commit)"
-        ws["retained"] = {"head": found["head"], "dirty": found["dirty"], "integrated_ticket_commit": ticket_commit}
+        ws["status"] = ("retained (content could not be verified)" if found["dirty"] is None
+                        else "retained (differs from integrated commit)")
+        ws["retained"] = {"head": found["head"], "dirty": found["dirty"], "integrated_ticket_commit": ticket_commit,
+                          **({"reason": found["dirty_unknown"]} if found.get("dirty_unknown") else {})}
         return False
 
     def _completion_record(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> str:

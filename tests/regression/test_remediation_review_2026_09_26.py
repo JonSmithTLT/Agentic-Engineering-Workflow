@@ -18,7 +18,6 @@ def unit(p, wid):
     return p.ok('work', 'show', wid)['control']
 
 
-@pytest.mark.xfail(strict=True, reason="re-review B1 residual (open)")
 def test_done_cleanup_preserves_assume_unchanged_late_source(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)

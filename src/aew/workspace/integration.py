@@ -42,7 +42,18 @@ SYMLINK_MODE = "120000"
 
 
 def commit_workspace(workspace: Path, message: str) -> str:
-    """Commit all non-AEW working changes in a Ticket workspace; return HEAD."""
+    """Commit all non-AEW working changes in a Ticket workspace; return HEAD.
+
+    Refuses when the workspace index flags paths assume-unchanged or skip-worktree: `git add` would
+    silently leave such edits out of the Ticket commit (re-review B1). The flags are reported, never
+    cleared on the user's behalf.
+    """
+    flagged = [p for p, f in index_flags(workspace, None).items() if not p.startswith(".aew/")]
+    if flagged:
+        raise IntegrityError(
+            "the Ticket workspace index marks paths assume-unchanged/skip-worktree, so their edits would be left "
+            "out of the Ticket commit; clear the flags (git update-index --no-assume-unchanged / "
+            "--no-skip-worktree) and prepare again", workspace=str(workspace), paths=flagged[:50])
     status = git.out("status", "--porcelain", "--untracked-files=normal", "--", ".", AEW_EXCLUDE, cwd=workspace)
     if status:
         git.git("add", "-A", "--", ".", AEW_EXCLUDE, cwd=workspace)
@@ -134,14 +145,17 @@ def index_entries(repo_root: Path, paths: list[str]) -> tuple[dict[str, Entry | 
     return found, sorted(unmerged)
 
 
-def index_flags(repo_root: Path, paths: list[str]) -> dict[str, list[str]]:
-    """Index flags that suppress Git's reading of the working copy (assume-unchanged, skip-worktree)."""
+def index_flags(repo_root: Path, paths: list[str] | None) -> dict[str, list[str]]:
+    """Index flags that suppress Git's reading of the working copy (assume-unchanged, skip-worktree).
+
+    ``paths=None`` inspects the whole index.
+    """
     flagged: dict[str, list[str]] = {}
-    wanted = set(paths)
-    for chunk in _chunks(paths):
+    wanted = set(paths or [])
+    for chunk in (_chunks(paths) if paths is not None else [[]]):
         raw = git.git("ls-files", "-v", "-z", "--", *chunk, cwd=repo_root, env=LITERAL).stdout.decode("utf-8")
         for rec in raw.split("\x00"):
-            if len(rec) < 3 or rec[2:] not in wanted:
+            if len(rec) < 3 or (paths is not None and rec[2:] not in wanted):
                 continue
             tag, path = rec[0], rec[2:]
             flags = []

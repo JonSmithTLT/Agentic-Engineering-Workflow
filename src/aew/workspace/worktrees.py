@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.base import WORKSPACE_MARKER
-from aew.errors import GitError
+from aew.errors import AEWError, GitError
+from aew.snapshot import fingerprint
 from aew.util import dump_yaml, utc_now
 from aew.workspace import git
 
@@ -106,9 +107,23 @@ def remove(repo_root: Path, path: str) -> None:
 
 
 def inspect(path: str, base_commit: str | None) -> dict[str, Any]:
+    """What a workspace holds, judged from content.
+
+    ``dirty`` is True when the working state (tracked + untracked-not-ignored, read from content with
+    index flags neutralized) differs from HEAD's tree, False when it is exactly HEAD, and None when that
+    cannot be established (e.g. sparse entries) — callers deciding on removal must treat None as dirty.
+    ``git status`` is deliberately not used: it honours assume-unchanged/skip-worktree (re-review B1).
+    """
     ws = Path(path)
     if not ws.exists():
         return {"exists": False}
     head = git.rev_parse("HEAD", cwd=ws)
-    dirty = bool(git.out("status", "--porcelain", "--untracked-files=normal", cwd=ws))
-    return {"exists": True, "head": head, "head_is_base": head == base_commit, "dirty": dirty}
+    out: dict[str, Any] = {"exists": True, "head": head, "head_is_base": head == base_commit}
+    try:
+        head_tree = (git.out("rev-parse", f"{head}^{{tree}}", cwd=ws) if head
+                     else git.out("hash-object", "-t", "tree", "--stdin", cwd=ws))
+        out["dirty"] = fingerprint.working_tree_id(ws) != head_tree
+    except AEWError as exc:
+        out["dirty"] = None
+        out["dirty_unknown"] = exc.message
+    return out

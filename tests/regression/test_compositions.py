@@ -453,3 +453,32 @@ def test_publication_refuses_a_validation_record_not_produced_for_the_candidate(
     res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
     assert res.error["code"] in {"GATE_UNSATISFIED"}, res.stderr
     assert main_commit(p) == integ["base"]
+
+
+def test_every_public_read_of_a_long_lived_engine_sees_the_adopted_manifest(tmp_path):
+    """M8 residual: session-free reads (catalog, project identity, policy) revalidate the cached manifest."""
+    from aew.engine.api import Engine
+    from aew.util import dump_yaml, read_yaml
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    name_before = engine.manifest["project"]["name"]
+    manifest_path = p.root / ".aew/project.yaml"
+    manifest = read_yaml(manifest_path)
+    manifest["project"]["name"] = "renamed-by-another-process"
+    manifest_path.write_text(dump_yaml(manifest), encoding="utf-8", newline="\n")
+    p.lead("manifest", "adopt", "--reason", "rename")
+    assert name_before != "renamed-by-another-process"
+    assert engine.manifest["project"]["name"] == "renamed-by-another-process"  # no session opened by caller
+    assert engine.status()["project"]["name"] == "renamed-by-another-process"
+
+
+def test_manifest_reads_inside_a_session_never_reenter_the_lock(tmp_path):
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    with engine.store.session():
+        assert engine.store.held == 1
+        assert engine.manifest["project"]["id"] == "calc"  # would deadlock/time out if it re-entered
+    assert engine.store.held == 0

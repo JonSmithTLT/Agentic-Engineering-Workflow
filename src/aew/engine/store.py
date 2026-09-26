@@ -142,6 +142,7 @@ class ControlStore:
         self.renderer = renderer
         self.lock_timeout = lock_timeout
         self.after_apply = after_apply
+        self.held = 0  # > 0 while this process holds the control lock through this store
 
     # ------------------------------------------------------------------ paths
 
@@ -164,8 +165,12 @@ class ControlStore:
     @contextmanager
     def session(self) -> Iterator[Session]:
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
-            state = self._recover()
-            yield Session(self, state)
+            self.held += 1
+            try:
+                state = self._recover()
+                yield Session(self, state)
+            finally:
+                self.held -= 1
 
     def read(self) -> dict[str, Any]:
         with self.session() as s:

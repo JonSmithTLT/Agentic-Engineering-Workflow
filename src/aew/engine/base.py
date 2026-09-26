@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.authority import require_lead
-from aew.engine.store import ControlStore, Session, Transition
+from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
@@ -40,6 +40,7 @@ class EngineBase:
         self.aew_root = aew_root.resolve()
         self._manifest: dict[str, Any] | None = None
         self._manifest_error: Exception | None = None
+        self._manifest_seen: tuple[Any, ...] | None = None  # file identities the cached manifest reflects
         self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
@@ -54,11 +55,30 @@ class EngineBase:
             self._manifest, self._manifest_error = load_manifest(self.aew_root), None
         except Exception as exc:  # surfaced by the ``manifest`` property
             self._manifest, self._manifest_error = None, exc
+        self._manifest_seen = self._authority_files_identity()
+
+    def _authority_files_identity(self) -> tuple[Any, ...]:
+        """Cheap identity of control.yaml and project.yaml (mtime, size, inode). Both are only ever
+        replaced atomically, so any committed change — or a pending recovery — changes it."""
+        out: list[Any] = []
+        for path in (self.aew_root / CONTROL_REL, self.aew_root / MANIFEST):
+            try:
+                st = path.stat()
+                out.append((st.st_mtime_ns, st.st_size, st.st_ino))
+            except FileNotFoundError:
+                out.append(None)
+        return tuple(out)
 
     @property
     def manifest(self) -> dict[str, Any]:
-        if self._manifest is None and self._manifest_error is None:
-            self.store.read()  # recovery first; the manifest is loaded under the lock
+        """The manifest of the latest recovered control state — for every read path (re-review M8).
+
+        Inside a store session it was loaded under the lock when the session began (after recovery).
+        Outside one, it is revalidated against the files' identity on each use and, if anything changed
+        since it was loaded, reloaded through a recovered read — never by re-entering the lock.
+        """
+        if not self.store.held and self._manifest_seen != self._authority_files_identity():
+            self.store.read()  # recovery first; the manifest is (re)loaded under the lock
         if self._manifest_error is not None:
             raise self._manifest_error
         assert self._manifest is not None

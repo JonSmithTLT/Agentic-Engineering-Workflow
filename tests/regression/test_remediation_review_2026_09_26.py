@@ -81,7 +81,6 @@ def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_pa
         old['binding'], new['binding'], result.stdout, publication)
 
 
-@pytest.mark.xfail(strict=True, reason="re-review M8 residual (open)")
 def test_long_lived_role_catalog_refreshes_adopted_manifest(tmp_path):
     from aew.engine.api import Engine
     from aew.util import read_yaml, dump_yaml

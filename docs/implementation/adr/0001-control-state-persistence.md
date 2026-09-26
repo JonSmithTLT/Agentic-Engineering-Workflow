@@ -32,3 +32,12 @@ A transition can rewrite files other than `control.yaml`; `authority accept` rew
 - An unreadable manifest is remembered and raised on use; `aew doctor` reports it as a `manifest` check instead of crashing.
 - Pin mismatches are still refused for mutations and reported as contradictions.
 - Tested: the first `resume` after a crash at `txn.after_replace` (review probe M8) and at `txn.mid_apply` of a manifest-changing transaction; a long-lived engine sees another engine's committed authority change.
+
+### Addendum 2026-09-26 — focused re-review (M8 residual)
+
+The hook covered every store session, but a public read that opens no session (for example `role_list()`) still served the cached manifest after another process adopted a new one.
+
+- The `manifest` property now revalidates on every use outside a session. It compares the cheap identity (mtime, size, inode) of `control.yaml` and `project.yaml` with the identity recorded when the manifest was last loaded under the lock. On any difference (a commit, a pending recovery, an adoption), it reloads through a recovered store read.
+- Both files are only ever replaced atomically, so every committed change alters the identity.
+- Inside a session (`store.held`), the manifest loaded at session start is used, so the lock is never re-entered.
+- Tested: the re-review's long-lived `role_list()` probe; session-free project reads after another process's adoption; a manifest read inside a session.

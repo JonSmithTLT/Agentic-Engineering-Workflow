@@ -37,6 +37,7 @@ from invariants import control_violations
 
 SEEDS = [int(s) for s in os.environ.get("AEW_WALK_SEEDS", "11,23,37,41,53").split(",")]
 STEPS = int(os.environ.get("AEW_WALK_STEPS", "60"))
+FAULT_RATE = float(os.environ.get("AEW_WALK_FAULT_RATE", "0.08"))  # chance of a crash-injected commit per step
 
 FAST_CHECKS = {
     "schema": "aew/checks/v1",
@@ -313,7 +314,7 @@ class Walk:
         fault = None
         if name == "publish!":
             fault = self.rng.choice(PUBLISH_FAULTS)
-        elif self.rng.random() < 0.08:
+        elif self.rng.random() < FAULT_RATE:
             fault = self.rng.choice(TXN_FAULTS)
         before = self.unit(wid)["state"]
         entry = f"{i:02d} {wid} {before}: {name}" + (f" [fault {fault}]" if fault else "")
@@ -342,7 +343,7 @@ class Walk:
         assert not problems, "invariants violated after:\n  " + "\n  ".join(self.log[-12:] + problems)
 
 
-@pytest.mark.slow
+@pytest.mark.exploratory
 @pytest.mark.parametrize("seed", SEEDS)
 def test_seeded_adversarial_walk_keeps_control_invariants(tmp_path, monkeypatch, seed):
     walk = Walk(tmp_path, seed, monkeypatch)

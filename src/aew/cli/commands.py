@@ -70,6 +70,18 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_json(p)
     p.set_defaults(handler=_status)
 
+    p = sub.add_parser("resume", help="reconstruct the Lead's context from durable state (read-only)")
+    _add_json(p)
+    p.set_defaults(handler=_resume)
+
+    p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
+    p.add_argument("--note-file", help="checkpoint notes (file or - for stdin)")
+    p.add_argument("--next", dest="next_action", help="the Lead's next intended action")
+    _add_lead(p)
+    p.set_defaults(handler=lambda a: _engine(a).checkpoint(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                          note=_read_text_arg(a.note_file),
+                                                          next_action=a.next_action))
+
     _register_lead(sub)
     _register_authority(sub)
 
@@ -181,6 +193,12 @@ def _init(args: argparse.Namespace) -> Any:
         "authority_candidates": engine.manifest["authority"]["candidates"],
         "next": "acquire Lead authority: aew lead acquire --expect-rev 0",
     }
+
+
+def _resume(args: argparse.Namespace) -> Any:
+    engine = _engine(args)
+    report = engine.resume()
+    return report if args.json else engine.render_resume(report)
 
 
 def _status(args: argparse.Namespace) -> Any:

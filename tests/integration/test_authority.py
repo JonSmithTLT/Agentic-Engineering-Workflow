@@ -198,7 +198,11 @@ def _pty_takeover(root: Path, rev: int, label: str) -> dict:
 
 
 @pytest.mark.acceptance("AT-4b")
-@pytest.mark.skipif(IS_WINDOWS, reason="POSIX pty operator path; the hidden-console Windows operator test is added with AT-4b (step 11)")
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="POSIX pty operator path. A Windows console session would appear on the developer desktop, so on "
+           "Windows the refusal path is tested here and AT-1 substitutes the terminal channel in-process",
+)
 def test_operator_authorized_takeover_supersedes_everyone(project):
     a_token = project.token
     offer = project.lead("lead", "handoff", "offer")["offer"]

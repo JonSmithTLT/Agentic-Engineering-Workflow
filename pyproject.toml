@@ -18,6 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Optional: parallel test execution for the non-serial lanes (docs/implementation/testing-and-ci-strategy.md).
+# Kept out of `dev` so offline installs from the SPT wheelhouse need nothing new.
+parallel = ["pytest-xdist>=3.6"]
 
 [project.scripts]
 aew = "aew.cli.main:main"
@@ -32,8 +35,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --strict-markers"
+# Lanes and markers: docs/implementation/testing-and-ci-strategy.md. Every test maps to exactly one lane.
 markers = [
-    "slow: long-running crash/race matrices",
-    "acceptance(id): M1 acceptance scenario (AT-1..AT-7); select with -m acceptance",
+    "acceptance(id): M1 acceptance scenario (AT-1..AT-7, KC 26); select with -m acceptance",
+    "serial: timing or real-process concurrency is the property; never runs under xdist (--lane serial)",
+    "exploratory: seeded randomized exploration; default budget is a merge gate, extended budgets run nightly",
 ]

@@ -159,7 +159,6 @@ def test_explicit_dispatch_cannot_bypass_operator_pin(tmp_path):
     assert result.returncode != 0, 'Dispatch silently bypassed the operator pin without reason or decision'
 
 
-@pytest.mark.xfail(strict=True, reason="review M3 (open)")
 def test_assume_unchanged_source_invalidates_verified_gates(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_verified(p, tmp_path)

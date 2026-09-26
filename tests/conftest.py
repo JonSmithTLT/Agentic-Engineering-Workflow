@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 IS_WINDOWS = sys.platform == "win32"
+sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 
 
 @dataclass

@@ -99,4 +99,86 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
+    p = sub.add_parser("invoke", help="bounded role invocations (Lead dispatches; roles never self-assign)")
+    isub = p.add_subparsers(dest="invoke_cmd", required=True)
+    q = isub.add_parser("create")
+    q.add_argument("work_id")
+    q.add_argument("--role", required=True, choices=["implementer", "reviewer", "specialist", "verifier"])
+    q.add_argument("--scope", choices=["ticket", "integration"], default="ticket")
+    q.add_argument("--specialty", help="specialty review, e.g. security (satisfies review_<specialty>)")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).invoke_create(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, role=a.role, scope=a.scope,
+        specialty=a.specialty))
+    q = isub.add_parser("cancel")
+    q.add_argument("invocation")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).invoke_cancel(
+        token=_lead_token(a), expect_rev=a.expect_rev, invocation=a.invocation, reason=a.reason))
+    q = isub.add_parser("show")
+    q.add_argument("invocation")
+    q.set_defaults(handler=lambda a: _engine(a).invoke_show(a.invocation))
+
+    p = sub.add_parser("check", help="run a project-defined check as a bounded role")
+    csub = p.add_subparsers(dest="check_cmd", required=True)
+    q = csub.add_parser("run")
+    q.add_argument("check_id", help="a check from policy/checks.yaml, or the built-in `guardrails`")
+    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.set_defaults(handler=lambda a: _engine(a).check_run(invocation_token=_inv_token(a), check_id=a.check_id))
+
+    q = sub.add_parser("submit", help="submit role evidence (implementation report, review, verification)")
+    q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification"])
+    q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
+    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.set_defaults(handler=lambda a: _engine(a).submit(invocation_token=_inv_token(a), kind=a.kind,
+                                                      text=_read_text_arg(a.file)))
+
+    q = sub.add_parser("gate", help="gate evaluation against the current evaluated snapshot")
+    gsub = q.add_subparsers(dest="gate_cmd", required=True)
+    r = gsub.add_parser("show")
+    r.add_argument("work_id")
+    r.set_defaults(handler=lambda a: _engine(a).gate_show(a.work_id))
+    r = gsub.add_parser("waive", help="policy-bounded waiver (Lead; decision recorded)")
+    r.add_argument("work_id")
+    r.add_argument("--gate")
+    r.add_argument("--finding")
+    r.add_argument("--reason", required=True)
+    _add_lead(r)
+    r.set_defaults(handler=lambda a: _engine(a).waive(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason, gate=a.gate,
+        finding=a.finding))
+
+    p = sub.add_parser("review", help="Lead: ingest a review report")
+    rsub = p.add_subparsers(dest="review_cmd", required=True)
+    q = rsub.add_parser("ingest")
+    q.add_argument("work_id")
+    q.add_argument("--evidence", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).review_ingest(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
+
+    p = sub.add_parser("verify", help="Lead: ingest verification; classify failures")
+    vsub = p.add_subparsers(dest="verify_cmd", required=True)
+    q = vsub.add_parser("ingest")
+    q.add_argument("work_id")
+    q.add_argument("--evidence", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).verify_ingest(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
+    q = vsub.add_parser("classify", help="Lead-owned verification-failure classification (WC §8)")
+    q.add_argument("work_id")
+    q.add_argument("--as", dest="classification", required=True,
+                   choices=["LOCAL_IMPLEMENTATION_DEFECT", "PLAN_OR_DESIGN_DEFECT", "CONTRACT_VIOLATION",
+                            "ENVIRONMENT_OR_EVIDENCE_BLOCKED"])
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).verify_classify(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, classification=a.classification,
+        reason=a.reason))
+
+    _register_integration(sub)
+
+
+def _register_integration(sub: argparse._SubParsersAction) -> Any:
     return None

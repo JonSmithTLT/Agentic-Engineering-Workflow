@@ -14,7 +14,7 @@ from aew import SPEC_SET
 from aew.engine.base import EngineBase
 from aew.engine.lead_ops import LeadOps
 from aew.engine.status_ops import StatusOps
-from aew.engine.workspace_ops import WorkspaceOps
+from aew.engine.evidence_ops import EvidenceOps
 from aew.engine.store import ControlStore
 from aew.errors import IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.knowledge import discovery
@@ -43,7 +43,7 @@ def _slug(name: str) -> str:
     return slug or "project"
 
 
-class Engine(WorkspaceOps, LeadOps, StatusOps):
+class Engine(EvidenceOps, LeadOps, StatusOps):
     # ------------------------------------------------------------------ init
 
     @classmethod

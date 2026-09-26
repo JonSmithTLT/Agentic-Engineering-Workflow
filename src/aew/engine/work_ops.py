@@ -58,9 +58,10 @@ class WorkOps(EngineBase):
             raise GateUnsatisfied(f"{work_id} has no active implementer invocation")
 
     def _guard_findings_recorded(self, ctx, work_id, unit, to) -> None:
-        # WC §8: REVIEW_FAILED -> RUNNING requires recorded findings.
+        # WC §8: REVIEW_FAILED -> RUNNING requires recorded findings (new ones, or earlier ones still open).
         reviews = [e for e in unit.get("evidence", []) if e["kind"] == "review"]
-        if not reviews or not reviews[-1].get("findings"):
+        still_open = [f for f in unit.get("findings", []) if f["required"] and f["status"] == "open"]
+        if not still_open and not (reviews and reviews[-1].get("findings")):
             raise GateUnsatisfied(f"{work_id}: REVIEW_FAILED -> RUNNING requires recorded review findings")
 
     def _guard_returning_from_escalation(self, ctx, work_id, unit, to) -> None:

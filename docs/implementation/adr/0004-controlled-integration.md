@@ -36,3 +36,16 @@ Each mutating Ticket gets its own worktree and branch, even in serial mode. Inte
   - a third-party ref move producing a stale candidate;
   - a stale Lead refused;
   - a conflict recorded rather than forced.
+
+## Amendment 2026-09-26 — independent review (B1, B2, M1, M6)
+
+The review found that the normal-path checks above did not hold across recovery and regression compositions. These are implementation corrections; the decision (validate, then publish by ref CAS) is unchanged.
+
+- **Entry-level sync validation (B2, M6).**
+  - Synchronization compares complete Git entries, mode plus object id, for the authoritative **index** and **working copy** against H and M.
+  - It never compares only blob content, and never uses `git diff`, which honours assume-unchanged/skip-worktree flags.
+  - Before publishing, every path in `diff(H, M)` must be exactly H in both the index and the working copy.
+  - After the CAS, every path is classified *before anything is written*. Each index entry and working copy must be H's or M's; around a file↔directory transition the empty intermediate state is also allowed. Anything else belongs to someone else, and the whole sync is refused with the paths named.
+  - Paths flagged assume-unchanged or skip-worktree, unmerged entries and gitlinks are refused.
+  - Materialization uses `git checkout M -- <paths>`, which writes index, content and mode; removals come first. The executable bit is compared only when `core.fileMode` is true, and symlinks honour `core.symlinks`.
+  - Tested: a staged independent edit survives, executable-bit-only changes, file↔symlink, file→directory, deletes, index flags, an untracked file on an added path, and idempotent re-sync from every {H, M} index/worktree mix (`tests/integration/test_worktree_sync.py`).

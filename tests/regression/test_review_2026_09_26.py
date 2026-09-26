@@ -83,10 +83,8 @@ def test_stale_reconcile_cannot_move_authoritative_ref(tmp_path):
     assert main(p) == integ['base'], 'Rejected stale-revision command nevertheless published its candidate'
 
 
-# On Windows the probe's text-mode write_text() stores CRLF, so the working copy matches neither
-# side and the pre-fix code refuses by accident; the defect reproduces on POSIX. The LF-exact
-# variant in test_compositions.py covers both platforms.
-@pytest.mark.xfail(not IS_WINDOWS, strict=True, reason="review B2 (open)")
+# On Windows the probe's text-mode write_text() stores CRLF, which the pre-fix code also refused;
+# the LF-exact variant is tests/integration/test_worktree_sync.py::test_staged_independent_edit_*.
 def test_reconcile_preserves_independent_staged_edit(tmp_path):
     p, wid, impl, integ = pending_publish(tmp_path)
     path = p.root / 'calc/core.py'
@@ -100,7 +98,6 @@ def test_reconcile_preserves_independent_staged_edit(tmp_path):
 
 
 @pytest.mark.skipif(IS_WINDOWS, reason="needs a filemode-aware (POSIX) checkout")
-@pytest.mark.xfail(strict=True, reason="review M6 (open)")
 def test_sync_handles_executable_bit_only_change(tmp_path):
     repo = make_git_repo(tmp_path / 'repo', {'run.sh': '#!/bin/sh\necho ok\n'})
     git('config', 'core.filemode', 'true', cwd=repo)

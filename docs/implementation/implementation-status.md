@@ -2,7 +2,7 @@
 
 This is operational metadata (WC Appendix C). It does not replace the workflow state of any project that uses AEW. It uses the three states from WC §"Status and authority": **Implemented**, **Staged** and **Designed**. A row is Implemented only when the listed evidence exists and passes on both Windows (Python 3.13) and Linux (Python 3.11). The acceptance IDs are listed in `acceptance.md`.
 
-**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26: M1 complete, and all findings of the independent M1 review are resolved (`review-response-2026-09-26.md`). Its probes are preserved as passing regressions in `tests/regression/`.
+**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26. M1 is complete. All findings of the independent M1 review, and of the focused re-review of its remediation, are resolved (`review-response-2026-09-26.md`). Both reviewers' probe files pass unchanged (18/18) and are preserved as regressions in `tests/regression/`. Full suites at `de4993b`: Linux/Python 3.11 542 passed; Windows/Python 3.13 537 passed, plus 5 POSIX-only skips.
 
 | Capability | Status | Acceptance evidence / next action |
 |---|---|---|

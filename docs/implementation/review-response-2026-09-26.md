@@ -5,7 +5,7 @@
 - **Verdict received:** do not merge (2 Blockers, 8 Majors, 1 Minor)
 - **Spec set:** `aew-frozen-2026-09-25`. The frozen contracts are unchanged. None of the findings required a contract change or met the escalation rule (frozen-contract contradiction, missing authority boundary, unsafe *spec* transition, unsatisfiable invariant). Each was an implementation failing to enforce an existing invariant across a composition of operations.
 
-## Status: all findings resolved
+## Status after the first remediation round (see the re-review section below)
 
 Every probe is preserved **unchanged** in `tests/regression/test_review_2026_09_26.py` (header and platform markers only) and passes. They were imported as strict xfails, and each fix commit removed its own markers. The executable-bit probe is skipped on Windows, where `core.fileMode=false`.
 
@@ -54,6 +54,42 @@ The review observed that the defects clustered at compositions of individually t
 - **Replacing a plan ends the current attempt.** The next `aew work assign` starts a fresh workspace.
 - **Sparse checkouts are refused.** Skip-worktree entries in a Ticket workspace fail the snapshot (AEW workspaces are full checkouts).
 - **Operator pins bind dispatch.** Replacing a pinned executor requires `aew work staff --reason`.
+
+## Focused re-review of the remediation (revision `e7e723c`)
+
+The re-review (`AEW-M1-review-2026-09-26/remediation-review/REPORT.md`, 6 follow-up probes) found:
+
+- **Closed:** B2, M1, M3, M4, M5, M6, M7, N1.
+- **Partially closed:** B1, M2, M8.
+- **Newly exposed:** one weakness, **R1**, on the replacement-candidate path the remediation enabled.
+
+The follow-up probes are preserved unchanged in `tests/regression/test_remediation_review_2026_09_26.py`. They were imported as strict xfails, and each fix commit removed its marker; all six now pass.
+
+| ID | Residual | Root cause | Fix | Commit | Evidence |
+|---|---|---|---|---|---|
+| B1 (residual) | DONE cleanup still deleted a late edit hidden by `assume-unchanged` | The new removal guard asked `git status`, which honours index flags | `worktrees.inspect` compares HEAD's tree with a tree built from workspace **content** (tracked + untracked-not-ignored, flag-neutralized temporary index). Removal needs HEAD == integrated commit **and** content == HEAD; unverifiable content (sparse) is retained. `prepare` refuses a workspace whose index hides edits from `git add`. | `82d41c7` | Probe; `test_prepare_refuses_a_workspace_index_that_hides_edits`, `test_done_cleanup_retains_a_workspace_whose_content_cannot_be_verified`, `test_workspace_inspection_reads_content_not_index_flags` |
+| M2 (residual) | A retired candidate's integration verifier could still submit | Retirement did not revoke the candidate's invocations; review/verification submission skipped the live-workspace check | Retirement cancels (revokes) every active integration invocation, via the state-change path, which now receives the transaction state. Integration invocations record `integration_attempt`/`candidate`. **Every** submission kind is bound to the invocation's live workspace or candidate and attempt. | `0b37309` | Probe; `test_retiring_a_candidate_ends_its_verifiers_write_authority`, `test_reports_are_written_only_for_a_live_workspace[review, verification]` |
+| M8 (residual) | Session-free reads (`role_list`) served a manifest cached before another process adopted a new one | The property reloaded only on sessions | Outside a session, each use compares the identity (mtime, size, inode) of `control.yaml` and `project.yaml` with the last locked load and reloads through a recovered read on any change. Inside a session it never re-enters the lock. | `b5a9986` | Probe; `test_every_public_read_of_a_long_lived_engine_sees_the_adopted_manifest`, `test_manifest_reads_inside_a_session_never_reenter_the_lock` |
+| R1 | A replacement candidate published on an integration report produced for the superseded candidate and plan (identical bytes) | Ingest and publication compared only the engineering fingerprint | `_require_bound_report`: at review ingest, verify ingest (both scopes), publish phase 1 and pre-CAS finalization, a report must carry the current accepted plan (revision + sha256) and come from an invocation dispatched for the current attempt's workspace, or for the current candidate's workspace **and** attempt | `94705b5` | Probe; `test_review_from_a_superseded_plan_is_not_accepted_for_identical_new_work`, `test_publication_refuses_a_validation_record_not_produced_for_the_candidate` |
+| (walk) | Unused stragglers kept live credentials after DONE | Only CANCELLED ended remaining invocations | Entering any terminal state cancels (revokes) every remaining active invocation of the Ticket | `de4993b` | Extended adversarial walk (below) |
+
+**Why the regression tests missed these, and what changed.** The first round's walk exercised state transitions and crashes. It never used an old credential, left a report un-ingested, or replayed one. Commits `1e9527b` and `de4993b` extend both the oracle and the walk.
+
+- **Oracle, new rules:**
+  - no evidence is written after its invocation's credential was revoked;
+  - a DONE Ticket's post-integration report was produced by that candidate's own verifier (workspace and attempt) under the bound plan.
+- **Walk, new actions:**
+  - stragglers;
+  - submit-without-ingest;
+  - late submission with *any* credential ever issued;
+  - replayed ingestion of *any* earlier report.
+- **Coverage per run:** about 8 replays (most correctly refused), about 14 late submissions (refused unless the credential is still legitimately live), stragglers, DONE outcomes and about 18 injected crashes. The oracle is checked after every step. On its first run the extended walk caught the terminal-state credential gap above.
+
+**Verification.**
+- The reviewer's two probe files, run **unchanged** in WSL (sha256 `a45f3963…` and `e321c0cf…`): **18/18 pass**.
+- Frozen contracts unchanged.
+- No test that existed at `1d914cb` changed its expectations.
+- Full-suite results for this round are recorded in `docs/implementation/implementation-status.md`.
 
 ## Follow-ups (recorded, not done here)
 

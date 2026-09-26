@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from aew.engine.store import deserialize_control
+from aew.knowledge import evidence as E
 from aew.util import parse_frontmatter
 
 
@@ -34,6 +35,7 @@ def control_violations(root: Path) -> list[str]:
     ref = f"refs/heads/{manifest['repository']['authoritative_branch']}"
     tokens = state["tokens"]
     problems: list[str] = []
+    evidence: dict[str, dict[str, dict[str, Any]]] = {}
 
     # 1. Serial mutation: at most one mutating Ticket holds a live workspace (ADR-0003 B6).
     live = sorted(wid for wid, u in state["work"].items()
@@ -88,6 +90,18 @@ def control_violations(root: Path) -> list[str]:
                     problems.append(f"{wid} completion record gated_snapshot differs from COMMIT_READY snapshot")
             else:
                 problems.append(f"{wid} is DONE without a completion record")
+            # 3b. ...and it was validated by a report produced FOR this candidate, under its plan
+            #     (re-review R1: identical content from another attempt/plan is not evidence for it).
+            post = integ.get("post_integration_evidence")
+            if post:
+                ev = evidence.setdefault(wid, _evidence(root, wid)).get(post)
+                inv = state["invocations"].get((ev or {}).get("producer", {}).get("invocation") or "", {})
+                if ev is None or inv.get("workspace") != integ.get("workspace") \
+                        or inv.get("integration_attempt", integ.get("attempt")) != integ.get("attempt"):
+                    problems.append(f"{wid} integrated with {post}, which was not produced for candidate "
+                                    f"attempt {integ.get('attempt')}")
+                elif binding and ev.get("plan_revision") != binding.get("plan"):
+                    problems.append(f"{wid} integrated with {post}, produced under plan {ev.get('plan_revision')}")
         # 4. VERIFICATION_FAILED is left only by a Lead classification (or cancellation).
         exits = [h for h in u.get("history", []) if h.get("from") == "VERIFICATION_FAILED"
                  and h.get("to") not in {"CANCELLED", "VERIFICATION_FAILED"}]
@@ -96,7 +110,20 @@ def control_violations(root: Path) -> list[str]:
                             f"{len(u.get('classifications', []))} classification(s)")
         if u["state"] == "INTERRUPTED" and u.get("interrupted_from") == "VERIFICATION_FAILED":
             problems.append(f"{wid} was interrupted out of VERIFICATION_FAILED (classification pending)")
+        # 5. No evidence is produced after its invocation's credential was revoked (re-review M2):
+        #    retiring an assignment ends its write authority; its earlier reports stay as history.
+        for ev in evidence.setdefault(wid, _evidence(root, wid)).values():
+            inv = state["invocations"].get(ev["producer"]["invocation"], {})
+            revoked = tokens.get(inv.get("token_id") or "", {}).get("revoked_at")
+            if revoked and ev["created_at"] > revoked:
+                problems.append(f"{ev['id']} was written at {ev['created_at']}, after its credential was revoked "
+                                f"at {revoked}")
     return problems
+
+
+def _evidence(root: Path, wid: str) -> dict[str, dict[str, Any]]:
+    records, _ = E.scan(root / ".aew", wid)
+    return {e["id"]: e for e in records}
 
 
 def assert_control_invariants(project_or_root: Any) -> None:

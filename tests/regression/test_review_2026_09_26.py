@@ -111,7 +111,6 @@ def test_sync_handles_executable_bit_only_change(tmp_path):
     assert (repo / 'run.sh').stat().st_mode & 0o111
 
 
-@pytest.mark.xfail(strict=True, reason="review M2 (open)")
 def test_replanned_active_workspace_still_counts_against_serial_cap(tmp_path):
     p = sample_project(tmp_path)
     first = create_planned_ticket(p, tmp_path)
@@ -125,7 +124,6 @@ def test_replanned_active_workspace_still_counts_against_serial_cap(tmp_path):
         'Both mutating invocations are active even though the configured cap is one', first_u['state'])
 
 
-@pytest.mark.xfail(strict=True, reason="review M2 (open)")
 def test_reassignment_does_not_retarget_old_invocation_credential(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)

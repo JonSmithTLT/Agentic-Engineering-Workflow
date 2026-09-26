@@ -33,3 +33,13 @@ Bounded role invocations are retired once their artifact is accepted (WC §5). W
 ## Consequences
 
 A generic `aew work transition` cannot impersonate ingest, classification, assignment or integration. A table-driven test checks every state pair against every operation.
+
+## Amendment 2026-09-26 — independent review (M2, M5)
+
+The table above is unchanged. The review found two places where cross-state obligations were enforced by state *names* instead of by what the state carries.
+
+- **Replacing the plan ends the attempt (M2).**
+  - When `plan.accept` takes a Ticket out of REPLAN_REQUIRED, the Ticket's workspace stops being live (`released (replanned: …)`) and every active invocation of the Ticket is cancelled, which revokes its credential.
+  - The next assignment allocates a fresh attempt from the authoritative ref. The old branch and worktree are kept for provenance and inspection.
+- **The serial cap counts live workspaces (M2).** Disposition B6 is unchanged in intent: a mutating Ticket counts while it holds a live workspace (`workspace.status == active`), **whatever its state**. A READY or BLOCKED Ticket can no longer hide one. Assigning a Ticket that still holds its own live workspace is refused.
+- **Invocations stay bound to their workspace (M2).** Each invocation records the workspace (or integration candidate) it was dispatched for, and every check run and report submission resolves *that* workspace, and only while it is still live. An invocation is never retargeted to a later attempt of the same Ticket.

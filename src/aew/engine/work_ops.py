@@ -231,6 +231,9 @@ class WorkOps(EngineBase):
             decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
                                          work_unit=work_id, evidence_refs=[entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
+                # Work done under the superseded plan never continues implicitly: the old attempt's workspace
+                # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
+                self._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
                 blockers = readiness_blockers(ctx.state, unit, repo_root=self.repo_root,
                                               base_commit=self.authoritative_commit())
                 to = "BLOCKED" if blockers else "READY"

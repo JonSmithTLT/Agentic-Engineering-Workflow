@@ -48,6 +48,7 @@ class WorkspaceOps(RoleOps):
         scope: str = "ticket",
         specialty: str | None = None,
         workspace: str | None = None,
+        workspace_id: str | None = None,
         snapshot: dict[str, Any] | None = None,
         card: Any = None,
     ) -> tuple[str, str]:
@@ -59,7 +60,8 @@ class WorkspaceOps(RoleOps):
         state["invocations"][inv_id] = {
             "role": role, "work_unit": work_id, "status": "active", "token_id": token.split(".")[1],
             "created_at": utc_now(), "generation": state["lead"]["generation"], "scope": scope,
-            "specialty": specialty, "workspace": workspace, "snapshot": snapshot, "pack": None,
+            "specialty": specialty, "workspace": workspace, "workspace_id": workspace_id, "snapshot": snapshot,
+            "pack": None,
         }
         state["work"][work_id]["invocations"].append(inv_id)
         if card is not None:
@@ -75,12 +77,12 @@ class WorkspaceOps(RoleOps):
 
     # ------------------------------------------------------------------ assignment
 
-    def _mutating_slots_in_use(self, state: dict[str, Any], excluding: str) -> list[str]:
+    @staticmethod
+    def _mutating_slots_in_use(state: dict[str, Any]) -> list[str]:
+        """Mutating Tickets holding a live workspace, whatever their state (review M2)."""
         return sorted(
             wid for wid, u in state["work"].items()
-            if wid != excluding and u["kind"] == "ticket" and u["mutating"]
-            and u["state"] in transitions.HOLDS_WORKSPACE
-            and (u.get("workspace") or {}).get("status") == "active"
+            if u["kind"] == "ticket" and u["mutating"] and (u.get("workspace") or {}).get("status") == "active"
         )
 
     def work_assign(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
@@ -99,7 +101,10 @@ class WorkspaceOps(RoleOps):
                     f"{work_id} cannot be assigned: its recorded source snapshot would not contain every "
                     "satisfied dependency", blockers=blockers, base_commit=base)
             if unit["mutating"]:
-                busy = self._mutating_slots_in_use(state, work_id)
+                busy = self._mutating_slots_in_use(state)
+                if work_id in busy:
+                    raise IllegalTransition(f"{work_id} still holds live workspace {unit['workspace']['id']}; "
+                                            "release it before a new assignment")
                 if len(busy) >= EFFECTIVE_MUTATING_CAP:
                     raise ConcurrencyLimit(
                         "mutating concurrency is 1 until isolated concurrent integration exists (WC §8.1); "
@@ -117,7 +122,7 @@ class WorkspaceOps(RoleOps):
                 ws["base_snapshot"] = snapshot
                 unit["workspace"] = ws
                 inv_id, inv_token = self._new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
-                                                         snapshot=snapshot, card=card)
+                                                         workspace_id=ws["id"], snapshot=snapshot, card=card)
                 unit["implementer_invocation"] = inv_id
                 self.build_pack(ctx, inv_id)
                 change = self._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}")
@@ -150,10 +155,11 @@ class WorkspaceOps(RoleOps):
         return out
 
     def _release_workspace(self, ctx: TxnContext, unit: dict[str, Any], why: str) -> None:
+        """End the current attempt: the workspace stops being live and every active invocation of the
+        Ticket is cancelled (credentials revoked). The worktree is left on disk for inspection; the
+        branch preserves provenance."""
         ws = unit.get("workspace")
-        if not ws or ws.get("status") != "active":
-            return
-        ws["status"] = f"released ({why})"
+        if ws and ws.get("status") == "active":
+            ws["status"] = f"released ({why})"
         for inv_id in unit.get("invocations", []):
             self._complete_invocation(ctx.state, inv_id, "cancelled")
-        # The worktree is left on disk for inspection; the branch preserves provenance.

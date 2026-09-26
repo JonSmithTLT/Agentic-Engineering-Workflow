@@ -44,11 +44,24 @@ class EvidenceOps(WorkspaceOps):
         return read_record(self.aew_root / unit["record"], "work-unit").meta
 
     def _invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
+        """The workspace this invocation was dispatched for — and only while it is still live (review M2).
+
+        An invocation is never retargeted to a later workspace or candidate of the same Ticket.
+        """
         unit = state["work"][inv["work_unit"]]
         if inv.get("scope") == "integration":
             integ = unit.get("integration") or {}
+            if not integ or integ.get("workspace") != inv.get("workspace"):
+                raise PermissionDenied(
+                    f"this invocation was dispatched for integration candidate {inv.get('workspace_id')}, which is "
+                    "no longer the Ticket's live candidate", dispatched_for=inv.get("workspace"))
             return Path(integ["workspace"]), integ["workspace_id"], integ.get("base")
         ws = unit.get("workspace") or {}
+        if ws.get("status") != "active" or ws.get("path") != inv.get("workspace"):
+            raise PermissionDenied(
+                f"this invocation was dispatched for workspace {inv.get('workspace_id') or inv.get('workspace')}, "
+                f"which is no longer the Ticket's live workspace", dispatched_for=inv.get("workspace"),
+                current=ws.get("id"), current_status=ws.get("status"))
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
     @staticmethod
@@ -248,8 +261,8 @@ class EvidenceOps(WorkspaceOps):
                 workspace, ws_id = ws["path"], ws["id"]
             snapshot = self.snapshot_of(workspace, ws_id)
             archetype = chosen.archetype
-            inv_id, inv_token = self._new_invocation(ctx, archetype, work_id, scope=scope,
-                                                     workspace=workspace, snapshot=snapshot, card=chosen)
+            inv_id, inv_token = self._new_invocation(ctx, archetype, work_id, scope=scope, workspace=workspace,
+                                                     workspace_id=ws_id, snapshot=snapshot, card=chosen)
             if archetype == "implementer":
                 unit["implementer_invocation"] = inv_id
             self.build_pack(ctx, inv_id)

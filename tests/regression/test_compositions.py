@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (SUBTRACT_PATCH, implement, integrate, prepare_and_validate, redispatch_implementer, review,
-                     sample_project, to_commit_ready, verify)
+from aewflow import (SUBTRACT_PATCH, assign, create_planned_ticket, implement, integrate, prepare_and_validate,
+                     redispatch_implementer, review, sample_project, to_commit_ready, verify)
 from conftest import git
 from invariants import assert_control_invariants
 
@@ -141,3 +141,60 @@ def test_candidate_bound_to_an_earlier_acceptance_is_superseded_at_publish(tmp_p
     assert main_commit(p) == integ["base"]
     u = unit(p, wid)
     assert u["integration"] is None and u["integration_history"][-1]["status"] == "superseded"
+
+
+def replan(p, wid, tmp_path, revision):
+    p.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", f"revise approach ({revision})")
+    plan = tmp_path / f"{wid}-plan-v{revision}.md"
+    plan.write_text(f"Revised approach {revision}.\n", encoding="utf-8")
+    p.lead("plan", "propose", wid, "--file", str(plan), "--reason", "new requirement")
+    p.lead("plan", "accept", wid, "--revision", str(revision))
+
+
+def test_repeated_replan_and_interruption_cycles_keep_the_serial_boundary(tmp_path):
+    """M2 compositions: assign -> replan -> assign -> handoff -> reconcile, repeatedly, under the oracle."""
+    p = sample_project(tmp_path)
+    first = create_planned_ticket(p, tmp_path)
+    old_roles = []
+    for revision in (2, 3):
+        impl = assign(p, first)
+        impl.write(SUBTRACT_PATCH)  # partial work under the plan about to be replaced
+        replan(p, first, tmp_path, revision)
+        u = unit(p, first)
+        assert u["state"] == "READY" and u["workspace"]["status"].startswith("released (replanned")
+        assert_control_invariants(p)
+        old_roles.append(impl)
+    for impl in old_roles:  # superseded credentials never act again, on any workspace
+        res = impl.aew("check", "run", "guardrails")
+        assert res.returncode != 0, res.stdout
+    second = create_planned_ticket(p, tmp_path, title="Second mutating ticket")
+    impl2 = assign(p, second)
+    res = p.aew("work", "assign", first, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "CONCURRENCY_LIMIT"
+    offer = p.lead("lead", "handoff", "offer")["offer"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+    assert unit(p, second)["state"] == "INTERRUPTED"
+    assert impl2.aew("check", "run", "guardrails").returncode != 0
+    p.lead("work", "reconcile", second, "--to", "RUNNING", "--reason", "inspected the workspace; continue")
+    fresh = redispatch_implementer(p, second)
+    assert fresh.ok("check", "run", "guardrails")["evaluated_snapshot"]["workspace_id"] == \
+        unit(p, second)["workspace"]["id"]
+    assert_control_invariants(p)
+
+
+def test_invocation_is_never_retargeted_to_another_workspace(tmp_path):
+    """Defense in depth: even with a live credential, an invocation acts only on the workspace it was
+    dispatched for (here the Ticket's workspace stopped being live under it)."""
+    from aew.engine.api import Engine
+    from aew.engine.store import Transition
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:  # simulate a record whose workspace was released without revocation
+        s.state["work"][wid]["workspace"]["status"] = "released (test)"
+        s.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
+    res = impl.aew("check", "run", "guardrails")
+    assert res.error["code"] == "PERMISSION_DENIED"
+    assert "no longer the Ticket's live workspace" in res.error["message"]

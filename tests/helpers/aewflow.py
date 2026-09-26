@@ -7,7 +7,6 @@ generated launch contract would. Nothing here reaches into engine internals.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -168,10 +167,34 @@ def verify(p: Project, wid: str, *, scope: str = "ticket", goal_result: str = "p
     }, "Goal-backwards: ran the focused tests. Contract: guardrail check.\n")["evidence"]
 
 
-def to_verified(p: Project, tmp_path: Path, **kw: Any) -> tuple[str, Role]:
-    wid = create_planned_ticket(p, tmp_path, **kw)
+def prepare_and_validate(p: Project, wid: str) -> dict[str, Any]:
+    """COMMIT_READY -> integration candidate -> post-integration verification (not yet published)."""
+    out = p.lead("integrate", "prepare", wid)
+    assert out["ok"], out
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    integ = p.ok("work", "show", wid)["control"]["integration"]
+    assert integ["status"] == "validated", integ
+    return integ
+
+
+def integrate(p: Project, wid: str) -> dict[str, Any]:
+    integ = prepare_and_validate(p, wid)
+    out = p.lead("integrate", "publish", wid)
+    assert out["state"] == "DONE" and out["integrated_commit"] == integ["candidate"]
+    return out
+
+
+def to_commit_ready(p: Project, tmp_path: Path, **kw: Any) -> tuple[str, Role]:
+    wid, impl = to_verified(p, tmp_path, **kw)
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    return wid, impl
+
+
+def to_verified(p: Project, tmp_path: Path, *, files: dict[str, str] | None = None,
+                wid: str | None = None, **kw: Any) -> tuple[str, Role]:
+    wid = wid or create_planned_ticket(p, tmp_path, **kw)
     impl = assign(p, wid)
-    implement(impl)
+    implement(impl, files)
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     p.lead("review", "ingest", wid, "--evidence", review(p, wid))
     p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
@@ -179,5 +202,3 @@ def to_verified(p: Project, tmp_path: Path, **kw: Any) -> tuple[str, Role]:
     assert p.ok("work", "show", wid)["control"]["state"] == "VERIFIED"
     return wid, impl
 
-
-PY = sys.executable

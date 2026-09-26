@@ -57,6 +57,34 @@ def allocate(
     }
 
 
+def allocate_detached(
+    *,
+    repo_root: Path,
+    aew_root: Path,
+    workspaces_root: Path,
+    work_id: str,
+    name: str,
+    workspace_id: str,
+    commit: str,
+    referenced_paths: set[str],
+) -> dict[str, Any]:
+    """A detached worktree at ``commit`` (used for integration candidates)."""
+    path = (workspaces_root / name).resolve()
+    if str(path) in referenced_paths:
+        raise GitError(f"workspace path {path} is referenced by committed control state")
+    if path.exists():
+        remove(repo_root, str(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    git.git("worktree", "add", "-q", "--detach", str(path), commit, cwd=repo_root)
+    (git.git_dir(path) / WORKSPACE_MARKER).write_text(dump_yaml({
+        "authoritative_repo_root": str(repo_root),
+        "authoritative_aew_root": str(aew_root),
+        "work_unit": work_id,
+        "workspace_id": workspace_id,
+    }), encoding="utf-8")
+    return {"path": str(path), "workspace_id": workspace_id}
+
+
 def _clear_orphan(repo_root: Path, path: Path, branch: str, referenced_paths: set[str]) -> None:
     """Remove a slot left by an assignment that crashed before its commit (never a referenced one)."""
     if str(path) in referenced_paths:

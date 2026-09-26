@@ -190,4 +190,15 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
 
 
 def _register_integration(sub: argparse._SubParsersAction) -> Any:
-    return None
+    p = sub.add_parser("integrate", help="Lead-controlled integration: validate, then publish by ref CAS")
+    isub = p.add_subparsers(dest="integrate_cmd", required=True)
+    for name, method, text in (
+        ("prepare", "integrate_prepare", "commit the gated workspace and build the integration candidate"),
+        ("publish", "integrate_publish", "CAS-publish a validated candidate onto the authoritative branch"),
+        ("reconcile", "integrate_reconcile", "finish an interrupted publish after inspecting git"),
+    ):
+        q = isub.add_parser(name, help=text)
+        q.add_argument("work_id")
+        _add_lead(q)
+        q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
+            token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id))

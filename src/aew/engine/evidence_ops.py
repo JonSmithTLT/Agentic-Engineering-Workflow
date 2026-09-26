@@ -23,6 +23,7 @@ from aew.errors import (
     IllegalTransition,
     NotFound,
     PermissionDenied,
+    StaleCandidate,
     UsageError,
     ValidationFailed,
 )
@@ -31,6 +32,7 @@ from aew.knowledge.records import read_record
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
 from aew.snapshot.fingerprint import changed_paths
+from aew.workspace.integration import changed_between as git_changed_between
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
 
 REVIEW_ROLES = {"reviewer"}
@@ -43,11 +45,25 @@ class EvidenceOps(WorkspaceOps):
         return read_record(self.aew_root / unit["record"], "work-unit").meta
 
     def _invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
+        """The workspace this invocation was dispatched for — and only while it is still live (review M2).
+
+        An invocation is never retargeted to a later workspace or candidate of the same Ticket.
+        """
         unit = state["work"][inv["work_unit"]]
         if inv.get("scope") == "integration":
             integ = unit.get("integration") or {}
+            if not integ or integ.get("workspace") != inv.get("workspace") \
+                    or inv.get("integration_attempt") != integ.get("attempt"):
+                raise PermissionDenied(
+                    f"this invocation was dispatched for integration candidate {inv.get('workspace_id')}, which is "
+                    "no longer the Ticket's live candidate", dispatched_for=inv.get("workspace"))
             return Path(integ["workspace"]), integ["workspace_id"], integ.get("base")
         ws = unit.get("workspace") or {}
+        if ws.get("status") != "active" or ws.get("path") != inv.get("workspace"):
+            raise PermissionDenied(
+                f"this invocation was dispatched for workspace {inv.get('workspace_id') or inv.get('workspace')}, "
+                f"which is no longer the Ticket's live workspace", dispatched_for=inv.get("workspace"),
+                current=ws.get("id"), current_status=ws.get("status"))
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
     @staticmethod
@@ -56,13 +72,33 @@ class EvidenceOps(WorkspaceOps):
         return {k: card[k] for k in ("id", "version", "sha256")} if card else None
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Effective obligations and gate status for the workspace's *current* evaluated snapshot."""
+        unit = self.unit(state, work_id)
+        snapshot = self.current_snapshot(unit)
+        ws = unit.get("workspace")
+        changed = changed_paths(Path(ws["path"]), ws["base_commit"]) if snapshot and ws else None
+        return self._gates_at(state, work_id, snapshot, changed)
+
+    def accepted_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Obligations and gates re-evaluated at the ACCEPTED (COMMIT_READY) snapshot (foundation review).
+
+        Used at publication: obligations added after acceptance (an operator-pinned card, a new policy
+        gate) must be met before DONE. Guardrail triggers come from the committed Ticket diff and the
+        fingerprint from the gated snapshot, so later workspace edits cannot change the answer.
+        """
+        unit = self.unit(state, work_id)
+        integ = unit.get("integration") or {}
+        ws = unit.get("workspace") or {}
+        changed = git_changed_between(self.repo_root, ws["base_commit"], integ["ticket_commit"])
+        return self._gates_at(state, work_id, unit.get("commit_ready_snapshot"), changed)
+
+    def _gates_at(self, state: dict[str, Any], work_id: str, snapshot: dict[str, Any] | None,
+                  changed: list[str] | None) -> dict[str, Any]:
         unit = self.unit(state, work_id)
         gates_policy = self.policy("gates")
-        snapshot = self.current_snapshot(unit)
         guard = {"violations": [], "triggered_gates": [], "changed_paths": []}
-        ws = unit.get("workspace")
-        if snapshot and ws:
-            guard = GR.evaluate(changed_paths(Path(ws["path"]), ws["base_commit"]), self.policy("guardrails"),
+        if changed is not None:
+            guard = GR.evaluate(changed, self.policy("guardrails"),
                                 (self._record_meta(unit).get("scope") or {}).get("paths", []))
         obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
                                               self.plan_gates(unit))
@@ -183,8 +219,31 @@ class EvidenceOps(WorkspaceOps):
         self._record_relied_on(ctx, unit, gc, list(gc["gates"]))
         unit["commit_ready_snapshot"] = gc["snapshot"]
         unit["commit_ready_gates"] = {g: v["status"] for g, v in gc["gates"].items()}
+        # Identity of this acceptance: an integration candidate is bound to it (review B1).
+        unit["commit_ready_seq"] = unit.get("commit_ready_seq", 0) + 1
         if unit.get("implementer_invocation"):
             self._complete_invocation(ctx.state, unit["implementer_invocation"])
+
+    # ------------------------------------------------------------------ integration binding (review B1)
+
+    @staticmethod
+    def integration_binding(unit: dict[str, Any]) -> dict[str, Any]:
+        """What an integration candidate is built from: the accepted plan and the COMMIT_READY acceptance."""
+        plan = unit.get("plan") or {}
+        return {"plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
+                "commit_ready_seq": unit.get("commit_ready_seq", 0),
+                "gated_fingerprint": (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")}
+
+    def binding_problem(self, unit: dict[str, Any]) -> dict[str, Any] | None:
+        bound = (unit.get("integration") or {}).get("binding")
+        current = self.integration_binding(unit)
+        return None if bound == current else {"candidate_bound_to": bound, "current": current}
+
+    def _require_current_binding(self, unit: dict[str, Any]) -> None:
+        problem = self.binding_problem(unit)
+        if problem:
+            raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
+                                 "run `aew integrate prepare` again", **problem)
 
     # ------------------------------------------------------------------ invocations
 
@@ -200,6 +259,7 @@ class EvidenceOps(WorkspaceOps):
                 slot = "verify"
                 if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
                     raise IllegalTransition("post-integration verification needs a prepared integration candidate")
+                self._require_current_binding(unit)
             elif st in {"ASSIGNED", "RUNNING"}:
                 slot = "execute"
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
@@ -223,10 +283,13 @@ class EvidenceOps(WorkspaceOps):
                 workspace, ws_id = ws["path"], ws["id"]
             snapshot = self.snapshot_of(workspace, ws_id)
             archetype = chosen.archetype
-            inv_id, inv_token = self._new_invocation(ctx, archetype, work_id, scope=scope,
-                                                     workspace=workspace, snapshot=snapshot, card=chosen)
+            inv_id, inv_token = self._new_invocation(ctx, archetype, work_id, scope=scope, workspace=workspace,
+                                                     workspace_id=ws_id, snapshot=snapshot, card=chosen)
             if archetype == "implementer":
                 unit["implementer_invocation"] = inv_id
+            if scope == "integration":  # the candidate this invocation serves (re-review M2/R1)
+                state["invocations"][inv_id].update(integration_attempt=unit["integration"]["attempt"],
+                                                    candidate=unit["integration"]["candidate"])
             self.build_pack(ctx, inv_id)
             ctx.summary = f"{inv_id} ({chosen.id} / {archetype}, {scope}) dispatched for {work_id}"
         pack = ctx.state["invocations"][inv_id].get("pack") or {}
@@ -317,6 +380,9 @@ class EvidenceOps(WorkspaceOps):
             state = s.state
             inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}")
             E.check_submission(inv["role"], kind, submitted)
+            # Any report — implementation, review or verification — is written only while the invocation's
+            # own workspace/candidate is still live (review M2, re-review M2).
+            workspace, ws_id, _ = self._invocation_workspace(state, inv)
             work_id = inv["work_unit"]
             unit = state["work"][work_id]
             plan = unit.get("plan") or {}
@@ -331,7 +397,6 @@ class EvidenceOps(WorkspaceOps):
                 "evidence": submitted.get("evidence") or [],
             }
             if kind == "implementation_report":
-                workspace, ws_id, _ = self._invocation_workspace(state, inv)
                 meta["evaluated_snapshot"] = self.snapshot_of(workspace, ws_id)
                 meta["implementation"] = submitted.get("implementation") or {}
                 meta["result"] = submitted.get("result", "pass")
@@ -413,6 +478,38 @@ class EvidenceOps(WorkspaceOps):
                 return ev
         raise NotFound(f"no evidence {evidence_id} for {work_id}")
 
+    def _require_bound_report(self, state: dict[str, Any], unit: dict[str, Any], ev: dict[str, Any], *,
+                              scope: str) -> None:
+        """Accept a report only for the assignment it was produced for (re-review R1).
+
+        Identical engineering content is not enough: the report must have been produced under the
+        Ticket's current accepted plan (revision + sha256) by an invocation dispatched for the current
+        attempt's workspace (ticket scope) or for the current integration candidate (integration scope).
+        Reports from superseded plans, attempts or candidates stay durable history; current work needs
+        its own.
+        """
+        inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
+        plan = unit.get("plan") or {}
+        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        problems: dict[str, Any] = {}
+        if ev.get("plan_revision") != accepted:
+            problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}
+        if scope == "integration":
+            integ = unit.get("integration") or {}
+            if inv.get("scope") != "integration" or inv.get("workspace") != integ.get("workspace") \
+                    or inv.get("integration_attempt") != integ.get("attempt"):
+                problems["candidate"] = {"report_for": inv.get("workspace_id"), "report_attempt": inv.get(
+                    "integration_attempt"), "current": integ.get("workspace_id"), "current_attempt": integ.get("attempt")}
+        else:
+            ws = unit.get("workspace") or {}
+            if (inv.get("scope") or "ticket") != "ticket" or inv.get("workspace") != ws.get("path"):
+                problems["workspace"] = {"report_for": inv.get("workspace_id") or inv.get("workspace"),
+                                         "current": ws.get("id")}
+        if problems:
+            raise GateUnsatisfied(
+                f"{ev['id']} was produced for a different plan, attempt or candidate than the one being accepted; "
+                "it remains in history, but the current work needs its own report", **problems)
+
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "review.ingest") as ctx:
             state = ctx.state
@@ -430,6 +527,7 @@ class EvidenceOps(WorkspaceOps):
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
                 raise GateUnsatisfied("review evaluated a snapshot that is no longer current (stale)",
                                       reviewed=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
+            self._require_bound_report(state, unit, ev, scope="ticket")
             findings = unit.setdefault("findings", [])
             known = {f["id"] for f in findings}
             for rid in ev["review"].get("resolved_findings", []):
@@ -457,7 +555,8 @@ class EvidenceOps(WorkspaceOps):
             change = None
             if to:
                 transitions.check(unit["state"], to, "review.ingest")
-                change = self._set_state(unit, to, f"review {evidence_id}: {ev['review']['disposition']}")
+                change = self._set_state(unit, to, f"review {evidence_id}: {ev['review']['disposition']}",
+                                         state=state)
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} review {evidence_id} ingested" + (f" -> {to}" if to else " (reviews pending)")
             self.before_commit(ctx)
@@ -482,10 +581,12 @@ class EvidenceOps(WorkspaceOps):
                 integ = unit.get("integration") or {}
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
+                self._require_current_binding(unit)
                 current = self.snapshot_of(integ["workspace"], integ["workspace_id"])["relevant_inputs_fingerprint"]
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",
                                       verified=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
+            self._require_bound_report(state, unit, ev, scope=scope)
             self._ingest_ref(unit, ev)
             self._complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]
@@ -502,7 +603,7 @@ class EvidenceOps(WorkspaceOps):
                         to = None  # other planned verifier cards are still outstanding
                 if to:
                     transitions.check(unit["state"], to, "verify.ingest")
-                    change = self._set_state(unit, to, f"verification {evidence_id}: {result}")
+                    change = self._set_state(unit, to, f"verification {evidence_id}: {result}", state=state)
             elif result == "pass":
                 unit["integration"]["status"] = "validated"
                 unit["integration"]["post_integration_evidence"] = evidence_id
@@ -510,7 +611,7 @@ class EvidenceOps(WorkspaceOps):
                 unit["integration"]["status"] = "validation_failed"
                 transitions.check(unit["state"], "VERIFICATION_FAILED", "verify.ingest")
                 change = self._set_state(unit, "VERIFICATION_FAILED",
-                                         f"post-integration verification {evidence_id} failed")
+                                         f"post-integration verification {evidence_id} failed", state=state)
             else:
                 unit["integration"]["status"] = "validation_inconclusive"
             ctx.refs.append(ev["_path"])
@@ -546,7 +647,7 @@ class EvidenceOps(WorkspaceOps):
                     unit["integration"]["status"] = "discarded"
             elif to == "VERIFICATION_INCONCLUSIVE":
                 unit["environment_blocker"] = {"decision": decision, "reason": reason}
-            self._set_state(unit, to, f"{classification}: {reason}")
+            self._set_state(unit, to, f"{classification}: {reason}", state=ctx.state)
             ctx.summary = f"{work_id} classified {classification} -> {to} ({decision})"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "classification": classification, "to": to, "decision": decision,

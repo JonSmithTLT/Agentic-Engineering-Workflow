@@ -25,6 +25,17 @@ from aew.knowledge.records import format_id
 from aew.util import render_frontmatter, utc_now
 
 ACTIVE_INVOCATION_STATES = {"active"}
+# The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
+# Ticket's state in doubt; every other state is already determined by ingested evidence or a Lead
+# decision, and interruption must not erase the obligation it carries — e.g. VERIFICATION_FAILED
+# still requires the Lead's classification (review 2026-09-26 M5; ADR-0003 amendment).
+PHASE_DRIVERS = {
+    "ASSIGNED": ("implementer", "ticket"),
+    "RUNNING": ("implementer", "ticket"),
+    "REVIEW_PENDING": ("reviewer", "ticket"),
+    "VERIFY_PENDING": ("verifier", "ticket"),
+    "COMMIT_READY": ("verifier", "integration"),  # only while the candidate awaits validation (prepared)
+}
 
 
 class LeadOps(EngineBase):
@@ -43,8 +54,19 @@ class LeadOps(EngineBase):
         )
         return token
 
+    @staticmethod
+    def _phase_waits_on(unit: dict[str, Any], inv: dict[str, Any]) -> bool:
+        driver = PHASE_DRIVERS.get(unit["state"])
+        if driver != (inv["role"], inv.get("scope") or "ticket"):
+            return False
+        return unit["state"] != "COMMIT_READY" or (unit.get("integration") or {}).get("status") == "prepared"
+
     def _interrupt_invocations(self, state: dict[str, Any], reason: str, keep: set[str] = frozenset()) -> list[str]:
-        """Revoke in-flight invocations (except ``keep``) and mark their Tickets INTERRUPTED."""
+        """Revoke in-flight invocations (except ``keep``).
+
+        A Ticket becomes INTERRUPTED only if its current phase is waiting on the lost invocation;
+        otherwise its state is retained and the revocation is recorded in its history.
+        """
         interrupted = []
         for inv_id, inv in state["invocations"].items():
             if inv["status"] not in ACTIVE_INVOCATION_STATES or inv_id in keep:
@@ -53,10 +75,19 @@ class LeadOps(EngineBase):
             revoke(state, inv["token_id"], reason)
             interrupted.append(inv_id)
             unit = state["work"].get(inv["work_unit"])
-            if unit and unit["state"] not in {"DONE", "CANCELLED", "INTERRUPTED"}:
+            if not unit:
+                continue
+            note = f"invocation {inv_id} ({inv['role']}) interrupted: {reason}"
+            if self._phase_waits_on(unit, inv):
+                unit.setdefault("history", []).append(
+                    {"from": unit["state"], "to": "INTERRUPTED", "at": utc_now(), "reason": note})
                 unit["interrupted_from"] = unit["state"]
                 unit["state"] = "INTERRUPTED"
-                unit["state_reason"] = f"invocation {inv_id} interrupted: {reason}"
+                unit["state_reason"] = note
+            else:
+                unit.setdefault("history", []).append(
+                    {"from": unit["state"], "to": unit["state"], "at": utc_now(), "event": "invocation_interrupted",
+                     "reason": f"{note}; state retained (determined by accepted evidence or a Lead decision)"})
         return interrupted
 
     def _revoke_all_lead_credentials(self, state: dict[str, Any], reason: str) -> None:

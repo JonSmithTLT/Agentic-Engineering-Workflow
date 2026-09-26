@@ -13,6 +13,7 @@ Provider-neutral, contract-first engineering workflow for AI coding agents. AEW 
 | [`docs/implementation/implementation-status.md`](docs/implementation/implementation-status.md) | Implemented / Staged / Designed |
 | [`docs/implementation/adr/`](docs/implementation/adr/) | Implementation decisions (persistence, snapshots, state machine, integration, authority, role cards) |
 | [`docs/implementation/ambiguity-report.md`](docs/implementation/ambiguity-report.md) | Spec gaps and their operator-approved dispositions |
+| [`docs/implementation/review-response-2026-09-26.md`](docs/implementation/review-response-2026-09-26.md) | Independent M1 review: every finding, its fix, commit and regression evidence |
 
 ## Development
 

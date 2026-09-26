@@ -29,6 +29,10 @@ class StatusOps(EngineBase):
             if ws and unit["state"] not in {"DONE", "CANCELLED"} and ws.get("status") == "active":
                 if not Path(ws["path"]).exists():
                     found.append(f"{wid}: workspace {ws['id']} is missing at {ws['path']}")
+            if ws and str(ws.get("status", "")).startswith("retained") and Path(ws["path"]).exists():
+                found.append(f"{wid}: workspace {ws['id']} was retained after integration because it holds changes "
+                             f"that are not in the integrated commit ({ws['path']}); inspect them, then carry them "
+                             "into a new Ticket or discard them")
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv["status"] == "active" and state["lead"]["status"] == "vacant":
                 found.append(f"{inv_id}: active invocation but no Lead holds authority")

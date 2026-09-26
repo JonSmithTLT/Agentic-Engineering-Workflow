@@ -145,7 +145,6 @@ class Engine(ResumeOps, LeadOps, StatusOps):
                 {"id": candidate_id, "path": candidate["path"], "class": klass, "decision": decision})
             self._rewrite_manifest(ctx, manifest)
             ctx.summary = f"authority accepted: {candidate['path']} ({klass})"
-        self.reload_manifest()
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
     def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str,
@@ -160,7 +159,6 @@ class Engine(ResumeOps, LeadOps, StatusOps):
             candidate["status"] = "rejected"
             self._rewrite_manifest(ctx, manifest)
             ctx.summary = f"authority candidate rejected: {candidate['path']}"
-        self.reload_manifest()
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
     def manifest_adopt(self, *, token: str, expect_rev: int, reason: str) -> dict[str, Any]:
@@ -177,7 +175,6 @@ class Engine(ResumeOps, LeadOps, StatusOps):
                                          "Adopted a reviewed manual edit of project.yaml", reason=reason)
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
             ctx.summary = "manifest re-pinned"
-        self.reload_manifest()
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
     def _fresh_manifest(self) -> dict[str, Any]:
@@ -203,6 +200,12 @@ class Engine(ResumeOps, LeadOps, StatusOps):
             add("control-state", "PASS", f"revision {state['revision']}, checksum and schema valid")
         except Exception as exc:  # report, never crash
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
+            return checks
+        try:
+            _ = self.manifest
+            add("manifest", "PASS", "project.yaml parses and matches its schema")
+        except Exception as exc:
+            add("manifest", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
         add("manifest-pin", "PASS" if self.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.manifest_pin_ok(state)

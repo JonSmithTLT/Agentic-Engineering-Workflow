@@ -21,6 +21,14 @@ Every scenario drives the real `aew` CLI in separate processes against real git 
 | AT-7 | Workspace copies of `.aew/` are never authority; a Ticket cannot write AEW state through its workspace | `test_authority.py::test_worktree_copy_of_aew_is_not_an_authority`, `test_workspaces.py::test_aew_inside_workspace_resolves_to_authoritative_project`, `tests/acceptance/test_at4a_at7.py::test_ticket_cannot_write_aew_state_through_its_workspace` |
 | KC §26 | Existing-authority project: sources are referenced, not duplicated | `test_resume.py::test_existing_authority_project_is_referenced_not_duplicated` |
 
+## Review regressions (2026-09-26)
+
+The independent M1 review's 12 probes are preserved unchanged in `tests/regression/test_review_2026_09_26.py` and must pass. Composition tests for the same interactions, the cross-operation invariant oracle and a seeded adversarial walk (`test_composition_walk.py`, 5 seeds × 60 steps; widen with `AEW_WALK_SEEDS` / `AEW_WALK_STEPS`) live alongside them. See `review-response-2026-09-26.md`.
+
+```bash
+python -m pytest tests/regression -q
+```
+
 ## Platform notes
 
 - **Linux** (WSL Ubuntu 22.04, Python 3.11, ext4) is the reference platform for the Rocky 8 target. There the operator-takeover tests answer a real challenge on a pseudo-terminal.

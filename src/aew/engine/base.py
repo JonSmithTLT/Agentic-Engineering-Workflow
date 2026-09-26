@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.authority import require_lead
-from aew.engine.store import ControlStore, Session, Transition
+from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
@@ -27,6 +27,7 @@ class TxnContext:
     actor: dict[str, Any]
     summary: str | None = None
     refs: list[str] = field(default_factory=list)
+    op: str | None = None  # overrides the transaction's op when the outcome differs (e.g. integrate.stale)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -37,8 +38,51 @@ class EngineBase:
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         self.repo_root = repo_root.resolve()
         self.aew_root = aew_root.resolve()
-        self.manifest = load_manifest(self.aew_root)
-        self.store = ControlStore(self.aew_root, renderer=self._render)
+        self._manifest: dict[str, Any] | None = None
+        self._manifest_error: Exception | None = None
+        self._manifest_seen: tuple[Any, ...] | None = None  # file identities the cached manifest reflects
+        self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
+
+    # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
+
+    def _refresh_manifest(self, state: dict[str, Any]) -> None:
+        """Load project.yaml inside the control lock, after recovery replayed any committed rewrite of it.
+
+        Called on every session, so a long-lived engine never serves a manifest older than the control
+        state it just read. An unreadable manifest is remembered and raised on use (``doctor`` reports it).
+        """
+        try:
+            self._manifest, self._manifest_error = load_manifest(self.aew_root), None
+        except Exception as exc:  # surfaced by the ``manifest`` property
+            self._manifest, self._manifest_error = None, exc
+        self._manifest_seen = self._authority_files_identity()
+
+    def _authority_files_identity(self) -> tuple[Any, ...]:
+        """Cheap identity of control.yaml and project.yaml (mtime, size, inode). Both are only ever
+        replaced atomically, so any committed change — or a pending recovery — changes it."""
+        out: list[Any] = []
+        for path in (self.aew_root / CONTROL_REL, self.aew_root / MANIFEST):
+            try:
+                st = path.stat()
+                out.append((st.st_mtime_ns, st.st_size, st.st_ino))
+            except FileNotFoundError:
+                out.append(None)
+        return tuple(out)
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        """The manifest of the latest recovered control state — for every read path (re-review M8).
+
+        Inside a store session it was loaded under the lock when the session began (after recovery).
+        Outside one, it is revalidated against the files' identity on each use and, if anything changed
+        since it was loaded, reloaded through a recovered read — never by re-entering the lock.
+        """
+        if not self.store.held and self._manifest_seen != self._authority_files_identity():
+            self.store.read()  # recovery first; the manifest is (re)loaded under the lock
+        if self._manifest_error is not None:
+            raise self._manifest_error
+        assert self._manifest is not None
+        return self._manifest
 
     # ------------------------------------------------------------------ discovery
 
@@ -82,10 +126,9 @@ class EngineBase:
         return self.manifest["repository"]["authoritative_branch"]
 
     def _render(self, state: dict[str, Any]) -> dict[str, str]:
-        return render.views(state, self.manifest["project"]["name"], self.aew_root)
-
-    def reload_manifest(self) -> None:
-        self.manifest = load_manifest(self.aew_root)
+        # Runs inside the lock during recovery: never re-enter the manifest property from here.
+        name = ((self._manifest or {}).get("project") or {}).get("name") or state["project_id"]
+        return render.views(state, name, self.aew_root)
 
     def policy(self, name: str) -> dict[str, Any]:
         path = self.aew_root / self.manifest["policy"][name]
@@ -139,7 +182,7 @@ class EngineBase:
                 self.check_manifest_pin(s.state)
             ctx = TxnContext(session=s, actor=actor)
             yield ctx
-            s.commit(Transition(op=op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
+            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
                      expect_rev=expect_rev)
 
     def new_decision(

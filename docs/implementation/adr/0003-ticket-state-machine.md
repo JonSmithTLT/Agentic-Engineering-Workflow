@@ -33,3 +33,33 @@ Bounded role invocations are retired once their artifact is accepted (WC §5). W
 ## Consequences
 
 A generic `aew work transition` cannot impersonate ingest, classification, assignment or integration. A table-driven test checks every state pair against every operation.
+
+## Amendment 2026-09-26 — independent review (M2, M5)
+
+The table above is unchanged. The review found two places where cross-state obligations were enforced by state *names* instead of by what the state carries.
+
+- **Replacing the plan ends the attempt (M2).**
+  - When `plan.accept` takes a Ticket out of REPLAN_REQUIRED, the Ticket's workspace stops being live (`released (replanned: …)`) and every active invocation of the Ticket is cancelled, which revokes its credential.
+  - The next assignment allocates a fresh attempt from the authoritative ref. The old branch and worktree are kept for provenance and inspection.
+- **The serial cap counts live workspaces (M2).** Disposition B6 is unchanged in intent: a mutating Ticket counts while it holds a live workspace (`workspace.status == active`), **whatever its state**. A READY or BLOCKED Ticket can no longer hide one. Assigning a Ticket that still holds its own live workspace is refused.
+- **Invocations stay bound to their workspace (M2).** Each invocation records the workspace (or integration candidate) it was dispatched for, and every check run and report submission resolves *that* workspace, and only while it is still live. An invocation is never retargeted to a later attempt of the same Ticket.
+- **Interruption never erases a pending obligation (M5).**
+  - When a Lead handoff or takeover interrupts an in-flight invocation, the invocation is always revoked and marked `interrupted`.
+  - The Ticket becomes INTERRUPTED only if its current phase is **waiting on that invocation**:
+
+    | Ticket state | Waiting on |
+    |---|---|
+    | ASSIGNED, RUNNING | implementer |
+    | REVIEW_PENDING | reviewer |
+    | VERIFY_PENDING | Ticket-scope verifier |
+    | COMMIT_READY, candidate `prepared` | integration verifier |
+
+  - Every other state is already determined by ingested evidence or by a Lead decision, and is retained. These include VERIFICATION_FAILED (which still requires the Lead's classification), REVIEW_FAILED/PASSED, VERIFIED, INCONCLUSIVE, REPLAN_REQUIRED, ESCALATED, and COMMIT_READY while `publishing`. The revocation is recorded in the Ticket's history.
+  - Interruption transitions are now recorded in history as well.
+  - Reconciliation still returns only to the interrupted phase or an earlier one. Since VERIFICATION_FAILED is never interrupted, no reconcile path reaches mutation or replanning without a classification.
+
+### Addendum 2026-09-26 — focused re-review
+
+- **A finished Ticket leaves no live credentials.** Entering a terminal state (DONE or CANCELLED) cancels every remaining active invocation of the Ticket and revokes its credential, enforced in the single state-change path. Before this, stragglers (dispatched, never used) kept live credentials past DONE. They could not write, because their workspace was no longer live, but their authority outlived the work.
+- Found by the extended adversarial walk, which now also dispatches stragglers, submits reports it never ingests, submits late with any credential ever issued, and replays ingestion of any earlier report. The invariant oracle checks after every step that no report was accepted for another plan, attempt or candidate, and that no evidence postdates its credential's revocation.
+- **M1 assigns mutating Tickets only (foundation review).** Assignment allocates a mutation workspace and an implementer. A `--non-mutating` (evidence-only) Ticket that received them bypassed the serial cap, which counts only mutating Tickets, and could publish source. M1 now refuses to assign or integrate a non-mutating Ticket. Its dispatch path (investigator/researcher/planner cards, no mutation workspace) arrives in M2.

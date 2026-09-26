@@ -22,6 +22,11 @@ Model (ADR-0001):
 * The transition log ``state/log/<rev>.yaml`` and derived views (for example
   ``state/CURRENT.md``) are rebuilt from committed state; they are never
   authoritative.
+* ``after_apply(state)`` runs inside the lock once a state's writes are known to
+  be on disk — after redo recovery and after each commit's apply, before the
+  post-commit render — so callers can load files a transition may have
+  replaced (the project manifest) from the same coherent snapshot (review
+  2026-09-26 M8).
 """
 
 from __future__ import annotations
@@ -57,6 +62,7 @@ LOG_DIR = "state/log"
 LOCK_REL = "local/control.lock"
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
+AfterApply = Callable[[dict[str, Any]], None]
 
 
 @dataclass
@@ -130,10 +136,13 @@ class Session:
 
 
 class ControlStore:
-    def __init__(self, aew_root: Path, *, renderer: Renderer | None = None, lock_timeout: float = 60.0) -> None:
+    def __init__(self, aew_root: Path, *, renderer: Renderer | None = None, lock_timeout: float = 60.0,
+                 after_apply: AfterApply | None = None) -> None:
         self.root = aew_root
         self.renderer = renderer
         self.lock_timeout = lock_timeout
+        self.after_apply = after_apply
+        self.held = 0  # > 0 while this process holds the control lock through this store
 
     # ------------------------------------------------------------------ paths
 
@@ -156,8 +165,12 @@ class ControlStore:
     @contextmanager
     def session(self) -> Iterator[Session]:
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
-            state = self._recover()
-            yield Session(self, state)
+            self.held += 1
+            try:
+                state = self._recover()
+                yield Session(self, state)
+            finally:
+                self.held -= 1
 
     def read(self) -> dict[str, Any]:
         with self.session() as s:
@@ -244,6 +257,8 @@ class ControlStore:
 
         self._apply(staged, inject=True)
         faults.hit("txn.after_apply")
+        if self.after_apply:
+            self.after_apply(after)
         self._post_commit(after, inject=True)
         return revision
 
@@ -269,6 +284,8 @@ class ControlStore:
         txn_ref = (state.get("last_transition") or {}).get("txn")
         if txn_ref:
             self._apply(self._load_txn(txn_ref))
+        if self.after_apply:
+            self.after_apply(state)
         self._post_commit(state)
         # The last committed transaction is fully applied; older redo records are spent.
         if txn_dir.exists():

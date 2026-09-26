@@ -24,3 +24,14 @@ An evaluated snapshot is `{base_revision, workspace_id, relevant_inputs_fingerpr
   - dirty state inside submodules is not captured;
   - Git LFS contributes pointers, not content;
   - differences that git's filters normalize (line endings under `autocrlf`) hash identically. They would also commit identically.
+
+## Amendment 2026-09-26 — independent review (M3)
+
+The review showed that copying the real index into the temporary index also copied flags that make Git **skip reading** the working copy. A source marked `assume-unchanged` could change after verification without changing the fingerprint. That is not one of the documented limits (submodules, LFS, normalized line endings).
+
+- These flags are neutralized **in the temporary index only**. The user's real index is never modified.
+  - `assume-unchanged` bits are cleared (`update-index --no-assume-unchanged`).
+  - `core.ignoreStat`, `core.fsmonitor` and `core.untrackedCache` are forced off for snapshot synthesis, through `GIT_CONFIG_COUNT`; git ≥ 2.31 is already the floor.
+- **Skip-worktree entries** (sparse checkout) are **refused** with an integrity error. Their content is not in the workspace, so no honest snapshot of it exists. AEW workspaces are full checkouts.
+- The same handling applies to `changed_paths` (guardrails) and `working_diff` (reviewer packs), which share the temporary index.
+- Tested: an assume-unchanged edit changes the fingerprint and invalidates VERIFIED gates (review probe M3); `core.ignoreStat` does too; an unflagged workspace hashes to its content tree exactly as before; skip-worktree is refused; the real index flags are unchanged afterwards (`tests/integration/test_fingerprint_flags.py`).

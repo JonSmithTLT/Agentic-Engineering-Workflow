@@ -35,12 +35,27 @@ class WorkOps(EngineBase):
             raise NotFound(f"no work unit {work_id}")
         return unit
 
-    def _set_state(self, unit: dict[str, Any], to: str, reason: str | None) -> dict[str, str]:
+    def _set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
+                   state: dict[str, Any]) -> dict[str, str]:
+        """The single place a work unit's state changes (so cross-state effects cannot be skipped).
+
+        ``state`` is the transaction's control state: cross-state effects may revoke credentials.
+        """
         change = {"from": unit["state"], "to": to}
+        self._before_state_change(unit, change)
         unit["state"] = to
         unit["state_reason"] = reason
         unit.setdefault("history", []).append({**change, "at": utc_now(), "reason": reason})
+        self._after_state_change(state, unit, change, reason)
         return change
+
+    # Refined by the integration mixin (a pending publish, candidates bound to COMMIT_READY).
+    def _before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
+        return None
+
+    def _after_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
+                            reason: str | None) -> None:
+        return None
 
     def _guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
         if not name:
@@ -221,11 +236,14 @@ class WorkOps(EngineBase):
             decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
                                          work_unit=work_id, evidence_refs=[entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
+                # Work done under the superseded plan never continues implicitly: the old attempt's workspace
+                # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
+                self._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
                 blockers = readiness_blockers(ctx.state, unit, repo_root=self.repo_root,
                                               base_commit=self.authoritative_commit())
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
-                self._set_state(unit, to, f"plan v{revision} accepted")
+                self._set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
             ctx.summary = f"{work_id} plan v{revision} accepted ({decision})"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "accepted": revision, "decision": decision,
@@ -248,7 +266,7 @@ class WorkOps(EngineBase):
                 unit["escalated_from"] = frm
             if frm == "ESCALATED":
                 unit.pop("escalated_from", None)
-            change = self._set_state(unit, to, reason)
+            change = self._set_state(unit, to, reason, state=ctx.state)
             decision = None
             if to == "CANCELLED":
                 decision = self.new_decision(ctx, "cancellation", f"{work_id} cancelled", work_unit=work_id,
@@ -274,7 +292,7 @@ class WorkOps(EngineBase):
                 raise UsageError("reconciliation requires --reason describing what was inspected")
             self._guard(rule.guard, ctx, work_id, unit, to)
             inspection = inspection or self.inspect_workspace(unit)
-            change = self._set_state(unit, to, reason)
+            change = self._set_state(unit, to, reason, state=ctx.state)
             unit.pop("interrupted_from", None)
             decision = self.new_decision(
                 ctx, "reconciliation", f"{work_id} reconciled from INTERRUPTED to {to}", work_unit=work_id,

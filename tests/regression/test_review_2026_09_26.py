@@ -73,7 +73,6 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
         result.json, impl.workspace.exists())
 
 
-@pytest.mark.xfail(strict=True, reason="review M1 (open)")
 def test_stale_reconcile_cannot_move_authoritative_ref(tmp_path):
     p, wid, impl, integ = pending_publish(tmp_path)
     revision = p.rev()

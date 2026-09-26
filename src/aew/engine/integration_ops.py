@@ -16,9 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine import faults, transitions
-from aew.engine.authority import require_lead
 from aew.engine.context_ops import ContextOps
-from aew.engine.store import Transition
 from aew.errors import GateUnsatisfied, IllegalTransition, IntegrityError, StaleCandidate
 from aew.knowledge import evidence as E
 from aew.policy import guardrails as GR
@@ -150,19 +148,27 @@ class IntegrationOps(ContextOps):
         return self._finish_publish(token, ctx.session.committed_revision, work_id)
 
     def _finish_publish(self, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        # The compare-and-swap happens under the control-state lock with authority re-verified, so a
-        # Lead takeover and a publish strictly serialize: a superseded Lead can never move the ref.
-        stale = None
-        with self.store.session() as s:
-            actor = require_lead(s.state, token)
-            unit = self.unit(s.state, work_id)
-            integ = unit["integration"]
+        """CAS, worktree sync and DONE as ONE Lead transaction (review 2026-09-26 M1).
+
+        Authority, the expected control revision and the manifest pin are all verified under the
+        control-state lock *before* any ref or worktree side effect, and the lock is held until DONE
+        commits. A rejected call therefore never moves the ref, and no other writer can interleave
+        between publication and completion. A crash at any fault point leaves ``publishing`` for
+        ``integrate reconcile``; a refused sync aborts the transaction, so nothing is overwritten.
+        """
+        stale: StaleCandidate | None = None
+        with self.lead_txn(token, expect_rev, "integrate.publish") as ctx:
+            unit = self.unit(ctx.state, work_id)
+            integ = unit.get("integration") or {}
             if integ.get("status") != "publishing":
                 raise IllegalTransition(f"{work_id} is not publishing (integration {integ.get('status')})")
             ref, base, candidate = self._ref(), integ["base"], integ["candidate"]
+            applies = I.authoritative_worktree_applies(self.repo_root, self.authoritative_branch)
             current = git.rev_parse(ref, cwd=self.repo_root)
             cas = "already_published"
             if current == base:
+                if applies:
+                    I.precheck_sync(self.repo_root, base, integ["changed_paths"])
                 try:
                     I.cas_publish(self.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
                     cas = "published"
@@ -172,32 +178,36 @@ class IntegrationOps(ContextOps):
                 stale = StaleCandidate("the authoritative ref no longer contains the candidate", current=current)
             if stale:
                 integ["status"] = "stale_candidate"
-                s.commit(Transition(op="integrate.stale", actor=actor, summary=f"{work_id} candidate stale"),
-                         expect_rev=expect_rev)
+                ctx.op = "integrate.stale"
+                ctx.summary = f"{work_id} candidate stale"
+            else:
+                faults.hit("integrate.after_cas")
+                sync: dict[str, Any] = {"status": "not_applicable (authoritative branch not checked out here)"}
+                if applies:
+                    try:
+                        sync = I.sync_worktree(self.repo_root, base, candidate, integ["changed_paths"],
+                                               on_first=lambda: faults.hit("integrate.mid_sync"))
+                    except IntegrityError as exc:
+                        raise IntegrityError(
+                            f"{candidate[:12]} is published on {ref}, but the authoritative worktree holds local "
+                            f"work on paths it changes; nothing was overwritten. {exc.message}",
+                            published=candidate, ref=ref, **exc.details) from None
+                    sync["status"] = "synced"
+                faults.hit("integrate.before_done")
+                transitions.check(unit["state"], "DONE", "integrate.publish")
+                integ.update(status="integrated", commit=candidate, integrated_at=utc_now(), cas=cas,
+                             worktree_sync=sync)
+                completion = self._completion_record(ctx.state, work_id, unit)
+                ctx.session.write(f"work/{work_id}/completion.md", completion)
+                ctx.refs.append(f"work/{work_id}/completion.md")
+                unit["completion_record"] = f"work/{work_id}/completion.md"
+                self._set_state(unit, "DONE", f"integrated as {candidate[:12]}; post-integration verification passed")
+                if unit.get("workspace"):
+                    unit["workspace"]["status"] = "integrated"
+                ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.authoritative_branch}"
+                self.before_commit(ctx)
         if stale:
             raise stale
-        faults.hit("integrate.after_cas")
-        sync = {"status": "not_applicable (authoritative branch not checked out here)"}
-        if I.authoritative_worktree_applies(self.repo_root, self.authoritative_branch):
-            sync = I.sync_worktree(self.repo_root, base, candidate, integ["changed_paths"],
-                                   on_first=lambda: faults.hit("integrate.mid_sync"))
-            sync["status"] = "synced"
-        faults.hit("integrate.before_done")
-        # Phase 2: DONE, with the integration record and completion record.
-        with self.lead_txn(token, expect_rev, "integrate.publish") as ctx:
-            unit = self.unit(ctx.state, work_id)
-            transitions.check(unit["state"], "DONE", "integrate.publish")
-            integ = unit["integration"]
-            integ.update(status="integrated", commit=candidate, integrated_at=utc_now(), cas=cas, worktree_sync=sync)
-            completion = self._completion_record(ctx.state, work_id, unit)
-            ctx.session.write(f"work/{work_id}/completion.md", completion)
-            ctx.refs.append(f"work/{work_id}/completion.md")
-            unit["completion_record"] = f"work/{work_id}/completion.md"
-            self._set_state(unit, "DONE", f"integrated as {candidate[:12]}; post-integration verification passed")
-            if unit.get("workspace"):
-                unit["workspace"]["status"] = "integrated"
-            ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.authoritative_branch}"
-            self.before_commit(ctx)
         for path in (integ["workspace"], (unit.get("workspace") or {}).get("path")):
             if path:
                 worktrees.remove(self.repo_root, path)

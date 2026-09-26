@@ -27,6 +27,7 @@ class TxnContext:
     actor: dict[str, Any]
     summary: str | None = None
     refs: list[str] = field(default_factory=list)
+    op: str | None = None  # overrides the transaction's op when the outcome differs (e.g. integrate.stale)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -139,7 +140,7 @@ class EngineBase:
                 self.check_manifest_pin(s.state)
             ctx = TxnContext(session=s, actor=actor)
             yield ctx
-            s.commit(Transition(op=op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
+            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
                      expect_rev=expect_rev)
 
     def new_decision(

@@ -49,3 +49,9 @@ The review found that the normal-path checks above did not hold across recovery 
   - Paths flagged assume-unchanged or skip-worktree, unmerged entries and gitlinks are refused.
   - Materialization uses `git checkout M -- <paths>`, which writes index, content and mode; removals come first. The executable bit is compared only when `core.fileMode` is true, and symlinks honour `core.symlinks`.
   - Tested: a staged independent edit survives, executable-bit-only changes, file↔symlink, file→directory, deletes, index flags, an untracked file on an added path, and idempotent re-sync from every {H, M} index/worktree mix (`tests/integration/test_worktree_sync.py`).
+- **One locked finalization (M1).**
+  - Publication, worktree sync and DONE are a single Lead transaction. The current Lead credential, the expected control revision and the manifest pin are verified under the control-state lock **before** any ref or worktree side effect, and the lock is held until DONE commits.
+  - A rejected call (stale authority or stale revision) therefore never moves the ref, and no other writer can interleave between publication and completion.
+  - When the ref is still H, the strict pre-publication check is repeated under the lock immediately before the CAS.
+  - A refused sync aborts the transaction. The status stays `publishing` even if the ref already holds M, and the error names the conflicting paths; `integrate reconcile` completes the work once they are resolved.
+  - Fault points (`after_cas`, `mid_sync`, `before_done`) keep their names. Tested: `test_interleaved_writer_makes_finalization_stale_before_any_git_side_effect` and review probe M1.

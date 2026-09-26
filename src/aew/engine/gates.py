@@ -12,6 +12,17 @@ equals the workspace's *current* fingerprint and whose plan revision equals the
 accepted one (WC §9.9, invariant 7). Otherwise the gate is STALE (passing evidence
 exists for another snapshot/plan), FAILED (the latest evidence for this snapshot
 fails) or MISSING. Evidence is never modified; staleness is computed.
+
+Which evidence may satisfy a gate (review 2026-09-26 M4; KC §7.2/§16):
+
+* review and verification gates count only reports the Lead has **ingested** —
+  their id and sha256 are pinned in the Ticket's accepted evidence refs. A sealed
+  submission that was never ingested (or whose bytes changed) satisfies nothing,
+  so one ingest can never retire another required report that still awaits its
+  own ingestion checks;
+* ``local_checks`` and ``self_review`` count the implementer's submissions: their
+  acceptance *is* the Lead's RUNNING -> REVIEW/VERIFY transition, which pins the
+  evidence it relied on (``_record_relied_on``).
 """
 
 from __future__ import annotations
@@ -116,6 +127,8 @@ def evaluate(
     plan_rev = (unit.get("plan") or {}).get("accepted")
     invocations = state["invocations"]
     own = [e for e in evidence if e["producer"]["invocation"] in unit.get("invocations", [])]
+    accepted_refs = {r["id"]: r.get("sha256") for r in unit.get("evidence", [])}
+    ingested = [e for e in own if accepted_refs.get(e["id"]) == e.get("_sha256")]
 
     def by_role(role: str) -> list[dict[str, Any]]:
         return [e for e in own if invocations[e["producer"]["invocation"]]["role"] == role]
@@ -146,26 +159,28 @@ def evaluate(
             results[gate] = {"status": status, "evidence": eid}
         elif gate.startswith(REVIEW_CARD_PREFIX):
             card = gate[len(REVIEW_CARD_PREFIX):]
-            cands = [e for e in own if e["kind"] == "review" and _card(e) == card
+            cands = [e for e in ingested if e["kind"] == "review" and _card(e) == card
                      and e["review"]["independence"] in {"R1", "R2", "R3"}]
             status, eid = _latest_status(cands, lambda e: e["review"]["disposition"] == "pass", fingerprint, plan_rev)
             results[gate] = {"status": status, "evidence": eid}
         elif gate.startswith(VERIFY_CARD_PREFIX):
             card = gate[len(VERIFY_CARD_PREFIX):]
-            cands = [e for e in by_role("verifier") if e["kind"] == "verification" and _card(e) == card
+            cands = [e for e in ingested if e["kind"] == "verification" and _card(e) == card
+                     and invocations[e["producer"]["invocation"]]["role"] == "verifier"
                      and e["verification"]["scope"] == "ticket"]
             status, eid = _latest_status(cands, _verification_passes, fingerprint, plan_rev)
             results[gate] = {"status": status, "evidence": eid}
         elif gate.startswith(REVIEW_GATES_PREFIX):
             specialty = None if gate == "review_r1" else gate[len(REVIEW_GATES_PREFIX):]
-            cands = [e for e in own if e["kind"] == "review"
+            cands = [e for e in ingested if e["kind"] == "review"
                      and (e["review"].get("specialty") or None) == specialty
                      and e["review"]["independence"] in {"R1", "R2", "R3"}]
             status, eid = _latest_status(cands, lambda e: e["review"]["disposition"] == "pass", fingerprint, plan_rev)
             results[gate] = {"status": status, "evidence": eid}
         elif gate in VERIFICATION_GATES:
             claim_type = "goal_backwards" if gate == "verification_goal_backwards" else "contract"
-            cands = [e for e in by_role("verifier") if e["kind"] == "verification"
+            cands = [e for e in ingested if e["kind"] == "verification"
+                     and invocations[e["producer"]["invocation"]]["role"] == "verifier"
                      and e["verification"]["scope"] == "ticket"]
 
             def passing(e: dict[str, Any], claim_type: str = claim_type) -> bool:

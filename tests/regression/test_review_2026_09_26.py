@@ -174,7 +174,6 @@ def test_assume_unchanged_source_invalidates_verified_gates(tmp_path):
         'Broken source retained CURRENT evidence and reached COMMIT_READY', after['unmet'], result.stdout)
 
 
-@pytest.mark.xfail(strict=True, reason="review M4 (open)")
 def test_submitted_review_is_not_counted_as_ingested(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)

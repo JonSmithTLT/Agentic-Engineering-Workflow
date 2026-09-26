@@ -89,3 +89,10 @@ role_plan:
   - Per-card output-contract payload schemas. The evidence `contract` and `payload` fields are reserved now.
   - M3: skill loading by harness adapters.
   - M6: capability resolution against providers.
+
+## Amendment 2026-09-26 — independent review (M4, M7, N1)
+
+- **Gates count only ingested reports (M4).**
+  - Review gates (`review_*`, `review_card:*`) and verification gates (`verification_*`, `verify_card:*`) are satisfied only by reports the Lead has **ingested**: their id and sha256 are pinned in the Ticket's accepted evidence refs. That set includes the report being ingested in the same transaction.
+  - A sealed submission that was never ingested, or whose bytes changed, satisfies nothing. One ingest therefore cannot retire another required report that still awaits its own ingestion checks and bookkeeping. The Ticket stays in REVIEW_PENDING or VERIFY_PENDING until every planned card has been *ingested* and has passed.
+  - `local_checks` and `self_review` keep counting the implementer's submissions. Their acceptance is the Lead's RUNNING → REVIEW/VERIFY transition, which pins the evidence it relied on.

@@ -238,3 +238,33 @@ def test_handoff_while_publishing_keeps_commit_ready_and_reconcile_completes(tmp
     assert p.ok("invoke", "show", straggler)["status"] == "interrupted"
     assert p.lead("integrate", "reconcile", wid)["state"] == "DONE"
     assert_control_invariants(p)
+
+
+def test_submitted_but_uningested_reports_satisfy_no_gate(tmp_path):
+    """M4: review and verification gates count only reports the Lead ingested (ids + sha256 pinned)."""
+    from aew.util import dump_yaml
+
+    p = sample_project(tmp_path)
+    (p.root / ".aew/roles/strict_verifier.yaml").write_text(dump_yaml({
+        "schema": "aew/role/v1", "role": "strict_verifier", "display_name": "Strict Verifier", "version": 1,
+        "extends": "verifier", "purpose": "Second, independent acceptance verification.",
+    }), encoding="utf-8", newline="\n")
+    wid = create_planned_ticket(p, tmp_path)
+    p.lead("work", "staff", wid, "--verify", "verifier", "--verify", "strict_verifier")
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    submitted = review(p, wid)
+    gates = p.ok("gate", "show", wid)
+    assert gates["gates"]["review_r1"]["status"] == "MISSING" and submitted in gates["evidence_ids"]
+    p.lead("review", "ingest", wid, "--evidence", submitted)
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    # Both verifier cards submit before either is ingested.
+    strict = verify(p, wid, card="strict_verifier")
+    plain = verify(p, wid, card="verifier")
+    out = p.lead("verify", "ingest", wid, "--evidence", plain)
+    assert out["transition"] is None and "verify_card:strict_verifier" in out["pending_verifications"]
+    assert unit(p, wid)["state"] == "VERIFY_PENDING"
+    out = p.lead("verify", "ingest", wid, "--evidence", strict)
+    assert out["transition"]["to"] == "VERIFIED"
+    assert {e["id"] for e in unit(p, wid)["evidence"]} >= {plain, strict, submitted}
+    assert_control_invariants(p)

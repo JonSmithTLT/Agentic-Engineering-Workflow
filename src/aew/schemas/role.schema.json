@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/role/v1",
+  "title": "Role definition",
+  "description": "Durable role definition: authority and context contract, not a persistent agent identity (WC §5).",
+  "type": "object",
+  "required": ["schema", "role", "persistent", "authority", "responsibilities", "allowed_operations", "prohibited", "outputs", "context"],
+  "properties": {
+    "schema": {"const": "aew/role/v1"},
+    "role": {"type": "string"},
+    "persistent": {"type": "boolean"},
+    "authority": {"type": "array", "items": {"type": "string"}},
+    "responsibilities": {"type": "array", "items": {"type": "string"}},
+    "allowed_operations": {"type": "array", "items": {"type": "string"}},
+    "prohibited": {"type": "array", "items": {"type": "string"}},
+    "outputs": {"type": "array", "items": {"type": "string"}},
+    "context": {
+      "type": "object",
+      "required": ["knowledge"],
+      "properties": {
+        "knowledge": {"type": "array", "items": {"type": "string"}},
+        "excluded": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "independence": {"type": "object"},
+    "capabilities": {"type": "array", "items": {"type": "string"}}
+  }
+}

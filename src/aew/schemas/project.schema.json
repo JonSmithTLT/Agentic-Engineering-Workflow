@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/project/v1",
+  "title": "AEW project manifest",
+  "description": "Resolver/index for project identity, knowledge, control state and accepted authority (KC §6). Referencing a source does not make it authoritative; only entries under authority.accepted are.",
+  "type": "object",
+  "required": ["schema", "project", "repository", "knowledge", "control_state", "records", "policy", "authority"],
+  "properties": {
+    "schema": {"const": "aew/project/v1"},
+    "project": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "name": {"type": "string"},
+        "profile": {"type": "string"}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "required": ["root", "vcs", "authoritative_branch"],
+      "properties": {
+        "root": {"type": "string"},
+        "vcs": {"const": "git"},
+        "authoritative_branch": {"type": "string"}
+      }
+    },
+    "workspaces": {
+      "type": "object",
+      "properties": {"root": {"type": "string"}}
+    },
+    "knowledge": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+    "control_state": {"type": "object", "additionalProperties": {"type": "string"}},
+    "records": {"type": "object", "additionalProperties": {"type": "string"}},
+    "policy": {
+      "type": "object",
+      "required": ["guardrails", "checks", "gates"],
+      "additionalProperties": {"type": "string"}
+    },
+    "fingerprint": {
+      "type": "object",
+      "properties": {
+        "include_ignored": {"type": "array", "items": {"type": "string"}},
+        "exclude": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "required": ["accepted", "candidates"],
+      "properties": {
+        "accepted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "path", "class", "decision"],
+            "properties": {
+              "id": {"type": "string"},
+              "path": {"type": "string"},
+              "class": {"enum": ["contracts", "decisions", "schemas", "source", "orientation"]},
+              "decision": {"type": "string"}
+            }
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "path", "suggested_class", "confidence", "reason", "status"],
+            "properties": {
+              "id": {"type": "string"},
+              "path": {"type": "string"},
+              "suggested_class": {"enum": ["contracts", "decisions", "schemas", "source", "orientation"]},
+              "confidence": {"enum": ["high", "medium", "low"]},
+              "reason": {"type": "string"},
+              "status": {"enum": ["proposed", "accepted", "rejected"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

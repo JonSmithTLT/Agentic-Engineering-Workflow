@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/guardrails/v1",
+  "title": "Project guardrails",
+  "description": "Human-readable, machine-queryable engineering guardrails (WC §16.15, KC §8.11). The AEW knowledge root is always protected regardless of this file.",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": {"const": "aew/guardrails/v1"},
+    "protected_paths": {"type": "array", "items": {"type": "string"}},
+    "generated_paths": {"type": "array", "items": {"type": "string"}},
+    "ticket_scope_enforcement": {"type": "boolean"},
+    "review_triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "paths"],
+        "properties": {
+          "name": {"type": "string"},
+          "paths": {"type": "array", "items": {"type": "string"}},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "dependency_rules": {
+      "type": "array",
+      "description": "Representable in M1; deterministic enforcement is Designed.",
+      "items": {"type": "object"}
+    },
+    "notes": {"type": ["string", "null"]}
+  }
+}

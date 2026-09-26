@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/work-unit/v1",
+  "title": "Epic/Story/Ticket record frontmatter",
+  "description": "Descriptive record (KC §9). Mutable control fields (state, current risk class, plan pointer) live in control state.",
+  "type": "object",
+  "required": ["schema", "id", "kind", "title", "created_at", "initial_risk_class", "mutating"],
+  "properties": {
+    "schema": {"const": "aew/work-unit/v1"},
+    "id": {"type": "string", "pattern": "^[TSE]-[0-9]{4,}$"},
+    "kind": {"enum": ["ticket", "story", "epic"]},
+    "title": {"type": "string", "minLength": 1},
+    "parent": {"type": ["string", "null"]},
+    "external_refs": {"type": "array", "items": {"type": "string"}},
+    "created_at": {"type": "string"},
+    "created_by": {"type": "object"},
+    "initial_risk_class": {"type": "integer", "minimum": 0, "maximum": 4},
+    "mutating": {"type": "boolean"},
+    "scope": {
+      "type": "object",
+      "properties": {"paths": {"type": "array", "items": {"type": "string"}}}
+    },
+    "acceptance": {
+      "type": "object",
+      "properties": {
+        "goal_backwards": {"type": "array", "items": {"type": "string"}},
+        "contract": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "mandatory_gates": {"type": "array", "items": {"type": "string"}},
+        "min_descendant_class": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+        "rationale": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

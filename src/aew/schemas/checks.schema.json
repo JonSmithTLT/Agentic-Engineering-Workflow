@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/checks/v1",
+  "title": "Project build/test check policy",
+  "description": "Project-defined deterministic checks. A check with configured=false blocks gates that require it instead of guessing a command (KC §19).",
+  "type": "object",
+  "required": ["schema", "checks"],
+  "properties": {
+    "schema": {"const": "aew/checks/v1"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["configured"],
+        "properties": {
+          "configured": {"type": "boolean"},
+          "command": {"type": ["array", "null"], "items": {"type": "string"}},
+          "cwd": {"type": "string"},
+          "timeout_s": {"type": "number", "exclusiveMinimum": 0},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "baseline_failures": {"type": "array", "items": {"type": "string"}}
+  }
+}

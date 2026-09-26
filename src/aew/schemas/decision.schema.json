@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/decision/v1",
+  "title": "Decision record",
+  "description": "Consequential Lead/operator decisions (KC §8.9): classifications, waivers, authority transfers and acceptances.",
+  "type": "object",
+  "required": ["schema", "id", "type", "decided_by", "at", "summary"],
+  "properties": {
+    "schema": {"const": "aew/decision/v1"},
+    "id": {"type": "string", "pattern": "^D-[0-9]{4,}$"},
+    "type": {"enum": [
+      "verification_failure_classification",
+      "authority_transfer",
+      "authority_acceptance",
+      "authority_rejection",
+      "waiver",
+      "manifest_adoption",
+      "state_regression",
+      "cancellation",
+      "reconciliation"
+    ]},
+    "work_unit": {"type": ["string", "null"]},
+    "decided_by": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {"kind": {"enum": ["lead", "operator"]}}
+    },
+    "at": {"type": "string"},
+    "summary": {"type": "string"},
+    "classification": {"enum": [
+      null,
+      "LOCAL_IMPLEMENTATION_DEFECT",
+      "PLAN_OR_DESIGN_DEFECT",
+      "CONTRACT_VIOLATION",
+      "ENVIRONMENT_OR_EVIDENCE_BLOCKED"
+    ]},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+    "resulting_transition": {"type": ["object", "null"]},
+    "reason": {"type": ["string", "null"]}
+  }
+}

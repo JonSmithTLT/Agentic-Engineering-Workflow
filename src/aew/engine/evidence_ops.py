@@ -119,6 +119,10 @@ class EvidenceOps(WorkspaceOps):
 
     def _ingest_implementation(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
         self._record_relied_on(ctx, unit, gc, self.PRE_REVIEW)
+        # Bounded subagents are retired once their artifact is accepted (WC §5). If work returns to
+        # RUNNING, the Lead dispatches a fresh implementer whose pack carries the findings/failure evidence.
+        if unit.get("implementer_invocation"):
+            self._complete_invocation(ctx.state, unit["implementer_invocation"])
 
     def _guard_ready_for_review(self, ctx, work_id, unit, to) -> None:
         gc = self.gate_context(ctx.state, work_id)

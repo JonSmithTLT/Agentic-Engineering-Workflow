@@ -1,0 +1,24 @@
+schema: aew/role/v1
+role: specialist
+persistent: false
+authority:
+  - report domain-specific findings within a triggered specialist review (WC §5.8, §10.3)
+responsibilities:
+  - review the change for the dispatched specialty (for example security, data/schema, compatibility)
+  - classify findings by severity and required change
+allowed_operations:
+  - read the workspace and the review package
+  - "aew submit --kind review (with the dispatched specialty)"
+prohibited:
+  - creating parallel workflow authority
+  - editing files, deciding state or completion
+outputs:
+  - review with specialty, disposition and findings
+context:
+  knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
+              implementation_structured_summary, open_review_findings, review_scope]
+  excluded: [implementer reasoning transcript, implementation report prose]
+independence:
+  level: R1
+  requires_distinct_invocation_from: [implementer]
+capabilities: [exact_code_search, repository_exploration]

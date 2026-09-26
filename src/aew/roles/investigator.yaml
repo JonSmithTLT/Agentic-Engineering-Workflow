@@ -1,0 +1,18 @@
+schema: aew/role/v1
+role: investigator
+persistent: false
+authority:
+  - read-only discovery of how the existing system works (WC §5.2)
+responsibilities:
+  - locate owners and entry points, trace relationships, inspect tests and behavior
+  - separate observed facts from hypotheses; list unresolved questions
+allowed_operations:
+  - read-only inspection
+prohibited:
+  - choosing the final design; mutating source
+outputs:
+  - discovery record (M1 - Designed; dispatch of investigators is not automated yet)
+context:
+  knowledge: [objective, accepted_authority, codebase_map, architecture_map]
+  excluded: []
+capabilities: [exact_code_search, structural_code_search, repository_exploration, relationship_discovery]

@@ -12,6 +12,7 @@ from aewflow import (
     assign,
     create_planned_ticket,
     implement,
+    redispatch_implementer,
     review,
     sample_project,
     to_verified,
@@ -76,10 +77,7 @@ def test_relevant_uncommitted_change_makes_evidence_stale_but_keeps_history(calc
 
     # Revalidating the new snapshot restores the gates (and needs re-review, not just re-verify).
     calc.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "evidence stale after edit")
-    impl2 = Role(calc, calc.lead("invoke", "create", wid, "--role", "implementer")["invocation_token"]
-                 if calc.ok("invoke", "show", calc.ok("work", "show", wid)["control"]["implementer_invocation"])
-                 ["status"] != "active" else impl.token, impl.workspace)
-    implement(impl2, {"calc/core.py": core.read_text()})
+    implement(redispatch_implementer(calc, wid), {"calc/core.py": core.read_text()})
     calc.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     calc.lead("review", "ingest", wid, "--evidence", review(calc, wid))
     calc.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
@@ -201,6 +199,9 @@ def test_blocking_findings_fail_review_and_must_be_resolved(calc, tmp_path):
                  findings=[{"id": "F1", "severity": "major", "summary": "missing negative test", "required": True}])
     assert calc.lead("review", "ingest", wid, "--evidence", bad)["transition"]["to"] == "REVIEW_FAILED"
     calc.lead("work", "transition", wid, "--to", "RUNNING")  # allowed: findings recorded
+    # The first implementer was retired when its report was accepted; its old credential is dead.
+    assert impl.aew("check", "run", "unit").error["code"] == "STALE_AUTHORITY"
+    impl = redispatch_implementer(calc, wid)
     implement(impl, {"tests/test_subtract.py": SUBTRACT_PATCH["tests/test_subtract.py"]
                      + "\n\ndef test_subtract_negative():\n    from calc.core import subtract\n"
                        "    assert subtract(1, 3) == -2\n"})
@@ -209,6 +210,7 @@ def test_blocking_findings_fail_review_and_must_be_resolved(calc, tmp_path):
     unresolved = review(calc, wid)
     assert calc.lead("review", "ingest", wid, "--evidence", unresolved)["transition"]["to"] == "REVIEW_FAILED"
     calc.lead("work", "transition", wid, "--to", "RUNNING")
+    impl = redispatch_implementer(calc, wid)
     implement(impl, {"tests/test_subtract.py": (impl.workspace / "tests/test_subtract.py").read_text()})
     calc.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     good = review(calc, wid, resolved=[f"{bad}#F1"])

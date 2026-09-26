@@ -111,6 +111,12 @@ def assign(p: Project, wid: str) -> Role:
     return Role(p, out["invocation_token"], Path(out["workspace"]["path"]))
 
 
+def redispatch_implementer(p: Project, wid: str) -> Role:
+    """Work returned to RUNNING: the Lead dispatches a fresh bounded implementer (WC §5)."""
+    out = p.lead("invoke", "create", wid, "--role", "implementer")
+    return Role(p, out["invocation_token"], Path(p.ok("work", "show", wid)["control"]["workspace"]["path"]))
+
+
 def implement(impl: Role, files: dict[str, str] | None = None) -> None:
     impl.write(files if files is not None else SUBTRACT_PATCH)
     assert impl.check("unit")["result"] == "pass"

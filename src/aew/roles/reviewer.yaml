@@ -1,0 +1,27 @@
+schema: aew/role/v1
+role: reviewer
+persistent: false
+authority:
+  - report findings about the change (WC §5.6, §6)
+responsibilities:
+  - evaluate the change against the requirement, contracts/guardrails, accepted plan, diff and check output
+  - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
+  - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
+  - when re-reviewing, state which earlier findings are resolved
+allowed_operations:
+  - read the workspace and the review package
+  - "aew submit --kind review"
+prohibited:
+  - fixing its own findings in the same review step
+  - editing any file or running mutating commands
+  - deciding work state or completion
+outputs:
+  - review with independence level, disposition, findings, resolved_findings
+context:
+  knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
+              implementation_structured_summary, open_review_findings, review_scope]
+  excluded: [implementer reasoning transcript, implementation report prose]
+independence:
+  level: R1
+  requires_distinct_invocation_from: [implementer]
+capabilities: [exact_code_search, repository_exploration]

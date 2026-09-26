@@ -120,6 +120,15 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("invocation")
     q.set_defaults(handler=lambda a: _engine(a).invoke_show(a.invocation))
 
+    p = sub.add_parser("context", help="bounded context packs / launch contracts")
+    xsub = p.add_subparsers(dest="context_cmd", required=True)
+    q = xsub.add_parser("pack", help="(re)generate an invocation's pack from durable state")
+    q.add_argument("invocation")
+    q.set_defaults(handler=lambda a: _engine(a).context_pack(a.invocation))
+    q = xsub.add_parser("show", help="print an invocation's pack")
+    q.add_argument("invocation")
+    q.set_defaults(handler=lambda a: _engine(a).context_show(a.invocation))
+
     p = sub.add_parser("check", help="run a project-defined check as a bounded role")
     csub = p.add_subparsers(dest="check_cmd", required=True)
     q = csub.add_parser("run")

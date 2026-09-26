@@ -113,7 +113,7 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def _write_temp(directory: Path, data: bytes, prefix: str) -> Path:
+def write_temp(directory: Path, data: bytes, prefix: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
     try:
@@ -127,7 +127,7 @@ def _write_temp(directory: Path, data: bytes, prefix: str) -> Path:
     return Path(tmp)
 
 
-def _replace_with_retry(src: Path, dst: Path) -> None:
+def replace_with_retry(src: Path, dst: Path) -> None:
     # Windows refuses to replace a file another process holds open (editors,
     # indexers, antivirus). Retry briefly instead of failing the transition.
     deadline = time.monotonic() + 5.0
@@ -144,9 +144,9 @@ def _replace_with_retry(src: Path, dst: Path) -> None:
 def atomic_write(path: Path, data: bytes | str) -> None:
     """Replace ``path`` so readers see either the old or the complete new content."""
     raw = data.encode("utf-8") if isinstance(data, str) else data
-    tmp = _write_temp(path.parent, raw, prefix=f".{path.name}.")
+    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.")
     try:
-        _replace_with_retry(tmp, path)
+        replace_with_retry(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
@@ -156,7 +156,7 @@ def atomic_write(path: Path, data: bytes | str) -> None:
 def create_exclusive(path: Path, data: bytes | str) -> None:
     """Atomically publish a new immutable file; fail if ``path`` already exists."""
     raw = data.encode("utf-8") if isinstance(data, str) else data
-    tmp = _write_temp(path.parent, raw, prefix=f".{path.name}.")
+    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.")
     try:
         if IS_WINDOWS:
             os.rename(tmp, path)  # never overwrites on Windows

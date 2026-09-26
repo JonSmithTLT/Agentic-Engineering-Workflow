@@ -113,6 +113,7 @@ def test_no_raw_secret_is_ever_written(project):
 # ------------------------------------------------------------------ handoff & stale writers (AT-4b)
 
 
+@pytest.mark.acceptance("AT-4b")
 def test_superseded_lead_rejected_after_handoff(project):
     old = project.token
     offer = project.lead("lead", "handoff", "offer")["offer"]
@@ -143,6 +144,7 @@ def test_pending_handoff_freezes_outgoing_lead(project):
     project.lead("authority", "reject", cands[0]["id"])
 
 
+@pytest.mark.acceptance("AT-4b")
 def test_takeover_cannot_be_self_authorized(project):
     rev = project.rev()
     before = control_bytes(project)
@@ -195,6 +197,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> dict:
     return json.loads(text[text.index("{", text.index("> ")):])
 
 
+@pytest.mark.acceptance("AT-4b")
 @pytest.mark.skipif(IS_WINDOWS, reason="POSIX pty operator path; the hidden-console Windows operator test is added with AT-4b (step 11)")
 def test_operator_authorized_takeover_supersedes_everyone(project):
     a_token = project.token
@@ -214,6 +217,7 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     project.lead("authority", "reject", cands[0]["id"])
 
 
+@pytest.mark.acceptance("AT-7")
 def test_worktree_copy_of_aew_is_not_an_authority(project, tmp_path):
     git("add", "-A", ".aew", cwd=project.root)
     git("commit", "-q", "-m", "commit aew state", cwd=project.root)

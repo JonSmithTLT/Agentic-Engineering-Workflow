@@ -93,6 +93,7 @@ def default_manifest(project_id: str, name: str, branch: str, workspaces_root: s
             "gates": "policy/gates.yaml",
         },
         "fingerprint": {"include_ignored": [], "exclude": []},
+        "roles": {"catalog": "roles/"},
         "authority": {"accepted": [], "candidates": []},
     }
     validate("project", manifest, source="default manifest")
@@ -155,4 +156,16 @@ def open_questions_template() -> str:
 
 Unresolved questions that future work must not treat as settled facts (KC §8.10).
 
+"""
+
+
+def roles_readme() -> str:
+    return """# Project role catalog
+
+Project-defined Role cards (`schema: aew/role/v1`) live here, one YAML file per card.
+A card extends exactly one AEW archetype (implementer, reviewer, verifier, investigator,
+researcher, planner) and may add purpose, advisory `use_when` guidance, responsibilities,
+skills, capabilities, required knowledge and outputs, or narrow permissions via `restrict`.
+Cards can never widen their archetype's authority; `aew role validate` checks every file.
+Card ids must be unique across the built-in deck and this catalog.
 """

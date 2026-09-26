@@ -20,7 +20,19 @@ from typing import Any
 
 CURRENT, STALE, MISSING, FAILED, WAIVED = "CURRENT", "STALE", "MISSING", "FAILED", "WAIVED"
 REVIEW_GATES_PREFIX = "review_"
+REVIEW_CARD_PREFIX = "review_card:"
+VERIFY_CARD_PREFIX = "verify_card:"
 VERIFICATION_GATES = ("verification_goal_backwards", "verification_contract")
+
+
+def _card(e: dict[str, Any]) -> str | None:
+    return (e["producer"].get("role_card") or {}).get("id")
+
+
+def _verification_passes(e: dict[str, Any]) -> bool:
+    types = {c["type"] for c in e["verification"]["claims"]}
+    return (e["result"] == "pass" and {"goal_backwards", "contract"} <= types
+            and all(c["result"] == "pass" for c in e["verification"]["claims"]))
 
 
 def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
@@ -33,7 +45,8 @@ def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
 
 
 def effective_obligations(
-    state: dict[str, Any], work_id: str, gates_policy: dict[str, Any], triggered: list[str] | None = None
+    state: dict[str, Any], work_id: str, gates_policy: dict[str, Any], triggered: list[str] | None = None,
+    plan_gates: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     unit = state["work"][work_id]
     local = unit["risk_class"]
@@ -55,7 +68,11 @@ def effective_obligations(
     for gate in triggered or []:
         if gate not in gates:
             gates.append(gate)
-        sources.setdefault(gate, []).append("triggered by guardrail review_triggers")
+        sources.setdefault(gate, []).append("triggered by guardrail review_triggers (policy)")
+    for gate, why in (plan_gates or {}).items():
+        if gate not in gates:
+            gates.append(gate)
+        sources.setdefault(gate, []).append(why)
     return {
         "local_class": local,
         "floor": floor,
@@ -126,6 +143,18 @@ def evaluate(
             status, eid = _latest_status(
                 cands, lambda e: bool(((e.get("implementation") or {}).get("self_review") or {}).get("completed"))
                 and e["result"] == "pass", fingerprint, plan_rev)
+            results[gate] = {"status": status, "evidence": eid}
+        elif gate.startswith(REVIEW_CARD_PREFIX):
+            card = gate[len(REVIEW_CARD_PREFIX):]
+            cands = [e for e in own if e["kind"] == "review" and _card(e) == card
+                     and e["review"]["independence"] in {"R1", "R2", "R3"}]
+            status, eid = _latest_status(cands, lambda e: e["review"]["disposition"] == "pass", fingerprint, plan_rev)
+            results[gate] = {"status": status, "evidence": eid}
+        elif gate.startswith(VERIFY_CARD_PREFIX):
+            card = gate[len(VERIFY_CARD_PREFIX):]
+            cands = [e for e in by_role("verifier") if e["kind"] == "verification" and _card(e) == card
+                     and e["verification"]["scope"] == "ticket"]
+            status, eid = _latest_status(cands, _verification_passes, fingerprint, plan_rev)
             results[gate] = {"status": status, "evidence": eid}
         elif gate.startswith(REVIEW_GATES_PREFIX):
             specialty = None if gate == "review_r1" else gate[len(REVIEW_GATES_PREFIX):]

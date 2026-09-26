@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from aew.roles import AUTHORITY_SENSITIVE_CAPABILITIES
 from aew.util import dump_yaml
 
 TOKEN_PLACEHOLDER = "<AEW_INVOCATION_TOKEN: supplied by the Lead in the spawn prompt; never written to disk>"
@@ -60,7 +61,6 @@ OUTPUT_TEMPLATES = {
         },
     }),
 }
-OUTPUT_TEMPLATES["specialist"] = OUTPUT_TEMPLATES["reviewer"]
 
 
 @dataclass
@@ -87,17 +87,52 @@ class PackInputs:
     implementation_summary: dict[str, Any] | None = None
     open_findings: list[dict[str, Any]] = field(default_factory=list)
     failure_evidence: dict[str, Any] | None = None
+    card: dict[str, Any] | None = None
 
 
 def _bullets(items: list[str]) -> list[str]:
     return [f"- {i}" for i in items] or ["- (none)"]
 
 
+def _card_section(p: PackInputs) -> list[str]:
+    card = p.card
+    if not card:
+        return []
+    requested = [*card.get("required_capabilities", []), *card.get("optional_capabilities", [])]
+    sensitive = [c for c in requested if c in AUTHORITY_SENSITIVE_CAPABILITIES]
+    ordinary = [c for c in requested if c not in AUTHORITY_SENSITIVE_CAPABILITIES]
+    restrict = card.get("restrict") or {}
+    return [
+        "",
+        f"## Your role card — {card['display_name']} (`{card['role']}` v{card.get('version', '?')},"
+        f" extends {card['extends']})",
+        "",
+        card["purpose"],
+        "",
+        "Card responsibilities (in addition to the archetype's):",
+        *_bullets(card.get("responsibilities", [])),
+        "",
+        "Skills to load (how the work is done): " + (", ".join(card.get("skills", [])) or "none"),
+        "Required knowledge: " + (", ".join(card.get("required_knowledge", [])) or "none beyond this package"),
+        "Authority-sensitive capabilities (within the archetype envelope): " + (", ".join(sensitive) or "none"),
+        "Other capabilities requested (workbench resolution pending — use only what is actually available): "
+        + (", ".join(ordinary) or "none"),
+        "Expected outputs: " + (", ".join(card.get("outputs", [])) or "the archetype's standard output"),
+        *(["Restricted to operations: " + ", ".join(restrict["operations"])] if restrict.get("operations") else []),
+        *(["Restricted to checks: " + ", ".join(restrict["checks"])] if restrict.get("checks") else []),
+        *(["Additional prohibitions:", *_bullets(card["prohibited"])] if card.get("prohibited") else []),
+        "",
+        "Selection guidance (advisory, used by the Lead when choosing this card): "
+        + ("; ".join(card.get("use_when", [])) or "none"),
+    ]
+
+
 def _launch_contract(p: PackInputs) -> list[str]:
     kind, template = OUTPUT_TEMPLATES.get(p.role, (None, None))
     snap = p.snapshot
+    card_label = f"{p.card['display_name']} — " if p.card else ""
     lines = [
-        f"# AEW launch contract — {p.invocation_id} ({p.role}{'/' + p.specialty if p.specialty else ''})",
+        f"# AEW launch contract — {p.invocation_id} ({card_label}{p.role}{'/' + p.specialty if p.specialty else ''})",
         "",
         "This package is your complete, bounded context. It was assembled from durable project artifacts;",
         "you do not need, and must not rely on, anyone's conversation history.",
@@ -114,11 +149,11 @@ def _launch_contract(p: PackInputs) -> list[str]:
         "- Required knowledge (included below): " + ", ".join(p.role_def["context"]["knowledge"]),
         "- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none"),
         "",
-        "### Responsibilities",
+        "### Responsibilities (archetype)",
         *_bullets(p.role_def["responsibilities"]),
         "",
-        "### Allowed",
-        *_bullets(p.role_def["allowed_operations"]),
+        "### Allowed engine operations",
+        *_bullets((p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]),
         "",
         "### Prohibited",
         *_bullets(p.role_def["prohibited"]),
@@ -128,7 +163,7 @@ def _launch_contract(p: PackInputs) -> list[str]:
         f"Set `AEW_INVOCATION_TOKEN={TOKEN_PLACEHOLDER}` for every `aew` command below.",
         f"Run commands from the workspace: `aew -C \"{p.workspace}\" ...`",
     ]
-    if "check.run" in " ".join(p.role_def["allowed_operations"]) or p.role in {"implementer", "verifier"}:
+    if "check.run" in ((p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]):
         lines.append("- Run a check: `aew check run <check-id>` (records sealed evidence bound to the snapshot)")
     if kind:
         lines += [
@@ -148,7 +183,7 @@ def _launch_contract(p: PackInputs) -> list[str]:
         lines += _bullets(["the accepted plan is implemented within scope",
                            "required local checks pass on the final snapshot (`aew check run`)",
                            "an implementation report with a completed self-review is submitted"])
-    elif p.role in {"reviewer", "specialist"}:
+    elif p.role == "reviewer":
         lines += _bullets(["every finding has a severity and says whether a change is required",
                            "earlier open findings are marked resolved or remain open",
                            "a review is submitted; do not fix anything yourself"])
@@ -211,6 +246,7 @@ def _check_results(p: PackInputs) -> list[str]:
 
 def render(p: PackInputs) -> str:
     out = _launch_contract(p)
+    out += _card_section(p)
     out += ["", *_requirement(p)]
     if p.role != "verifier":
         out += ["", "## Accepted plan", "", p.plan_text.strip() or "(no accepted plan)"]
@@ -224,9 +260,9 @@ def render(p: PackInputs) -> str:
                 f"- Verification `{fe['id']}` result: {fe['result']}",
                 *[f"- claim [{c['type']}] {c['claim']}: {c['result']}" for c in fe.get("claims", [])],
                 f"- Verifier's suspected cause: {fe.get('suspected_cause') or 'not stated'}"]
-    if p.role in {"implementer", "reviewer", "specialist", "verifier"}:
+    if p.role in {"implementer", "reviewer", "verifier"}:
         out += ["", *_findings(p)]
-    if p.role in {"reviewer", "specialist"}:
+    if p.role == "reviewer":
         s = p.implementation_summary or {}
         out += ["", "## Implementation facts (structured fields only; implementer reasoning is excluded)", "",
                 "- Files changed: " + (", ".join(s.get("files_changed", [])) or "not reported"),

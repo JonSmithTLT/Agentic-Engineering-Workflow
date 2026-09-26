@@ -30,6 +30,12 @@ SUBTRACT_PATCH = {
 }
 
 
+APPLY_PATCH = {
+    "calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "\n\ndef apply(op, a, b):\n    return op(a, b)\n",
+    "tests/test_apply.py": "from calc.core import apply, subtract\n\n\ndef test_apply():\n"
+                           "    assert apply(subtract, 5, 3) == 2\n",
+}
+
 def unit_check_command() -> list[str]:
     return ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]
 
@@ -129,24 +135,22 @@ def implement(impl: Role, files: dict[str, str] | None = None) -> None:
 
 
 def review(p: Project, wid: str, *, disposition: str = "pass", findings: list[dict] | None = None,
-           resolved: list[str] | None = None, specialty: str | None = None) -> str:
-    args = ["invoke", "create", wid, "--role", "specialist" if specialty else "reviewer"]
-    if specialty:
-        args += ["--specialty", specialty]
+           resolved: list[str] | None = None, specialty: str | None = None, card: str | None = None) -> str:
+    if specialty and not card:
+        card = {"security": "security_reviewer"}[specialty]
+    args = ["invoke", "create", wid] + (["--card", card] if card else ["--role", "reviewer"])
     out = p.lead(*args)
     rev = Role(p, out["invocation_token"], Path(p.ok("work", "show", wid)["control"]["workspace"]["path"]))
     meta = {"claim": "independent review of the change against plan and contracts",
             "producer": {"model": "scripted-reviewer"},
             "review": {"independence": "R1", "disposition": disposition, "findings": findings or [],
                        "resolved_findings": resolved or []}}
-    if specialty:
-        meta["review"]["specialty"] = specialty
     return rev.submit("review", meta, "Reviewed the diff and check output.\n")["evidence"]
 
 
 def verify(p: Project, wid: str, *, scope: str = "ticket", goal_result: str = "pass",
-           contract_result: str = "pass") -> str:
-    args = ["invoke", "create", wid, "--role", "verifier"]
+           contract_result: str = "pass", card: str | None = None) -> str:
+    args = ["invoke", "create", wid] + (["--card", card] if card else ["--role", "verifier"])
     if scope == "integration":
         args += ["--scope", "integration"]
     out = p.lead(*args)

@@ -42,6 +42,12 @@ AEW Decision record once the engine exists.
 | C4 | The SPT working tree has uncommitted WIP on branch `python-whl-1.2`. | No SPT changes until the operator commits or stashes it. |
 | C5 | OpenCode, GPT-5.4 and Rocky 8 are not available on the development host. | The M1 core is harness-neutral. OpenCode is the first adapter target (M3); the operator will install it locally. Rocky 8 validation is SPT B2/B4. |
 
+## D. Implementation clarifications from the operator
+
+| ID | Clarification | Disposition |
+|---|---|---|
+| D1 | Role catalog ("deck of cards"): concrete team roles are assignable to Tickets without creating new authority. | Implemented as ADR-0006. **Archetypes** (authority classes) are built in and enforced in code. **Role cards** extend exactly one archetype and may add responsibilities, skills, capabilities, knowledge and outputs, or narrow permissions. They may never escalate, and escalation is rejected at catalog load and at dispatch. There is a built-in catalog plus a project catalog. Two points keep this inside the frozen contracts: (1) *Specialist* is card-level expertise, not an authority class (WC §5.8); (2) review and verification remain **gates** on a Ticket, filled by chosen cards, not synthetic Tickets (WC §7). |
+
 ## Other review corrections incorporated (not spec ambiguities)
 
 - **Token verification across processes:** only verifiers are stored durably: the sha256 of a 256-bit secret plus its scope, revocation and expiry. The raw secret is never written to durable state.

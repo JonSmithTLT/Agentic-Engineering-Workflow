@@ -1,0 +1,21 @@
+schema: aew/role-archetype/v1
+role: frontier_advisor
+persistent: false
+dispatchable: false
+dispatch_status: "escalation role (WC §5.9); escalation packages are Designed"
+default_card: null
+authority:
+  - return analysis and proposals to the same Project Control Plane (WC §5.9)
+responsibilities:
+  - analyse an escalation package (objective, constraints, architecture, evidence, failed hypotheses)
+engine_operations: []
+evidence_kinds: []
+authority_capabilities: []
+prohibited:
+  - starting a separate project lineage; mutating source; deciding state
+outputs:
+  - escalation analysis
+context:
+  knowledge: [escalation_package]
+  excluded: []
+capabilities: []

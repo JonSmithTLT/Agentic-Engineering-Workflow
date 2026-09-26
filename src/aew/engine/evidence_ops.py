@@ -18,7 +18,14 @@ from aew.engine import transitions
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.workspace_ops import WorkspaceOps
-from aew.errors import GateUnsatisfied, IllegalTransition, NotFound, UsageError, ValidationFailed
+from aew.errors import (
+    GateUnsatisfied,
+    IllegalTransition,
+    NotFound,
+    PermissionDenied,
+    UsageError,
+    ValidationFailed,
+)
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.policy import checks as C
@@ -26,7 +33,7 @@ from aew.policy import guardrails as GR
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
 
-REVIEW_ROLES = {"reviewer", "specialist"}
+REVIEW_ROLES = {"reviewer"}
 
 
 class EvidenceOps(WorkspaceOps):
@@ -43,6 +50,11 @@ class EvidenceOps(WorkspaceOps):
         ws = unit.get("workspace") or {}
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
+    @staticmethod
+    def _card_ref(inv: dict[str, Any]) -> dict[str, Any] | None:
+        card = inv.get("card")
+        return {k: card[k] for k in ("id", "version", "sha256")} if card else None
+
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         unit = self.unit(state, work_id)
         gates_policy = self.policy("gates")
@@ -52,7 +64,8 @@ class EvidenceOps(WorkspaceOps):
         if snapshot and ws:
             guard = GR.evaluate(changed_paths(Path(ws["path"]), ws["base_commit"]), self.policy("guardrails"),
                                 (self._record_meta(unit).get("scope") or {}).get("paths", []))
-        obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"])
+        obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
+                                              self.plan_gates(unit))
         evidence, problems = E.scan(self.aew_root, work_id)
         plan = unit.get("plan") or {}
         plan_ok = bool(plan) and sha256_file(self.aew_root / plan["path"]) == plan["sha256"]
@@ -97,7 +110,8 @@ class EvidenceOps(WorkspaceOps):
         return [g for g in gc["obligations"]["gates"] if g.startswith(G.REVIEW_GATES_PREFIX)]
 
     def _verification_gates(self, gc: dict[str, Any]) -> list[str]:
-        return [g for g in gc["obligations"]["gates"] if g in G.VERIFICATION_GATES]
+        return [g for g in gc["obligations"]["gates"]
+                if g in G.VERIFICATION_GATES or g.startswith(G.VERIFY_CARD_PREFIX)]
 
     @staticmethod
     def _gate_evidence_ids(gc: dict[str, Any], names: list[str]) -> set[str]:
@@ -174,29 +188,31 @@ class EvidenceOps(WorkspaceOps):
 
     # ------------------------------------------------------------------ invocations
 
-    def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str,
-                      scope: str = "ticket", specialty: str | None = None) -> dict[str, Any]:
+    def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
+                      card: str | None = None, scope: str = "ticket") -> dict[str, Any]:
+        """Dispatch a bounded invocation. The Role card (explicit, planned, or workflow default)
+        determines the archetype; authority comes from the archetype only (ADR-0006)."""
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
             state = ctx.state
             unit = self.unit(state, work_id)
             st = unit["state"]
-            if role == "implementer":
-                if st not in {"ASSIGNED", "RUNNING"}:
-                    raise IllegalTransition(f"an implementer may be dispatched only in ASSIGNED/RUNNING, not {st}")
+            if scope == "integration":
+                slot = "verify"
+                if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
+                    raise IllegalTransition("post-integration verification needs a prepared integration candidate")
+            elif st in {"ASSIGNED", "RUNNING"}:
+                slot = "execute"
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
                 if current and current["status"] == "active":
                     raise IllegalTransition(f"{unit['implementer_invocation']} is still active; cancel it first")
-            elif role in REVIEW_ROLES:
-                if st != "REVIEW_PENDING":
-                    raise IllegalTransition(f"reviewers are dispatched in REVIEW_PENDING, not {st}")
-            elif role == "verifier":
-                if scope == "ticket" and st != "VERIFY_PENDING":
-                    raise IllegalTransition(f"verifiers are dispatched in VERIFY_PENDING, not {st}")
-                if scope == "integration" and not (
-                        st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
-                    raise IllegalTransition("post-integration verification needs a prepared integration candidate")
+            elif st == "REVIEW_PENDING":
+                slot = "review"
+            elif st == "VERIFY_PENDING":
+                slot = "verify"
             else:
-                raise UsageError(f"M1 dispatches implementer, reviewer, specialist and verifier roles, not {role}")
+                raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
+            gc = self.gate_context(state, work_id) if slot in {"review", "verify"} and scope == "ticket" else None
+            chosen = self.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
             if scope == "integration":
                 integ = unit["integration"]
                 workspace, ws_id = integ["workspace"], integ["workspace_id"]
@@ -206,15 +222,17 @@ class EvidenceOps(WorkspaceOps):
                     raise IllegalTransition(f"{work_id} has no active workspace")
                 workspace, ws_id = ws["path"], ws["id"]
             snapshot = self.snapshot_of(workspace, ws_id)
-            inv_id, inv_token = self._new_invocation(ctx, role, work_id, scope=scope, specialty=specialty,
-                                                     workspace=workspace, snapshot=snapshot)
-            if role == "implementer":
+            archetype = chosen.archetype
+            inv_id, inv_token = self._new_invocation(ctx, archetype, work_id, scope=scope,
+                                                     workspace=workspace, snapshot=snapshot, card=chosen)
+            if archetype == "implementer":
                 unit["implementer_invocation"] = inv_id
             self.build_pack(ctx, inv_id)
-            ctx.summary = f"{inv_id} ({role}{'/' + specialty if specialty else ''}, {scope}) dispatched for {work_id}"
-        return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": role, "scope": scope,
-                "evaluated_snapshot": snapshot, "pack": ctx.state["invocations"][inv_id].get("pack"),
-                "revision": ctx.session.committed_revision}
+            ctx.summary = f"{inv_id} ({chosen.id} / {archetype}, {scope}) dispatched for {work_id}"
+        pack = ctx.state["invocations"][inv_id].get("pack") or {}
+        return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": archetype,
+                "role_card": chosen.id, "scope": scope, "evaluated_snapshot": snapshot,
+                "pack": pack or None, "revision": ctx.session.committed_revision}
 
     def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "invoke.cancel", reason=reason) as ctx:
@@ -242,6 +260,10 @@ class EvidenceOps(WorkspaceOps):
             work_id = inv["work_unit"]
             workspace, ws_id, base = self._invocation_workspace(s.state, inv)
             unit = s.state["work"][work_id]
+            allowed_checks = inv.get("allowed_checks")
+            if allowed_checks is not None and check_id not in allowed_checks:
+                card_id = (inv.get("card") or {}).get("id")
+                raise PermissionDenied(f"role card {card_id} does not permit check {check_id}")
             cfg = C.resolve(self.policy("checks"), check_id)
             scope_paths = (self._record_meta(unit).get("scope") or {}).get("paths", [])
             plan = unit.get("plan") or {}
@@ -267,7 +289,7 @@ class EvidenceOps(WorkspaceOps):
             create_exclusive(self.aew_root / log_rel, run["log"])
             meta = {
                 "schema": "aew/evidence/v1", "id": eid, "kind": "check_result", "work_unit": work_id,
-                "producer": {"role": inv["role"], "invocation": inv_id},
+                "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self._card_ref(inv)},
                 "created_at": utc_now(), "seq": seq,
                 "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
                 "evaluated_snapshot": before,
@@ -300,7 +322,8 @@ class EvidenceOps(WorkspaceOps):
             plan = unit.get("plan") or {}
             meta: dict[str, Any] = {
                 "schema": "aew/evidence/v1", "kind": kind, "work_unit": work_id,
-                "producer": {"role": inv["role"], "invocation": inv_id, **(submitted.get("producer") or {})},
+                "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self._card_ref(inv),
+                             **(submitted.get("producer") or {})},
                 "created_at": utc_now(),
                 "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
                 "method": submitted.get("method") or {"capability": kind, "provider": "harness-role"},
@@ -468,11 +491,18 @@ class EvidenceOps(WorkspaceOps):
             result = ev["result"]
             unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope}
             change = None
+            pending: dict[str, str] = {}
             if scope == "ticket":
                 # The Verifier's result determines the state mechanically (ambiguity report B1, B2).
                 to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(result, "VERIFICATION_INCONCLUSIVE")
-                transitions.check(unit["state"], to, "verify.ingest")
-                change = self._set_state(unit, to, f"verification {evidence_id}: {result}")
+                if to == "VERIFIED":
+                    gc = self.gate_context(state, work_id)
+                    pending = G.unmet(gc["gates"], self._verification_gates(gc))
+                    if pending:
+                        to = None  # other planned verifier cards are still outstanding
+                if to:
+                    transitions.check(unit["state"], to, "verify.ingest")
+                    change = self._set_state(unit, to, f"verification {evidence_id}: {result}")
             elif result == "pass":
                 unit["integration"]["status"] = "validated"
                 unit["integration"]["post_integration_evidence"] = evidence_id
@@ -487,7 +517,7 @@ class EvidenceOps(WorkspaceOps):
             ctx.summary = f"{work_id} verification {evidence_id} ({scope}) ingested: {result}"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "scope": scope, "result": result, "transition": change,
-                "revision": ctx.session.committed_revision}
+                "pending_verifications": pending, "revision": ctx.session.committed_revision}
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
                         reason: str) -> dict[str, Any]:

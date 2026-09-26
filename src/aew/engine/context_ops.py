@@ -22,7 +22,8 @@ class ContextOps(EvidenceOps):
         inv = state["invocations"][inv_id]
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]
-        role_def, role_sha = roles.load(role)
+        role_def = roles.archetype(role)
+        card = inv.get("card") or None
         record = read_record(self.aew_root / unit["record"], "work-unit")
         plan = unit.get("plan")
         plan_text = ""
@@ -51,7 +52,7 @@ class ContextOps(EvidenceOps):
                            "claims": fe["verification"]["claims"],
                            "suspected_cause": fe["verification"].get("suspected_cause")}
         diff = diffstat = ""
-        if base and role in {"reviewer", "specialist"}:
+        if base and role == "reviewer":
             diff = git.git("diff", "--no-color", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
                            cwd=self.repo_root).stdout.decode("utf-8", "replace")
         if base and role == "verifier":
@@ -68,9 +69,12 @@ class ContextOps(EvidenceOps):
             implementation_summary=summary,
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             failure_evidence=failure,
+            card=(card or {}).get("content"),
         )
         sources = [
-            {"name": f"role:{role}", "path": f"aew/roles/{role}.yaml", "sha256": role_sha},
+            {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
+            {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
+             "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
             {"name": "current_ticket", "path": unit["record"], "sha256": unit["record_sha256"]},
             {"name": "accepted_plan", "path": plan["path"] if plan else None, "sha256": plan["sha256"] if plan else None},
             {"name": "guardrails", "path": self.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},

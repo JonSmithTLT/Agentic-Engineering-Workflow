@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from aewflow import (
+    APPLY_PATCH,
     SUBTRACT_PATCH,
     create_planned_ticket,
     integrate,
@@ -17,11 +18,6 @@ from aewflow import (
 )
 from conftest import git
 
-APPLY_PATCH = {
-    "calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "\n\ndef apply(op, a, b):\n    return op(a, b)\n",
-    "tests/test_apply.py": "from calc.core import apply, subtract\n\n\ndef test_apply():\n"
-                           "    assert apply(subtract, 5, 3) == 2\n",
-}
 
 
 @pytest.fixture
@@ -71,6 +67,7 @@ def test_dirty_authoritative_path_blocks_publication(calc, tmp_path):
     assert main_commit(calc) == before and core.read_text().endswith("# someone's local edit\n")
 
 
+@pytest.mark.acceptance("AT-2")
 def test_unintegrated_dependency_stays_blocked(calc, tmp_path):
     """AT-2: an upstream mutating Ticket passing its isolated checks does not unblock dependent work."""
     t1, _ = to_commit_ready(calc, tmp_path)
@@ -99,6 +96,7 @@ def test_unintegrated_dependency_stays_blocked(calc, tmp_path):
     assert git("merge-base", "--is-ancestor", m1, base, cwd=calc.root) == ""  # contains T1's output
 
 
+@pytest.mark.acceptance("AT-2")
 def test_dependency_requires_output_in_recorded_snapshot(calc, tmp_path):
     t1, _ = to_commit_ready(calc, tmp_path)
     before = main_commit(calc)
@@ -131,6 +129,7 @@ def test_moved_ref_makes_candidate_stale(calc, tmp_path):
     assert git("rev-parse", f"{out['integrated_commit']}^1", cwd=calc.root) == moved
 
 
+@pytest.mark.acceptance("AT-4b")
 def test_superseded_lead_cannot_publish(calc, tmp_path):
     wid, _ = to_commit_ready(calc, tmp_path)
     prepare_and_validate(calc, wid)
@@ -145,6 +144,7 @@ def test_superseded_lead_cannot_publish(calc, tmp_path):
 
 @pytest.mark.parametrize("point", ["integrate.after_publishing_record", "integrate.after_cas",
                                    "integrate.mid_sync", "integrate.before_done"])
+@pytest.mark.acceptance("AT-4a")
 def test_crash_during_publish_reconciles(calc, tmp_path, point):
     wid, _ = to_commit_ready(calc, tmp_path)
     integ = prepare_and_validate(calc, wid)

@@ -26,6 +26,8 @@ TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
 
 # Operations an invocation token may perform, by role. Everything that mutates
 # control state requires the Lead token instead.
+# This table is the enforcement of archetype authority (ADR-0006); archetype YAML documents it
+# and tests/unit/test_roles.py keeps the two equal. Role cards can only narrow it.
 ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     "implementer": frozenset({"check.run", "submit.implementation_report", "context.read"}),
     "reviewer": frozenset({"submit.review", "context.read"}),
@@ -33,7 +35,6 @@ ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     "planner": frozenset({"context.read"}),
     "investigator": frozenset({"context.read"}),
     "researcher": frozenset({"context.read"}),
-    "specialist": frozenset({"submit.review", "context.read"}),
 }
 
 
@@ -135,6 +136,11 @@ def require_invocation(
     role = scope["role"]
     if operation not in ROLE_OPERATIONS.get(role, frozenset()):
         raise PermissionDenied(f"role {role} may not perform {operation}", role=role, operation=operation)
+    narrowed = invocation.get("allowed_operations")
+    if narrowed is not None and operation not in narrowed:
+        card = (invocation.get("card") or {}).get("id")
+        raise PermissionDenied(f"role card {card} narrows this invocation; {operation} is not permitted",
+                               card=card, operation=operation)
     if work_unit is not None and scope["work_unit"] != work_unit:
         raise PermissionDenied("credential is scoped to a different work unit",
                                scoped_to=scope["work_unit"], requested=work_unit)

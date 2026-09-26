@@ -58,7 +58,8 @@ def test_reviewer_pack_is_bounded_and_independent(calc, tmp_path):
     assert out["invocation_token"].rsplit(".", 1)[1] not in text
     assert "supplied by the Lead in the spawn prompt" in text
     sources = {s["name"] for s in out["pack"]["sources"]}
-    assert {"current_ticket", "accepted_plan", "guardrails", "role:reviewer"} <= sources
+    assert {"current_ticket", "accepted_plan", "guardrails", "archetype:reviewer", "role_card:code_reviewer"} <= sources
+    assert "Code Reviewer" in text  # the dispatched role card is part of the contract
 
 
 def test_pack_regeneration_is_deterministic(calc, tmp_path):

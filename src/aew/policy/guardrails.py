@@ -29,9 +29,11 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str])
         elif enforce_scope and not glob_any(path, scope_paths):
             violations.append({"path": path, "rule": "outside_ticket_scope",
                                "detail": f"not within the Ticket's declared scope {scope_paths}"})
-    triggered = sorted({
-        f"review_{t['name']}" for t in policy.get("review_triggers", [])
-        if any(glob_any(p, t["paths"]) for p in changed)
-    })
-    return {"violations": violations, "triggered_gates": triggered, "changed_paths": sorted(changed),
+    fired = [t for t in policy.get("review_triggers", []) if any(glob_any(p, t["paths"]) for p in changed)]
+    # A trigger naming a card requires that card (policy-selected); otherwise any reviewer card
+    # whose specialty matches the trigger name satisfies review_<name>.
+    triggered = sorted({f"review_card:{t['card']}" if t.get("card") else f"review_{t['name']}" for t in fired})
+    return {"violations": violations, "triggered_gates": triggered,
+            "triggered": [{"name": t["name"], "card": t.get("card")} for t in fired],
+            "changed_paths": sorted(changed),
             "unenforced": ["dependency_rules"] if policy.get("dependency_rules") else []}

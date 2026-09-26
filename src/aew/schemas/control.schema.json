@@ -2,35 +2,107 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/control/v1",
   "title": "AEW authoritative control state",
-  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3).",
+  "description": "Single atomic commit point for Lead-owned control state (WC \u00a75, \u00a78.2; KC \u00a712.3).",
   "type": "object",
-  "required": ["schema", "project_id", "spec_set", "revision", "manifest_sha256", "lead", "tokens", "counters", "work", "invocations", "last_transition"],
+  "required": [
+    "schema",
+    "project_id",
+    "spec_set",
+    "revision",
+    "manifest_sha256",
+    "lead",
+    "tokens",
+    "counters",
+    "work",
+    "invocations",
+    "last_transition"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": "aew/control/v1"},
-    "project_id": {"$ref": "#/$defs/slug"},
-    "spec_set": {"type": "string"},
-    "revision": {"type": "integer", "minimum": 0},
-    "manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "schema": {
+      "const": "aew/control/v1"
+    },
+    "project_id": {
+      "$ref": "#/$defs/slug"
+    },
+    "spec_set": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
     "lead": {
       "type": "object",
-      "required": ["schema", "status", "generation"],
+      "required": [
+        "schema",
+        "status",
+        "generation"
+      ],
       "additionalProperties": false,
       "properties": {
-        "schema": {"const": "aew/lead/v1"},
-        "status": {"enum": ["vacant", "active", "handoff_pending"]},
-        "generation": {"type": "integer", "minimum": 0},
-        "session_label": {"type": ["string", "null"]},
-        "token_id": {"type": ["string", "null"]},
-        "acquired_at": {"type": ["string", "null"]},
+        "schema": {
+          "const": "aew/lead/v1"
+        },
+        "status": {
+          "enum": [
+            "vacant",
+            "active",
+            "handoff_pending"
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "session_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "acquired_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "handoff": {
-          "type": ["object", "null"],
-          "required": ["offer_token_id", "offered_at", "record", "carry_invocations"],
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "offer_token_id",
+            "offered_at",
+            "record",
+            "carry_invocations"
+          ],
           "properties": {
-            "offer_token_id": {"type": "string"},
-            "offered_at": {"type": "string"},
-            "record": {"type": "string"},
-            "carry_invocations": {"type": "array", "items": {"type": "string"}}
+            "offer_token_id": {
+              "type": "string"
+            },
+            "offered_at": {
+              "type": "string"
+            },
+            "record": {
+              "type": "string"
+            },
+            "carry_invocations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       }
@@ -39,90 +111,301 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["kind", "verifier", "scope", "issued_at", "issued_by_generation"],
+        "required": [
+          "kind",
+          "verifier",
+          "scope",
+          "issued_at",
+          "issued_by_generation"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": {"enum": ["lead", "invocation", "handoff_offer"]},
-          "verifier": {"$ref": "#/$defs/sha256"},
-          "scope": {"type": "object"},
-          "issued_at": {"type": "string"},
-          "issued_by_generation": {"type": "integer"},
-          "expires_at": {"type": ["string", "null"]},
-          "revoked_at": {"type": ["string", "null"]},
-          "revoke_reason": {"type": ["string", "null"]}
+          "kind": {
+            "enum": [
+              "lead",
+              "invocation",
+              "handoff_offer"
+            ]
+          },
+          "verifier": {
+            "$ref": "#/$defs/sha256"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "issued_at": {
+            "type": "string"
+          },
+          "issued_by_generation": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoke_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
     "counters": {
       "type": "object",
-      "additionalProperties": {"type": "integer", "minimum": 0}
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     },
-    "latest_handoff": {"type": ["string", "null"]},
-    "next_action": {"type": ["string", "null"]},
+    "latest_handoff": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "work": {
       "type": "object",
-      "additionalProperties": {"$ref": "#/$defs/work_unit"}
+      "additionalProperties": {
+        "$ref": "#/$defs/work_unit"
+      }
     },
     "invocations": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["role", "work_unit", "status", "token_id", "created_at", "generation"],
+        "required": [
+          "role",
+          "work_unit",
+          "status",
+          "token_id",
+          "created_at",
+          "generation"
+        ],
         "properties": {
-          "role": {"enum": ["implementer", "reviewer", "verifier", "planner", "investigator", "researcher", "specialist"]},
-          "work_unit": {"type": "string"},
-          "status": {"enum": ["active", "completed", "cancelled", "interrupted", "revoked"]},
-          "token_id": {"type": "string"},
-          "created_at": {"type": "string"},
-          "generation": {"type": "integer"},
-          "scope": {"enum": ["ticket", "integration"]},
-          "specialty": {"type": ["string", "null"]},
-          "workspace": {"type": ["string", "null"]},
-          "snapshot": {"type": ["object", "null"]},
-          "pack": {"type": ["object", "null"]}
+          "role": {
+            "enum": [
+              "implementer",
+              "reviewer",
+              "verifier",
+              "planner",
+              "investigator",
+              "researcher"
+            ]
+          },
+          "work_unit": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "completed",
+              "cancelled",
+              "interrupted",
+              "revoked"
+            ]
+          },
+          "token_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "ticket",
+              "integration"
+            ]
+          },
+          "specialty": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "pack": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "card": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
         }
       }
     },
     "last_transition": {
       "type": "object",
-      "required": ["revision", "at", "actor", "op"],
+      "required": [
+        "revision",
+        "at",
+        "actor",
+        "op"
+      ],
       "properties": {
-        "revision": {"type": "integer"},
-        "at": {"type": "string"},
-        "actor": {"type": "object"},
-        "op": {"type": "string"},
-        "summary": {"type": ["string", "null"]},
-        "reason": {"type": ["string", "null"]},
-        "refs": {"type": "array"},
-        "txn": {"type": ["object", "null"]}
+        "revision": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "object"
+        },
+        "op": {
+          "type": "string"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refs": {
+          "type": "array"
+        },
+        "txn": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
       }
     }
   },
   "$defs": {
-    "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
-    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "work_unit": {
       "type": "object",
-      "required": ["kind", "title", "record", "record_sha256", "state", "risk_class", "mutating", "depends_on"],
+      "required": [
+        "kind",
+        "title",
+        "record",
+        "record_sha256",
+        "state",
+        "risk_class",
+        "mutating",
+        "depends_on"
+      ],
       "properties": {
-        "kind": {"enum": ["ticket", "story", "epic"]},
-        "title": {"type": "string"},
-        "record": {"type": "string"},
-        "record_sha256": {"$ref": "#/$defs/sha256"},
-        "parent": {"type": ["string", "null"]},
-        "state": {"enum": [
-          "BLOCKED", "READY", "ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED",
-          "VERIFY_PENDING", "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "VERIFIED", "COMMIT_READY", "DONE",
-          "INTERRUPTED", "REPLAN_REQUIRED", "ESCALATED", "CANCELLED", "OPEN"
-        ]},
-        "risk_class": {"type": "integer", "minimum": 0, "maximum": 4},
-        "mutating": {"type": "boolean"},
+        "kind": {
+          "enum": [
+            "ticket",
+            "story",
+            "epic"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "record": {
+          "type": "string"
+        },
+        "record_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "BLOCKED",
+            "READY",
+            "ASSIGNED",
+            "RUNNING",
+            "REVIEW_PENDING",
+            "REVIEW_FAILED",
+            "REVIEW_PASSED",
+            "VERIFY_PENDING",
+            "VERIFICATION_FAILED",
+            "VERIFICATION_INCONCLUSIVE",
+            "VERIFIED",
+            "COMMIT_READY",
+            "DONE",
+            "INTERRUPTED",
+            "REPLAN_REQUIRED",
+            "ESCALATED",
+            "CANCELLED",
+            "OPEN"
+          ]
+        },
+        "risk_class": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "mutating": {
+          "type": "boolean"
+        },
         "depends_on": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "kind"],
-            "properties": {"id": {"type": "string"}, "kind": {"enum": ["mutating", "evidence"]}}
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "mutating",
+                  "evidence"
+                ]
+              }
+            }
           }
         }
       }

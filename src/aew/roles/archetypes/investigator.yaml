@@ -1,17 +1,21 @@
-schema: aew/role/v1
+schema: aew/role-archetype/v1
 role: investigator
 persistent: false
+dispatchable: true
+dispatch_status: "cards may extend it now; dispatch arrives with the non-mutating Ticket path (M2)"
+default_card: null
 authority:
   - read-only discovery of how the existing system works (WC §5.2)
 responsibilities:
   - locate owners and entry points, trace relationships, inspect tests and behavior
   - separate observed facts from hypotheses; list unresolved questions
-allowed_operations:
-  - read-only inspection
+engine_operations: [context.read]
+evidence_kinds: [discovery_record]
+authority_capabilities: []
 prohibited:
   - choosing the final design; mutating source
 outputs:
-  - discovery record (M1 - Designed; dispatch of investigators is not automated yet)
+  - discovery record
 context:
   knowledge: [objective, accepted_authority, codebase_map, architecture_map]
   excluded: []

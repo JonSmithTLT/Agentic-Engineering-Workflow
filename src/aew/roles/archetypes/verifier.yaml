@@ -1,6 +1,8 @@
-schema: aew/role/v1
+schema: aew/role-archetype/v1
 role: verifier
 persistent: false
+dispatchable: true
+default_card: verifier
 authority:
   - establish whether acceptance evidence passes, fails, is inconclusive or is blocked (WC §5.7, §6)
 responsibilities:
@@ -8,9 +10,9 @@ responsibilities:
   - contract verification - show the outcome does not violate guardrails, scope or governing contracts
   - run your own checks; never accept the implementer's claims as evidence
   - report a suspected cause when something fails, without choosing the remediation
-allowed_operations:
-  - read the workspace; "aew check run <check>"
-  - "aew submit --kind verification (claims citing checks you ran)"
+engine_operations: [check.run, submit.verification, context.read]
+evidence_kinds: [verification, check_result]
+authority_capabilities: []
 prohibited:
   - classifying a failure or choosing RUNNING/REPLAN (Lead authority)
   - editing files or fixing defects

@@ -36,13 +36,14 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--rationale")
     q.add_argument("--external-ref", action="append", default=[])
     q.add_argument("--body-file", help="Markdown objective/body (file or - for stdin)")
+    q.add_argument("--card", help="role card that executes this Ticket (recorded in its role plan)")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_create(
         token=_lead_token(a), expect_rev=a.expect_rev, kind=a.kind, title=a.title, risk_class=a.risk_class,
         mutating=not a.non_mutating, parent=a.parent, depends_on=a.depends_on, scope_paths=a.scope,
         goal_backwards=a.goal, contract=a.contract, mandatory_gates=a.mandatory_gate,
         min_descendant_class=a.min_descendant_class, rationale=a.rationale, external_refs=a.external_ref,
-        body=_read_text_arg(a.body_file)))
+        body=_read_text_arg(a.body_file), card=a.card))
 
     q = wsub.add_parser("show")
     q.add_argument("work_id")
@@ -61,6 +62,26 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).work_assign(token=_lead_token(a), expect_rev=a.expect_rev,
                                                            work_id=a.work_id))
 
+    q = wsub.add_parser("roles", help="show a Ticket's stored and effective role plan")
+    q.add_argument("work_id")
+    q.set_defaults(handler=lambda a: _engine(a).work_roles(a.work_id))
+
+    q = wsub.add_parser("staff", help="select role cards for a Ticket's execute/review/verify slots (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--execute", action="append", default=[], metavar="CARD")
+    q.add_argument("--review", action="append", default=[], metavar="CARD")
+    q.add_argument("--verify", action="append", default=[], metavar="CARD")
+    q.add_argument("--forbid", action="append", default=[], metavar="CARD")
+    q.add_argument("--remove", action="append", default=[], metavar="SLOT=CARD")
+    q.add_argument("--by", choices=["lead", "operator"], default="lead",
+                   help="who made the selection (operator = recorded on the operator's instruction)")
+    q.add_argument("--pin", action="store_true", help="pin the selection (Lead may replace only with --reason)")
+    q.add_argument("--reason")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_staff(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, execute=a.execute, review=a.review,
+        verify=a.verify, forbid=a.forbid, remove=a.remove, selected_by=a.by, pin=a.pin, reason=a.reason))
+
     q = wsub.add_parser("transition", help="Lead transition (guards and reasons enforced)")
     q.add_argument("work_id")
     q.add_argument("--to", required=True)
@@ -76,6 +97,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_reconcile(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
+
+    p = sub.add_parser("role", help="role archetypes and the role-card catalog (deck)")
+    rsub = p.add_subparsers(dest="role_cmd", required=True)
+    q = rsub.add_parser("list", help="built-in and project role cards")
+    q.set_defaults(handler=lambda a: _engine(a).role_list())
+    q = rsub.add_parser("show")
+    q.add_argument("card")
+    q.set_defaults(handler=lambda a: _engine(a).role_show(a.card))
+    q = rsub.add_parser("validate", help="validate the project catalog, or one card file")
+    q.add_argument("--file")
+    q.set_defaults(handler=lambda a: _engine(a).role_validate(a.file))
 
     p = sub.add_parser("plan", help="plan revisions (immutable once accepted)")
     psub = p.add_subparsers(dest="plan_cmd", required=True)
@@ -101,15 +133,16 @@ def register(sub: argparse._SubParsersAction) -> None:
 def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     p = sub.add_parser("invoke", help="bounded role invocations (Lead dispatches; roles never self-assign)")
     isub = p.add_subparsers(dest="invoke_cmd", required=True)
-    q = isub.add_parser("create")
+    q = isub.add_parser("create", help="dispatch a role card (explicit, from the role plan, or the default)")
     q.add_argument("work_id")
-    q.add_argument("--role", required=True, choices=["implementer", "reviewer", "specialist", "verifier"])
+    q.add_argument("--card", help="role card id (see `aew role list`)")
+    q.add_argument("--role", choices=["implementer", "reviewer", "verifier"],
+                   help="archetype; picks its default card when --card is omitted")
     q.add_argument("--scope", choices=["ticket", "integration"], default="ticket")
-    q.add_argument("--specialty", help="specialty review, e.g. security (satisfies review_<specialty>)")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).invoke_create(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, role=a.role, scope=a.scope,
-        specialty=a.specialty))
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, role=a.role, card=a.card,
+        scope=a.scope))
     q = isub.add_parser("cancel")
     q.add_argument("invocation")
     q.add_argument("--reason", required=True)

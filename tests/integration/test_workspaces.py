@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from conftest import git, run_aew
@@ -34,6 +36,7 @@ def test_assign_allocates_attributable_workspace(project, tmp_path):
     assert git("status", "--porcelain", "--untracked-files=no", cwd=project.root) == ""
 
 
+@pytest.mark.acceptance("AT-7")
 def test_aew_inside_workspace_resolves_to_authoritative_project(project, tmp_path):
     wid = planned_ticket(project, tmp_path)
     ws = Path(project.lead("work", "assign", wid)["workspace"]["path"])

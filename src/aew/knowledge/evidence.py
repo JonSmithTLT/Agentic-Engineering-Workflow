@@ -21,7 +21,6 @@ from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_
 ROLE_KINDS = {
     "implementer": {"implementation_report"},
     "reviewer": {"review"},
-    "specialist": {"review"},
     "verifier": {"verification"},
 }
 SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check"}
@@ -30,6 +29,9 @@ SHORT = {"implementation_report": "impl", "review": "review", "verification": "v
 # silently overwritten, so forged bindings or control decisions are visible failures.
 ENGINE_OWNED = {"schema", "id", "kind", "work_unit", "created_at", "evaluated_snapshot", "plan_revision",
                 "seq", "integrity", "sealed_by"}
+# Reserved for per-card output contracts (ADR-0006, post-M1): a card-declared contract name and a
+# payload validated against that contract's schema. Rejected until contracts are implemented.
+RESERVED_FOR_CONTRACTS = {"contract", "payload"}
 CONTROL_FIELDS = {"state", "next_state", "transition", "classification", "remediation", "decision",
                   "waiver", "waivers", "lead", "accepted_plan", "completion"}
 SUBMITTER_KEYS = {
@@ -97,6 +99,9 @@ def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
     owned = sorted(ENGINE_OWNED & meta.keys())
     if owned:
         raise ValidationFailed("these fields are recorded by the engine and may not be supplied", fields=owned)
+    reserved = sorted(RESERVED_FOR_CONTRACTS & meta.keys())
+    if reserved:
+        raise ValidationFailed("per-card output contracts are not implemented yet (reserved fields)", fields=reserved)
     unknown = sorted(meta.keys() - SUBMITTER_KEYS[kind])
     if unknown:
         raise ValidationFailed(f"unexpected fields for {kind}", fields=unknown)

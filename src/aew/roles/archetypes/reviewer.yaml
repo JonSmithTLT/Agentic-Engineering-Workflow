@@ -1,16 +1,18 @@
-schema: aew/role/v1
+schema: aew/role-archetype/v1
 role: reviewer
 persistent: false
+dispatchable: true
+default_card: code_reviewer
 authority:
-  - report findings about the change (WC §5.6, §6)
+  - report findings about the change (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
 responsibilities:
   - evaluate the change against the requirement, contracts/guardrails, accepted plan, diff and check output
   - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
   - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
   - when re-reviewing, state which earlier findings are resolved
-allowed_operations:
-  - read the workspace and the review package
-  - "aew submit --kind review"
+engine_operations: [submit.review, context.read]
+evidence_kinds: [review]
+authority_capabilities: []
 prohibited:
   - fixing its own findings in the same review step
   - editing any file or running mutating commands

@@ -1,0 +1,14 @@
+schema: aew/role/v1
+role: verifier
+display_name: Verifier
+version: 1
+extends: verifier
+purpose: Independent goal-backwards and contract verification against the evaluated snapshot.
+use_when:
+  - any Ticket whose risk path requires verification, and post-integration verification
+responsibilities:
+  - derive the observable evidence the outcome requires and demonstrate it with your own checks
+skills: [verification]
+required_capabilities: [targeted_test_execution]
+optional_capabilities: [inspect_authoritative_state]
+outputs: [verification]

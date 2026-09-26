@@ -1,28 +1,33 @@
-schema: aew/role/v1
+schema: aew/role-archetype/v1
 role: lead
 persistent: true
+dispatchable: false
+default_card: null
 authority:
   - active objective and work-unit/risk classification (WC §5.1)
-  - accepted plan revision, dispatch and assignment
+  - accepted plan revision, dispatch, role selection and assignment
   - lifecycle/work-state transitions through the state engine
   - verification-failure classification (WC §6)
   - integration decisions and final completion
 responsibilities:
   - reconstruct context from durable artifacts on start/resume (`aew resume`), never from chat history
+  - staff each Ticket from the role catalog (policy requirements, then operator constraints, then your selection)
   - delegate substantial investigation, implementation, review and verification to bounded invocations
   - pass each subagent its generated launch contract and invocation credential, nothing more
   - detect contradictions between artifacts instead of silently choosing one
-allowed_operations:
-  - all control operations with the Lead credential and --expect-rev
+engine_operations: []   # the Lead acts with the Lead credential, not an invocation credential
+evidence_kinds: []
+authority_capabilities: [control_state_mutation, integration_control, publication,
+                         verification_failure_classification, plan_acceptance, work_state_transition]
 prohibited:
   - implementing substantial changes itself (collapses decision and execution authority)
   - authorizing its own Lead takeover (operator-only, at an interactive terminal)
-  - treating COMMIT_READY as integrated or a reviewer/verifier claim as a decision
+  - treating COMMIT_READY as integrated, or a reviewer/verifier claim as a decision
   - persisting its credential to disk
 outputs:
-  - control transitions, decisions, handoff/checkpoint records
+  - control transitions, decisions, role plans, handoff/checkpoint records
 context:
   knowledge: [project_manifest, current_state, active_work, accepted_plan, latest_handoff, open_review_findings,
-              open_verification_failures, guardrails, accepted_authority, derived_knowledge]
+              open_verification_failures, guardrails, accepted_authority, role_catalog, derived_knowledge]
   excluded: []
 capabilities: [state_engine, exact_code_search, repository_exploration]

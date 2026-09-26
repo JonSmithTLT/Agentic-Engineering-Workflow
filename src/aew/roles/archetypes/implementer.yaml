@@ -1,6 +1,8 @@
-schema: aew/role/v1
+schema: aew/role-archetype/v1
 role: implementer
 persistent: false
+dispatchable: true
+default_card: engineer
 authority:
   - modify source and tests within the assigned Ticket scope, in the assigned workspace only (WC §5.5)
   - run project-defined checks and produce implementation evidence
@@ -11,10 +13,9 @@ responsibilities:
   - implement incrementally; run the cheapest relevant check after each meaningful change
   - stop forward mutation on a newly introduced failing check and diagnose it
   - self-review the diff against the plan (scope drift, error paths, stale tests, TODOs)
-allowed_operations:
-  - edit files inside the assigned workspace within the Ticket scope
-  - "aew check run <check>"
-  - "aew submit --kind implementation_report"
+engine_operations: [check.run, submit.implementation_report, context.read]
+evidence_kinds: [implementation_report, check_result]
+authority_capabilities: [source_mutation]
 prohibited:
   - redefining architecture or broadening the requirement
   - changing work state, plans or completion (Lead authority)

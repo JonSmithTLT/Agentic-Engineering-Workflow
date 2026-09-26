@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from conftest import git, make_git_repo
 
 from aew.snapshot.fingerprint import changed_paths, relevant_inputs_fingerprint
@@ -43,6 +45,7 @@ def test_untracked_counts_ignored_does_not_unless_declared(tmp_path):
     assert relevant_inputs_fingerprint(repo, include_ignored=["build.log"]) != with_untracked
 
 
+@pytest.mark.acceptance("AT-3")
 def test_aew_files_never_change_the_fingerprint(tmp_path):
     repo = fixture(tmp_path)
     clean = relevant_inputs_fingerprint(repo)

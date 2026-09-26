@@ -98,6 +98,7 @@ class WorkOps(EngineBase):
         rationale: str | None = None,
         external_refs: list[str] | None = None,
         body: str = "",
+        card: str | None = None,
     ) -> dict[str, Any]:
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
@@ -144,6 +145,12 @@ class WorkOps(EngineBase):
                             implementer_invocation=None, evidence=[], classifications=[], waivers=[],
                             integration=None)
             state["work"][work_id] = unit
+            if card:
+                chosen = self.role_catalog().get(card)  # type: ignore[attr-defined]  (RoleOps)
+                self._slot_ok(unit, "execute", chosen)  # type: ignore[attr-defined]
+                unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
+                                                  "selected_by": "lead", "pinned": False}],
+                                     "review": [], "verify": [], "forbidden": []}
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.before_commit(ctx)
         return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}

@@ -22,6 +22,7 @@ SCHEMAS = {
     "checks": "checks.schema.json",
     "gates": "gates.schema.json",
     "role": "role.schema.json",
+    "role-archetype": "role-archetype.schema.json",
 }
 
 

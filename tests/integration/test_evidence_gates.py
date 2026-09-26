@@ -45,6 +45,7 @@ def test_smoke_to_verified(calc, tmp_path):
 # ------------------------------------------------------------------ stale evidence (AT-3 core)
 
 
+@pytest.mark.acceptance("AT-3")
 def test_relevant_uncommitted_change_makes_evidence_stale_but_keeps_history(calc, tmp_path):
     wid, impl = to_verified(calc, tmp_path)
     ev_dir = calc.root / f".aew/evidence/{wid}"
@@ -86,6 +87,7 @@ def test_relevant_uncommitted_change_makes_evidence_stale_but_keeps_history(calc
     assert calc.ok("work", "show", wid)["control"]["state"] == "COMMIT_READY"
 
 
+@pytest.mark.acceptance("AT-3")
 def test_stale_review_cannot_be_ingested(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
     impl = assign(calc, wid)
@@ -101,6 +103,7 @@ def test_stale_review_cannot_be_ingested(calc, tmp_path):
 # ------------------------------------------------------------------ role separation (AT-5)
 
 
+@pytest.mark.acceptance("AT-5")
 def test_role_separation_negatives(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
     impl = assign(calc, wid)
@@ -167,6 +170,7 @@ def test_role_separation_negatives(calc, tmp_path):
         ("ENVIRONMENT_OR_EVIDENCE_BLOCKED", "VERIFICATION_INCONCLUSIVE"),
     ],
 )
+@pytest.mark.acceptance("AT-6")
 def test_lead_classifies_verification_failures(calc, tmp_path, classification, expected):
     wid = create_planned_ticket(calc, tmp_path)
     impl = assign(calc, wid)

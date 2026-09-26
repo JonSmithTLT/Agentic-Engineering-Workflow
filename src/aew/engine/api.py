@@ -29,6 +29,7 @@ from aew.knowledge.manifest import (
     open_questions_template,
     project_overview_template,
     render_manifest,
+    roles_readme,
 )
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_text, utc_now
@@ -85,6 +86,7 @@ class Engine(IntegrationOps, LeadOps, StatusOps):
             "policy/guardrails.yaml": dump_yaml(DEFAULT_GUARDRAILS),
             "policy/checks.yaml": dump_yaml(DEFAULT_CHECKS),
             "policy/gates.yaml": dump_yaml(DEFAULT_GATES),
+            "roles/README.md": roles_readme(),
         }
         state = {
             "schema": "aew/control/v1",

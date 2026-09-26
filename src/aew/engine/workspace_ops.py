@@ -9,7 +9,7 @@ from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers
-from aew.engine.work_ops import WorkOps
+from aew.engine.role_ops import RoleOps
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition
 from aew.knowledge.records import format_id
 from aew.snapshot import fingerprint
@@ -21,7 +21,7 @@ from aew.workspace import worktrees
 EFFECTIVE_MUTATING_CAP = 1
 
 
-class WorkspaceOps(WorkOps):
+class WorkspaceOps(RoleOps):
     # ------------------------------------------------------------------ snapshots
 
     def _fingerprint_policy(self) -> dict[str, list[str]]:
@@ -49,6 +49,7 @@ class WorkspaceOps(WorkOps):
         specialty: str | None = None,
         workspace: str | None = None,
         snapshot: dict[str, Any] | None = None,
+        card: Any = None,
     ) -> tuple[str, str]:
         state = ctx.state
         state["counters"]["invocation"] = state["counters"].get("invocation", 0) + 1
@@ -61,6 +62,8 @@ class WorkspaceOps(WorkOps):
             "specialty": specialty, "workspace": workspace, "snapshot": snapshot, "pack": None,
         }
         state["work"][work_id]["invocations"].append(inv_id)
+        if card is not None:
+            self._pin_on(ctx, inv_id, card)
         ctx.refs.append(f"invocation:{inv_id}")
         return inv_id, token
 
@@ -101,6 +104,7 @@ class WorkspaceOps(WorkOps):
                     raise ConcurrencyLimit(
                         "mutating concurrency is 1 until isolated concurrent integration exists (WC §8.1); "
                         f"{busy} still hold unintegrated workspaces", holding=busy)
+            card = self.resolve_card(state, work_id, "execute", card_id=None, role="implementer")
             unit["attempts"] = unit.get("attempts", 0) + 1
             referenced = {u["workspace"]["path"] for u in state["work"].values()
                           if (u.get("workspace") or {}).get("status") == "active"}
@@ -113,7 +117,7 @@ class WorkspaceOps(WorkOps):
                 ws["base_snapshot"] = snapshot
                 unit["workspace"] = ws
                 inv_id, inv_token = self._new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
-                                                         snapshot=snapshot)
+                                                         snapshot=snapshot, card=card)
                 unit["implementer_invocation"] = inv_id
                 self.build_pack(ctx, inv_id)
                 change = self._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}")
@@ -123,7 +127,7 @@ class WorkspaceOps(WorkOps):
                 worktrees.remove(self.repo_root, ws["path"])
                 raise
         return {"ok": True, "work_id": work_id, "workspace": ws, "invocation": inv_id,
-                "invocation_token": inv_token, "transition": change,
+                "invocation_token": inv_token, "role_card": card.id, "transition": change,
                 "revision": ctx.session.committed_revision}
 
     # Refined by the context-pack mixin (step 8).

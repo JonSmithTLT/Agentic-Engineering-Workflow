@@ -1,28 +1,40 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/role/v1",
-  "title": "Role definition",
-  "description": "Durable role definition: authority and context contract, not a persistent agent identity (WC §5).",
+  "title": "Role card",
+  "description": "A concrete reusable team role (ADR-0006). A card extends exactly one archetype and may add responsibilities, domain knowledge, skills, capabilities, outputs and advisory use_when guidance, or narrow permissions. It has no field that can grant authority: unknown keys are rejected.",
   "type": "object",
-  "required": ["schema", "role", "persistent", "authority", "responsibilities", "allowed_operations", "prohibited", "outputs", "context"],
+  "required": ["schema", "role", "display_name", "extends", "purpose"],
+  "additionalProperties": false,
   "properties": {
     "schema": {"const": "aew/role/v1"},
-    "role": {"type": "string"},
-    "persistent": {"type": "boolean"},
-    "authority": {"type": "array", "items": {"type": "string"}},
+    "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "display_name": {"type": "string", "minLength": 1},
+    "version": {"type": ["integer", "string"]},
+    "extends": {"type": "string"},
+    "purpose": {"type": "string", "minLength": 1},
+    "use_when": {"type": "array", "items": {"type": "string"},
+                 "description": "Advisory guidance for Lead/Planner role selection. Never triggers dispatch."},
     "responsibilities": {"type": "array", "items": {"type": "string"}},
-    "allowed_operations": {"type": "array", "items": {"type": "string"}},
-    "prohibited": {"type": "array", "items": {"type": "string"}},
-    "outputs": {"type": "array", "items": {"type": "string"}},
-    "context": {
+    "skills": {"type": "array", "items": {"type": "string"}},
+    "required_capabilities": {"type": "array", "items": {"type": "string"}},
+    "optional_capabilities": {"type": "array", "items": {"type": "string"}},
+    "required_knowledge": {"type": "array", "items": {"type": "string"}},
+    "outputs": {"type": "array", "items": {"type": "string"},
+                "description": "Named refinements of the archetype's evidence kind"},
+    "specialty": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$",
+                  "description": "Reviewer cards: satisfies review_<specialty> gates"},
+    "restrict": {
       "type": "object",
-      "required": ["knowledge"],
+      "additionalProperties": false,
+      "description": "Narrowing only; each list must be a subset of what the archetype allows",
       "properties": {
-        "knowledge": {"type": "array", "items": {"type": "string"}},
-        "excluded": {"type": "array", "items": {"type": "string"}}
+        "operations": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "array", "items": {"type": "string"}}
       }
     },
-    "independence": {"type": "object"},
-    "capabilities": {"type": "array", "items": {"type": "string"}}
+    "prohibited": {"type": "array", "items": {"type": "string"},
+                   "description": "Additional prohibitions (narrowing)"},
+    "notes": {"type": ["string", "null"]}
   }
 }

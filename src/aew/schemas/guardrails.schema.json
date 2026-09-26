@@ -2,31 +2,70 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/guardrails/v1",
   "title": "Project guardrails",
-  "description": "Human-readable, machine-queryable engineering guardrails (WC §16.15, KC §8.11). The AEW knowledge root is always protected regardless of this file.",
+  "description": "Human-readable, machine-queryable engineering guardrails (WC \u00a716.15, KC \u00a78.11). The AEW knowledge root is always protected regardless of this file.",
   "type": "object",
-  "required": ["schema"],
+  "required": [
+    "schema"
+  ],
   "properties": {
-    "schema": {"const": "aew/guardrails/v1"},
-    "protected_paths": {"type": "array", "items": {"type": "string"}},
-    "generated_paths": {"type": "array", "items": {"type": "string"}},
-    "ticket_scope_enforcement": {"type": "boolean"},
+    "schema": {
+      "const": "aew/guardrails/v1"
+    },
+    "protected_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generated_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ticket_scope_enforcement": {
+      "type": "boolean"
+    },
     "review_triggers": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "paths"],
+        "required": [
+          "name",
+          "paths"
+        ],
         "properties": {
-          "name": {"type": "string"},
-          "paths": {"type": "array", "items": {"type": "string"}},
-          "description": {"type": "string"}
+          "name": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "card": {
+            "type": "string",
+            "description": "Role card required when the trigger fires (policy-selected)"
+          }
         }
       }
     },
     "dependency_rules": {
       "type": "array",
       "description": "Representable in M1; deterministic enforcement is Designed.",
-      "items": {"type": "object"}
+      "items": {
+        "type": "object"
+      }
     },
-    "notes": {"type": ["string", "null"]}
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
   }
 }

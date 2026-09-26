@@ -32,7 +32,8 @@
         "cancellation",
         "reconciliation",
         "plan_acceptance",
-        "promotion"
+        "promotion",
+        "role_plan_change"
       ]
     },
     "work_unit": {

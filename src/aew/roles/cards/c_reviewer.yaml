@@ -1,0 +1,14 @@
+schema: aew/role/v1
+role: c_reviewer
+display_name: C Reviewer
+version: 1
+extends: reviewer
+purpose: Independent review of C/C++ changes for memory safety, undefined behavior, error paths and ABI.
+use_when:
+  - the change touches C/C++ source
+responsibilities:
+  - look for leaks, overflows, use-after-free, integer issues, missing cleanup and ABI breaks
+skills: [c-review]
+required_capabilities: [exact_code_search]
+optional_capabilities: [symbol_navigation, static_analysis]
+outputs: [review]

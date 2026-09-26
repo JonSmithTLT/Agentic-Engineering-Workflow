@@ -27,7 +27,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "aew.schemas" = ["*.json"]
-"aew.roles" = ["*.yaml"]
+"aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]
 "aew.templates" = ["*.md", "*.yaml"]
 
 [tool.pytest.ini_options]
@@ -35,4 +35,5 @@ testpaths = ["tests"]
 addopts = "-ra"
 markers = [
     "slow: long-running crash/race matrices",
+    "acceptance(id): M1 acceptance scenario (AT-1..AT-7); select with -m acceptance",
 ]

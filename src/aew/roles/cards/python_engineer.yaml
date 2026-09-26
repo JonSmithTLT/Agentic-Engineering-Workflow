@@ -1,0 +1,15 @@
+schema: aew/role/v1
+role: python_engineer
+display_name: Python Engineer
+version: 1
+extends: implementer
+purpose: Implement Python changes with idiomatic, typed, tested code.
+use_when:
+  - the Ticket's change surface is primarily Python
+responsibilities:
+  - keep public interfaces and packaging compatible
+  - add or update focused pytest coverage for new behavior and error paths
+skills: [python-development]
+required_capabilities: [exact_code_search, source_mutation, targeted_test_execution]
+optional_capabilities: [type_checking, static_analysis]
+outputs: [implementation_report]

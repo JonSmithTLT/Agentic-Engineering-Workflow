@@ -42,6 +42,7 @@ def run_worker(root: Path, count: int, *extra: str, fault: str | None = None) ->
     )
 
 
+@pytest.mark.acceptance("AT-4a")
 @pytest.mark.parametrize("point", FAULT_POINTS)
 def test_process_killed_at_each_point_recovers(tmp_path, point):
     store = init(tmp_path)
@@ -55,6 +56,7 @@ def test_process_killed_at_each_point_recovers(tmp_path, point):
     assert check_invariants(tmp_path) == n + 2
 
 
+@pytest.mark.acceptance("AT-4a")
 def test_two_racing_writers_lose_no_updates(tmp_path):
     init(tmp_path)
     env = dict(os.environ)

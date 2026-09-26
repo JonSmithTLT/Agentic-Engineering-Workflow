@@ -91,12 +91,21 @@ The follow-up probes are preserved unchanged in `tests/regression/test_remediati
 - No test that existed at `1d914cb` changed its expectations.
 - Full-suite results for this round are recorded in `docs/implementation/implementation-status.md`.
 
-## Foundation review (revision `f3fc4a3`): index-only work
+## Foundation review (revision `f3fc4a3`)
 
 A further probe showed DONE cleanup deleting a workspace whose only late change existed in the Git index. The content check replaced the index copy's entries with working-file content, so staged-only work looked clean. The same `git add -A` at `prepare` would have overwritten such an entry.
 
 - **Fix:** workspace inspection compares HEAD with the index as staged as well as with the working content. `prepare` refuses staged content that matches neither HEAD nor the working copy. See the ADR-0004 addendum.
 - **Evidence:** the reviewer's two index-only probes, preserved unchanged in `tests/regression/test_foundation_review_2026_09_26.py`; `test_done_cleanup_retains_a_workspace_with_a_staged_only_deletion`, `test_prepare_refuses_staged_content_found_nowhere_else`, `test_a_fully_staged_change_prepares_normally`.
+
+The same probe file found two more gaps, also fixed:
+
+| Probe | Gap | Fix | Evidence |
+|---|---|---|---|
+| `test_publish_rechecks_new_required_role_gate` | A review card pinned after validation was never enforced; publication re-checked only the integration evidence | Publish phase 1 and pre-CAS finalization re-evaluate every effective obligation at the accepted snapshot (gated fingerprint, committed Ticket diff). A failure at finalization withdraws the intent to `validated` rather than holding the Ticket in `publishing`. | Probe; `test_publication_enforces_an_obligation_added_after_validation`, `test_an_obligation_added_during_an_interrupted_publish_withdraws_it_cleanly` |
+| `test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy` | An evidence-only Ticket received a mutation workspace and implementer outside the serial cap, and published source | M1 refuses to assign or integrate non-mutating Tickets; their dispatch path is M2 | Probe; `test_m1_never_assigns_a_non_mutating_ticket` |
+
+All four foundation probes are preserved unchanged in `tests/regression/test_foundation_review_2026_09_26.py`.
 
 ## Follow-ups (recorded, not done here)
 

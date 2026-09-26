@@ -2,7 +2,7 @@
 
 This is operational metadata (WC Appendix C). It does not replace the workflow state of any project that uses AEW. It uses the three states from WC §"Status and authority": **Implemented**, **Staged** and **Designed**. A row is Implemented only when the listed evidence exists and passes on both Windows (Python 3.13) and Linux (Python 3.11). The acceptance IDs are listed in `acceptance.md`.
 
-**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26. M1 is complete. All findings of the independent M1 review, and of the focused re-review of its remediation, are resolved (`review-response-2026-09-26.md`). Both reviewers' probe files pass unchanged (18/18), as do the foundation review's index-only probes; all are preserved as regressions in `tests/regression/`. Full suites with the index-only fix: Linux/Python 3.11 547 passed; Windows/Python 3.13 542 passed, plus 5 POSIX-only skips.
+**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26. M1 is complete. All findings of the independent M1 review, and of the focused re-review of its remediation, are resolved (`review-response-2026-09-26.md`). All three reviewers' probe files pass unchanged (22/22) and are preserved as regressions in `tests/regression/`. Full suites: Linux/Python 3.11 552 passed; Windows/Python 3.13 547 passed, plus 5 POSIX-only skips.
 
 | Capability | Status | Acceptance evidence / next action |
 |---|---|---|
@@ -11,7 +11,7 @@ This is operational metadata (WC Appendix C). It does not replace the workflow s
 | Crash-safe, stale-writer-resistant control state | Implemented | AT-4a/4b; ADR-0001, ADR-0005; review probes M1/M8; seeded adversarial walk with the invariant oracle (`tests/regression/`) |
 | Command/skill interaction layer | Staged | Complete CLI primitives. The `/aew …` harness commands come with the OpenCode adapter (M3). |
 | AEW Knowledge Contract | Implemented (M1 slice) | Manifest, logical names, current state, handoff/checkpoint, Ticket/Story/Epic records, plan revisions, provenance, guardrail/build-test policy, `init`/`status`/`resume`, cache loss, existing-authority project |
-| Ticket/Story/Epic work model | Ticket Implemented; Story/Epic Staged | Story/Epic records, parent links, derived roll-up, inherited-policy representation. Story gates, closeout and promotion come in M2. |
+| Ticket/Story/Epic work model | Mutating Ticket Implemented; non-mutating Ticket and Story/Epic Staged | Story/Epic records, parent links, derived roll-up, inherited-policy representation. Non-mutating Tickets can be recorded but are not assigned or integrated in M1. Their dispatch path, Story gates, closeout and promotion come in M2. |
 | Role archetypes + role-card catalog | Implemented (M1 scope) | ADR-0006; `tests/unit/test_roles.py`, `test_role_cards.py`; review probes M7 (operator pins). Dispatch of investigator/researcher/planner cards comes in M2; per-card output contracts after M1. |
 | Card-level path restriction (`restrict.paths`) | Designed | Review N1: the schema rejects it (fail closed); in M1, path limits come from Ticket scope + guardrails |
 | Project-control adapter | Designed | M3 (OpenCode) |

@@ -32,6 +32,7 @@ from aew.knowledge.records import read_record
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
 from aew.snapshot.fingerprint import changed_paths
+from aew.workspace.integration import changed_between as git_changed_between
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
 
 REVIEW_ROLES = {"reviewer"}
@@ -71,13 +72,33 @@ class EvidenceOps(WorkspaceOps):
         return {k: card[k] for k in ("id", "version", "sha256")} if card else None
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Effective obligations and gate status for the workspace's *current* evaluated snapshot."""
+        unit = self.unit(state, work_id)
+        snapshot = self.current_snapshot(unit)
+        ws = unit.get("workspace")
+        changed = changed_paths(Path(ws["path"]), ws["base_commit"]) if snapshot and ws else None
+        return self._gates_at(state, work_id, snapshot, changed)
+
+    def accepted_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Obligations and gates re-evaluated at the ACCEPTED (COMMIT_READY) snapshot (foundation review).
+
+        Used at publication: obligations added after acceptance (an operator-pinned card, a new policy
+        gate) must be met before DONE. Guardrail triggers come from the committed Ticket diff and the
+        fingerprint from the gated snapshot, so later workspace edits cannot change the answer.
+        """
+        unit = self.unit(state, work_id)
+        integ = unit.get("integration") or {}
+        ws = unit.get("workspace") or {}
+        changed = git_changed_between(self.repo_root, ws["base_commit"], integ["ticket_commit"])
+        return self._gates_at(state, work_id, unit.get("commit_ready_snapshot"), changed)
+
+    def _gates_at(self, state: dict[str, Any], work_id: str, snapshot: dict[str, Any] | None,
+                  changed: list[str] | None) -> dict[str, Any]:
         unit = self.unit(state, work_id)
         gates_policy = self.policy("gates")
-        snapshot = self.current_snapshot(unit)
         guard = {"violations": [], "triggered_gates": [], "changed_paths": []}
-        ws = unit.get("workspace")
-        if snapshot and ws:
-            guard = GR.evaluate(changed_paths(Path(ws["path"]), ws["base_commit"]), self.policy("guardrails"),
+        if changed is not None:
+            guard = GR.evaluate(changed, self.policy("guardrails"),
                                 (self._record_meta(unit).get("scope") or {}).get("paths", []))
         obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
                                               self.plan_gates(unit))

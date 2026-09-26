@@ -87,6 +87,8 @@ class IntegrationOps(ContextOps):
             unit = self.unit(state, work_id)
             if unit["state"] != "COMMIT_READY":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
+            if not unit.get("mutating"):
+                raise IllegalTransition(f"{work_id} is a non-mutating (evidence-only) Ticket; it never integrates source")
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
                 raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
@@ -165,6 +167,22 @@ class IntegrationOps(ContextOps):
                                   status=integ.get("status"))
         self._require_bound_validation(state, work_id, unit)
 
+    def _require_obligations_at_acceptance(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
+        """Every effective obligation — including any added after validation — is met at the accepted snapshot."""
+        gc = self.accepted_gate_context(state, work_id)
+        self._require_gates(gc, gc["obligations"]["gates"], what="publication")
+        if gc["open_required_findings"]:
+            raise GateUnsatisfied("publication: mandatory review findings are unresolved and not waived",
+                                  findings=[f["id"] for f in gc["open_required_findings"]])
+
+    def _publication_blocker(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> GateUnsatisfied | None:
+        try:
+            self._require_obligations_at_acceptance(state, work_id, unit)
+            self._require_bound_validation(state, work_id, unit)
+        except GateUnsatisfied as exc:
+            return exc
+        return None
+
     def _require_bound_validation(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
         """The recorded post-integration report passed for THIS candidate, under its plan (re-review R1)."""
         policy = self.policy("gates")["post_integration"]
@@ -206,6 +224,7 @@ class IntegrationOps(ContextOps):
                 stale = {"expected": integ["base"], "current": current}
                 ctx.summary = f"{work_id} candidate stale: authoritative ref moved"
             else:
+                self._require_obligations_at_acceptance(ctx.state, work_id, unit)
                 self._post_integration_ok(ctx.state, work_id, unit)
                 if I.authoritative_worktree_applies(self.repo_root, self.authoritative_branch):
                     I.precheck_sync(self.repo_root, integ["base"], integ["changed_paths"])
@@ -230,6 +249,7 @@ class IntegrationOps(ContextOps):
         ``integrate reconcile``; a refused sync aborts the transaction, so nothing is overwritten.
         """
         stale: StaleCandidate | None = None
+        withdrawn: GateUnsatisfied | None = None
         with self.lead_txn(token, expect_rev, "integrate.publish") as ctx:
             unit = self.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
@@ -249,14 +269,22 @@ class IntegrationOps(ContextOps):
                 stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
                                        "run `aew integrate prepare` again", **mismatch)
             elif current == base:
-                self._require_bound_validation(ctx.state, work_id, unit)
-                if applies:
-                    I.precheck_sync(self.repo_root, base, integ["changed_paths"])
-                try:
-                    I.cas_publish(self.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
-                    cas = "published"
-                except StaleCandidate as exc:
-                    stale = exc
+                withdrawn = self._publication_blocker(ctx.state, work_id, unit)
+                if withdrawn:
+                    # Nothing was published (the ref is still H): withdraw the intent so the Lead can act on
+                    # the unmet obligation instead of being held in `publishing`.
+                    integ["status"] = "validated"
+                    integ.pop("publishing_at", None)
+                    ctx.op = "integrate.withdrawn"
+                    ctx.summary = f"{work_id} publish withdrawn: {withdrawn.message}"
+                else:
+                    if applies:
+                        I.precheck_sync(self.repo_root, base, integ["changed_paths"])
+                    try:
+                        I.cas_publish(self.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
+                        cas = "published"
+                    except StaleCandidate as exc:
+                        stale = exc
             elif current is None or not git.is_ancestor(candidate, current, cwd=self.repo_root):
                 stale = StaleCandidate("the authoritative ref no longer contains the candidate", current=current)
             if stale:
@@ -264,6 +292,8 @@ class IntegrationOps(ContextOps):
                     integ["status"] = "stale_candidate"
                 ctx.op = "integrate.stale"
                 ctx.summary = f"{work_id} candidate stale"
+            elif withdrawn:
+                pass
             else:
                 faults.hit("integrate.after_cas")
                 sync: dict[str, Any] = {"status": "not_applicable (authoritative branch not checked out here)"}
@@ -292,6 +322,8 @@ class IntegrationOps(ContextOps):
                 self.before_commit(ctx)
         if stale:
             raise stale
+        if withdrawn:
+            raise withdrawn
         worktrees.remove(self.repo_root, integ["workspace"])
         self._prune_retired_candidates(unit)
         if remove_ticket_workspace:

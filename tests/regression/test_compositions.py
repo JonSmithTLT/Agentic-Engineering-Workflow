@@ -524,3 +524,44 @@ def test_a_fully_staged_change_prepares_normally(tmp_path):
     assert unit(p, wid)["workspace"]["status"] == "integrated" and not impl.workspace.exists()
     assert main_commit(p) == integ["candidate"]
     assert_control_invariants(p)
+
+
+def test_publication_enforces_an_obligation_added_after_validation(tmp_path):
+    """Foundation review: an operator-pinned review added after validation blocks DONE; nothing is stuck."""
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    integ = prepare_and_validate(p, wid)
+    p.lead("work", "staff", wid, "--review", "security_reviewer", "--by", "operator", "--pin")
+    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "GATE_UNSATISFIED" and "review_card:security_reviewer" in res.error["details"]["unmet"]
+    u = unit(p, wid)
+    assert u["state"] == "COMMIT_READY" and u["integration"]["status"] == "validated"
+    assert main_commit(p) == integ["base"]
+    p.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "security review now required")
+    assert_control_invariants(p)
+
+
+def test_an_obligation_added_during_an_interrupted_publish_withdraws_it_cleanly(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    integ = prepare_and_validate(p, wid)
+    crash_after_publishing_record(p, wid)
+    p.lead("work", "staff", wid, "--review", "security_reviewer", "--by", "operator", "--pin")
+    res = p.aew("integrate", "reconcile", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "GATE_UNSATISFIED"
+    u = unit(p, wid)
+    assert u["integration"]["status"] == "validated" and "publishing_at" not in u["integration"]
+    assert main_commit(p) == integ["base"]
+    p.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "security review now required")
+    assert_control_invariants(p)
+
+
+def test_m1_never_assigns_a_non_mutating_ticket(tmp_path):
+    """Foundation review: an evidence-only Ticket gets no mutation workspace or implementer in M1."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path, title="Evidence-only work", extra=("--non-mutating",))
+    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "ILLEGAL_TRANSITION" and "M2" in res.error["message"]
+    u = unit(p, wid)
+    assert u["state"] == "READY" and u["workspace"] is None and u["invocations"] == []
+    assert_control_invariants(p)

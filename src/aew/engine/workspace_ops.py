@@ -99,6 +99,13 @@ class WorkspaceOps(RoleOps):
             unit = self.unit(state, work_id)
             if unit["kind"] != "ticket":
                 raise IllegalTransition("only Tickets are assigned")
+            if not unit["mutating"]:
+                # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
+                # never receive either (it would bypass the serial mutation cap). Its dispatch path —
+                # investigator/researcher/planner cards, no workspace — arrives in M2 (foundation review).
+                raise IllegalTransition(
+                    f"{work_id} is a non-mutating (evidence-only) Ticket; M1 assigns mutating Tickets only "
+                    "(the non-mutating dispatch path arrives in M2)")
             transitions.check(unit["state"], "ASSIGNED", "assign")
             base = self.authoritative_commit()
             if base is None:

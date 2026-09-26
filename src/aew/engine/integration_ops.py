@@ -46,19 +46,27 @@ class IntegrationOps(ContextOps):
                 "a publish of this Ticket's integration candidate is in progress; run `aew integrate reconcile` "
                 "before changing its state", from_state=change["from"], to_state=change["to"])
 
-    def _after_state_change(self, unit: dict[str, Any], change: dict[str, str], reason: str | None) -> None:
-        super()._after_state_change(unit, change, reason)
+    def _after_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
+                            reason: str | None) -> None:
+        super()._after_state_change(state, unit, change, reason)
         if change["to"] not in KEEPS_INTEGRATION and (unit.get("integration") or {}).get("status") in OPEN_INTEGRATION:
-            self._retire_integration(unit, f"Ticket left COMMIT_READY ({change['from']} -> {change['to']})"
+            self._retire_integration(state, unit, f"Ticket left COMMIT_READY ({change['from']} -> {change['to']})"
                                      + (f": {reason}" if reason else ""))
 
-    @staticmethod
-    def _retire_integration(unit: dict[str, Any], why: str) -> None:
-        """Move the open candidate to history: it can never be published for a later acceptance."""
+    def _retire_integration(self, state: dict[str, Any], unit: dict[str, Any], why: str) -> None:
+        """Move the open candidate to history: it can never be published for a later acceptance.
+
+        Retirement also ends the write authority of every invocation dispatched for the candidate
+        (re-review M2); their reports stay durable history but can no longer be written or accepted.
+        """
         record = dict(unit["integration"])
         if record.get("status") in OPEN_INTEGRATION - {"validation_failed", "discarded"}:
             record["status"] = "superseded"
         record["retired"] = {"at": utc_now(), "reason": why}
+        for inv_id in unit.get("invocations", []):
+            inv = state["invocations"].get(inv_id) or {}
+            if inv.get("status") == "active" and inv.get("scope") == "integration":
+                self._complete_invocation(state, inv_id, "cancelled")
         unit.setdefault("integration_history", []).append(record)
         unit["integration"] = None
 
@@ -85,7 +93,7 @@ class IntegrationOps(ContextOps):
             if integ.get("status") in {"prepared", "validated"} and self.binding_problem(unit) is None:
                 raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
             if integ:
-                self._retire_integration(unit, f"replaced by a new candidate (was {integ.get('status')})")
+                self._retire_integration(state, unit, f"replaced by a new candidate (was {integ.get('status')})")
             gc = self.gate_context(state, work_id)
             self._require_gates(gc, gc["obligations"]["gates"], what="integration")
             if gc["open_required_findings"]:
@@ -179,7 +187,7 @@ class IntegrationOps(ContextOps):
             superseded = self.binding_problem(unit)
             current = self.authoritative_commit()
             if superseded:
-                self._retire_integration(unit, "bound to an earlier COMMIT_READY or plan")
+                self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
                 stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
@@ -226,7 +234,8 @@ class IntegrationOps(ContextOps):
                 raise IntegrityError("CONTRADICTION: the published candidate is not bound to the Ticket's current "
                                      "COMMIT_READY acceptance; operator inspection required", ref=ref, **mismatch)
             if mismatch:
-                self._retire_integration(unit, "bound to an earlier COMMIT_READY or plan (found at finalization)")
+                self._retire_integration(ctx.state, unit,
+                                         "bound to an earlier COMMIT_READY or plan (found at finalization)")
                 stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
                                        "run `aew integrate prepare` again", **mismatch)
             elif current == base:
@@ -265,7 +274,8 @@ class IntegrationOps(ContextOps):
                 ctx.session.write(f"work/{work_id}/completion.md", completion)
                 ctx.refs.append(f"work/{work_id}/completion.md")
                 unit["completion_record"] = f"work/{work_id}/completion.md"
-                self._set_state(unit, "DONE", f"integrated as {candidate[:12]}; post-integration verification passed")
+                self._set_state(unit, "DONE", f"integrated as {candidate[:12]}; post-integration verification passed",
+                                state=ctx.state)
                 remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
                 ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.authoritative_branch}"
                 self.before_commit(ctx)

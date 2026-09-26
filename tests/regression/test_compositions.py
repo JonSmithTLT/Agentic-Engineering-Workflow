@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from aewflow import (SUBTRACT_PATCH, assign, create_planned_ticket, implement, integrate, prepare_and_validate,
                      redispatch_implementer, review, sample_project, to_commit_ready, verify)
 from conftest import git
@@ -368,3 +370,47 @@ def test_workspace_inspection_reads_content_not_index_flags(tmp_path):
     assert git("status", "--porcelain", cwd=impl.workspace) == ""  # what git status would have claimed
     assert worktrees.inspect(str(impl.workspace), head)["dirty"] is True
     assert git("ls-files", "-v", "calc/core.py", cwd=impl.workspace).startswith("h ")
+
+
+def test_retiring_a_candidate_ends_its_verifiers_write_authority(tmp_path):
+    """M2 residual: a retired candidate's integration verifier is revoked; history is kept."""
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    straggler = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    assert p.ok("invoke", "show", straggler["invocation"])["integration_attempt"] == 1
+    p.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "supersede the candidate")
+    assert p.ok("invoke", "show", straggler["invocation"])["status"] == "cancelled"
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("kind", ["review", "verification"])
+def test_reports_are_written_only_for_a_live_workspace(tmp_path, kind):
+    """M2 residual, defense in depth: review/verification submission is bound to the invocation's live
+    workspace even if its credential were somehow still valid (simulated legacy state)."""
+    from aew.engine.api import Engine
+    from aew.engine.store import Transition
+    from aewflow import Role
+    from aew.util import dump_yaml
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    if kind == "verification":
+        p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+        p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    role = "reviewer" if kind == "review" else "verifier"
+    out = p.lead("invoke", "create", wid, "--role", role)
+    agent = Role(p, out["invocation_token"], Path(unit(p, wid)["workspace"]["path"]))
+    checks = [agent.check("unit")["evidence"]] if kind == "verification" else []
+    engine = Engine.discover(p.root)
+    with engine.store.session() as sess:
+        sess.state["work"][wid]["workspace"]["status"] = "released (test)"
+        sess.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
+    meta = ({"review": {"independence": "R1", "disposition": "pass", "findings": []}} if kind == "review" else
+            {"verification": {"scope": "ticket", "claims": [
+                {"type": "goal_backwards", "claim": "g", "result": "pass", "checks": checks},
+                {"type": "contract", "claim": "c", "result": "pass", "checks": checks}]}})
+    res = agent.submit(kind, meta, expect_ok=False)
+    assert res.error["code"] == "PERMISSION_DENIED" and "no longer the Ticket's live workspace" in res.error["message"]

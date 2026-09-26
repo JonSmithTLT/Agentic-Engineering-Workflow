@@ -103,7 +103,6 @@ def test_long_lived_role_catalog_refreshes_adopted_manifest(tmp_path):
     assert 'special_engineer' in {c['id'] for c in engine.role_list()['cards']}, 'Long-lived role_list still uses the previous manifest'
 
 
-@pytest.mark.xfail(strict=True, reason="re-review M2 residual (open)")
 def test_retiring_candidate_revokes_its_verifier_submission_authority(tmp_path):
     from aewflow import Role
     from aew.util import dump_yaml

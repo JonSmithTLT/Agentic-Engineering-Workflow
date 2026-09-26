@@ -70,3 +70,7 @@ The review found that the normal-path checks above did not hold across recovery 
   - `worktrees.inspect` compares HEAD's tree with a tree built from the workspace **content**: tracked plus untracked-not-ignored, `.aew/` included, built in the same flag-neutralized temporary index as the fingerprint. The real index flags are preserved.
   - Removal requires positive proof: HEAD is the integrated Ticket commit and the content equals it. Where content cannot be established (sparse entries), the workspace is retained ("content could not be verified") and reported.
   - `prepare` refuses a Ticket workspace whose index marks paths assume-unchanged/skip-worktree, because `git add` would silently leave those edits out of the Ticket commit. The flags are reported, never cleared on the user's behalf.
+- **Retirement ends write authority (M2 residual).**
+  - Retiring a candidate (leaving COMMIT_READY, re-preparing, or a binding mismatch at publish or finalization) cancels every active integration-scope invocation of the Ticket and revokes its credential. The state-change path now receives the transaction's control state for this.
+  - Integration invocations record the candidate they serve (`integration_attempt`, `candidate`).
+  - **Every** submission kind (implementation report, review, verification) and every check run resolves the invocation's own workspace or candidate, and only while it is live, so a credential never outlives its assignment. Earlier reports remain durable history.

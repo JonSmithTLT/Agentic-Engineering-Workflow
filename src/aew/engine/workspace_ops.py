@@ -125,7 +125,7 @@ class WorkspaceOps(RoleOps):
                                                          workspace_id=ws["id"], snapshot=snapshot, card=card)
                 unit["implementer_invocation"] = inv_id
                 self.build_pack(ctx, inv_id)
-                change = self._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}")
+                change = self._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}", state=state)
                 ctx.summary = f"{work_id} assigned: {ws['id']} at {base[:12]}"
                 self.before_commit(ctx)
             except BaseException:

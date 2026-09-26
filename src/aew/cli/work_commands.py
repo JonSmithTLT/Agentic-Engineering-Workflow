@@ -55,6 +55,12 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = wsub.add_parser("ready", help="Tickets ready for assignment")
     q.set_defaults(handler=lambda a: _engine(a).work_list(state_filter="READY"))
 
+    q = wsub.add_parser("assign", help="READY -> ASSIGNED: workspace + implementer invocation (Lead)")
+    q.add_argument("work_id")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_assign(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                           work_id=a.work_id))
+
     q = wsub.add_parser("transition", help="Lead transition (guards and reasons enforced)")
     q.add_argument("work_id")
     q.add_argument("--to", required=True)

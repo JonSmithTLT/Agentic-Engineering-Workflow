@@ -3,7 +3,9 @@ sequences, not only the number of random store writes").
 
 Each step picks an operation that is plausible for a Ticket's current state, plus cross-cutting
 ones (Lead handoff, operator-authorized takeover, a relevant edit after evidence, a second mutating
-Ticket, crash-injected commits and publishes), runs it in-process through the Engine API — the same
+Ticket, crash-injected commits and publishes) and adversarial ones from the remediation re-review:
+straggler invocations, reports submitted but never ingested, late submissions with any credential
+ever issued, and replayed ingestion of any earlier report. Each runs in-process through the Engine API — the same
 authority the CLI uses — and then checks the cross-operation invariants.
 
 * Rejections (``AEWError``) are expected: the walk deliberately tries things the state forbids.
@@ -58,6 +60,8 @@ class Walk:
         self.gen = 1  # generation of self.token (sample_project acquired the seat)
         self.engine = Engine.discover(self.root)
         self.impl_token: dict[str, str] = {}
+        self.issued: list[tuple[str, str, str, str]] = []  # (work id, credential, role, scope) — ever issued
+        self.submitted: list[tuple[str, str, str]] = []  # (work id, evidence id, kind) — ever submitted
         self.variant = 0
         self.log: list[str] = []
         self.accepted = 0
@@ -92,14 +96,45 @@ class Walk:
 
     # ------------------------------------------------------------------ actions
 
+    def dispatch(self, wid: str, role: str, scope: str = "ticket") -> str:
+        kw: dict[str, Any] = {"role": role} | ({"scope": "integration"} if scope == "integration" else {})
+        tok = self.lead("invoke_create", work_id=wid, **kw)["invocation_token"]
+        self.issued.append((wid, tok, role, scope))
+        return tok
+
+    def submit_review(self, wid: str, tok: str, passing: bool) -> str:
+        open_required = [f["id"] for f in self.unit(wid).get("findings", [])
+                         if f["required"] and f["status"] == "open"]
+        review = {"independence": "R1", "disposition": "pass" if passing else "changes_required",
+                  "findings": [] if passing else [{"id": f"F{self.variant}", "severity": "major",
+                                                   "summary": "walk finding"}],
+                  "resolved_findings": open_required if passing else []}
+        ev = self.submit(tok, "review", {"claim": "walk review", "review": review})
+        self.submitted.append((wid, ev, "review"))
+        return ev
+
+    def submit_verification(self, wid: str, tok: str, scope: str, goal: str = "pass") -> str:
+        unit_ev = self.engine.check_run(invocation_token=tok, check_id="unit")["evidence"]
+        claims = [{"type": "goal_backwards", "claim": "behaviour present", "result": goal, "checks": [unit_ev]}]
+        if scope == "ticket":
+            guard_ev = self.engine.check_run(invocation_token=tok, check_id="guardrails")["evidence"]
+            claims.append({"type": "contract", "claim": "guardrails respected", "result": "pass",
+                           "checks": [guard_ev]})
+        ev = self.submit(tok, "verification", {"claim": "walk verification",
+                                               "verification": {"scope": scope, "claims": claims}})
+        self.submitted.append((wid, ev, "verification"))
+        return ev
+
     def assign(self, wid: str) -> None:
-        self.impl_token[wid] = self.lead("work_assign", work_id=wid)["invocation_token"]
+        tok = self.lead("work_assign", work_id=wid)["invocation_token"]
+        self.impl_token[wid] = tok
+        self.issued.append((wid, tok, "implementer", "ticket"))
 
     def start(self, wid: str) -> None:
         self.lead("work_transition", work_id=wid, to="RUNNING")
 
     def redispatch(self, wid: str) -> None:
-        self.impl_token[wid] = self.lead("invoke_create", work_id=wid, role="implementer")["invocation_token"]
+        self.impl_token[wid] = self.dispatch(wid, "implementer")
 
     def implement(self, wid: str) -> None:
         ws = self.workspace(wid)
@@ -125,27 +160,42 @@ class Walk:
         self.lead("work_transition", work_id=wid, to=state, reason=reason)
 
     def review(self, wid: str) -> None:
-        passing = self.rng.random() < 0.7
-        tok = self.lead("invoke_create", work_id=wid, role="reviewer")["invocation_token"]
-        open_required = [f["id"] for f in self.unit(wid).get("findings", [])
-                         if f["required"] and f["status"] == "open"]
-        review = {"independence": "R1", "disposition": "pass" if passing else "changes_required",
-                  "findings": [] if passing else [{"id": f"F{self.variant}", "severity": "major",
-                                                   "summary": "walk finding"}],
-                  "resolved_findings": open_required if passing else []}
-        ev = self.submit(tok, "review", {"claim": "walk review", "review": review})
+        ev = self.submit_review(wid, self.dispatch(wid, "reviewer"), passing=self.rng.random() < 0.7)
         self.lead("review_ingest", work_id=wid, evidence_id=ev)
+
+    def review_submit_only(self, wid: str) -> None:
+        self.submit_review(wid, self.dispatch(wid, "reviewer"), passing=self.rng.random() < 0.7)
 
     def verify(self, wid: str) -> None:
         goal = self.rng.choice(["pass", "pass", "pass", "fail", "blocked"])
-        tok = self.lead("invoke_create", work_id=wid, role="verifier")["invocation_token"]
-        unit_ev = self.engine.check_run(invocation_token=tok, check_id="unit")["evidence"]
-        guard_ev = self.engine.check_run(invocation_token=tok, check_id="guardrails")["evidence"]
-        ev = self.submit(tok, "verification", {"claim": "walk verification", "verification": {
-            "scope": "ticket", "claims": [
-                {"type": "goal_backwards", "claim": "behaviour present", "result": goal, "checks": [unit_ev]},
-                {"type": "contract", "claim": "guardrails respected", "result": "pass", "checks": [guard_ev]}]}})
+        ev = self.submit_verification(wid, self.dispatch(wid, "verifier"), "ticket", goal)
         self.lead("verify_ingest", work_id=wid, evidence_id=ev)
+
+    def verify_submit_only(self, wid: str) -> None:
+        self.submit_verification(wid, self.dispatch(wid, "verifier"), "ticket")
+
+    def straggler(self, wid: str) -> None:
+        """Dispatch a role for the current phase and never use it (a lost or slow subagent)."""
+        st = self.unit(wid)["state"]
+        role, scope = {"REVIEW_PENDING": ("reviewer", "ticket"), "VERIFY_PENDING": ("verifier", "ticket"),
+                       "COMMIT_READY": ("verifier", "integration")}.get(st, ("implementer", "ticket"))
+        self.dispatch(wid, role, scope)
+
+    def late_submit(self, wid: str) -> None:
+        """Use ANY credential ever issued, whatever has happened since (revocations must hold)."""
+        w, tok, role, scope = self.rng.choice(self.issued)
+        if role == "reviewer":
+            self.submit_review(w, tok, passing=True)
+        elif role == "verifier":
+            self.submit_verification(w, tok, scope)
+        else:
+            self.engine.check_run(invocation_token=tok, check_id="unit")
+
+    def replay(self, wid: str) -> None:
+        """Ingest ANY earlier report of this Ticket — the engine must accept it only for its own assignment."""
+        mine = [(ev, kind) for w, ev, kind in self.submitted if w == wid]
+        ev, kind = self.rng.choice(mine)
+        self.lead("review_ingest" if kind == "review" else "verify_ingest", work_id=wid, evidence_id=ev)
 
     def classify(self, wid: str) -> None:
         cls = self.rng.choice(sorted(transitions.VERIFICATION_CLASSIFICATIONS))
@@ -162,12 +212,11 @@ class Walk:
         self.lead("integrate_prepare", work_id=wid)
 
     def integration_verify(self, wid: str) -> None:
-        tok = self.lead("invoke_create", work_id=wid, role="verifier", scope="integration")["invocation_token"]
-        unit_ev = self.engine.check_run(invocation_token=tok, check_id="unit")["evidence"]
-        ev = self.submit(tok, "verification", {"claim": "post-integration", "verification": {
-            "scope": "integration", "claims": [
-                {"type": "goal_backwards", "claim": "integrated behaviour", "result": "pass", "checks": [unit_ev]}]}})
+        ev = self.submit_verification(wid, self.dispatch(wid, "verifier", "integration"), "integration")
         self.lead("verify_ingest", work_id=wid, evidence_id=ev)
+
+    def integration_submit_only(self, wid: str) -> None:
+        self.submit_verification(wid, self.dispatch(wid, "verifier", "integration"), "integration")
 
     def publish(self, wid: str) -> None:
         self.lead("integrate_publish", work_id=wid)
@@ -210,16 +259,17 @@ class Walk:
             "READY": [("assign", 8)],
             "ASSIGNED": [("start", 8)] if impl_active else [("redispatch", 8)],
             "RUNNING": [("implement", 6), ("to:REVIEW_PENDING", 5)] if impl_active else [("redispatch", 8)],
-            "REVIEW_PENDING": [("review", 8), ("regress", 1)],
+            "REVIEW_PENDING": [("review", 8), ("review_submit_only", 1), ("straggler", 0.5), ("regress", 1)],
             "REVIEW_FAILED": [("regress", 8)],
             "REVIEW_PASSED": [("to:VERIFY_PENDING", 8), ("edit", 1), ("regress", 2)],
-            "VERIFY_PENDING": [("verify", 8), ("regress", 1)],
+            "VERIFY_PENDING": [("verify", 8), ("verify_submit_only", 1), ("straggler", 0.5), ("regress", 1)],
             "VERIFICATION_FAILED": [("classify", 8), ("regress", 1)],
             "VERIFICATION_INCONCLUSIVE": [("to:VERIFY_PENDING", 6), ("regress", 2)],
             "VERIFIED": [("to:COMMIT_READY", 8), ("edit", 2), ("regress", 1)],
             "COMMIT_READY": {
                 None: [("prepare", 8), ("edit", 1), ("regress", 1)],
-                "prepared": [("integration_verify", 8), ("regress", 1)],
+                "prepared": [("integration_verify", 8), ("integration_submit_only", 1.5), ("straggler", 0.5),
+                             ("regress", 1)],
                 "validated": [("publish", 5), ("publish!", 7), ("regress", 1)],
                 "publishing": [("reconcile_publish", 8), ("regress", 1)],
             }.get(integ, [("prepare", 4), ("regress", 4)]),
@@ -229,6 +279,10 @@ class Walk:
         common: list[tuple[str, float]] = [("handoff", 0.4), ("takeover", 0.4), ("second_ticket", 0.3)]
         if st not in {"DONE", "CANCELLED", "BLOCKED"}:
             common.append(("replan", 0.3))
+        if self.issued:
+            common.append(("late_submit", 0.6))
+        if any(w == wid for w, _, _ in self.submitted) and st in {"REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY"}:
+            common.append(("replay", 1.5))
         return by_state + common
 
     def lead_recovery(self) -> str | None:

@@ -57,3 +57,8 @@ The table above is unchanged. The review found two places where cross-state obli
   - Every other state is already determined by ingested evidence or by a Lead decision, and is retained. These include VERIFICATION_FAILED (which still requires the Lead's classification), REVIEW_FAILED/PASSED, VERIFIED, INCONCLUSIVE, REPLAN_REQUIRED, ESCALATED, and COMMIT_READY while `publishing`. The revocation is recorded in the Ticket's history.
   - Interruption transitions are now recorded in history as well.
   - Reconciliation still returns only to the interrupted phase or an earlier one. Since VERIFICATION_FAILED is never interrupted, no reconcile path reaches mutation or replanning without a classification.
+
+### Addendum 2026-09-26 — focused re-review
+
+- **A finished Ticket leaves no live credentials.** Entering a terminal state (DONE or CANCELLED) cancels every remaining active invocation of the Ticket and revokes its credential, enforced in the single state-change path. Before this, stragglers (dispatched, never used) kept live credentials past DONE. They could not write, because their workspace was no longer live, but their authority outlived the work.
+- Found by the extended adversarial walk, which now also dispatches stragglers, submits reports it never ingests, submits late with any credential ever issued, and replays ingestion of any earlier report. The invariant oracle checks after every step that no report was accepted for another plan, attempt or candidate, and that no evidence postdates its credential's revocation.

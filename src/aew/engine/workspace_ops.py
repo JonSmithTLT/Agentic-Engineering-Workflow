@@ -75,6 +75,14 @@ class WorkspaceOps(RoleOps):
             inv["status"] = status
             revoke(state, inv["token_id"], f"invocation {status}")
 
+    def _after_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
+                            reason: str | None) -> None:
+        super()._after_state_change(state, unit, change, reason)
+        if change["to"] in transitions.TERMINAL:
+            # A finished Ticket has no assignments left: no credential outlives it (re-review walk finding).
+            for inv_id in unit.get("invocations", []):
+                self._complete_invocation(state, inv_id, "cancelled")
+
     # ------------------------------------------------------------------ assignment
 
     @staticmethod

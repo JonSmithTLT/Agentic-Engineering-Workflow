@@ -248,7 +248,8 @@ def precheck_sync(repo_root: Path, base: str, paths: list[str]) -> None:
     if problems:
         raise IntegrityError(
             "the authoritative worktree has local changes on paths this integration changes; "
-            "commit/stash them (and clear index flags) before publishing",
+            "commit/stash them (and clear index flags), then publish again — or, if a publish was interrupted, "
+            "run `aew integrate reconcile`",
             paths=dict(sorted(problems.items())[:50]))
 
 

@@ -43,3 +43,17 @@ The table above is unchanged. The review found two places where cross-state obli
   - The next assignment allocates a fresh attempt from the authoritative ref. The old branch and worktree are kept for provenance and inspection.
 - **The serial cap counts live workspaces (M2).** Disposition B6 is unchanged in intent: a mutating Ticket counts while it holds a live workspace (`workspace.status == active`), **whatever its state**. A READY or BLOCKED Ticket can no longer hide one. Assigning a Ticket that still holds its own live workspace is refused.
 - **Invocations stay bound to their workspace (M2).** Each invocation records the workspace (or integration candidate) it was dispatched for, and every check run and report submission resolves *that* workspace, and only while it is still live. An invocation is never retargeted to a later attempt of the same Ticket.
+- **Interruption never erases a pending obligation (M5).**
+  - When a Lead handoff or takeover interrupts an in-flight invocation, the invocation is always revoked and marked `interrupted`.
+  - The Ticket becomes INTERRUPTED only if its current phase is **waiting on that invocation**:
+
+    | Ticket state | Waiting on |
+    |---|---|
+    | ASSIGNED, RUNNING | implementer |
+    | REVIEW_PENDING | reviewer |
+    | VERIFY_PENDING | Ticket-scope verifier |
+    | COMMIT_READY, candidate `prepared` | integration verifier |
+
+  - Every other state is already determined by ingested evidence or by a Lead decision, and is retained. These include VERIFICATION_FAILED (which still requires the Lead's classification), REVIEW_FAILED/PASSED, VERIFIED, INCONCLUSIVE, REPLAN_REQUIRED, ESCALATED, and COMMIT_READY while `publishing`. The revocation is recorded in the Ticket's history.
+  - Interruption transitions are now recorded in history as well.
+  - Reconciliation still returns only to the interrupted phase or an earlier one. Since VERIFICATION_FAILED is never interrupted, no reconcile path reaches mutation or replanning without a classification.

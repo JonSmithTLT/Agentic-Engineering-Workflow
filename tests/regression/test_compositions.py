@@ -198,3 +198,43 @@ def test_invocation_is_never_retargeted_to_another_workspace(tmp_path):
     res = impl.aew("check", "run", "guardrails")
     assert res.error["code"] == "PERMISSION_DENIED"
     assert "no longer the Ticket's live workspace" in res.error["message"]
+
+
+def handoff(p):
+    offer = p.lead("lead", "handoff", "offer")["offer"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+
+
+def test_interruption_keeps_a_review_failure_and_revokes_the_sibling_reviewer(tmp_path):
+    """M5 generalized: a state determined by ingested evidence survives the loss of an unrelated invocation."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    p.lead("work", "staff", wid, "--review", "code_reviewer", "--review", "security_reviewer")
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    sibling = p.lead("invoke", "create", wid, "--card", "security_reviewer")["invocation"]
+    failing = review(p, wid, card="code_reviewer", disposition="changes_required",
+                     findings=[{"id": "F1", "severity": "major", "summary": "edge case missing"}])
+    p.lead("review", "ingest", wid, "--evidence", failing)
+    assert unit(p, wid)["state"] == "REVIEW_FAILED"
+    handoff(p)
+    u = unit(p, wid)
+    assert u["state"] == "REVIEW_FAILED" and "interrupted_from" not in u
+    assert p.ok("invoke", "show", sibling)["status"] == "interrupted"
+    assert u["history"][-1]["event"] == "invocation_interrupted"
+    assert_control_invariants(p)
+
+
+def test_handoff_while_publishing_keeps_commit_ready_and_reconcile_completes(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    straggler = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")["invocation"]
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    crash_after_publishing_record(p, wid)
+    handoff(p)
+    u = unit(p, wid)
+    assert u["state"] == "COMMIT_READY" and u["integration"]["status"] == "publishing"
+    assert p.ok("invoke", "show", straggler)["status"] == "interrupted"
+    assert p.lead("integrate", "reconcile", wid)["state"] == "DONE"
+    assert_control_invariants(p)

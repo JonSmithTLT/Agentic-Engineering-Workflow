@@ -209,7 +209,6 @@ def test_first_resume_after_manifest_crash_exposes_recovered_authority(tmp_path)
         'First reconstruction omitted committed authority and reported no contradiction', first['contradictions'])
 
 
-@pytest.mark.xfail(strict=True, reason="review M5 (open)")
 def test_interruption_does_not_bypass_failure_classification(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)

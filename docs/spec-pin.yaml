@@ -1,0 +1,40 @@
+# Pin of the frozen AEW specification set (manifest freeze_rule:
+# "Pin the repository revision containing it").
+#
+# The pinned revision is the annotated tag below. This file records content
+# hashes so tests/test_spec_pin.py fails if any frozen document is modified.
+# Hash basis: raw file bytes as checked out; .gitattributes enforces LF so the
+# bytes are identical on every platform. git_blob is `git hash-object`.
+#
+# Changing a frozen document requires an explicit migration review and a new
+# spec set (manifest compatibility_rule); do not edit these hashes to make a
+# failing test pass.
+schema: aew/spec-pin/v1
+spec_set: aew-frozen-2026-09-25
+tag: aew-spec-frozen-2026-09-25
+manifest: docs/aew-spec-manifest-v0.2.yaml
+documents:
+  - path: docs/aew-spec-manifest-v0.2.yaml
+    role: spec_manifest
+    version: "0.2"
+    bytes: 2385
+    sha256: 6690a23f1cc9724ec1b713b3dacda5f89c5ba1ba10e3017b8a3c3433e4cc56fc
+    git_blob: bff199bd32641493127eb54b287a8ac19aa6f80a
+  - path: docs/agent-engineering-workflow-design-v0.7.md
+    role: workflow_contract
+    version: "0.7"
+    bytes: 97010
+    sha256: 29c700ed6c6acc585e6b4ae1f9b438b242b2ddc8e88a004ecd078c9d937b5774
+    git_blob: fe7d3a7cc3d9c225db20dccb6f4db2872910b946
+  - path: docs/aew-knowledge-contract-v0.4.md
+    role: knowledge_contract
+    version: "0.4"
+    bytes: 45092
+    sha256: b5d555dcc3c9290779cbada8fd5f918507f74f0d80fbe28fde3642658ffa4f20
+    git_blob: 352cc2da3a6e415846820791f5358d3bbf345d17
+  - path: docs/spt-agent-toolchain-remediation-v0.2.md
+    role: implementation_appendix
+    version: "0.2"
+    bytes: 6645
+    sha256: 6e857bc1dfd2aea040f96f15601e0730e8e31680c54019e5613594a235108d09
+    git_blob: 88c4dc4da74664c3d6d52ec0ffb3a8092b3b83d3

@@ -1,0 +1,13 @@
+schema: aew/role/v1
+role: code_reviewer
+display_name: Code Reviewer
+version: 1
+extends: reviewer
+purpose: Context-independent (R1) review of a change against requirement, plan and contracts.
+use_when:
+  - baseline independent review of any Class 1+ change
+responsibilities:
+  - review correctness, error paths, test adequacy and unnecessary scope
+skills: [code-review]
+required_capabilities: [exact_code_search]
+outputs: [review]

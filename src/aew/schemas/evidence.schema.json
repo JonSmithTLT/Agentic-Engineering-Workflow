@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/evidence/v1",
+  "title": "Engineering evidence record",
+  "description": "Immutable, attributable evidence (WC §9.7-9.9, KC §11): what / who / when / against / how / result / evidence. Producer, snapshot and plan binding are engine-owned and never taken from the submitter.",
+  "type": "object",
+  "required": ["schema", "id", "kind", "work_unit", "producer", "created_at", "evaluated_snapshot", "method", "claim", "result"],
+  "properties": {
+    "schema": {"const": "aew/evidence/v1"},
+    "id": {"type": "string"},
+    "kind": {"enum": ["implementation_report", "review", "verification", "check_result"]},
+    "work_unit": {"type": "string"},
+    "producer": {
+      "type": "object",
+      "required": ["role", "invocation"],
+      "properties": {
+        "role": {"type": "string"},
+        "invocation": {"type": "string"},
+        "model": {"type": ["string", "null"]},
+        "provider": {"type": ["string", "null"]},
+        "harness": {"type": ["string", "null"]}
+      }
+    },
+    "created_at": {"type": "string"},
+    "plan_revision": {
+      "type": ["object", "null"],
+      "properties": {"revision": {"type": "integer"}, "sha256": {"type": "string"}}
+    },
+    "evaluated_snapshot": {"$ref": "#/$defs/snapshot"},
+    "method": {"type": "object"},
+    "claim": {"type": "string"},
+    "result": {"enum": ["pass", "fail", "inconclusive", "blocked"]},
+    "evidence": {
+      "type": "array",
+      "items": {"type": "object", "required": ["path", "sha256"]}
+    },
+    "implementation": {
+      "type": "object",
+      "properties": {
+        "files_changed": {"type": "array", "items": {"type": "string"}},
+        "checks_run": {"type": "array", "items": {"type": "string"}},
+        "deviations": {"type": "array", "items": {"type": "string"}},
+        "unexpected_findings": {"type": "array", "items": {"type": "string"}},
+        "self_review": {
+          "type": "object",
+          "required": ["completed"],
+          "properties": {"completed": {"type": "boolean"}, "notes": {"type": ["string", "null"]}}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["independence", "disposition", "findings"],
+      "properties": {
+        "independence": {"enum": ["R0", "R1", "R2", "R3"]},
+        "specialty": {"type": ["string", "null"]},
+        "disposition": {"enum": ["pass", "changes_required"]},
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "severity", "summary", "required"],
+            "properties": {
+              "id": {"type": "string"},
+              "severity": {"enum": ["blocker", "major", "minor", "observation"]},
+              "summary": {"type": "string"},
+              "location": {"type": ["string", "null"]},
+              "required": {"type": "boolean"}
+            }
+          }
+        },
+        "resolved_findings": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["scope", "claims"],
+      "properties": {
+        "scope": {"enum": ["ticket", "integration"]},
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "claim", "result"],
+            "properties": {
+              "type": {"enum": ["goal_backwards", "contract"]},
+              "claim": {"type": "string"},
+              "result": {"enum": ["pass", "fail", "inconclusive", "blocked"]},
+              "checks": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "suspected_cause": {"type": ["string", "null"]}
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["check_id", "exit_code"],
+      "properties": {
+        "check_id": {"type": "string"},
+        "exit_code": {"type": ["integer", "null"]},
+        "duration_s": {"type": "number"},
+        "mutated_inputs": {"type": "boolean"},
+        "violations": {"type": "array"},
+        "triggered_gates": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "snapshot": {
+      "type": "object",
+      "required": ["base_revision", "workspace_id", "relevant_inputs_fingerprint"],
+      "properties": {
+        "base_revision": {"type": ["string", "null"]},
+        "workspace_id": {"type": "string"},
+        "relevant_inputs_fingerprint": {"type": "string"},
+        "artifact_digests": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

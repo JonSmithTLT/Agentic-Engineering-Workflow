@@ -1,0 +1,17 @@
+schema: aew/role/v1
+role: security_reviewer
+display_name: Security Reviewer
+version: 1
+extends: reviewer
+specialty: security
+purpose: Specialist security review of changes crossing auth, crypto, secrets or attacker-controlled parsing (WC §10.3).
+use_when:
+  - a guardrail review trigger for security fires
+  - the change touches authentication/authorization, cryptography, secrets or untrusted input parsing
+responsibilities:
+  - assess key/nonce/IV handling, credential/token handling, zeroization and input validation
+  - treat security-sensitive-code detection as a trigger, not proof of security
+skills: [security-review]
+required_capabilities: [exact_code_search]
+optional_capabilities: [security_sensitive_code_detection, static_analysis]
+outputs: [review]

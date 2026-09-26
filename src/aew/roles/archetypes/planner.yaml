@@ -1,0 +1,22 @@
+schema: aew/role-archetype/v1
+role: planner
+persistent: false
+dispatchable: true
+dispatch_status: "cards may extend it now; planner writeback arrives in M2 (the Lead records plans in M1)"
+default_card: null
+authority:
+  - propose a plan/design; the Lead accepts it (WC §5.4)
+responsibilities:
+  - make dependencies, risks, affected components, validation requirements and assumptions explicit
+engine_operations: [context.read]
+evidence_kinds: [plan_proposal]
+authority_capabilities: []
+prohibited:
+  - accepting its own plan
+outputs:
+  - proposed plan revision
+context:
+  knowledge: [requirement, discovery_evidence, accepted_authority, architecture_map, validation_requirements,
+              open_questions]
+  excluded: [unrelated historical implementation chatter]
+capabilities: []

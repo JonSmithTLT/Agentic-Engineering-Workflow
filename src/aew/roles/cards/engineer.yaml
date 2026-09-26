@@ -1,0 +1,13 @@
+schema: aew/role/v1
+role: engineer
+display_name: Engineer
+version: 1
+extends: implementer
+purpose: General software engineer implementing an accepted Ticket plan within scope.
+use_when:
+  - no language- or domain-specific engineering card fits better
+responsibilities:
+  - follow the project's existing conventions and ownership boundaries
+skills: []
+required_capabilities: [exact_code_search, source_mutation, targeted_test_execution]
+outputs: [implementation_report]

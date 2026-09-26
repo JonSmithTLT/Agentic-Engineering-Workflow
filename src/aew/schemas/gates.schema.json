@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/gates/v1",
+  "title": "Gate policy",
+  "description": "Risk-class gate paths and integration policy (WC \u00a77.5, \u00a713). Gate names: accepted_plan, local_checks, self_review, review_r1, verification_goal_backwards, verification_contract, review_<trigger>.",
+  "type": "object",
+  "required": [
+    "schema",
+    "risk_paths",
+    "local_checks",
+    "post_integration"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aew/gates/v1"
+    },
+    "mutating_concurrency": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "local_checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_paths": {
+      "type": "object",
+      "required": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "post_integration": {
+      "type": "object",
+      "required": [
+        "verification",
+        "checks"
+      ],
+      "properties": {
+        "verification": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "waivable_gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waivable_finding_severities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "blocker",
+          "major",
+          "minor",
+          "observation"
+        ]
+      }
+    }
+  }
+}

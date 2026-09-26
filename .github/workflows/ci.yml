@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.11"   # Rocky Linux 8 AppStream / SPT wheelhouse target
+          - os: windows-latest
+            python: "3.13"   # developer workstation
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # spec-pin test verifies the frozen tag
+      - run: git fetch --tags --force
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Configure git identity for fixture repos
+        run: |
+          git config --global user.name "AEW CI"
+          git config --global user.email "aew-ci@invalid"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q

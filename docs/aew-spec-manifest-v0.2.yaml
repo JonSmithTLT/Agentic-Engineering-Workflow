@@ -1,0 +1,42 @@
+spec_set: aew-frozen-2026-09-25
+status: frozen
+workflow_contract:
+  version: "0.7"
+  file: agent-engineering-workflow-design-v0.7.md
+knowledge_contract:
+  version: "0.4"
+  file: aew-knowledge-contract-v0.4.md
+capability_contract:
+  version: "embedded-0.7"
+  location: "Agent Engineering Workflow §16"
+implementation_appendices:
+  - name: spt-agent-toolchain-remediation
+    version: "0.2"
+    file: spt-agent-toolchain-remediation-v0.2.md
+compatibility_rule: >-
+  Treat this manifest as the compatible freeze/implementation set. Do not mix an older
+  Workflow Contract or Knowledge Contract into implementation without an explicit migration review.
+freeze_rule: >-
+  This compatible set is frozen. Pin the repository revision containing it. Subsequent discoveries
+  should be tracked as implementation issues or ADRs/amendments; bump the contract version only
+  when a change alters normative workflow, authority, state, or knowledge semantics.
+review_basis:
+  - fresh-eyes review of AEW v0.5 + Knowledge Contract v0.2 + SPT remediation v0.1
+  - final freeze review of AEW v0.6 + Knowledge Contract v0.3 + SPT remediation v0.2
+  - fixes: Lead-owned verification-failure classification
+  - fixes: isolated concurrent mutation and controlled integration
+  - fixes: local risk class plus inherited mandatory ancestor policy
+  - fixes: explicit Ghidra remote-artifact/binary-analysis capability mapping
+  - fixes: bootstrap remediation backlog transitions into AEW Work Graph
+  - final clarification: mutating dependency satisfied only by accepted integrated output plus required integration checks
+  - final clarification: review/verification evidence binds to evaluated snapshot including relevant uncommitted inputs
+  - final clarification: atomic/version-aware control updates reject superseded Lead writers
+implementation_entrypoint:
+  first_vertical_slice: >-
+    Prove one complete serial Ticket path: initialize, accept plan, implement, independently review,
+    verify against evaluated snapshot, integrate, post-integration validate, close, destroy session,
+    and reconstruct from durable state.
+  adversarial_cases:
+    - unintegrated upstream mutating Ticket does not unblock dependent work
+    - relevant uncommitted input mutation makes prior passing evidence stale for current gate
+    - crash/superseded Lead cannot partially overwrite or corrupt accepted control state

@@ -1,0 +1,29 @@
+schema: aew/role-archetype/v1
+role: reviewer
+persistent: false
+dispatchable: true
+default_card: code_reviewer
+authority:
+  - report findings about the change (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
+responsibilities:
+  - evaluate the change against the requirement, contracts/guardrails, accepted plan, diff and check output
+  - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
+  - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
+  - when re-reviewing, state which earlier findings are resolved
+engine_operations: [submit.review, context.read]
+evidence_kinds: [review]
+authority_capabilities: []
+prohibited:
+  - fixing its own findings in the same review step
+  - editing any file or running mutating commands
+  - deciding work state or completion
+outputs:
+  - review with independence level, disposition, findings, resolved_findings
+context:
+  knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
+              implementation_structured_summary, open_review_findings, review_scope]
+  excluded: [implementer reasoning transcript, implementation report prose]
+independence:
+  level: R1
+  requires_distinct_invocation_from: [implementer]
+capabilities: [exact_code_search, repository_exploration]

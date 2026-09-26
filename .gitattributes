@@ -1,0 +1,9 @@
+# Force LF everywhere so content hashes (spec pins, evaluated-snapshot
+# fingerprints) are identical on Windows and Linux checkouts.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gz  binary
+*.tar binary
+*.zip binary

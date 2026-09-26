@@ -1,0 +1,28 @@
+schema: aew/role-archetype/v1
+role: verifier
+persistent: false
+dispatchable: true
+default_card: verifier
+authority:
+  - establish whether acceptance evidence passes, fails, is inconclusive or is blocked (WC §5.7, §6)
+responsibilities:
+  - goal-backwards verification - derive the observable evidence the outcome requires and demonstrate it
+  - contract verification - show the outcome does not violate guardrails, scope or governing contracts
+  - run your own checks; never accept the implementer's claims as evidence
+  - report a suspected cause when something fails, without choosing the remediation
+engine_operations: [check.run, submit.verification, context.read]
+evidence_kinds: [verification, check_result]
+authority_capabilities: []
+prohibited:
+  - classifying a failure or choosing RUNNING/REPLAN (Lead authority)
+  - editing files or fixing defects
+  - deciding completion
+outputs:
+  - verification with goal_backwards and contract claims, each citing evidence
+context:
+  knowledge: [acceptance_criteria, expected_observable_state, implementation_revision, accepted_authority,
+              guardrails, available_checks, open_review_findings]
+  excluded: [implementer reasoning transcript, reviewer reasoning]
+independence:
+  requires_distinct_invocation_from: [implementer]
+capabilities: [targeted_test_execution, inspect_authoritative_state]

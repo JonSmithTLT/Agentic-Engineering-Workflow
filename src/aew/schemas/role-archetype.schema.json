@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/role-archetype/v1",
+  "title": "Role archetype (authority class)",
+  "description": "Built-in AEW authority class (WC §5, §6; ADR-0006). Authority is enforced in engine code keyed by archetype; this document states it and a test keeps them equal. Role cards extend archetypes and can never widen them.",
+  "type": "object",
+  "required": ["schema", "role", "persistent", "dispatchable", "authority", "responsibilities", "engine_operations",
+               "evidence_kinds", "authority_capabilities", "prohibited", "outputs", "context"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/role-archetype/v1"},
+    "role": {"type": "string"},
+    "persistent": {"type": "boolean"},
+    "dispatchable": {"type": "boolean", "description": "May be dispatched as a bounded invocation / extended by cards"},
+    "default_card": {"type": ["string", "null"]},
+    "authority": {"type": "array", "items": {"type": "string"}},
+    "responsibilities": {"type": "array", "items": {"type": "string"}},
+    "engine_operations": {"type": "array", "items": {"type": "string"},
+                          "description": "Operations an invocation credential of this archetype may perform"},
+    "evidence_kinds": {"type": "array", "items": {"type": "string"}},
+    "authority_capabilities": {"type": "array", "items": {"type": "string"},
+                               "description": "Authority-sensitive capability envelope"},
+    "prohibited": {"type": "array", "items": {"type": "string"}},
+    "outputs": {"type": "array", "items": {"type": "string"}},
+    "context": {
+      "type": "object",
+      "required": ["knowledge"],
+      "properties": {
+        "knowledge": {"type": "array", "items": {"type": "string"}},
+        "excluded": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "independence": {"type": "object"},
+    "capabilities": {"type": "array", "items": {"type": "string"}},
+    "dispatch_status": {"type": "string"}
+  }
+}

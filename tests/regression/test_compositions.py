@@ -289,3 +289,38 @@ def test_lead_override_of_an_operator_pin_goes_through_a_recorded_decision(tmp_p
     assert out["decision"]
     assert p.lead("invoke", "create", wid, "--card", "python_engineer")["role_card"] == "python_engineer"
     assert_control_invariants(p)
+
+
+def _authority_project(tmp_path):
+    from conftest import Project, make_git_repo
+
+    repo = make_git_repo(tmp_path / "repo", {"README.md": "# fixture\n", "docs/adr/0001.md": "# decision\n"})
+    proj = Project(repo)
+    candidates = proj.ok("init")["authority_candidates"]
+    proj.token = proj.ok("lead", "acquire", "--expect-rev", "0")["token"]
+    return proj, next(c for c in candidates if c["path"] == "docs/adr/")
+
+
+def test_long_lived_engine_never_serves_an_older_manifest(tmp_path):
+    """M8: an engine instance reloads project.yaml with every locked session."""
+    from aew.engine.api import Engine
+
+    proj, candidate = _authority_project(tmp_path)
+    reader = Engine.discover(proj.root)
+    assert reader.authority_list()["accepted"] == []
+    writer = Engine.discover(proj.root)
+    writer.authority_accept(token=proj.token, expect_rev=proj.rev(), candidate_id=candidate["id"], klass="decisions")
+    assert [a["path"] for a in reader.authority_list()["accepted"]] == ["docs/adr/"]
+    assert [a["path"] for a in reader.resume()["accepted_authority"]] == ["docs/adr/"]
+
+
+def test_first_resume_after_a_crash_mid_manifest_apply_shows_the_committed_authority(tmp_path):
+    proj, candidate = _authority_project(tmp_path)
+    res = proj.aew("authority", "accept", candidate["id"], "--class", "decisions",
+                   "--token", proj.token, "--expect-rev", str(proj.rev()), env={"AEW_FAULT": "txn.mid_apply"})
+    assert res.returncode == 86
+    first = proj.ok("resume", "--json")
+    assert [a["path"] for a in first["accepted_authority"]] == ["docs/adr/"]
+    assert first["contradictions"] == []
+    checks = {c["check"]: c["status"] for c in proj.aew("doctor", "--json").json["checks"]}
+    assert checks["manifest"] == "PASS" and checks["manifest-pin"] == "PASS"

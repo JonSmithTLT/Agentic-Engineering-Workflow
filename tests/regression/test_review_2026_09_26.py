@@ -187,7 +187,6 @@ def test_submitted_review_is_not_counted_as_ingested(tmp_path):
         'Unaccepted required security review was used to advance the state', u['state'], security)
 
 
-@pytest.mark.xfail(strict=True, reason="review M8 (open)")
 def test_first_resume_after_manifest_crash_exposes_recovered_authority(tmp_path):
     repo = make_git_repo(tmp_path / 'repo', {'README.md': '# fixture\n', 'docs/adr/0001.md': '# decision\n'})
     p = Project(repo)

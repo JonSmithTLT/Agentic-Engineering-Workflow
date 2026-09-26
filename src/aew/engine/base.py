@@ -38,8 +38,31 @@ class EngineBase:
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         self.repo_root = repo_root.resolve()
         self.aew_root = aew_root.resolve()
-        self.manifest = load_manifest(self.aew_root)
-        self.store = ControlStore(self.aew_root, renderer=self._render)
+        self._manifest: dict[str, Any] | None = None
+        self._manifest_error: Exception | None = None
+        self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
+
+    # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
+
+    def _refresh_manifest(self, state: dict[str, Any]) -> None:
+        """Load project.yaml inside the control lock, after recovery replayed any committed rewrite of it.
+
+        Called on every session, so a long-lived engine never serves a manifest older than the control
+        state it just read. An unreadable manifest is remembered and raised on use (``doctor`` reports it).
+        """
+        try:
+            self._manifest, self._manifest_error = load_manifest(self.aew_root), None
+        except Exception as exc:  # surfaced by the ``manifest`` property
+            self._manifest, self._manifest_error = None, exc
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        if self._manifest is None and self._manifest_error is None:
+            self.store.read()  # recovery first; the manifest is loaded under the lock
+        if self._manifest_error is not None:
+            raise self._manifest_error
+        assert self._manifest is not None
+        return self._manifest
 
     # ------------------------------------------------------------------ discovery
 
@@ -83,10 +106,9 @@ class EngineBase:
         return self.manifest["repository"]["authoritative_branch"]
 
     def _render(self, state: dict[str, Any]) -> dict[str, str]:
-        return render.views(state, self.manifest["project"]["name"], self.aew_root)
-
-    def reload_manifest(self) -> None:
-        self.manifest = load_manifest(self.aew_root)
+        # Runs inside the lock during recovery: never re-enter the manifest property from here.
+        name = ((self._manifest or {}).get("project") or {}).get("name") or state["project_id"]
+        return render.views(state, name, self.aew_root)
 
     def policy(self, name: str) -> dict[str, Any]:
         path = self.aew_root / self.manifest["policy"][name]

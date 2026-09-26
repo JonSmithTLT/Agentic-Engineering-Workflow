@@ -97,7 +97,7 @@ def control_violations(root: Path) -> list[str]:
                 ev = evidence.setdefault(wid, _evidence(root, wid)).get(post)
                 inv = state["invocations"].get((ev or {}).get("producer", {}).get("invocation") or "", {})
                 if ev is None or inv.get("workspace") != integ.get("workspace") \
-                        or inv.get("integration_attempt", integ.get("attempt")) != integ.get("attempt"):
+                        or inv.get("integration_attempt") != integ.get("attempt"):
                     problems.append(f"{wid} integrated with {post}, which was not produced for candidate "
                                     f"attempt {integ.get('attempt')}")
                 elif binding and ev.get("plan_revision") != binding.get("plan"):

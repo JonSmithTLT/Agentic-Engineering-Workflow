@@ -59,7 +59,6 @@ def test_directory_to_file_sync_preserves_independent_descendant(tmp_path, stage
         assert git('show', ':pkg/local.txt', cwd=repo) == 'independent local work'
 
 
-@pytest.mark.xfail(strict=True, reason="re-review R1 (open)")
 def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)

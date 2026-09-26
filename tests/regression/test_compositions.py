@@ -414,3 +414,42 @@ def test_reports_are_written_only_for_a_live_workspace(tmp_path, kind):
                 {"type": "contract", "claim": "c", "result": "pass", "checks": checks}]}})
     res = agent.submit(kind, meta, expect_ok=False)
     assert res.error["code"] == "PERMISSION_DENIED" and "no longer the Ticket's live workspace" in res.error["message"]
+
+
+def test_review_from_a_superseded_plan_is_not_accepted_for_identical_new_work(tmp_path):
+    """R1, ticket-scope analogue: same bytes, earlier plan and attempt -> the old review stays history."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    old_review = review(p, wid, disposition="changes_required",
+                        findings=[{"id": "F1", "severity": "major", "summary": "from the old plan"}])
+    replan(p, wid, tmp_path, 2)
+    implement(assign(p, wid))  # identical bytes -> identical fingerprint
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    res = p.aew("review", "ingest", wid, "--evidence", old_review, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "GATE_UNSATISFIED" and {"plan", "workspace"} <= set(res.error["details"])
+    u = unit(p, wid)
+    assert u["state"] == "REVIEW_PENDING" and not u.get("findings")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    assert unit(p, wid)["state"] == "REVIEW_PASSED"
+    assert_control_invariants(p)
+
+
+def test_publication_refuses_a_validation_record_not_produced_for_the_candidate(tmp_path):
+    """R1, publication boundary (defense in depth): a recorded validation must come from this candidate's
+    own integration verifier, even when fingerprints match (simulated legacy state)."""
+    from aew.engine.api import Engine
+    from aew.engine.store import Transition
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    integ = prepare_and_validate(p, wid)
+    ticket_scope_report = next(e["id"] for e in unit(p, wid)["evidence"] if e["kind"] == "verification")
+    engine = Engine.discover(p.root)
+    with engine.store.session() as sess:
+        sess.state["work"][wid]["integration"]["post_integration_evidence"] = ticket_scope_report
+        sess.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
+    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] in {"GATE_UNSATISFIED"}, res.stderr
+    assert main_commit(p) == integ["base"]

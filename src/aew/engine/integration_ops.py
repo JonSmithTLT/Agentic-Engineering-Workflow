@@ -163,10 +163,20 @@ class IntegrationOps(ContextOps):
         if integ.get("status") != "validated":
             raise GateUnsatisfied("post-integration verification has not passed for the integrated snapshot",
                                   status=integ.get("status"))
+        self._require_bound_validation(state, work_id, unit)
+
+    def _require_bound_validation(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
+        """The recorded post-integration report passed for THIS candidate, under its plan (re-review R1)."""
+        policy = self.policy("gates")["post_integration"]
+        if not policy["verification"] and not policy["checks"]:
+            return
+        integ = unit["integration"]
+        fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
         evidence = {e["id"]: e for e in E.scan(self.aew_root, work_id)[0]}
         ver = evidence.get(integ.get("post_integration_evidence") or "")
         if ver is None or ver["evaluated_snapshot"]["relevant_inputs_fingerprint"] != fp or ver["result"] != "pass":
             raise GateUnsatisfied("post-integration verification is not bound to the integrated snapshot")
+        self._require_bound_report(state, unit, ver, scope="integration")
         cited = {cid for c in ver["verification"]["claims"] for cid in c.get("checks", [])}
         passed = {evidence[c]["check"]["check_id"] for c in cited
                   if c in evidence and evidence[c]["result"] == "pass"
@@ -239,6 +249,7 @@ class IntegrationOps(ContextOps):
                 stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
                                        "run `aew integrate prepare` again", **mismatch)
             elif current == base:
+                self._require_bound_validation(ctx.state, work_id, unit)
                 if applies:
                     I.precheck_sync(self.repo_root, base, integ["changed_paths"])
                 try:

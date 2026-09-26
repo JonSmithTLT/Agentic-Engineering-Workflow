@@ -74,3 +74,8 @@ The review found that the normal-path checks above did not hold across recovery 
   - Retiring a candidate (leaving COMMIT_READY, re-preparing, or a binding mismatch at publish or finalization) cancels every active integration-scope invocation of the Ticket and revokes its credential. The state-change path now receives the transaction's control state for this.
   - Integration invocations record the candidate they serve (`integration_attempt`, `candidate`).
   - **Every** submission kind (implementation report, review, verification) and every check run resolves the invocation's own workspace or candidate, and only while it is live, so a credential never outlives its assignment. Earlier reports remain durable history.
+- **Reports are accepted only for the assignment they were produced for (R1).** The remediation made candidates replaceable, which exposed an ingestion weakness: a report compared only by engineering fingerprint could be accepted for a *different* attempt, plan or candidate with identical bytes.
+  - At review/verification ingest, and again at publication (phase 1 and pre-CAS finalization), a report must have been produced under the Ticket's current accepted plan (revision + sha256).
+  - Its producing invocation must have been dispatched for the current attempt's live workspace (ticket scope) or for the current candidate's workspace **and** attempt (integration scope).
+  - Otherwise the report is refused with the mismatched bindings named. It stays durable history, and current work needs its own report.
+  - The invariant oracle now also checks that a DONE Ticket's post-integration report came from that candidate's own verifier under the bound plan, and that no evidence postdates its producer's revocation.

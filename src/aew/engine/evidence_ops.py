@@ -457,6 +457,38 @@ class EvidenceOps(WorkspaceOps):
                 return ev
         raise NotFound(f"no evidence {evidence_id} for {work_id}")
 
+    def _require_bound_report(self, state: dict[str, Any], unit: dict[str, Any], ev: dict[str, Any], *,
+                              scope: str) -> None:
+        """Accept a report only for the assignment it was produced for (re-review R1).
+
+        Identical engineering content is not enough: the report must have been produced under the
+        Ticket's current accepted plan (revision + sha256) by an invocation dispatched for the current
+        attempt's workspace (ticket scope) or for the current integration candidate (integration scope).
+        Reports from superseded plans, attempts or candidates stay durable history; current work needs
+        its own.
+        """
+        inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
+        plan = unit.get("plan") or {}
+        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        problems: dict[str, Any] = {}
+        if ev.get("plan_revision") != accepted:
+            problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}
+        if scope == "integration":
+            integ = unit.get("integration") or {}
+            if inv.get("scope") != "integration" or inv.get("workspace") != integ.get("workspace") \
+                    or inv.get("integration_attempt") != integ.get("attempt"):
+                problems["candidate"] = {"report_for": inv.get("workspace_id"), "report_attempt": inv.get(
+                    "integration_attempt"), "current": integ.get("workspace_id"), "current_attempt": integ.get("attempt")}
+        else:
+            ws = unit.get("workspace") or {}
+            if (inv.get("scope") or "ticket") != "ticket" or inv.get("workspace") != ws.get("path"):
+                problems["workspace"] = {"report_for": inv.get("workspace_id") or inv.get("workspace"),
+                                         "current": ws.get("id")}
+        if problems:
+            raise GateUnsatisfied(
+                f"{ev['id']} was produced for a different plan, attempt or candidate than the one being accepted; "
+                "it remains in history, but the current work needs its own report", **problems)
+
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "review.ingest") as ctx:
             state = ctx.state
@@ -474,6 +506,7 @@ class EvidenceOps(WorkspaceOps):
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
                 raise GateUnsatisfied("review evaluated a snapshot that is no longer current (stale)",
                                       reviewed=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
+            self._require_bound_report(state, unit, ev, scope="ticket")
             findings = unit.setdefault("findings", [])
             known = {f["id"] for f in findings}
             for rid in ev["review"].get("resolved_findings", []):
@@ -532,6 +565,7 @@ class EvidenceOps(WorkspaceOps):
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",
                                       verified=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
+            self._require_bound_report(state, unit, ev, scope=scope)
             self._ingest_ref(unit, ev)
             self._complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]

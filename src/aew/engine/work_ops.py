@@ -36,11 +36,21 @@ class WorkOps(EngineBase):
         return unit
 
     def _set_state(self, unit: dict[str, Any], to: str, reason: str | None) -> dict[str, str]:
+        """The single place a work unit's state changes (so cross-state effects cannot be skipped)."""
         change = {"from": unit["state"], "to": to}
+        self._before_state_change(unit, change)
         unit["state"] = to
         unit["state_reason"] = reason
         unit.setdefault("history", []).append({**change, "at": utc_now(), "reason": reason})
+        self._after_state_change(unit, change, reason)
         return change
+
+    # Refined by the integration mixin (a pending publish, candidates bound to COMMIT_READY).
+    def _before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
+        return None
+
+    def _after_state_change(self, unit: dict[str, Any], change: dict[str, str], reason: str | None) -> None:
+        return None
 
     def _guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
         if not name:

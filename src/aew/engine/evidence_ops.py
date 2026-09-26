@@ -23,6 +23,7 @@ from aew.errors import (
     IllegalTransition,
     NotFound,
     PermissionDenied,
+    StaleCandidate,
     UsageError,
     ValidationFailed,
 )
@@ -183,8 +184,31 @@ class EvidenceOps(WorkspaceOps):
         self._record_relied_on(ctx, unit, gc, list(gc["gates"]))
         unit["commit_ready_snapshot"] = gc["snapshot"]
         unit["commit_ready_gates"] = {g: v["status"] for g, v in gc["gates"].items()}
+        # Identity of this acceptance: an integration candidate is bound to it (review B1).
+        unit["commit_ready_seq"] = unit.get("commit_ready_seq", 0) + 1
         if unit.get("implementer_invocation"):
             self._complete_invocation(ctx.state, unit["implementer_invocation"])
+
+    # ------------------------------------------------------------------ integration binding (review B1)
+
+    @staticmethod
+    def integration_binding(unit: dict[str, Any]) -> dict[str, Any]:
+        """What an integration candidate is built from: the accepted plan and the COMMIT_READY acceptance."""
+        plan = unit.get("plan") or {}
+        return {"plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
+                "commit_ready_seq": unit.get("commit_ready_seq", 0),
+                "gated_fingerprint": (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")}
+
+    def binding_problem(self, unit: dict[str, Any]) -> dict[str, Any] | None:
+        bound = (unit.get("integration") or {}).get("binding")
+        current = self.integration_binding(unit)
+        return None if bound == current else {"candidate_bound_to": bound, "current": current}
+
+    def _require_current_binding(self, unit: dict[str, Any]) -> None:
+        problem = self.binding_problem(unit)
+        if problem:
+            raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
+                                 "run `aew integrate prepare` again", **problem)
 
     # ------------------------------------------------------------------ invocations
 
@@ -200,6 +224,7 @@ class EvidenceOps(WorkspaceOps):
                 slot = "verify"
                 if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
                     raise IllegalTransition("post-integration verification needs a prepared integration candidate")
+                self._require_current_binding(unit)
             elif st in {"ASSIGNED", "RUNNING"}:
                 slot = "execute"
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
@@ -482,6 +507,7 @@ class EvidenceOps(WorkspaceOps):
                 integ = unit.get("integration") or {}
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
+                self._require_current_binding(unit)
                 current = self.snapshot_of(integ["workspace"], integ["workspace_id"])["relevant_inputs_fingerprint"]
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",

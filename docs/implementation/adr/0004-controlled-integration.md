@@ -55,3 +55,10 @@ The review found that the normal-path checks above did not hold across recovery 
   - When the ref is still H, the strict pre-publication check is repeated under the lock immediately before the CAS.
   - A refused sync aborts the transaction. The status stays `publishing` even if the ref already holds M, and the error names the conflicting paths; `integrate reconcile` completes the work once they are resolved.
   - Fault points (`after_cas`, `mid_sync`, `before_done`) keep their names. Tested: `test_interleaved_writer_makes_finalization_stale_before_any_git_side_effect` and review probe M1.
+- **Candidates are bound to the acceptance they came from (B1).**
+  - Each entry into COMMIT_READY increments `commit_ready_seq`. `prepare` records `integration.binding = {plan revision + sha256, commit_ready_seq, gated fingerprint}`.
+  - The binding is re-checked at integration-scope dispatch, post-integration verification ingest, publish, and finalization/reconcile. Before publication, a mismatch retires the candidate (`superseded`) and raises `STALE_CANDIDATE`. After publication, it is an operator-level contradiction; with the guard below it is unreachable.
+  - A Ticket entering any state other than COMMIT_READY, DONE, INTERRUPTED, or VERIFICATION_FAILED (a post-integration failure awaiting classification) retires its open candidate to `integration_history`. The retirement is enforced in the single state-change path, so no transition can skip it. Re-preparing therefore works after a regression, and attempt numbers continue across history.
+  - While a candidate is `publishing`, every state change other than DONE is refused: run `aew integrate reconcile` first.
+  - At DONE, the Ticket workspace is removed only if its HEAD is the integrated Ticket commit and it is clean. Otherwise it is **retained**, and `status`/`resume` report it as a contradiction. Integration cleanup never deletes newer engineering output.
+  - Tested: review probe B1, the regression → re-verify → publish-new-work composition, a refused state change while publishing, a retained workspace, and a superseded unbound candidate.

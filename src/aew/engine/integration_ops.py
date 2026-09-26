@@ -25,9 +25,50 @@ from aew.workspace import git, worktrees
 from aew.workspace import integration as I
 
 
+# An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
+OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive", "validation_failed", "conflict",
+                              "stale_candidate", "discarded"})
+# States a Ticket may enter while keeping its open integration record: still at (or interrupted in, or
+# awaiting classification of a post-integration failure for) the COMMIT_READY the candidate was built from.
+KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
+
+
 class IntegrationOps(ContextOps):
     def _ref(self) -> str:
         return f"refs/heads/{self.authoritative_branch}"
+
+    # ------------------------------------------------------------------ candidate lifecycle (review B1)
+
+    def _before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
+        super()._before_state_change(unit, change)
+        if (unit.get("integration") or {}).get("status") == "publishing" and change["to"] != "DONE":
+            raise IllegalTransition(
+                "a publish of this Ticket's integration candidate is in progress; run `aew integrate reconcile` "
+                "before changing its state", from_state=change["from"], to_state=change["to"])
+
+    def _after_state_change(self, unit: dict[str, Any], change: dict[str, str], reason: str | None) -> None:
+        super()._after_state_change(unit, change, reason)
+        if change["to"] not in KEEPS_INTEGRATION and (unit.get("integration") or {}).get("status") in OPEN_INTEGRATION:
+            self._retire_integration(unit, f"Ticket left COMMIT_READY ({change['from']} -> {change['to']})"
+                                     + (f": {reason}" if reason else ""))
+
+    @staticmethod
+    def _retire_integration(unit: dict[str, Any], why: str) -> None:
+        """Move the open candidate to history: it can never be published for a later acceptance."""
+        record = dict(unit["integration"])
+        if record.get("status") in OPEN_INTEGRATION - {"validation_failed", "discarded"}:
+            record["status"] = "superseded"
+        record["retired"] = {"at": utc_now(), "reason": why}
+        unit.setdefault("integration_history", []).append(record)
+        unit["integration"] = None
+
+    def _prune_retired_candidates(self, unit: dict[str, Any]) -> None:
+        """Remove integration worktrees of retired candidates (never one referenced by an open record)."""
+        live = (unit.get("integration") or {}).get("workspace")
+        for record in unit.get("integration_history", []):
+            path = record.get("workspace")
+            if path and path != live and Path(path).exists():
+                worktrees.remove(self.repo_root, path)
 
     # ------------------------------------------------------------------ prepare
 
@@ -39,8 +80,12 @@ class IntegrationOps(ContextOps):
             if unit["state"] != "COMMIT_READY":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
             integ = unit.get("integration") or {}
-            if integ.get("status") in {"prepared", "validated", "publishing"}:
+            if integ.get("status") == "publishing":
+                raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
+            if integ.get("status") in {"prepared", "validated"} and self.binding_problem(unit) is None:
                 raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
+            if integ:
+                self._retire_integration(unit, f"replaced by a new candidate (was {integ.get('status')})")
             gc = self.gate_context(state, work_id)
             self._require_gates(gc, gc["obligations"]["gates"], what="integration")
             if gc["open_required_findings"]:
@@ -58,7 +103,7 @@ class IntegrationOps(ContextOps):
                 raise IntegrityError("committed tree differs from the gated evaluated snapshot",
                                      gated=gated, committed=committed)
             base = self.authoritative_commit()
-            attempt = integ.get("attempt", 0) + 1
+            attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
             name = f"{work_id}-int-{attempt}"
             referenced = {u["integration"]["workspace"] for u in state["work"].values()
                           if (u.get("integration") or {}).get("status") in {"prepared", "validated", "publishing"}}
@@ -69,7 +114,8 @@ class IntegrationOps(ContextOps):
             merged = I.merge_candidate(self.repo_root, Path(int_ws["path"]), ticket_commit,
                                        f"aew: integrate {work_id} ({unit['title']})")
             record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
-                      "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now()}
+                      "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
+                      "binding": self.integration_binding(unit)}
             if merged["conflict"]:
                 worktrees.remove(self.repo_root, int_ws["path"])
                 conflict = {"paths": merged["paths"]}
@@ -88,6 +134,7 @@ class IntegrationOps(ContextOps):
                                        "candidate_snapshot": snap, "changed_paths": changed}
                 ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
             self.before_commit(ctx)
+        self._prune_retired_candidates(unit)
         result = {"ok": conflict is None, "work_id": work_id, "integration": unit["integration"],
                   "revision": ctx.session.committed_revision}
         if conflict:
@@ -129,21 +176,29 @@ class IntegrationOps(ContextOps):
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
-            self._post_integration_ok(ctx.state, work_id, unit)
+            superseded = self.binding_problem(unit)
             current = self.authoritative_commit()
-            if current != integ["base"]:
+            if superseded:
+                self._retire_integration(unit, "bound to an earlier COMMIT_READY or plan")
+                stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
+                ctx.op = "integrate.superseded"
+                ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
+            elif current != integ["base"]:
                 integ["status"] = "stale_candidate"
                 stale = {"expected": integ["base"], "current": current}
                 ctx.summary = f"{work_id} candidate stale: authoritative ref moved"
             else:
+                self._post_integration_ok(ctx.state, work_id, unit)
                 if I.authoritative_worktree_applies(self.repo_root, self.authoritative_branch):
                     I.precheck_sync(self.repo_root, integ["base"], integ["changed_paths"])
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
         if stale:
-            raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
-                                 **stale)
+            what = ("the integration candidate was built from an earlier COMMIT_READY or plan; run `aew integrate "
+                    "prepare` again" if "reason" in stale else
+                    "the authoritative ref moved since the candidate was built; rebuild and revalidate")
+            raise StaleCandidate(what, **stale)
         faults.hit("integrate.after_publishing_record")
         return self._finish_publish(token, ctx.session.committed_revision, work_id)
 
@@ -166,7 +221,15 @@ class IntegrationOps(ContextOps):
             applies = I.authoritative_worktree_applies(self.repo_root, self.authoritative_branch)
             current = git.rev_parse(ref, cwd=self.repo_root)
             cas = "already_published"
-            if current == base:
+            mismatch = self.binding_problem(unit)
+            if mismatch and current != base:
+                raise IntegrityError("CONTRADICTION: the published candidate is not bound to the Ticket's current "
+                                     "COMMIT_READY acceptance; operator inspection required", ref=ref, **mismatch)
+            if mismatch:
+                self._retire_integration(unit, "bound to an earlier COMMIT_READY or plan (found at finalization)")
+                stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
+                                       "run `aew integrate prepare` again", **mismatch)
+            elif current == base:
                 if applies:
                     I.precheck_sync(self.repo_root, base, integ["changed_paths"])
                 try:
@@ -177,7 +240,8 @@ class IntegrationOps(ContextOps):
             elif current is None or not git.is_ancestor(candidate, current, cwd=self.repo_root):
                 stale = StaleCandidate("the authoritative ref no longer contains the candidate", current=current)
             if stale:
-                integ["status"] = "stale_candidate"
+                if unit.get("integration") is not None:
+                    integ["status"] = "stale_candidate"
                 ctx.op = "integrate.stale"
                 ctx.summary = f"{work_id} candidate stale"
             else:
@@ -202,17 +266,38 @@ class IntegrationOps(ContextOps):
                 ctx.refs.append(f"work/{work_id}/completion.md")
                 unit["completion_record"] = f"work/{work_id}/completion.md"
                 self._set_state(unit, "DONE", f"integrated as {candidate[:12]}; post-integration verification passed")
-                if unit.get("workspace"):
-                    unit["workspace"]["status"] = "integrated"
+                remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
                 ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.authoritative_branch}"
                 self.before_commit(ctx)
         if stale:
             raise stale
-        for path in (integ["workspace"], (unit.get("workspace") or {}).get("path")):
-            if path:
-                worktrees.remove(self.repo_root, path)
+        worktrees.remove(self.repo_root, integ["workspace"])
+        self._prune_retired_candidates(unit)
+        if remove_ticket_workspace:
+            worktrees.remove(self.repo_root, unit["workspace"]["path"])
         return {"ok": True, "work_id": work_id, "state": "DONE", "integrated_commit": candidate, "cas": cas,
                 "worktree_sync": sync, "revision": ctx.session.committed_revision}
+
+    @staticmethod
+    def _settle_ticket_workspace(unit: dict[str, Any], ticket_commit: str) -> bool:
+        """At DONE: the Ticket workspace is removable only if it holds nothing beyond the integrated commit.
+
+        Otherwise it is retained (and reported as a contradiction): newer engineering output is never
+        deleted by integration cleanup (review B1).
+        """
+        ws = unit.get("workspace")
+        if not ws:
+            return False
+        found = worktrees.inspect(ws["path"], ws.get("base_commit"))
+        if not found.get("exists"):
+            ws["status"] = "integrated"
+            return False
+        if found["head"] == ticket_commit and not found["dirty"]:
+            ws["status"] = "integrated"
+            return True
+        ws["status"] = "retained (differs from integrated commit)"
+        ws["retained"] = {"head": found["head"], "dirty": found["dirty"], "integrated_ticket_commit": ticket_commit}
+        return False
 
     def _completion_record(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> str:
         integ = unit["integration"]

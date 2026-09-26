@@ -45,7 +45,6 @@ def replan(p, wid, tmp_path):
     p.lead('plan', 'accept', wid, '--revision', '2')
 
 
-@pytest.mark.xfail(strict=True, reason="review B1 (open)")
 def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)

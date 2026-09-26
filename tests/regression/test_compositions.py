@@ -6,7 +6,10 @@ Every scenario ends with the cross-operation invariant oracle.
 
 from __future__ import annotations
 
-from aewflow import integrate, prepare_and_validate, sample_project, to_commit_ready
+from pathlib import Path
+
+from aewflow import (SUBTRACT_PATCH, implement, integrate, prepare_and_validate, redispatch_implementer, review,
+                     sample_project, to_commit_ready, verify)
 from conftest import git
 from invariants import assert_control_invariants
 
@@ -52,3 +55,89 @@ def test_interleaved_writer_makes_finalization_stale_before_any_git_side_effect(
     out = p.lead("integrate", "reconcile", wid)
     assert out["state"] == "DONE" and main_commit(p) == integ["candidate"]
     assert_control_invariants(p)
+
+
+MULTIPLY_PATCH = {
+    **SUBTRACT_PATCH,
+    "calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "\n\ndef multiply(a, b):\n    return a * b\n",
+    "tests/test_multiply.py": "from calc.core import multiply\n\n\ndef test_multiply():\n"
+                              "    assert multiply(3, 4) == 12\n",
+}
+
+
+def back_to_commit_ready_with(p, wid, files):
+    impl = redispatch_implementer(p, wid)
+    implement(impl, files)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    return impl
+
+
+def test_regression_after_validation_supersedes_the_candidate_and_the_new_work_is_published(tmp_path):
+    """B1: validated candidate -> regression -> newly verified snapshot -> publish integrates the NEW work."""
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    old = prepare_and_validate(p, wid)
+    p.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "additional required behavior")
+    u = unit(p, wid)
+    assert u["integration"] is None
+    assert u["integration_history"][-1]["status"] == "superseded"
+    impl = back_to_commit_ready_with(p, wid, MULTIPLY_PATCH)
+    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "ILLEGAL_TRANSITION" and impl.workspace.exists()
+    new = prepare_and_validate(p, wid)
+    assert new["attempt"] == old["attempt"] + 1 and new["binding"]["commit_ready_seq"] == 2
+    p.lead("integrate", "publish", wid)
+    assert "def multiply" in (p.root / "calc/core.py").read_text(encoding="utf-8")
+    assert not Path(old["workspace"]).exists()
+    assert_control_invariants(p)
+
+
+def test_state_cannot_leave_commit_ready_while_a_publish_is_pending(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    crash_after_publishing_record(p, wid)
+    for to in ("RUNNING", "CANCELLED", "REPLAN_REQUIRED"):
+        res = p.aew("work", "transition", wid, "--to", to, "--reason", "try to abandon the publish",
+                    "--token", p.token, "--expect-rev", str(p.rev()))
+        assert res.error["code"] == "ILLEGAL_TRANSITION", (to, res.stderr)
+        assert "integrate reconcile" in res.error["message"]
+    assert p.lead("integrate", "reconcile", wid)["state"] == "DONE"
+    assert_control_invariants(p)
+
+
+def test_workspace_holding_unintegrated_changes_is_retained_and_reported(tmp_path):
+    p = sample_project(tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    impl.write({"calc/extra.py": "LATE = True\n"})  # appears after the candidate was built
+    p.lead("integrate", "publish", wid)
+    ws = unit(p, wid)["workspace"]
+    assert ws["status"].startswith("retained") and ws["retained"]["dirty"]
+    assert (impl.workspace / "calc/extra.py").exists()
+    assert any("retained after integration" in c for c in p.ok("status", "--json")["contradictions"])
+    assert not (p.root / "calc/extra.py").exists()
+    assert_control_invariants(p)
+
+
+def test_candidate_bound_to_an_earlier_acceptance_is_superseded_at_publish(tmp_path):
+    """Defense in depth: a candidate whose binding no longer matches (e.g. legacy/unbound state) never publishes."""
+    from aew.engine.api import Engine
+    from aew.engine.store import Transition
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    integ = prepare_and_validate(p, wid)
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:  # simulate a record bound to an earlier COMMIT_READY
+        s.state["work"][wid]["commit_ready_seq"] += 1
+        s.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
+    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "STALE_CANDIDATE"
+    assert main_commit(p) == integ["base"]
+    u = unit(p, wid)
+    assert u["integration"] is None and u["integration_history"][-1]["status"] == "superseded"

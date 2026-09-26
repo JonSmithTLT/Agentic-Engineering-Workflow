@@ -137,7 +137,6 @@ def test_reassignment_does_not_retarget_old_invocation_credential(tmp_path):
         replacement['workspace']['id'])
 
 
-@pytest.mark.xfail(strict=True, reason="review M7 (open)")
 def test_pinning_existing_card_updates_constraint(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
@@ -147,7 +146,6 @@ def test_pinning_existing_card_updates_constraint(tmp_path):
     assert selected['selected_by'] == 'operator' and selected['pinned'], selected
 
 
-@pytest.mark.xfail(strict=True, reason="review M7 (open)")
 def test_explicit_dispatch_cannot_bypass_operator_pin(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)

@@ -96,3 +96,12 @@ role_plan:
   - Review gates (`review_*`, `review_card:*`) and verification gates (`verification_*`, `verify_card:*`) are satisfied only by reports the Lead has **ingested**: their id and sha256 are pinned in the Ticket's accepted evidence refs. That set includes the report being ingested in the same transaction.
   - A sealed submission that was never ingested, or whose bytes changed, satisfies nothing. One ingest therefore cannot retire another required report that still awaits its own ingestion checks and bookkeeping. The Ticket stays in REVIEW_PENDING or VERIFY_PENDING until every planned card has been *ingested* and has passed.
   - `local_checks` and `self_review` keep counting the implementer's submissions. Their acceptance is the Lead's RUNNING → REVIEW/VERIFY transition, which pins the evidence it relied on.
+- **Operator pins are recorded and enforced (M7).**
+  - Staffing a card that is already in the plan now updates it. `--by operator` sets `selected_by: operator` and the requested pin, and records a decision. A Lead re-selecting an operator-pinned card leaves the operator's constraint intact.
+  - Dispatch honours pins, whether the card is chosen explicitly (`invoke create --card`) or implicitly. In the `execute` slot, which holds one card, only an operator-pinned card may be dispatched. Any other card is refused, and an override goes through `aew work staff --reason` as a recorded decision, as the selection-precedence rule requires.
+  - Pinned review/verify cards are enforced as required gates (`plan_gates`), so dispatching an additional card in those slots never bypasses them.
+  - Operator attribution recorded through the Lead remains attribution, not proof (see above).
+- **`restrict.paths` is deferred (N1).**
+  - The M1 card schema accepts `restrict.operations` and `restrict.checks` only. A card declaring `restrict.paths` is rejected (fail closed), and the "paths" in the Role-cards bullet above is not yet available.
+  - In M1, path limits come from the Ticket's declared scope paths and the guardrail policy (protected/generated paths, `outside_ticket_scope`).
+  - Card-level path restriction is **Designed**. It needs enforcement at check/guardrail time and is recorded in `implementation-status.md`.

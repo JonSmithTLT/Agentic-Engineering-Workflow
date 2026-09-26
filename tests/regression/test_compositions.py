@@ -268,3 +268,24 @@ def test_submitted_but_uningested_reports_satisfy_no_gate(tmp_path):
     assert out["transition"]["to"] == "VERIFIED"
     assert {e["id"] for e in unit(p, wid)["evidence"]} >= {plain, strict, submitted}
     assert_control_invariants(p)
+
+
+def test_lead_override_of_an_operator_pin_goes_through_a_recorded_decision(tmp_path):
+    """M7: dispatch honours the operator pin; replacing it needs --reason and leaves a decision."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    p.lead("work", "staff", wid, "--execute", "c_engineer")
+    p.lead("work", "staff", wid, "--execute", "c_engineer", "--by", "operator", "--pin")
+    p.lead("work", "staff", wid, "--execute", "c_engineer")  # a Lead re-selection keeps the operator pin
+    entry = unit(p, wid)["role_plan"]["execute"][0]
+    assert entry["selected_by"] == "operator" and entry["pinned"] is True
+    assign(p, wid)
+    p.lead("invoke", "cancel", unit(p, wid)["implementer_invocation"], "--reason", "fresh bounded attempt")
+    res = p.aew("invoke", "create", wid, "--card", "python_engineer", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "PERMISSION_DENIED" and "work staff" in res.error["message"]
+    res = p.aew("work", "staff", wid, "--execute", "python_engineer", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "PERMISSION_DENIED"  # no reason: the pin stands
+    out = p.lead("work", "staff", wid, "--execute", "python_engineer", "--reason", "operator agreed: Python work")
+    assert out["decision"]
+    assert p.lead("invoke", "create", wid, "--card", "python_engineer")["role_card"] == "python_engineer"
+    assert_control_invariants(p)

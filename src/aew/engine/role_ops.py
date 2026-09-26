@@ -148,9 +148,16 @@ class RoleOps(WorkOps):
                             if entry["card"] != card_id:
                                 overriding(entry, f"execute={entry['card']}")
                                 plan["execute"].remove(entry)
-                    if not any(e["card"] == card_id for e in plan[slot]):
+                    existing = next((e for e in plan[slot] if e["card"] == card_id), None)
+                    if existing is None:
                         plan[slot].append({"card": card_id, "version": card.meta.get("version"),
                                            "selected_by": selected_by, "pinned": pin})
+                    elif selected_by == "operator":
+                        # An operator constraint on an already-selected card takes effect (review M7).
+                        existing.update(selected_by="operator", pinned=pin, version=card.meta.get("version"))
+                    elif pin and not (existing.get("pinned") and existing["selected_by"] == "operator"):
+                        existing["pinned"] = True
+                    # A Lead re-selecting an operator-pinned card leaves the operator's constraint intact.
             decision = None
             if overrides or selected_by == "operator":
                 decision = self.new_decision(
@@ -233,8 +240,28 @@ class RoleOps(WorkOps):
         forbidden = {f["card"] for f in (unit.get("role_plan") or {}).get("forbidden", [])}
         if card.id in forbidden:
             raise PermissionDenied(f"{card.id} is forbidden for {work_id}")
+        self._require_operator_pin(unit, work_id, slot, card)
         roles.validate_card(card.meta, source=card.path)  # re-checked at dispatch
         return card
+
+    @staticmethod
+    def _require_operator_pin(unit: dict[str, Any], work_id: str, slot: str, card: roles.Card) -> None:
+        """Dispatch honours operator pins (review M7).
+
+        The execute slot has one card, so dispatching any other card would silently bypass an operator
+        pin: it is refused, and an override goes through ``aew work staff --reason`` (a recorded
+        decision). Pinned review/verify cards are enforced as required gates (``plan_gates``), so an
+        additional card in those slots does not bypass them.
+        """
+        if slot != "execute":
+            return
+        pinned = sorted(e["card"] for e in (unit.get("role_plan") or {}).get("execute", [])
+                        if e.get("pinned") and e.get("selected_by") == "operator")
+        if pinned and card.id not in pinned:
+            raise PermissionDenied(
+                f"the operator pinned {pinned} for {work_id}'s execute slot; to dispatch {card.id}, change the role "
+                f"plan first with `aew work staff {work_id} --execute {card.id} --reason ...` (a recorded decision)",
+                pinned=pinned, requested=card.id)
 
     @staticmethod
     def _card_gate_current(gc: dict[str, Any] | None, slot: str, card_id: str) -> bool:

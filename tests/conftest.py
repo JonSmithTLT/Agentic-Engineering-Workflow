@@ -59,6 +59,7 @@ def run_aew(*args: str, cwd: Path | None = None, env: dict[str, str] | None = No
         input=input,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=timeout,
         stdin=None if input is not None else subprocess.DEVNULL,
         **kwargs,

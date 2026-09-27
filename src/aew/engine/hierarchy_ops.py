@@ -16,9 +16,9 @@ from typing import Any
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
-from aew.engine.dependencies import UNSTARTED, effective_edge_set
+from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, NonMutatingOps, is_nm_ticket
-from aew.errors import GateUnsatisfied, IllegalTransition, NotFound, UsageError
+from aew.errors import DependencyUnsatisfied, GateUnsatisfied, IllegalTransition, NotFound, UsageError
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
 from aew.util import render_frontmatter, sha256_file, sha256_text, utc_now
@@ -206,6 +206,13 @@ class HierarchyOps(NonMutatingOps):
                 raise IllegalTransition("Tickets complete by integration (mutating) or acceptance (non-mutating)")
             if unit["state"] != "ACCEPTANCE_PENDING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; closeout needs every child DONE or CANCELLED")
+            # A parent's own and inherited edges bind its acceptance too (M2 review major 1): a DONE child moved in
+            # (or finished) does not close it before what it depends on is satisfied.
+            blockers = dependency_blockers(state, unit, repo_root=self.repo_root,
+                                           base_commit=self.authoritative_commit(), work_id=work_id)
+            if blockers:
+                raise DependencyUnsatisfied(f"{work_id} cannot close while its dependencies are unsatisfied",
+                                            blockers=blockers)
             gc = self._parent_gate_context(state, work_id)
             self._require_gates(gc, gc["obligations"]["gates"], what="closeout")
             if gc["open_required_findings"]:
@@ -426,12 +433,16 @@ class HierarchyOps(NonMutatingOps):
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             affected = [work_id] if unit["kind"] == "ticket" else H.descendants(state, work_id)
-            busy = sorted(a for a in affected if state["work"][a]["kind"] == "ticket"
-                          and state["work"][a]["state"] not in {"BLOCKED", "READY", "REPLAN_REQUIRED", "DONE",
-                                                                "CANCELLED"})
+            # ADR-0007: only while every affected Ticket is BLOCKED, READY or REPLAN_REQUIRED. A DONE Ticket finished
+            # without an edge added now, so the edge would never have held for it (M2 review major 1). A cancelled
+            # Ticket never runs again and contributes nothing, so it is not affected.
+            busy = {a: state["work"][a]["state"] for a in sorted(affected) if state["work"][a]["kind"] == "ticket"
+                    and state["work"][a]["state"] not in UNSTARTED | {"CANCELLED"}}
             if busy:
-                raise IllegalTransition("dependencies change only while affected Tickets have not started; move them "
-                                        "to REPLAN_REQUIRED first", in_progress=busy)
+                raise IllegalTransition("dependencies change only while every affected Ticket is BLOCKED, READY or "
+                                        "REPLAN_REQUIRED; move started ones to REPLAN_REQUIRED first (a finished "
+                                        "Ticket completed under the current edges: plan the change as a new unit)",
+                                        affected=busy)
             edges = list(unit.get("depends_on", []))
             for dep in remove or []:
                 if not any(e["id"] == dep for e in edges):

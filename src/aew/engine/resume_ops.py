@@ -14,6 +14,7 @@ from typing import Any
 from aew import SPEC_SET
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine.dependencies import dependency_blockers
 from aew.engine.hierarchy_ops import HierarchyOps
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.errors import AEWError
@@ -129,6 +130,8 @@ class ResumeOps(HierarchyOps):
             except AEWError as exc:
                 return out + [f"cannot evaluate parent gates: {exc.message}"]
             unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
+            waiting = dependency_blockers(state, u, repo_root=self.repo_root, base_commit=self.authoritative_commit(),
+                                          work_id=wid)
             if (u.get("parent_verification") or {}).get("awaiting_classification"):
                 out.append(f"classify the failed parent verification (`aew verify classify {wid}`)")
             elif unmet:
@@ -136,8 +139,9 @@ class ResumeOps(HierarchyOps):
                            f"(`aew invoke create {wid} --role reviewer|verifier`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
-            else:
+            elif not waiting:
                 out.append(f"all parent gates are CURRENT: close it (`aew work close {wid}`)")
+            out += [f"waiting on {b['id']} ({b['reason']}) before closeout" for b in waiting]
         return out
 
     def _submitted(self, state: dict[str, Any], wid: str, u: dict[str, Any], kind: str) -> list[str]:

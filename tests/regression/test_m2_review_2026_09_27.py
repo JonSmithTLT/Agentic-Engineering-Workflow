@@ -137,7 +137,6 @@ def test_moved_mutating_ticket_cannot_publish_before_its_inherited_mutating_upst
 # ------------------------------------------------------------------ Major 1: late parent edge, then closeout
 
 
-@MA1
 def test_parent_cannot_close_with_a_dependency_added_after_its_child_finished(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)
@@ -152,8 +151,9 @@ def test_parent_cannot_close_with_a_dependency_added_after_its_child_finished(tm
     p.lead("review", "ingest", story, "--evidence", ev)
     p.lead("verify", "ingest", story, "--evidence", parent_verify(p, story))
     attempt(p, "work", "close", story, "--reason", "gates passed")
-    assert not (unit(p, story)["state"] == "DONE" and unit(p, late)["state"] != "DONE"), \
-        "a parent closed with an unsatisfied dependency"
+    closed = unit(p, story)
+    assert not (closed["state"] == "DONE" and late in [e["id"] for e in closed["depends_on"]]
+                and unit(p, late)["state"] != "DONE"), "a parent closed with an unsatisfied dependency"
 
 
 # ------------------------------------------------------------------ Major 2: observation mutated between submit and ingest

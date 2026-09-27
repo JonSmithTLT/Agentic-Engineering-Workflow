@@ -468,3 +468,40 @@ def test_an_attempt_is_bound_to_the_dependencies_it_was_dispatched_with(tmp_path
     legacy = engine.dispatch_binding_problem(s, change)
     assert "added" not in legacy and legacy["unsatisfied_at_dispatch_commit"][0]["id"] == unfinished
 
+
+
+def test_edge_edits_wait_for_unstarted_work_and_closeout_waits_for_dependencies(tmp_path):
+    """M2 review major 1: ADR-0007 allows an edge edit only while every affected Ticket is BLOCKED, READY or
+    REPLAN_REQUIRED; a finished child completed without the new edge, so the edit is refused (a cancelled
+    child never runs again and is not affected). Independently, a parent never closes while its own or
+    inherited dependencies are unsatisfied: moving a DONE child under it (still allowed) cannot close it early."""
+    p = sample_project(tmp_path)
+    x = create_investigation(p, tmp_path, title="Unfinished prerequisite", cls=0)
+    other = create_unit(p, "story", "Other", cls=0)
+    finished = create_investigation(p, tmp_path, parent=other, cls=0, title="Finished child")
+    complete_investigation(p, finished)
+    refused = err(p, "work", "depend", other, "--add", f"{x}:evidence", "--reason", "found late")
+    assert refused["code"] == "ILLEGAL_TRANSITION" and refused["details"]["affected"] == {finished: "DONE"}
+    assert show(p, other)["depends_on"] == []
+    third = create_unit(p, "story", "Third", cls=0)
+    dropped = create_investigation(p, tmp_path, parent=third, cls=0, title="Dropped")
+    p.lead("work", "transition", dropped, "--to", "CANCELLED", "--reason", "not needed")
+    waiting = create_investigation(p, tmp_path, parent=third, cls=0, title="Waiting")
+    p.lead("work", "depend", third, "--add", f"{x}:evidence", "--reason", "the survey comes first")
+    assert show(p, waiting)["state"] == "BLOCKED"
+    assert_control_invariants(p)
+
+    story = create_unit(p, "story", "Objective", cls=0, extra=("--depends-on", f"{x}:evidence"))
+    early = create_investigation(p, tmp_path, cls=0, title="Done before it was filed here")
+    complete_investigation(p, early)
+    p.lead("work", "move", early, "--parent", story, "--reason", "belongs to the objective")
+    assert show(p, story)["state"] == "ACCEPTANCE_PENDING"
+    closing = err(p, "work", "close", story, "--reason", "children done")
+    assert closing["code"] == "DEPENDENCY_UNSATISFIED" and closing["details"]["blockers"][0]["id"] == x
+    assert any(a.startswith(f"{story}: waiting on {x}") for a in p.ok("resume", "--json")["next_actions"])
+    assert_control_invariants(p)
+    complete_investigation(p, x)
+    p.lead("work", "close", story, "--reason", "children done and the prerequisite accepted")
+    assert show(p, story)["state"] == "DONE"
+    assert_control_invariants(p)
+

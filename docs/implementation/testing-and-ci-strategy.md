@@ -19,8 +19,8 @@ The **directory** says what a test is. **Markers** are used only for properties 
 | Lane | Rule (in order) | What it holds | Class |
 |---|---|---|---|
 | `serial` | marker `serial` | Properties that *are* timing or real-process concurrency: 2×50 racing writers, the real `os._exit` kill matrix and the cross-process stale writer (`tests/integration/test_store_processes.py`), and the pty operator takeover (AT-4b) | Deterministic regression; never parallel |
-| `acceptance` | marker `acceptance(id)` | AT-1..AT-7 and KC §26 scenarios through the real CLI and real git. `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
-| `adversarial` | marker `exploratory` | The seeded composition walk. Its default budget (5 seeds × 60 steps) is a merge gate; larger budgets run nightly. | Seeded exploration, deterministic per seed |
+| `acceptance` | marker `acceptance(id)` | AT-1..AT-13 and KC §26 scenarios through the real CLI and real git. `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
+| `adversarial` | marker `exploratory` | The seeded walks: the M1 composition walk (5 seeds × 60 steps) and the M2 hierarchy walk (5 seeds × 80 steps). Their default budgets are merge gates; larger budgets run nightly. | Seeded exploration, deterministic per seed |
 | `fast` | `tests/unit/**`, `tests/test_spec_pin.py` | Pure logic, schemas, the store model and in-process fault injection, the frozen-spec pin, CI tooling | Deterministic |
 | `integration` | `tests/integration/**` | Engine features over real git and the real CLI | Deterministic |
 | `regression` | `tests/regression/**` | Independent-review probes (preserved **unchanged**), composition tests, the cross-operation invariant oracle | **Permanent deterministic regression** |
@@ -138,7 +138,7 @@ Before and after:
 | Runner minutes per PR commit | ~124 (2 × ~62) | 31–35 |
 | Local Windows, whole suite serially | 1499 s (per-test sum; 552 tests) | 1520 s (602 tests: 597 passed, 5 pinned skips, the same outcomes as the parallel run) |
 
-The longest jobs are the Windows `adversarial` walk (5 seeds on 4 workers, 140–280 s depending on the runner), the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
+The longest jobs are the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s), the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there). Since M2 the lane jobs are: Linux integration 1, acceptance 1, regression 2, adversarial 1; Windows integration 2, acceptance 2, regression 3, adversarial 2 (14 lane jobs, 17 with `core` and `assurance`, sized from the first two M2 CI runs); the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
 
 A lane that outgrows its budget gets another shard: add a matrix entry in `ci.yml`, since shards are deterministic. Do not move it to nightly.
 
@@ -173,6 +173,9 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `AEW_WALK_SEEDS` | 11,23,37,41,53 |
 | `AEW_WALK_STEPS` | 60 |
 | `AEW_WALK_FAULT_RATE` | 0.08 |
+| `AEW_HWALK_SEEDS` | 7,19,31,43,59 |
+| `AEW_HWALK_STEPS` | 80 |
+| `AEW_HWALK_FAULT_RATE` | 0.06 |
 | `AEW_RACE_WRITES` | 50 |
 | `AEW_CRASH_SEED` | 20260925 |
 | `AEW_CRASH_ITERATIONS` | 200 |
@@ -182,7 +185,7 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | Job | What | Why |
 |---|---|---|
 | `reference` | Whole suite, serial, unsharded, both OSes | Re-proves the parallel runs are equivalent; refreshes durations |
-| `walk-extended` | 3 blocks × 6 rotating seeds per OS, 150 steps, fault rate 0.15 | More adversarial sequences and crashes |
+| `walk-extended` | 3 blocks × 6 rotating seeds per OS for both walks, 150 steps, fault rate 0.15 (hierarchy walk: 250 steps, fault rate 0.12) | More adversarial sequences and crashes |
 | `race-repeat` | Serial lane ×10, then 200 racing writes per writer | Heavier race and kill repetition |
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
 | `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11 | Broader environment |
@@ -190,6 +193,7 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 ## 12. Known cost drivers and follow-ups
 
 - **CLI subprocesses are ~80 % of test time.** A read-only `aew` call costs ~250 ms: ~100 ms of imports (jsonschema ~50 ms) and ~65 ms of pure-Python YAML parsing of `control.yaml`. Cutting that is a separately reviewed `src/` change to the persistence core.
+- **The M1 walk re-parses `control.yaml` for every harness query** (~40 times per step). The M2 hierarchy walk caches the parsed state by the file's identity, which cut a seed from 150–320 s to ~20 s with step-for-step identical paths; applying the same harness change to `test_composition_walk.py` is a separately reviewed change to an M1 regression file.
 - **The ruleset's code-coverage rule has no report yet.** Subprocess-aware coverage, combined across shards, is a separate decision.
 - **A Rocky Linux 8 container job** (the SPT target) is a candidate for the nightly lane.
 - **Action majors.** The workflows pin `actions/checkout@v4`, `setup-python@v5` and `upload/download-artifact@v4`. GitHub runs these Node 20 actions on Node 24 with a deprecation warning. Bumping to the current majors (checkout v7, setup-python v7, upload-artifact v7, download-artifact v8) is a separate change that needs a check of their changelogs.

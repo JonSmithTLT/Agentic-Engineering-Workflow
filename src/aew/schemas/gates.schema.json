@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/gates/v1",
   "title": "Gate policy",
-  "description": "Risk-class gate paths and integration policy (WC \u00a77.5, \u00a713). Gate names: accepted_plan, local_checks, self_review, review_r1, verification_goal_backwards, verification_contract, review_<trigger>.",
+  "description": "Risk-class gate paths and integration policy (WC §7.5, §13). Gate names: accepted_plan, local_checks, self_review, review_r1, verification_goal_backwards, verification_contract, review_<trigger>. M2 adds execute_record (non-mutating) and children_complete (parents); see ADR-0007/0008.",
   "type": "object",
   "required": [
     "schema",
@@ -74,6 +74,47 @@
           "observation"
         ]
       }
+    },
+    "non_mutating_paths": {
+      "type": "object",
+      "required": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "description": "gate paths for non-mutating Tickets (ADR-0008)"
+    },
+    "parent_paths": {
+      "type": "object",
+      "required": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "description": "gate paths for Story/Epic closeout (ADR-0007)"
+    },
+    "non_mutating_concurrency": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
     }
   }
 }

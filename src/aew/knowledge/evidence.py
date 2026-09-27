@@ -22,13 +22,21 @@ ROLE_KINDS = {
     "implementer": {"implementation_report"},
     "reviewer": {"review"},
     "verifier": {"verification"},
+    # Non-mutating execute records (ADR-0008): each read-only archetype writes exactly one kind.
+    "investigator": {"discovery_record"},
+    "researcher": {"research_record"},
+    "planner": {"plan_proposal"},
 }
-SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check"}
+# The record a non-mutating executor of each archetype must produce (the pinned output contract).
+EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
+EXECUTE_KINDS = frozenset(EXECUTE_KIND.values())
+SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check",
+         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
 
 # Fields the engine owns. A submission containing any of them is rejected rather than
 # silently overwritten, so forged bindings or control decisions are visible failures.
 ENGINE_OWNED = {"schema", "id", "kind", "work_unit", "created_at", "evaluated_snapshot", "plan_revision",
-                "seq", "integrity", "sealed_by"}
+                "seq", "integrity", "sealed_by", "attempt", "subject"}
 # Reserved for per-card output contracts (ADR-0006, post-M1): a card-declared contract name and a
 # payload validated against that contract's schema. Rejected until contracts are implemented.
 RESERVED_FOR_CONTRACTS = {"contract", "payload"}
@@ -38,6 +46,9 @@ SUBMITTER_KEYS = {
     "implementation_report": {"claim", "result", "producer", "method", "evidence", "implementation"},
     "review": {"claim", "producer", "method", "evidence", "review"},
     "verification": {"claim", "producer", "method", "evidence", "verification"},
+    "discovery_record": {"claim", "result", "producer", "method", "evidence", "discovery"},
+    "research_record": {"claim", "result", "producer", "method", "evidence", "research"},
+    "plan_proposal": {"claim", "result", "producer", "method", "evidence", "proposal"},
 }
 
 

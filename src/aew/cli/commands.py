@@ -19,6 +19,8 @@ def _cwd(args: argparse.Namespace) -> Path:
 
 
 def _engine(args: argparse.Namespace):
+    if not Path(_cwd(args)).is_dir():
+        raise UsageError(f"no such directory: {_cwd(args)} (a retired workspace or observation?)")
     from aew.engine.api import Engine
 
     return Engine.discover(_cwd(args))

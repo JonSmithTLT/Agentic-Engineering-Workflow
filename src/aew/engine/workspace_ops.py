@@ -8,7 +8,7 @@ from typing import Any
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
-from aew.engine.dependencies import readiness_blockers
+from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.role_ops import RoleOps
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition
 from aew.knowledge.records import format_id
@@ -74,6 +74,9 @@ class WorkspaceOps(RoleOps):
         if inv["status"] == "active":
             inv["status"] = status
             revoke(state, inv["token_id"], f"invocation {status}")
+        obs = inv.get("observation")
+        if obs and obs.get("status") == "active":
+            obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)
 
     def _after_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
                             reason: str | None) -> None:
@@ -101,16 +104,17 @@ class WorkspaceOps(RoleOps):
                 raise IllegalTransition("only Tickets are assigned")
             if not unit["mutating"]:
                 # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
-                # never receive either (it would bypass the serial mutation cap). Its dispatch path —
-                # investigator/researcher/planner cards, no workspace — arrives in M2 (foundation review).
+                # never receive either (it would bypass the serial mutation cap). It is dispatched instead:
+                # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
                 raise IllegalTransition(
-                    f"{work_id} is a non-mutating (evidence-only) Ticket; M1 assigns mutating Tickets only "
-                    "(the non-mutating dispatch path arrives in M2)")
+                    f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
+                    f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating path)")
             transitions.check(unit["state"], "ASSIGNED", "assign")
             base = self.authoritative_commit()
             if base is None:
                 raise IllegalTransition(f"authoritative branch {self.authoritative_branch} has no commits")
-            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=base)
+            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=base, work_id=work_id,
+                                          plan_problem=self.plan_binding_problem)
             if blockers:
                 raise DependencyUnsatisfied(
                     f"{work_id} cannot be assigned: its recorded source snapshot would not contain every "
@@ -125,6 +129,8 @@ class WorkspaceOps(RoleOps):
                         "mutating concurrency is 1 until isolated concurrent integration exists (WC §8.1); "
                         f"{busy} still hold unintegrated workspaces", holding=busy)
             card = self.resolve_card(state, work_id, "execute", card_id=None, role="implementer")
+            # Consumed non-mutating records must still describe the source this assignment is based on (ADR-0008).
+            inputs = self.dispatch_inputs(state, work_id, base)
             unit["attempts"] = unit.get("attempts", 0) + 1
             referenced = {u["workspace"]["path"] for u in state["work"].values()
                           if (u.get("workspace") or {}).get("status") == "active"}
@@ -135,10 +141,13 @@ class WorkspaceOps(RoleOps):
             try:
                 snapshot = self.snapshot_of(ws["path"], ws["id"])
                 ws["base_snapshot"] = snapshot
+                # The dependencies this attempt is dispatched with; completion re-checks them (M2 review B2).
+                ws["dependencies"] = effective_edge_set(state, work_id)
                 unit["workspace"] = ws
                 inv_id, inv_token = self._new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
                                                          workspace_id=ws["id"], snapshot=snapshot, card=card)
                 unit["implementer_invocation"] = inv_id
+                state["invocations"][inv_id]["inputs"] = inputs
                 self.build_pack(ctx, inv_id)
                 change = self._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}", state=state)
                 ctx.summary = f"{work_id} assigned: {ws['id']} at {base[:12]}"
@@ -153,6 +162,10 @@ class WorkspaceOps(RoleOps):
     # Refined by the context-pack mixin (step 8).
     def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
         return None
+
+    # Refined by the non-mutating mixin (consumed-input freshness at dispatch, ADR-0008).
+    def dispatch_inputs(self, state: dict[str, Any], work_id: str, commit: str | None) -> list[dict[str, Any]]:
+        return []
 
     # ------------------------------------------------------------------ hooks from WorkOps
 

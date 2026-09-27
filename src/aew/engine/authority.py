@@ -32,9 +32,11 @@ ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     "implementer": frozenset({"check.run", "submit.implementation_report", "context.read"}),
     "reviewer": frozenset({"submit.review", "context.read"}),
     "verifier": frozenset({"check.run", "submit.verification", "context.read"}),
-    "planner": frozenset({"context.read"}),
-    "investigator": frozenset({"context.read"}),
-    "researcher": frozenset({"context.read"}),
+    # Non-mutating executors (ADR-0008): each submits exactly its own record kind; the investigator may
+    # also gather runtime evidence by running project checks in its read-only observation workspace.
+    "planner": frozenset({"submit.plan_proposal", "context.read"}),
+    "investigator": frozenset({"check.run", "submit.discovery_record", "context.read"}),
+    "researcher": frozenset({"submit.research_record", "context.read"}),
 }
 
 

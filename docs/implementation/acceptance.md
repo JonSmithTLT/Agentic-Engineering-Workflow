@@ -1,6 +1,6 @@
-# M1 acceptance suite
+# Acceptance suite (M1, M2)
 
-The scenarios from the M1 plan (§6) and KC §26 are tagged `@pytest.mark.acceptance("<id>")`:
+The scenarios from the M1 plan (§6), the M2 plan (§6 step 9) and KC §26 are tagged `@pytest.mark.acceptance("<id>")`:
 
 ```bash
 python -m pytest -m acceptance -q      # just the acceptance scenarios
@@ -22,6 +22,23 @@ Every scenario drives the real `aew` CLI in separate processes against real git 
 | AT-6 | Lead-owned verification-failure classification maps to the mandated transitions | `test_evidence_gates.py::test_lead_classifies_verification_failures` |
 | AT-7 | Workspace copies of `.aew/` are never authority; a Ticket cannot write AEW state through its workspace | `test_authority.py::test_worktree_copy_of_aew_is_not_an_authority`, `test_workspaces.py::test_aew_inside_workspace_resolves_to_authoritative_project`, `tests/acceptance/test_at4a_at7.py::test_ticket_cannot_write_aew_state_through_its_workspace` |
 | KC §26 | Existing-authority project: sources are referenced, not duplicated | `test_resume.py::test_existing_authority_project_is_referenced_not_duplicated` |
+
+## M2 acceptance (hierarchy and non-mutating work)
+
+The M2 scenarios live in `tests/acceptance/test_at8_at13_hierarchy.py`, with the same conventions as M1: real CLI processes, real git repositories, scripted role drivers, and the invariant oracle at the end of each phase.
+
+| ID | Scenario | Tests |
+|---|---|---|
+| AT-8 | Story lifecycle to closeout. Epic → Story → an investigation consumed by an implementation Ticket. COMMIT_READY is not completion. With all children DONE the Story is ACCEPTANCE_PENDING, but closing is refused until its own review and verification pass against the parent snapshot; `work transition` never closes it. The Epic closes after the Story. | `test_story_lifecycle_to_closeout` |
+| AT-9 | KC §26 parent risk policy propagation. A Class-3 Story with a Story-level mandatory security review: its locally Class-0 Ticket keeps class 0, inherits the non-waivable gate (a waiver is refused), and needs the security review before COMMIT_READY. A minimum-descendant floor is rejected without a rationale and, with one, raises only the effective class. | `test_parent_risk_policy_propagation` |
+| AT-10 | KC §26 Ticket promotion. A running Ticket's implementation report shows hidden cross-component ambiguity. The Lead promotes it to a Story under the same Epic. The Ticket keeps its id, record bytes, evidence and history, moves under the new Story in REPLAN_REQUIRED, and the promotion decision carries the reason. Work continues under the Story. | `test_ticket_promotion_preserves_identity_evidence_and_reason` |
+| AT-11 | KC §26 fresh-session reconstruction with an active Epic. The Lead session is destroyed mid-investigation and `.aew/local` is deleted. `aew resume` recovers the tree, derived states, accepted plans, the executor's attempt and pinned output kind, inherited Story-level edges, and the next action (ingest the submitted record). An operator takeover then interrupts the read-only executor. The old credentials are rejected, the submitted record is never inferred, reconciliation records the attempt, and a new attempt completes it. | `test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_read_only_work` |
+| AT-12 | Read-only concurrency and authority. Investigation, research and planning run beside a mutating Ticket that holds the serial slot. Each has its own observation of the authoritative source and never sees the unintegrated workspace; the serial cap still refuses a second mutating assignment. Read-only roles cannot submit another archetype's kind, drive control state, accept plans or run checks outside their grant, and a mutated observation is refused (`OBSERVATION_MUTATED`). A Planner's proposal becomes a plan only when the Lead adopts and accepts it. | `test_read_only_work_runs_concurrently_and_stays_read_only` |
+| AT-13 | Backlog representability (generic, SPT-shaped). An Epic of Stories mixing investigation, research, planning and implementation Tickets, with external refs/priorities, a Story-level dependency, an Epic-level audit, and a standalone small Ticket with no artificial parent. It includes the KC §26 `T1,T2 → T3` + `T4` graph: T3 stays BLOCKED while T1 is only COMMIT_READY, its assignment snapshot contains T1's integrated output, and T2's survey (stale after T1 changed its observed paths) is used only after the Lead's recorded acknowledgement for that commit. Everything closes. | `test_representative_backlog_is_representable_and_executable` |
+
+**Regressions:**
+- `tests/regression/test_m2_compositions.py` holds the operator-review sequences: ancestor first-acceptance, attempt supersession, stale inputs (acknowledge, re-refuse, refresh), record freshness at accept, handoff of read-only work, a moved DONE child's review completeness, and parent cancel versus `publishing`.
+- `tests/regression/test_hierarchy_walk.py` is a separate seeded walk (`AEW_HWALK_SEEDS`, `AEW_HWALK_STEPS`, `AEW_HWALK_FAULT_RATE`). The M1 walk is unchanged.
 
 ## Review regressions (2026-09-26)
 

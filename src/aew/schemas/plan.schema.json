@@ -13,6 +13,13 @@
     "reason": {"type": ["string", "null"]},
     "created_at": {"type": "string"},
     "author": {"type": "object", "required": ["role"]},
-    "affected_paths": {"type": "array", "items": {"type": "string"}}
+    "affected_paths": {"type": "array", "items": {"type": "string"}},
+    "source_evidence": {
+      "type": ["object", "null"],
+      "description": "set when the Lead adopted this revision from an accepted Planner plan_proposal (ADR-0008)",
+      "required": ["id", "sha256", "work_unit", "invocation"],
+      "properties": {"id": {"type": "string"}, "sha256": {"type": "string"}, "work_unit": {"type": "string"},
+                     "invocation": {"type": "string"}}
+    }
   }
 }

@@ -11,6 +11,8 @@
     "kind": {"enum": ["ticket", "story", "epic"]},
     "title": {"type": "string", "minLength": 1},
     "parent": {"type": ["string", "null"]},
+    "promoted_from": {"type": ["string", "null"], "pattern": "^[TSE]-[0-9]{4,}$",
+                      "description": "the unit this one was promoted from (KC §9.4); its identity and evidence are preserved"},
     "external_refs": {"type": "array", "items": {"type": "string"}},
     "created_at": {"type": "string"},
     "created_by": {"type": "object"},

@@ -36,6 +36,16 @@ class StatusOps(EngineBase):
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv["status"] == "active" and state["lead"]["status"] == "vacant":
                 found.append(f"{inv_id}: active invocation but no Lead holds authority")
+            obs = inv.get("observation") or {}
+            if obs and obs.get("status") != "active" and Path(obs["path"]).exists():
+                found.append(f"{inv_id}: retired observation worktree still on disk at {obs['path']} (it is pruned by "
+                             "the next non-mutating operation)")
+        from aew.engine import hierarchy as H
+        for wid, unit in sorted(state["work"].items()):
+            if unit["kind"] != "ticket" and unit["state"] != "OPEN":
+                derived = H.derive_parent(state, wid)["state"]
+                if derived != unit["state"]:
+                    found.append(f"{wid}: stored state {unit['state']} disagrees with its derivation {derived}")
         return found
 
     def status(self, work_id: str | None = None) -> dict[str, Any]:
@@ -52,6 +62,8 @@ class StatusOps(EngineBase):
             "lead": {"status": lead["status"], "generation": lead["generation"],
                      "session_label": lead.get("session_label")},
             "work_graph": work_graph_lines(state),
+            "hierarchy": self.work_tree()["lines"] if any(u["kind"] != "ticket" for u in state["work"].values())
+            else [],
             "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
                            "blocked_by": u.get("blocked_by", [])}
                      for wid, u in sorted(state["work"].items())},
@@ -62,6 +74,9 @@ class StatusOps(EngineBase):
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         return []
+
+    def work_tree(self, root: str | None = None) -> dict[str, Any]:  # provided by the hierarchy mixin
+        return {"lines": []}
 
     def render_status(self, report: dict[str, Any]) -> str:
         if "work_unit" in report:
@@ -76,6 +91,8 @@ class StatusOps(EngineBase):
             "",
             *report["work_graph"],
         ]
+        if report.get("hierarchy"):
+            lines += ["", "Hierarchy", *(f"  {h}" for h in report["hierarchy"])]
         if report["next_actions"]:
             lines += ["", "Next actions", *(f"  {a}" for a in report["next_actions"])]
         if report["contradictions"]:

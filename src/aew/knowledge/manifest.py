@@ -38,6 +38,28 @@ DEFAULT_GATES: dict[str, Any] = {
     },
     "post_integration": {"verification": True, "checks": ["unit"]},
     "waivable_gates": [],
+    # Non-mutating (evidence-only) Tickets: the executor's record, accepted by the Lead, is the output
+    # (ADR-0008). Review/verification gates apply when a project adds them or an ancestor mandates them.
+    "non_mutating_paths": {
+        "0": ["execute_record"],
+        "1": ["accepted_plan", "execute_record"],
+        "2": ["accepted_plan", "execute_record"],
+        "3": ["accepted_plan", "execute_record"],
+        "4": ["accepted_plan", "execute_record"],
+    },
+    # Story/Epic closeout (ADR-0007): children complete does not prove parent acceptance (WC §7.2, §8).
+    "parent_paths": {
+        "0": ["children_complete"],
+        "1": ["accepted_plan", "children_complete", "review_r1", "verification_goal_backwards",
+              "verification_contract"],
+        "2": ["accepted_plan", "children_complete", "review_r1", "verification_goal_backwards",
+              "verification_contract"],
+        "3": ["accepted_plan", "children_complete", "review_r1", "verification_goal_backwards",
+              "verification_contract"],
+        "4": ["accepted_plan", "children_complete", "review_r1", "verification_goal_backwards",
+              "verification_contract"],
+    },
+    "non_mutating_concurrency": None,
 }
 
 DEFAULT_CHECKS: dict[str, Any] = {

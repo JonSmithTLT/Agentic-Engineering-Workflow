@@ -1,0 +1,14 @@
+schema: aew/role/v1
+role: planner
+display_name: Planner / Designer
+version: 1
+extends: planner
+purpose: Convert a requirement and its discovery/research evidence into a proposed plan for the Lead to accept.
+use_when:
+  - a Ticket, Story or Epic needs an implementation contract or decomposition before execution
+responsibilities:
+  - state objective, constraints, approach, rejected alternatives, affected components, ordered tasks,
+    required tests and verification, risks and escalation triggers
+  - declare affected_paths so the proposal's source basis can be checked for staleness
+skills: []
+outputs: [plan_proposal]

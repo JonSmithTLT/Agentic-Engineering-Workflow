@@ -90,6 +90,78 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).work_transition(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
 
+    # ---- M2: non-mutating Tickets (ADR-0008) and the Story/Epic lifecycle (ADR-0007)
+    q = wsub.add_parser("dispatch", help="READY -> ASSIGNED for a non-mutating Ticket: executor + observation (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--card", help="investigator/researcher/planner card (default: the staffed or default card)")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_dispatch(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                             work_id=a.work_id, card=a.card))
+    q = wsub.add_parser("redispatch", help="supersede a non-mutating Ticket's attempt and start the next (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--reason", required=True)
+    q.add_argument("--card")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_redispatch(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                               work_id=a.work_id, reason=a.reason, card=a.card))
+    q = wsub.add_parser("accept", help="accept a non-mutating Ticket's record: -> DONE (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--reason")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_accept(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                           work_id=a.work_id, reason=a.reason))
+    q = wsub.add_parser("close", help="close a Story/Epic after its children and its own gates (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--reason")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_close(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                          work_id=a.work_id, reason=a.reason))
+    q = wsub.add_parser("cancel", help="cancel a Story/Epic and its open descendants (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_cancel(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                           work_id=a.work_id, reason=a.reason))
+    q = wsub.add_parser("move", help="move a unit under another parent (or none); recorded decision (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--parent", required=True, help="new parent id, or `none`")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_move(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id,
+        parent=None if a.parent.lower() == "none" else a.parent, reason=a.reason))
+    q = wsub.add_parser("promote", help="promote a Ticket to a Story (or to an Epic), preserving identity (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--to", required=True, choices=["story", "epic"])
+    q.add_argument("--title", required=True)
+    q.add_argument("--reason", required=True)
+    q.add_argument("--class", dest="risk_class", type=int, choices=range(0, 5))
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_promote(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, title=a.title,
+        reason=a.reason, risk_class=a.risk_class))
+    q = wsub.add_parser("depend", help="add/remove dependency edges; recorded decision (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--add", action="append", default=[], metavar="ID[:mutating|evidence]")
+    q.add_argument("--remove", action="append", default=[], metavar="ID")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_depend(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, add=a.add, remove=a.remove,
+        reason=a.reason))
+    q = wsub.add_parser("acknowledge-input", help="accept a stale source-bound input for the current commit (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--input", dest="evidence", required=True, help="the consumed record's evidence id")
+    q.add_argument("--from", dest="source", required=True, help="the Ticket that produced it")
+    q.add_argument("--reason", required=True, help="what was rechecked against the current source")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_acknowledge_input(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
+        source=a.source, reason=a.reason))
+    q = wsub.add_parser("tree", help="the Epic -> Story -> Ticket tree with derived parent state")
+    q.add_argument("work_id", nargs="?")
+    q.set_defaults(handler=lambda a: _engine(a).work_tree(a.work_id))
+
     q = wsub.add_parser("reconcile", help="reconcile an INTERRUPTED Ticket after inspection (Lead)")
     q.add_argument("work_id")
     q.add_argument("--to", required=True)
@@ -126,6 +198,21 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_accept(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision))
+    q = psub.add_parser("adopt", help="propose a plan revision from an accepted Planner plan_proposal (Lead)")
+    q.add_argument("work_id", help="the unit whose plan it becomes")
+    q.add_argument("--evidence", required=True)
+    q.add_argument("--from", dest="source", required=True, help="the DONE planning Ticket that produced it")
+    q.add_argument("--reason")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).plan_adopt(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
+        source=a.source, reason=a.reason))
+    q = psub.add_parser("reconfirm", help="rebind an accepted plan after an ancestor's plan changed (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).plan_reconfirm(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason))
 
     _register_later_steps(sub)
 
@@ -170,7 +257,8 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.set_defaults(handler=lambda a: _engine(a).check_run(invocation_token=_inv_token(a), check_id=a.check_id))
 
     q = sub.add_parser("submit", help="submit role evidence (implementation report, review, verification)")
-    q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification"])
+    q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
+                                                     "discovery_record", "research_record", "plan_proposal"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
     q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
     q.set_defaults(handler=lambda a: _engine(a).submit(invocation_token=_inv_token(a), kind=a.kind,
@@ -190,6 +278,15 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     r.set_defaults(handler=lambda a: _engine(a).waive(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason, gate=a.gate,
         finding=a.finding))
+
+    p = sub.add_parser("evidence", help="Lead: ingest a non-mutating Ticket's execute record")
+    esub = p.add_subparsers(dest="evidence_cmd", required=True)
+    q = esub.add_parser("ingest")
+    q.add_argument("work_id")
+    q.add_argument("--evidence", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).evidence_ingest(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
 
     p = sub.add_parser("review", help="Lead: ingest a review report")
     rsub = p.add_subparsers(dest="review_cmd", required=True)

@@ -88,6 +88,11 @@ RULES: dict[tuple[str, str], Rule] = {
     ("REPLAN_REQUIRED", "READY"): Rule("plan.accept"),
 }
 
+# Non-mutating (evidence-only) Tickets reach DONE when the Lead accepts their executor's record; they are
+# never integrated, and the guard refuses every mutating Ticket (ADR-0008; ADR-0003 amendment).
+for _src in ("RUNNING", "REVIEW_PASSED", "VERIFIED"):
+    RULES[(_src, "DONE")] = Rule("accept", guard="evidence_only_complete")
+
 # Lead-initiated regressions back to mutation (e.g. evidence went stale, more work needed).
 for _src in ("REVIEW_PENDING", "REVIEW_PASSED", "VERIFY_PENDING", "VERIFIED", "VERIFICATION_INCONCLUSIVE",
              "COMMIT_READY"):

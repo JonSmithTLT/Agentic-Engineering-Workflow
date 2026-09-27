@@ -38,7 +38,7 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 # Lanes and markers: docs/implementation/testing-and-ci-strategy.md. Every test maps to exactly one lane.
 markers = [
-    "acceptance(id): M1 acceptance scenario (AT-1..AT-7, KC 26); select with -m acceptance",
+    "acceptance(id): acceptance scenario (M1: AT-1..AT-7, M2: AT-8..AT-13, KC 26); select with -m acceptance",
     "serial: timing or real-process concurrency is the property; never runs under xdist (--lane serial)",
     "exploratory: seeded randomized exploration; default budget is a merge gate, extended budgets run nightly",
 ]

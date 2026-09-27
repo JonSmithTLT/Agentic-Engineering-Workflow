@@ -1,6 +1,6 @@
 # ADR-0006 — Role archetypes (authority classes) and Role cards (catalog)
 
-- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25.
+- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25. Amended for M2 (2026-09-27).
 - **Spec basis:**
   - WC §5: roles are reusable execution templates with authority and context contracts.
   - WC §5.8: specialists supply guidance *within another role* and create no parallel authority.
@@ -105,3 +105,22 @@ role_plan:
   - The M1 card schema accepts `restrict.operations` and `restrict.checks` only. A card declaring `restrict.paths` is rejected (fail closed), and the "paths" in the Role-cards bullet above is not yet available.
   - In M1, path limits come from the Ticket's declared scope paths and the guardrail policy (protected/generated paths, `outside_ticket_scope`).
   - Card-level path restriction is **Designed**. It needs enforcement at check/guardrail time and is recorded in `implementation-status.md`.
+
+## Amendment 2026-09-27 — M2: dispatchable read-only archetypes (ADR-0008)
+
+- **Investigator, Researcher and Planner are dispatchable.** `DISPATCHABLE_IN_M1` is replaced by per-slot rules:
+  - The execute slot of a non-mutating Ticket accepts only cards extending `investigator`, `researcher` or `planner` (`NON_MUTATING_EXECUTORS`).
+  - The execute slot of a mutating Ticket stays implementer-only.
+  - Parents have no execute slot. Their review and verify slots take reviewer and verifier cards.
+- **Three generic built-in cards.** `investigator`, `researcher` and `planner` become the archetypes' `default_card`s.
+- **Default executor.** The workflow-default executor of an unstaffed non-mutating Ticket is the `investigator` card.
+  - Dispatch records it as `selected_by: workflow-default` and pins `expected_kind: discovery_record`, so the choice is explicit and visible.
+  - Research and planning Tickets must be staffed: `work create --card`, `work staff --execute`, or `work dispatch --card`.
+- **Operations.** Engine operations and the archetype YAML are extended together, and the equality test still holds:
+  - investigator: `check.run`, `submit.discovery_record`, `context.read`;
+  - researcher: `submit.research_record`, `context.read`;
+  - planner: `submit.plan_proposal`, `context.read`.
+
+  None of them can submit another archetype's kind, drive control state, accept a plan or mutate source (`OBSERVATION_MUTATED`).
+- **Unchanged.** Selection precedence, `use_when` (advisory), operator pins (enforced in the execute slot, including for non-mutating Tickets), forbids and escalation checks. No archetype is added.
+- **Specialist remains a card modifier.** Substantial audit work, such as a security audit or a performance characterization, is a non-mutating Ticket executed by an investigator-based card. Routine review and verification remain gates (WC §7).

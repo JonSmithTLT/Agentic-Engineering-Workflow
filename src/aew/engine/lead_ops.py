@@ -20,6 +20,7 @@ from aew import operator
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import EngineBase, TxnContext
 from aew.engine.store import Transition
+from aew.roles import NON_MUTATING_EXECUTORS
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
 from aew.knowledge.records import format_id
 from aew.util import render_frontmatter, utc_now
@@ -56,6 +57,17 @@ class LeadOps(EngineBase):
 
     @staticmethod
     def _phase_waits_on(unit: dict[str, Any], inv: dict[str, Any]) -> bool:
+        if unit["kind"] != "ticket":
+            return False  # a parent's phase is derived; losing a parent reviewer/verifier leaves a gate missing
+        if not unit.get("mutating"):
+            # Non-mutating Tickets (ADR-0008): the phase waits on the current attempt's executor, or on the
+            # reviewer/verifier of its accepted record; all of them work in observation scope.
+            waits = {"ASSIGNED": NON_MUTATING_EXECUTORS, "RUNNING": NON_MUTATING_EXECUTORS,
+                     "REVIEW_PENDING": {"reviewer"}, "VERIFY_PENDING": {"verifier"}}.get(unit["state"], set())
+            if inv["role"] not in waits or inv.get("scope") != "observation":
+                return False
+            return inv["role"] not in NON_MUTATING_EXECUTORS or \
+                inv.get("attempt") == (unit.get("execution") or {}).get("attempt")
         driver = PHASE_DRIVERS.get(unit["state"])
         if driver != (inv["role"], inv.get("scope") or "ticket"):
             return False
@@ -73,6 +85,8 @@ class LeadOps(EngineBase):
                 continue
             inv["status"] = "interrupted"
             revoke(state, inv["token_id"], reason)
+            if (inv.get("observation") or {}).get("status") == "active":
+                inv["observation"]["status"] = "retired"  # the attempt ends; its worktree is pruned later
             interrupted.append(inv_id)
             unit = state["work"].get(inv["work_unit"])
             if not unit:

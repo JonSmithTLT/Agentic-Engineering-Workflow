@@ -194,6 +194,93 @@ def evaluate(
     return results
 
 
+def path_table(gates_policy: dict[str, Any], unit: dict[str, Any]) -> dict[str, list[str]]:
+    """The risk-path table for a unit's type: mutating Tickets (M1), non-mutating Tickets, or parents.
+
+    Projects created before M2 have no ``non_mutating_paths``/``parent_paths``; the built-in defaults apply.
+    """
+    from aew.knowledge.manifest import DEFAULT_GATES  # local import: manifest imports nothing from engine
+
+    if unit["kind"] != "ticket":
+        return gates_policy.get("parent_paths") or DEFAULT_GATES["parent_paths"]
+    if not unit.get("mutating"):
+        return gates_policy.get("non_mutating_paths") or DEFAULT_GATES["non_mutating_paths"]
+    return gates_policy["risk_paths"]
+
+
+def evaluate_evidence_unit(
+    state: dict[str, Any],
+    work_id: str,
+    evidence: list[dict[str, Any]],
+    *,
+    obligations: dict[str, Any],
+    special: dict[str, dict[str, Any]],
+    is_current: Any,
+) -> dict[str, dict[str, Any]]:
+    """Gate status for a non-mutating Ticket or a Story/Epic (ADR-0007/0008). M1's ``evaluate`` is untouched.
+
+    ``special`` supplies engine-computed gates (``accepted_plan``, ``execute_record``, ``children_complete``).
+    ``is_current(e)`` decides whether a review/verification report still applies: for a non-mutating
+    Ticket its subject must be the currently accepted execute record; for a parent it must be bound to the
+    current parent snapshot (source + children digest). As in M1, only reports the Lead **ingested**
+    (id + sha256 pinned on the unit) count, and plan revision must match.
+    """
+    unit = state["work"][work_id]
+    plan_rev = (unit.get("plan") or {}).get("accepted")
+    invocations = state["invocations"]
+    accepted_refs = {r["id"]: r.get("sha256") for r in unit.get("evidence", [])}
+    ingested = [e for e in evidence if accepted_refs.get(e["id"]) == e.get("_sha256")]
+    waived = {w["gate"] for w in unit.get("waivers", []) if w.get("gate")}
+    scope = "parent" if unit["kind"] != "ticket" else "ticket"
+
+    def latest(cands: list[dict[str, Any]], passing: Any) -> dict[str, Any]:
+        current = [e for e in cands if is_current(e) and (e.get("plan_revision") or {}).get("revision") == plan_rev]
+        if current:
+            return {"status": CURRENT if passing(current[-1]) else FAILED, "evidence": current[-1]["id"]}
+        if any(passing(e) for e in cands):
+            return {"status": STALE, "evidence": [e for e in cands if passing(e)][-1]["id"]}
+        return {"status": MISSING, "evidence": None}
+
+    def reviews(card: str | None = None, specialty: Any = False) -> list[dict[str, Any]]:
+        out = [e for e in ingested if e["kind"] == "review" and e["review"]["independence"] in {"R1", "R2", "R3"}]
+        if card is not None:
+            out = [e for e in out if _card(e) == card]
+        if specialty is not False:
+            out = [e for e in out if (e["review"].get("specialty") or None) == specialty]
+        return out
+
+    def verifications(card: str | None = None) -> list[dict[str, Any]]:
+        out = [e for e in ingested if e["kind"] == "verification" and e["verification"]["scope"] == scope
+               and invocations[e["producer"]["invocation"]]["role"] == "verifier"]
+        return [e for e in out if _card(e) == card] if card is not None else out
+
+    results: dict[str, dict[str, Any]] = {}
+    for gate in obligations["gates"]:
+        if gate in waived and gate not in obligations["non_waivable"]:
+            results[gate] = {"status": WAIVED}
+        elif gate in special:
+            results[gate] = special[gate]
+        elif gate.startswith(REVIEW_CARD_PREFIX):
+            results[gate] = latest(reviews(card=gate[len(REVIEW_CARD_PREFIX):]),
+                                   lambda e: e["review"]["disposition"] == "pass")
+        elif gate.startswith(VERIFY_CARD_PREFIX):
+            results[gate] = latest(verifications(card=gate[len(VERIFY_CARD_PREFIX):]), _verification_passes)
+        elif gate.startswith(REVIEW_GATES_PREFIX):
+            specialty = None if gate == "review_r1" else gate[len(REVIEW_GATES_PREFIX):]
+            results[gate] = latest(reviews(specialty=specialty), lambda e: e["review"]["disposition"] == "pass")
+        elif gate in VERIFICATION_GATES:
+            claim_type = "goal_backwards" if gate == "verification_goal_backwards" else "contract"
+
+            def passing(e: dict[str, Any], claim_type: str = claim_type) -> bool:
+                claims = [c for c in e["verification"]["claims"] if c["type"] == claim_type]
+                return e["result"] == "pass" and bool(claims) and all(c["result"] == "pass" for c in claims)
+
+            results[gate] = latest(verifications(), passing)
+        else:
+            results[gate] = {"status": MISSING, "detail": f"no evaluator for {gate} on this unit type"}
+    return results
+
+
 def _worst(statuses: list[str]) -> str:
     for s in (FAILED, MISSING, STALE):
         if s in statuses:

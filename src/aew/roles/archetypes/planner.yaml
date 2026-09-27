@@ -2,17 +2,18 @@ schema: aew/role-archetype/v1
 role: planner
 persistent: false
 dispatchable: true
-dispatch_status: "cards may extend it now; planner writeback arrives in M2 (the Lead records plans in M1)"
-default_card: null
+default_card: planner
 authority:
   - propose a plan/design; the Lead accepts it (WC §5.4)
 responsibilities:
   - make dependencies, risks, affected components, validation requirements and assumptions explicit
-engine_operations: [context.read]
+engine_operations: [submit.plan_proposal, context.read]
 evidence_kinds: [plan_proposal]
 authority_capabilities: []
 prohibited:
-  - accepting its own plan
+  - accepting its own plan or writing plan revisions (the Lead adopts a proposal with `aew plan adopt`,
+    then accepts it)
+  - mutating source, including the observation workspace
 outputs:
   - proposed plan revision
 context:

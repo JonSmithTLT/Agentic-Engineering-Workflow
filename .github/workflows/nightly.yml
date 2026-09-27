@@ -62,6 +62,8 @@ jobs:
     env:
       AEW_WALK_STEPS: "150"
       AEW_WALK_FAULT_RATE: "0.15"
+      AEW_HWALK_STEPS: "250"
+      AEW_HWALK_FAULT_RATE: "0.12"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-aew
@@ -73,7 +75,9 @@ jobs:
           base=$(( GITHUB_RUN_NUMBER * 1000 + ${{ matrix.block }} * 10 ))
           seeds=$(seq -s, "$base" $(( base + 5 )))
           echo "AEW_WALK_SEEDS=$seeds" >> "$GITHUB_ENV"
-          echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest --lane adversarial" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "AEW_HWALK_SEEDS=$seeds" >> "$GITHUB_ENV"
+          echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest tests/regression/test_composition_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
 
   race-repeat:

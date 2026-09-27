@@ -25,7 +25,6 @@ from aew.errors import IllegalTransition, NotFound, PermissionDenied, UsageError
 from aew.util import load_yaml, sha256_bytes
 
 SLOTS = ("execute", "review", "verify")
-DISPATCHABLE_IN_M1 = {"implementer", "reviewer", "verifier"}
 
 
 class RoleOps(WorkOps):
@@ -89,8 +88,11 @@ class RoleOps(WorkOps):
 
     def _slot_ok(self, unit: dict[str, Any], slot: str, card: roles.Card) -> None:
         allowed = roles.SLOT_ARCHETYPES[slot]
-        if slot == "execute" and unit.get("mutating"):
-            allowed = {"implementer"}
+        if slot == "execute":
+            if unit["kind"] != "ticket":
+                raise UsageError("Stories and Epics are not executed; their Tickets are (WC §7.1)")
+            # Authority comes from the executing archetype, never from the Ticket's label (ADR-0008).
+            allowed = {"implementer"} if unit.get("mutating") else roles.NON_MUTATING_EXECUTORS
         if card.archetype not in allowed:
             raise UsageError(f"card {card.id} ({card.archetype}) cannot fill the {slot} slot of {unit['title']!r}",
                              allowed_archetypes=sorted(allowed))
@@ -105,8 +107,10 @@ class RoleOps(WorkOps):
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
         with self.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
             unit = self.unit(ctx.state, work_id)
-            if unit["kind"] != "ticket" or unit["state"] in transitions.TERMINAL:
+            if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} cannot be staffed in state {unit['state']}")
+            if unit["kind"] != "ticket" and execute:
+                raise IllegalTransition("Stories and Epics have no execute slot; staff their review/verify gates")
             catalog = self.role_catalog()
             plan = self._plan(unit)
             overrides: list[str] = []
@@ -191,7 +195,13 @@ class RoleOps(WorkOps):
                         and not gate.startswith(G.REVIEW_CARD_PREFIX) and any("inherited" in s for s in sources):
                     requirements.append(self._specialty_requirement(catalog, gate[len("review_"):], "ancestor policy"))
         required_gates = set(gc["obligations"]["gates"]) if gc else set()
-        defaults = {"execute": "implementer" if unit.get("mutating") else None,
+        # An unstaffed non-mutating Ticket defaults to the investigator: recorded as a workflow default and
+        # pinned with its output kind at dispatch (operator review 2026-09-27).
+        if unit["kind"] != "ticket":
+            execute_default = None
+        else:
+            execute_default = "implementer" if unit.get("mutating") else "investigator"
+        defaults = {"execute": execute_default,
                     "review": "reviewer" if "review_r1" in required_gates else None,
                     "verify": "verifier" if required_gates & set(G.VERIFICATION_GATES) else None}
         for slot, arch in defaults.items():
@@ -235,8 +245,6 @@ class RoleOps(WorkOps):
         if role and card.archetype != role:
             raise UsageError(f"card {card.id} extends {card.archetype}, not {role}")
         self._slot_ok(unit, slot, card)
-        if card.archetype not in DISPATCHABLE_IN_M1:
-            raise UsageError(f"{card.archetype} dispatch arrives with the non-mutating Ticket path (M2)")
         forbidden = {f["card"] for f in (unit.get("role_plan") or {}).get("forbidden", [])}
         if card.id in forbidden:
             raise PermissionDenied(f"{card.id} is forbidden for {work_id}")

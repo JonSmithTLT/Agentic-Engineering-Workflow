@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/decision/v1",
   "title": "Decision record",
-  "description": "Consequential Lead/operator decisions (KC \u00a78.9): classifications, waivers, authority transfers and acceptances.",
+  "description": "Consequential Lead/operator decisions (KC §8.9): classifications, waivers, authority transfers and acceptances.",
   "type": "object",
   "required": [
     "schema",
@@ -33,7 +33,14 @@
         "reconciliation",
         "plan_acceptance",
         "promotion",
-        "role_plan_change"
+        "role_plan_change",
+        "closeout",
+        "evidence_acceptance",
+        "hierarchy_change",
+        "dependency_change",
+        "plan_reconfirmation",
+        "input_acknowledgement",
+        "attempt_supersession"
       ]
     },
     "work_unit": {

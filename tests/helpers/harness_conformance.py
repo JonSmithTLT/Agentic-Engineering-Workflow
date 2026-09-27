@@ -12,12 +12,18 @@ spawn_orphan, touch, wait_file, pid, cwd, model_step, exit). A ``Driver`` makes 
 
 Every scenario asserts AEW-side outcomes only: evidence, state, run records, files, processes. A scenario
 needing something a driver cannot do (``capabilities``) is skipped for that driver, visibly.
+
+A driver also runs the Lead's harness session (``start_lead``): ``aew lead session`` with the fake agent as the
+Lead's harness (harness-neutral), or, for the OpenCode driver in CI, ``aew opencode`` with a fake TUI.
 """
 
 from __future__ import annotations
 
 import calendar
 import json
+import os
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,13 +34,35 @@ import pytest
 
 import fake_opencode
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
-from fake_harness import IMPL_REPORT, POLICY, SCRIPTS_ENV, HarnessLab, contains_credential, credential_hits
+from conftest import IS_WINDOWS, CLIResult, clean_env
+from fake_harness import AGENT, IMPL_REPORT, POLICY, SCRIPTS_ENV, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, procs, runlog
 from aew.knowledge import evidence as E
 
 PROVIDER_SECRET = "sk-provider-secret-must-not-reach-the-agent"
+FREE_MODEL = os.environ.get("AEW_LIVE_OPENCODE_MODEL", "opencode/longcat-2.5-preview-free")
+NO_WINDOW: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
+
+
+def transcript_steps(transcript: Path) -> dict[int, dict[str, Any]]:
+    lines = transcript.read_text(encoding="utf-8").splitlines() if transcript.exists() else []
+    return {e["i"]: e["result"] for e in map(json.loads, lines)}
+
+
+@dataclass
+class LeadSession:
+    """A Lead harness session, started the way the operator starts one (``aew lead session`` / ``aew opencode``)."""
+
+    proc: subprocess.Popen[str]
+    transcript: Path
+
+    def result(self, timeout: float = 900) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
+        """Wait for the session to end: the command's result (what the operator's terminal shows) and the steps
+        the Lead's model took."""
+        out, err = self.proc.communicate(timeout=timeout)
+        return CLIResult(self.proc.returncode, out, err), transcript_steps(self.transcript)
 
 
 class Driver:
@@ -42,6 +70,11 @@ class Driver:
 
     name = "abstract"
     capabilities: frozenset[str] = frozenset()
+    # A second execution profile the harness can run (per-role routing), or None.
+    review_profile: dict[str, Any] | None = None
+    # The Lead's harness curates what its model's shell sees (``aew opencode``); ``aew lead session`` passes the
+    # operator's environment minus AEW credentials, since a harness needs its provider keys.
+    curated_lead_env = False
 
     def create_lab(self, tmp_path: Path) -> HarnessLab:
         raise NotImplementedError
@@ -58,10 +91,54 @@ class Driver:
         """The sessions a run's harness state holds: the run's own, and nothing of any other run."""
         raise NotImplementedError
 
+    def delivered_prompt(self, lab: HarnessLab, run: str) -> str | None:
+        """What the harness received as the run's first message, or None if the driver acts from a script instead
+        of delivering the launch contract (the live driver)."""
+        return None
+
+    def projection(self, lab: HarnessLab, run: str) -> dict[str, Any] | None:
+        """The harness configuration the run was started with, if the harness has one."""
+        return None
+
+    def lead_command(self, lab: HarnessLab, name: str, steps: list[dict[str, Any]],
+                     acquire: bool) -> tuple[list[str], Path]:
+        """``aew lead session`` with the fake agent as the Lead's harness: (aew arguments, transcript)."""
+        script, transcript = lab.tmp / f"{name}.lead.json", lab.tmp / f"{name}.lead.jsonl"
+        script.write_text(json.dumps(steps), encoding="utf-8")
+        transcript.unlink(missing_ok=True)
+        return ["lead", "session", *(["--acquire", "--session-label", name] if acquire else []), "--",
+                sys.executable, str(AGENT), "--script", str(script), "--transcript", str(transcript)], transcript
+
+    def start_lead(self, lab: HarnessLab, name: str, steps: list[dict[str, Any]], *,
+                   acquire: bool = False) -> LeadSession:
+        """Start a Lead session whose model takes ``steps``. Without ``acquire`` the operator's shell holds the
+        Lead credential (``AEW_LEAD_TOKEN``); with it the session takes the vacant seat and the credential exists
+        only inside the session's broker."""
+        argv, transcript = self.lead_command(lab, name, steps, acquire)
+        env = {**lab.env, **({} if acquire else {"AEW_LEAD_TOKEN": lab.project.token})}
+        proc = subprocess.Popen([sys.executable, "-m", "aew", "-C", str(lab.root), *argv], env=clean_env(env),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
+                                encoding="utf-8", **NO_WINDOW)
+        lab.sessions.append(proc)
+        return LeadSession(proc, transcript)
+
+    def lead(self, lab: HarnessLab, name: str, steps: list[dict[str, Any]], *,
+             acquire: bool = False) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
+        return self.start_lead(lab, name, steps, acquire=acquire).result()
+
+    def revive(self, lab: HarnessLab, *, state_copy: Path, session: str, workspace: str, old_env: dict[str, str],
+               argv: list[str]) -> str:
+        """Revive a superseded run's session and run ``aew <argv>`` in it; returns the output. A fake harness keeps
+        nothing but what its processes had: the old session's environment and workspace."""
+        res = subprocess.run([sys.executable, "-m", "aew", *argv], env=old_env, cwd=workspace, capture_output=True,
+                             text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=180, **NO_WINDOW)
+        return res.stdout + res.stderr
+
 
 class FakeDriver(Driver):
     name = "fake"
     capabilities = frozenset({"effective_override", "incompatible"})
+    review_profile = {"provider": "fakeprov", "model": "fake-model", "effort": "medium"}
 
     def create_lab(self, tmp_path: Path) -> HarnessLab:
         return HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": PROVIDER_SECRET})
@@ -78,6 +155,10 @@ class FakeDriver(Driver):
         d = self.state_dir(lab, run) / "sessions"
         return {p.name for p in d.iterdir()} if d.is_dir() else set()
 
+    def delivered_prompt(self, lab, run):
+        path = self.state_dir(lab, run) / "prompt.md"
+        return path.read_text(encoding="utf-8") if path.exists() else None
+
 
 class FakeOpenCodeDriver(Driver):
     """The real OpenCode adapter against the fake V2 server. The execution policy names the provider secret as a
@@ -85,6 +166,8 @@ class FakeOpenCodeDriver(Driver):
 
     name = "opencode-fake"
     capabilities = frozenset({"effective_override", "incompatible"})
+    review_profile = {"provider": "fakeprov", "model": "fake-model", "effort": "medium"}
+    curated_lead_env = True
 
     def create_lab(self, tmp_path: Path) -> HarnessLab:
         policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"]}
@@ -100,9 +183,93 @@ class FakeOpenCodeDriver(Driver):
     def state_dir(self, lab, run):
         return runlog.run_dir(lab.aew_root, run) / "harness"
 
-    def sessions(self, lab, run):
+    def _db(self, lab: HarnessLab, run: str) -> dict[str, Any]:
         db = self.state_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json"
-        return set(json.loads(db.read_text(encoding="utf-8"))) if db.exists() else set()
+        return json.loads(db.read_text(encoding="utf-8")) if db.exists() else {}
+
+    def sessions(self, lab, run):
+        return set(self._db(lab, run))
+
+    def delivered_prompt(self, lab, run):
+        session = self._db(lab, run).get((lab.record(run).get("launch") or {}).get("session") or "")
+        texts = [m["text"] for m in (session or {}).get("messages", []) if m.get("type") == "user"]
+        return "\n".join(texts) if texts else None
+
+    def projection(self, lab, run):
+        path = self.state_dir(lab, run) / "opencode-config.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def lead_command(self, lab, name, steps, acquire):
+        """``aew opencode``: the fake TUI runs the Lead's steps in the environment ``aew opencode`` gave it."""
+        scripts = Path(lab.env[SCRIPTS_ENV])
+        (scripts / fake_opencode.TUI_SCRIPT).write_text(json.dumps(steps), encoding="utf-8")
+        transcript = scripts / fake_opencode.TUI_TRANSCRIPT
+        transcript.unlink(missing_ok=True)
+        return ["opencode", *(["--acquire", "--session-label", name] if acquire else [])], transcript
+
+
+class OpenCodeDriver(Driver):
+    """The live lane: the real adapter and a real OpenCode 2.0.18 server per run (``opencode_scripted.py``); the
+    steps run through the session's own shell endpoint and ``model_step`` prompts a free model. The Lead acts
+    through AEW's harness-neutral Lead broker (``aew lead session``): the real TUI needs a terminal, so the
+    operator's own TUI session is its live check (M3 plan §9)."""
+
+    name = "opencode-live"
+    capabilities = frozenset({"incompatible"})
+
+    def create_lab(self, tmp_path: Path) -> HarnessLab:
+        from opencode_scripted import HERE as HELPERS
+
+        provider, _, model = FREE_MODEL.partition("/")
+        policy = {**POLICY, "harness": "opencode-scripted", "provider_env": ["OPENAI_API_KEY"],
+                  "profiles": {"standard": {"provider": provider, "model": model}}}
+        return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
+            "OPENAI_API_KEY": PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
+            "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"})
+
+    def script(self, lab, key, steps, *, effective=None, health=None):
+        lab.script(key, {"steps": steps, "health": health})
+
+    def state_dir(self, lab, run):
+        return runlog.run_dir(lab.aew_root, run) / "harness"
+
+    def sessions(self, lab, run):
+        from opencode_scripted import sessions_in_state
+
+        workspace = os.path.realpath(lab.record(run)["contract"]["workspace"])
+        return sessions_in_state(self.state_dir(lab, run), workspace)
+
+    def projection(self, lab, run):
+        path = self.state_dir(lab, run) / "opencode-config.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def revive(self, lab, *, state_copy, session, workspace, old_env, argv):
+        """A new real server on (a copy of) the old run's private state, handed the old session's bridge
+        coordinates; the command runs in the old session through its shell endpoint."""
+        coords = {k: old_env[k] for k in (bridge.ENV_ENDPOINT, bridge.ENV_KEY, "PATH") if k in old_env}
+        command = " ".join(f'"{a}"' if any(c.isspace() for c in a) else a for a in ["aew", *argv])  # any shell
+        return shell_in_revived_session(state_copy, session, workspace, command, coords)
+
+
+def shell_in_revived_session(state_dir: Path, session: str, workspace: str, command: str,
+                             extra_env: dict[str, str]) -> str:
+    """Revive an OpenCode session: a new real server on the session's private state (as anyone with a copy of it
+    could), then run ``command`` in that session through its shell endpoint. Returns the command's output."""
+    from aew.harness.opencode import adapter
+    from aew.harness.opencode.client import Server
+
+    tree = procs.ProcessTree()
+    env = {**adapter.server_env(dict(os.environ), state_dir, provider_env=[], config={"snapshots": False},
+                                password=os.urandom(16).hex()), **extra_env}
+    try:
+        server = Server.start(tree.spawn, adapter.binary_command(), env=env, cwd=os.path.realpath(workspace),
+                              log_path=state_dir / "revive-server.log")
+        mid = adapter.new_message_id()
+        server.client.post(f"/api/session/{session}/shell", {"id": mid, "command": command}, timeout=180)
+        return (server.client.get(f"/api/session/{session}/message/{mid}")["data"].get("output") or {}).get(
+            "output", "")
+    finally:
+        tree.kill()
 
 
 @dataclass
@@ -152,6 +319,16 @@ def launch_ticket(lab: HarnessLab, driver: Driver, tmp_path: Path, steps: list[d
     driver.script(lab, "R-INV-0001-1", steps, **kw)
     out = lab.lead("work", "assign", wid, "--launch")
     return wid, out["invocation"], out["launch"]["run"]
+
+
+def kill_harness(lab: HarnessLab, run: str) -> None:
+    """The harness dies from outside (killed, out of memory, the machine slept): each of the run's harness
+    processes is killed by pid, only while that pid still names the process the supervisor started."""
+    record = lab.record(run)
+    started = calendar.timegm(time.strptime(record["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
+    for pid in record["harness_pids"]:
+        if procs.same_process(pid, started):
+            procs.kill_pid(pid)
 
 
 def supervisor_gone(record: dict[str, Any]) -> bool:

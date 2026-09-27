@@ -44,6 +44,8 @@ Each scenario is written once, as agent actions:
 
 It asserts AEW-side outcomes only. After every scenario, the whole temporary tree is scanned for any credential string.
 
+Two more actions serve the acceptance scenarios: `note` (a remark that stays in the run's own conversation) and `{evidence:<name>}` in any argument (the newest evidence id in the agent's own command output naming `<name>`, the way a model reads an id from its last command).
+
 **Drivers:**
 
 | Driver | Where | How the actions run |
@@ -70,6 +72,12 @@ It asserts AEW-side outcomes only. After every scenario, the whole temporary tre
 | `an_agent_cannot_perform_lead_operations` | no Lead credential in the agent; a forged one is rejected; the seat is held |
 
 A driver declares `capabilities`. A scenario needing one it lacks (for example `effective_override`: forcing a harness to run another model) is skipped visibly for that driver, never silently passed.
+
+**Acceptance (AT-14..AT-17; `acceptance.md`).** The same drivers run the M3 acceptance scenarios (`harness_acceptance.py`), which also need a driver to:
+- run the Lead's harness session (`start_lead`): `aew lead session` with a scripted Lead by default, `aew opencode` with a fake TUI for `FakeOpenCodeDriver`;
+- show what the harness received as a run's first message (`delivered_prompt`; `None` when the driver runs scripted steps rather than prompting, as live);
+- show the run's harness configuration (`projection`);
+- revive a superseded run's session from a copy of its state (`revive`): for OpenCode, a new real server on that state, running a command in the old session.
 
 ## 3. Lead custody and bridge parity
 
@@ -107,7 +115,7 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
    | no blocking prompts | allow/deny rules only | `--ask-for-approval never` | `--permission-mode` with explicit allow/deny |
 
 4. Write a `Driver` that makes the harness perform the scenario actions deterministically, without depending on a model. For OpenCode: the session's shell endpoint runs each action as a command in the real session environment.
-5. Run `run_scenario` for every scenario in the harness's lane. Add harness-specific tests for what the neutral scenarios cannot reach (section 5).
+5. Run `run_scenario` for every scenario in the harness's lane, and for AT-14..AT-17 (`harness_acceptance.ACCEPTANCE`) with the driver's `start_lead`, `delivered_prompt`, `projection` and `revive`. Add harness-specific tests for what the neutral scenarios cannot reach (section 5).
 
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 

@@ -42,6 +42,24 @@
   | use success/exit state to bypass gates | conformance `harness_success_without_evidence_moves_no_state`, `test_harness_exit_without_its_expected_output_moves_no_state`, the forged-record test | gates unmoved |
   | M3-B7 credential exfiltration | the custody tests (step 2 and 3), conformance custody 1-5 on fake and real OpenCode | no credential reachable |
   | capability drift | `test_an_incompatible_server_fails_closed`, doctored-OpenAPI units, live `an_incompatible_harness_fails_closed` | fails closed |
+- **Step 6 is complete** (acceptance AT-14..AT-17; `acceptance.md`).
+  - The scenarios are written once, adapter-neutrally (`tests/helpers/harness_acceptance.py`), and run three ways:
+    - in CI against the fake harness;
+    - in CI against the OpenCode adapter with the fake V2 server, the Lead acting through `aew opencode` with a fake TUI;
+    - live on OpenCode 2.0.18 with a free model (`tests/live/test_opencode_acceptance_live.py`).
+  - The Lead acts through its own harness session in AT-14, AT-15 and AT-17, and every role is a harness run: a Ticket goes from objective to DONE with no credential in any model's hands.
+  - AT-15 wipes all of `.aew/local` after killing a run mid-work. Reconstruction, relaunch (with a continuation built from durable state only) and completion follow. The dead session, revived from a copy of its state with its old bridge coordinates, has no authority. On real OpenCode that revival runs a new server on the copied state.
+  - Each scenario fails against a deliberate regression: no continuation (AT-15), a reviewer allowed to edit its workspace (AT-16), the Lead TUI inheriting the operator's environment (AT-17), and per-role routing ignored (AT-14).
+  - **No AEW defect was found.** Two test-side errors were fixed:
+    - the live revival's command line did not quote a path containing a space;
+    - the live Lead-projection test stopped waiting as soon as V2 listed its built-in agents, before the configured ones had loaded. The adapter's health already waits for AEW's own agent; rebaseline §9 fact 1 is refined.
+  - Test support added:
+    - the fake agent's `note` step and `{evidence:<name>}` references, with which a scripted verifier cites its own check results;
+    - a TUI mode for the fake V2 launcher;
+    - Lead sessions, the delivered prompt, the projection and session revival in the driver API;
+    - `OpenCodeDriver` moved into the shared helper.
+  - **Not observable live:** the delivered prompt (the live driver runs scripted steps) and a second execution profile (one free model). Both are asserted in CI only. The real TUI's Lead environment remains the operator's TUI check (plan §9).
+  - **Results:** Windows 876 passed with the 4 pinned platform skips, plus the serial lane (10 passed, 1 skip). Linux (WSL, Python 3.11) 880 passed, plus 11 serial. Live on OpenCode 2.0.18: 21 passed and 1 skipped by design; the Lead-projection test was rerun on its own after its fix. The 8 new CI tests passed 3 more times under 8-way parallel load.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

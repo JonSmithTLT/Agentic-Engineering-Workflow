@@ -106,6 +106,7 @@ class HarnessLab:
     project: Any                      # conftest.Project
     tmp: Path
     env: dict[str, str] = field(default_factory=dict)
+    sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
 
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
@@ -176,7 +177,12 @@ class HarnessLab:
     def cleanup(self) -> None:
         """End every run this lab started. A supervisor is asked to stop; one that does not answer is killed only
         if its pid still names the same process (pids are reused, and other tests' processes run in parallel).
-        Its job object / sentinel then takes the harness tree."""
+        Its job object / sentinel then takes the harness tree. A Lead session still running is killed first (its
+        own Popen handle: never a bare pid)."""
+        for proc in self.sessions:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
         runs = runlog.run_dir(self.aew_root, "x").parent
         dirs = sorted(runs.glob("*")) if runs.is_dir() else []
         for directory in dirs:

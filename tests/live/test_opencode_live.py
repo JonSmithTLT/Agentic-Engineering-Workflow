@@ -17,43 +17,14 @@ from pathlib import Path
 
 import pytest
 
-from aewflow import sample_project
-from fake_harness import POLICY, HarnessLab
-from harness_conformance import PROVIDER_SECRET, SCENARIOS, Driver, run_scenario
-from opencode_scripted import HERE as HELPERS
-from opencode_scripted import sessions_in_state
+from harness_conformance import SCENARIOS, OpenCodeDriver, run_scenario, shell_in_revived_session
 
-from aew.harness import procs, runlog
+from aew.harness import procs
 from aew.harness.opencode import adapter, projection
 from aew.harness.opencode.client import Server
 
-FREE_MODEL = os.environ.get("AEW_LIVE_OPENCODE_MODEL", "opencode/longcat-2.5-preview-free")
-
 pytestmark = pytest.mark.skipif(not os.environ.get(adapter.BIN_ENV) and adapter.default_binary() is None,
                                 reason="no OpenCode binary (set AEW_OPENCODE_BIN)")
-
-
-class OpenCodeDriver(Driver):
-    name = "opencode-live"
-    capabilities = frozenset({"incompatible"})
-
-    def create_lab(self, tmp_path: Path) -> HarnessLab:
-        provider, _, model = FREE_MODEL.partition("/")
-        policy = {**POLICY, "harness": "opencode-scripted", "provider_env": ["OPENAI_API_KEY"],
-                  "profiles": {"standard": {"provider": provider, "model": model}}}
-        return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
-            "OPENAI_API_KEY": PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
-            "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"})
-
-    def script(self, lab, key, steps, *, effective=None, health=None):
-        lab.script(key, {"steps": steps, "health": health})
-
-    def state_dir(self, lab, run):
-        return runlog.run_dir(lab.aew_root, run) / "harness"
-
-    def sessions(self, lab, run):
-        workspace = os.path.realpath(lab.record(run)["contract"]["workspace"])
-        return sessions_in_state(self.state_dir(lab, run), workspace)
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
@@ -75,7 +46,9 @@ def test_the_real_server_accepts_the_lead_projection(tmp_path):
         loc = {"location[directory]": os.path.realpath(workspace)}
         deadline = time.monotonic() + 60
         agents: dict = {}
-        while not agents and time.monotonic() < deadline:  # agents load asynchronously, like the model catalog
+        # Agents load asynchronously, like the model catalog, and the built-in agents can be listed before the
+        # configured ones: wait for the Lead's agent itself (as the adapter's health does for AEW's).
+        while projection.LEAD_AGENT not in agents and time.monotonic() < deadline:
             agents = {a["id"]: a for a in (server.client.get("/api/agent", loc) or {}).get("data") or []}
             time.sleep(0.25)
         commands = {c.get("name") or c.get("id") for c in (server.client.get("/api/command", loc) or {}).get("data")
@@ -93,26 +66,10 @@ def test_the_real_server_accepts_the_lead_projection(tmp_path):
 # ---------------------------------------------------------------------------------------------- brief attacks, live
 
 def _shell_in_revived_session(lab, run: str, command: str, extra_env: dict[str, str]) -> str:
-    """Revive a finished run's OpenCode session: a new server on that run's private state (as someone could), then
-    run a command in the old session through its shell endpoint. Returns the command's output."""
-    from aew.harness.opencode.adapter import new_message_id
-
+    """Revive a finished run's OpenCode session on that run's own private state."""
     record = lab.record(run)
-    state_dir = Path(record["launch"]["state_dir"])
-    workspace = os.path.realpath(record["contract"]["workspace"])
-    tree = procs.ProcessTree()
-    env = {**adapter.server_env(dict(os.environ), state_dir, provider_env=[], config={"snapshots": False},
-                                password=os.urandom(16).hex()), **extra_env}
-    try:
-        server = Server.start(tree.spawn, adapter.binary_command(), env=env, cwd=workspace,
-                              log_path=state_dir / "revive-server.log")
-        mid = new_message_id()
-        server.client.post(f"/api/session/{record['launch']['session']}/shell", {"id": mid, "command": command},
-                           timeout=180)
-        return (server.client.get(f"/api/session/{record['launch']['session']}/message/{mid}")["data"].get("output")
-                or {}).get("output", "")
-    finally:
-        tree.kill()
+    return shell_in_revived_session(Path(record["launch"]["state_dir"]), record["launch"]["session"],
+                                    record["contract"]["workspace"], command, extra_env)
 
 
 def test_a_revived_superseded_session_has_no_aew_authority(tmp_path):

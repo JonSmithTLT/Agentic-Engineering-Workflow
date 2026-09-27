@@ -1,6 +1,6 @@
 # ADR-0009 — Harness boundary, runs, credential custody, and the OpenCode V2 adapter
 
-- **Status:** Proposed (M3 step 0, 2026-09-27). The harness core was implemented in M3 step 2, the Lead broker in step 3 and the OpenCode adapter in step 4. Finalized at M3 closeout.
+- **Status:** Proposed (M3 step 0, 2026-09-27). The harness core was implemented in M3 step 2, the Lead broker in step 3 and the OpenCode adapter in step 4. Adversarial regressions were added in step 5 and acceptance scenarios AT-14..AT-17 in step 6. Finalized at M3 closeout.
 - **Spec basis:**
   - WC §2 and §17: harness independence.
   - WC §5 and §15.4: bounded invocations from launch contracts; the Lead is reconstructible.
@@ -13,6 +13,7 @@
   - `m3-opencode-v2-rebaseline.md` and `eval/m3/spike/`.
   - The fake-harness conformance tests `tests/integration/test_harness_runs.py` and `tests/regression/test_m3_harness_adversarial.py`, run on Windows and on Linux.
   - The harness conformance suite against the real OpenCode adapter: in CI against a fake V2 server (`tests/integration/test_harness_conformance.py`, `test_opencode_adapter.py`), and in the opt-in live lane against OpenCode 2.0.18 (`tests/live/test_opencode_live.py`).
+  - Acceptance scenarios AT-14..AT-17 (`acceptance.md`): `tests/acceptance/test_at14_at17_harness.py` (fake harness; OpenCode adapter with fake V2 server and `aew opencode`), and their live twins on OpenCode 2.0.18 (`tests/live/test_opencode_acceptance_live.py`).
 - **Nature:** an implementation of frozen semantics. It adds no new authority, no new state machine and no new knowledge store.
 
 ## Decision

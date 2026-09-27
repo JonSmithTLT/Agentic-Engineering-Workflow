@@ -7,6 +7,10 @@ transcript, which stands in for a harness's own persisted conversation (custody 
 Script: a JSON list of steps, e.g. ``{"do": "submit", "kind": "implementation_report", "meta": {...}}``.
 ``--script`` runs a whole script as one long-lived process (the fake harness); ``--step-file`` runs one step,
 the way a harness's shell tool runs one command (the OpenCode drivers).
+
+``{evidence:<name>}`` in a step's arguments is the newest evidence id this agent has seen in its own command
+output (its transcript) whose id names ``<name>`` (``check-unit``, ``review``, ``verify``): the way a model
+reads an id from the output of a command it ran, e.g. a verifier citing its own check results.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +28,30 @@ from typing import Any
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 CRED = r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}"
+EVIDENCE_REF = re.compile(r"\{evidence:([A-Za-z0-9_-]+)\}")
+
+
+def seen_evidence(transcript: Path, name: str) -> str | None:
+    """The newest evidence id in this agent's own command output whose id names ``name``."""
+    lines = transcript.read_text(encoding="utf-8").splitlines() if transcript.exists() else []
+    for line in reversed(lines):
+        out = (json.loads(line).get("result") or {}).get("stdout_json")
+        ids = out.get("evidence") if isinstance(out, dict) else None
+        for eid in reversed([ids] if isinstance(ids, str) else ids if isinstance(ids, list) else []):
+            if f"-{name}-" in str(eid):
+                return str(eid)
+    return None
+
+
+def resolve(value: Any, transcript: Path) -> Any:
+    """Replace ``{evidence:<name>}`` references (an unresolved one stays as written, so its command fails)."""
+    if isinstance(value, str):
+        return EVIDENCE_REF.sub(lambda m: seen_evidence(transcript, m.group(1)) or m.group(0), value)
+    if isinstance(value, list):
+        return [resolve(v, transcript) for v in value]
+    if isinstance(value, dict):
+        return {k: resolve(v, transcript) for k, v in value.items()}
+    return value
 
 
 def aew_argv() -> list[str]:
@@ -77,6 +106,8 @@ SCAN = ("import os, re, sys\n"
 
 def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     do = s["do"]
+    if do in {"aew", "lead", "submit", "submit_raw"}:
+        s = resolve(s, Path(state["transcript"]))
     if do == "write":
         for rel, content in s["files"].items():
             target = Path(rel)
@@ -109,6 +140,8 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         return {"found": wait_file(s["path"], s.get("timeout", 60))}
     if do == "model_step":  # the model answers once (a real harness driver sends a real prompt here)
         return {}
+    if do == "note":  # the model's own remark: it stays in this run's conversation, never in AEW state
+        return {"note": s["text"]}
     if do == "touch":
         Path(s["path"]).write_text(s.get("text", "x"), encoding="utf-8")
         return {}
@@ -191,11 +224,12 @@ def main() -> int:
     transcript = Path(args.transcript)
     if args.step_file:
         s = json.loads(Path(args.step_file).read_text(encoding="utf-8"))
-        record(transcript, args.index, s, step(s, {"tmp": str(transcript.parent), "n": args.index}))
+        record(transcript, args.index, s, step(s, {"tmp": str(transcript.parent), "n": args.index,
+                                                   "transcript": str(transcript)}))
         return 0
     spec = json.loads(Path(args.script).read_text(encoding="utf-8"))
     steps = spec["steps"] if isinstance(spec, dict) else spec
-    state = {"tmp": str(transcript.parent), "n": 0}
+    state = {"tmp": str(transcript.parent), "n": 0, "transcript": str(transcript)}
     for i, s in enumerate(steps):
         state["n"] = i
         record(transcript, i, s, step(s, state))

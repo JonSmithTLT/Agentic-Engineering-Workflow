@@ -18,6 +18,10 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken).
+
+Run as ``opencode --standalone <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
+``<scripts>/lead-tui.json`` with the TUI's own environment, which a V2 ``--standalone`` TUI sends as every
+session's shell environment, and records the steps in ``<scripts>/lead-tui.jsonl``.
 """
 
 from __future__ import annotations
@@ -461,10 +465,24 @@ def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
     return Handler
 
 
+TUI_SCRIPT, TUI_TRANSCRIPT, TUI_ARGV = "lead-tui.json", "lead-tui.jsonl", "lead-tui-argv.json"
+
+
+def tui(argv: list[str], scripts: Path) -> int:
+    """The Lead's TUI (``--standalone``): the Lead's model acts in the TUI's own environment."""
+    (scripts / TUI_ARGV).write_text(json.dumps(argv), encoding="utf-8")
+    import fake_agent
+
+    sys.argv = ["fake_agent", "--script", str(scripts / TUI_SCRIPT), "--transcript", str(scripts / TUI_TRANSCRIPT)]
+    return fake_agent.main()
+
+
 def main(argv: list[str], scripts: Path) -> int:
     if argv[:1] == ["--version"]:
         print("opencode v2.0.18")
         return 0
+    if argv[:1] == ["--standalone"]:
+        return tui(argv, scripts)
     if argv[:1] != ["serve"] or "--stdio" not in argv:
         print(f"fake opencode: unsupported arguments {argv}", file=sys.stderr)
         return 2

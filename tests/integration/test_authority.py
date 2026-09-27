@@ -198,6 +198,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> dict:
 
 
 @pytest.mark.acceptance("AT-4b")
+@pytest.mark.serial  # a real pseudo-terminal and a forked child answering within a deadline
 @pytest.mark.skipif(
     IS_WINDOWS,
     reason="POSIX pty operator path. A Windows console session would appear on the developer desktop, so on "

@@ -1,11 +1,32 @@
 name: ci
 
+# Implements docs/implementation/testing-and-ci-strategy.md. A change to lanes, shards, platforms or the
+# merge gate updates that document in the same pull request.
+#
+#   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
+#   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job
+#   assurance            every collected test ran exactly once and passed on every OS (the merge gate)
+
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  test:
+  core:
+    name: core (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -15,17 +36,88 @@ jobs:
           - os: windows-latest
             python: "3.13"   # developer workstation
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0     # spec-pin test verifies the frozen tag
+          fetch-depth: 0     # the spec-pin test verifies the frozen tag
       - run: git fetch --tags --force
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
-      - name: Configure git identity for fixture repos
+      - name: fast lane (unit, schemas, store model, frozen-spec pin)
+        run: >-
+          python -m pytest -q -p no:cacheprovider -p no:xdist --lane fast
+          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
+      - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
+        if: success() || failure()
+        run: >-
+          python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial
+          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-report-${{ runner.os }}-core
+          path: ${{ runner.temp }}/lane-reports/
+          retention-days: 14
+
+  lanes:
+    name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Shard counts come from measured lane durations (strategy doc, "Runtime budgets").
+        include:
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 1, of: 1}
+          - {os: ubuntu-latest, python: "3.11", lane: acceptance, shard: 1, of: 1}
+          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 1, of: 1}
+          - {os: ubuntu-latest, python: "3.11", lane: adversarial, shard: 1, of: 1}
+          - {os: windows-latest, python: "3.13", lane: integration, shard: 1, of: 1}
+          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 1, of: 1}
+          - {os: windows-latest, python: "3.13", lane: regression, shard: 1, of: 2}
+          - {os: windows-latest, python: "3.13", lane: regression, shard: 2, of: 2}
+          - {os: windows-latest, python: "3.13", lane: adversarial, shard: 1, of: 1}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
+        run: >-
+          python -m pytest -q -p no:cacheprovider --durations=15
+          --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
+          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/lane-reports/
+          retention-days: 14
+
+  assurance:
+    # The merge gate: mark this check as required on `main`.
+    needs: [core, lanes]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "PyYAML>=6.0"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lane-report-*
+          path: lane-reports
+      - name: Every collected test ran exactly once and passed (pinned platform skips excepted)
+        run: >-
+          python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
+          --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
+      - name: Every test job succeeded
+        if: always()
         run: |
-          git config --global user.name "AEW CI"
-          git config --global user.email "aew-ci@invalid"
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest -q
+          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }}"
+          test "${{ needs.core.result }}" = success && test "${{ needs.lanes.result }}" = success

@@ -16,7 +16,13 @@ from store_model import check_invariants, init, make_store, one_transaction  # n
 
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 
+# Real processes killed at every fault point and racing on the lock: timing and process concurrency are the
+# property here, so this module never shares the machine with other tests (lane `serial`).
+pytestmark = pytest.mark.serial
+
 WORKER = HELPERS / "store_worker.py"
+# Transactions per racing writer. The merge gate uses 50; the nightly race-repeat job raises it.
+RACE_WRITES = int(os.environ.get("AEW_RACE_WRITES", "50"))
 FAULT_POINTS = [
     "txn.before_stage",
     "txn.after_stage",
@@ -62,15 +68,15 @@ def test_two_racing_writers_lose_no_updates(tmp_path):
     env = dict(os.environ)
     env.pop("AEW_FAULT", None)
     procs = [
-        subprocess.Popen([sys.executable, str(WORKER), str(tmp_path), "50"], env=env,
+        subprocess.Popen([sys.executable, str(WORKER), str(tmp_path), str(RACE_WRITES)], env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         for _ in range(2)
     ]
     for p in procs:
         _, err = p.communicate(timeout=600)
         assert p.returncode == 0, err
-    assert check_invariants(tmp_path) == 100
-    assert make_store(tmp_path).read()["revision"] == 100
+    assert check_invariants(tmp_path) == 2 * RACE_WRITES
+    assert make_store(tmp_path).read()["revision"] == 2 * RACE_WRITES
 
 
 def test_stale_revision_from_another_process(tmp_path):

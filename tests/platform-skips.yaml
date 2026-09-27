@@ -1,0 +1,20 @@
+# Tests that are expected to skip on a platform (docs/implementation/testing-and-ci-strategy.md,
+# "Platform responsibilities"). The CI assurance job fails on any skip not listed here, and on a listed
+# test that no longer skips. Adding an entry is a reviewed decision: say which platform covers it instead.
+schema: aew/platform-skips/v1
+skipped:
+  win32:
+    tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
+      POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
+      the refusal path runs and AT-1 substitutes the terminal channel in-process.
+    tests/integration/test_worktree_sync.py::test_executable_bit_only_change_materializes: >-
+      needs POSIX filemode semantics (core.fileMode=false on Windows). Covered on Linux.
+    tests/integration/test_worktree_sync.py::test_file_symlink_transitions_sync[file_to_symlink]: >-
+      needs POSIX symlinks. Covered on Linux.
+    tests/integration/test_worktree_sync.py::test_file_symlink_transitions_sync[symlink_to_file]: >-
+      needs POSIX symlinks. Covered on Linux.
+    tests/regression/test_review_2026_09_26.py::test_sync_handles_executable_bit_only_change: >-
+      reviewer probe M6; needs a filemode-aware (POSIX) checkout. Covered on Linux.
+  linux: {}
+# Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
+xfail: {}

@@ -565,3 +565,37 @@ def test_m1_never_assigns_a_non_mutating_ticket(tmp_path):
     u = unit(p, wid)
     assert u["state"] == "READY" and u["workspace"] is None and u["invocations"] == []
     assert_control_invariants(p)
+
+
+# ------------------------------------------------------------------ nightly walk finding (2026-09-27, seeds 1014/1034)
+
+
+def test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and_redispatch(tmp_path):
+    """A crash after the assignment's commit point leaves a live implementer invocation whose credential died
+    with the process. A second implementer is refused while it is live; the Lead cancels it (revoking it) with a
+    recorded reason and dispatches a fresh implementer, and the Ticket completes."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()),
+                env={"AEW_FAULT": "txn.after_replace"})
+    assert res.returncode == 86 and "invocation_token" not in res.stdout  # committed, credential never delivered
+    u = unit(p, wid)
+    orphan = u["implementer_invocation"]
+    assert u["state"] == "ASSIGNED" and u["workspace"]["status"] == "active"
+    assert_control_invariants(p)
+    res = p.aew("invoke", "create", wid, "--role", "implementer", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "ILLEGAL_TRANSITION" and orphan in res.error["message"]
+    p.lead("invoke", "cancel", orphan, "--reason", "implementer credential lost in a crash")
+    assert p.ok("invoke", "show", orphan)["status"] == "cancelled"
+    impl = redispatch_implementer(p, wid)
+    assert unit(p, wid)["implementer_invocation"] != orphan
+    p.lead("work", "transition", wid, "--to", "RUNNING")
+    implement(impl)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    integrate(p, wid)
+    assert unit(p, wid)["state"] == "DONE"
+    assert_control_invariants(p)

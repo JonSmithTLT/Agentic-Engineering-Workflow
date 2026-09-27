@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 import sys
 from pathlib import Path
@@ -82,11 +83,12 @@ def test_injected_fault_each_point_in_process(tmp_path, monkeypatch, point):
 
 
 def test_randomized_crash_iterations(tmp_path, monkeypatch):
-    rng = random.Random(20260925)
+    # Merge gate: seed 20260925, 200 iterations. The nightly crash-extended job rotates the seed and raises the count.
+    rng = random.Random(int(os.environ.get("AEW_CRASH_SEED", "20260925")))
     init(tmp_path)
     monkeypatch.setenv("AEW_FAULT_MODE", "raise")
     expected = 0
-    for _ in range(200):
+    for _ in range(int(os.environ.get("AEW_CRASH_ITERATIONS", "200"))):
         point = rng.choice(FAULT_POINTS + [None, None])
         if point:
             monkeypatch.setenv("AEW_FAULT", point)

@@ -1,0 +1,175 @@
+name: nightly
+
+# Extended assurance (docs/implementation/testing-and-ci-strategy.md, "Nightly lane"). Never a merge gate:
+# every deterministic regression already runs on each pull request. A failure opens or updates an issue,
+# and a reproducible failure becomes a deterministic test in tests/regression/ before or with its fix.
+
+on:
+  schedule:
+    - cron: "17 7 * * *"   # daily, 07:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  reference:
+    # The whole suite serially: no xdist, no shards. Re-proves daily that parallel lanes change no outcome,
+    # and its lane reports refresh tests/durations.json (tools/ci/update_durations.py).
+    name: reference serial (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git fetch --tags --force
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - run: >-
+          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
+          --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-reference-${{ runner.os }}
+          path: ${{ runner.temp }}/nightly-reports/
+          retention-days: 30
+
+  walk-extended:
+    # Rotating seeds (derived from the run number and printed for reproduction), longer walks, more crashes.
+    name: walk block ${{ matrix.block }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        block: [1, 2, 3]
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      AEW_WALK_STEPS: "150"
+      AEW_WALK_FAULT_RATE: "0.15"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Seeds for this block
+        shell: bash
+        run: |
+          base=$(( GITHUB_RUN_NUMBER * 1000 + ${{ matrix.block }} * 10 ))
+          seeds=$(seq -s, "$base" $(( base + 5 )))
+          echo "AEW_WALK_SEEDS=$seeds" >> "$GITHUB_ENV"
+          echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest --lane adversarial" | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
+
+  race-repeat:
+    name: race and kill repetition (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: serial lane x10
+        shell: bash
+        run: |
+          for i in $(seq 1 10); do
+            echo "::group::serial lane repetition $i"
+            python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial || exit 1
+            echo "::endgroup::"
+          done
+      - name: racing writers with 4x the transactions
+        shell: bash
+        env:
+          AEW_RACE_WRITES: "200"
+        run: python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
+
+  crash-extended:
+    name: randomized store crashes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      AEW_CRASH_ITERATIONS: "2000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 2000 randomized crash iterations with a rotating seed
+        shell: bash
+        run: |
+          echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
+          AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
+            "tests/unit/test_store.py::test_randomized_crash_iterations"
+
+  matrix-extra:
+    # The interpreter each OS does not use on pull requests.
+    name: full suite (${{ matrix.os }}, py${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: windows-latest, python: "3.11"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git fetch --tags --force
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pytest -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal
+      - if: success() || failure()
+        run: python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial
+
+  report:
+    needs: [reference, walk-extended, race-repeat, crash-extended, matrix-extra]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create nightly-failure --color B60205 --description "Nightly extended assurance failed" --force
+          open=$(gh issue list --label nightly-failure --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Nightly run failed again: $RUN_URL"
+          else
+            gh issue create --label nightly-failure --title "Nightly extended assurance failed" \
+              --body "Run: $RUN_URL. Triage per docs/implementation/testing-and-ci-strategy.md (a reproducible failure becomes a deterministic regression test)."
+          fi

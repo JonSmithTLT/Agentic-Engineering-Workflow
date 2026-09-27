@@ -106,6 +106,13 @@ class ObservationMutated(PermissionDenied):
     code = "OBSERVATION_MUTATED"
 
 
+class WorkspaceMutated(PermissionDenied):
+    """A reviewer's or verifier's workspace (a mutating Ticket's live workspace, or an integration candidate)
+    no longer holds what it was dispatched to evaluate (M3-B6)."""
+
+    code = "WORKSPACE_MUTATED"
+
+
 class IntegrityError(AEWError):
     """Durable state is damaged or was modified outside the engine."""
 

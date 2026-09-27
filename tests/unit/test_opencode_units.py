@@ -83,7 +83,8 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 
 
 @pytest.mark.parametrize("role, edit, web", [("implementer", "allow", "deny"), ("reviewer", "deny", "deny"),
-                                             ("verifier", "deny", "deny"), ("researcher", "deny", "allow")])
+                                             ("verifier", "deny", "deny"), ("researcher", "deny", "allow"),
+                                             ("investigator", "deny", "deny"), ("planner", "deny", "deny")])
 def test_invocation_rules_never_ask_and_deny_what_no_role_may_do(role, edit, web):
     caps = ["documentation_lookup"] if role == "researcher" else ["exact_code_search"]
     rules = projection.invocation_config(contract(role, capabilities_=caps))["permissions"]

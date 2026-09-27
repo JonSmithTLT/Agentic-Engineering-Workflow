@@ -212,6 +212,14 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - **Defect:** M2's executor dispatch pinned its pack before the attempt's output contract was recorded, so no executor pack matched its regeneration.
   - **Fix:** the pack is now built after the contract.
   - **Regression:** every dispatch kind must pin the pack its regeneration produces.
+- **M3-B6 confirmed and closed (step 5).**
+  - **Probe:** a mutating Ticket's reviewer shares the implementer's live workspace. Its edit and its passing review were both recorded. The review was refused at ingest only as "stale", with no author. A second reviewer, dispatched next, reviewed and passed the edited code. The Ticket then stopped at REVIEW_PASSED, because the implementer's gates had gone stale. The fingerprint-bound gates kept the edit out of integration, but nothing named it.
+  - **Fix** (`evidence_ops.py`), with regressions written first (`test_a_reviewer_cannot_mutate_source`, `test_a_verifier_cannot_mutate_source`):
+    - a reviewer's or verifier's `submit` and `check run` refuse with `WORKSPACE_MUTATED` when the workspace (or integration candidate) differs from the snapshot the invocation was dispatched for, naming the changed paths;
+    - dispatching a reviewer or verifier refuses with `WORKSPACE_MUTATED` while the implementer's pre-review gates are stale, again naming the paths. The Lead returns the Ticket to RUNNING, so that an implementer reports or restores the change.
+  - Retiring the implementer at RUNNING→REVIEW_PENDING already ends its authority, so a still-running implementer run is stopped and cannot be relaunched (`test_the_retired_implementers_run_stops_when_review_begins`).
+- **Run records are telemetry that a model-controlled process can write** (same user). `aew harness status`, `harness wait` and `aew resume` therefore read a run's evidence from the evidence store (sealed, engine-stamped `producer.run`), never from its record. A run exists only in control state, and no gate reads a record. A forged status can mislead the display for a moment; it cannot move state (`test_forged_run_records_and_harness_success_move_nothing`).
+- **Sessions other than the run's own** (a subagent's, however started) are recorded as `foreign_sessions`, from the event stream and from a session listing at the end of each turn, and shown by `aew harness status`.
 - **Known V2 risks:**
   - no stability policy;
   - `--stdio` is undocumented;

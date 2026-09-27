@@ -23,8 +23,8 @@ import pytest
 
 from aewflow import (DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project,
                      unit_check_command)
-from conftest import IS_WINDOWS, clean_env
-from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits
+from conftest import IS_WINDOWS, clean_env, run_aew
+from fake_harness import AGENT, IMPL_REPORT, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, procs, runlog
@@ -511,4 +511,200 @@ def test_harness_exit_without_its_expected_output_moves_no_state(lab, tmp_path, 
     assert lab.lead("harness", "launch", inv)["run"] == R2
     assert lab.wait(R2)["status"] == "ended_with_evidence"
     assert control(lab, wid)["state"] == "RUNNING"  # evidence waits for the Lead's ingest
+    assert_control_invariants(lab.project)
+
+
+# ---------------------------------------------------------------------------------------------- the brief's attacks
+# M3 brief, "Security and authority review": each attack is a permanent regression here or in the named test.
+
+REVIEW_PASS = {"claim": "independent review", "review": {"independence": "R1", "disposition": "pass", "findings": [],
+                                                          "resolved_findings": []}}
+TAMPER = {"calc/core.py": "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return 0  # 'fixed'\n"}
+
+
+def implemented(lab, tmp_path):
+    """A Ticket whose implementer run reported, moved on to REVIEW_PENDING (the implementer is retired)."""
+    wid, out = assigned(lab, tmp_path, IMPLEMENT)
+    assert lab.wait(R1)["status"] == "ended_with_evidence"
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    return wid, out
+
+
+def details(step: dict) -> dict:
+    return ((step.get("stderr_json") or {}).get("error") or {}).get("details") or {}
+
+
+def test_a_reviewer_cannot_mutate_source(lab, tmp_path):
+    """Attack 5 (M3-B6): a reviewer shares the implementer's live workspace. Its edit is refused where it is made,
+    named and attributed, and no reviewer can then be dispatched for code no implementer reported."""
+    wid, _ = implemented(lab, tmp_path)
+    lab.script("R-INV-0002-1", [{"do": "write", "files": TAMPER},
+                                {"do": "submit", "kind": "review", "meta": REVIEW_PASS}])
+    run = lab.lead("invoke", "create", wid, "--role", "reviewer", "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_without_evidence"
+    refused = lab.step(run, 1)
+    assert error_code(refused) == "WORKSPACE_MUTATED" and details(refused)["changed"] == ["calc/core.py"]
+    assert not [e for e in evidence_of(lab, wid) if e["kind"] == "review"]
+    again = lab.lead_res("invoke", "create", wid, "--role", "reviewer")
+    assert again.error["code"] == "WORKSPACE_MUTATED" and again.error["details"]["changed"] == ["calc/core.py"]
+    assert control(lab, wid)["state"] == "REVIEW_PENDING"
+    assert_control_invariants(lab.project)
+
+
+def test_a_verifier_cannot_mutate_source(lab, tmp_path):
+    """M3-B6 for verification: an edited workspace is refused before a check runs on it and at submission."""
+    from aewflow import review
+    wid, _ = implemented(lab, tmp_path)
+    lab.project.lead("review", "ingest", wid, "--evidence", review(lab.project, wid))
+    lab.project.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    verification = {"claim": "verified", "verification": {"scope": "ticket", "claims": [
+        {"type": "goal_backwards", "claim": "x", "result": "pass", "checks": []},
+        {"type": "contract", "claim": "y", "result": "pass", "checks": []}]}}
+    lab.script("R-INV-0003-1", [{"do": "write", "files": TAMPER}, {"do": "check", "id": "unit"},
+                                {"do": "submit", "kind": "verification", "meta": verification}])
+    run = lab.lead("invoke", "create", wid, "--role", "verifier", "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_without_evidence"
+    for i in (1, 2):
+        assert error_code(lab.step(run, i)) == "WORKSPACE_MUTATED", lab.step(run, i)
+    assert not [e for e in evidence_of(lab, wid, run)]  # not even a check result
+    assert lab.lead_res("invoke", "create", wid, "--role", "verifier").error["code"] == "WORKSPACE_MUTATED"
+    assert_control_invariants(lab.project)
+
+
+def test_the_retired_implementers_run_stops_when_review_begins(lab, tmp_path, sync):
+    """Attack 2 and the M3-B6 companion: once the Lead moves a Ticket to review, the implementer's invocation is
+    complete; a run still alive loses its authority, is stopped, and its invocation cannot be relaunched."""
+    wid, out = assigned(lab, tmp_path, [*IMPLEMENT, touch(sync / "reported"), wait(sync / "never", 300)])
+    lab.until(lambda: (sync / "reported").exists(), what="the implementer reported")
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    done = lab.wait(R1)
+    assert done["status"] == "terminated" and "invocation completed" in done["reason"], done
+    assert inv_show(lab, out["invocation"])["status"] == "completed"
+    assert lab.lead_res("harness", "launch", out["invocation"]).error["code"] == "ILLEGAL_TRANSITION"
+    assert_control_invariants(lab.project)
+
+
+def test_an_agent_in_the_wrong_worktree_still_acts_only_for_its_own_workspace(lab, tmp_path):
+    """Attack 3: the agent works from the authoritative checkout. Its identity, checks and evidence stay bound to its
+    invocation's own workspace (the bridge ignores where the agent stands); its edit of the authoritative checkout
+    is in no evidence."""
+    root = str(lab.root)
+    wid, out = assigned(lab, tmp_path, [
+        {"do": "write", "files": {str(lab.root / "calc" / "core.py"): TAMPER["calc/core.py"]}},
+        {"do": "write", "files": SUBTRACT_PATCH},
+        {"do": "aew", "args": ["-C", root, "whoami"]},
+        {"do": "aew", "args": ["-C", root, "check", "run", "unit"]}])
+    assert lab.wait(R1)["status"] == "ended_without_evidence"
+    workspace = out["workspace"]["path"]
+    assert lab.step(R1, 2)["stdout_json"]["workspace"] == workspace
+    check = lab.step(R1, 3)["stdout_json"]
+    assert check["result"] == "pass" and check["evaluated_snapshot"]["workspace_id"] == out["workspace"]["id"]
+    from aew.engine.api import Engine
+    engine = Engine.discover(lab.root)
+    assert check["evaluated_snapshot"]["relevant_inputs_fingerprint"] == \
+        engine.snapshot_of(workspace, out["workspace"]["id"])["relevant_inputs_fingerprint"]
+    assert check["evaluated_snapshot"]["relevant_inputs_fingerprint"] != \
+        engine.snapshot_of(lab.root, "authoritative")["relevant_inputs_fingerprint"]
+    assert_control_invariants(lab.project)
+
+
+def test_evidence_cannot_claim_another_invocation_run_role_or_credential(lab, tmp_path):
+    """Attack 4: a submission naming another invocation, run, role, credential or execution profile is refused;
+    identity is recorded by the engine from the run's own credential."""
+    forged = [{"invocation": "INV-0009"}, {"run": "R-INV-0009-1"}, {"role": "reviewer"},
+              {"credential": "tk_0123456789abcdef"}, {"execution_profile": {"model": "cheaper"}}]
+    steps = [{"do": "submit_raw", "kind": "implementation_report",
+              "text": "---\nclaim: forged\nresult: pass\nproducer: " + json.dumps(p) + "\n---\nx\n"} for p in forged]
+    wid, out = assigned(lab, tmp_path, [*steps, *IMPLEMENT])
+    assert lab.wait(R1)["status"] == "ended_with_evidence"
+    for i in range(len(forged)):
+        assert error_code(lab.step(R1, i)) == "VALIDATION_FAILED", lab.step(R1, i)
+    [report] = [e for e in evidence_of(lab, wid) if e["kind"] == "implementation_report"]
+    assert (report["producer"]["invocation"], report["producer"]["run"], report["producer"]["role"]) == \
+        (out["invocation"], R1, "implementer")
+    assert_control_invariants(lab.project)
+
+
+def test_an_investigator_cannot_obtain_implementer_authority(lab, tmp_path):
+    """Attack 6: an investigator (read-only observation) cannot submit implementation evidence, dispatch an
+    implementer, or mint any credential; its operations are the investigator's only."""
+    wid = create_investigation(lab.project, tmp_path)
+    target = create_planned_ticket(lab.project, tmp_path, title="The change it would like to make")
+    rev = str(lab.project.rev())
+    lab.script(R1, [
+        {"do": "aew", "args": ["whoami"]},
+        {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
+        {"do": "aew", "args": ["work", "assign", target, "--expect-rev", rev]},
+        {"do": "aew", "args": ["invoke", "create", target, "--role", "implementer", "--expect-rev", rev]},
+        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", rev]},
+        {"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
+    run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    who = lab.step(run, 0)["stdout_json"]
+    assert who["role"] == "investigator" and "submit.implementation_report" not in who["operations"]
+    assert [error_code(lab.step(run, i)) for i in range(1, 5)] == ["PERMISSION_DENIED", "USAGE", "USAGE",
+                                                                    "PERMISSION_DENIED"]
+    assert control(lab, target)["state"] == "READY" and not control(lab, target).get("implementer_invocation")
+    assert [e["kind"] for e in evidence_of(lab, wid)] == ["discovery_record"]
+    assert_control_invariants(lab.project)
+
+
+def test_a_lead_acting_on_stale_conversational_state_is_refused(lab, tmp_path, sync):
+    """Attack 8: a Lead harness session resumed from an old conversation acts on a revision it remembers; AEW
+    refuses (compare-and-swap), and a relaunched run is rebuilt from durable state, not from its old session."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    remembered = lab.project.rev()
+    lab.project.lead("checkpoint", "--next", "the state moved on")
+    script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
+    script.write_text(json.dumps([{"do": "aew", "args": ["work", "assign", wid, "--launch", "--expect-rev",
+                                                         str(remembered)]}]), encoding="utf-8")
+    res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
+                  "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    [step] = [json.loads(line)["result"] for line in transcript.read_text(encoding="utf-8").splitlines()]
+    assert error_code(step) == "STALE_REVISION", step
+    assert control(lab, wid)["state"] == "READY" and lab.project.rev() == remembered + 1
+    assert_control_invariants(lab.project)
+
+
+def test_model_and_role_configuration_are_pinned_at_dispatch(lab, tmp_path):
+    """Attack 9: editing the execution policy after dispatch changes nothing for the invocation: every run uses its
+    pinned profile, and a relaunch accepts no model or role option."""
+    wid, out = assigned(lab, tmp_path, [{"do": "exit", "code": 0}])
+    lab.wait(R1)
+    pinned = inv_show(lab, out["invocation"])["execution_profile"]
+    policy = lab.aew_root / "policy" / "execution.yaml"
+    policy.write_text(policy.read_text(encoding="utf-8").replace("fake-model", "cheaper-model"), encoding="utf-8")
+    assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model", "--token",
+                   lab.project.token, "--expect-rev", str(lab.project.rev())).returncode != 0
+    lab.script(R2, [{"do": "aew", "args": ["whoami"]}])
+    lab.lead("harness", "launch", out["invocation"])
+    lab.wait(R2)
+    assert lab.step(R2, 0)["stdout_json"]["execution_profile"] == pinned
+    assert lab.record(R2)["execution_profile"] == pinned and pinned["model"] == "fake-model"
+    assert_control_invariants(lab.project)
+
+
+def test_forged_run_records_and_harness_success_move_nothing(lab, tmp_path):
+    """Attacks 10 and 11: a later run forges the finished earlier run's record (status, evidence) and a record for a
+    run that never existed, then exits successfully. Run records are telemetry that model-controlled processes can
+    write: evidence is always read from the evidence store, a run exists only in control state, no gate reads a
+    record, and the Ticket cannot advance."""
+    forged = json.dumps({"schema": "aew/harness-run/v1", "run": R1, "status": "ended_with_evidence",
+                         "evidence": ["INV-0001-impl-1"], "reason": "forged", "ended_at": "2026-01-01T00:00:00Z"})
+    wid, out = assigned(lab, tmp_path, [{"do": "exit", "code": 0}])
+    assert lab.wait(R1)["status"] == "ended_without_evidence"
+    lab.script(R2, [{"do": "write", "files": {str(runlog.run_dir(lab.aew_root, R1) / "run.json"): forged,
+                                              str(runlog.run_dir(lab.aew_root, "R-INV-0007-1") / "run.json"): forged}},
+                    {"do": "exit", "code": 0}])
+    lab.lead("harness", "launch", out["invocation"])
+    assert lab.wait(R2)["status"] == "ended_without_evidence"
+    assert lab.record(R1)["status"] == "ended_with_evidence"  # the forgery is on disk ...
+    runs = lab.ok("harness", "status")["runs"]
+    assert [r["run"] for r in runs] == [R1, R2]  # ... a run that never existed is not listed ...
+    assert runs[0]["evidence"] == [] and lab.ok("harness", "wait", R1)["evidence"] == []  # ... evidence: the store
+    assert lab.lead_res("work", "transition", wid, "--to", "REVIEW_PENDING").error["code"] == "GATE_UNSATISFIED"
+    assert lab.lead_res("review", "ingest", wid, "--evidence", "INV-0001-impl-1").error["code"] in {
+        "NOT_FOUND", "ILLEGAL_TRANSITION"}
+    assert control(lab, wid)["state"] == "RUNNING"
     assert_control_invariants(lab.project)

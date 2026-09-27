@@ -268,8 +268,17 @@ class HarnessOps(ResumeOps):
 
     # ------------------------------------------------------------------ observation (read-only)
 
+    def run_evidence(self, work_unit: str, run: str, _cache: dict[str, list[dict[str, Any]]] | None = None) -> list[str]:
+        """A run's evidence, read from the evidence store (sealed, engine-stamped ``producer.run``). A run record is
+        telemetry in a directory model-controlled processes can write, so its own evidence list is never shown."""
+        cache = {} if _cache is None else _cache
+        if work_unit not in cache:
+            cache[work_unit] = E.scan(self.aew_root, work_unit)[0]
+        return sorted(e["id"] for e in cache[work_unit] if e["producer"].get("run") == run)
+
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         state = self.store.read()
+        cache: dict[str, list[dict[str, Any]]] = {}
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):
             if (invocation and inv_id != invocation) or not inv.get("runs"):
@@ -286,8 +295,9 @@ class HarnessOps(ResumeOps):
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
-                            "evidence": (record or {}).get("evidence") or [],
+                            "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "model_check": ((record or {}).get("model_check") or {}).get("status"),
+                            "foreign_sessions": ((record or {}).get("result") or {}).get("foreign_sessions") or [],
                             "run_dir": str(directory)})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
@@ -301,14 +311,14 @@ class HarnessOps(ResumeOps):
 
     def harness_wait(self, run: str, *, timeout: float = 600.0) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost)."""
-        self._find_run(self.store.read(), run)
+        _, inv = self._find_run(self.store.read(), run)
         directory = runlog.run_dir(self.aew_root, run)
         deadline = time.monotonic() + timeout
         while True:
             status, record = runlog.observed_status(directory)
             if status not in (K.STARTING, K.RUNNING):
                 return {"run": run, "status": status, "reason": (record or {}).get("reason"),
-                        "evidence": (record or {}).get("evidence") or [], "timed_out": False}
+                        "evidence": self.run_evidence(inv["work_unit"], run), "timed_out": False}
             if time.monotonic() >= deadline:
                 return {"run": run, "status": status, "timed_out": True}
             time.sleep(0.2)

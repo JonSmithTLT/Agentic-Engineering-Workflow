@@ -478,6 +478,12 @@ class OpenCodeAdapter(HarnessAdapter):
             params = {"cursor": str(nxt), "limit": "200"}
         info = (self.client.get(f"/api/session/{self.session}") or {}).get("data") or {}
         self.snapshot = {"assistant": assistant, "session": {k: info.get(k) for k in ("outcome", "tokens", "cost")}}
+        # Every other session in the run's private state (a subagent's, or anyone's): recorded even if the event
+        # stream missed its creation.
+        for other in (self.client.get("/api/session", location(self.directory)) or {}).get("data") or []:
+            sid = other.get("id")
+            if sid and sid != self.session and sid not in self.foreign_sessions:
+                self.foreign_sessions.append(str(sid))
 
     def terminate(self) -> None:
         self._stop.set()

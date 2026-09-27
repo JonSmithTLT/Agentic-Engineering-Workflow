@@ -73,7 +73,8 @@ class ResumeOps(HierarchyOps):
                 continue
             run = inv["runs"][-1]["run"]
             status, record = runlog.observed_status(runlog.run_dir(self.aew_root, run))
-            evidence = (record or {}).get("evidence") or []
+            evidence = sorted(e["id"] for e in E.scan(self.aew_root, inv["work_unit"])[0]  # the store, not the record
+                              if e["producer"].get("run") == run)
             if status in (K.STARTING, K.RUNNING):
                 action = f"{run} is running for {inv_id}: follow it with `aew harness wait {run}`"
             elif status == K.ENDED_WITH_EVIDENCE:

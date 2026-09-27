@@ -27,6 +27,7 @@ from aew.errors import (
     StaleCandidate,
     UsageError,
     ValidationFailed,
+    WorkspaceMutated,
 )
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
@@ -37,6 +38,9 @@ from aew.workspace.integration import changed_between as git_changed_between
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
 
 REVIEW_ROLES = {"reviewer"}
+# Read-only roles that work in a live workspace they share with the implementer, or in an integration candidate
+# (M3-B6); in observation scope the same roles are covered by ObservationMutated (ADR-0008).
+SHARED_WORKSPACE_READERS = {"reviewer", "verifier"}
 
 
 class EvidenceOps(WorkspaceOps):
@@ -44,6 +48,47 @@ class EvidenceOps(WorkspaceOps):
 
     def _record_meta(self, unit: dict[str, Any]) -> dict[str, Any]:
         return read_record(self.aew_root / unit["record"], "work-unit").meta
+
+    @staticmethod
+    def _paths_between(workspace: Path, fingerprint_a: str | None, fingerprint_b: str | None) -> list[str]:
+        """Paths that differ between two evaluated-snapshot fingerprints (both are git trees)."""
+        a, b = (str(f or "").removeprefix("git-tree:") for f in (fingerprint_a, fingerprint_b))
+        if not a or not b:
+            return []
+        try:
+            return sorted(git_changed_between(workspace, a, b))
+        except Exception:  # a tree that is no longer in the object store: the refusal stands without paths
+            return []
+
+    def require_workspace_intact(self, inv_id: str, inv: dict[str, Any], workspace: Path, ws_id: str) -> None:
+        """A reviewer or verifier evaluates exactly the snapshot it was dispatched for (M3-B6). Its workspace is
+        shared with the implementer's work (or is the integration candidate), so an edit there would otherwise be
+        found only later, as a stale review, and attributed to nobody."""
+        pinned = (inv.get("snapshot") or {}).get("relevant_inputs_fingerprint")
+        current = self.snapshot_of(workspace, ws_id)["relevant_inputs_fingerprint"]
+        if pinned and current != pinned:
+            raise WorkspaceMutated(
+                f"{inv_id} ({inv['role']}) may not change the workspace it evaluates; it now differs from the "
+                "snapshot the invocation was dispatched for. The Lead returns the Ticket to RUNNING, so that an "
+                "implementer reports or restores the change", invocation=inv_id, workspace=str(workspace),
+                changed=self._paths_between(workspace, pinned, current))
+
+    def require_reported_workspace(self, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        """A reviewer or verifier is dispatched only for the implementation that was reported: the workspace still
+        holds the snapshot the implementer's checks and self-review evaluated (M3-B6)."""
+        stale = {g: s for g, s in G.unmet(gc["gates"], self.PRE_REVIEW).items() if s == G.STALE}
+        if not stale:
+            return
+        workspace = Path((unit.get("workspace") or {}).get("path") or ".")
+        reports = [e for e in gc["evidence"] if e["kind"] == "implementation_report"
+                   and e["producer"].get("invocation") == unit.get("implementer_invocation")]
+        reported = (reports[-1]["evaluated_snapshot"] if reports else {}).get("relevant_inputs_fingerprint")
+        current = (gc.get("snapshot") or {}).get("relevant_inputs_fingerprint")
+        raise WorkspaceMutated(
+            f"{work_id}'s workspace no longer holds the implementation that was reported ({', '.join(sorted(stale))} "
+            "are stale); a reviewer or verifier would evaluate unreported changes. Return the Ticket to RUNNING so "
+            "that an implementer reports or restores them", work_id=work_id, stale=sorted(stale),
+            changed=self._paths_between(workspace, reported, current))
 
     def _invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
         """The workspace this invocation was dispatched for — and only while it is still live (review M2).
@@ -326,6 +371,8 @@ class EvidenceOps(WorkspaceOps):
             else:
                 raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
             gc = self.gate_context(state, work_id) if slot in {"review", "verify"} and scope == "ticket" else None
+            if gc is not None and unit.get("mutating"):
+                self.require_reported_workspace(work_id, unit, gc)
             chosen = self.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
             # A fresh implementer consumes the Ticket's inputs again: stale source-bound ones block (ADR-0008).
             inputs = self.dispatch_inputs(state, work_id, (unit.get("workspace") or {}).get("base_commit")) \
@@ -392,6 +439,8 @@ class EvidenceOps(WorkspaceOps):
             plan = unit.get("plan") or {}
         if not workspace.exists():
             raise NotFound(f"workspace {workspace} is missing")
+        if inv["role"] in SHARED_WORKSPACE_READERS and inv.get("scope") in {"ticket", "integration"}:
+            self.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited workspace
         before = self.snapshot_of(workspace, ws_id)
         if cfg.get("builtin"):
             verdict = GR.evaluate(changed_paths(workspace, base), self.policy("guardrails"), scope_paths)
@@ -448,6 +497,8 @@ class EvidenceOps(WorkspaceOps):
             workspace, ws_id, _ = self._invocation_workspace(state, inv)
             if inv.get("scope") in {"observation", "parent"}:
                 self.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
+            elif inv["role"] in SHARED_WORKSPACE_READERS:
+                self.require_workspace_intact(inv_id, inv, workspace, ws_id)  # M3-B6
             work_id = inv["work_unit"]
             unit = state["work"][work_id]
             plan = unit.get("plan") or {}

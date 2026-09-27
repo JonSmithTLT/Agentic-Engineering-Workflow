@@ -14,6 +14,7 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``<invocation>.json`` | ``default.json``): a list of steps, or ``{"steps", "effective", "health", "server"}``.
 ``server`` knobs: ``catalog_delay_s``, ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
 ``ignore_config`` (load no configured agent), ``agent_override`` (fields that differ from the projection),
+``subagent`` (the model starts a child session, as V2's subagent tool would),
 ``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken).
@@ -167,6 +168,12 @@ class FakeOpenCode:
     def gate(self, s: Session) -> str | None:
         """A permission request or form before the first step, if the knobs ask for one."""
         sid = s.info["id"]
+        if self.knobs.get("subagent"):  # a child session the parent's model started (V2: parentID)
+            child = "ses_" + secrets.token_hex(12)
+            with self.lock:
+                self.sessions[child] = Session({**s.info, "id": child, "parentID": sid, "title": "subagent"})
+            self.persist()
+            self.emit("session.created", {"sessionID": child})
         if self.knobs.get("ask"):
             rid = new_id("per")
             with self.lock:

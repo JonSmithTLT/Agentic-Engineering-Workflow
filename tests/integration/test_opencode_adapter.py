@@ -220,6 +220,17 @@ def test_a_permission_request_is_rejected_and_recorded(lab, tmp_path):
     assert not evidence_of(lab, wid)
 
 
+def test_a_subagent_session_is_never_invisible(lab, tmp_path):
+    """Brief attack 7: `subagent` is denied, and a session started anyway (by the model or anything else) is recorded
+    on the run and shown by `aew harness status`: nothing runs for the invocation unseen."""
+    script(lab, IMPLEMENT, subagent=True)
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    [child] = lab.record(run)["result"]["foreign_sessions"]
+    assert child != lab.record(run)["launch"]["session"]
+    assert lab.ok("harness", "status")["runs"][0]["foreign_sessions"] == [child]
+
+
 def test_a_form_is_cancelled_and_the_run_continues(lab, tmp_path):
     script(lab, IMPLEMENT, form=True)
     _, _, run = launch(lab, tmp_path)

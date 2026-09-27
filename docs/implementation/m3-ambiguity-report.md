@@ -22,6 +22,26 @@
     - V2's default rules protect `.env` files and allow its own output directories, and AEW's blanket rules overrode both until fixed;
     - closing an event stream from another thread deadlocked the adapter until fixed. The supervisor now bounds any adapter's `terminate()`.
     - a run's event log was appended from several threads through separate handles, which interleaves lines on Windows; appends are now serialized.
+- **Step 5 is complete** (the brief's attack list, M3-B6 and M3-B7; ADR-0009 Consequences).
+  - **M3-B6 confirmed and fixed.** A reviewer's edit of the shared workspace was recorded with its passing review, refused at ingest only as "stale", and a second reviewer then passed the edited code. The fingerprint-bound gates kept it out of integration. Reviewers and verifiers are now refused where the edit is made (`WORKSPACE_MUTATED`, naming the paths), and cannot be dispatched for code no implementer reported.
+  - **Run records hardened.** A later run could rewrite an earlier run's record, and `harness status`/`wait` showed the forged evidence list. They now read evidence from the evidence store. No state could move either way.
+  - Every attack in the brief is a permanent regression:
+
+  | Brief attack | Regressions | Result |
+  |---|---|---|
+  | continue a superseded session | `test_run_dies_then_lead_relaunches_then_old_process_wakes_up`, conformance `rotation_leaves_the_old_run_without_authority`, live `test_a_revived_superseded_session_has_no_aew_authority` | the old bridge refuses (`STALE_AUTHORITY`); V2 does not persist a session's environment |
+  | reuse an ended invocation | `test_broker_alive_then_invocation_cancelled`, `test_the_retired_implementers_run_stops_when_review_begins`, `test_relaunch_preconditions` | run stopped, relaunch refused |
+  | run an agent from the wrong worktree | `test_an_agent_in_the_wrong_worktree_still_acts_only_for_its_own_workspace`; the session's location comes only from the invocation (`test_the_projection_reaches_the_server_and_the_session`) | identity, checks and evidence stay bound to the invocation's workspace |
+  | submit evidence from a mismatched session or invocation | `test_run_a_cannot_act_as_run_b`, `test_evidence_cannot_claim_another_invocation_run_role_or_credential` | refused; identity is engine-stamped |
+  | let a Reviewer mutate source | `test_a_reviewer_cannot_mutate_source`, `test_a_verifier_cannot_mutate_source` | **defect found (M3-B6), fixed** |
+  | let an Investigator obtain implementer authority | `test_an_investigator_cannot_obtain_implementer_authority`, conformance `a_read_only_role_cannot_change_its_observation`, projection units | refused |
+  | spawn an untracked subagent | `subagent` denied (projection units); `test_a_subagent_session_is_never_invisible`; conformance `stopping_a_run_ends_every_process_it_started` | recorded and shown; every process dies with the run |
+  | resume from stale conversational state | `test_a_lead_acting_on_stale_conversational_state_is_refused`, `test_relaunch_delivers_the_same_pack_plus_a_continuation_from_durable_state`, the live revived-session test | CAS refusal; relaunch rebuilt from durable state |
+  | change model/role configuration after dispatch | `test_model_and_role_configuration_are_pinned_at_dispatch`, live `test_project_opencode_config_written_by_an_agent_changes_no_later_run` | pins hold; project configuration is ignored and health verifies the loaded agent |
+  | forge or reuse correlation metadata | `test_run_a_cannot_act_as_run_b` (forged `AEW_RUN`/`AEW_INVOCATION`, foreign bridge), `test_forged_run_records_and_harness_success_move_nothing` | **display defect found, fixed**; no state moves |
+  | use success/exit state to bypass gates | conformance `harness_success_without_evidence_moves_no_state`, `test_harness_exit_without_its_expected_output_moves_no_state`, the forged-record test | gates unmoved |
+  | M3-B7 credential exfiltration | the custody tests (step 2 and 3), conformance custody 1-5 on fake and real OpenCode | no credential reachable |
+  | capability drift | `test_an_incompatible_server_fails_closed`, doctored-OpenAPI units, live `an_incompatible_harness_fails_closed` | fails closed |
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

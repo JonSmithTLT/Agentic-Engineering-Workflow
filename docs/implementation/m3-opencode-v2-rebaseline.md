@@ -118,3 +118,21 @@ The prompt was "list the exact names of every skill you have been told is availa
 - **Disposability:** improved. Each run gets private XDG state, or `OPENCODE_DB=:memory:`. Destroying session state is deleting a directory. AEW never reads harness state to reconstruct.
 - **Future coordination:** V2 can deliver a bounded delta into a running loop (`steer`, confirmed). Nothing in M3 blocks the frozen coordination design, and per-turn `run` was rejected partly for that reason.
 - **No lifecycle operation assumed by the plan is unsupported by V2.**
+
+## 9. Facts established in step 4 (the adapter, against the 2.0.18 binary)
+
+Found while building and live-testing the adapter. None changes the plan; each is handled as described.
+
+| # | Fact | Evidence | How AEW handles it |
+|---|---|---|---|
+| 1 | **Agents and commands load asynchronously per location**, like the model catalog: `/api/agent` is `[]` for about 0.5 s on a fresh server. | live probe; `test_the_real_server_accepts_the_lead_projection` | health polls `/api/agent` and fails closed if AEW's agent never appears |
+| 2 | The loaded agent reports its effective **permissions as V2's defaults, then the configuration's rules, then the agent's**, and its system text, model, variant and steps. | live probe | health requires AEW's rules to be the winning suffix and the other fields to match the projection |
+| 3 | **V2's default rules** include `read` **ask** for `*.env` and `*.env.*` (allow `*.env.example`), and `external_directory` **allow** for the server's own tool-output, shell-output, temp and config directories. | live probe (`/api/agent`) | AEW denies `.env` reads (an ask would block), keeps `.env.example`, and allows only the run's own output directories |
+| 4 | **A `--standalone` TUI sends its own environment (minus the server password) as every session's shell environment**, and its private server inherits the same environment. With `--server URL` it sends nothing. | the TUI code in the 2.0.18 binary (`environment: server === undefined ? processEnv() : undefined`; the standalone spawn uses `extendEnv`) | `aew opencode` runs `--standalone` with an allowlisted environment and refuses `--server` |
+| 5 | Command templates support `$ARGUMENTS`, positional `$1…`, and inline shell (`` !`cmd` ``) run with the server's environment **outside the permission flow**. | the command expansion code in the binary | the `/aew-*` templates run only fixed read-only commands inline |
+| 6 | The **session shell endpoint is synchronous** (it returns when the command ends) and records a `shell` message with status, exit code and output. It also queues a `synthetic` inbox item for the next model turn. | probe 4 | the live driver runs scenario actions through it; completion ignores inbox items that are not AEW's prompts |
+| 7 | **Queued prompts are delivered at step boundaries inside the running execution**, which ends with one `idle`. A prompt queued after the last boundary starts a new execution after `idle`. | probe 4 | a turn is over only when AEW's last prompt was delivered before the final `idle` (fake-V2 race test) |
+| 8 | `POST …/wait` returns 204 immediately when the session is idle. `…/log?follow=false` replays only a sync marker. | probe 4 | neither is used for completion |
+| 9 | **The agent's shell is chosen from `SHELL` or config `shell`**, else PowerShell on Windows. With an allowlisted environment and no `SHELL`, the shell is PowerShell even where Git Bash is installed. | live probe (`/api/config/shell`, a `/shell` command printing `$0`) | `SHELL` passes through to the run's server and to the Lead TUI, so the agent gets the shell the operator's own OpenCode would |
+| 10 | `/api/session/{id}/context` returns the conversation, **not the tool list**. | live probe | the tools a model sees are not checked deterministically; the loaded rules are (health), and the tools an agent called are recorded |
+| 11 | Session create accepts `agent`, `model` (with `variant`), `permissions`, `metadata`, `title` and `location`; `metadata` round-trips. | probe 4, fake-V2 and live runs | correlation only (`aew_invocation`, `aew_run`, `aew_work_unit`) |

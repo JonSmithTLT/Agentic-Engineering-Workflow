@@ -2,11 +2,13 @@
 
 What every harness adapter must do, whatever the harness, stated as scenarios over one action
 vocabulary (the fake agent's steps: write, aew, check, submit, submit_raw, dump_env, child_env, scan,
-spawn_orphan, touch, wait_file, pid, cwd, exit). A ``Driver`` makes one harness perform the actions:
+spawn_orphan, touch, wait_file, pid, cwd, model_step, exit). A ``Driver`` makes one harness perform them:
 
-* ``FakeDriver`` (CI): the fake harness runs them as a scripted agent process.
-* An OpenCode driver (M3 step 4, live lane) runs the same actions through OpenCode's own shell tool in a
-  real private server and session, so the properties are checked against OpenCode itself, not a model.
+* ``FakeDriver`` (CI): the fake harness runs them as one scripted agent process.
+* ``FakeOpenCodeDriver`` (CI): the real OpenCode adapter against a fake V2 server whose "model" runs each
+  step as a tool call in the session's shell environment (``fake_opencode.py``).
+* ``OpenCodeDriver`` (live lane, ``tests/live``): the real OpenCode 2.0.18 server; each step runs through
+  the session's own shell endpoint, and ``model_step`` is a real prompt to a real (free) model.
 
 Every scenario asserts AEW-side outcomes only: evidence, state, run records, files, processes. A scenario
 needing something a driver cannot do (``capabilities``) is skipped for that driver, visibly.
@@ -24,8 +26,9 @@ from typing import Any
 
 import pytest
 
+import fake_opencode
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
-from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits
+from fake_harness import IMPL_REPORT, POLICY, SCRIPTS_ENV, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, procs, runlog
@@ -74,6 +77,32 @@ class FakeDriver(Driver):
     def sessions(self, lab, run):
         d = self.state_dir(lab, run) / "sessions"
         return {p.name for p in d.iterdir()} if d.is_dir() else set()
+
+
+class FakeOpenCodeDriver(Driver):
+    """The real OpenCode adapter against the fake V2 server. The execution policy names the provider secret as a
+    provider variable, so the *server* holds it: the scenarios prove the agent's shell still does not."""
+
+    name = "opencode-fake"
+    capabilities = frozenset({"effective_override", "incompatible"})
+
+    def create_lab(self, tmp_path: Path) -> HarnessLab:
+        policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"]}
+        lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy,
+                                extra_env={"OPENAI_API_KEY": PROVIDER_SECRET})
+        launcher = fake_opencode.write_launcher(tmp_path / "fake-opencode", Path(lab.env[SCRIPTS_ENV]))
+        lab.env["AEW_OPENCODE_BIN"] = str(launcher)
+        return lab
+
+    def script(self, lab, key, steps, *, effective=None, health=None):
+        FakeDriver.script(self, lab, key, steps, effective=effective, health=health)  # the same script files
+
+    def state_dir(self, lab, run):
+        return runlog.run_dir(lab.aew_root, run) / "harness"
+
+    def sessions(self, lab, run):
+        db = self.state_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json"
+        return set(json.loads(db.read_text(encoding="utf-8"))) if db.exists() else set()
 
 
 @dataclass
@@ -249,9 +278,10 @@ def a_crashing_harness_moves_no_state(lab, driver, tmp_path):
 @scenario()
 def stopping_a_run_ends_every_process_it_started(lab, driver, tmp_path):
     sync = sync_dir(tmp_path)
-    _, inv, run = launch_ticket(lab, driver, tmp_path, [
-        {"do": "spawn_orphan", "pidfile": str(sync / "orphan")}, {"do": "pid", "path": str(sync / "agent")},
-        {"do": "touch", "path": str(sync / "ready")}, {"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
+    _, inv, run = launch_ticket(lab, driver, tmp_path, [  # "agent": the process running the harness's current step
+        {"do": "spawn_orphan", "pidfile": str(sync / "orphan")},
+        {"do": "wait_file", "path": str(sync / "never"), "timeout": 300, "pidfile": str(sync / "agent"),
+         "ready": str(sync / "ready")}])
     lab.until(lambda: (sync / "ready").exists(), what="ready")
     watches = [procs.Watch(int((sync / n).read_text())) for n in ("orphan", "agent")]
     assert all(w.alive() for w in watches)
@@ -279,6 +309,9 @@ def repeated_runs_start_and_end_cleanly_with_private_state(lab, driver, tmp_path
         assert Path(driver.state_dir(lab, r)).resolve().is_relative_to(runlog.run_dir(lab.aew_root, r).resolve())
     for rec in records:
         lab.until(lambda rec=rec: supervisor_gone(rec), 30, "every supervisor to exit")
+        started = calendar.timegm(time.strptime(rec["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
+        for pid in rec["harness_pids"]:  # no harness process (a server, an agent) outlives its run
+            lab.until(lambda pid=pid: not procs.same_process(pid, started), 30, f"harness process {pid} to exit")
 
 
 @scenario()
@@ -327,9 +360,10 @@ def a_different_effective_model_is_flagged(lab, driver, tmp_path):
 
 @scenario()
 def the_pinned_model_is_the_effective_model(lab, driver, tmp_path):
-    _, _, run = launch_ticket(lab, driver, tmp_path, [{"do": "exit", "code": 0}])
-    lab.wait(run)
-    assert lab.record(run)["model_check"]["status"] == "match"
+    _, _, run = launch_ticket(lab, driver, tmp_path, [{"do": "model_step"}, {"do": "exit", "code": 0}])
+    lab.wait(run, timeout=300)
+    check = lab.record(run)["model_check"]
+    assert check["status"] == "match" and check["effective"], check
 
 
 @scenario()

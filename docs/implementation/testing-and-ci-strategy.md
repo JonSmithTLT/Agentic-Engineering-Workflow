@@ -18,6 +18,7 @@ The **directory** says what a test is. **Markers** are used only for properties 
 
 | Lane | Rule (in order) | What it holds | Class |
 |---|---|---|---|
+| `live` | `tests/live/**`, collected **only with `--live`** | Real harness binaries and real models: the harness conformance scenarios on OpenCode 2.0.18 (M3). Opt-in and local; never part of CI or the assurance check, which never collect it. | Live evidence; not a merge gate |
 | `serial` | marker `serial` | Properties that *are* timing or real-process concurrency: 2×50 racing writers, the real `os._exit` kill matrix and the cross-process stale writer (`tests/integration/test_store_processes.py`), and the pty operator takeover (AT-4b) | Deterministic regression; never parallel |
 | `acceptance` | marker `acceptance(id)` | AT-1..AT-13 and KC §26 scenarios through the real CLI and real git. `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
 | `adversarial` | marker `exploratory` | The seeded walks: the M1 composition walk (5 seeds × 60 steps) and the M2 hierarchy walk (5 seeds × 80 steps). Their default budgets are merge gates; larger budgets run nightly. | Seeded exploration, deterministic per seed |
@@ -164,6 +165,7 @@ python -m pytest --lane regression -n auto -q           # one lane in parallel
 python -m pytest -n auto -m "not serial" -q && python -m pytest --lane serial -q   # full, fast
 python -m pytest -m acceptance -q                       # all acceptance scenarios
 AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q     # reproduce a nightly seed
+python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
 ```
 
 Seeds and budgets are controlled by these environment knobs; the defaults are the merge-gate values:

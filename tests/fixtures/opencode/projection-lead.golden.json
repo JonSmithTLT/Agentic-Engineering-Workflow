@@ -1,0 +1,105 @@
+{
+ "agents": {
+  "aew-lead": {
+   "description": "AEW Lead (acts through the Lead broker)",
+   "mode": "primary",
+   "permissions": [
+    {
+     "action": "*",
+     "effect": "ask",
+     "resource": "*"
+    },
+    {
+     "action": "read",
+     "effect": "allow",
+     "resource": "*"
+    },
+    {
+     "action": "glob",
+     "effect": "allow",
+     "resource": "*"
+    },
+    {
+     "action": "grep",
+     "effect": "allow",
+     "resource": "*"
+    },
+    {
+     "action": "shell",
+     "effect": "ask",
+     "resource": "*"
+    },
+    {
+     "action": "shell",
+     "effect": "allow",
+     "resource": "aew *"
+    },
+    {
+     "action": "shell",
+     "effect": "allow",
+     "resource": "git status*"
+    },
+    {
+     "action": "shell",
+     "effect": "allow",
+     "resource": "git diff*"
+    },
+    {
+     "action": "shell",
+     "effect": "allow",
+     "resource": "git log*"
+    },
+    {
+     "action": "shell",
+     "effect": "allow",
+     "resource": "git show*"
+    },
+    {
+     "action": "edit",
+     "effect": "deny",
+     "resource": "*"
+    },
+    {
+     "action": "subagent",
+     "effect": "deny",
+     "resource": "*"
+    },
+    {
+     "action": "question",
+     "effect": "allow",
+     "resource": "*"
+    }
+   ],
+   "system": "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work units, plans, dispatches, evidence and decisions live in `.aew/` and change only through the `aew` command. This session is disposable. After any restart, rebuild your context with `aew resume` (/aew-resume), never from an earlier conversation.\n- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).\n- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.\n- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.\n- Do not implement substantial changes yourself. You cannot edit files in this session.\n- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are refused here.\n- Report contradictions between artifacts to the operator. Never resolve them silently."
+  }
+ },
+ "commands": {
+  "aew-handoff": {
+   "agent": "aew-lead",
+   "description": "AEW: checkpoint for a Lead handoff",
+   "template": "Prepare a Lead handoff. Output of `aew resume`:\n\n!`aew resume`\n\nWrite a checkpoint note (state, in-flight runs, open decisions, next action) and record it with `aew checkpoint --note-file - --next \"...\" --expect-rev N`. Then tell me that the handoff itself (`aew lead handoff offer`) is mine to run at my own terminal."
+  },
+  "aew-next": {
+   "agent": "aew-lead",
+   "description": "AEW: take the next Lead action on one work unit",
+   "template": "Take exactly one next Lead action on AEW work unit: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\nFirst run `aew work show <id>` and `aew harness status` for it. Then do the one next step: dispatch with --launch, wait for a run, ingest its evidence, or record a transition or decision. Explain what you did and what comes after."
+  },
+  "aew-resume": {
+   "agent": "aew-lead",
+   "description": "AEW: rebuild the Lead's context from durable state",
+   "template": "Rebuild your AEW Lead context from durable state. Output of `aew resume`:\n\n!`aew resume`\n\nSummarize the objective, active work and in-flight runs, anything blocked or interrupted, and the single next Lead action you propose. Do not change anything yet."
+  },
+  "aew-status": {
+   "agent": "aew-lead",
+   "description": "AEW: work, Lead authority and harness runs",
+   "template": "Output of `aew status`:\n\n!`aew status`\n\nOutput of `aew harness status`:\n\n!`aew harness status`\n\nSummarize what is running, which runs ended with evidence waiting to be ingested, which ended without evidence, and anything lost. Propose next actions; do not act yet."
+  },
+  "aew-ticket": {
+   "agent": "aew-lead",
+   "description": "AEW: draft a Ticket and plan for an objective",
+   "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\nPropose the Ticket (title, risk class 0-4 with reasons, scope, completion criteria) and a plan. Show them to me first. Only after I agree, run `aew work create ticket ...` and `aew plan propose ...` (see `aew work create --help`)."
+  }
+ },
+ "default_agent": "aew-lead",
+ "share": "disabled"
+}

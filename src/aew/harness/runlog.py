@@ -12,6 +12,7 @@ from __future__ import annotations
 import calendar
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -127,14 +128,18 @@ def take_requests(directory: Path) -> list[dict[str, Any]]:
 
 
 class EventLog:
-    """Append-only JSON lines: harness telemetry (never chain-of-thought, never a credential)."""
+    """Append-only JSON lines: harness telemetry (never chain-of-thought, never a credential).
+
+    Several threads of one supervisor append (its own, an adapter's monitor and event reader). Appends through
+    separate handles are not atomic on Windows, so they are serialized: every line stays whole."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
+        self._lock = threading.Lock()
 
     def __call__(self, event: dict[str, Any]) -> None:
         line = K.redact(json.dumps({"at": utc_now(), **event}, default=str))
-        with self.path.open("a", encoding="utf-8") as fh:
+        with self._lock, self.path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
 
 

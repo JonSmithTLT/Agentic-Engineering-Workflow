@@ -11,6 +11,17 @@
   - The supervisor compares requested and effective model and effort (`model_check`).
   - `docs/implementation/harness-conformance.md` covers the contract, scenarios, the adding-a-harness mapping and the designer's step-4 watch list.
   - **Open observation:** `test_an_acquired_seat_is_released_or_held_explicitly` failed once, during roughly 40-way parallel overload (the full suite plus a stress loop), and has not reproduced in 13 targeted runs (up to 24 concurrent workers). The probable cause is the 180 s CLI timeout, since one Lead session makes about ten CLI round trips plus a run launch; that helper's timeout is now 600 s. Re-check if it recurs in CI.
+- **Step 4 is complete** (the OpenCode V2 adapter, `src/aew/harness/opencode/`; ADR-0009 updated to the implementation).
+  - A private `serve --stdio` per run; health = version, a capability probe of the served OpenAPI, the pinned model and variant in the (asynchronous) catalog, and the projection loaded as written; a curated session environment; completion decided from the REST API only.
+  - The conformance suite runs against the real adapter in CI (a fake V2 server that serves the real 2.0.18 OpenAPI) and in a new opt-in live lane against OpenCode 2.0.18: 14 scenarios pass live, and one (forcing a different model) is not drivable live and is skipped visibly.
+  - `aew opencode` runs the Lead's TUI through the Lead broker with `--standalone`, because a standalone V2 TUI gives every session its own environment. That environment is an allowlist with no AEW credential and no provider key (the step-3 obligation).
+  - `aew harness send|interrupt|config`; `aew resume` reports harness runs (M3-B1: a lost harness is not an interruption) only when runs exist.
+  - **Found while building it** (all reported in `m3-opencode-v2-rebaseline.md` §9):
+    - agents and commands load asynchronously, like the catalog;
+    - the agent's shell is chosen from `SHELL` (else PowerShell on Windows);
+    - V2's default rules protect `.env` files and allow its own output directories, and AEW's blanket rules overrode both until fixed;
+    - closing an event stream from another thread deadlocked the adapter until fixed. The supervisor now bounds any adapter's `terminate()`.
+    - a run's event log was appended from several threads through separate handles, which interleaves lines on Windows; appends are now serialized.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

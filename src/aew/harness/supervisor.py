@@ -39,6 +39,7 @@ from aew.util import utc_now
 TICK_S = 0.25
 STATE_POLL_S = 2.0
 HANDOFF_LIMIT = 64 * 1024
+TERMINATE_S = 20.0
 
 
 def log(msg: str) -> None:
@@ -238,6 +239,8 @@ class Supervisor:
         outputs = [e for e, kind in self._evidence(kinds=True) if kind in expected]
         code = status.get("exit_code")
         self.record["exit_code"] = code
+        if status.get("detail"):
+            self.record["harness_outcome"] = status["detail"]
         if outputs:
             return self._finish(K.ENDED_WITH_EVIDENCE, f"harness exited ({code}) after recording {', '.join(outputs)}")
         if code == 0:
@@ -263,10 +266,8 @@ class Supervisor:
                 self.bridge.close()
             try:
                 if self.adapter is not None:
-                    self.adapter.terminate()
-            except Exception as exc:  # the tree is killed below whatever the adapter managed
-                self._event("terminate_failed", error=f"{type(exc).__name__}: {exc}")
-            finally:
+                    self._terminate_adapter()
+            finally:  # the tree is killed whatever the adapter managed
                 self.tree.kill()
             try:
                 self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
@@ -283,12 +284,34 @@ class Supervisor:
             self.record["credential_scan"] = {"clean": not leaks, "files": leaks}
             self._save()
 
+    def _terminate_adapter(self) -> None:
+        """The adapter's own shutdown, bounded: a stuck adapter must not stop the supervisor from ending the run."""
+        failure: list[str] = []
+
+        def stop() -> None:
+            try:
+                self.adapter.terminate()
+            except Exception as exc:
+                failure.append(f"{type(exc).__name__}: {exc}")
+
+        worker = threading.Thread(target=stop, name="aew-adapter-terminate", daemon=True)
+        worker.start()
+        worker.join(TERMINATE_S)
+        if worker.is_alive():
+            self._event("terminate_timeout", after_s=TERMINATE_S)
+        elif failure:
+            self._event("terminate_failed", error=failure[0])
+
     def _compare_effective(self) -> None:
         """Requested (pinned) versus effective execution: a mismatch is flagged, never silently accepted."""
         pin = self.record.get("execution_profile") or {}
         effective = (self.record.get("result") or {}).get("effective")
         if effective is None:
             self.record["model_check"] = {"status": "unreported"}
+            return
+        if not effective:  # the harness reports its models, and no model step ran in this run
+            self.record["model_check"] = {"status": "no_model_step", "requested": {
+                "provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}}
             return
         wanted = {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}
         mismatches = [e for e in effective

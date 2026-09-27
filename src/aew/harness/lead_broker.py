@@ -170,8 +170,12 @@ def routes(args: argparse.Namespace) -> bool:
 
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
-                keep_seat: bool) -> dict[str, Any]:
-    """``aew lead session``: broker the Lead credential for one Lead harness session."""
+                keep_seat: bool, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """``aew lead session``: broker the Lead credential for one Lead harness session.
+
+    ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
+    adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
+    """
     from aew.engine.harness_ops import supervisor_env
     from aew.harness.procs import harden_current_process
 
@@ -188,9 +192,9 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                                     "--acquire (the credential then exists only inside this session)")
     broker = LeadBroker(engine, token)
     broker.start()
-    env = {**supervisor_env(), **broker.env}
+    child_env = {**(supervisor_env() if env is None else supervisor_env(env)), **broker.env}
     try:
-        code = subprocess.call(command, env=env, cwd=str(engine.repo_root))
+        code = subprocess.call(command, env=child_env, cwd=str(engine.repo_root))
     finally:
         broker.close()
     out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded}

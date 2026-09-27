@@ -1,0 +1,349 @@
+{
+ "config": {
+  "agents": {
+   "aew": {
+    "description": "AEW implementer for INV-0007",
+    "mode": "primary",
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    },
+    "permissions": [
+     {
+      "action": "*",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "glob",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "grep",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "shell",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env.*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*.env.example"
+     },
+     {
+      "action": "edit",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "webfetch",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "websearch",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "skill",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "subagent",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "question",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "allow",
+      "resource": "/r/harness/xdg-data/opencode/tool-output/*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "allow",
+      "resource": "/r/harness/xdg-data/opencode/shell/*/*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "allow",
+      "resource": "/r/harness/tmp/opencode/*"
+     }
+    ],
+    "steps": 40,
+    "system": "You are an AEW bounded implementer (role card python_engineer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You may edit files in the workspace.\n- Write report files outside the workspace, or pipe them: `aew submit --kind <kind> --file -`.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Skills your role card requests that this harness does not provide: python-development. Proceed without them and say so in your report."
+   },
+   "compaction": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   },
+   "summary": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   },
+   "title": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   }
+  },
+  "default_agent": "aew",
+  "formatter": false,
+  "lsp": false,
+  "permissions": [
+   {
+    "action": "*",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "glob",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "grep",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env.*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*.env.example"
+   },
+   {
+    "action": "edit",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "webfetch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "websearch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "skill",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "subagent",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "question",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/xdg-data/opencode/tool-output/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/xdg-data/opencode/shell/*/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/tmp/opencode/*"
+   }
+  ],
+  "plugins": [
+   "-opencode.config.compatibility"
+  ],
+  "share": "disabled",
+  "snapshots": false,
+  "update": "disable"
+ },
+ "session": {
+  "agent": "aew",
+  "location": {
+   "directory": "/ws"
+  },
+  "metadata": {
+   "aew_invocation": "INV-0007",
+   "aew_run": "R-INV-0007-2",
+   "aew_work_unit": "T-0003"
+  },
+  "model": {
+   "id": "claude-sonnet-5",
+   "providerID": "anthropic",
+   "variant": "high"
+  },
+  "permissions": [
+   {
+    "action": "*",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "glob",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "grep",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env.*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*.env.example"
+   },
+   {
+    "action": "edit",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "webfetch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "websearch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "skill",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "subagent",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "question",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/xdg-data/opencode/tool-output/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/xdg-data/opencode/shell/*/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/tmp/opencode/*"
+   }
+  ],
+  "title": "AEW R-INV-0007-2 (implementer, T-0003)"
+ },
+ "skills": {
+  "exposed": [],
+  "requested": [
+   "python-development"
+  ],
+  "unavailable": [
+   "python-development"
+  ]
+ }
+}

@@ -155,6 +155,20 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("harness_command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
     q.set_defaults(handler=_lead_session)
 
+    p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
+                                        "credential or, by default, any provider key (ADR-0009)")
+    p.add_argument("--acquire", action="store_true",
+                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    p.add_argument("--session-label")
+    p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
+                   help="pass this provider variable to the Lead's OpenCode (its shell can then read it); by default "
+                        "the Lead's model uses the credentials OpenCode stores (`opencode auth login`)")
+    p.add_argument("--print-config", action="store_true",
+                   help="print the Lead projection and the environment names; start nothing")
+    p.add_argument("opencode_args", nargs=argparse.REMAINDER, help="-- further OpenCode TUI arguments")
+    p.set_defaults(handler=_opencode)
+
 
 def _register_authority(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("authority", help="classify candidate authority sources discovered by init")
@@ -213,6 +227,14 @@ def _lead_session(args: argparse.Namespace) -> Any:
         command = command[1:]
     return lead_broker.run_session(_engine(args), command, acquire=args.acquire, session_label=args.session_label,
                                    keep_seat=args.keep_seat)
+
+
+def _opencode(args: argparse.Namespace) -> Any:
+    from aew.harness.opencode import lead
+
+    return lead.run(_engine(args), acquire=args.acquire, session_label=args.session_label, keep_seat=args.keep_seat,
+                    provider_env=list(args.provider_env), extra_args=list(args.opencode_args),
+                    print_config=args.print_config)
 
 
 def _resume(args: argparse.Namespace) -> Any:

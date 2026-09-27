@@ -211,3 +211,20 @@ def test_a_non_mutating_executor_runs_in_its_read_only_observation(lab, tmp_path
 def test_bridge_routing_needs_a_bridge_or_a_credential(lab):
     res = lab.aew("whoami")
     assert res.error["code"] == "USAGE" and "invocation credential required" in res.error["message"]
+
+
+def test_resume_shows_runs_only_when_there_are_some_and_a_lost_harness_is_not_an_interruption(lab, tmp_path):
+    """M3-B1: a harness that ended or crashed leaves its invocation active with its authority; `aew resume` says so
+    and offers relaunch or cancel. Projects without runs resume exactly as before (no harness section)."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    assert "harness_runs" not in lab.ok("resume", "--json")
+    lab.script("default", [{"do": "exit", "code": 3}])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "crashed"
+    r = lab.ok("resume", "--json")
+    [entry] = r["harness_runs"]
+    assert (entry["run"], entry["status"], entry["invocation"]) == (run, "crashed", "INV-0001")
+    assert any("INV-0001 has no live run" in a and "aew harness launch INV-0001" in a for a in r["next_actions"])
+    assert lab.ok("work", "show", wid)["control"]["state"] == "ASSIGNED"  # not INTERRUPTED
+    text = lab.aew("resume").stdout
+    assert "## Harness runs" in text and f"{run} (INV-0001, implementer, {wid}): crashed" in text

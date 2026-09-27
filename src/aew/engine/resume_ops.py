@@ -56,7 +56,35 @@ class ResumeOps(HierarchyOps):
             else:
                 actions.extend(f"{wid}: {a}" for a in self._ticket_actions(state, wid, u))
             actions.extend(f"{wid}: {a}" for a in self._common_actions(state, wid, u))
+        actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness_resume(state))
         return actions
+
+    def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
+        """The latest harness run of every active invocation that has runs (ADR-0009; empty without runs).
+
+        Local telemetry, never read by a gate. A harness that ended, crashed or was lost changes no AEW state and
+        is not an interruption (M3-B1): the invocation keeps its authority and is relaunched or cancelled."""
+        from aew.harness import contract as K
+        from aew.harness import runlog
+
+        out = []
+        for inv_id, inv in sorted(state["invocations"].items()):
+            if inv["status"] != "active" or not inv.get("runs"):
+                continue
+            run = inv["runs"][-1]["run"]
+            status, record = runlog.observed_status(runlog.run_dir(self.aew_root, run))
+            evidence = (record or {}).get("evidence") or []
+            if status in (K.STARTING, K.RUNNING):
+                action = f"{run} is running for {inv_id}: follow it with `aew harness wait {run}`"
+            elif status == K.ENDED_WITH_EVIDENCE:
+                action = f"{run} ended with evidence {', '.join(evidence)}: ingest it (the run itself decides nothing)"
+            else:
+                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
+                          f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
+            out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
+                        "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
+                        "action": action})
+        return out
 
     def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
@@ -340,6 +368,7 @@ class ResumeOps(HierarchyOps):
             "next_actions": self.next_actions(state),
             "contradictions": self.contradictions(state) + [f"evidence: {p}" for u in state["work"]
                                                             for p in E.scan(self.aew_root, u)[1]],
+            **({"harness_runs": runs} if (runs := self.harness_resume(state)) else {}),
         }
 
     def render_resume(self, r: dict[str, Any]) -> str:
@@ -362,6 +391,10 @@ class ResumeOps(HierarchyOps):
         if r["verification_failures"]:
             lines += ["", "## Verification failures / blockers", *(f"- {f['work_unit']}: {f['state']}"
                                                                    for f in r["verification_failures"])]
+        if r.get("harness_runs"):
+            lines += ["", "## Harness runs (local telemetry; a run decides nothing)",
+                      *(f"- {h['run']} ({h['invocation']}, {h['role']}, {h['work_unit']}): {h['status']}"
+                        + (f" — {h['reason']}" if h.get("reason") else "") for h in r["harness_runs"])]
         lines += ["", "## Next actions", *(f"- {a}" for a in r["next_actions"] or ["(none)"])]
         if r["lead_note"]:
             lines += ["", f"Lead's note: {r['lead_note']}"]

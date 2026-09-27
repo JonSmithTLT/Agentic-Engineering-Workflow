@@ -5,6 +5,8 @@ the way a model would: by running the `aew` command. Every step's outcome is app
 transcript, which stands in for a harness's own persisted conversation (custody scans read it).
 
 Script: a JSON list of steps, e.g. ``{"do": "submit", "kind": "implementation_report", "meta": {...}}``.
+``--script`` runs a whole script as one long-lived process (the fake harness); ``--step-file`` runs one step,
+the way a harness's shell tool runs one command (the OpenCode drivers).
 """
 
 from __future__ import annotations
@@ -99,8 +101,14 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         path.write_text(f"---\n{yaml.safe_dump(s['meta'], sort_keys=False)}---\n{s.get('body', 'Report.')}\n",
                         encoding="utf-8")
         return aew("submit", "--kind", s["kind"], "--file", str(path))
-    if do == "wait_file":
+    if do == "wait_file":  # optionally announce this process first, so a test can watch it while it waits
+        if s.get("pidfile"):
+            Path(s["pidfile"]).write_text(str(os.getpid()), encoding="utf-8")
+        if s.get("ready"):
+            Path(s["ready"]).write_text("x", encoding="utf-8")
         return {"found": wait_file(s["path"], s.get("timeout", 60))}
+    if do == "model_step":  # the model answers once (a real harness driver sends a real prompt here)
+        return {}
     if do == "touch":
         Path(s["path"]).write_text(s.get("text", "x"), encoding="utf-8")
         return {}
@@ -168,20 +176,29 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     raise SystemExit(f"unknown step {do}")
 
 
+def record(transcript: Path, i: int, s: dict[str, Any], result: dict[str, Any]) -> None:
+    with transcript.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"i": i, "do": s["do"], "result": result}) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--script", required=True)
+    parser.add_argument("--script")
+    parser.add_argument("--step-file")
+    parser.add_argument("--index", type=int, default=0)
     parser.add_argument("--transcript", required=True)
     args = parser.parse_args()
+    transcript = Path(args.transcript)
+    if args.step_file:
+        s = json.loads(Path(args.step_file).read_text(encoding="utf-8"))
+        record(transcript, args.index, s, step(s, {"tmp": str(transcript.parent), "n": args.index}))
+        return 0
     spec = json.loads(Path(args.script).read_text(encoding="utf-8"))
     steps = spec["steps"] if isinstance(spec, dict) else spec
-    transcript = Path(args.transcript)
     state = {"tmp": str(transcript.parent), "n": 0}
     for i, s in enumerate(steps):
         state["n"] = i
-        result = step(s, state)
-        with transcript.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"i": i, "do": s["do"], "result": result}) + "\n")
+        record(transcript, i, s, step(s, state))
     return 0
 
 

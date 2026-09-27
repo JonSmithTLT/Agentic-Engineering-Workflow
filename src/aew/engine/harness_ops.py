@@ -37,6 +37,7 @@ from aew.harness import contract as K
 from aew.harness import procs, registry, runlog
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
+from aew.roles import archetype
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import sha256_text, utc_now
 
@@ -219,6 +220,10 @@ class HarnessOps(ResumeOps):
                             "evidence": [{"id": e["id"], "kind": e["kind"], "result": e["result"]} for e in mine],
                             "changed_paths": changed}
         card = inv.get("card")
+        content = (card or {}).get("content") or {}
+        capabilities = set(archetype(inv["role"]).get("capabilities") or [])
+        capabilities |= set(content.get("required_capabilities") or []) | set(content.get("optional_capabilities") or [])
+        policy, _ = self.execution_policy()
         return K.LaunchContract(
             run=run, invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"],
             scope=inv.get("scope") or "ticket",
@@ -226,7 +231,11 @@ class HarnessOps(ResumeOps):
             execution_profile=inv["execution_profile"], workspace=str(workspace),
             expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
             pack_path=str(self.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
-            continuation=continuation, run_dir=str(runlog.run_dir(self.aew_root, run)))
+            continuation=continuation, run_dir=str(runlog.run_dir(self.aew_root, run)),
+            # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
+            # variables the harness server needs (never their values; the policy's current list, not a pin).
+            extra={"card_skills": sorted(content.get("skills") or []), "card_capabilities": sorted(capabilities),
+                   "provider_env": list((policy or {}).get("provider_env") or [])})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         """Why a run may no longer act (None while it may). The engine's credential checks remain authoritative;
@@ -313,6 +322,66 @@ class HarnessOps(ResumeOps):
             self._find_run(s.state, run)
         path = runlog.request(runlog.run_dir(self.aew_root, run), "stop", {"reason": reason})
         return {"ok": True, "run": run, "requested": path.name}
+
+    def _request_current_run(self, token: str, run: str, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Queue a Lead request for a run that still holds its invocation's authority and is running."""
+        with self.store.session() as s:
+            require_lead(s.state, token)
+            inv_id, inv = self._find_run(s.state, run)
+            if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
+                raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, latest run "
+                                        f"{inv['runs'][-1]['run']})")
+        directory = runlog.run_dir(self.aew_root, run)
+        status, _ = runlog.observed_status(directory)
+        if status not in (K.STARTING, K.RUNNING):
+            raise IllegalTransition(f"{run} is {status}; relaunch with `aew harness launch` to continue its invocation")
+        runlog.request(directory, kind, payload)
+        return {"ok": True, "run": run, "requested": kind}
+
+    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
+        """Deliver a Lead message to a running agent after its current step. No AEW state changes."""
+        if not (text and text.strip()):
+            raise UsageError("nothing to send")
+        if K.CREDENTIAL_RE.search(text):
+            raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
+        return self._request_current_run(token, run, "send", {"text": text})
+
+    def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
+        """Stop a run's current turn, keeping its session: `harness send` continues it. No AEW state changes."""
+        return self._request_current_run(token, run, "interrupt", {})
+
+    def harness_config(self, harness: str, *, invocation: str | None = None, lead: bool = False) -> dict[str, Any]:
+        """The exact projection a harness receives, for inspection (read-only; prints no secret)."""
+        if harness != "opencode":
+            raise UsageError(f"no projection for harness {harness!r}; known: opencode")
+        from aew.harness.opencode import lead as oclead
+        from aew.harness.opencode import projection
+
+        if lead == bool(invocation):
+            raise UsageError("name an invocation, or pass --lead")
+        if lead:
+            return {"harness": harness, "target": "lead", **oclead.describe(self, provider_env=[])}
+        state = self.store.read()
+        inv = state["invocations"].get(invocation or "")
+        if inv is None:
+            raise NotFound(f"no invocation {invocation}")
+        if not inv.get("execution_profile"):
+            raise IllegalTransition(f"{invocation} has no execution profile, so it has no harness projection")
+        runs = inv.get("runs") or []
+        contract = self.harness_contract(state, invocation or "", K.run_id(invocation or "", len(runs) + 1))
+        state_dir = os.path.realpath(runlog.run_dir(self.aew_root, contract.run) / "harness")
+        config = projection.invocation_config(contract, private_dirs=projection.private_output_dirs(state_dir, os.sep))
+        directory = os.path.realpath(contract.workspace)
+        return {"harness": harness, "target": invocation, "for_run": contract.run, "config": config,
+                "session": projection.session_body(contract, directory, config["permissions"]),
+                "skills": projection.skills(contract),
+                "prompt": {"bytes": len(contract.prompt.encode("utf-8")), "pack_sha256": contract.pack_sha256},
+                "server_env": {"provider_variables": contract.extra.get("provider_env") or [],
+                               "private": ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+                                           "OPENCODE_CONFIG_CONTENT", "OPENCODE_DISABLE_PROJECT_CONFIG",
+                                           "OPENCODE_DISABLE_AUTOUPDATE", "OPENCODE_PASSWORD (random, per run)"]},
+                "agent_env": ["operating-system basics", "PATH (aew first)", "PYTHONUTF8", "AEW_INVOCATION", "AEW_RUN",
+                              "AEW_WORK_UNIT", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY"]}
 
 
 def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, Any]]:

@@ -1,6 +1,6 @@
 # ADR-0009 — Harness boundary, runs, credential custody, and the OpenCode V2 adapter
 
-- **Status:** Proposed (M3 step 0, 2026-09-27). The harness core was implemented in M3 step 2. Finalized at M3 closeout.
+- **Status:** Proposed (M3 step 0, 2026-09-27). The harness core was implemented in M3 step 2, the Lead broker in step 3 and the OpenCode adapter in step 4. Finalized at M3 closeout.
 - **Spec basis:**
   - WC §2 and §17: harness independence.
   - WC §5 and §15.4: bounded invocations from launch contracts; the Lead is reconstructible.
@@ -12,6 +12,7 @@
 - **Evidence:**
   - `m3-opencode-v2-rebaseline.md` and `eval/m3/spike/`.
   - The fake-harness conformance tests `tests/integration/test_harness_runs.py` and `tests/regression/test_m3_harness_adversarial.py`, run on Windows and on Linux.
+  - The harness conformance suite against the real OpenCode adapter: in CI against a fake V2 server (`tests/integration/test_harness_conformance.py`, `test_opencode_adapter.py`), and in the opt-in live lane against OpenCode 2.0.18 (`tests/live/test_opencode_live.py`).
 - **Nature:** an implementation of frozen semantics. It adds no new authority, no new state machine and no new knowledge store.
 
 ## Decision
@@ -100,7 +101,7 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
 **Why the bridge key is acceptable.** It is a run-scoped capability that every agent process may use (they *are* the agent). It is not the AEW credential, grants only what the engine already authorizes, and is useless once the run ends, rotates or is revoked.
 
 **The Lead is symmetric** (`src/aew/harness/lead_broker.py`, M3 step 3).
-- `aew lead session [--acquire] -- <harness command>` holds the Lead credential in memory and serves a **Lead bridge**. `aew opencode` (step 4) is this command with an OpenCode TUI. The credential comes from `AEW_LEAD_TOKEN` in the operator's own shell (removed from the session's environment), or from an in-process `--acquire`.
+- `aew lead session [--acquire] -- <harness command>` holds the Lead credential in memory and serves a **Lead bridge**. `aew opencode` is this command with an OpenCode TUI (below). The credential comes from `AEW_LEAD_TOKEN` in the operator's own shell (removed from the session's environment), or from an in-process `--acquire`.
 - The Lead bridge is the same `BridgeServer` (JSON, key challenge, typed exact arguments, redaction, drain) with one operation, `lead.cli {argv, cwd, stdin}`. The CLI routes every Lead-authenticated command there when the session supplies no credential, and the broker runs the same command handler with the held credential.
 - **The broker refuses:**
   - credential-emitting commands (`lead acquire|takeover|release`, `lead handoff offer|accept`), refused locally in the session too;
@@ -132,32 +133,68 @@ The supervisor owns the harness process tree independently of any harness lease.
 
 These make races deterministic: rotation during an in-flight submit, a check spanning a rotation, and a woken supervisor. They are no-ops unless the variable is set in the Lead's environment, which the agent's allowlisted environment never carries.
 
-### OpenCode adapter (V2 2.0.18; M3 step 4)
-- **Interface:** a private `opencode-cli serve --stdio --port 0 --hostname 127.0.0.1` per run, driven over HTTP+SSE from the Python standard library. This is the published contract that `@opencode/client` wraps.
+### OpenCode adapter (V2 2.0.18; `src/aew/harness/opencode/`, M3 step 4)
+- **Interface:** a private `opencode-cli serve --stdio --port 0 --hostname 127.0.0.1` per run, started inside the run's process tree and driven over HTTP from the Python standard library (`client.py`). This is the published contract that `@opencode/client` wraps.
 - **Rejected alternatives:**
   - `@opencode/client` (needs a JS runtime; a "private generation target");
   - `@opencode/sdk` (embedded core in a JS process, skewed against the installed binary);
   - per-turn `run --format json` (no mid-run delivery, which couples against coordination; signal-only interrupt). `run` stays as the raw-OpenCode dogfood baseline.
-- **Health:** at every launch, against that run's own server:
-  - version;
-  - a **capability probe** of the served `/openapi.json` (required operations and fields);
-  - the pinned model and variant present in `/api/model` (polled; the catalog loads asynchronously).
-
-  Any gap fails with `HARNESS_INCOMPATIBLE`.
+- **Binary:** `AEW_OPENCODE_BIN`, else OpenCode Desktop's version-specific `cli\2.0.18\opencode-cli.exe` on Windows, else `opencode-cli` on PATH. None found is `HARNESS_INCOMPATIBLE`.
+- **Health, at every launch, against that run's own server** (`capabilities.py`, `adapter.py`). Any gap fails with `HARNESS_INCOMPATIBLE`, naming it:
+  - the version (a non-V2 server is refused; the tested version is recorded);
+  - a **capability probe** of the served `/openapi.json`: every operation, request field, query parameter, response field, enum value and configuration key the adapter uses;
+  - the pinned `provider/model` and effort variant in `/api/model`, polled, because the catalog loads asynchronously; there is never a fallback;
+  - **the projection loaded as written:** `/api/agent` (also asynchronous) must show AEW's agent with the projected system text, pinned model and variant, step limit, and AEW's rules as the last, winning part of its permissions.
 - **Isolation per run:**
-  - private XDG dirs;
-  - `OPENCODE_CONFIG_CONTENT` (`snapshots:false`, compatibility plugin disabled, no MCP);
-  - `OPENCODE_DISABLE_PROJECT_CONFIG=1`;
-  - `OPENCODE_DISABLE_AUTOUPDATE=1`;
-  - the shell environment replaced by `PUT /api/session/{id}/environment` with the agent allowlist;
+  - the server environment is an allowlist: operating-system basics, `PATH`, `SHELL`, and only the provider variables the execution policy names;
+  - private XDG dirs and `TEMP` under `<run>/harness/`;
+  - `OPENCODE_CONFIG_CONTENT` (the projection);
+  - `OPENCODE_DISABLE_PROJECT_CONFIG=1` and `OPENCODE_DISABLE_AUTOUPDATE=1`;
+  - the session's shell environment **replaced** by `PUT /api/session/{id}/environment` with the agent allowlist: no AEW credential, no provider key, no server password;
   - `location.directory` = the invocation's recorded workspace as a long path.
-- **Permissions:** every rule is allow or deny, never `ask`, because an `ask` blocks forever. The rules are:
-  - `edit` for implementers only;
-  - `subagent`, `question` and `external_directory` denied;
-  - `skill` limited to the card's skills.
+- **Projection** (`projection.py`, golden-tested):
+  - One primary agent, `aew`. Its system text states the AEW rules. The pinned model is on the session, the agent and OpenCode's auxiliary agents (title, summary, compaction).
+  - Configuration: snapshots, sharing, updates, LSP and formatters off; the compatibility plugin (`~/.claude`, `~/.agents` skills) disabled.
+  - **Permissions:** every rule is allow or deny, never `ask`, because an `ask` blocks forever.
+    - Anything not named is denied.
+    - `subagent`, `question` and `external_directory` are denied, except the run's own OpenCode output directories. V2 saves long tool output there and points the model at it, and V2's own defaults allow the same directories.
+    - `.env` and `.env.*` are not readable; `.env.example` is. V2's own default asks, which would block.
+    - `edit` for implementers only.
+    - Web access only for cards requesting `documentation_lookup`.
+    - `skill` only for skills the harness provides for the card. M3 provides none, so card skills are recorded as `unavailable` (WC §16.10) and named in the system text.
+  - The complete rule set is sent on session create, where V2 applies it last.
+- **Watching:**
+  - A turn is over only when the REST API says so, on two consecutive polls: the session is not active, the last prompt AEW sent has been delivered, the newest message is an `idle` after it, and none of AEW's prompts is still queued.
+  - The event stream only wakes the poll and feeds telemetry. A lost stream reconnects and changes nothing.
+  - A permission request or form is never expected. It is rejected or cancelled and recorded (`permission_rejected`, `forms_cancelled`).
+  - A session created by anyone else is recorded as `foreign_sessions`.
+  - The server dying is a crash, with the server's exit code.
+- **Lead requests:**
+  - `aew harness send` is a queued prompt, delivered inside the current turn, never lost at its boundary. It refuses text containing a credential.
+  - `aew harness interrupt` holds the session after the turn is interrupted, until a `send`, a stop or the deadline.
+- **Collected, all non-authoritative:**
+  - the effective models from assistant messages (compared with the pin: `model_check`);
+  - usage;
+  - the tools the agent called;
+  - first-step input tokens (the contract plus OpenCode's own overhead);
+  - event-stream drops;
+  - the skills requested, exposed and unavailable.
+- **`aew harness config opencode <INV>|--lead`** prints the exact projection and the environment names, without values.
 
-  Session-create permissions are appended last, so AEW sends the complete set there.
-- **Completion:** execution terminal events, raced with `…/wait`, and reconciled from the message list. Effective model, tokens and cost come from assistant messages.
+### The Lead's OpenCode TUI (`aew opencode`, `src/aew/harness/opencode/lead.py`)
+- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`).
+- **Why `--standalone`.**
+  - A V2 TUI running its own server sends its own environment, minus the server password, as every session's shell environment, and its server inherits the same environment (verified in the 2.0.18 binary).
+  - With `--server`, the TUI sends nothing, so the shell would get the server's environment. `aew opencode` refuses `--server`.
+- **The Lead model's environment is therefore exactly the TUI's, which is an allowlist:**
+  - operating-system basics, `XDG_*`, `SHELL`, `OPENCODE_CONFIG`;
+  - `PATH` with `aew` first;
+  - the Lead broker's coordinates;
+  - the projection.
+- It holds no AEW credential and, by default, **no provider key**. The Lead's model uses the credentials OpenCode stores for the operator. `--provider-env NAME` passes a key explicitly and says that the Lead's shell can read it.
+- Lead permissions: the operator is present, so unlisted actions `ask`; `aew` and read-only `git` commands are allowed; `edit` and `subagent` are denied.
+- Command templates run only fixed read-only commands as inline shell, because V2 runs those outside the permission flow.
+- AEW writes nothing into the operator's OpenCode state.
 
 ### Harness-neutral contract (`src/aew/harness/base.py`)
 - **`HarnessAdapter`, one instance per run inside its supervisor:**

@@ -3,14 +3,17 @@
 What any harness adapter must do for AEW. This is the adapter-neutral contract behind ADR-0009, the suite that checks it, and how a new harness (OpenCode, Codex, Claude Code, …) is added.
 
 - **Code:**
-  - `src/aew/harness/` (contract, supervisor, custody bridges, process ownership);
-  - `tests/helpers/harness_conformance.py` (the scenarios);
-  - `tests/helpers/fake_harness.py` and `fake_agent.py` (the reference driver).
+  - `src/aew/harness/` (contract, supervisor, custody bridges, process ownership) and `src/aew/harness/opencode/` (the OpenCode V2 adapter);
+  - `tests/helpers/harness_conformance.py` (the scenarios and drivers);
+  - `tests/helpers/fake_harness.py` and `fake_agent.py` (the reference driver);
+  - `tests/helpers/fake_opencode.py` (a fake OpenCode V2 server) and `opencode_scripted.py` (the live driver's adapter).
 - **CI:**
-  - `tests/integration/test_harness_conformance.py` runs every scenario against the fake harness;
+  - `tests/integration/test_harness_conformance.py` runs every scenario against the fake harness **and against the real OpenCode adapter driving a fake V2 server**;
+  - `tests/integration/test_opencode_adapter.py` covers the OpenCode-specific watch list (section 5);
+  - `tests/integration/test_opencode_lead.py` covers `aew opencode`;
   - `tests/integration/test_lead_session.py` checks Lead custody and bridge parity;
   - `tests/regression/test_m3_harness_adversarial.py` holds the step-2 race and attack regressions.
-- **Live lane (opt-in, M3 step 4):** the same scenarios, driven through a real OpenCode private server.
+- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection.
 
 ## 1. The adapter contract
 
@@ -37,9 +40,17 @@ Each scenario is written once, as agent actions:
 - `write`, `aew`, `check`, `submit`, `submit_raw`;
 - `dump_env`, `child_env`, `scan`;
 - `spawn_orphan`, `pid`, `cwd`;
-- `touch`, `wait_file`, `exit`.
+- `touch`, `wait_file`, `model_step`, `exit`.
 
 It asserts AEW-side outcomes only. After every scenario, the whole temporary tree is scanned for any credential string.
+
+**Drivers:**
+
+| Driver | Where | How the actions run |
+|---|---|---|
+| `FakeDriver` | CI | the fake harness: one scripted agent process |
+| `FakeOpenCodeDriver` | CI | the production OpenCode adapter against `fake_opencode.py`, a V2 server serving the real 2.0.18 OpenAPI. Its "model" runs each action as a tool call under the session's shell environment when one was set, else the server's own (V2's rule). The policy names a provider secret for the server, so the scenarios prove the agent's shell still lacks it. |
+| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database; `model_step` is a real prompt to a free model. |
 
 | Scenario | Property |
 |---|---|
@@ -51,7 +62,7 @@ It asserts AEW-side outcomes only. After every scenario, the whole temporary tre
 | `malformed_output_is_refused_and_moves_no_state` | malformed, state-forging and wrong-kind submissions are refused |
 | `a_crashing_harness_moves_no_state` | non-zero exit → `crashed`; nothing moves |
 | `stopping_a_run_ends_every_process_it_started` | a descendant in its own process group dies with the run |
-| `repeated_runs_start_and_end_cleanly_with_private_state` | sequential runs: distinct sessions, private state under each run directory, every supervisor exits |
+| `repeated_runs_start_and_end_cleanly_with_private_state` | sequential runs: distinct sessions, private state under each run directory, every supervisor and every harness process (a server) exits |
 | `a_reviewer_gets_a_fresh_session_isolated_from_the_implementer` | a reviewer's harness state holds only its own session |
 | `an_incompatible_harness_fails_closed` | a failed capability probe → `launch_failed`, no harness process, no credential holder |
 | `a_different_effective_model_is_flagged` / `the_pinned_model_is_the_effective_model` | requested versus effective model and effort |
@@ -76,7 +87,7 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
   - another project.
 - **Intended differences:**
   - Revoking an invocation also terminates its run; superseding a Lead closes the bridge but leaves the operator's harness running read-only.
-  - A Lead session's harness process keeps the operator's environment minus AEW credentials, because a harness needs its provider keys. Keeping provider keys out of the Lead **model's shell** is the harness adapter's job, exactly as for invocations; the OpenCode Lead launcher does it in step 4, and its live conformance checks it.
+  - A generic `aew lead session` harness keeps the operator's environment minus AEW credentials, because a harness may need its provider keys. Keeping provider keys out of the Lead **model's shell** is the harness adapter's job, exactly as for invocations. `aew opencode` does it: the TUI gets an allowlisted environment, which V2 then gives every Lead session's shell, with no provider key unless `--provider-env` passes one (ADR-0009; `test_opencode_lead.py`).
 - **`--acquire`.** The seat is taken in-process and the credential exists only inside the session. At exit the seat is released if nothing is in flight; otherwise it is held, and the output says that continuing needs `aew lead takeover` at the operator's own terminal. The usual path is `AEW_LEAD_TOKEN` in the operator's own shell: it is removed from the session's environment and survives a crashed session.
 
 ## 4. Adding a harness
@@ -100,16 +111,20 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
 
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 
-| Concern | Where it is checked |
+Where each concern is verified. "Fake V2" means `tests/integration/test_opencode_adapter.py` (CI); "live" means `tests/live/test_opencode_live.py` on OpenCode 2.0.18.
+
+| Concern | Verified by |
 |---|---|
-| model catalog loads asynchronously | adapter health polls `/api/model` with a bounded deadline, so a slow catalog is not reported as missing; step-4 unit test with a delayed fake server and live lane |
-| pinned requested model vs actual effective model | pre-validation of `providerID/id#variant` before prompting; `collect().effective` from assistant messages and step events; the supervisor's `model_check` (scenario above) |
-| queue behaviour around completion boundaries | step 4: `send` with `delivery: queue` near a turn's end must not be lost or declared complete early; completion is decided only after the session's inbox is empty and the loop is idle |
-| SSE loss or reconnection | step 4: losing the event stream never implies completion; the adapter reconciles through `…/wait`, `…/log?after=`, the message list and `session/active`; a fault test drops the stream mid-turn |
-| OpenCode reporting completion while evidence is absent | neutral scenario `harness_success_without_evidence_moves_no_state` through the OpenCode driver |
-| permissions doing something unexpected | step 4: projection golden test, plus live checks that `edit`, `subagent`, `question`, `external_directory` and `skill` behave as projected. The engine stays authoritative: reviewer and read-only mutations are refused at submit (M3-B6, `OBSERVATION_MUTATED`) |
-| private server startup/teardown under repeated runs | neutral scenario `repeated_runs_start_and_end_cleanly_with_private_state` through the OpenCode driver (no leftover server, port or process) |
+| model catalog loads asynchronously | health polls `/api/model`, then allows a settle window after the catalog first appears. Fake V2: a 3 s catalog delay is waited for; a model or effort variant that never appears fails closed, naming it. Live: every run records `catalog_wait_s` (about 0.6 s on 2.0.18). |
+| pinned requested model vs actual effective model | the pin is on the session, the agent and the auxiliary agents. Health checks that the server loaded the agent with that model and variant (fake V2 fails closed when it differs). `collect().effective` comes from assistant messages, and the supervisor's `model_check` compares it with the pin. Fake V2: a mismatch is flagged. Live: a real model step reports the pinned model. |
+| queue behaviour around completion boundaries | a turn is over only if AEW's last prompt was delivered, an `idle` follows it, none of AEW's prompts is queued, and all of that holds on two polls. Fake V2: the server goes idle while a queued Lead message is undelivered, then starts it; the run ends only after it is answered. A mutation test (both guards removed) fails. |
+| SSE loss or reconnection | completion is decided from the REST API only; the stream reconnects and is counted (`events_dropped`). Fake V2: every event connection is dropped after one frame; the run still ends correctly with its evidence. |
+| OpenCode reporting completion while evidence is absent | the neutral scenario `harness_success_without_evidence_moves_no_state`, CI (fake V2) and live |
+| permissions doing something unexpected | the projection is golden-tested; health checks that the server loaded AEW's rules as the winning suffix (fake V2 fails closed when they differ; live passes on 2.0.18). A permission request or form is rejected or cancelled and recorded (fake V2). Found and handled here: V2's defaults protect `.env` files (ask) and allow its own output directories; AEW's rules now deny `.env` reads and allow only the run's own output directories. The engine stays authoritative: read-only mutations are refused at submit (`OBSERVATION_MUTATED`; M3-B6 in step 5). |
+| private server startup/teardown under repeated runs | the neutral scenario `repeated_runs_start_and_end_cleanly_with_private_state`, now also requiring every harness process (the server) to exit, CI and live |
 | Lead bridge behaving identically to the invocation bridge | `test_both_bridges_hold_the_same_custody_properties` (section 3) |
-| OpenCode subprocesses genuinely receiving only the curated environment | neutral scenario `agent_processes_receive_only_the_curated_environment` run inside OpenCode's own shell tool; the same for the Lead TUI's shell in step 4 |
-| fresh reviewer DB/session isolation | neutral scenario `a_reviewer_gets_a_fresh_session_isolated_from_the_implementer`: a reviewer's private OpenCode DB lists only its own session |
-| version/capability probing failing closed | neutral scenario `an_incompatible_harness_fails_closed`; step 4 adds a doctored OpenAPI and a missing model/variant |
+| OpenCode subprocesses genuinely receiving only the curated environment | the neutral scenario `agent_processes_receive_only_the_curated_environment`, live inside OpenCode's own session shell, with the provider secret present in the server's environment. The Lead TUI: `test_opencode_lead.py`, plus the V2 behaviour (a `--standalone` TUI gives sessions its own environment) found in the 2.0.18 binary. |
+| fresh reviewer DB/session isolation | the neutral scenario `a_reviewer_gets_a_fresh_session_isolated_from_the_implementer`. Live: the reviewer run's private state, read through a fresh private server, lists only its own session. |
+| version/capability probing failing closed | the neutral scenario `an_incompatible_harness_fails_closed` (live: a required operation the real server lacks); fake V2: a V1 server, a doctored OpenAPI, a configuration that was not applied, and an agent loaded with a different model, step limit or rules; unit: doctored copies of the real 2.0.18 OpenAPI |
+
+**Not checked deterministically:** which tools a model sees. `/api/session/{id}/context` returns the conversation, not the tool list. The loaded rules are verified by health; the spike showed a denied tool disappears for the model (`m3-opencode-v2-rebaseline.md` §4 #5). The tools an agent actually called are recorded per run (`tools_called`).

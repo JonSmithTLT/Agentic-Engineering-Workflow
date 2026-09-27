@@ -33,9 +33,28 @@ HELPERS = Path(lanes.__file__).resolve().parent
     ("tests/regression/test_compositions.py", [], "regression"),
     ("tests/regression/test_composition_walk.py", ["exploratory", "parametrize"], "adversarial"),
     ("tests/unit/test_x.py", ["serial"], "serial"),
+    ("tests/live/test_opencode_live.py", [], "live"),
+    ("tests/live/test_opencode_live.py", ["serial", "acceptance"], "live"),
 ])
 def test_lane_rules_first_match_wins(path, markers, lane):
     assert lanes.lane_of(path, markers) == lane
+
+
+class _Config:
+    def __init__(self, root: Path, live: bool) -> None:
+        self.rootpath, self._live = root, live
+
+    def getoption(self, name: str) -> bool:
+        assert name == "aew_live"
+        return self._live
+
+
+def test_the_live_lane_is_collected_only_on_request(tmp_path):
+    (tmp_path / "tests" / "live").mkdir(parents=True)
+    live_test = tmp_path / "tests" / "live" / "test_x.py"
+    assert lanes.ignore_collect(live_test, _Config(tmp_path, live=False)) is True
+    assert lanes.ignore_collect(live_test, _Config(tmp_path, live=True)) is None
+    assert lanes.ignore_collect(tmp_path / "tests" / "unit" / "test_y.py", _Config(tmp_path, live=False)) is None
 
 
 @pytest.mark.parametrize("path", ["tests/test_new_thing.py", "tests/acceptance/test_x.py", "tests/e2e/test_y.py"])

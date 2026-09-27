@@ -51,6 +51,7 @@ The cross-operation oracle (`tests/helpers/invariants.py`) checks these after ev
 | 11 | Discovery/research/proposal records come only from the matching archetype, in observation scope |
 | 12 | A retired observation belongs to an ended invocation. An active observation invocation never has a revoked credential. |
 | 13 | Every consumed input pinned on an invocation was CURRENT, external, or acknowledged by a recorded decision for exactly the commit that invocation was dispatched against |
+| 14 | A started Ticket's effective dependency edges are the ones its attempt was dispatched with, and each is satisfied in the source that attempt works from (M2 review B2) |
 
 Enforced by the operations, not the oracle, and covered by tests:
 - plan-binding checks at dispatch and at gate-guarded transitions;
@@ -87,7 +88,7 @@ python -m pytest -m acceptance -q                     # AT-1..AT-13
 AEW_HWALK_SEEDS=1,2,3,4,5 AEW_HWALK_STEPS=150 python -m pytest tests/regression/test_hierarchy_walk.py -q
 ```
 
-Every M1 reviewer probe file runs unchanged: `tests/regression/test_review_2026_09_26.py`, `test_foundation_review_2026_09_26.py` and `test_remediation_review_2026_09_26.py`.
+Every M1 reviewer probe file runs unchanged: `tests/regression/test_review_2026_09_26.py`, `test_foundation_review_2026_09_26.py` and `test_remediation_review_2026_09_26.py`. The first independent M2 review's probes are in `tests/regression/test_m2_review_2026_09_27.py`, and its findings and fixes in `review-response-2026-09-27.md`.
 
 ## Known limits (Staged / Designed, not defects)
 

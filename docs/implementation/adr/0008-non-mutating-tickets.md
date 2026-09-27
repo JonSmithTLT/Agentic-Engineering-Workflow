@@ -29,7 +29,7 @@
 
 - Each attempt owns exactly one execute invocation `I_n`, its credential `K_n` and its observation `O_n`. At most one execute invocation is active per non-mutating Ticket; execute-slot `invoke create` is refused.
 - `aew work redispatch <T> --reason [--card C]` (decision `attempt_supersession`) supersedes the attempt in one commit: `I_n` → `superseded`, `K_n` revoked, `O_n` retired (the worktree is removed after the commit), the execution moved to `execution_history`, and attempt `n+1` started with a new `I`, `K`, `O` at the current authoritative commit (a new card pins a new `expected_kind`).
-- Every record carries the engine-bound `attempt`. `submit` and `check run` require the invocation to be the current attempt's executor (`PERMISSION_DENIED`/`STALE_AUTHORITY` otherwise). `evidence ingest` requires state RUNNING and checks the record's kind, attempt, executor status, plan binding and observation snapshot. Late submission and replayed ingestion of an earlier attempt's record are refused; a record ingested and then superseded satisfies nothing afterwards.
+- Every record carries the engine-bound `attempt`. `submit` and `check run` require the invocation to be the current attempt's executor (`PERMISSION_DENIED`/`STALE_AUTHORITY` otherwise). `evidence ingest` requires state RUNNING and checks the record's kind, attempt, executor status, plan binding, observation snapshot and observation integrity, and the attempt's dependency binding (ADR-0007). Late submission and replayed ingestion of an earlier attempt's record are refused; a record ingested and then superseded satisfies nothing afterwards.
 - Takeover, or a handoff that does not carry the executor, interrupts it (the phase waits on the current attempt's executor in ASSIGNED/RUNNING, on the reviewer/verifier of the record in REVIEW_PENDING/VERIFY_PENDING). The attempt is over, even if a record was already submitted: `work reconcile` records an inspection of the attempt (executor, status, records submitted) and continuation is only through `work redispatch`. Success is never inferred.
 - Cancellation (Ticket or cascading) and replan acceptance end the attempt through M1's single state-change path.
 - An executor never starts under a stale ancestor plan binding (ADR-0007): `work redispatch` and execute-slot dispatch are refused until the Lead reconfirms or replans.
@@ -38,7 +38,8 @@
 
 - Every non-mutating invocation (executors, and reviewers/verifiers of a record or of a parent) gets its own detached worktree `obs/<INV>` at the authoritative commit, recorded on the invocation (`inv.observation`), never in `unit.workspace`. Nothing is shared between agents, the authoritative worktree is never used, and another Ticket's unintegrated workspace is never visible.
 - It is retired when the invocation ends and removed after the commit; orphans are pruned. A retired directory left on disk is reported as a contradiction.
-- `submit` refuses with `OBSERVATION_MUTATED` (naming the changed paths) if the observation's fingerprint differs from the dispatch snapshot. External shared state (services, databases, indexes) is governed by capability grants; provider mutation declarations are M6 (Designed).
+- `submit` refuses with `OBSERVATION_MUTATED` (naming the changed paths) if the observation's fingerprint differs from the dispatch snapshot. This applies to every read-only invocation: executors, and reviewers and verifiers of a record or of a parent.
+- **The check is repeated at ingest** (M2 review, major 2), because a change made after submission is the same authority violation. `evidence ingest`, record review/verification ingest and parent review/verification ingest all re-fingerprint the producing invocation's observation. A report whose invocation ended before ingest can no longer be checked (its observation is retired) and is refused. The Lead redispatches the attempt, or dispatches another reviewer or verifier. External shared state (services, databases, indexes) is governed by capability grants; provider mutation declarations are M6 (Designed).
 - Optional policy `non_mutating_concurrency` (default unlimited) is enforced at dispatch.
 
 ### Records and their freshness contracts (M2-B5)
@@ -72,7 +73,7 @@ Identity, producer, snapshot, plan and attempt are engine-bound; submitters supp
 - An unstaffed Ticket becomes an investigation deliberately and visibly; a research or planning Ticket cannot silently satisfy its gate with the wrong kind of record.
 - A superseded, interrupted or cancelled attempt can never contribute evidence to a later one.
 - A consumer is never dispatched against source its inputs no longer describe, unless the Lead recorded that it rechecked them for exactly that commit.
-- Evidence: `tests/integration/test_non_mutating.py`, `tests/regression/test_m2_compositions.py`, `tests/regression/test_hierarchy_walk.py`, the oracle's M2 rules (`tests/helpers/invariants.py`), AT-11, AT-12, AT-13.
+- Evidence: `tests/integration/test_non_mutating.py`, `tests/regression/test_m2_compositions.py`, `tests/regression/test_hierarchy_walk.py`, `tests/regression/test_m2_review_2026_09_27.py`, the oracle's M2 rules (`tests/helpers/invariants.py`), AT-11, AT-12, AT-13.
 
 ## Designed (not in M2)
 

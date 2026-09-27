@@ -1,0 +1,77 @@
+{
+ "project_on": {
+  "instruction_keys": [
+   "core/codemode",
+   "core/date",
+   "core/environment",
+   "core/instructions",
+   "core/skill-guidance"
+  ],
+  "skills_api": [],
+  "instructions_entries": [],
+  "context_status": 200,
+  "context_mentions": {
+   "SPIKE-AGENTS-MD-MARKER": false,
+   "ancestor-claude-skill": false,
+   "project-opencode-skill": false,
+   "project-agents-skill": false
+  },
+  "context_sample": "{\"data\": [{\"id\": \"msg_5ab45ca297d065112b4b1d5f\", \"time\": {\"created\": 1790496299972}, \"text\": \"Reply with only: OK\", \"type\": \"user\"}, {\"id\": \"msg_0e1e55bce001vI1utPYFibU7R4\", \"time\": {\"created\": 1790496299989, \"streamed\": 1790496338214, \"completed\": 1790496338215}, \"type\": \"assistant\", \"agent\": \"build\", \"model\": {\"id\": \"longcat-2.5-preview-free\", \"providerID\": \"opencode\", \"variant\": \"default\"}, \"content\": [{\"type\": \"reasoning\", \"text\": \"\\nThe user asked me to reply with only \\\"OK\\\". I should follow that instruction exactly and output just \\\"OK\\\" with no additional text, formatting, or explanati"
+ },
+ "project_off": {
+  "instruction_keys": [
+   "core/codemode",
+   "core/date",
+   "core/environment",
+   "core/skill-guidance"
+  ],
+  "skills_api": [],
+  "instructions_entries": [],
+  "context_status": 200,
+  "context_mentions": {
+   "SPIKE-AGENTS-MD-MARKER": false,
+   "ancestor-claude-skill": false,
+   "project-opencode-skill": false,
+   "project-agents-skill": false
+  },
+  "context_sample": "{\"data\": [{\"id\": \"msg_4ba62facfc68f9ba6da762cf\", \"time\": {\"created\": 1790496342100}, \"text\": \"Reply with only: OK\", \"type\": \"user\"}, {\"id\": \"msg_0e1e6005e001RgVY21zUKYDZ1h\", \"time\": {\"created\": 1790496342118, \"streamed\": 1790496364738, \"completed\": 1790496364739}, \"type\": \"assistant\", \"agent\": \"build\", \"model\": {\"id\": \"longcat-2.5-preview-free\", \"providerID\": \"opencode\", \"variant\": \"default\"}, \"content\": [{\"type\": \"reasoning\", \"text\": \"\\nThe user asked me to reply with only \\\"OK\\\". I should follow that instruction exactly and output just \\\"OK\\\" with no additional text, formatting, or explanati"
+ },
+ "project_on_compat_off": {
+  "instruction_keys": [
+   "core/codemode",
+   "core/date",
+   "core/environment",
+   "core/instructions",
+   "core/skill-guidance"
+  ],
+  "skills_api": [],
+  "instructions_entries": [],
+  "context_status": 200,
+  "context_mentions": {
+   "SPIKE-AGENTS-MD-MARKER": false,
+   "ancestor-claude-skill": false,
+   "project-opencode-skill": false,
+   "project-agents-skill": false
+  },
+  "context_sample": "{\"data\": [{\"id\": \"msg_af635647a7ac035620e12412\", \"time\": {\"created\": 1790496368697}, \"text\": \"Reply with only: OK\", \"type\": \"user\"}, {\"id\": \"msg_0e1e66845001fsLxs7bgD1NUi7\", \"time\": {\"created\": 1790496368721, \"streamed\": 1790496378590, \"completed\": 1790496378591}, \"type\": \"assistant\", \"agent\": \"build\", \"model\": {\"id\": \"longcat-2.5-preview-free\", \"providerID\": \"opencode\", \"variant\": \"default\"}, \"content\": [{\"type\": \"reasoning\", \"text\": \"\\nThe user wants me to reply with only \\\"OK\\\". I should just output that single word with no additional text, markdown, or formatting.\", \"state\": {\"reasoningFie"
+ },
+ "project_off_compat_off": {
+  "instruction_keys": [
+   "core/codemode",
+   "core/date",
+   "core/environment",
+   "core/skill-guidance"
+  ],
+  "skills_api": [],
+  "instructions_entries": [],
+  "context_status": 200,
+  "context_mentions": {
+   "SPIKE-AGENTS-MD-MARKER": false,
+   "ancestor-claude-skill": false,
+   "project-opencode-skill": false,
+   "project-agents-skill": false
+  },
+  "context_sample": "{\"data\": [{\"id\": \"msg_2a8292a8e8b50dde9212cbc4\", \"time\": {\"created\": 1790496382514}, \"text\": \"Reply with only: OK\", \"type\": \"user\"}, {\"id\": \"msg_0e1e69e3d001Ad7gH4GEIo5mlZ\", \"time\": {\"created\": 1790496382533, \"streamed\": 1790496392026, \"completed\": 1790496392027}, \"type\": \"assistant\", \"agent\": \"build\", \"model\": {\"id\": \"longcat-2.5-preview-free\", \"providerID\": \"opencode\", \"variant\": \"default\"}, \"content\": [{\"type\": \"reasoning\", \"text\": \"\\nThe user wants me to reply with only the word \\\"OK\\\", so I'll do exactly that.\", \"state\": {\"reasoningField\": \"reasoning_content\"}, \"time\": {\"created\": 1790496",
+  "server_api_from_shell": "STATUS 401\r\n"
+ }
+}

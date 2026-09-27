@@ -1,0 +1,405 @@
+{
+ "exposure": {
+  "ok": true,
+  "project_on": {
+   "skills": [],
+   "instructions": []
+  },
+  "project_off": {
+   "skills": [],
+   "instructions": []
+  },
+  "project_off_compat_off": {
+   "skills": [],
+   "instructions": []
+  },
+  "project_on_compat_off": {
+   "skills": [],
+   "instructions": []
+  },
+  "elapsed_s": 3.28
+ },
+ "server_start_s": 0.189,
+ "first_event": "server.connected",
+ "catalog": {
+  "ok": true,
+  "catalog_ready_s": 0.65,
+  "count": 8,
+  "models": [
+   {
+    "p": "opencode",
+    "id": "longcat-2.5-preview-free",
+    "variants": []
+   },
+   {
+    "p": "opencode",
+    "id": "space-bunny-free",
+    "variants": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ]
+   },
+   {
+    "p": "opencode",
+    "id": "mimo-v2.6-flash-free",
+    "variants": []
+   },
+   {
+    "p": "opencode",
+    "id": "muse-spark-1.3-contributor-free",
+    "variants": [
+     "minimal",
+     "low",
+     "medium",
+     "high",
+     "xhigh"
+    ]
+   },
+   {
+    "p": "opencode",
+    "id": "ling-3.0-flash-fin-free",
+    "variants": []
+   },
+   {
+    "p": "opencode",
+    "id": "nemotron-3.5-lightning-free",
+    "variants": []
+   },
+   {
+    "p": "opencode",
+    "id": "nemotron-3-ultra-free",
+    "variants": []
+   },
+   {
+    "p": "opencode",
+    "id": "big-pickle",
+    "variants": []
+   }
+  ],
+  "default": {
+   "providerID": "opencode",
+   "id": "longcat-2.5-preview-free",
+   "variants": []
+  },
+  "elapsed_s": 0.65
+ },
+ "model_ref": {
+  "providerID": "opencode",
+  "id": "longcat-2.5-preview-free"
+ },
+ "create_and_env": {
+  "ok": true,
+  "create_status": 200,
+  "create_s": 0.075,
+  "info_keys": [
+   "agent",
+   "cost",
+   "id",
+   "location",
+   "metadata",
+   "model",
+   "permissions",
+   "projectID",
+   "subpath",
+   "time",
+   "title",
+   "tokens"
+  ],
+  "session_model": {
+   "id": "longcat-2.5-preview-free",
+   "providerID": "opencode",
+   "variant": "default"
+  },
+  "session_agent": "aew",
+  "session_permissions_len": 12,
+  "env_status": 204,
+  "curated_names": [
+   "COMSPEC",
+   "HOME",
+   "PATH",
+   "PATHEXT",
+   "SPIKE_SESSION_CANARY",
+   "SYSTEMROOT",
+   "TEMP",
+   "TMP",
+   "USERPROFILE",
+   "WINDIR"
+  ],
+  "elapsed_s": 0.09
+ },
+ "shell_env": {
+  "ok": true,
+  "status": 204,
+  "response": "None",
+  "server_secret_name_visible": false,
+  "opencode_password_visible": false,
+  "canary_name_visible": true,
+  "shell_messages": [
+   "SHELL:{\"id\": \"msg_6f314e2eb2563ac22a9e55e7\", \"metadata\": {\"background\": true}, \"time\": {\"created\": 1790495909139, \"completed\": 1790495909205}, \"type\": \"shell\", \"shellID\": \"sh_0e1df650e001fwg3g63RtPdnMe\", \"command\": \"\\\"C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe\\\" -c \\\"import os,json;print(json.dumps(sorted(os.environ)))\\\"\", \"status\": \"exited\", \"exit\": 0, \"output\": {\"output\": \"[\\\"COMSPEC\\\", \\\"HOME\\\", \\\"HOMEDRIVE\\\", \\\"HOMEPATH\\\", \\\"LOGONSERVER\\\", \\\"OPENCODE_TERMINAL\\\", \\\"PATH\\\", \\\"PATHEXT\\\", \\\"PWD\\\", \\\"SHLVL\\\", \\\"SPIKE_SESSION_CANARY\\\", \\\"SYSTEMDRI"
+  ],
+  "elapsed_s": 1.1
+ },
+ "prompt_basic": {
+  "ok": true,
+  "prompt_status": 200,
+  "inbox_item_type": "user",
+  "first_step_s": 6.71,
+  "terminal": "session.execution.succeeded",
+  "terminal_s": 17.02,
+  "wait_status": 204,
+  "messages": {
+   "status": 200,
+   "types": [
+    "shell",
+    "synthetic",
+    "user",
+    "assistant",
+    "assistant",
+    "assistant",
+    "idle"
+   ],
+   "assistant": [
+    {
+     "model": {
+      "id": "longcat-2.5-preview-free",
+      "providerID": "opencode",
+      "variant": "default"
+     },
+     "tokens": {
+      "input": 1036,
+      "output": 49,
+      "reasoning": 24,
+      "cache": {
+       "read": 640,
+       "write": 0
+      }
+     },
+     "cost": 0,
+     "finish": "tool-calls",
+     "error": null
+    },
+    {
+     "model": {
+      "id": "longcat-2.5-preview-free",
+      "providerID": "opencode",
+      "variant": "default"
+     },
+     "tokens": {
+      "input": 121,
+      "output": 50,
+      "reasoning": 40,
+      "cache": {
+       "read": 1664,
+       "write": 0
+      }
+     },
+     "cost": 0,
+     "finish": "tool-calls",
+     "error": null
+    },
+    {
+     "model": {
+      "id": "longcat-2.5-preview-free",
+      "providerID": "opencode",
+      "variant": "default"
+     },
+     "tokens": {
+      "input": 225,
+      "output": 5,
+      "reasoning": 21,
+      "cache": {
+       "read": 1664,
+       "write": 0
+      }
+     },
+     "cost": 0,
+     "finish": "stop",
+     "error": null
+    }
+   ],
+   "tools": [
+    {
+     "name": "shell",
+     "state": "completed",
+     "input": "{'command': 'C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe -c \"print(40+2)\"'}"
+    },
+    {
+     "name": "shell",
+     "state": "completed",
+     "input": "{'command': '\"C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe\" -c \"print(40+2)\"'}"
+    }
+   ],
+   "texts": [
+    "SHELL:{\"id\": \"msg_6f314e2eb2563ac22a9e55e7\", \"metadata\": {\"background\": true}, \"time\": {\"created\": 1790495909139, \"completed\": 1790495909205}, \"type\": \"shell\", \"shellID\": \"sh_0e1df650e001fwg3g63RtPdnMe\", \"command\": \"\\\"C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe\\\" -c \\\"import os,json;print(json.dumps(sorted(os.environ)))\\\"\", \"status\": \"exited\", \"exit\": 0, \"output\": {\"output\": \"[\\\"COMSPEC\\\", \\\"HOME\\\", \\\"HOMEDRIVE\\\", \\\"HOMEPATH\\\", \\\"LOGONSERVER\\\", \\\"OPENCODE_TERMINAL\\\", \\\"PATH\\\", \\\"PATHEXT\\\", \\\"PWD\\\", \\\"SHLVL\\\", \\\"SPIKE_SESSION_CANARY\\\", \\\"SYSTEMDRI",
+    "42"
+   ],
+   "idle": [
+    "succeeded"
+   ]
+  },
+  "session_outcome": "succeeded",
+  "session_tokens": {
+   "input": 1382,
+   "output": 104,
+   "reasoning": 85,
+   "cache": {
+    "read": 3968,
+    "write": 0
+   }
+  },
+  "session_cost": 0,
+  "elapsed_s": 17.06
+ },
+ "interrupt": {
+  "ok": true,
+  "tool_called_s": 5.96,
+  "active_before": {
+   "data": {
+    "ses_f1e209b4effeZxe2S17bKuT4my": {
+     "type": "running"
+    }
+   }
+  },
+  "interrupt_status": 200,
+  "interrupt_resp": {
+   "interrupted": true
+  },
+  "terminal": "session.execution.interrupted",
+  "reason": "user",
+  "interrupt_to_terminal_s": 9.01,
+  "elapsed_s": 9.01
+ },
+ "steer_queue": {
+  "ok": true,
+  "tool_called": true,
+  "steer_status": 200,
+  "queue_status": 200,
+  "inbox_events": [
+   "session.inbox.enqueued",
+   "session.inbox.delivered",
+   "session.inbox.enqueued",
+   "session.inbox.enqueued",
+   "session.inbox.delivered",
+   "session.inbox.delivered"
+  ],
+  "steered_seen": true,
+  "queued_seen": true,
+  "last_texts": [
+   "SHELL:{\"id\": \"msg_6f314e2eb2563ac22a9e55e7\", \"metadata\": {\"background\": true}, \"time\": {\"created\": 1790495909139, \"completed\": 1790495909205}, \"type\": \"shell\", \"shellID\": \"sh_0e1df650e001fwg3g63RtPdnMe\", \"command\": \"\\\"C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe\\\" -c \\\"import os,json;print(json.dumps(sorted(os.environ)))\\\"\", \"status\": \"exited\", \"exit\": 0, \"output\": {\"output\": \"[\\\"COMSPEC\\\", \\\"HOME\\\", \\\"HOMEDRIVE\\\", \\\"HOMEPATH\\\", \\\"LOGONSERVER\\\", \\\"OPENCODE_TERMINAL\\\", \\\"PATH\\\", \\\"PATHEXT\\\", \\\"PWD\\\", \\\"SHLVL\\\", \\\"SPIKE_SESSION_CANARY\\\", \\\"SYSTEMDRI",
+   "42",
+   "first done\nSTEERED",
+   "QUEUED"
+  ],
+  "terminals": [
+   "session.execution.succeeded"
+  ],
+  "elapsed_s": 40.44
+ },
+ "deny_tools": {
+  "ok": true,
+  "prompt_status": 200,
+  "inbox_item_type": "user",
+  "first_step_s": 4.35,
+  "terminal": "session.execution.succeeded",
+  "terminal_s": 16.06,
+  "wait_status": 204,
+  "tool_calls": [
+   "{'sessionID': 'ses_f1e209b4effeZxe2S17bKuT4my', 'assistantMessageID': 'msg_0e1e06d32001fmDenadRiANrjb', 'id': 'call_5cee"
+  ],
+  "file_created": true,
+  "last_texts": [
+   "QUEUED",
+   "I need to be transparent about what happened:\n\n1. **File creation**: I used `shell` with `echo` rather than a dedicated write tool. The file `created.txt` was created with content `hi`, but not via the method you specified.\n\n2. **Subagent delegation**: I do not have a subagent tool available, so I c"
+  ],
+  "elapsed_s": 16.09
+ },
+ "server_api_from_shell": {
+  "ok": true,
+  "status": 204,
+  "last_shell": [
+   "SHELL:{\"id\": \"msg_995118fb6b146f25009ea106\", \"metadata\": {\"background\": true}, \"time\": {\"created\": 1790495992842, \"completed\": 1790495992906}, \"type\": \"shell\", \"shellID\": \"sh_0e1e0ac04001dNAwwmYux2a8Rx\", \"command\": \"\\\"C:\\\\Users\\\\<user>\\\\Documents\\\\GitHub\\\\Agentic-Engineering-Workflow\\\\.venv\\\\Scripts\\\\python.exe\\\" -c \\\"exec('import urllib.request as u,urllib.error as e\\\\ntry:\\\\n print(u.urlopen('http://127.0.0.1:62432/api/info').status)\\\\nexcept e.HTTPError as x:\\\\n print('HTTP',x.code)')\\\"\", \"status\": \"exited\", \"exit\": 1, \"output\": {\"output\": \"  File \\\"<string>\\\", line 1\\r\\n    exec('import urlli"
+  ],
+  "elapsed_s": 1.09
+ },
+ "print_canary": {
+  "ok": true,
+  "status": 204,
+  "elapsed_s": 0.07
+ },
+ "ask_blocks": {
+  "ok": true,
+  "asked": true,
+  "asked_action": "shell",
+  "still_running_after_10s": true,
+  "pending_count": 1,
+  "reply_status": 204,
+  "terminal_after_reject": "session.execution.interrupted",
+  "elapsed_s": 14.41
+ },
+ "event_types": [
+  "agent.updated",
+  "command.updated",
+  "integration.updated",
+  "model.updated",
+  "models-dev.refreshed",
+  "permission.asked",
+  "permission.replied",
+  "plugin.updated",
+  "project.updated",
+  "provider.updated",
+  "reference.updated",
+  "server.connected",
+  "session.created",
+  "session.execution.interrupted",
+  "session.execution.started",
+  "session.execution.succeeded",
+  "session.inbox.delivered",
+  "session.inbox.enqueued",
+  "session.instructions.updated",
+  "session.reasoning.delta",
+  "session.reasoning.ended",
+  "session.reasoning.started",
+  "session.shell.ended",
+  "session.shell.started",
+  "session.step.ended",
+  "session.step.failed",
+  "session.step.started",
+  "session.step.streamed",
+  "session.text.delta",
+  "session.text.ended",
+  "session.text.started",
+  "session.tool.called",
+  "session.tool.failed",
+  "session.tool.input.ended",
+  "session.tool.input.started",
+  "session.tool.progress",
+  "session.tool.success",
+  "session.usage.updated",
+  "shell.created",
+  "shell.deleted",
+  "shell.exited",
+  "skill.updated",
+  "vcs.branch.updated",
+  "websearch.updated",
+  "worktree.resolved"
+ ],
+ "lease_exit_s": 0.04696669999975711,
+ "leak_scan": {
+  "ok": true,
+  "server_secret": [],
+  "canary": [
+   "main\\xdg-data\\opencode\\opencode.db",
+   "main\\xdg-data\\opencode\\shell\\78390845b38b827eb2f639a0b3b8a7701477f284\\sh_0e1e0b051001PLo5wNeOUqmBL2.out"
+  ],
+  "elapsed_s": 0.0
+ },
+ "memory_db": {
+  "ok": true,
+  "after_restart_status": 404,
+  "db_files": [],
+  "elapsed_s": 0.48
+ }
+}

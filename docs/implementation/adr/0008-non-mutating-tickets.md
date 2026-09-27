@@ -40,7 +40,7 @@
 - It is retired when the invocation ends and removed after the commit; orphans are pruned. A retired directory left on disk is reported as a contradiction.
 - `submit` refuses with `OBSERVATION_MUTATED` (naming the changed paths) if the observation's fingerprint differs from the dispatch snapshot. This applies to every read-only invocation: executors, and reviewers and verifiers of a record or of a parent.
 - **The check is repeated at ingest** (M2 review, major 2), because a change made after submission is the same authority violation. `evidence ingest`, record review/verification ingest and parent review/verification ingest all re-fingerprint the producing invocation's observation. A report whose invocation ended before ingest can no longer be checked (its observation is retired) and is refused. The Lead redispatches the attempt, or dispatches another reviewer or verifier. External shared state (services, databases, indexes) is governed by capability grants; provider mutation declarations are M6 (Designed).
-- Optional policy `non_mutating_concurrency` (default unlimited) is enforced at dispatch.
+- Optional policy `non_mutating_concurrency` (default unlimited) is enforced at **every attempt start**, `work dispatch` and `work redispatch` alike. The check runs after the previous attempt is retired in the same transaction, so a redispatch may replace its own active executor but never adds one beyond the cap (M2 re-review: redispatch skipped the check).
 
 ### Records and their freshness contracts (M2-B5)
 

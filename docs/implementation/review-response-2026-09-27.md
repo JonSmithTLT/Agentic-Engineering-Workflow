@@ -68,3 +68,19 @@ These are implementation choices, not contract changes. ADR-0007 and ADR-0008 re
   - Existing tests were edited only by appending (new compositions, and rule 14 in the oracle's non-vacuity test).
   - The mutating path of blocker 2 now holds the M1 dependency rule: an inherited mutating upstream is in the new assignment's base before the dependent can be dispatched again.
 - **Not run here:** Windows, and the CI lane timing. The new regression tests add roughly 2–3 minutes of serial test time to the `regression` lane; the durations file has no entries for them yet, so the shard balance uses the median until the next refresh.
+
+## Re-review of `0552116`
+
+- **Review:** the follow-up review of the fixes, with the probe script `M2_followup_probe.py`.
+- **Verdict received:** the four original findings are resolved. One new Major must be fixed before merge. One contract question was left open for an operator decision and not counted as a defect.
+
+| ID | Finding | Root cause | Fix | Evidence |
+|---|---|---|---|---|
+| R-Major | `work redispatch` bypassed `non_mutating_concurrency`. With a cap of one: A's record ingested, B dispatched, A redispatched → two active executors | Dispatch checked the cap before starting an attempt; redispatch called the attempt start directly | The cap is checked in `_start_attempt`, the one place every attempt starts. It runs after the previous attempt is retired in the same transaction, so a redispatch replacing its own active executor stays within the cap (the reviewer's control probe) | The reviewer's probe and control probe (fails on `0552116`, passes now); oracle rule 15 (active executors ≤ cap) after every step of every composition and walk; the hierarchy walk now runs with a cap of 2 |
+| R-Question | A parent could receive review and verification before an evidence prerequisite completed, then close on those reports once it did | ADR-0007 applied parent dependencies only to closeout (ordering) | **Operator decision: parent acceptance is a downstream assignment** (WC §8: a dependency is satisfied only when the upstream output is in the downstream assignment's recorded input/source snapshot). Parent reviewer/verifier dispatch waits for the parent's own and inherited dependencies (`DEPENDENCY_UNSATISFIED`). It pins the prerequisite records under the ADR-0008 input rule (`INPUT_STALE` unless acknowledged; shown in the pack). Each report is bound to the dependency set it was dispatched under, so a later move or edit makes it STALE, and ingest refuses it. The closeout records its dependencies and the `basis` of each gate. Resume says what the acceptance waits on. | The reviewer's probe (reconstructed, safe end state; fails on `0552116`, passes now); `test_parent_acceptance_is_a_downstream_assignment_of_its_dependencies`; oracle rule 16 (a closed parent relied only on reports dispatched under the dependencies its closeout records, each DONE), with its non-vacuity check |
+
+- **The three early-refusal probes** from the follow-up script are preserved as regressions. They confirm that the round-one fixes refuse at the move or edge edit and leave the structure unchanged.
+- **Behaviour an operator will notice:**
+  - A Story or Epic with an unfinished prerequisite cannot dispatch its reviewer or verifier.
+  - A stale prerequisite survey must be acknowledged for the Story (`aew work acknowledge-input <S>`), as for a Ticket.
+  - Moving a Story under a parent with dependencies makes its existing acceptance reports STALE.

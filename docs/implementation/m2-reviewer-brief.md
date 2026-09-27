@@ -52,6 +52,8 @@ The cross-operation oracle (`tests/helpers/invariants.py`) checks these after ev
 | 12 | A retired observation belongs to an ended invocation. An active observation invocation never has a revoked credential. |
 | 13 | Every consumed input pinned on an invocation was CURRENT, external, or acknowledged by a recorded decision for exactly the commit that invocation was dispatched against |
 | 14 | A started Ticket's effective dependency edges are the ones its attempt was dispatched with, and each is satisfied in the source that attempt works from (M2 review B2) |
+| 15 | Active non-mutating executors never exceed the `non_mutating_concurrency` cap (M2 re-review) |
+| 16 | Every report a closed parent relied on was dispatched under exactly the dependencies its closeout records, and each of those was DONE (M2 re-review decision) |
 
 Enforced by the operations, not the oracle, and covered by tests:
 - plan-binding checks at dispatch and at gate-guarded transitions;

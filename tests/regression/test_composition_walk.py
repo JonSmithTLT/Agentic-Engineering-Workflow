@@ -61,6 +61,7 @@ class Walk:
         self.gen = 1  # generation of self.token (sample_project acquired the seat)
         self.engine = Engine.discover(self.root)
         self.impl_token: dict[str, str] = {}
+        self.impl_inv: dict[str, str] = {}  # the implementer invocation whose credential the walk actually holds
         self.issued: list[tuple[str, str, str, str]] = []  # (work id, credential, role, scope) — ever issued
         self.submitted: list[tuple[str, str, str]] = []  # (work id, evidence id, kind) — ever submitted
         self.variant = 0
@@ -99,7 +100,8 @@ class Walk:
 
     def dispatch(self, wid: str, role: str, scope: str = "ticket") -> str:
         kw: dict[str, Any] = {"role": role} | ({"scope": "integration"} if scope == "integration" else {})
-        tok = self.lead("invoke_create", work_id=wid, **kw)["invocation_token"]
+        out = self.lead("invoke_create", work_id=wid, **kw)
+        tok, self.dispatched = out["invocation_token"], out["invocation"]
         self.issued.append((wid, tok, role, scope))
         return tok
 
@@ -127,8 +129,9 @@ class Walk:
         return ev
 
     def assign(self, wid: str) -> None:
-        tok = self.lead("work_assign", work_id=wid)["invocation_token"]
-        self.impl_token[wid] = tok
+        out = self.lead("work_assign", work_id=wid)
+        tok = out["invocation_token"]
+        self.impl_token[wid], self.impl_inv[wid] = tok, out["invocation"]
         self.issued.append((wid, tok, "implementer", "ticket"))
 
     def start(self, wid: str) -> None:
@@ -136,6 +139,15 @@ class Walk:
 
     def redispatch(self, wid: str) -> None:
         self.impl_token[wid] = self.dispatch(wid, "implementer")
+        self.impl_inv[wid] = self.dispatched
+
+    def recover_implementer(self, wid: str) -> None:
+        """A crash after an assignment's or dispatch's commit point left a live implementer invocation whose
+        credential died with the process: the Lead cancels it (revoking it) and dispatches a fresh one.
+        (Nightly walk finding, seeds 1014/1034; see test_compositions.py.)"""
+        orphan = self.unit(wid)["implementer_invocation"]
+        self.lead("invoke_cancel", invocation=orphan, reason="walk: implementer credential lost in a crash")
+        self.redispatch(wid)
 
     def implement(self, wid: str) -> None:
         ws = self.workspace(wid)
@@ -256,10 +268,14 @@ class Walk:
         st = u["state"]
         integ = (u.get("integration") or {}).get("status")
         impl_active = state["invocations"].get(u.get("implementer_invocation") or "", {}).get("status") == "active"
+        impl_held = impl_active and self.impl_inv.get(wid) == u.get("implementer_invocation")
+        # A live implementer whose credential the walk does not hold was orphaned by a crash: recover it.
+        orphaned = [("recover_implementer", 8)] if impl_active and not impl_held else []
         by_state: dict[str, list[tuple[str, float]]] = {
             "READY": [("assign", 8)],
-            "ASSIGNED": [("start", 8)] if impl_active else [("redispatch", 8)],
-            "RUNNING": [("implement", 6), ("to:REVIEW_PENDING", 5)] if impl_active else [("redispatch", 8)],
+            "ASSIGNED": ([("start", 8)] + orphaned) if impl_active else [("redispatch", 8)],
+            "RUNNING": ([("implement", 6), ("to:REVIEW_PENDING", 5)] if impl_held else
+                        orphaned + [("to:REVIEW_PENDING", 2)] if impl_active else [("redispatch", 8)]),
             "REVIEW_PENDING": [("review", 8), ("review_submit_only", 1), ("straggler", 0.5), ("regress", 1)],
             "REVIEW_FAILED": [("regress", 8)],
             "REVIEW_PASSED": [("to:VERIFY_PENDING", 8), ("edit", 1), ("regress", 2)],

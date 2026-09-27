@@ -2,7 +2,7 @@
 
 This is operational metadata (WC Appendix C). It does not replace the workflow state of any project that uses AEW. It uses the three states from WC §"Status and authority": **Implemented**, **Staged** and **Designed**. A row is Implemented only when the listed evidence exists and passes on both Windows (Python 3.13) and Linux (Python 3.11). The acceptance IDs are listed in `acceptance.md`.
 
-**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26. M1 is complete. All findings of the independent M1 review, and of the focused re-review of its remediation, are resolved (`review-response-2026-09-26.md`). All three reviewers' probe files pass unchanged (22/22) and are preserved as regressions in `tests/regression/`. Full suites: Linux/Python 3.11 552 passed; Windows/Python 3.13 547 passed, plus 5 POSIX-only skips.
+**Spec set:** `aew-frozen-2026-09-25`. **Last updated:** 2026-09-26. M1 is complete. All findings of the independent M1 review, and of the focused re-review of its remediation, are resolved (`review-response-2026-09-26.md`). All three reviewers' probe files pass unchanged (22/22) and are preserved as regressions in `tests/regression/`. Full suites: Linux/Python 3.11 603 passed; Windows/Python 3.13 598 passed, plus 5 pinned POSIX-only skips. Since 2026-09-27 CI runs the suite as parallel lanes per OS behind a single `assurance` merge gate, which proves every collected test ran exactly once and passed. It takes about 5 minutes, down from about 46; see `testing-and-ci-strategy.md`.
 
 | Capability | Status | Acceptance evidence / next action |
 |---|---|---|

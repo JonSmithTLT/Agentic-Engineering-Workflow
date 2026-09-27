@@ -7,6 +7,8 @@ python -m pytest -m acceptance -q      # just the acceptance scenarios
 python -m pytest -q                    # everything (unit, integration, acceptance)
 ```
 
+In CI the scenarios run in the `acceptance` lane, except the real-process ones marked `serial` (`test_store_processes.py`, the pty takeover), which run in the `serial` lane. The `assurance` job proves every scenario ran on both OSes. See `testing-and-ci-strategy.md`.
+
 Every scenario drives the real `aew` CLI in separate processes against real git repositories. Roles are played by scripted drivers (`tests/helpers/aewflow.py`) that use only the launch contract, the invocation credential and the CLI, exactly as an LLM subagent would.
 
 | ID | Scenario | Tests |
@@ -23,7 +25,7 @@ Every scenario drives the real `aew` CLI in separate processes against real git 
 
 ## Review regressions (2026-09-26)
 
-The independent M1 review's 12 probes are preserved unchanged in `tests/regression/test_review_2026_09_26.py` and must pass. Composition tests for the same interactions, the cross-operation invariant oracle and a seeded adversarial walk (`test_composition_walk.py`, 5 seeds × 60 steps; widen with `AEW_WALK_SEEDS` / `AEW_WALK_STEPS`) live alongside them. See `review-response-2026-09-26.md`.
+The independent M1 review's 12 probes are preserved unchanged in `tests/regression/test_review_2026_09_26.py` and must pass. Composition tests for the same interactions, the cross-operation invariant oracle and a seeded adversarial walk (`test_composition_walk.py`, 5 seeds × 60 steps; widen with `AEW_WALK_SEEDS` / `AEW_WALK_STEPS` / `AEW_WALK_FAULT_RATE`) live alongside them. See `review-response-2026-09-26.md`. The probes and compositions are permanent merge gates (the `regression` lane); the walk's default budget is a merge gate (the `adversarial` lane), and the nightly lane runs larger budgets with rotating seeds.
 
 ```bash
 python -m pytest tests/regression -q

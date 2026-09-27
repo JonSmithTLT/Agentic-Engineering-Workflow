@@ -13,19 +13,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from aewflow import (DISCOVERY, Role, complete_investigation, create_investigation, create_planned_ticket,
                      create_unit, dispatch, implement, assign, parent_verify, plan_unit, prepare_and_validate,
                      sample_project, submit_record, to_commit_ready)
 from conftest import git
-
-
-# Open findings (strict: an unexpected pass fails the run, so each fix commit removes its own markers).
-B1 = pytest.mark.xfail(strict=True, reason="M2 review blocker 1: class 0 work bypasses stale ancestor plans")
-B2 = pytest.mark.xfail(strict=True, reason="M2 review blocker 2: moving active work bypasses inherited dependencies")
-MA1 = pytest.mark.xfail(strict=True, reason="M2 review major 1: a parent can close with an unsatisfied dependency")
-MA2 = pytest.mark.xfail(strict=True, reason="M2 review major 2: observation mutation after submission lost at ingest")
 
 
 def unit(p, wid):
@@ -159,7 +150,6 @@ def test_parent_cannot_close_with_a_dependency_added_after_its_child_finished(tm
 # ------------------------------------------------------------------ Major 2: observation mutated between submit and ingest
 
 
-@MA2
 def test_observation_mutated_after_submission_is_refused_at_ingest(tmp_path):
     p = sample_project(tmp_path)
     wid = create_investigation(p, tmp_path)
@@ -170,7 +160,6 @@ def test_observation_mutated_after_submission_is_refused_at_ingest(tmp_path):
     assert res.returncode != 0 and res.error["code"] == "OBSERVATION_MUTATED", res.stdout or res.stderr
 
 
-@MA2
 def test_record_reviewer_observation_mutated_after_submission_is_refused_at_ingest(tmp_path):
     p = sample_project(tmp_path)
     wid = create_investigation(p, tmp_path, cls=2)
@@ -187,7 +176,6 @@ def test_record_reviewer_observation_mutated_after_submission_is_refused_at_inge
     assert res.returncode != 0 and res.error["code"] == "OBSERVATION_MUTATED", res.stdout or res.stderr
 
 
-@MA2
 def test_parent_reviewer_observation_mutated_after_submission_is_refused_at_ingest(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)

@@ -505,3 +505,52 @@ def test_edge_edits_wait_for_unstarted_work_and_closeout_waits_for_dependencies(
     assert show(p, story)["state"] == "DONE"
     assert_control_invariants(p)
 
+
+def test_a_read_only_invocation_is_checked_for_mutation_until_its_report_is_ingested(tmp_path):
+    """M2 review major 2: the observation is re-fingerprinted when a report is ingested, not only when it is
+    submitted, on every read-only path (executor, record reviewer, parent reviewer), and review/verification
+    submissions are checked like records. A report whose observation can no longer be checked (its invocation
+    ended first) is not ingested either; the attempt or the reviewer is replaced."""
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path, cls=2)
+    p.lead("work", "staff", wid, "--review", "code_reviewer")
+    k1, _ = dispatch(p, wid)
+    e1 = submit_record(k1, "discovery_record")["evidence"]
+    (k1.workspace / "calc/core.py").write_text("tampered after submission\n", encoding="utf-8", newline="\n")
+    refused = err(p, "evidence", "ingest", wid, "--evidence", e1)
+    assert refused["code"] == "OBSERVATION_MUTATED" and "calc/core.py" in refused["details"]["changed"]
+    again = p.lead("work", "redispatch", wid, "--reason", "the executor changed its observation")
+    k2 = Role(p, again["invocation_token"], Path(again["observation"]["path"]))
+    p.lead("evidence", "ingest", wid, "--evidence", submit_record(k2, "discovery_record")["evidence"])
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    assert_control_invariants(p)
+
+    review = {"claim": "facts are supported", "review": {"independence": "R1", "disposition": "pass",
+                                                          "findings": [], "resolved_findings": []}}
+    rv = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    r1 = Role(p, rv["invocation_token"], Path(rv["observation"]["path"]))
+    (r1.workspace / "calc/core.py").write_text("tampered before review\n", encoding="utf-8", newline="\n")
+    assert r1.submit("review", review, expect_ok=False).error["code"] == "OBSERVATION_MUTATED"
+    rv2 = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    ev = Role(p, rv2["invocation_token"], Path(rv2["observation"]["path"])).submit("review", review)["evidence"]
+    p.lead("invoke", "cancel", rv2["invocation"], "--reason", "reviewer lost")
+    assert err(p, "review", "ingest", wid, "--evidence", ev)["code"] == "GATE_UNSATISFIED"  # cannot be rechecked
+    rv3 = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    p.lead("review", "ingest", wid, "--evidence",
+           Role(p, rv3["invocation_token"], Path(rv3["observation"]["path"])).submit("review", review)["evidence"])
+    p.lead("work", "accept", wid)
+    assert show(p, wid)["state"] == "DONE"
+    assert_control_invariants(p)
+
+    story = create_unit(p, "story", "Objective", cls=1)
+    plan_unit(p, tmp_path, story)
+    complete_investigation(p, create_investigation(p, tmp_path, parent=story))
+    out = p.lead("invoke", "create", story, "--role", "verifier")
+    ver = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+    unit_ev = ver.check("unit")["evidence"]
+    (ver.workspace / "calc/core.py").write_text("tampered after the check\n", encoding="utf-8", newline="\n")
+    claims = [{"type": t, "claim": "holds", "result": "pass", "checks": [unit_ev]} for t in ("goal_backwards", "contract")]
+    rejected = ver.submit("verification", {"claim": "acceptance", "verification": {"scope": "parent", "claims": claims}},
+                          expect_ok=False)
+    assert rejected.error["code"] == "OBSERVATION_MUTATED"
+    assert_control_invariants(p)

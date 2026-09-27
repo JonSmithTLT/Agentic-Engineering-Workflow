@@ -135,6 +135,7 @@ class HierarchyOps(NonMutatingOps):
             plan = unit.get("plan") or {}
             if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
+            self.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":
                 self._record_review_findings(unit, ev, evidence_id)
             else:

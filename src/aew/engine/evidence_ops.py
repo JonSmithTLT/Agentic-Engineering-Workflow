@@ -432,6 +432,8 @@ class EvidenceOps(WorkspaceOps):
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).
             workspace, ws_id, _ = self._invocation_workspace(state, inv)
+            if inv.get("scope") in {"observation", "parent"}:
+                self.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
             work_id = inv["work_unit"]
             unit = state["work"][work_id]
             plan = unit.get("plan") or {}

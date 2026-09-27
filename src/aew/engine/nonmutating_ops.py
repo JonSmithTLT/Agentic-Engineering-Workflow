@@ -34,11 +34,13 @@ from aew.errors import (
     IllegalTransition,
     InputStale,
     NotFound,
+    ObservationMutated,
     UsageError,
     ValidationFailed,
 )
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
+from aew.snapshot.fingerprint import changed_paths
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text, utc_now
 from aew.workspace import git, worktrees
 
@@ -132,6 +134,29 @@ class NonMutatingOps(IntegrationOps):
             worktrees.remove(self.repo_root, ws["path"])
             raise
         return inv_id, token, snapshot
+
+    def require_observation_intact(self, inv_id: str, inv: dict[str, Any]) -> None:
+        """A read-only invocation's observation still holds exactly its dispatch snapshot (ADR-0008).
+
+        Checked when a record or report is submitted, and again when the Lead ingests it (M2 review major 2): a
+        change made after submission is the same read-only authority violation, and it must not be lost when
+        ingestion retires the observation. A report whose invocation ended before ingest can no longer be
+        checked (its observation is retired), so it is not accepted either (fail closed).
+        """
+        obs = inv.get("observation") or {}
+        if inv.get("status") != "active" or obs.get("status") != "active":
+            raise GateUnsatisfied(f"{inv_id} ended ({inv.get('status')}) before its report was ingested: its read-only "
+                                  "observation can no longer be checked, so the report stays history; dispatch a new "
+                                  "invocation", invocation=inv_id, observation=obs.get("status"))
+        path = Path(obs["path"])
+        if not path.exists():
+            raise ObservationMutated(f"{inv_id}'s read-only observation workspace is missing", changed=[],
+                                     observation=obs["path"])
+        if self.snapshot_of(path, obs["id"])["relevant_inputs_fingerprint"] != obs["fingerprint"]:
+            raise ObservationMutated(
+                f"{inv_id} changed its read-only observation workspace; a non-mutating invocation may not mutate "
+                "source (the Lead redispatches the attempt, or dispatches another reviewer or verifier)",
+                changed=changed_paths(path, obs["commit"]))
 
     # ------------------------------------------------------------------ consumed inputs (operator review #3)
 
@@ -420,15 +445,6 @@ class NonMutatingOps(IntegrationOps):
         if kind != execution["expected_kind"]:
             raise ValidationFailed(f"attempt {execution['attempt']} of {inv['work_unit']} must produce a "
                                    f"{execution['expected_kind']} (pinned at dispatch), not a {kind}")
-        obs = inv["observation"]
-        current = self.snapshot_of(obs["path"], obs["id"])
-        if current["relevant_inputs_fingerprint"] != obs["fingerprint"]:
-            from aew.errors import ObservationMutated
-            from aew.snapshot.fingerprint import changed_paths
-            raise ObservationMutated(
-                f"{inv_id} changed its read-only observation workspace; a non-mutating invocation may not mutate "
-                "source (the Lead can redispatch a new attempt)",
-                changed=changed_paths(Path(obs["path"]), obs["commit"]))
         section = {"discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}[kind]
         result = submitted.get("result", "pass")
         if result not in {"pass", "blocked", "inconclusive"}:
@@ -466,6 +482,7 @@ class NonMutatingOps(IntegrationOps):
             if problems:
                 raise GateUnsatisfied(f"{evidence_id} cannot be accepted for {work_id}'s current attempt; it remains "
                                       "history", **problems)
+            self.require_observation_intact(ev["producer"]["invocation"], inv)  # changed since submission?
             self._ingest_ref(unit, ev)
             execution["record"] = {"id": ev["id"], "sha256": ev["_sha256"], "kind": ev["kind"], "result": ev["result"]}
             self._complete_invocation(state, ev["producer"]["invocation"])
@@ -741,6 +758,7 @@ class NonMutatingOps(IntegrationOps):
             plan = unit.get("plan") or {}
             if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
+            self.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":
                 self._record_review_findings(unit, ev, evidence_id)
             self._ingest_ref(unit, ev)

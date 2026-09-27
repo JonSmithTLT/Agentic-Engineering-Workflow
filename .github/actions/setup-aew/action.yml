@@ -1,14 +1,11 @@
 name: Set up AEW test environment
 description: >-
-  Python with a pip wheel cache, a git identity for fixture repositories, AEW with its test extras, and (on
-  Windows) Defender exclusions for the test paths. See docs/implementation/testing-and-ci-strategy.md.
+  Python with a pip wheel cache, a git identity for fixture repositories, and AEW with its test extras.
+  See docs/implementation/testing-and-ci-strategy.md (Defender exclusions were A/B-measured: no gain, not used).
 inputs:
   python-version:
     description: Python version for this job
     required: true
-  defender-exclusions:
-    description: Exclude test paths and processes from Defender real-time scanning on Windows runners
-    default: "false"   # TEMP A/B: exclusions off
 runs:
   using: composite
   steps:
@@ -23,14 +20,6 @@ runs:
       run: |
         git config --global user.name "AEW CI"
         git config --global user.email "aew-ci@invalid"
-    - name: Defender exclusions for test paths (ephemeral Windows runner only)
-      if: runner.os == 'Windows' && inputs.defender-exclusions == 'true'
-      shell: pwsh
-      run: |
-        $paths = @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, (Get-Item $env:TEMP).FullName, $env:RUNNER_TOOL_CACHE)
-        Add-MpPreference -ExclusionPath $paths
-        Add-MpPreference -ExclusionProcess @("python.exe", "git.exe")
-        Get-MpComputerStatus | Format-List RealTimeProtectionEnabled, AMRunningMode
     - name: Install AEW with test extras
       shell: bash
       run: python -m pip install -e ".[dev,parallel]"

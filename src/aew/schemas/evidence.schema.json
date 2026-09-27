@@ -8,7 +8,8 @@
   "properties": {
     "schema": {"const": "aew/evidence/v1"},
     "id": {"type": "string"},
-    "kind": {"enum": ["implementation_report", "review", "verification", "check_result"]},
+    "kind": {"enum": ["implementation_report", "review", "verification", "check_result",
+                      "discovery_record", "research_record", "plan_proposal"]},
     "work_unit": {"type": "string"},
     "producer": {
       "type": "object",
@@ -76,7 +77,7 @@
       "type": "object",
       "required": ["scope", "claims"],
       "properties": {
-        "scope": {"enum": ["ticket", "integration"]},
+        "scope": {"enum": ["ticket", "integration", "parent"]},
         "claims": {
           "type": "array",
           "items": {
@@ -91,6 +92,61 @@
           }
         },
         "suspected_cause": {"type": ["string", "null"]}
+      }
+    },
+    "attempt": {"type": "integer", "minimum": 1,
+                "description": "engine-bound: the non-mutating Ticket attempt this record belongs to (ADR-0008)"},
+    "subject": {
+      "type": "object",
+      "description": "engine-bound: the execute record a review/verification of a non-mutating Ticket evaluated",
+      "required": ["id", "sha256"],
+      "properties": {"id": {"type": "string"}, "sha256": {"type": "string"}}
+    },
+    "discovery": {
+      "type": "object",
+      "description": "Discovery Record (WC §9.3): observed facts with evidence, separated from hypotheses",
+      "required": ["facts", "hypotheses", "unresolved_questions"],
+      "properties": {
+        "question": {"type": ["string", "null"]},
+        "facts": {"type": "array", "items": {"type": "object", "required": ["statement", "evidence"],
+                  "properties": {"statement": {"type": "string", "minLength": 1},
+                                 "evidence": {"type": "array", "items": {"type": "string"}}}}},
+        "hypotheses": {"type": "array", "items": {"type": "object", "required": ["statement"],
+                       "properties": {"statement": {"type": "string", "minLength": 1},
+                                      "confirm_by": {"type": ["string", "null"]}}}},
+        "unresolved_questions": {"type": "array", "items": {"type": "string"}},
+        "observed_paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "research": {
+      "type": "object",
+      "description": "Research Record (WC §9.4): external conclusions with versions/sources and uncertainties",
+      "required": ["conclusions", "subjects", "uncertainties"],
+      "properties": {
+        "question": {"type": ["string", "null"]},
+        "conclusions": {"type": "array", "items": {"type": "string"}},
+        "subjects": {"type": "array", "items": {"type": "object", "required": ["name", "source"],
+                     "properties": {"name": {"type": "string"}, "version": {"type": ["string", "null"]},
+                                    "source": {"type": "string"}}}},
+        "constraints": {"type": "array", "items": {"type": "string"}},
+        "uncertainties": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "description": "Plan proposal (WC §4.1 plan contract); the Markdown body is the proposed plan text",
+      "required": ["objective", "approach"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1},
+        "approach": {"type": "string", "minLength": 1},
+        "governing_constraints": {"type": "array", "items": {"type": "string"}},
+        "affected_components": {"type": "array", "items": {"type": "string"}},
+        "ordered_tasks": {"type": "array", "items": {"type": "string"}},
+        "required_tests": {"type": "array", "items": {"type": "string"}},
+        "required_verification": {"type": "array", "items": {"type": "string"}},
+        "risks": {"type": "array", "items": {"type": "string"}},
+        "rejected_alternatives": {"type": "array", "items": {"type": "string"}},
+        "affected_paths": {"type": "array", "items": {"type": "string"}}
       }
     },
     "check": {

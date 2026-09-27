@@ -94,6 +94,18 @@ class StaleCandidate(IllegalTransition):
     code = "STALE_CANDIDATE"
 
 
+class InputStale(IllegalTransition):
+    """A consumed source-bound record no longer matches the source it would be used against (ADR-0008)."""
+
+    code = "INPUT_STALE"
+
+
+class ObservationMutated(PermissionDenied):
+    """A read-only (non-mutating) invocation changed its observation workspace (ADR-0008)."""
+
+    code = "OBSERVATION_MUTATED"
+
+
 class IntegrityError(AEWError):
     """Durable state is damaged or was modified outside the engine."""
 

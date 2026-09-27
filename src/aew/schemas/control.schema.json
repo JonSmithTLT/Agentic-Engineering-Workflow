@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/control/v1",
   "title": "AEW authoritative control state",
-  "description": "Single atomic commit point for Lead-owned control state (WC \u00a75, \u00a78.2; KC \u00a712.3).",
+  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3).",
   "type": "object",
   "required": [
     "schema",
@@ -217,7 +217,8 @@
               "completed",
               "cancelled",
               "interrupted",
-              "revoked"
+              "revoked",
+              "superseded"
             ]
           },
           "token_id": {
@@ -232,7 +233,9 @@
           "scope": {
             "enum": [
               "ticket",
-              "integration"
+              "integration",
+              "observation",
+              "parent"
             ]
           },
           "specialty": {
@@ -376,7 +379,10 @@
             "REPLAN_REQUIRED",
             "ESCALATED",
             "CANCELLED",
-            "OPEN"
+            "OPEN",
+            "PLANNING",
+            "IN_PROGRESS",
+            "ACCEPTANCE_PENDING"
           ]
         },
         "risk_class": {

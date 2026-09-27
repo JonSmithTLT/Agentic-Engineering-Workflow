@@ -46,6 +46,7 @@ def work_unit_record(
     policy: dict[str, Any] | None = None,
     external_refs: list[str] | None = None,
     body: str = "",
+    promoted_from: str | None = None,
 ) -> Record:
     meta: dict[str, Any] = {
         "schema": "aew/work-unit/v1",
@@ -63,6 +64,8 @@ def work_unit_record(
     }
     if policy:
         meta["policy"] = policy
+    if promoted_from:
+        meta["promoted_from"] = promoted_from
     validate("work-unit", meta, source=unit_id)
     return Record(meta, body)
 
@@ -77,6 +80,7 @@ def plan_record(
     supersedes: int | None = None,
     reason: str | None = None,
     affected_paths: list[str] | None = None,
+    source_evidence: dict[str, Any] | None = None,
 ) -> Record:
     meta = {
         "schema": "aew/plan/v1",
@@ -88,6 +92,8 @@ def plan_record(
         "author": author,
         "affected_paths": list(affected_paths or []),
     }
+    if source_evidence:
+        meta["source_evidence"] = source_evidence
     validate("plan", meta, source=f"{work_unit} plan v{revision}")
     return Record(meta, body)
 

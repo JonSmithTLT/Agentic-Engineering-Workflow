@@ -113,7 +113,8 @@ class WorkspaceOps(RoleOps):
             base = self.authoritative_commit()
             if base is None:
                 raise IllegalTransition(f"authoritative branch {self.authoritative_branch} has no commits")
-            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=base, work_id=work_id)
+            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=base, work_id=work_id,
+                                          plan_problem=self.plan_binding_problem)
             if blockers:
                 raise DependencyUnsatisfied(
                     f"{work_id} cannot be assigned: its recorded source snapshot would not contain every "

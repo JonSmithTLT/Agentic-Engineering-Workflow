@@ -155,6 +155,8 @@ class ResumeOps(HierarchyOps):
             for b in u.get("blocked_by", []):
                 if b["kind"] == "plan_not_accepted":
                     out.append("propose and accept a plan (`aew plan propose/accept`)")
+                elif b["kind"] == "plan_binding_stale":
+                    out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid}` or a new plan revision")
                 else:
                     out.append(f"waiting on {b['id']} ({b['reason']})")
             return out

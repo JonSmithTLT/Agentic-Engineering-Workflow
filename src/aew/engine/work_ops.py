@@ -28,10 +28,13 @@ class WorkOps(EngineBase):
     def before_commit(self, ctx: TxnContext) -> None:
         """Keep BLOCKED/READY and the derived Story/Epic state consistent with the durable graph inside every
         Lead commit (WC §8: parent state is derived, never hand-maintained)."""
-        changed = recompute_readiness(ctx.state, repo_root=self.repo_root, base_commit=self.authoritative_commit())
+        at = utc_now()
+        derived = H.recompute_parents(ctx.state, at=at)
+        changed = recompute_readiness(ctx.state, repo_root=self.repo_root, base_commit=self.authoritative_commit(),
+                                      plan_problem=self.plan_binding_problem)
+        derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
         if changed:
             ctx.refs.extend(f"readiness:{wid}" for wid in changed)
-        derived = H.recompute_parents(ctx.state, at=utc_now())
         if derived:
             ctx.refs.extend(f"derived:{wid}" for wid in derived)
 
@@ -314,7 +317,8 @@ class WorkOps(EngineBase):
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
                 self._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
                 blockers = readiness_blockers(ctx.state, unit, repo_root=self.repo_root,
-                                              base_commit=self.authoritative_commit(), work_id=work_id)
+                                              base_commit=self.authoritative_commit(), work_id=work_id,
+                                              plan_problem=self.plan_binding_problem)
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
                 self._set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)

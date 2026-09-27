@@ -206,3 +206,102 @@ def to_verified(p: Project, tmp_path: Path, *, files: dict[str, str] | None = No
     assert p.ok("work", "show", wid)["control"]["state"] == "VERIFIED"
     return wid, impl
 
+
+
+# ------------------------------------------------------------------ M2: hierarchy and non-mutating roles
+
+
+def plan_unit(p: Project, tmp_path: Path, wid: str, text: str = "Plan.\n", reason: str | None = None) -> int:
+    """Propose and accept the next plan revision of any unit (Ticket, Story or Epic)."""
+    f = tmp_path / f"{wid}-plan-{len(p.ok('work', 'show', wid)['control']['plans']) + 1}.md"
+    f.write_text(text, encoding="utf-8")
+    args = ["plan", "propose", wid, "--file", str(f)] + (["--reason", reason] if reason else [])
+    rev = p.lead(*args)["revision_number"]
+    p.lead("plan", "accept", wid, "--revision", str(rev))
+    return rev
+
+
+def create_unit(p: Project, kind: str, title: str, *, cls: int = 1, parent: str | None = None,
+                extra: tuple[str, ...] = ()) -> str:
+    args = ["work", "create", kind, "--title", title, "--class", str(cls), *extra]
+    if parent:
+        args += ["--parent", parent]
+    return p.lead(*args)["id"]
+
+
+def create_investigation(p: Project, tmp_path: Path, *, title: str = "Investigate calc.core",
+                         parent: str | None = None, cls: int = 1, card: str | None = None,
+                         extra: tuple[str, ...] = ()) -> str:
+    more = ("--non-mutating", "--goal", "current behavior of calc.core is documented", "--scope", "calc/**", *extra)
+    if card:
+        more += ("--card", card)
+    wid = create_unit(p, "ticket", title, cls=cls, parent=parent, extra=more)
+    plan_unit(p, tmp_path, wid, "Read calc/core.py and its tests; record facts and open questions.\n")
+    return wid
+
+
+def dispatch(p: Project, wid: str, card: str | None = None) -> tuple[Role, dict[str, Any]]:
+    """work dispatch -> RUNNING; returns the executor Role (it works in its read-only observation)."""
+    out = p.lead("work", "dispatch", wid, *(["--card", card] if card else []))
+    p.lead("work", "transition", wid, "--to", "RUNNING")
+    return Role(p, out["invocation_token"], Path(out["observation"]["path"])), out
+
+
+DISCOVERY = {"claim": "calc.core defines add(a, b)", "result": "pass",
+             "producer": {"model": "scripted-investigator"},
+             "discovery": {"question": "what does calc.core provide?",
+                           "facts": [{"statement": "calc/core.py defines add(a, b)", "evidence": ["calc/core.py:1"]}],
+                           "hypotheses": [{"statement": "no subtraction exists yet", "confirm_by": "grep subtract"}],
+                           "unresolved_questions": [], "observed_paths": ["calc/**"]}}
+RESEARCH = {"claim": "pytest supports plain assert", "result": "pass", "producer": {"model": "scripted-researcher"},
+            "research": {"question": "can tests use plain assert?", "conclusions": ["pytest rewrites plain asserts"],
+                         "subjects": [{"name": "pytest", "version": "8", "source": "docs.pytest.org"}],
+                         "constraints": [], "uncertainties": []}}
+PROPOSAL = {"claim": "add subtract() with a focused test", "result": "pass", "producer": {"model": "scripted-planner"},
+            "proposal": {"objective": "subtract(5, 3) == 2", "approach": "add subtract to calc/core.py",
+                         "ordered_tasks": ["add subtract", "add test"], "required_tests": ["tests/test_subtract.py"],
+                         "affected_paths": ["calc/**", "tests/**"]}}
+
+
+def submit_record(role: Role, kind: str, meta: dict[str, Any] | None = None, body: str = "Findings.\n",
+                  *, expect_ok: bool = True):
+    meta = meta if meta is not None else {"discovery_record": DISCOVERY, "research_record": RESEARCH,
+                                          "plan_proposal": PROPOSAL}[kind]
+    return role.submit(kind, meta, body, expect_ok=expect_ok)
+
+
+def complete_investigation(p: Project, wid: str, *, kind: str = "discovery_record", card: str | None = None) -> str:
+    """dispatch -> submit -> ingest -> accept; returns the accepted record id."""
+    role, _ = dispatch(p, wid, card)
+    rec = submit_record(role, kind)["evidence"]
+    p.lead("evidence", "ingest", wid, "--evidence", rec)
+    p.lead("work", "accept", wid)
+    return rec
+
+
+def parent_review(p: Project, wid: str, *, disposition: str = "pass", findings: list[dict] | None = None) -> str:
+    out = p.lead("invoke", "create", wid, "--role", "reviewer")
+    rev = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+    return rev.submit("review", {"claim": f"{wid} acceptance review", "producer": {"model": "scripted-reviewer"},
+                                 "review": {"independence": "R1", "disposition": disposition,
+                                            "findings": findings or [], "resolved_findings": []}},
+                      "Reviewed the children's integrated changes together.\n")["evidence"]
+
+
+def parent_verify(p: Project, wid: str, *, result: str = "pass") -> str:
+    out = p.lead("invoke", "create", wid, "--role", "verifier")
+    ver = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+    unit_ev = ver.check("unit")["evidence"]
+    claims = [{"type": "goal_backwards", "claim": "the parent objective is met on the authoritative source",
+               "result": result, "checks": [unit_ev]},
+              {"type": "contract", "claim": "contracts hold", "result": "pass", "checks": [unit_ev]}]
+    return ver.submit("verification", {"claim": f"{wid} acceptance", "producer": {"model": "scripted-verifier"},
+                                       "verification": {"scope": "parent", "claims": claims}},
+                      "Ran the suite on the authoritative source.\n")["evidence"]
+
+
+def close_parent(p: Project, wid: str) -> str:
+    """Parent review + verification (class >= 1 path), then closeout; returns the closeout decision."""
+    p.lead("review", "ingest", wid, "--evidence", parent_review(p, wid))
+    p.lead("verify", "ingest", wid, "--evidence", parent_verify(p, wid))
+    return p.lead("work", "close", wid, "--reason", "acceptance gates passed")["decision"]

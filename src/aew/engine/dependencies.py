@@ -83,23 +83,30 @@ def dependency_blockers(
 
 def readiness_blockers(
     state: dict[str, Any], unit: dict[str, Any], *, repo_root: Path, base_commit: str | None,
-    work_id: str | None = None,
+    work_id: str | None = None, plan_problem: Any = None,
 ) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
     if not (unit.get("plan") or {}).get("accepted"):
         blockers.append({"kind": "plan_not_accepted"})
+    elif plan_problem is not None and work_id is not None:
+        # An ancestor's accepted plan changed after this plan was accepted (ADR-0007, fail closed).
+        problem = plan_problem(state, work_id)
+        if problem:
+            blockers.append({"kind": "plan_binding_stale", "detail": problem})
     blockers.extend(dependency_blockers(state, unit, repo_root=repo_root, base_commit=base_commit,
                                         work_id=work_id))
     return blockers
 
 
-def recompute_readiness(state: dict[str, Any], *, repo_root: Path, base_commit: str | None) -> list[str]:
+def recompute_readiness(state: dict[str, Any], *, repo_root: Path, base_commit: str | None,
+                        plan_problem: Any = None) -> list[str]:
     """Move Tickets between BLOCKED and READY; returns the ids that changed. Part of the Lead's commit."""
     changed = []
     for wid, unit in state["work"].items():
         if unit["kind"] != "ticket" or unit["state"] not in {"BLOCKED", "READY"}:
             continue
-        blockers = readiness_blockers(state, unit, repo_root=repo_root, base_commit=base_commit, work_id=wid)
+        blockers = readiness_blockers(state, unit, repo_root=repo_root, base_commit=base_commit, work_id=wid,
+                                      plan_problem=plan_problem)
         new_state = "BLOCKED" if blockers else "READY"
         unit["blocked_by"] = blockers
         if new_state != unit["state"]:

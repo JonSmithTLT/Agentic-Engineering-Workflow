@@ -286,7 +286,8 @@ class NonMutatingOps(IntegrationOps):
             commit = self.authoritative_commit()
             if commit is None:
                 raise IllegalTransition(f"authoritative branch {self.authoritative_branch} has no commits")
-            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=commit, work_id=work_id)
+            blockers = readiness_blockers(state, unit, repo_root=self.repo_root, base_commit=commit, work_id=work_id,
+                                          plan_problem=self.plan_binding_problem)
             if blockers:
                 raise DependencyUnsatisfied(f"{work_id} cannot be dispatched", blockers=blockers)
             self._check_nm_concurrency(state)

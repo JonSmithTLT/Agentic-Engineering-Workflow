@@ -58,6 +58,8 @@ def control_violations(root: Path) -> list[str]:
         if unit.get("state") in {"DONE", "CANCELLED"}:
             problems.append(f"{inv_id} is active on terminal {inv['work_unit']}")
             continue
+        if inv.get("scope") in {"observation", "parent"}:
+            continue  # bound to their own read-only observation (rules 9 and 12)
         if inv.get("scope") == "integration":
             integ = unit.get("integration") or {}
             if integ.get("workspace") != inv.get("workspace"):
@@ -118,6 +120,8 @@ def control_violations(root: Path) -> list[str]:
             if revoked and ev["created_at"] > revoked:
                 problems.append(f"{ev['id']} was written at {ev['created_at']}, after its credential was revoked "
                                 f"at {revoked}")
+    # 6-12. M2 hierarchy and non-mutating invariants (ADR-0007/0008).
+    problems += m2_violations(root, state)
     return problems
 
 
@@ -130,3 +134,109 @@ def assert_control_invariants(project_or_root: Any) -> None:
     root = Path(getattr(project_or_root, "root", project_or_root))
     problems = control_violations(root)
     assert not problems, "control-state invariants violated:\n  " + "\n  ".join(problems)
+
+
+# ------------------------------------------------------------------ M2: hierarchy and non-mutating work (ADR-0007/0008)
+
+EXECUTORS = {"investigator", "researcher", "planner"}
+EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
+PARENT_KINDS = {"ticket": {"story", "epic"}, "story": {"epic"}, "epic": set()}
+
+
+def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    problems: list[str] = []
+    work, invocations = state["work"], state["invocations"]
+    tokens = state["tokens"]
+
+    def children(wid: str) -> list[str]:
+        return [c for c, u in work.items() if u.get("parent") == wid]
+
+    def descendants(wid: str) -> list[str]:
+        out, stack = [], children(wid)
+        while stack:
+            c = stack.pop()
+            out.append(c)
+            stack.extend(children(c))
+        return out
+
+    for wid, u in sorted(work.items()):
+        parent = u.get("parent")
+        # 6. Hierarchy shape: parent kinds, no cycles.
+        if parent is not None:
+            if parent not in work or work[parent]["kind"] not in PARENT_KINDS[u["kind"]]:
+                problems.append(f"{wid} ({u['kind']}) has an invalid parent {parent}")
+            seen, anc = {wid}, parent
+            while anc:
+                if anc in seen:
+                    problems.append(f"{wid} is in a parent cycle")
+                    break
+                seen.add(anc)
+                anc = work.get(anc, {}).get("parent")
+        if u["kind"] != "ticket":
+            kids = children(wid)
+            # 7. Parent state is the derivation: terminal only by recorded decision, with every descendant terminal.
+            if u["state"] in {"DONE", "CANCELLED"}:
+                open_desc = [d for d in descendants(wid) if work[d]["state"] not in {"DONE", "CANCELLED"}]
+                if open_desc:
+                    problems.append(f"{wid} is {u['state']} with open descendants {open_desc}")
+                decided = u.get("closeout") if u["state"] == "DONE" else u.get("cancellation")
+                if not decided:
+                    problems.append(f"{wid} is {u['state']} without a recorded Lead decision")
+                active = [i for i in [*u.get("invocations", []), *[x for d in descendants(wid)
+                                                                  for x in work[d].get("invocations", [])]]
+                          if invocations[i]["status"] == "active"]
+                if active:
+                    problems.append(f"{wid} is {u['state']} but invocations below it are active: {active}")
+            if u["state"] == "DONE" and not any(work[k]["state"] == "DONE" for k in kids):
+                problems.append(f"{wid} was closed without a DONE child")
+            if u["state"] == "ACCEPTANCE_PENDING" and (not kids or any(work[k]["state"] not in {"DONE", "CANCELLED"}
+                                                                        for k in kids)):
+                problems.append(f"{wid} is ACCEPTANCE_PENDING with open or no children")
+            continue
+        if u.get("mutating"):
+            continue
+        # 8. A non-mutating Ticket never mutates, never integrates, never has an implementer.
+        if u.get("workspace") or u.get("integration") or u.get("implementer_invocation"):
+            problems.append(f"{wid} is non-mutating but holds a workspace/integration/implementer")
+        if u["state"] in {"COMMIT_READY"}:
+            problems.append(f"{wid} is non-mutating but reached COMMIT_READY")
+        execution = u.get("execution") or {}
+        # 9. At most one active execute invocation, and only the current attempt's.
+        active_exec = [i for i in u.get("invocations", []) if invocations[i]["status"] == "active"
+                       and invocations[i]["role"] in EXECUTORS]
+        if len(active_exec) > 1:
+            problems.append(f"{wid} has {len(active_exec)} active executors {active_exec}")
+        for i in active_exec:
+            if invocations[i].get("attempt") != execution.get("attempt") or execution.get("invocation") != i:
+                problems.append(f"{wid}: executor {i} (attempt {invocations[i].get('attempt')}) is active but the "
+                                f"current attempt is {execution.get('attempt')}")
+        # 10. The accepted record is the pinned kind from the current attempt; DONE needs it and a completion record.
+        rec = execution.get("record")
+        if rec:
+            ev = _evidence(root, wid).get(rec["id"])
+            if ev is None or ev["kind"] != execution.get("expected_kind") or ev.get("attempt") != execution.get("attempt"):
+                problems.append(f"{wid}: accepted record {rec['id']} is not the pinned output of attempt "
+                                f"{execution.get('attempt')}")
+            elif execution.get("expected_kind") != EXECUTE_KIND.get(execution.get("archetype")):
+                problems.append(f"{wid}: expected_kind does not match the executor archetype")
+        if u["state"] == "DONE":
+            if not rec:
+                problems.append(f"{wid} is DONE without an accepted record")
+            if not (root / ".aew" / (u.get("completion_record") or "missing")).exists():
+                problems.append(f"{wid} is DONE without a completion record")
+    # 11. Execute records come only from the matching archetype, on an observation snapshot.
+    for wid in work:
+        for ev in _evidence(root, wid).values():
+            if ev["kind"] in EXECUTE_KIND.values():
+                inv = invocations.get(ev["producer"]["invocation"], {})
+                if EXECUTE_KIND.get(inv.get("role")) != ev["kind"] or inv.get("scope") != "observation":
+                    problems.append(f"{ev['id']} ({ev['kind']}) was produced by {inv.get('role')}/{inv.get('scope')}")
+    # 12. Retired observations belong to ended invocations; revoked credentials never wrote later evidence
+    #     (rule 5 covers all invocations, including observation ones).
+    for inv_id, inv in invocations.items():
+        obs = inv.get("observation") or {}
+        if obs.get("status") == "active" and inv["status"] != "active":
+            problems.append(f"{inv_id} ended ({inv['status']}) but its observation is still marked active")
+        if inv["status"] == "active" and obs and tokens.get(inv["token_id"], {}).get("revoked_at"):
+            problems.append(f"{inv_id} observation invocation is active with a revoked credential")
+    return problems

@@ -27,7 +27,8 @@ def _blocker_text(unit: dict[str, Any]) -> str:
     parts = []
     for b in unit.get("blocked_by") or []:
         if b.get("kind") == "dependency":
-            parts.append(f"{b['id']} ({b['reason']})")
+            parts.append(f"{b['id']} ({b['reason']}" + (f", via {b['inherited_from']}" if b.get("inherited_from") else "")
+                         + ")")
         else:
             parts.append(b.get("kind", "?"))
     return " -> " + ", ".join(parts) if parts else ""

@@ -1,10 +1,13 @@
 # AEW M2 — Ambiguity / implementation report and plan
 
-- **Status:** reviewed by the operator on 2026-09-27. The five operator tightenings are incorporated; the plan is approved.
+- **Status:** reviewed by the operator on 2026-09-27. The five operator tightenings are incorporated; the plan is approved. **Implemented** on `impl/m2-hierarchy`; the decisions are recorded in ADR-0007 and ADR-0008 (with amendments to ADR-0003 and ADR-0006), and the reviewer brief is `m2-reviewer-brief.md`.
 - **Refinement found during implementation:**
   - `work dispatch` performs the existing READY → ASSIGNED transition whose table `via` is `assign`.
   - The M1 table test pins exactly one `via` per state pair, and the operation (`work assign` or `work dispatch`) is chosen by the Ticket's mutating flag.
   - The new DONE edges for non-mutating Tickets use `via: accept`.
+  - Records flow only through edges to non-mutating Tickets. An edge to a Story or Epic is an acceptance dependency satisfied by its closeout, so Story-internal records are not consumed again downstream (found by AT-13; ADR-0007).
+  - Executors never start under a stale ancestor plan binding: `work redispatch` and a mutating Ticket's execute-slot `invoke create` are refused too, not only READY → dispatch.
+  - A parent pack labels a child as integrated before the baseline when its integrated commit is an ancestor-or-equal of the baseline, and it renders the aggregate diffstat even when empty.
 
 ## Context
 

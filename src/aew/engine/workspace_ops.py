@@ -8,7 +8,7 @@ from typing import Any
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
-from aew.engine.dependencies import readiness_blockers
+from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.role_ops import RoleOps
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition
 from aew.knowledge.records import format_id
@@ -141,6 +141,8 @@ class WorkspaceOps(RoleOps):
             try:
                 snapshot = self.snapshot_of(ws["path"], ws["id"])
                 ws["base_snapshot"] = snapshot
+                # The dependencies this attempt is dispatched with; completion re-checks them (M2 review B2).
+                ws["dependencies"] = effective_edge_set(state, work_id)
                 unit["workspace"] = ws
                 inv_id, inv_token = self._new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
                                                          workspace_id=ws["id"], snapshot=snapshot, card=card)

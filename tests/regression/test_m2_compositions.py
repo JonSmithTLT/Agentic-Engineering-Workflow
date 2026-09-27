@@ -350,3 +350,121 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
         lambda s: s["invocations"][out["invocation"]]["inputs"][0].update(freshness="STALE"))  # rule 13
     assert "still marked active" in broken(
         lambda s: s["invocations"][out["invocation"]].update(status="cancelled"))  # rule 12
+
+
+def test_moving_started_work_under_new_dependencies_needs_a_new_dispatch(tmp_path):
+    """M2 review B2: re-parenting changes inherited edges, i.e. edits the dependencies of everything moved. For a
+    started attempt that is refused, as `work depend` is (ADR-0007); after a replan, the next dispatch waits for
+    the inherited prerequisite and consumes its record. A move that leaves dependencies alone is still allowed."""
+    p = sample_project(tmp_path)
+    prereq = create_investigation(p, tmp_path, title="Prerequisite survey")
+    story = create_unit(p, "story", "Objective", cls=1, extra=("--depends-on", f"{prereq}:evidence"))
+    plain = create_unit(p, "story", "Holding area", cls=1)
+    look = create_investigation(p, tmp_path, title="Started elsewhere")
+    role, first = dispatch(p, look)
+    refused = err(p, "work", "move", look, "--parent", story, "--reason", "belongs to the objective")
+    assert refused["code"] == "ILLEGAL_TRANSITION" and refused["details"]["in_progress"] == [look]
+    assert refused["details"]["dependencies"][look] == {"before": [], "after": [f"{prereq}:evidence"]}
+    assert show(p, look)["parent"] is None
+    p.lead("work", "move", look, "--parent", plain, "--reason", "same dependencies, new home")  # still allowed
+    p.lead("plan", "reconfirm", look, "--reason", "same question")
+    assert_control_invariants(p)
+
+    p.lead("work", "transition", look, "--to", "REPLAN_REQUIRED", "--reason", "moving under the objective")
+    p.lead("work", "move", look, "--parent", story, "--reason", "belongs to the objective")
+    plan_unit(p, tmp_path, look, "Same question, now under the objective.\n", reason="moved under the objective")
+    u = show(p, look)
+    assert u["state"] == "BLOCKED" and u["blocked_by"] == [
+        {"kind": "dependency", "id": prereq, "reason": "evidence_not_accepted (READY)", "inherited_from": story}]
+    assert p.ok("invoke", "show", first["invocation"])["status"] == "cancelled"  # the old attempt ended
+    assert submit_record(role, "discovery_record", expect_ok=False).returncode != 0
+    assert_control_invariants(p)
+
+    rec = complete_investigation(p, prereq)
+    assert show(p, look)["state"] == "READY"
+    _, out = dispatch(p, look)
+    assert [(i["id"], i["from"], i["declared_on"]) for i in p.ok("invoke", "show", out["invocation"])["inputs"]] \
+        == [(rec, prereq, story)]
+    assert show(p, look)["execution"]["dependencies"] == [{"id": prereq, "kind": "evidence"}]
+    assert_control_invariants(p)
+
+
+def test_a_moved_mutating_ticket_is_reassigned_on_a_base_holding_its_inherited_upstream(tmp_path):
+    """M2 review B2, M1 rule: a mutating dependent never publishes before its mutating upstream is integrated,
+    also when the dependency arrives by a move. The replan releases its workspace (and candidate); the new
+    assignment's base contains the upstream's integrated commit."""
+    p = sample_project(tmp_path)
+    upstream = create_planned_ticket(p, tmp_path, title="Upstream change")
+    story = create_unit(p, "story", "Objective", cls=1, extra=("--depends-on", f"{upstream}:mutating"))
+    wid, _ = to_commit_ready(p, tmp_path, title="Downstream change", files=APPLY_PATCH)
+    prepare_and_validate(p, wid)
+    refused = err(p, "work", "move", wid, "--parent", story, "--reason", "belongs to the objective")
+    assert refused["code"] == "ILLEGAL_TRANSITION" and refused["details"]["in_progress"] == [wid]
+    p.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", "moving under the objective")
+    assert show(p, wid)["integration"] is None  # the candidate retired with COMMIT_READY
+    p.lead("work", "move", wid, "--parent", story, "--reason", "belongs to the objective")
+    plan_unit(p, tmp_path, wid, "Same change, after the upstream.\n", reason="moved under the objective")
+    assert show(p, wid)["state"] == "BLOCKED" and show(p, wid)["blocked_by"][0]["inherited_from"] == story
+    integrated = integrate(p, to_commit_ready(p, tmp_path, wid=upstream)[0])["integrated_commit"]
+    assert show(p, wid)["state"] == "READY"
+    ws = p.lead("work", "assign", wid)["workspace"]
+    assert git("merge-base", "--is-ancestor", integrated, ws["base_commit"], cwd=p.root) == ""
+    assert show(p, wid)["workspace"]["dependencies"] == [{"id": upstream, "kind": "mutating"}]
+    assert_control_invariants(p)
+
+
+def test_promotion_may_not_change_the_dependencies_of_started_descendants(tmp_path):
+    """Promotion moves the unit too. A promoted Ticket is replanned in the same commit, so its own edges may
+    change; a promoted Story's started descendants are not replanned, so a change of theirs is refused."""
+    p = sample_project(tmp_path)
+    x = create_investigation(p, tmp_path, title="Epic prerequisite")
+    y = create_investigation(p, tmp_path, title="Story prerequisite")
+    complete_investigation(p, x)
+    complete_investigation(p, y)
+    epic = create_unit(p, "epic", "Initiative", cls=1, extra=("--depends-on", f"{x}:evidence"))
+    story = create_unit(p, "story", "Objective", cls=1, parent=epic, extra=("--depends-on", f"{y}:evidence"))
+    running = create_investigation(p, tmp_path, parent=story, title="Running below the Story")
+    dispatch(p, running)
+    refused = err(p, "work", "promote", story, "--to", "epic", "--title", "Bigger", "--reason", "grew")
+    assert refused["code"] == "ILLEGAL_TRANSITION" and refused["details"]["in_progress"] == [running]
+    out = p.lead("work", "promote", running, "--to", "story", "--title", "Its own objective", "--reason", "grew")
+    u = show(p, running)
+    assert u["state"] == "REPLAN_REQUIRED" and u["parent"] == out["promoted_to"]  # lost the edge to Y, replanned
+    assert show(p, out["promoted_to"])["parent"] == epic
+    assert_control_invariants(p)
+
+
+def test_an_attempt_is_bound_to_the_dependencies_it_was_dispatched_with(tmp_path):
+    """Defense in depth for B2: whatever changes a started Ticket's effective edges (here a corrupted copy of a
+    real state; no operation can do it any more), its gate context, and so every guarded transition, accept,
+    prepare and publish, refuses until a new dispatch; an attempt recorded without its edges is still checked
+    for satisfaction in its own source snapshot."""
+    import copy
+
+    import pytest
+
+    from aew.engine.api import Engine
+    from aew.errors import GateUnsatisfied
+
+    p = sample_project(tmp_path)
+    story = create_unit(p, "story", "Objective", cls=1)
+    unfinished = create_investigation(p, tmp_path, title="Unfinished")
+    change = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    implement(assign(p, change))
+    look = create_investigation(p, tmp_path, parent=story, title="Look")
+    dispatch(p, look)
+    engine = Engine.discover(p.root)
+    state = engine.store.read()
+    assert engine.dispatch_binding_problem(state, change) is None and engine.dispatch_binding_problem(state, look) is None
+    s = copy.deepcopy(state)
+    s["work"][story]["depends_on"].append({"id": unfinished, "kind": "evidence"})
+    for wid in (change, look):
+        problem = engine.dispatch_binding_problem(s, wid)
+        assert problem["added"] == [f"{unfinished}:evidence"] and problem["unsatisfied_at_dispatch_commit"], wid
+        gc = engine.gate_context(s, wid)
+        with pytest.raises(GateUnsatisfied, match="new dispatch is required"):
+            engine._require_gates(gc, gc["obligations"]["gates"], what="probe")
+    s["work"][change]["workspace"].pop("dependencies")  # dispatched before bindings were recorded
+    legacy = engine.dispatch_binding_problem(s, change)
+    assert "added" not in legacy and legacy["unsatisfied_at_dispatch_commit"][0]["id"] == unfinished
+

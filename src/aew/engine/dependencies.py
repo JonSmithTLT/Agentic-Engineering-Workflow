@@ -16,6 +16,10 @@ durably accepted *and* available in the downstream assignment's source snapshot:
 A unit also waits on every edge declared on its ancestors (inherited edges, ADR-0007). Edge
 satisfaction governs BLOCKED/READY only; whether a consumed record is still acceptable *input* is
 checked separately at every executor dispatch (``freshness``).
+
+A dispatched attempt is bound to the effective edges it was dispatched with (M2 review B2). Moving work
+changes inherited edges, so a started Ticket whose effective dependencies differ from its dispatch, or are
+not satisfied in the source snapshot it works from, completes nothing until a new dispatch.
 """
 
 from __future__ import annotations
@@ -96,6 +100,66 @@ def readiness_blockers(
     blockers.extend(dependency_blockers(state, unit, repo_root=repo_root, base_commit=base_commit,
                                         work_id=work_id))
     return blockers
+
+
+# Tickets without a dispatched attempt: the only ones whose effective dependencies may change (ADR-0007).
+UNSTARTED = frozenset({"BLOCKED", "READY", "REPLAN_REQUIRED"})
+
+
+def edge_set(edges: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The identity of a set of dependency edges: unique ``(id, kind)``, sorted (where each is declared is not)."""
+    return [{"id": i, "kind": k} for i, k in sorted({(e["id"], e["kind"]) for e in edges})]
+
+
+def effective_edge_set(state: dict[str, Any], work_id: str) -> list[dict[str, str]]:
+    return edge_set(H.effective_edges(state, work_id))
+
+
+def dispatch_binding(unit: dict[str, Any]) -> dict[str, Any] | None:
+    """What a started Ticket's current attempt was dispatched with: its source commit and effective edges.
+
+    Mutating: the live workspace (base commit). Non-mutating: the current execution (observed commit).
+    ``dependencies`` is None for an attempt dispatched before bindings were recorded.
+    """
+    if unit["kind"] != "ticket" or unit["state"] in UNSTARTED | H.TERMINAL:
+        return None
+    if unit.get("mutating"):
+        ws = unit.get("workspace") or {}
+        if ws.get("status") != "active":
+            return None
+        return {"commit": ws.get("base_commit"), "dependencies": ws.get("dependencies")}
+    execution = unit.get("execution") or {}
+    if not execution:
+        return None
+    return {"commit": execution.get("observed_commit"), "dependencies": execution.get("dependencies")}
+
+
+def dispatch_binding_problem(state: dict[str, Any], work_id: str, *, repo_root: Path) -> dict[str, Any] | None:
+    """Why a started Ticket's attempt no longer holds under its current effective dependencies, or None.
+
+    The M1 rule: every required upstream output is available in the downstream assignment's source snapshot.
+    An edge gained or lost since dispatch (a move re-parents inherited edges) or an edge not satisfied at the
+    attempt's own commit means the attempt was dispatched for other dependencies: a new dispatch is required.
+    """
+    unit = state["work"][work_id]
+    binding = dispatch_binding(unit)
+    if binding is None:
+        return None
+    problem: dict[str, Any] = {}
+    current = {(e["id"], e["kind"]) for e in effective_edge_set(state, work_id)}
+    if binding["dependencies"] is not None:
+        recorded = {(e["id"], e["kind"]) for e in binding["dependencies"]}
+        if current != recorded:
+            problem["added"] = [f"{i}:{k}" for i, k in sorted(current - recorded)]
+            problem["removed"] = [f"{i}:{k}" for i, k in sorted(recorded - current)]
+    unsatisfied = dependency_blockers(state, unit, repo_root=repo_root, base_commit=binding["commit"],
+                                      work_id=work_id)
+    if unsatisfied:
+        problem["unsatisfied_at_dispatch_commit"] = unsatisfied
+    if not problem:
+        return None
+    return {"reason": "the effective dependencies differ from the ones this attempt was dispatched with",
+            "dispatch_commit": binding["commit"], **problem}
 
 
 def recompute_readiness(state: dict[str, Any], *, repo_root: Path, base_commit: str | None,

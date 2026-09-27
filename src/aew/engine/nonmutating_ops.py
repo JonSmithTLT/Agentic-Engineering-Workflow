@@ -25,7 +25,7 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
-from aew.engine.dependencies import readiness_blockers
+from aew.engine.dependencies import dependency_blockers, effective_edge_set, readiness_blockers
 from aew.engine.integration_ops import IntegrationOps
 from aew.errors import (
     ConcurrencyLimit,
@@ -250,6 +250,14 @@ class NonMutatingOps(IntegrationOps):
                                   f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision first",
                                   binding=problem)
 
+    def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
+        """No executor joins an attempt dispatched for other dependencies than the Ticket now has (M2 review B2)."""
+        problem = self.dispatch_binding_problem(state, work_id)
+        if problem:
+            raise DependencyUnsatisfied(f"{work_id}'s attempt was dispatched with other dependencies than it now has; "
+                                        "a new dispatch is required (REPLAN_REQUIRED and a plan revision, or "
+                                        "`aew work redispatch` for a non-mutating Ticket)", dispatch_binding=problem)
+
     def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
         """Non-mutating Tickets are reconciled on their attempt, not a workspace (nothing is inferred)."""
@@ -296,6 +304,11 @@ class NonMutatingOps(IntegrationOps):
                        commit: str) -> tuple[str, str]:
         state = ctx.state
         self.require_plan_binding(state, work_id)
+        # A redispatch starts a new attempt, too: its dependencies must be in the source it will observe (B2).
+        blockers = dependency_blockers(state, unit, repo_root=self.repo_root, base_commit=commit, work_id=work_id)
+        if blockers:
+            raise DependencyUnsatisfied(f"{work_id} cannot start a new attempt: a dependency is not satisfied in "
+                                        f"{str(commit)[:12]}", blockers=blockers)
         inputs = self.dispatch_inputs(state, work_id, commit)
         chosen, selected_by = self._executor_card(state, work_id, card)
         # A previous attempt (ingested, cancelled by a replan, or interrupted) is retired to history first.
@@ -309,6 +322,7 @@ class NonMutatingOps(IntegrationOps):
             "card": {"id": chosen.id, "version": chosen.meta.get("version"), "sha256": chosen.sha256},
             "expected_kind": E.EXECUTE_KIND[chosen.archetype], "selected_by": selected_by,
             "observed_commit": commit, "record": None, "started_at": utc_now(),
+            "dependencies": effective_edge_set(state, work_id),
         }
         return inv_id, inv_token
 
@@ -446,6 +460,9 @@ class NonMutatingOps(IntegrationOps):
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != (inv.get("snapshot") or {}).get(
                     "relevant_inputs_fingerprint"):
                 problems["observation"] = "the record is not bound to its executor's observation snapshot"
+            binding = self.dispatch_binding_problem(state, work_id)
+            if binding:
+                problems["dependencies"] = binding
             if problems:
                 raise GateUnsatisfied(f"{evidence_id} cannot be accepted for {work_id}'s current attempt; it remains "
                                       "history", **problems)
@@ -519,7 +536,8 @@ class NonMutatingOps(IntegrationOps):
                              "relevant_inputs_fingerprint": (subject or {}).get("id")},
                 "guardrails": dict(NO_GUARDRAILS), "obligations": obligations, "gates": results, "evidence": evidence,
                 "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit),
-                "plan_binding": self.plan_binding_problem(state, work_id)}
+                "plan_binding": self.plan_binding_problem(state, work_id),
+                "dispatch_binding": self.dispatch_binding_problem(state, work_id)}
 
     # Lead-transition guards for non-mutating Tickets (mutating Tickets keep their M1 guards)
 

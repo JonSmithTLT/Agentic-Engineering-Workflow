@@ -16,6 +16,7 @@ from typing import Any
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
+from aew.engine.dependencies import UNSTARTED, effective_edge_set
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, NonMutatingOps, is_nm_ticket
 from aew.errors import GateUnsatisfied, IllegalTransition, NotFound, UsageError
 from aew.knowledge import evidence as E
@@ -316,10 +317,33 @@ class HierarchyOps(NonMutatingOps):
             self._check_parent(state, unit["kind"], new_parent)
             if new_parent == work_id or new_parent in H.descendants(state, work_id):
                 raise UsageError(f"{work_id} cannot be moved under itself or its own descendant")
+        subtree = [w for w in [work_id, *H.descendants(state, work_id)] if state["work"][w]["kind"] == "ticket"]
+        before = {w: effective_edge_set(state, w) for w in subtree}
         unit["parent"] = new_parent
         unit.setdefault("parent_history", []).append({"from": old, "to": new_parent, "at": utc_now(), "reason": why})
         self._refuse_cycles(state)
+        self._refuse_dependency_change_of_started_work(state, before, "this move")
         return self._invalidate_bindings(state, work_id, f"moved from {old} to {new_parent}: {why}")
+
+    def _refuse_dependency_change_of_started_work(self, state: dict[str, Any], before: dict[str, list[dict[str, str]]],
+                                                  what: str) -> None:
+        """A structure change may not change the inherited edges of started work (M2 review B2).
+
+        Moving re-parents inherited edges, which is an edge edit for every Ticket below the moved unit, so the
+        rule for ``work depend`` applies (ADR-0007): each such Ticket must be BLOCKED, READY or REPLAN_REQUIRED.
+        A started attempt was dispatched for its old dependencies; it ends when the replacement plan is
+        accepted, and the next dispatch checks the new ones. Finished Tickets are not re-dispatched.
+        """
+        changed = {w: {"before": [f"{e['id']}:{e['kind']}" for e in edges],
+                       "after": [f"{e['id']}:{e['kind']}" for e in effective_edge_set(state, w)]}
+                   for w, edges in before.items() if effective_edge_set(state, w) != edges}
+        started = sorted(w for w in changed if state["work"][w]["state"] not in UNSTARTED | H.TERMINAL)
+        if started:
+            raise IllegalTransition(
+                f"{what} changes the effective dependencies of started work; a new dispatch is required. Move "
+                f"{', '.join(started)} to REPLAN_REQUIRED first (the attempt ends when a plan revision is accepted, and "
+                "the next dispatch checks the new dependencies)",
+                in_progress=started, dependencies={w: changed[w] for w in started})
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str) -> dict[str, Any]:
         if not (reason and reason.strip()):
@@ -355,10 +379,11 @@ class HierarchyOps(NonMutatingOps):
             decision = self.new_decision(ctx, "promotion", f"{work_id} promoted to a {to}: {title}",
                                          work_unit=work_id, reason=reason)
             new_id = self._create_promoted(ctx, to, title, cls, new_parent, work_id)
-            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})")
+            # A promoted Ticket's attempt ends with its replan, so its own inherited edges may change in the move.
             if unit["kind"] == "ticket" and unit["state"] != "REPLAN_REQUIRED":
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")
                 self._set_state(unit, "REPLAN_REQUIRED", f"promoted to {new_id} ({decision}): {reason}", state=state)
+            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})")
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,

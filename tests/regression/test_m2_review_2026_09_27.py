@@ -95,7 +95,6 @@ def test_class0_mutating_prepare_requires_reconfirmation_after_an_ancestor_plan(
 # ------------------------------------------------------------------ Blocker 2: moving started work past inherited dependencies
 
 
-@B2
 def test_moved_running_ticket_cannot_finish_before_its_inherited_prerequisite(tmp_path):
     p = sample_project(tmp_path)
     prereq = create_investigation(p, tmp_path, title="Prerequisite survey")  # READY, never finished
@@ -108,11 +107,11 @@ def test_moved_running_ticket_cannot_finish_before_its_inherited_prerequisite(tm
     if rec.returncode == 0:
         attempt(p, "evidence", "ingest", wid, "--evidence", rec.json["evidence"])
     attempt(p, "work", "accept", wid)
-    assert not (unit(p, wid)["state"] == "DONE" and unit(p, prereq)["state"] != "DONE"), \
+    moved = unit(p, wid)
+    assert not (moved["state"] == "DONE" and moved["parent"] == story and unit(p, prereq)["state"] != "DONE"), \
         "a moved Ticket completed before its inherited prerequisite"
 
 
-@B2
 def test_moved_mutating_ticket_cannot_publish_before_its_inherited_mutating_upstream(tmp_path):
     p = sample_project(tmp_path)
     upstream = create_planned_ticket(p, tmp_path, title="Upstream change")  # READY, never integrated
@@ -130,7 +129,8 @@ def test_moved_mutating_ticket_cannot_publish_before_its_inherited_mutating_upst
         if rep.returncode == 0:
             attempt(p, "verify", "ingest", wid, "--evidence", rep.json["evidence"])
         attempt(p, "integrate", "publish", wid)
-    assert not (unit(p, wid)["state"] == "DONE" and unit(p, upstream)["state"] != "DONE"), \
+    moved = unit(p, wid)
+    assert not (moved["state"] == "DONE" and moved["parent"] == story and unit(p, upstream)["state"] != "DONE"), \
         "a moved mutating Ticket published before its inherited mutating upstream integrated"
 
 

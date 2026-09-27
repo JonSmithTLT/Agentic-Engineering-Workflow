@@ -65,6 +65,9 @@ class ResumeOps(HierarchyOps):
         if self.plan_binding_problem(state, wid):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}` or a "
                        "new plan revision")
+        if self.dispatch_binding_problem(state, wid):
+            out.append("this attempt was dispatched with other dependencies than the Ticket now has: a new dispatch "
+                       "is required (REPLAN_REQUIRED and a plan revision, or `aew work redispatch` if non-mutating)")
         if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
             for i in self.input_status(state, wid):
                 if i["blocks_dispatch"]:
@@ -278,6 +281,7 @@ class ResumeOps(HierarchyOps):
                     entry["execution"] = u.get("execution")
                     entry["attempts"] = u.get("attempts", 0)
                 entry["plan_binding"] = self.plan_binding_problem(state, wid)
+                entry["dispatch_binding"] = self.dispatch_binding_problem(state, wid)
                 if u["state"] not in H.TERMINAL:
                     entry["inputs"] = self.input_status(state, wid)
                 if u.get("input_acknowledgements"):

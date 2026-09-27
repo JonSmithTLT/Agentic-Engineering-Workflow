@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.engine import dependencies as deps
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import EngineBase, TxnContext
@@ -69,6 +70,10 @@ class WorkOps(EngineBase):
                 changed[anc] = {"bound": recorded.get(anc), "current": current}
         return {"reason": "an ancestor's accepted plan changed after this plan was accepted",
                 "ancestors": changed} if changed else None
+
+    def dispatch_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """Why a started Ticket's attempt no longer matches its effective dependencies (M2 review B2), or None."""
+        return deps.dispatch_binding_problem(state, work_id, repo_root=self.repo_root)
 
     @staticmethod
     def unit(state: dict[str, Any], work_id: str) -> dict[str, Any]:

@@ -129,7 +129,8 @@ class EvidenceOps(WorkspaceOps):
                                         "action": f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision"}
         return {"snapshot": snapshot, "guardrails": guard, "obligations": obligations, "gates": results,
                 "evidence": evidence, "evidence_problems": problems,
-                "open_required_findings": G.open_required_findings(unit), "plan_binding": binding}
+                "open_required_findings": G.open_required_findings(unit), "plan_binding": binding,
+                "dispatch_binding": self.dispatch_binding_problem(state, work_id)}
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         raise NotImplementedError  # provided by the non-mutating and hierarchy mixins
@@ -156,6 +157,13 @@ class EvidenceOps(WorkspaceOps):
             raise GateUnsatisfied(f"{what}: the accepted plan is stale under its ancestors' current plans; "
                                   "`aew plan reconfirm <id> --reason ...` or accept a new plan revision first",
                                   unmet={**unmet, "accepted_plan": G.STALE}, plan_binding=gc["plan_binding"])
+        if gc.get("dispatch_binding"):
+            # Required upstream output must be in the source the attempt works from (M1); a move that re-parents
+            # started work changes its inherited edges, so the attempt no longer qualifies (M2 review B2).
+            raise GateUnsatisfied(f"{what}: this attempt was dispatched with other dependencies than the Ticket now "
+                                  "has; a new dispatch is required (move it to REPLAN_REQUIRED and accept a plan "
+                                  "revision, or `aew work redispatch` a non-mutating Ticket)",
+                                  dispatch_binding=gc["dispatch_binding"])
         if unmet:
             raise GateUnsatisfied(f"{what}: gates not satisfied for the current evaluated snapshot",
                                   unmet=unmet, fingerprint=(gc["snapshot"] or {}).get("relevant_inputs_fingerprint"))
@@ -299,6 +307,7 @@ class EvidenceOps(WorkspaceOps):
                 if current and current["status"] == "active":
                     raise IllegalTransition(f"{unit['implementer_invocation']} is still active; cancel it first")
                 self.require_plan_binding(state, work_id)
+                self.require_dispatch_binding(state, work_id)
             elif st == "REVIEW_PENDING":
                 slot = "review"
             elif st == "VERIFY_PENDING":

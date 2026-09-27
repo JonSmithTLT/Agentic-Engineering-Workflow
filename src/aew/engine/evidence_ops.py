@@ -295,14 +295,15 @@ class EvidenceOps(WorkspaceOps):
 
     def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
                       card: str | None = None, scope: str = "ticket",
-                      execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
+                      execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
         """Dispatch a bounded invocation. The Role card (explicit, planned, or workflow default)
         determines the archetype; authority comes from the archetype only (ADR-0006)."""
         if self._is_evidence_unit_id(work_id):
             return self.invoke_evidence_unit(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
-                                             card=card, scope=scope, execution_profile=execution_profile)
+                                             card=card, scope=scope, execution_profile=execution_profile,
+                                             launch=launch)
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
-            ctx.execution_request = execution_profile
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.unit(state, work_id)
             st = unit["state"]
@@ -374,7 +375,9 @@ class EvidenceOps(WorkspaceOps):
 
     # ------------------------------------------------------------------ checks (bounded roles)
 
-    def check_run(self, *, invocation_token: str, check_id: str) -> dict[str, Any]:
+    def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None) -> dict[str, Any]:
+        """Run a project check as a bounded role. ``env`` is the complete environment of the check's process
+        (a harness run passes its agent environment, so a check never sees the supervisor's)."""
         with self.store.session() as s:
             inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run")
             work_id = inv["work_unit"]
@@ -396,7 +399,7 @@ class EvidenceOps(WorkspaceOps):
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
         else:
             verdict = None
-            run = C.run(cfg, workspace)
+            run = C.run(cfg, workspace, env=env)
         after = self.snapshot_of(workspace, ws_id)
         mutated = before["relevant_inputs_fingerprint"] != after["relevant_inputs_fingerprint"]
         result = "inconclusive" if mutated else ("pass" if run["exit_code"] == 0 else "fail")

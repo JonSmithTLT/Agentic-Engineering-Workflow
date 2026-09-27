@@ -57,6 +57,21 @@ def issue_token(state: dict[str, Any], kind: str, scope: dict[str, Any]) -> str:
     return f"aew1.{token_id}.{secret}"
 
 
+def rotate_invocation_token(state: dict[str, Any], inv_id: str, reason: str) -> str:
+    """Re-issue an active invocation's credential with the same scope and revoke the old one (ADR-0009).
+
+    Re-issuance, not new authority: the scope (invocation, role, work unit, generation) is copied. Every
+    process still holding the old credential loses its authority in the same commit.
+    """
+    inv = state["invocations"][inv_id]
+    old = inv["token_id"]
+    scope = dict(state["tokens"][old]["scope"])
+    token = issue_token(state, "invocation", scope)
+    revoke(state, old, reason)
+    inv["token_id"] = token.split(".")[1]
+    return token
+
+
 def token_id_of(token: str) -> str:
     match = TOKEN_RE.match(token or "")
     if not match:
@@ -126,6 +141,11 @@ def require_invocation(
     scope = record["scope"]
     invocation_id = scope["invocation_id"]
     invocation = state["invocations"].get(invocation_id)
+    if invocation is not None and record["revoked_at"] is not None and invocation["token_id"] != token_id:
+        # A rotated credential (a later harness run of the same invocation holds a new one) is stale
+        # authority, reported as such rather than as an unknown credential (ADR-0009).
+        raise StaleAuthority(f"this credential for invocation {invocation_id} was revoked: "
+                             f"{record.get('revoke_reason')}", revoke_reason=record.get("revoke_reason"))
     if invocation is None or invocation["token_id"] != token_id:
         raise PermissionDenied("credential does not match a known invocation")
     if record["revoked_at"] is not None or invocation["status"] != "active":

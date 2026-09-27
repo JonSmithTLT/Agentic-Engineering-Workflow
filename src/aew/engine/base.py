@@ -32,6 +32,8 @@ class TxnContext:
     # The Lead's execution selection (--profile/--model/--effort) for the invocation this dispatch creates;
     # None selects from policy (ADR-0010).
     execution_request: dict[str, Any] | None = None
+    # --launch: the invocation this dispatch creates is recorded with harness run 1 (ADR-0009).
+    launch_request: bool = False
 
     @property
     def state(self) -> dict[str, Any]:

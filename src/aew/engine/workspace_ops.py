@@ -69,6 +69,8 @@ class WorkspaceOps(RoleOps):
         state["work"][work_id]["invocations"].append(inv_id)
         if card is not None:
             self._pin_on(ctx, inv_id, card)
+        if ctx.launch_request:
+            self._record_launch_run(ctx, inv_id)
         ctx.refs.append(f"invocation:{inv_id}")
         return inv_id, token
 
@@ -77,6 +79,10 @@ class WorkspaceOps(RoleOps):
         policy, sha = self.execution_policy()
         return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
                          risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request)
+
+    # Refined by the harness mixin (ADR-0009): `--launch` records run 1 in the dispatch transaction.
+    def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
+        raise IllegalTransition("this engine cannot launch harness runs")
 
     def _complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]
@@ -106,9 +112,9 @@ class WorkspaceOps(RoleOps):
         )
 
     def work_assign(self, *, token: str, expect_rev: int, work_id: str,
-                    execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "work.assign") as ctx:
-            ctx.execution_request = execution_profile
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["kind"] != "ticket":

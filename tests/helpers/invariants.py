@@ -122,6 +122,46 @@ def control_violations(root: Path) -> list[str]:
                                 f"at {revoked}")
     # 6-14. M2 hierarchy and non-mutating invariants (ADR-0007/0008).
     problems += m2_violations(root, state)
+    # 17-18. M3 harness runs and credential rotation (ADR-0009).
+    problems += m3_violations(root, state, evidence)
+    return problems
+
+
+def m3_violations(root: Path, state: dict[str, Any], evidence: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+    problems: list[str] = []
+    tokens = state["tokens"]
+    for wid in state["work"]:
+        for ev in evidence.setdefault(wid, _evidence(root, wid)).values():
+            # 17. No evidence postdates the revocation of the credential that produced it (rotation included:
+            #     rule 5 sees only an invocation's current credential).
+            cred = ev["producer"].get("credential")
+            if cred is None:
+                continue
+            revoked = (tokens.get(cred) or {}).get("revoked_at")
+            if revoked and ev["created_at"] > revoked:
+                problems.append(f"{ev['id']} was written at {ev['created_at']} by credential {cred}, revoked at "
+                                f"{revoked} ({tokens[cred].get('revoke_reason')})")
+            # ... and the run it names is the one that held that credential.
+            inv = state["invocations"].get(ev["producer"]["invocation"], {})
+            holder = next((r["run"] for r in inv.get("runs") or [] if r["token_id"] == cred), None)
+            if ev["producer"].get("run") != holder:
+                problems.append(f"{ev['id']} names run {ev['producer'].get('run')}, but credential {cred} was held by "
+                                f"{holder}")
+    for inv_id, inv in sorted(state["invocations"].items()):
+        runs = inv.get("runs") or []
+        # 18. Runs are numbered in order; at most one run holds live authority, and only the latest: every
+        #     earlier run's credential is revoked, and the latest holds the invocation's credential.
+        if [r["run"] for r in runs] != [f"R-{inv_id}-{n}" for n in range(1, len(runs) + 1)]:
+            problems.append(f"{inv_id} runs are not numbered R-{inv_id}-1..n: {[r['run'] for r in runs]}")
+        live = [r["run"] for r in runs if not (tokens.get(r["token_id"]) or {}).get("revoked_at")]
+        if len(live) > 1:
+            problems.append(f"{inv_id} has {len(live)} runs with live credentials: {live}")
+        if live and live != [runs[-1]["run"]]:
+            problems.append(f"{inv_id}: {live} holds a live credential but is not the latest run {runs[-1]['run']}")
+        if runs and inv["status"] == "active" and runs[-1]["token_id"] != inv["token_id"]:
+            problems.append(f"{inv_id} is active but its latest run {runs[-1]['run']} does not hold its credential")
+        if len({r["token_id"] for r in runs}) != len(runs):
+            problems.append(f"{inv_id}: two runs share a credential")
     return problems
 
 

@@ -30,13 +30,13 @@ def resolve(checks_policy: dict[str, Any], check_id: str) -> dict[str, Any]:
     return cfg
 
 
-def run(cfg: dict[str, Any], workspace: Path) -> dict[str, Any]:
+def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
     command = [part.replace("{python}", sys.executable) for part in cfg["command"]]
     cwd = (workspace / cfg.get("cwd", ".")).resolve()
     started = time.monotonic()
     try:
         proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                              timeout=cfg.get("timeout_s", 900), stdin=subprocess.DEVNULL)
+                              timeout=cfg.get("timeout_s", 900), stdin=subprocess.DEVNULL, env=env)
         exit_code: int | None = proc.returncode
         log = f"$ {' '.join(command)}\n(cwd {cwd})\n\n--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
     except subprocess.TimeoutExpired as exc:

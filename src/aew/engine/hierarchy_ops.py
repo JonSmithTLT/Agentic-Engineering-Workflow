@@ -64,7 +64,8 @@ class HierarchyOps(NonMutatingOps):
         return {"snapshot": {"base_revision": commit, "children_digest": digest,
                              "relevant_inputs_fingerprint": f"authoritative:{(commit or '')[:12]}+children:{digest}"},
                 "guardrails": dict(NO_GUARDRAILS), "obligations": obligations, "gates": results, "evidence": evidence,
-                "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit)}
+                "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit),
+                "plan_binding": self.plan_binding_problem(state, work_id)}
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         if H.is_parent(self.unit(state, work_id)):

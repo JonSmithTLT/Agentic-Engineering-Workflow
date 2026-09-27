@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (APPLY_PATCH, Role, complete_investigation, create_investigation, create_planned_ticket,
-                     create_unit, dispatch, integrate, parent_review, parent_verify, plan_unit, prepare_and_validate,
-                     sample_project, submit_record, to_commit_ready, to_verified)
+from aewflow import (APPLY_PATCH, Role, assign, complete_investigation, create_investigation, create_planned_ticket,
+                     create_unit, dispatch, implement, integrate, parent_review, parent_verify, plan_unit,
+                     prepare_and_validate, sample_project, submit_record, to_commit_ready, to_verified)
 from conftest import git
 from invariants import assert_control_invariants
 
@@ -76,6 +76,47 @@ def test_an_ancestors_first_plan_acceptance_stales_every_descendant_plan(tmp_pat
     plan_unit(p, tmp_path, story, "Story plan v2.\n", reason="scope refined")
     assert show(p, waiting)["state"] == "BLOCKED"
     assert err(p, "integrate", "prepare", inflight)["code"] == "GATE_UNSATISFIED"
+    assert_control_invariants(p)
+
+
+def test_a_class0_plan_is_bound_to_its_ancestors_although_its_path_lists_no_plan_gate(tmp_path):
+    """M2 review B1: class 0 paths do not list ``accepted_plan``, but a class 0 unit's accepted plan is bound to
+    its ancestors' plans all the same. Record acceptance, publication and closeout refuse a stale binding, and
+    the Lead's reconfirmation of each unit is what lets it finish."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative", cls=0)
+    story = create_unit(p, "story", "Objective", cls=0, parent=epic)
+    plan_unit(p, tmp_path, story)
+    look = create_investigation(p, tmp_path, parent=story, cls=0)
+    change = create_planned_ticket(p, tmp_path, cls=0, extra=("--parent", story))
+    role, _ = dispatch(p, look)
+    p.lead("evidence", "ingest", look, "--evidence", submit_record(role, "discovery_record")["evidence"])
+    implement(assign(p, change))
+    p.lead("work", "transition", change, "--to", "COMMIT_READY")
+    prepare_and_validate(p, change)
+    before = main_commit(p)
+    plan_unit(p, tmp_path, epic, "Epic plan v1: the initiative is narrowed.\n")  # the Epic's first plan
+    for wid in (look, change):
+        gates = p.ok("gate", "show", wid)
+        assert "accepted_plan" not in gates["obligations"]["gates"]  # class 0 path
+        assert gates["unmet"] == {"accepted_plan": "STALE"} and epic in gates["plan_binding"]["ancestors"], wid
+    refused = err(p, "work", "accept", look)
+    assert refused["code"] == "GATE_UNSATISFIED" and epic in refused["details"]["plan_binding"]["ancestors"]
+    assert err(p, "integrate", "publish", change)["code"] == "GATE_UNSATISFIED"
+    assert main_commit(p) == before and show(p, change)["integration"]["status"] == "validated"
+    assert any(a.startswith(f"{look}: an ancestor's plan changed") for a in p.ok("resume", "--json")["next_actions"])
+    assert_control_invariants(p)
+
+    p.lead("plan", "reconfirm", look, "--reason", "the question still serves the narrowed initiative")
+    p.lead("plan", "reconfirm", change, "--reason", "the change is still in scope")
+    p.lead("work", "accept", look)
+    p.lead("integrate", "publish", change)
+    assert show(p, story)["state"] == "ACCEPTANCE_PENDING"
+    closing = err(p, "work", "close", story, "--reason", "children done")  # the Story's own plan is stale too
+    assert closing["code"] == "GATE_UNSATISFIED" and "plan_binding" in closing["details"]
+    p.lead("plan", "reconfirm", story, "--reason", "the objective still serves the initiative")
+    p.lead("work", "close", story, "--reason", "children done")
+    assert [show(p, w)["state"] for w in (look, change, story)] == ["DONE", "DONE", "DONE"]
     assert_control_invariants(p)
 
 

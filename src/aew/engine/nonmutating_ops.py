@@ -518,7 +518,8 @@ class NonMutatingOps(IntegrationOps):
         return {"snapshot": {"base_revision": commit, "subject": subject_ref,
                              "relevant_inputs_fingerprint": (subject or {}).get("id")},
                 "guardrails": dict(NO_GUARDRAILS), "obligations": obligations, "gates": results, "evidence": evidence,
-                "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit)}
+                "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit),
+                "plan_binding": self.plan_binding_problem(state, work_id)}
 
     # Lead-transition guards for non-mutating Tickets (mutating Tickets keep their M1 guards)
 

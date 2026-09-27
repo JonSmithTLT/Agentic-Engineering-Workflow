@@ -129,7 +129,7 @@ class EvidenceOps(WorkspaceOps):
                                         "action": f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision"}
         return {"snapshot": snapshot, "guardrails": guard, "obligations": obligations, "gates": results,
                 "evidence": evidence, "evidence_problems": problems,
-                "open_required_findings": G.open_required_findings(unit)}
+                "open_required_findings": G.open_required_findings(unit), "plan_binding": binding}
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         raise NotImplementedError  # provided by the non-mutating and hierarchy mixins
@@ -140,6 +140,8 @@ class EvidenceOps(WorkspaceOps):
         gc.pop("evidence")
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
+        if gc.get("plan_binding"):
+            gc["unmet"].setdefault("accepted_plan", G.STALE)  # blocks progress even off the risk path (B1)
         return gc
 
     def _require_gates(self, gc: dict[str, Any], names: list[str], *, what: str) -> None:
@@ -148,6 +150,12 @@ class EvidenceOps(WorkspaceOps):
             raise GateUnsatisfied("evidence integrity problems", problems=gc["evidence_problems"])
         if gc["guardrails"]["violations"]:
             raise GateUnsatisfied(f"{what}: guardrail violations", violations=gc["guardrails"]["violations"])
+        if gc.get("plan_binding"):
+            # An accepted plan stays bound to its ancestors' plans whatever the risk path lists: a class 0 path
+            # has no accepted_plan gate, yet its plan is just as stale (ADR-0007, fail closed; M2 review B1).
+            raise GateUnsatisfied(f"{what}: the accepted plan is stale under its ancestors' current plans; "
+                                  "`aew plan reconfirm <id> --reason ...` or accept a new plan revision first",
+                                  unmet={**unmet, "accepted_plan": G.STALE}, plan_binding=gc["plan_binding"])
         if unmet:
             raise GateUnsatisfied(f"{what}: gates not satisfied for the current evaluated snapshot",
                                   unmet=unmet, fingerprint=(gc["snapshot"] or {}).get("relevant_inputs_fingerprint"))

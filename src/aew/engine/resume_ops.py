@@ -95,7 +95,7 @@ class ResumeOps(HierarchyOps):
         if st == "RUNNING":
             if execution.get("record"):
                 gc = self.gate_context(state, wid)
-                unmet = G.unmet(gc["gates"])
+                unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
                 if unmet:
                     return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
                 return ["advance to review/verification, or accept the record (`aew work accept`)"]
@@ -125,7 +125,7 @@ class ResumeOps(HierarchyOps):
                 gc = self.gate_context(state, wid)
             except AEWError as exc:
                 return out + [f"cannot evaluate parent gates: {exc.message}"]
-            unmet = G.unmet(gc["gates"])
+            unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
             if (u.get("parent_verification") or {}).get("awaiting_classification"):
                 out.append(f"classify the failed parent verification (`aew verify classify {wid}`)")
             elif unmet:

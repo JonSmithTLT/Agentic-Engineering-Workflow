@@ -44,7 +44,6 @@ def main_commit(p):
 # ------------------------------------------------------------------ Blocker 1: class 0 work under a stale ancestor plan
 
 
-@B1
 def test_class0_nonmutating_completion_requires_reconfirmation_after_an_ancestor_plan(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)
@@ -58,7 +57,6 @@ def test_class0_nonmutating_completion_requires_reconfirmation_after_an_ancestor
     assert unit(p, wid)["state"] != "DONE", "class 0 record accepted under a stale ancestor plan binding"
 
 
-@B1
 def test_class0_mutating_commit_ready_requires_reconfirmation_after_an_ancestor_plan(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)
@@ -69,7 +67,6 @@ def test_class0_mutating_commit_ready_requires_reconfirmation_after_an_ancestor_
     assert unit(p, wid)["state"] != "COMMIT_READY", "class 0 COMMIT_READY under a stale ancestor plan binding"
 
 
-@B1
 def test_class0_mutating_publication_requires_reconfirmation_after_an_ancestor_plan(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)
@@ -84,7 +81,6 @@ def test_class0_mutating_publication_requires_reconfirmation_after_an_ancestor_p
         "class 0 candidate published to DONE under a stale ancestor plan binding"
 
 
-@B1
 def test_class0_mutating_prepare_requires_reconfirmation_after_an_ancestor_plan(tmp_path):
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=1)

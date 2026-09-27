@@ -8,6 +8,8 @@ on:
   schedule:
     - cron: "17 7 * * *"   # daily, 07:17 UTC
   workflow_dispatch:
+  push:
+    branches: [ci/test-strategy]   # TEMP: one validation run before the PR; reverted before hand-off
 
 permissions:
   contents: read

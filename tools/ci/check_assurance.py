@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -139,6 +140,15 @@ def main(argv: list[str] | None = None) -> int:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write(text)
     print(text)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        # Annotations show on the pull request's checks page (GitHub keeps at most 10 errors per step).
+        for platform, f in sorted(facts.items()):
+            print(f"::notice title=assurance {platform}::{f['collected']} collected, {f['ran']} run, "
+                  + ", ".join(f"{n} {o}" for o, n in sorted(f["outcomes"].items())))
+        for p in problems[:9]:
+            print(f"::error title=assurance::{p}")
+        if len(problems) > 9:
+            print(f"::error title=assurance::... and {len(problems) - 9} more problem(s); see the job summary")
     return 1 if problems else 0
 
 

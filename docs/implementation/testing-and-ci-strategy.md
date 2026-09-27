@@ -138,7 +138,7 @@ Before and after:
 | Runner minutes per PR commit | ~124 (2 × ~62) | 31–35 |
 | Local Windows, whole suite serially | 1499 s (per-test sum; 552 tests) | 1520 s (602 tests: 597 passed, 5 pinned skips, the same outcomes as the parallel run) |
 
-The longest jobs are the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s), the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there, hence 2 shards since M2), the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
+The longest jobs are the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s), the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there). Since M2 the lane jobs are: Linux integration 1, acceptance 1, regression 2, adversarial 1; Windows integration 2, acceptance 2, regression 3, adversarial 2 (14 lane jobs, 17 with `core` and `assurance`, sized from the first two M2 CI runs); the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
 
 A lane that outgrows its budget gets another shard: add a matrix entry in `ci.yml`, since shards are deterministic. Do not move it to nightly.
 

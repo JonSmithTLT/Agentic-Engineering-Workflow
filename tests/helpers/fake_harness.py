@@ -42,6 +42,14 @@ class FakeAdapter(HarnessAdapter):
         if script is None:
             from aew.errors import HarnessLaunchFailed
             raise HarnessLaunchFailed(f"no fake script for {contract.run}")
+        spec = json.loads(script.read_text(encoding="utf-8"))
+        header = spec if isinstance(spec, dict) else {}
+        if header.get("health") == "incompatible":  # the capability probe of a harness that lacks something
+            from aew.errors import HarnessIncompatible
+            raise HarnessIncompatible("fake capability probe: required operation session.fork is missing")
+        pin = contract.execution_profile
+        self.effective = header.get("effective") or [
+            {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}]
         hdir = self.run_dir / "harness"
         hdir.mkdir(exist_ok=True)
         (hdir / "prompt.md").write_text(contract.prompt, encoding="utf-8")
@@ -52,8 +60,10 @@ class FakeAdapter(HarnessAdapter):
                                     env=agent_env, cwd=contract.workspace, stdin=subprocess.DEVNULL,
                                     stdout=self._out, stderr=self._out)
         self.emit({"event": "fake.launched", "pid": self.proc.pid, "script": script.name})
-        self.model = contract.execution_profile.get("model")
-        return {"harness": "fake", "version": "fake-1", "session": f"fake-{contract.run}"}
+        self.session = f"fake-{contract.run}"
+        (hdir / "sessions").mkdir(exist_ok=True)
+        (hdir / "sessions" / self.session).write_text(contract.run, encoding="utf-8")
+        return {"harness": "fake", "version": "fake-1", "session": self.session, "state_dir": str(hdir)}
 
     def inspect(self) -> dict[str, Any]:
         rc = self.proc.poll()
@@ -78,7 +88,7 @@ class FakeAdapter(HarnessAdapter):
         if not hasattr(self, "transcript"):
             return {}
         lines = self.transcript.read_text(encoding="utf-8").splitlines() if self.transcript.exists() else []
-        return {"effective_model": self.model, "transcript_steps": len(lines)}
+        return {"effective": self.effective, "sessions": [self.session], "transcript_steps": len(lines)}
 
 
 # ---------------------------------------------------------------------------------------------- test helpers

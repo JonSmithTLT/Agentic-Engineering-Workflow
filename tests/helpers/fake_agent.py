@@ -44,6 +44,13 @@ def aew(*args: str, env: dict[str, str] | None = None) -> dict[str, Any]:
     return out
 
 
+def bridge_env(s: dict[str, Any]) -> tuple[str, str]:
+    """The environment names of the bridge a step talks to: this run's, or the Lead session's."""
+    if s.get("bridge") == "lead":
+        return ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")
+    return ("AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY")
+
+
 def wait_file(path: str, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -74,10 +81,18 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8", newline="\n")
         return {"wrote": sorted(s["files"])}
-    if do == "aew":
-        return aew(*s["args"], env=s.get("env"))
+    if do == "aew":  # {FORGED_CREDENTIAL} is built here, so no credential-shaped string sits in any file
+        forged = "aew1.tk_" + "0" * 16 + "." + "F" * 43
+        return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=s.get("env"))
     if do == "check":
         return aew("check", "run", s["id"])
+    if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)
+        rev = json.loads(aew("lead", "show")["stdout"])["revision"]
+        return aew(*s["args"], "--expect-rev", str(rev))
+    if do == "submit_raw":  # whatever text the model produced, well-formed or not
+        path = Path(state["tmp"]) / f"submission-{state['n']}.md"
+        path.write_text(s["text"], encoding="utf-8")
+        return aew("submit", "--kind", s["kind"], "--file", str(path))
     if do == "submit":
         import yaml
         path = Path(state["tmp"]) / f"submission-{state['n']}.md"
@@ -122,12 +137,13 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         from aew.harness import bridge
         try:
             return {"ok": True, "result": bridge.call(s["op"], s["args"], endpoint=s.get("endpoint"),
-                                                      key=s.get("key"))}
+                                                      key=s.get("key"), env_names=bridge_env(s))}
         except Exception as exc:
             return {"ok": False, "code": getattr(exc, "code", type(exc).__name__), "message": str(exc)}
     if do == "bridge_payload":  # send an arbitrary request object over this run's bridge
         from multiprocessing.connection import Client
-        endpoint, key = os.environ["AEW_AGENT_ENDPOINT"], bytes.fromhex(os.environ["AEW_AGENT_KEY"])
+        names = bridge_env(s)
+        endpoint, key = os.environ[names[0]], bytes.fromhex(os.environ[names[1]])
         fam = "AF_PIPE" if endpoint.startswith("\\\\.\\pipe\\") else "AF_UNIX"
         conn = Client(endpoint, family=fam, authkey=key)
         conn.send_bytes(s["raw"].encode("utf-8") if "raw" in s else json.dumps(s["request"]).encode("utf-8"))
@@ -157,7 +173,8 @@ def main() -> int:
     parser.add_argument("--script", required=True)
     parser.add_argument("--transcript", required=True)
     args = parser.parse_args()
-    steps = json.loads(Path(args.script).read_text(encoding="utf-8"))
+    spec = json.loads(Path(args.script).read_text(encoding="utf-8"))
+    steps = spec["steps"] if isinstance(spec, dict) else spec
     transcript = Path(args.transcript)
     state = {"tmp": str(transcript.parent), "n": 0}
     for i, s in enumerate(steps):

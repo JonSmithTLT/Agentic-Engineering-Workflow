@@ -272,6 +272,7 @@ class Supervisor:
                 self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
             except Exception as exc:
                 self.record["result"] = {"error": f"{type(exc).__name__}: {exc}"}
+            self._compare_effective()
             self.record["evidence"] = self._evidence()
             self.record.update(status=status, reason=reason, ended_at=utc_now())
             if self.bridge is not None:
@@ -281,6 +282,22 @@ class Supervisor:
             leaks = runlog.scan_for_credentials(self.run_dir)
             self.record["credential_scan"] = {"clean": not leaks, "files": leaks}
             self._save()
+
+    def _compare_effective(self) -> None:
+        """Requested (pinned) versus effective execution: a mismatch is flagged, never silently accepted."""
+        pin = self.record.get("execution_profile") or {}
+        effective = (self.record.get("result") or {}).get("effective")
+        if effective is None:
+            self.record["model_check"] = {"status": "unreported"}
+            return
+        wanted = {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}
+        mismatches = [e for e in effective
+                      if e.get("provider") != wanted["provider"] or e.get("model") != wanted["model"]
+                      or (e.get("effort") is not None and e.get("effort") != wanted["effort"])]
+        self.record["model_check"] = {"status": "mismatch" if mismatches else "match", "requested": wanted,
+                                      "effective": effective, "mismatches": mismatches}
+        if mismatches:
+            self._event("model_mismatch", requested=wanted, effective=mismatches)
 
     def _drop_credential(self) -> None:
         self._credential = ""

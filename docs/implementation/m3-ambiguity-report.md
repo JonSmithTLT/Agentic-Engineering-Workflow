@@ -5,6 +5,12 @@
 - **Step 0 is complete:** `m3-opencode-v2-rebaseline.md`. The spike confirmed the candidate interface (a private V2 server, HTTP+SSE from Python) and every required lifecycle operation, so the plan below is unchanged. Spike facts that refine implementation details are listed in that document (§5).
 - **Step 1 is complete** (execution profiles; ADR-0010 updated to the implementation). One naming refinement: the invocation pin is `inv.execution_profile`, not `inv.execution`, because a non-mutating Ticket's `unit.execution` already names its attempt record (ADR-0008). The evidence field is `producer.execution_profile`.
 - **Step 2 is complete** (the harness core: runs and rotation, the supervisor, process-tree ownership, the custody bridge and CLI routing, `harness launch|status|wait|stop`, `--launch` on the dispatch commands, oracle rules 17 and 18). ADR-0009 is updated to the implementation. **M3-D1**, a pre-existing M2 defect found by the launch preconditions, was fixed with a regression written first (ADR-0009, Consequences).
+- **Step 3 is complete.**
+  - An adapter-neutral conformance suite (`tests/helpers/harness_conformance.py`, 15 scenarios, run against the fake harness in CI; step 4 adds the OpenCode driver).
+  - The Lead custody broker, `aew lead session`, is harness-neutral and shares the invocation bridge's transport; its parity is tested.
+  - The supervisor compares requested and effective model and effort (`model_check`).
+  - `docs/implementation/harness-conformance.md` covers the contract, scenarios, the adding-a-harness mapping and the designer's step-4 watch list.
+  - **Open observation:** `test_an_acquired_seat_is_released_or_held_explicitly` failed once, during roughly 40-way parallel overload (the full suite plus a stress loop), and has not reproduced in 13 targeted runs (up to 24 concurrent workers). The probable cause is the 180 s CLI timeout, since one Lead session makes about ten CLI round trips plus a run launch; that helper's timeout is now 600 s. Re-check if it recurs in CI.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

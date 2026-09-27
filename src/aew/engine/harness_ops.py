@@ -277,7 +277,9 @@ class HarnessOps(ResumeOps):
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
-                            "evidence": (record or {}).get("evidence") or [], "run_dir": str(directory)})
+                            "evidence": (record or {}).get("evidence") or [],
+                            "model_check": ((record or {}).get("model_check") or {}).get("status"),
+                            "run_dir": str(directory)})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
         return {"runs": out}

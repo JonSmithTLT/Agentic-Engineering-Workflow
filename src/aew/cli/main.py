@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Callable
 
@@ -46,8 +47,24 @@ def _utf8_streams() -> None:
             pass
 
 
+def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[Any, bool]:
+    """Run a command here, or, inside a Lead session, through the session's Lead bridge (ADR-0009)."""
+    if os.environ.get("AEW_LEAD_BROKER"):
+        from aew.errors import UsageError
+        from aew.harness import lead_broker
+
+        refusal = lead_broker.refuses_locally(args)
+        if refusal:
+            raise UsageError(refusal)
+        if lead_broker.routes(args):
+            reply = lead_broker.forward(argv, args)
+            return reply["result"], reply["json"]
+    return handler(args), getattr(args, "json", False)
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8_streams()
+    argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)
@@ -55,14 +72,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 2
     try:
-        result = handler(args)
+        result, as_json = _run(args, argv, handler)
     except AEWError as exc:
         sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
         return exc.exit_code
     except KeyboardInterrupt:
         return 130
     if result is not None:
-        emit(result, as_json=getattr(args, "json", False))
+        emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     return 0

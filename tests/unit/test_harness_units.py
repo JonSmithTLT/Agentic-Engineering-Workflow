@@ -208,3 +208,58 @@ def test_rotation_reissues_the_same_scope_and_kills_the_old_credential():
     with pytest.raises(errors.StaleAuthority) as exc:
         require_invocation(state, old, "check.run")
     assert "rotated: R-INV-1-2" in exc.value.message
+
+
+# ------------------------------------------------------------------ Lead bridge
+
+def _parse(*argv):
+    from aew.cli.main import build_parser
+
+    return build_parser().parse_args(list(argv))
+
+
+@pytest.mark.parametrize("argv, refused", [
+    (("lead", "acquire", "--expect-rev", "0"), True),
+    (("lead", "takeover", "--expect-rev", "0", "--reason", "x"), True),
+    (("lead", "release", "--expect-rev", "0"), True),
+    (("lead", "handoff", "offer", "--expect-rev", "0"), True),
+    (("lead", "handoff", "accept", "--offer", "o", "--expect-rev", "0"), True),
+    (("lead", "handoff", "cancel", "--expect-rev", "0"), False),
+    (("plan", "accept", "T-1", "--revision", "1", "--expect-rev", "0"), False),
+    (("work", "assign", "T-1", "--expect-rev", "0"), False),
+    (("lead", "show"), False),
+])
+def test_credential_emitting_commands_are_recognized(argv, refused):
+    from aew.harness import lead_broker
+
+    assert bool(lead_broker.refuses_locally(_parse(*argv))) is refused
+
+
+def test_only_uncredentialed_lead_commands_route_to_a_lead_session(monkeypatch):
+    from aew.harness import lead_broker
+
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    monkeypatch.delenv(lead_broker.ENV_ENDPOINT, raising=False)
+    lead_cmd = _parse("checkpoint", "--next", "x", "--expect-rev", "3")
+    assert not lead_broker.routes(lead_cmd)  # no session
+    monkeypatch.setenv(lead_broker.ENV_ENDPOINT, "ep")
+    assert lead_broker.routes(lead_cmd)
+    assert not lead_broker.routes(_parse("status"))  # read-only: runs locally
+    assert not lead_broker.routes(_parse("checkpoint", "--expect-rev", "3", "--token", "t"))  # explicit credential
+    monkeypatch.setenv("AEW_LEAD_TOKEN", "t")
+    assert not lead_broker.routes(lead_cmd)
+
+
+def test_lead_bridge_arguments_are_typed():
+    from aew.harness import lead_broker
+
+    ok = {"op": "lead.cli", "args": {"argv": ["lead", "show"], "cwd": "/", "stdin": ""}}
+    assert bridge.validate_request(ok, lead_broker.OPERATIONS)[0] == "lead.cli"
+    for bad in ({"argv": "lead show", "cwd": "/", "stdin": ""}, {"argv": ["lead", 1], "cwd": "/", "stdin": ""},
+                {"argv": [], "cwd": "/", "stdin": "", "token": "t"}):
+        with pytest.raises(errors.UsageError):
+            bridge.validate_request({"op": "lead.cli", "args": bad}, lead_broker.OPERATIONS)
+    with pytest.raises(errors.PermissionDenied):  # each bridge offers only its own operations
+        bridge.validate_request({"op": "submit", "args": {"kind": "k", "text": "t"}}, lead_broker.OPERATIONS)
+    with pytest.raises(errors.PermissionDenied):
+        bridge.validate_request(ok, bridge.OPERATIONS)

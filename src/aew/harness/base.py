@@ -55,5 +55,7 @@ class HarnessAdapter(ABC):
         raise HarnessIncompatible(f"harness {self.name} does not support interrupting a turn")
 
     def collect(self) -> dict[str, Any]:
-        """Non-authoritative facts after the run: effective model, usage, sessions, context sizes."""
+        """Non-authoritative facts after the run: usage, sessions, context sizes, and ``effective``: every
+        ``{"provider", "model", "effort"}`` the harness actually ran (``effort`` None when not reported).
+        The supervisor compares ``effective`` with the pinned execution profile and flags any mismatch."""
         return {}

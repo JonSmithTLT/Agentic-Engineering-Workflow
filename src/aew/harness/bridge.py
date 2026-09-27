@@ -1,7 +1,9 @@
-"""Credential custody bridge (ADR-0009; ADR-0005 amendment).
+"""Credential custody bridges (ADR-0009; ADR-0005 amendment).
 
 Invariant: **an agent can exercise exactly its invocation's authorized operations without possessing, or
-being able to print, the raw AEW credential.**
+being able to print, the raw AEW credential.** The same holds for the Lead: the Lead's harness session
+requests Lead operations through the *Lead bridge* (``aew.harness.lead_broker``), which is this same
+server, protocol, key challenge, redaction and drain with a different operation table.
 
 The run supervisor holds the invocation credential in memory. It serves this bridge on a local
 endpoint (a named pipe on Windows, an AF_UNIX socket in a private directory on POSIX) guarded by a
@@ -40,10 +42,12 @@ from aew.harness.contract import redact
 
 ENV_ENDPOINT = "AEW_AGENT_ENDPOINT"
 ENV_KEY = "AEW_AGENT_KEY"
-OPERATIONS: dict[str, frozenset[str]] = {
-    "whoami": frozenset(),
-    "check.run": frozenset({"check_id"}),
-    "submit": frozenset({"kind", "text"}),
+# Operation -> exact arguments and their types. A request can never name an invocation, run or credential.
+Operations = dict[str, dict[str, type]]
+OPERATIONS: Operations = {
+    "whoami": {},
+    "check.run": {"check_id": str},
+    "submit": {"kind": str, "text": str},
 }
 MAX_REQUEST = 16 * 1024 * 1024
 IS_WINDOWS = sys.platform == "win32"
@@ -67,35 +71,31 @@ def rebuild_error(err: dict[str, Any]) -> errors.AEWError:
     return exc
 
 
-def validate_request(request: Any) -> tuple[str, dict[str, Any]]:
+def validate_request(request: Any, operations: Operations = OPERATIONS) -> tuple[str, dict[str, Any]]:
     if not isinstance(request, dict) or set(request) != {"op", "args"} or not isinstance(request["args"], dict):
         raise errors.UsageError("a bridge request is exactly {op, args}")
     op, args = request["op"], request["args"]
-    if op not in OPERATIONS:
-        raise errors.PermissionDenied(f"the AEW bridge does not offer {op!r}", offered=sorted(OPERATIONS))
-    if set(args) != OPERATIONS[op]:
-        raise errors.UsageError(f"{op} takes exactly {sorted(OPERATIONS[op])}; the bridge acts only as its own run "
+    if op not in operations:
+        raise errors.PermissionDenied(f"this AEW bridge does not offer {op!r}", offered=sorted(operations))
+    spec = operations[op]
+    if set(args) != set(spec):
+        raise errors.UsageError(f"{op} takes exactly {sorted(spec)}; a bridge acts only as its own holder "
                                 "(no invocation, run or credential can be named)", got=sorted(args))
-    if not all(isinstance(v, str) for v in args.values()):
-        raise errors.UsageError(f"{op} arguments are strings")
+    for name, kind in spec.items():
+        value = args[name]
+        if not isinstance(value, kind) or (kind is list and not all(isinstance(v, str) for v in value)):
+            raise errors.UsageError(f"{op}: {name} must be {'a list of strings' if kind is list else 'a string'}")
     return op, args
 
 
 class BridgeServer:
     """The supervisor side. ``handler(op, args)`` runs one request with the held credential."""
 
-    def __init__(self, handler: Callable[[str, dict[str, Any]], Any]) -> None:
+    def __init__(self, handler: Callable[[str, dict[str, Any]], Any], operations: Operations = OPERATIONS) -> None:
         self.handler = handler
+        self.operations = operations
         self.key = secrets.token_bytes(32)
-        self._private_dir: str | None = None
-        if IS_WINDOWS:
-            self.address = r"\\.\pipe\aew-bridge-" + secrets.token_hex(16)
-            family = "AF_PIPE"
-        else:
-            self._private_dir = tempfile.mkdtemp(prefix="aew-bridge-")
-            os.chmod(self._private_dir, 0o700)
-            self.address = os.path.join(self._private_dir, "s")
-            family = "AF_UNIX"
+        self.address, family, self._private_dir = private_address()
         self._listener = Listener(self.address, family=family, authkey=self.key)
         self._closed = threading.Event()
         self._serial = threading.Lock()  # one engine operation at a time
@@ -133,7 +133,7 @@ class BridgeServer:
         try:
             raw = conn.recv_bytes(MAX_REQUEST)
             try:
-                op, args = validate_request(json.loads(raw.decode("utf-8")))
+                op, args = validate_request(json.loads(raw.decode("utf-8")), self.operations)
                 with self._serial:
                     if self._closed.is_set():
                         raise errors.StaleAuthority("this run's AEW bridge is closed: the run ended, was superseded, "
@@ -190,12 +190,13 @@ def available() -> bool:
     return bool(os.environ.get(ENV_ENDPOINT))
 
 
-def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str | None = None) -> Any:
-    """The agent side: forward one operation to this run's supervisor."""
-    endpoint = endpoint or os.environ.get(ENV_ENDPOINT)
-    key = key or os.environ.get(ENV_KEY)
+def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str | None = None,
+         env_names: tuple[str, str] = (ENV_ENDPOINT, ENV_KEY)) -> Any:
+    """The client side: forward one operation to the bridge named by ``env_names`` (or given explicitly)."""
+    endpoint = endpoint or os.environ.get(env_names[0])
+    key = key or os.environ.get(env_names[1])
     if not endpoint or not key:
-        raise errors.UsageError(f"no AEW bridge: {ENV_ENDPOINT} and {ENV_KEY} are not set")
+        raise errors.UsageError(f"no AEW bridge: {env_names[0]} and {env_names[1]} are not set")
     family = "AF_PIPE" if endpoint.startswith("\\\\.\\pipe\\") else "AF_UNIX"
     try:
         authkey = bytes.fromhex(key)
@@ -204,10 +205,10 @@ def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str
     try:
         conn = Client(endpoint, family=family, authkey=authkey)
     except AuthenticationError:
-        raise errors.PermissionDenied("the AEW bridge refused this key: it belongs to a different run") from None
+        raise errors.PermissionDenied("the AEW bridge refused this key: it belongs to a different holder") from None
     except (OSError, EOFError):
-        raise errors.StaleAuthority("this run's AEW bridge is closed: the run ended, was superseded, or its "
-                                    "invocation ended; nothing more can be recorded by it", endpoint=endpoint) from None
+        raise errors.StaleAuthority("this AEW bridge is closed: its run or session ended, was superseded, or lost "
+                                    "its authority; nothing more can be done through it", endpoint=endpoint) from None
     try:
         conn.send_bytes(json.dumps({"op": op, "args": args}).encode("utf-8"))
         reply = json.loads(conn.recv_bytes(MAX_REQUEST).decode("utf-8"))
@@ -226,3 +227,12 @@ def read_submission(path: str) -> str:
     if path == "-":
         return sys.stdin.read()
     return Path(path).read_text(encoding="utf-8")
+
+
+def private_address() -> tuple[str, str, str | None]:
+    """(address, family, private directory to remove) for a new bridge endpoint."""
+    if IS_WINDOWS:
+        return r"\\.\pipe\aew-bridge-" + secrets.token_hex(16), "AF_PIPE", None
+    directory = tempfile.mkdtemp(prefix="aew-bridge-")
+    os.chmod(directory, 0o700)
+    return os.path.join(directory, "s"), "AF_UNIX", directory

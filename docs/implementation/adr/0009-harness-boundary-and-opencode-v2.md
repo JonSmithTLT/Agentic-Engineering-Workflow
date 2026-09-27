@@ -99,7 +99,18 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
 
 **Why the bridge key is acceptable.** It is a run-scoped capability that every agent process may use (they *are* the agent). It is not the AEW credential, grants only what the engine already authorizes, and is useless once the run ends, rotates or is revoked.
 
-**The Lead is symmetric (M3 step 4).** `aew opencode` holds the Lead credential and serves a **Lead bridge**. It refuses credential-emitting commands, requires `--launch` on dispatch, and redacts `aew1.` strings.
+**The Lead is symmetric** (`src/aew/harness/lead_broker.py`, M3 step 3).
+- `aew lead session [--acquire] -- <harness command>` holds the Lead credential in memory and serves a **Lead bridge**. `aew opencode` (step 4) is this command with an OpenCode TUI. The credential comes from `AEW_LEAD_TOKEN` in the operator's own shell (removed from the session's environment), or from an in-process `--acquire`.
+- The Lead bridge is the same `BridgeServer` (JSON, key challenge, typed exact arguments, redaction, drain) with one operation, `lead.cli {argv, cwd, stdin}`. The CLI routes every Lead-authenticated command there when the session supplies no credential, and the broker runs the same command handler with the held credential.
+- **The broker refuses:**
+  - credential-emitting commands (`lead acquire|takeover|release`, `lead handoff offer|accept`), refused locally in the session too;
+  - dispatch without `--launch`;
+  - an explicit `--token`;
+  - read-only commands;
+  - other projects.
+- When the held credential stops being the current Lead's, the broker closes its bridge.
+- Parity with the invocation bridge is tested property by property (`harness-conformance.md` §3).
+- With `--acquire`, the seat is released at exit when nothing is in flight; otherwise it stays held and the output says that continuing needs a terminal takeover. The credential is never printed.
 
 **Why custody at all.** The spike showed that anything a harness shell prints is persisted twice, in the harness DB and in shell-output files. A harness permission layer is not secret isolation: an `edit` deny was bypassed through the shell.
 

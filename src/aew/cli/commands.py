@@ -147,6 +147,14 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a), expect_rev=a.expect_rev))
 
+    q = lsub.add_parser("session", help="run a Lead harness session that never sees the Lead credential (ADR-0009)")
+    q.add_argument("--acquire", action="store_true",
+                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    q.add_argument("--session-label")
+    q.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    q.add_argument("harness_command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
+    q.set_defaults(handler=_lead_session)
+
 
 def _register_authority(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("authority", help="classify candidate authority sources discovered by init")
@@ -195,6 +203,16 @@ def _init(args: argparse.Namespace) -> Any:
         "authority_candidates": engine.manifest["authority"]["candidates"],
         "next": "acquire Lead authority: aew lead acquire --expect-rev 0",
     }
+
+
+def _lead_session(args: argparse.Namespace) -> Any:
+    from aew.harness import lead_broker
+
+    command = list(args.harness_command)
+    if command[:1] == ["--"]:
+        command = command[1:]
+    return lead_broker.run_session(_engine(args), command, acquire=args.acquire, session_label=args.session_label,
+                                   keep_seat=args.keep_seat)
 
 
 def _resume(args: argparse.Namespace) -> Any:

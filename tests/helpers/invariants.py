@@ -239,4 +239,15 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
             problems.append(f"{inv_id} ended ({inv['status']}) but its observation is still marked active")
         if inv["status"] == "active" and obs and tokens.get(inv["token_id"], {}).get("revoked_at"):
             problems.append(f"{inv_id} observation invocation is active with a revoked credential")
+        # 13. Consumed inputs were CURRENT, external, or acknowledged by a recorded decision for exactly the
+        #     commit this invocation was dispatched against (dependency satisfied != input acceptable).
+        dispatched_at = obs.get("commit") or (inv.get("snapshot") or {}).get("base_revision")
+        acks = work.get(inv["work_unit"], {}).get("input_acknowledgements", [])
+        for i in inv.get("inputs") or []:
+            if i.get("freshness") == "CURRENT" or i.get("basis") == "external":
+                continue
+            ack = next((a for a in acks if a["decision"] == i.get("acknowledgement")), None)
+            if not ack or (ack["evidence"], ack["sha256"], ack["commit"]) != (i["id"], i["sha256"], dispatched_at):
+                problems.append(f"{inv_id} consumed {i['id']} ({i.get('freshness')}) without an acknowledgement "
+                                f"for its dispatch commit {str(dispatched_at)[:12]}")
     return problems

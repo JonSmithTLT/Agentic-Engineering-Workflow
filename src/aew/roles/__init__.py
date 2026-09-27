@@ -36,6 +36,8 @@ AUTHORITY_SENSITIVE_CAPABILITIES = frozenset({
 
 SLOT_ARCHETYPES = {"execute": {"implementer", "investigator", "researcher", "planner"},
                    "review": {"reviewer"}, "verify": {"verifier"}}
+# The archetypes that may execute a non-mutating Ticket (ADR-0008). Implementers never do.
+NON_MUTATING_EXECUTORS = frozenset({"investigator", "researcher", "planner"})
 
 
 @dataclass(frozen=True)

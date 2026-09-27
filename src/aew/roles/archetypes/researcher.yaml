@@ -2,18 +2,18 @@ schema: aew/role-archetype/v1
 role: researcher
 persistent: false
 dispatchable: true
-dispatch_status: "cards may extend it now; dispatch arrives with the non-mutating Ticket path (M2)"
-default_card: null
+default_card: researcher
 authority:
   - resolve questions about external technologies, dependencies, APIs, protocols and standards (WC §5.3)
 responsibilities:
   - establish what the external technology actually supports, with versions and sources
   - separate documented facts from inference; record uncertainties
-engine_operations: [context.read]
+engine_operations: [submit.research_record, context.read]
 evidence_kinds: [research_record]
 authority_capabilities: []
 prohibited:
-  - mutating source; deciding design
+  - mutating source, including the observation workspace; deciding design
+  - changing work state, plans or completion (Lead authority)
 outputs:
   - research record
 context:

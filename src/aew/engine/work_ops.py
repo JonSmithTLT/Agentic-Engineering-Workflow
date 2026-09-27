@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import EngineBase, TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
@@ -13,7 +14,9 @@ from aew.util import sha256_text, utc_now
 from aew.workspace import git
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
-PARENT_KINDS = {"ticket": {"story", "epic"}, "story": {"epic"}, "epic": set()}
+PARENT_KINDS = H.PARENT_KINDS
+# Ticket states in which a new accepted plan may be adopted (M1); parents accept plans in any non-terminal state.
+PLAN_ACCEPT_TICKET_STATES = {"BLOCKED", "READY", "REPLAN_REQUIRED"}
 
 
 class WorkOps(EngineBase):
@@ -23,10 +26,46 @@ class WorkOps(EngineBase):
         return git.rev_parse(f"refs/heads/{self.authoritative_branch}", cwd=self.repo_root)
 
     def before_commit(self, ctx: TxnContext) -> None:
-        """Keep BLOCKED/READY consistent with the durable graph inside every Lead commit."""
+        """Keep BLOCKED/READY and the derived Story/Epic state consistent with the durable graph inside every
+        Lead commit (WC §8: parent state is derived, never hand-maintained)."""
         changed = recompute_readiness(ctx.state, repo_root=self.repo_root, base_commit=self.authoritative_commit())
         if changed:
             ctx.refs.extend(f"readiness:{wid}" for wid in changed)
+        derived = H.recompute_parents(ctx.state, at=utc_now())
+        if derived:
+            ctx.refs.extend(f"derived:{wid}" for wid in derived)
+
+    # ------------------------------------------------------------------ plan bindings (ADR-0007)
+
+    @staticmethod
+    def accepted_plan_ref(unit: dict[str, Any]) -> dict[str, Any] | None:
+        plan = unit.get("plan") or {}
+        return {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan.get("accepted") else None
+
+    def ancestor_plan_snapshot(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Every ancestor's accepted plan (or None): what a newly accepted plan is bound to."""
+        return {anc: self.accepted_plan_ref(state["work"][anc]) for anc in H.ancestors(state, work_id)}
+
+    def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """Why a unit's accepted plan no longer holds under its ancestors' plans (fail closed), or None.
+
+        A plan is bound to every ancestor's accepted plan *as it was* at acceptance, including "none".
+        Any later change (superseding, or an ancestor's first acceptance) makes it stale until the Lead
+        reconfirms or replans; a move invalidates the binding outright (operator review 2026-09-27).
+        """
+        unit = state["work"][work_id]
+        plan = unit.get("plan") or {}
+        if not plan.get("accepted"):
+            return None
+        if plan.get("bindings_invalidated"):
+            return {"reason": plan["bindings_invalidated"]}
+        recorded = plan.get("ancestor_plans") or {}
+        changed = {}
+        for anc, current in self.ancestor_plan_snapshot(state, work_id).items():
+            if recorded.get(anc) != current:
+                changed[anc] = {"bound": recorded.get(anc), "current": current}
+        return {"reason": "an ancestor's accepted plan changed after this plan was accepted",
+                "ancestors": changed} if changed else None
 
     @staticmethod
     def unit(state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -114,6 +153,7 @@ class WorkOps(EngineBase):
         external_refs: list[str] | None = None,
         body: str = "",
         card: str | None = None,
+        promoted_from: str | None = None,
     ) -> dict[str, Any]:
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
@@ -121,14 +161,10 @@ class WorkOps(EngineBase):
             raise UsageError("risk class must be 0..4")
         if min_descendant_class is not None and not rationale:
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
-        if kind != "ticket" and depends_on:
-            raise UsageError("M1 supports dependency edges between Tickets only")
         with self.lead_txn(token, expect_rev, "work.create") as ctx:
             state = ctx.state
             if parent is not None:
-                parent_unit = self.unit(state, parent)
-                if parent_unit["kind"] not in PARENT_KINDS[kind]:
-                    raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
+                self._check_parent(state, kind, parent)
             edges = self._parse_edges(state, depends_on or [])
             counter = kind
             state["counters"][counter] = state["counters"].get(counter, 0) + 1
@@ -143,7 +179,7 @@ class WorkOps(EngineBase):
                 created_by={k: ctx.actor[k] for k in ("kind", "session_label", "generation")},
                 risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=scope_paths,
                 goal_backwards=goal_backwards, contract=contract, policy=policy,
-                external_refs=external_refs, body=body,
+                external_refs=external_refs, body=body, promoted_from=promoted_from,
             )
             text = record.render()
             path = f"work/{work_id}/{RECORD_NAME[kind]}"
@@ -151,7 +187,7 @@ class WorkOps(EngineBase):
             ctx.refs.append(path)
             unit: dict[str, Any] = {
                 "kind": kind, "title": title, "record": path, "record_sha256": sha256_text(text),
-                "parent": parent, "state": "OPEN" if kind != "ticket" else "BLOCKED", "state_reason": "created",
+                "parent": parent, "state": "PLANNING" if kind != "ticket" else "BLOCKED", "state_reason": "created",
                 "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
                 "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
             }
@@ -159,7 +195,10 @@ class WorkOps(EngineBase):
                 unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
                             implementer_invocation=None, evidence=[], classifications=[], waivers=[],
                             integration=None)
+            if promoted_from:
+                unit["promoted_from"] = promoted_from
             state["work"][work_id] = unit
+            self._refuse_cycles(state)
             if card:
                 chosen = self.role_catalog().get(card)  # type: ignore[attr-defined]  (RoleOps)
                 self._slot_ok(unit, "execute", chosen)  # type: ignore[attr-defined]
@@ -170,20 +209,39 @@ class WorkOps(EngineBase):
             self.before_commit(ctx)
         return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
 
+    def _check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
+        parent_unit = self.unit(state, parent)
+        if parent_unit["kind"] not in PARENT_KINDS[kind]:
+            raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
+        if parent_unit["state"] in H.TERMINAL:
+            raise IllegalTransition(f"{parent} is {parent_unit['state']}; a closed or cancelled parent takes no new "
+                                    "children (create a new unit instead)")
+
     def _parse_edges(self, state: dict[str, Any], specs: list[str]) -> list[dict[str, str]]:
-        edges = []
+        """Edges may point at Tickets (M1 kinds) or at Stories/Epics (satisfied when the parent is DONE)."""
+        edges: list[dict[str, str]] = []
         for spec in specs:
             dep_id, _, dep_kind = spec.partition(":")
             up = self.unit(state, dep_id)
-            if up["kind"] != "ticket":
-                raise UsageError(f"{dep_id}: M1 dependency edges must point at Tickets")
-            dep_kind = dep_kind or ("mutating" if up["mutating"] else "evidence")
+            if H.is_parent(up):
+                dep_kind = dep_kind or "mutating"  # conservative: descendants' integrated outputs must be in the base
+            else:
+                dep_kind = dep_kind or ("mutating" if up["mutating"] else "evidence")
             if dep_kind not in {"mutating", "evidence"}:
                 raise UsageError(f"dependency kind must be mutating or evidence, got {dep_kind}")
-            if dep_kind == "mutating" and not up["mutating"]:
+            if dep_kind == "mutating" and not H.is_parent(up) and not up["mutating"]:
                 raise UsageError(f"{dep_id} is not mutating; use an evidence dependency")
+            if any(e["id"] == dep_id for e in edges):
+                raise UsageError(f"duplicate dependency on {dep_id}")
             edges.append({"id": dep_id, "kind": dep_kind})
         return edges
+
+    @staticmethod
+    def _refuse_cycles(state: dict[str, Any]) -> None:
+        cycle = H.find_cycle(state)
+        if cycle:
+            raise UsageError("this change would create a dependency cycle (including inherited edges and parents "
+                             "waiting on their children): " + " -> ".join(cycle), cycle=cycle)
 
     # ------------------------------------------------------------------ plans
 
@@ -195,31 +253,44 @@ class WorkOps(EngineBase):
             unit = self.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
-            revision = len(unit["plans"]) + 1
-            supersedes = (unit.get("plan") or {}).get("accepted")
-            if supersedes and not reason:
-                raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
-            record = plan_record(
-                work_unit=work_id, revision=revision, created_at=utc_now(),
-                author={"role": "lead", "session_label": ctx.actor.get("session_label"),
-                        "generation": ctx.actor["generation"]},
-                body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            )
-            text = record.render()
-            path = f"work/{work_id}/plan-v{revision}.md"
-            ctx.session.write(path, text)
-            ctx.refs.append(path)
-            unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
-                                  "supersedes": supersedes, "status": "proposed"})
+            path, revision = self._propose(ctx, work_id, unit, body=body, reason=reason,
+                                           affected_paths=affected_paths)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
+    def _propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
+                 affected_paths: list[str] | None, author: dict[str, Any] | None = None,
+                 source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
+        """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
+        revision = len(unit["plans"]) + 1
+        supersedes = (unit.get("plan") or {}).get("accepted")
+        if supersedes and not reason:
+            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
+        record = plan_record(
+            work_unit=work_id, revision=revision, created_at=utc_now(),
+            author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
+                              "generation": ctx.actor["generation"]},
+            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
+            source_evidence=source_evidence,
+        )
+        text = record.render()
+        path = f"work/{work_id}/plan-v{revision}.md"
+        ctx.session.write(path, text)
+        ctx.refs.append(path)
+        unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
+                              "supersedes": supersedes, "status": "proposed"})
+        return path, revision
+
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "plan.accept") as ctx:
             unit = self.unit(ctx.state, work_id)
-            if unit["state"] not in {"BLOCKED", "READY", "REPLAN_REQUIRED", "OPEN"}:
+            if H.is_parent(unit):
+                allowed = (set(H.PARENT_STATES) - H.TERMINAL) | {"OPEN"}
+            else:
+                allowed = PLAN_ACCEPT_TICKET_STATES
+            if unit["state"] not in allowed:
                 raise IllegalTransition(
                     f"{work_id} is {unit['state']}; move it to REPLAN_REQUIRED before changing the accepted plan",
                 )
@@ -232,7 +303,10 @@ class WorkOps(EngineBase):
                 if p["status"] == "accepted":
                     p["status"] = "superseded"
             entry["status"] = "accepted"
-            unit["plan"] = {"accepted": revision, "path": entry["path"], "sha256": entry["sha256"]}
+            unit["plan"] = {"accepted": revision, "path": entry["path"], "sha256": entry["sha256"],
+                            "ancestor_plans": self.ancestor_plan_snapshot(ctx.state, work_id)}
+            if H.is_parent(unit) and not unit.get("baseline_commit"):
+                unit["baseline_commit"] = self.authoritative_commit()
             decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
                                          work_unit=work_id, evidence_refs=[entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
@@ -240,7 +314,7 @@ class WorkOps(EngineBase):
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
                 self._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
                 blockers = readiness_blockers(ctx.state, unit, repo_root=self.repo_root,
-                                              base_commit=self.authoritative_commit())
+                                              base_commit=self.authoritative_commit(), work_id=work_id)
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
                 self._set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
@@ -256,7 +330,8 @@ class WorkOps(EngineBase):
         with self.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
             unit = self.unit(ctx.state, work_id)
             if unit["kind"] != "ticket":
-                raise IllegalTransition("Story/Epic state is derived from child work (WC §8)")
+                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
+                                        "with `aew work close` and cancels one with `aew work cancel`")
             frm = unit["state"]
             rule = transitions.check(frm, to, "transition")
             if rule.reason_required and not (reason and reason.strip()):

@@ -78,6 +78,13 @@ def render_current(state: dict[str, Any], project_name: str) -> str:
                 f"  - {wid} [{u['state']}] class {u['risk_class']}, plan "
                 f"{('v' + str(plan['accepted'])) if plan.get('accepted') else 'not accepted'}: {u['title']}"
             )
+    parents = [(wid, u) for wid, u in sorted(state["work"].items())
+               if u["kind"] != "ticket" and u["state"] not in {"DONE", "CANCELLED"}]
+    if parents:
+        lines.append("- Active Epics/Stories:")
+        for wid, u in parents:
+            attention = f" — attention: {'; '.join(u['attention'])}" if u.get("attention") else ""
+            lines.append(f"  - {wid} [{u['state']}] {u['kind']}: {u['title']}{attention}")
     if state.get("next_action"):
         lines.append(f"- Lead's next action: {state['next_action']}")
     lines += ["", "## Work graph", "", "```text", *work_graph_lines(state), "```", ""]

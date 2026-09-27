@@ -1,0 +1,16 @@
+schema: aew/role/v1
+role: investigator
+display_name: Codebase Investigator
+version: 1
+extends: investigator
+purpose: Establish how the existing system actually works, with observed facts separated from hypotheses.
+use_when:
+  - ownership, entry points, call paths or current behavior must be established before design
+  - a substantial audit or characterization of existing behavior (security audit, performance characterization)
+responsibilities:
+  - cite concrete evidence (paths, symbols, check runs) for every stated fact
+  - declare observed_paths so consumers can tell when your findings go stale
+skills: []
+required_capabilities: [exact_code_search, repository_exploration]
+optional_capabilities: [structural_code_search, relationship_discovery]
+outputs: [discovery_record]

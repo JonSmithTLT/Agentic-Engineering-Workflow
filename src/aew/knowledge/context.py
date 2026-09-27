@@ -46,6 +46,41 @@ OUTPUT_TEMPLATES = {
             "resolved_findings": ["<ids of earlier findings this change resolves>"],
         },
     }),
+    "investigator": ("discovery_record", {
+        "claim": "<one line: what the investigation established>",
+        "result": "pass  # the question is answered; or: blocked | inconclusive",
+        "producer": {"model": "<model>", "harness": "<harness>"},
+        "discovery": {
+            "question": "<the question investigated>",
+            "facts": [{"statement": "<observed fact>", "evidence": ["<path:line, symbol, or check evidence id>"]}],
+            "hypotheses": [{"statement": "<not yet confirmed>", "confirm_by": "<how to confirm>"}],
+            "unresolved_questions": ["<question>"],
+            "observed_paths": ["<paths/globs your findings depend on: consumers see STALE when they change>"],
+        },
+    }),
+    "researcher": ("research_record", {
+        "claim": "<one line>",
+        "result": "pass  # or: blocked | inconclusive",
+        "producer": {"model": "<model>"},
+        "research": {
+            "question": "<the question researched>",
+            "conclusions": ["<conclusion>"],
+            "subjects": [{"name": "<technology>", "version": "<version>", "source": "<document/URL>"}],
+            "constraints": ["<constraint>"],
+            "uncertainties": ["<what remains uncertain>"],
+        },
+    }),
+    "planner": ("plan_proposal", {
+        "claim": "<one line>",
+        "result": "pass  # or: blocked | inconclusive",
+        "producer": {"model": "<model>"},
+        "proposal": {
+            "objective": "<objective>", "approach": "<chosen approach>",
+            "governing_constraints": [], "affected_components": [], "ordered_tasks": [], "required_tests": [],
+            "required_verification": [], "risks": [], "rejected_alternatives": [],
+            "affected_paths": ["<paths the plan depends on>"],
+        },
+    }),
     "verifier": ("verification", {
         "claim": "<one line>",
         "producer": {"model": "<model>"},
@@ -88,6 +123,15 @@ class PackInputs:
     open_findings: list[dict[str, Any]] = field(default_factory=list)
     failure_evidence: dict[str, Any] | None = None
     card: dict[str, Any] | None = None
+    # M2 (ADR-0007/0008): hierarchy, pinned inputs, the record under review, parent children.
+    hierarchy: list[dict[str, Any]] = field(default_factory=list)
+    inherited: dict[str, Any] | None = None
+    inputs: list[dict[str, Any]] = field(default_factory=list)
+    expected_kind: str | None = None
+    attempt: int | None = None
+    subject: dict[str, Any] | None = None
+    children: list[dict[str, Any]] = field(default_factory=list)
+    aggregate_diffstat: str = ""
 
 
 def _bullets(items: list[str]) -> list[str]:
@@ -146,6 +190,9 @@ def _launch_contract(p: PackInputs) -> list[str]:
         f"- Evaluated snapshot: base `{snap.get('base_revision')}`, inputs `{snap['relevant_inputs_fingerprint']}`,"
         f" workspace `{snap['workspace_id']}`",
         f"- Accepted plan: " + (f"v{p.plan['accepted']} (sha256 {p.plan['sha256'][:12]}…)" if p.plan else "none"),
+        *([f"- Attempt {p.attempt}: you must produce exactly one **{p.expected_kind}**; the workspace is a read-only "
+           "observation of the authoritative source (any change to it refuses your submission)"]
+          if p.expected_kind else []),
         "- Required knowledge (included below): " + ", ".join(p.role_def["context"]["knowledge"]),
         "- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none"),
         "",
@@ -179,7 +226,17 @@ def _launch_contract(p: PackInputs) -> list[str]:
             "```",
         ]
     lines += ["", "### Completion criteria", ""]
-    if p.role == "implementer":
+    if p.role == "investigator":
+        lines += _bullets(["every fact cites concrete evidence; hypotheses are kept separate",
+                           "observed_paths name what your findings depend on",
+                           "a discovery_record is submitted; you do not choose the design"])
+    elif p.role == "researcher":
+        lines += _bullets(["every conclusion names its subject, version and source",
+                           "uncertainties are explicit", "a research_record is submitted"])
+    elif p.role == "planner":
+        lines += _bullets(["the proposal states objective, approach, tasks, tests, verification and risks",
+                           "a plan_proposal is submitted; the Lead adopts and accepts plans"])
+    elif p.role == "implementer":
         lines += _bullets(["the accepted plan is implemented within scope",
                            "required local checks pass on the final snapshot (`aew check run`)",
                            "an implementation report with a completed self-review is submitted"])
@@ -189,7 +246,8 @@ def _launch_contract(p: PackInputs) -> list[str]:
                            "a review is submitted; do not fix anything yourself"])
     elif p.role == "verifier":
         lines += _bullets(["each acceptance criterion is demonstrated by evidence you produced",
-                           "goal-backwards and contract claims are both reported" if p.scope == "ticket"
+                           "goal-backwards and contract claims are both reported" if p.scope in {"ticket", "observation",
+                                                                                                 "parent"}
                            else "post-integration checks are re-run on the integrated candidate",
                            "failures are reported with evidence; the Lead decides what happens next"])
     return lines
@@ -244,15 +302,85 @@ def _check_results(p: PackInputs) -> list[str]:
     return lines
 
 
+def _hierarchy(p: PackInputs) -> list[str]:
+    """The ancestor chain and inherited obligations; siblings are never included (ADR-0007)."""
+    if not p.hierarchy and not p.inherited:
+        return []
+    lines = ["## Place in the work hierarchy (ancestors only)", ""]
+    for a in p.hierarchy:
+        lines.append(f"- {a['kind'].capitalize()} **{a['id']}** — {a['title']} (class {a['risk_class']}, plan "
+                     + (f"v{a['plan']}" if a.get("plan") else "not accepted") + ")")
+        for g in a.get("goal_backwards", []):
+            lines.append(f"    - acceptance: {g}")
+    if p.inherited and (p.inherited.get("non_waivable") or p.inherited.get("floor") is not None):
+        lines += ["", "Inherited obligations: non-waivable gates " + (", ".join(p.inherited.get("non_waivable") or [])
+                                                                       or "none")
+                  + (f"; minimum class floor {p.inherited['floor']}" if p.inherited.get("floor") is not None else "")]
+    return lines
+
+
+def _inputs(p: PackInputs) -> list[str]:
+    if not p.inputs:
+        return []
+    lines = ["## Consumed inputs (accepted records via dependency edges; pinned at dispatch)", ""]
+    for i in p.inputs:
+        ack = f", acknowledged by {i['acknowledgement']}" if i.get("acknowledgement") else ""
+        lines.append(f"- `{i['id']}` ({i['kind']} from {i['from']}): freshness **{i['freshness']}** "
+                     f"({i.get('basis')}{ack})")
+        for line in i.get("summary", []):
+            lines.append(f"    - {line}")
+    lines += ["", "Recheck consequential claims against the current source before relying on them (KC §13)."]
+    return lines
+
+
+def _subject(p: PackInputs) -> list[str]:
+    s = p.subject
+    if not s:
+        return []
+    return ["## Record under review (the Ticket's accepted execute record)", "",
+            f"`{s['id']}` ({s['kind']}, sha256 {s['sha256'][:12]}…), observed source `{s.get('observed_commit')}`", "",
+            "```yaml", s["content"].rstrip(), "```", "", s.get("body", "").strip() or "(no body)"]
+
+
+def _children(p: PackInputs) -> list[str]:
+    if not p.children:
+        return []
+    lines = ["## Child work (every child's own output, independent of this parent's baseline)", ""]
+    for c in p.children:
+        lines.append(f"- {c['kind'].capitalize()} **{c['id']}** [{c['state']}] {c['title']} — completion "
+                     f"`{c.get('completion_record') or 'none'}` (sha256 {(c.get('completion_sha256') or '-')[:12]})"
+                     + (" — integrated before this parent's baseline" if c.get("before_baseline") else ""))
+        if c.get("record"):
+            lines.append(f"    - accepted record `{c['record']}`")
+        if c.get("integrated_commit"):
+            lines.append(f"    - integrated commit `{c['integrated_commit']}`")
+    for c in p.children:
+        if c.get("diff") is not None:
+            lines += ["", f"### {c['id']} — its own integrated change (`{c['integrated_commit']}`)", "",
+                      "```diff" if p.role == "reviewer" else "```text", c["diff"].rstrip() or "(empty)", "```"]
+    if p.aggregate_diffstat:
+        lines += ["", "### Aggregate change since the parent baseline (supplementary context only)", "",
+                  "```text", p.aggregate_diffstat.rstrip(), "```"]
+    return lines
+
+
 def render(p: PackInputs) -> str:
     out = _launch_contract(p)
     out += _card_section(p)
     out += ["", *_requirement(p)]
+    if p.hierarchy or p.inherited:
+        out += ["", *_hierarchy(p)]
     if p.role != "verifier":
         out += ["", "## Accepted plan", "", p.plan_text.strip() or "(no accepted plan)"]
+    if p.inputs:
+        out += ["", *_inputs(p)]
+    if p.subject:
+        out += ["", *_subject(p)]
+    if p.children:
+        out += ["", *_children(p)]
     out += ["", "## Guardrails (policy/guardrails.yaml)", "", "```yaml", p.guardrails_text.rstrip(), "```"]
     out += ["", *_authority(p)]
-    if p.role in {"implementer", "verifier"}:
+    if p.role in {"implementer", "verifier", "investigator"}:
         out += ["", *_checks(p)]
     if p.role == "implementer" and p.failure_evidence:
         fe = p.failure_evidence
@@ -262,7 +390,13 @@ def render(p: PackInputs) -> str:
                 f"- Verifier's suspected cause: {fe.get('suspected_cause') or 'not stated'}"]
     if p.role in {"implementer", "reviewer", "verifier"}:
         out += ["", *_findings(p)]
-    if p.role == "reviewer":
+    if p.role == "reviewer" and p.scope in {"observation", "parent"}:
+        out += ["", "## Review scope", "",
+                "Review " + ("the record above: are the facts supported by the cited evidence, are hypotheses kept "
+                             "separate, is anything consequential missing?" if p.scope == "observation" else
+                             "the parent's outcome: do the children's integrated changes and accepted records, taken "
+                             "together, meet the acceptance criteria and contracts? Record cross-Ticket findings.")]
+    elif p.role == "reviewer":
         s = p.implementation_summary or {}
         out += ["", "## Implementation facts (structured fields only; implementer reasoning is excluded)", "",
                 "- Files changed: " + (", ".join(s.get("files_changed", [])) or "not reported"),
@@ -275,7 +409,9 @@ def render(p: PackInputs) -> str:
                 "correctness, ownership, error/cleanup paths, compatibility, security, test adequacy and "
                 "unnecessary scope."]
         out += ["", "## Change under review", "", "```diff", p.diff.rstrip() or "(empty diff)", "```"]
-    if p.role == "verifier":
+    if p.role == "verifier" and p.scope in {"observation", "parent"}:
+        pass  # the record or the children above are what is verified; implementer claims do not apply
+    elif p.role == "verifier":
         s = p.implementation_summary or {}
         out += ["", "## Implementation revision", "", "```text", p.diffstat.rstrip() or "(no changes)", "```", "",
                 "Implementer claims (NOT evidence — establish each outcome yourself):",

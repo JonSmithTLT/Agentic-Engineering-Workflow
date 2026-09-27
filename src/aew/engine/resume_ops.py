@@ -13,7 +13,9 @@ from typing import Any
 
 from aew import SPEC_SET
 from aew.engine import gates as G
-from aew.engine.integration_ops import IntegrationOps
+from aew.engine import hierarchy as H
+from aew.engine.hierarchy_ops import HierarchyOps
+from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.errors import AEWError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
@@ -26,7 +28,7 @@ RESUME_ORDER = [
 ]
 
 
-class ResumeOps(IntegrationOps):
+class ResumeOps(HierarchyOps):
     # ------------------------------------------------------------------ next actions
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
@@ -46,9 +48,96 @@ class ResumeOps(IntegrationOps):
             actions.append("fix invalid policy/checks.yaml")
         for wid, u in sorted(state["work"].items()):
             if u["kind"] != "ticket":
+                actions.extend(f"{wid}: {a}" for a in self._parent_actions(state, wid, u))
                 continue
-            actions.extend(f"{wid}: {a}" for a in self._ticket_actions(state, wid, u))
+            if is_nm_ticket(u):
+                actions.extend(f"{wid}: {a}" for a in self._nm_ticket_actions(state, wid, u))
+            else:
+                actions.extend(f"{wid}: {a}" for a in self._ticket_actions(state, wid, u))
+            actions.extend(f"{wid}: {a}" for a in self._common_actions(state, wid, u))
         return actions
+
+    def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
+        out = []
+        if u["state"] in H.TERMINAL:
+            return out
+        if self.plan_binding_problem(state, wid):
+            out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}` or a "
+                       "new plan revision")
+        if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
+            try:
+                self.dispatch_inputs(state, wid, self.authoritative_commit())
+            except AEWError as exc:
+                if exc.code == "INPUT_STALE":
+                    for i in exc.details.get("inputs", []):
+                        out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: refresh it or "
+                                   f"`aew work acknowledge-input {wid} --input {i['id']} --from {i['from']}`")
+        return out
+
+    def _nm_ticket_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        st = u["state"]
+        execution = u.get("execution") or {}
+        executor = state["invocations"].get(execution.get("invocation") or "", {})
+        if st in {"BLOCKED", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED", "VERIFY_PENDING",
+                  "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "INTERRUPTED", "REPLAN_REQUIRED", "ESCALATED"}:
+            actions = self._ticket_actions(state, wid, u)
+            if st == "REVIEW_PASSED":
+                actions = ["advance to VERIFY_PENDING, or accept the record (`aew work accept`) if no verification applies"]
+            if st == "VERIFIED":
+                actions = ["accept the record (`aew work accept`)"]
+            if st == "INTERRUPTED":
+                actions.append("then start a new attempt (`aew work redispatch`)")
+            return actions
+        if st == "READY":
+            return ["dispatch it (`aew work dispatch`); the executor card is pinned with its output kind"]
+        if st == "ASSIGNED":
+            return [f"launch executor {execution.get('invocation')} (attempt {execution.get('attempt')}, "
+                    f"{execution.get('expected_kind')}) from its pack, then move to RUNNING"]
+        if st == "RUNNING":
+            if execution.get("record"):
+                gc = self.gate_context(state, wid)
+                unmet = G.unmet(gc["gates"])
+                if unmet:
+                    return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
+                return ["advance to review/verification, or accept the record (`aew work accept`)"]
+            if executor.get("status") == "active":
+                pending = self._submitted(state, wid, u, execution.get("expected_kind") or "")
+                if pending:
+                    return [f"ingest record {e} (`aew evidence ingest`)" for e in pending]
+                return [f"executor {execution['invocation']} (attempt {execution['attempt']}) in progress"]
+            return ["no live executor for the current attempt: start a new one (`aew work redispatch --reason ...`)"]
+        if st == "VERIFIED":
+            return ["accept the record (`aew work accept`)"]
+        return []
+
+    def _parent_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        st = u["state"]
+        out = list(f"attention: {a}" for a in u.get("attention", []))
+        if st in H.TERMINAL:
+            return []
+        if self.plan_binding_problem(state, wid):
+            out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}`")
+        if st in {"PLANNING", "OPEN"}:
+            out.append("plan it and create its children (`aew plan propose/accept`, `aew work create --parent`)")
+        elif st == "IN_PROGRESS" and u.get("blocked_descendants"):
+            out.append("every open descendant is BLOCKED: check their dependencies")
+        elif st == "ACCEPTANCE_PENDING":
+            try:
+                gc = self.gate_context(state, wid)
+            except AEWError as exc:
+                return out + [f"cannot evaluate parent gates: {exc.message}"]
+            unmet = G.unmet(gc["gates"])
+            if (u.get("parent_verification") or {}).get("awaiting_classification"):
+                out.append(f"classify the failed parent verification (`aew verify classify {wid}`)")
+            elif unmet:
+                out.append(f"all children are DONE/CANCELLED; satisfy parent gates {unmet} "
+                           f"(`aew invoke create {wid} --role reviewer|verifier`, ingest)")
+            elif gc["open_required_findings"]:
+                out.append("resolve parent-level findings before closeout")
+            else:
+                out.append(f"all parent gates are CURRENT: close it (`aew work close {wid}`)")
+        return out
 
     def _submitted(self, state: dict[str, Any], wid: str, u: dict[str, Any], kind: str) -> list[str]:
         """Evidence submitted by active invocations but not yet ingested by the Lead."""
@@ -185,8 +274,17 @@ class ResumeOps(IntegrationOps):
                     failures.append({"work_unit": wid, "state": u["state"],
                                      "evidence": (u.get("last_verification") or {}).get("evidence"),
                                      "classifications": u.get("classifications", [])})
+                if is_nm_ticket(u):
+                    entry["execution"] = u.get("execution")
+                    entry["attempts"] = u.get("attempts", 0)
+                entry["plan_binding"] = self.plan_binding_problem(state, wid)
             else:
                 entry["rollup"] = self.rollup(state, wid)
+                entry.update(accepted_plan=self._plan_brief(u), attention=u.get("attention", []),
+                             blocked_descendants=u.get("blocked_descendants", False),
+                             children=H.children(state, wid), closeout=u.get("closeout"),
+                             cancellation=u.get("cancellation"), plan_binding=self.plan_binding_problem(state, wid))
+                findings += [dict(f, work_unit=wid) for f in u.get("findings", []) if f["status"] == "open"]
             work.append(entry)
         latest = state.get("latest_handoff")
         handoff = None
@@ -222,6 +320,7 @@ class ResumeOps(IntegrationOps):
                               "use_when": c.meta.get("use_when", [])}
                              for c in sorted(catalog.cards.values(), key=lambda c: c.id)],
             "role_catalog_problems": catalog.problems,
+            "tree": self.work_tree()["lines"],
             "lead_note": state.get("next_action"),
             "next_actions": self.next_actions(state),
             "contradictions": self.contradictions(state) + [f"evidence: {p}" for u in state["work"]
@@ -231,6 +330,8 @@ class ResumeOps(IntegrationOps):
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",
                  f"Lead: {r['lead']['status']} (generation {r['lead']['generation']})", r["authority_guidance"], ""]
+        if r.get("tree"):
+            lines += ["## Hierarchy", "", "```text", *r["tree"], "```", ""]
         lines.append("## Work")
         for w in r["work"]:
             lines.append(f"- {w['id']} [{w['state']}] {w['title']}")

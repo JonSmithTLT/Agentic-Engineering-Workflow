@@ -14,6 +14,7 @@ from aew.errors import IntegrityError, ProjectNotFound, StaleRevision, Workspace
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
+from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import read_yaml, sha256_file, utc_now
 from aew.workspace import git
@@ -28,6 +29,9 @@ class TxnContext:
     summary: str | None = None
     refs: list[str] = field(default_factory=list)
     op: str | None = None  # overrides the transaction's op when the outcome differs (e.g. integrate.stale)
+    # The Lead's execution selection (--profile/--model/--effort) for the invocation this dispatch creates;
+    # None selects from policy (ADR-0010).
+    execution_request: dict[str, Any] | None = None
 
     @property
     def state(self) -> dict[str, Any]:
@@ -135,6 +139,10 @@ class EngineBase:
         data = read_yaml(path)
         validate(name, data, source=str(path))
         return data
+
+    def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
+        """The execution policy and its file hash; ``(None, None)`` when the project has none (ADR-0010)."""
+        return X.load(self.aew_root, self.manifest)
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return sha256_file(self.aew_root / MANIFEST) == state["manifest_sha256"]

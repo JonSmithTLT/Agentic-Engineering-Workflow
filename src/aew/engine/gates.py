@@ -55,6 +55,12 @@ def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
     return out
 
 
+def effective_class(state: dict[str, Any], work_id: str) -> int:
+    """A unit's risk class raised to the highest min_descendant_class floor of its ancestors."""
+    floors = [(state["work"][anc].get("policy") or {}).get("min_descendant_class") for anc in ancestors(state, work_id)]
+    return max([state["work"][work_id]["risk_class"], *(f for f in floors if f is not None)])
+
+
 def effective_obligations(
     state: dict[str, Any], work_id: str, gates_policy: dict[str, Any], triggered: list[str] | None = None,
     plan_gates: dict[str, str] | None = None,

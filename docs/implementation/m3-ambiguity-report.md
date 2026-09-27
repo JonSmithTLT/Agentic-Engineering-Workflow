@@ -3,6 +3,7 @@
 - **Status:** approved by the operator on 2026-09-27, after the designer's two corrections: re-baseline against V2, and credential custody. The operator's review also made the stdin lease not an AEW invariant and required health to probe capabilities.
 - **Accepted M2 baseline:** `adef6405` on `origin/main`. That is the PR #4 merge, performed by the operator on 2026-09-27T03:33Z after independent review. Branch `impl/m3-opencode`.
 - **Step 0 is complete:** `m3-opencode-v2-rebaseline.md`. The spike confirmed the candidate interface (a private V2 server, HTTP+SSE from Python) and every required lifecycle operation, so the plan below is unchanged. Spike facts that refine implementation details are listed in that document (§5).
+- **Step 1 is complete** (execution profiles; ADR-0010 updated to the implementation). One naming refinement: the invocation pin is `inv.execution_profile`, not `inv.execution`, because a non-mutating Ticket's `unit.execution` already names its attempt record (ADR-0008). The evidence field is `producer.execution_profile`.
 - **Frozen future design:** `docs/design/AEW_Coordination_Design_v0.1.md` (sha256 `2725b747…`). It is a compatibility constraint only; see §2.11.
 
 

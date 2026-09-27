@@ -375,9 +375,11 @@ class NonMutatingOps(IntegrationOps):
 
     # ------------------------------------------------------------------ dispatch / redispatch
 
-    def work_dispatch(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None) -> dict[str, Any]:
+    def work_dispatch(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+                      execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         """READY -> ASSIGNED for a non-mutating Ticket: attempt 1 with its own observation, no mutation workspace."""
         with self.lead_txn(token, expect_rev, "work.dispatch") as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "`aew work dispatch`")
@@ -402,11 +404,12 @@ class NonMutatingOps(IntegrationOps):
                 "transition": change, "revision": ctx.session.committed_revision}
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
-                        card: str | None = None) -> dict[str, Any]:
+                        card: str | None = None, execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         """Supersede the current attempt atomically and start the next one (operator review #2)."""
         if not (reason and reason.strip()):
             raise UsageError("a redispatch supersedes the current attempt; it needs a reason")
         with self.lead_txn(token, expect_rev, "work.redispatch", reason=reason) as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "`aew work redispatch`")
@@ -689,9 +692,11 @@ class NonMutatingOps(IntegrationOps):
         return H.is_parent(self.unit(self.store.read(), work_id))
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
-                             card: str | None, scope: str) -> dict[str, Any]:
+                             card: str | None, scope: str,
+                             execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         """Review/verify invocations for a non-mutating Ticket, bound to the record they evaluate."""
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "this dispatch")

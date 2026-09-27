@@ -267,6 +267,31 @@
               "object",
               "null"
             ]
+          },
+          "execution_profile": {
+            "description": "harness/provider/model/effort pinned at dispatch (ADR-0010); null = none selected",
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "harness",
+              "provider",
+              "model",
+              "selected_by"
+            ],
+            "properties": {
+              "profile": {"type": ["string", "null"]},
+              "harness": {"type": "string"},
+              "provider": {"type": "string"},
+              "model": {"type": "string"},
+              "effort": {"type": ["string", "null"]},
+              "max_steps": {"type": ["integer", "null"]},
+              "deadline_s": {"type": ["number", "null"]},
+              "selected_by": {"enum": ["policy", "lead"]},
+              "rule": {"type": "string"},
+              "policy_sha256": {"type": ["string", "null"]}
+            }
           }
         }
       }

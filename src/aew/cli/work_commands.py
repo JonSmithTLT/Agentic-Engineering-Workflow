@@ -17,6 +17,19 @@ def _inv_token(args: argparse.Namespace) -> str:
     return token
 
 
+def _add_execution(q: argparse.ArgumentParser) -> None:
+    """Lead override of the execution policy for the invocation this dispatch creates (ADR-0010)."""
+    g = q.add_argument_group("execution (default: policy/execution.yaml routing)")
+    g.add_argument("--profile", help="execution profile to pin (recorded as selected_by: lead)")
+    g.add_argument("--model", metavar="PROVIDER/MODEL", help="pin this model instead of a profile")
+    g.add_argument("--effort", help="reasoning-effort variant to pin")
+
+
+def _execution(args: argparse.Namespace) -> dict[str, Any] | None:
+    chosen = {k: getattr(args, k, None) for k in ("profile", "model", "effort")}
+    return {k: v for k, v in chosen.items() if v is not None} or None
+
+
 def register(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("work", help="Epic/Story/Ticket records and Lead transitions")
     wsub = p.add_subparsers(dest="work_cmd", required=True)
@@ -58,9 +71,10 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     q = wsub.add_parser("assign", help="READY -> ASSIGNED: workspace + implementer invocation (Lead)")
     q.add_argument("work_id")
+    _add_execution(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_assign(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                           work_id=a.work_id))
+                                                           work_id=a.work_id, execution_profile=_execution(a)))
 
     q = wsub.add_parser("roles", help="show a Ticket's stored and effective role plan")
     q.add_argument("work_id")
@@ -94,16 +108,20 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = wsub.add_parser("dispatch", help="READY -> ASSIGNED for a non-mutating Ticket: executor + observation (Lead)")
     q.add_argument("work_id")
     q.add_argument("--card", help="investigator/researcher/planner card (default: the staffed or default card)")
+    _add_execution(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_dispatch(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                             work_id=a.work_id, card=a.card))
+                                                             work_id=a.work_id, card=a.card,
+                                                             execution_profile=_execution(a)))
     q = wsub.add_parser("redispatch", help="supersede a non-mutating Ticket's attempt and start the next (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
     q.add_argument("--card")
+    _add_execution(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_redispatch(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                               work_id=a.work_id, reason=a.reason, card=a.card))
+                                                               work_id=a.work_id, reason=a.reason, card=a.card,
+                                                               execution_profile=_execution(a)))
     q = wsub.add_parser("accept", help="accept a non-mutating Ticket's record: -> DONE (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason")
@@ -226,10 +244,11 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--role", choices=["implementer", "reviewer", "verifier"],
                    help="archetype; picks its default card when --card is omitted")
     q.add_argument("--scope", choices=["ticket", "integration"], default="ticket")
+    _add_execution(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).invoke_create(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, role=a.role, card=a.card,
-        scope=a.scope))
+        scope=a.scope, execution_profile=_execution(a)))
     q = isub.add_parser("cancel")
     q.add_argument("invocation")
     q.add_argument("--reason", required=True)

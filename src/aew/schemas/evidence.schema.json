@@ -17,9 +17,13 @@
       "properties": {
         "role": {"type": "string"},
         "invocation": {"type": "string"},
-        "model": {"type": ["string", "null"]},
-        "provider": {"type": ["string", "null"]},
-        "harness": {"type": ["string", "null"]}
+        "role_card": {"type": ["object", "null"]},
+        "model": {"type": ["string", "null"], "description": "declared by the submitter (not verified)"},
+        "provider": {"type": ["string", "null"], "description": "declared by the submitter (not verified)"},
+        "harness": {"type": ["string", "null"], "description": "declared by the submitter (not verified)"},
+        "execution_profile": {"type": ["object", "null"], "description": "engine-owned: the execution profile pinned at dispatch (ADR-0010)"},
+        "run": {"type": ["string", "null"], "description": "engine-owned: the harness run holding the presenting credential"},
+        "credential": {"type": ["string", "null"], "description": "engine-owned: id of the presenting credential"}
       }
     },
     "created_at": {"type": "string"},

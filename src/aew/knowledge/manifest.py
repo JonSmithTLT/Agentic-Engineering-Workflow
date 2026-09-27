@@ -113,6 +113,7 @@ def default_manifest(project_id: str, name: str, branch: str, workspaces_root: s
             "guardrails": "policy/guardrails.yaml",
             "checks": "policy/checks.yaml",
             "gates": "policy/gates.yaml",
+            "execution": "policy/execution.yaml",
         },
         "fingerprint": {"include_ignored": [], "exclude": []},
         "roles": {"catalog": "roles/"},

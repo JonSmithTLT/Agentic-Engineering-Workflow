@@ -79,6 +79,14 @@ class EvidenceOps(WorkspaceOps):
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
     @staticmethod
+    def _execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:
+        """Engine-owned producer fields (ADR-0010), taken from control state and never from the submission:
+        the execution pinned at dispatch, the credential that presented the request, and the harness run
+        holding that credential (None for a scripted role)."""
+        run = next((r["run"] for r in reversed(inv.get("runs") or []) if r.get("token_id") == inv["token_id"]), None)
+        return {"execution_profile": inv.get("execution_profile"), "run": run, "credential": inv["token_id"]}
+
+    @staticmethod
     def _card_ref(inv: dict[str, Any]) -> dict[str, Any] | None:
         card = inv.get("card")
         return {k: card[k] for k in ("id", "version", "sha256")} if card else None
@@ -286,13 +294,15 @@ class EvidenceOps(WorkspaceOps):
     # ------------------------------------------------------------------ invocations
 
     def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
-                      card: str | None = None, scope: str = "ticket") -> dict[str, Any]:
+                      card: str | None = None, scope: str = "ticket",
+                      execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation. The Role card (explicit, planned, or workflow default)
         determines the archetype; authority comes from the archetype only (ADR-0006)."""
         if self._is_evidence_unit_id(work_id):
             return self.invoke_evidence_unit(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
-                                             card=card, scope=scope)
+                                             card=card, scope=scope, execution_profile=execution_profile)
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             st = unit["state"]
@@ -399,7 +409,8 @@ class EvidenceOps(WorkspaceOps):
             create_exclusive(self.aew_root / log_rel, run["log"])
             meta = {
                 "schema": "aew/evidence/v1", "id": eid, "kind": "check_result", "work_unit": work_id,
-                "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self._card_ref(inv)},
+                "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self._card_ref(inv),
+                             **self._execution_provenance(inv)},
                 "created_at": utc_now(), "seq": seq,
                 "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
                 "evaluated_snapshot": before,
@@ -440,7 +451,7 @@ class EvidenceOps(WorkspaceOps):
             meta: dict[str, Any] = {
                 "schema": "aew/evidence/v1", "kind": kind, "work_unit": work_id,
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self._card_ref(inv),
-                             **(submitted.get("producer") or {})},
+                             **(submitted.get("producer") or {}), **self._execution_provenance(inv)},
                 "created_at": utc_now(),
                 "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
                 "method": submitted.get("method") or {"capability": kind, "provider": "harness-role"},

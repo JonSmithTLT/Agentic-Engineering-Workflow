@@ -21,6 +21,7 @@ SCHEMAS = {
     "guardrails": "guardrails.schema.json",
     "checks": "checks.schema.json",
     "gates": "gates.schema.json",
+    "execution": "execution.schema.json",
     "role": "role.schema.json",
     "role-archetype": "role-archetype.schema.json",
 }

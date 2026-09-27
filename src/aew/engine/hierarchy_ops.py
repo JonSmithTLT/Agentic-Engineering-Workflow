@@ -79,11 +79,13 @@ class HierarchyOps(NonMutatingOps):
     # ------------------------------------------------------------------ parent review / verification
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
-                             card: str | None, scope: str) -> dict[str, Any]:
+                             card: str | None, scope: str,
+                             execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self._is_parent_id(work_id):
             return super().invoke_evidence_unit(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
-                                                card=card, scope=scope)
+                                                card=card, scope=scope, execution_profile=execution_profile)
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["state"] != "ACCEPTANCE_PENDING":

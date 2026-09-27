@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
@@ -12,6 +13,7 @@ from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.role_ops import RoleOps
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition
 from aew.knowledge.records import format_id
+from aew.policy import execution as X
 from aew.snapshot import fingerprint
 from aew.util import utc_now
 from aew.workspace import worktrees
@@ -63,11 +65,18 @@ class WorkspaceOps(RoleOps):
             "specialty": specialty, "workspace": workspace, "workspace_id": workspace_id, "snapshot": snapshot,
             "pack": None,
         }
+        state["invocations"][inv_id]["execution_profile"] = self._resolve_execution(ctx, role, work_id, card)
         state["work"][work_id]["invocations"].append(inv_id)
         if card is not None:
             self._pin_on(ctx, inv_id, card)
         ctx.refs.append(f"invocation:{inv_id}")
         return inv_id, token
+
+    def _resolve_execution(self, ctx: TxnContext, archetype: str, work_id: str, card: Any) -> dict[str, Any] | None:
+        """The harness/provider/model/effort pin for a new invocation (ADR-0010); never changed afterwards."""
+        policy, sha = self.execution_policy()
+        return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
+                         risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request)
 
     def _complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]
@@ -96,8 +105,10 @@ class WorkspaceOps(RoleOps):
             if u["kind"] == "ticket" and u["mutating"] and (u.get("workspace") or {}).get("status") == "active"
         )
 
-    def work_assign(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def work_assign(self, *, token: str, expect_rev: int, work_id: str,
+                    execution_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         with self.lead_txn(token, expect_rev, "work.assign") as ctx:
+            ctx.execution_request = execution_profile
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["kind"] != "ticket":

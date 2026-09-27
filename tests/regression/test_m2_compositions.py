@@ -350,6 +350,9 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
         lambda s: s["invocations"][out["invocation"]]["inputs"][0].update(freshness="STALE"))  # rule 13
     assert "still marked active" in broken(
         lambda s: s["invocations"][out["invocation"]].update(status="cancelled"))  # rule 12
+    assert "was dispatched with dependencies" in broken(
+        lambda s: s["work"][consumer]["execution"].update(dependencies=[]))  # rule 14
+    assert "not satisfied in the source" in broken(lambda s: s["work"][survey].update(state="READY"))  # rule 14
 
 
 def test_moving_started_work_under_new_dependencies_needs_a_new_dispatch(tmp_path):

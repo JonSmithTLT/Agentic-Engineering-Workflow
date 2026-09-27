@@ -120,7 +120,7 @@ def control_violations(root: Path) -> list[str]:
             if revoked and ev["created_at"] > revoked:
                 problems.append(f"{ev['id']} was written at {ev['created_at']}, after its credential was revoked "
                                 f"at {revoked}")
-    # 6-12. M2 hierarchy and non-mutating invariants (ADR-0007/0008).
+    # 6-14. M2 hierarchy and non-mutating invariants (ADR-0007/0008).
     problems += m2_violations(root, state)
     return problems
 
@@ -141,6 +141,61 @@ def assert_control_invariants(project_or_root: Any) -> None:
 EXECUTORS = {"investigator", "researcher", "planner"}
 EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
 PARENT_KINDS = {"ticket": {"story", "epic"}, "story": {"epic"}, "epic": set()}
+
+
+UNSTARTED_OR_TERMINAL = {"BLOCKED", "READY", "REPLAN_REQUIRED", "DONE", "CANCELLED"}
+
+
+def _dispatch_binding_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    work = state["work"]
+    problems: list[str] = []
+
+    def in_source(commit: str | None, base: str | None) -> bool:
+        return bool(commit and base) and _git("merge-base", "--is-ancestor", commit, base, cwd=root).returncode == 0
+
+    def satisfied(dep: dict[str, str], base: str | None) -> bool:
+        up = work.get(dep["id"])
+        if up is None or up["state"] != "DONE":
+            return False
+        if dep["kind"] != "mutating":
+            return True
+        if up["kind"] == "ticket":
+            return in_source((up.get("integration") or {}).get("commit"), base)
+        below, stack = [], [c for c, x in work.items() if x.get("parent") == dep["id"]]
+        while stack:
+            c = stack.pop()
+            below.append(c)
+            stack.extend(k for k, x in work.items() if x.get("parent") == c)
+        return all(in_source((work[d].get("integration") or {}).get("commit"), base) for d in below
+                   if work[d]["kind"] == "ticket" and work[d].get("mutating") and work[d]["state"] == "DONE")
+
+    for wid, u in sorted(work.items()):
+        if u["kind"] != "ticket" or u["state"] in UNSTARTED_OR_TERMINAL:
+            continue
+        if u.get("mutating"):
+            attempt = u.get("workspace") or {}
+            if attempt.get("status") != "active":
+                continue
+            base = attempt.get("base_commit")
+        else:
+            attempt = u.get("execution") or {}
+            if not attempt:
+                continue
+            base = attempt.get("observed_commit")
+        edges, anc = list(u.get("depends_on", [])), u.get("parent")
+        while anc:
+            edges += work[anc].get("depends_on", [])
+            anc = work[anc].get("parent")
+        current = {(e["id"], e["kind"]) for e in edges}
+        recorded = attempt.get("dependencies")
+        if recorded is not None and current != {(e["id"], e["kind"]) for e in recorded}:
+            problems.append(f"{wid} ({u['state']}) was dispatched with dependencies {sorted(recorded, key=str)} but "
+                            f"now has {sorted(current)}")
+        for dep in sorted(current):
+            if not satisfied({"id": dep[0], "kind": dep[1]}, base):
+                problems.append(f"{wid} ({u['state']}) depends on {dep[0]}:{dep[1]}, which is not satisfied in the "
+                                f"source its attempt works from ({str(base)[:12]})")
+    return problems
 
 
 def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
@@ -250,4 +305,7 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
             if not ack or (ack["evidence"], ack["sha256"], ack["commit"]) != (i["id"], i["sha256"], dispatched_at):
                 problems.append(f"{inv_id} consumed {i['id']} ({i.get('freshness')}) without an acknowledgement "
                                 f"for its dispatch commit {str(dispatched_at)[:12]}")
+    # 14. A started Ticket's attempt holds under its current effective dependencies (M2 review B2): the edges
+    #     recorded at its dispatch are its edges now, and each is satisfied in the source it works from (M1 rule).
+    problems += _dispatch_binding_violations(root, state)
     return problems

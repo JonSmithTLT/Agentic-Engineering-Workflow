@@ -29,7 +29,7 @@ from aew.engine import transitions
 from aew.engine.api import Engine
 from aew.engine.faults import InjectedFault
 from aew.errors import AEWError
-from aew.util import dump_yaml
+from aew.util import dump_yaml, load_yaml
 from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
 from invariants import control_violations
 
@@ -47,12 +47,16 @@ TXN_FAULTS = ["txn.after_stage", "txn.after_replace", "txn.mid_apply", "txn.afte
 PUBLISH_FAULTS = ["integrate.after_publishing_record", "integrate.after_cas", "integrate.before_done", *TXN_FAULTS]
 RECORD_META = {"discovery_record": DISCOVERY, "research_record": RESEARCH, "plan_proposal": PROPOSAL}
 MAX_TICKETS = 9
+NM_CAP = 2  # non_mutating_concurrency: dispatch and redispatch must both respect it (oracle rule 15)
 
 
 class HierarchyWalk:
     def __init__(self, tmp_path: Path, seed: int, monkeypatch: pytest.MonkeyPatch) -> None:
         self.p = sample_project(tmp_path, checks=FAST_CHECKS)
         self.root = self.p.root
+        gates = self.root / ".aew/policy/gates.yaml"  # a cap, so attempt starts compete for read-only slots
+        policy = load_yaml(gates.read_text(encoding="utf-8"), source="gates")
+        gates.write_text(dump_yaml({**policy, "non_mutating_concurrency": NM_CAP}), encoding="utf-8", newline="\n")
         self.rng = random.Random(seed)
         self.mp = monkeypatch
         self.token, self.gen = self.p.token, 1

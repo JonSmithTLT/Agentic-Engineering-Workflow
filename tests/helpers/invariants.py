@@ -308,4 +308,34 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
     # 14. A started Ticket's attempt holds under its current effective dependencies (M2 review B2): the edges
     #     recorded at its dispatch are its edges now, and each is satisfied in the source it works from (M1 rule).
     problems += _dispatch_binding_violations(root, state)
+    # 15. Active non-mutating executors never exceed the policy cap (M2 re-review: redispatch bypassed it).
+    #     Checked against the current policy file; tests never lower the cap while executors are active.
+    gates_file = root / ".aew" / "policy" / "gates.yaml"
+    cap = (yaml.safe_load(gates_file.read_text(encoding="utf-8")) or {}).get("non_mutating_concurrency") \
+        if gates_file.exists() else None
+    if cap:
+        busy = sorted({inv["work_unit"] for inv in invocations.values() if inv["status"] == "active"
+                       and inv["role"] in EXECUTORS and inv.get("scope") == "observation"})
+        if len(busy) > cap:
+            problems.append(f"{len(busy)} non-mutating Tickets have active executors {busy}; the policy cap is {cap}")
+    # 16. A parent's acceptance is a downstream assignment (M2 re-review decision): every report its closeout relied
+    #     on was dispatched under exactly the dependencies the closeout records, and each of those was DONE.
+    for wid, u in sorted(work.items()):
+        record = (u.get("closeout") or {}).get("record")
+        if u["kind"] == "ticket" or u["state"] != "DONE" or not record or not (root / ".aew" / record).exists():
+            continue
+        meta, _ = parse_frontmatter((root / ".aew" / record).read_text(encoding="utf-8"))
+        deps = [{"id": d["id"], "kind": d["kind"]} for d in meta.get("dependencies", [])]
+        unmet = [d["id"] for d in meta.get("dependencies", []) if d.get("state") != "DONE"]
+        if unmet:
+            problems.append(f"{wid} closed with unsatisfied dependencies {unmet}")
+        reports = _evidence(root, wid)
+        for gate, ev_id in (meta.get("basis") or {}).items():
+            ev = reports.get(ev_id)
+            if ev is None or ev["kind"] not in {"review", "verification"}:
+                continue
+            dispatched_with = invocations.get(ev["producer"]["invocation"], {}).get("dependencies")
+            if dispatched_with != deps:
+                problems.append(f"{wid} closed on {gate} report {ev_id}, dispatched under dependencies "
+                                f"{dispatched_with} rather than {deps}")
     return problems

@@ -338,6 +338,10 @@ class NonMutatingOps(IntegrationOps):
         chosen, selected_by = self._executor_card(state, work_id, card)
         # A previous attempt (ingested, cancelled by a replan, or interrupted) is retired to history first.
         self._end_attempt(state, unit, "a new attempt starts", "superseded")
+        # Every attempt start (dispatch or redispatch) takes a slot under the policy cap. It is counted after the
+        # previous attempt is retired in this same transaction, so a redispatch may replace its own active
+        # executor but never adds one beyond the cap (M2 re-review).
+        self._check_nm_concurrency(state)
         attempt = unit.get("attempts", 0) + 1
         unit["attempts"] = attempt
         inv_id, inv_token, _ = self._dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=commit,
@@ -385,7 +389,6 @@ class NonMutatingOps(IntegrationOps):
                                           plan_problem=self.plan_binding_problem)
             if blockers:
                 raise DependencyUnsatisfied(f"{work_id} cannot be dispatched", blockers=blockers)
-            self._check_nm_concurrency(state)
             inv_id, inv_token = self._start_attempt(ctx, work_id, unit, card, commit)
             execution = unit["execution"]
             change = self._set_state(unit, "ASSIGNED", f"dispatched {inv_id} ({execution['card']['id']}, attempt "

@@ -89,11 +89,11 @@ class ContextOps(EvidenceOps):
                     args = ("diff", "--no-color", "--no-renames") if inv["role"] == "reviewer" else ("diff", "--stat", "--no-renames")
                     entry["diff"] = git.git(*args, f"{integrated}^1", integrated, "--", ".", AEW_EXCLUDE,
                                             cwd=self.repo_root).stdout.decode("utf-8", "replace")
-                    if baseline and not git.is_ancestor(baseline, integrated, cwd=self.repo_root):
-                        entry["before_baseline"] = True
+                    if baseline and git.is_ancestor(integrated, baseline, cwd=self.repo_root):
+                        entry["before_baseline"] = True  # already in the baseline: absent from baseline..A
                 children.append(entry)
             extras["children"] = children
-            if baseline and commit:
+            if baseline and commit:  # rendered even when empty: that is when it would hide a child's change
                 extras["aggregate_diffstat"] = git.out("diff", "--stat", "--no-renames", baseline, commit, "--", ".",
                                                        AEW_EXCLUDE, cwd=self.repo_root)
         return extras

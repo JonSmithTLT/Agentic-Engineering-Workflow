@@ -131,7 +131,7 @@ class PackInputs:
     attempt: int | None = None
     subject: dict[str, Any] | None = None
     children: list[dict[str, Any]] = field(default_factory=list)
-    aggregate_diffstat: str = ""
+    aggregate_diffstat: str | None = None
 
 
 def _bullets(items: list[str]) -> list[str]:
@@ -358,9 +358,9 @@ def _children(p: PackInputs) -> list[str]:
         if c.get("diff") is not None:
             lines += ["", f"### {c['id']} — its own integrated change (`{c['integrated_commit']}`)", "",
                       "```diff" if p.role == "reviewer" else "```text", c["diff"].rstrip() or "(empty)", "```"]
-    if p.aggregate_diffstat:
+    if p.aggregate_diffstat is not None:
         lines += ["", "### Aggregate change since the parent baseline (supplementary context only)", "",
-                  "```text", p.aggregate_diffstat.rstrip(), "```"]
+                  "```text", p.aggregate_diffstat.rstrip() or "(no change since the baseline)", "```"]
     return lines
 
 

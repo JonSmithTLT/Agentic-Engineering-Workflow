@@ -290,6 +290,7 @@ class EvidenceOps(WorkspaceOps):
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
                 if current and current["status"] == "active":
                     raise IllegalTransition(f"{unit['implementer_invocation']} is still active; cancel it first")
+                self.require_plan_binding(state, work_id)
             elif st == "REVIEW_PENDING":
                 slot = "review"
             elif st == "VERIFY_PENDING":

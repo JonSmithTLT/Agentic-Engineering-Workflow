@@ -136,21 +136,21 @@ class NonMutatingOps(IntegrationOps):
     # ------------------------------------------------------------------ consumed inputs (operator review #3)
 
     def consumed_inputs(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
-        """Accepted non-mutating records this unit consumes through its (own or inherited) dependency edges."""
+        """Accepted non-mutating records this unit consumes through its (own or inherited) dependency edges.
+
+        Records flow only through an edge to a non-mutating Ticket. An edge to a Story or Epic is an
+        acceptance dependency: it is satisfied by the parent's closeout, which already judged its children's
+        records against the parent snapshot, so those Story-internal inputs are not consumed again downstream.
+        """
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
         for edge in H.effective_edges(state, work_id):
-            up = state["work"].get(edge["id"])
-            if up is None:
-                continue
-            sources = [edge["id"]] + (H.descendants(state, edge["id"]) if H.is_parent(up) else [])
-            for wid in sources:
-                u = state["work"][wid]
-                rec = (u.get("execution") or {}).get("record")
-                if is_nm_ticket(u) and u["state"] == "DONE" and rec and rec["id"] not in seen:
-                    seen.add(rec["id"])
-                    out.append({"id": rec["id"], "sha256": rec["sha256"], "kind": rec["kind"], "from": wid,
-                                "via_edge": edge["id"]})
+            u = state["work"].get(edge["id"])
+            rec = ((u or {}).get("execution") or {}).get("record")
+            if u and is_nm_ticket(u) and u["state"] == "DONE" and rec and rec["id"] not in seen:
+                seen.add(rec["id"])
+                out.append({"id": rec["id"], "sha256": rec["sha256"], "kind": rec["kind"], "from": edge["id"],
+                            "declared_on": edge.get("inherited_from") or work_id})
         return out
 
     def _acknowledged(self, unit: dict[str, Any], evidence_id: str, sha: str, commit: str) -> dict[str, Any] | None:
@@ -186,6 +186,32 @@ class NonMutatingOps(IntegrationOps):
                 inputs=stale, authoritative_commit=commit)
         return pinned
 
+    def dispatch_commit(self, unit: dict[str, Any]) -> str | None:
+        """The commit an executor dispatched now would work from: a live mutation workspace's base, else A."""
+        ws = unit.get("workspace") or {}
+        if unit.get("mutating") and ws.get("status") == "active":
+            return ws.get("base_commit")
+        return self.authoritative_commit()
+
+    def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
+        """Non-raising view of ``dispatch_inputs`` (resume, status): would each input allow a dispatch now?"""
+        unit = state["work"][work_id]
+        commit = self.dispatch_commit(unit)
+        out = []
+        for inp in self.consumed_inputs(state, work_id):
+            try:
+                ev = self._find_unit_evidence(inp["from"], inp["id"])
+            except (GateUnsatisfied, NotFound) as exc:
+                out.append({**inp, "freshness": "UNKNOWN", "detail": exc.message, "blocks_dispatch": True})
+                continue
+            fresh = F.record_freshness(self.repo_root, ev, commit)
+            ack = self._acknowledged(unit, inp["id"], inp["sha256"], commit or "")
+            out.append({**inp, "freshness": fresh["status"], "basis": fresh.get("basis"),
+                        "acknowledgement": (ack or {}).get("decision"),
+                        "blocks_dispatch": ev["_sha256"] != inp["sha256"]
+                        or not (F.is_acceptable_input(fresh) or ack)})
+        return out
+
     def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                source: str, reason: str) -> dict[str, Any]:
         if not (reason and reason.strip()):
@@ -216,6 +242,35 @@ class NonMutatingOps(IntegrationOps):
 
     # ------------------------------------------------------------------ executor selection and pinning
 
+    def require_plan_binding(self, state: dict[str, Any], work_id: str) -> None:
+        """No executor starts under an accepted plan whose ancestor plans changed since (ADR-0007, fail closed)."""
+        problem = self.plan_binding_problem(state, work_id)
+        if problem:
+            raise GateUnsatisfied(f"{work_id}'s accepted plan is stale under its ancestors' current plans; "
+                                  f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision first",
+                                  binding=problem)
+
+    def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
+                       inspection: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Non-mutating Tickets are reconciled on their attempt, not a workspace (nothing is inferred)."""
+        if inspection is None:
+            state = self.store.read()
+            unit = state["work"].get(work_id)
+            if unit is not None and is_nm_ticket(unit):
+                inspection = self._inspect_attempt(state, work_id, unit)
+        return super().work_reconcile(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason,
+                                      inspection=inspection)
+
+    def _inspect_attempt(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> dict[str, Any]:
+        execution = unit.get("execution") or {}
+        inv_id = execution.get("invocation")
+        records, _ = E.scan(self.aew_root, work_id)
+        return {"workspace": "none (non-mutating: one read-only observation per invocation)",
+                "attempt": execution.get("attempt"), "executor": inv_id,
+                "executor_status": (state["invocations"].get(inv_id or "") or {}).get("status"),
+                "records_submitted": [e["id"] for e in records if inv_id and e["producer"]["invocation"] == inv_id],
+                "next": "records of an ended attempt are history; continue with `aew work redispatch`"}
+
     def _executor_card(self, state: dict[str, Any], work_id: str, card: str | None) -> tuple[Any, str]:
         chosen = self.resolve_card(state, work_id, "execute", card_id=card, role=None)
         stored = {e["card"]: e for e in ((state["work"][work_id].get("role_plan") or {}).get("execute") or [])}
@@ -240,6 +295,7 @@ class NonMutatingOps(IntegrationOps):
     def _start_attempt(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], card: str | None,
                        commit: str) -> tuple[str, str]:
         state = ctx.state
+        self.require_plan_binding(state, work_id)
         inputs = self.dispatch_inputs(state, work_id, commit)
         chosen, selected_by = self._executor_card(state, work_id, card)
         # A previous attempt (ingested, cancelled by a replan, or interrupted) is retired to history first.
@@ -572,11 +628,15 @@ class NonMutatingOps(IntegrationOps):
             "accepted_record": execution["record"],
             "record_freshness": (gc["gates"].get("execute_record") or {}).get("freshness"),
             "gates": {g: v["status"] for g, v in gc["gates"].items()},
+            "basis": sorted({execution["record"]["id"]} | {v["evidence"] for v in gc["gates"].values()
+                                                             if isinstance(v.get("evidence"), str)}),
             "evidence": [{"id": e["id"], "kind": e["kind"], "result": e["result"], "sha256": e["sha256"]}
                          for e in unit.get("evidence", [])],
             "waivers": unit.get("waivers", []),
-            "superseded_attempts": [h.get("attempt") for h in unit.get("execution_history", [])
-                                    if h.get("ended") == "superseded"],
+            "superseded_attempts": [{"attempt": h.get("attempt"), "invocation": h.get("invocation"),
+                                     "ended": h.get("ended"), "record": (h.get("record") or {}).get("id"),
+                                     "reason": h.get("retired_reason")}
+                                    for h in unit.get("execution_history", [])],
         }
         body = (f"# Completion — {work_id}: {unit['title']}\n\nEvidence-only Ticket: the Lead accepted the "
                 f"{execution['expected_kind']} produced by attempt {execution['attempt']} "

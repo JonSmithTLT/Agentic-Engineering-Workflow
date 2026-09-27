@@ -66,13 +66,11 @@ class ResumeOps(HierarchyOps):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}` or a "
                        "new plan revision")
         if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
-            try:
-                self.dispatch_inputs(state, wid, self.authoritative_commit())
-            except AEWError as exc:
-                if exc.code == "INPUT_STALE":
-                    for i in exc.details.get("inputs", []):
-                        out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: refresh it or "
-                                   f"`aew work acknowledge-input {wid} --input {i['id']} --from {i['from']}`")
+            for i in self.input_status(state, wid):
+                if i["blocks_dispatch"]:
+                    out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: the next executor dispatch "
+                               f"is refused until it is refreshed or acknowledged (`aew work acknowledge-input {wid} "
+                               f"--input {i['id']} --from {i['from']} --reason ...`)")
         return out
 
     def _nm_ticket_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -280,6 +278,10 @@ class ResumeOps(HierarchyOps):
                     entry["execution"] = u.get("execution")
                     entry["attempts"] = u.get("attempts", 0)
                 entry["plan_binding"] = self.plan_binding_problem(state, wid)
+                if u["state"] not in H.TERMINAL:
+                    entry["inputs"] = self.input_status(state, wid)
+                if u.get("input_acknowledgements"):
+                    entry["input_acknowledgements"] = u["input_acknowledgements"]
             else:
                 entry["rollup"] = self.rollup(state, wid)
                 entry.update(accepted_plan=self._plan_brief(u), attention=u.get("attention", []),

@@ -14,7 +14,7 @@ from aewflow import (APPLY_PATCH, Role, assign, complete_investigation, create_i
 from conftest import git
 from invariants import assert_control_invariants
 
-from aew.util import parse_frontmatter
+from aew.util import dump_yaml, load_yaml, parse_frontmatter
 
 
 def show(p, wid):
@@ -353,6 +353,12 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     assert "was dispatched with dependencies" in broken(
         lambda s: s["work"][consumer]["execution"].update(dependencies=[]))  # rule 14
     assert "not satisfied in the source" in broken(lambda s: s["work"][survey].update(state="READY"))  # rule 14
+    gates = p.root / ".aew/policy/gates.yaml"
+    policy = load_yaml(gates.read_text(encoding="utf-8"), source="gates")
+    gates.write_text(dump_yaml({**policy, "non_mutating_concurrency": 1}), encoding="utf-8", newline="\n")
+    assert m2_violations(p.root, state) == []  # one active executor is within a cap of one
+    assert "the policy cap is 1" in broken(lambda s: s["invocations"].update(
+        {"INV-9999": dict(s["invocations"][out["invocation"]], work_unit=survey)}))  # rule 15
 
 
 def test_moving_started_work_under_new_dependencies_needs_a_new_dispatch(tmp_path):
@@ -557,3 +563,76 @@ def test_a_read_only_invocation_is_checked_for_mutation_until_its_report_is_inge
                           expect_ok=False)
     assert rejected.error["code"] == "OBSERVATION_MUTATED"
     assert_control_invariants(p)
+
+
+def test_parent_acceptance_is_a_downstream_assignment_of_its_dependencies(tmp_path):
+    """Operator decision after the M2 re-review (ADR-0007): a Story's reviewer and verifier are downstream
+    assignments of the Story's own and inherited dependencies (WC §8: satisfied only when the upstream output is
+    in the downstream assignment's recorded input/source snapshot). They wait for them, consume the prerequisite
+    records under the ADR-0008 input rule, and their reports are bound to the dependencies they ran under."""
+    import copy
+
+    from aew.engine.api import Engine
+    from invariants import m2_violations
+
+    p = sample_project(tmp_path)
+    survey = create_investigation(p, tmp_path, title="Prerequisite survey")
+    story = create_unit(p, "story", "Objective", cls=1, extra=("--depends-on", f"{survey}:evidence"))
+    plan_unit(p, tmp_path, story)
+    finished = create_investigation(p, tmp_path, title="Finished elsewhere")
+    complete_investigation(p, finished)
+    p.lead("work", "move", finished, "--parent", story, "--reason", "belongs to the objective")
+    assert show(p, story)["state"] == "ACCEPTANCE_PENDING"
+    for role in ("reviewer", "verifier"):
+        refused = err(p, "invoke", "create", story, "--role", role)
+        assert refused["code"] == "DEPENDENCY_UNSATISFIED" and refused["details"]["blockers"][0]["id"] == survey
+    actions = [a for a in p.ok("resume", "--json")["next_actions"] if a.startswith(f"{story}: ")]
+    assert any(f"waiting on {survey}" in a and "acceptance review" in a for a in actions)
+    assert not any("invoke create" in a for a in actions)  # resume does not advise a refused dispatch
+    assert_control_invariants(p)
+
+    rec = complete_investigation(p, survey)
+    other, _ = to_commit_ready(p, tmp_path, title="Change calc")
+    integrate(p, other)  # changes what the survey observed: STALE for the Story's acceptance, too
+    stale = err(p, "invoke", "create", story, "--role", "reviewer")
+    assert stale["code"] == "INPUT_STALE" and stale["details"]["inputs"][0]["id"] == rec
+    ack = p.lead("work", "acknowledge-input", story, "--input", rec, "--from", survey,
+                 "--reason", "rechecked: the survey's facts about add() still hold")
+    out = p.lead("invoke", "create", story, "--role", "reviewer")
+    pinned = p.ok("invoke", "show", out["invocation"])["inputs"]
+    assert [(i["id"], i["from"], i["acknowledgement"]) for i in pinned] == [(rec, survey, ack["decision"])]
+    assert rec in (p.root / ".aew" / out["pack"]["path"]).read_text(encoding="utf-8")  # the reviewer sees it
+    reviewer = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+    review_ev = reviewer.submit("review", {"claim": "objective met", "review": {
+        "independence": "R1", "disposition": "pass", "findings": [], "resolved_findings": []}})["evidence"]
+    p.lead("review", "ingest", story, "--evidence", review_ev)
+    p.lead("verify", "ingest", story, "--evidence", parent_verify(p, story))
+    p.lead("work", "close", story, "--reason", "the prerequisite and the children are accepted")
+    meta, _ = parse_frontmatter((p.root / ".aew" / show(p, story)["closeout"]["record"]).read_text(encoding="utf-8"))
+    assert [(d["id"], d["kind"], d["state"]) for d in meta["dependencies"]] == [(survey, "evidence", "DONE")]
+    assert meta["basis"]["review_r1"] == review_ev
+    assert_control_invariants(p)
+
+    # Reports are bound to the dependencies they ran under: a move that adds an inherited edge makes them STALE.
+    epic = create_unit(p, "epic", "Programme", cls=0, extra=("--depends-on", f"{survey}:evidence"))
+    free = create_unit(p, "story", "Free-standing", cls=1)
+    plan_unit(p, tmp_path, free)
+    complete_investigation(p, create_investigation(p, tmp_path, parent=free, title="Its child"))
+    p.lead("review", "ingest", free, "--evidence", parent_review(p, free))
+    p.lead("verify", "ingest", free, "--evidence", parent_verify(p, free))
+    p.lead("work", "move", free, "--parent", epic, "--reason", "part of the programme")
+    p.lead("plan", "reconfirm", free, "--reason", "same objective inside the programme")
+    gates = p.ok("gate", "show", free)["gates"]
+    assert gates["review_r1"]["status"] == "STALE" and gates["verification_goal_backwards"]["status"] == "STALE"
+    assert err(p, "work", "close", free, "--reason", "reports predate the new dependency")["code"] == "GATE_UNSATISFIED"
+    p.lead("work", "acknowledge-input", free, "--input", rec, "--from", survey, "--reason", "rechecked as above")
+    p.lead("review", "ingest", free, "--evidence", parent_review(p, free))
+    p.lead("verify", "ingest", free, "--evidence", parent_verify(p, free))
+    p.lead("work", "close", free, "--reason", "accepted under the programme's dependencies")
+    assert show(p, free)["state"] == "DONE"
+    assert_control_invariants(p)
+
+    state = Engine.discover(p.root).store.read()  # oracle rule 16 is not vacuous
+    bad = copy.deepcopy(state)
+    bad["invocations"][out["invocation"]]["dependencies"] = []
+    assert "dispatched under dependencies" in " | ".join(m2_violations(p.root, bad))

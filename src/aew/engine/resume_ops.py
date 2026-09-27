@@ -134,14 +134,17 @@ class ResumeOps(HierarchyOps):
                                           work_id=wid)
             if (u.get("parent_verification") or {}).get("awaiting_classification"):
                 out.append(f"classify the failed parent verification (`aew verify classify {wid}`)")
+            elif waiting:  # acceptance is a downstream assignment: review, verification and closeout all wait
+                pass
             elif unmet:
                 out.append(f"all children are DONE/CANCELLED; satisfy parent gates {unmet} "
                            f"(`aew invoke create {wid} --role reviewer|verifier`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
-            elif not waiting:
+            else:
                 out.append(f"all parent gates are CURRENT: close it (`aew work close {wid}`)")
-            out += [f"waiting on {b['id']} ({b['reason']}) before closeout" for b in waiting]
+            out += [f"waiting on {b['id']} ({b['reason']}) before its acceptance review, verification and closeout"
+                    for b in waiting]
         return out
 
     def _submitted(self, state: dict[str, Any], wid: str, u: dict[str, Any], kind: str) -> list[str]:

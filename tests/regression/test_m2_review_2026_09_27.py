@@ -188,3 +188,116 @@ def test_parent_reviewer_observation_mutated_after_submission_is_refused_at_inge
     (rev.workspace / "calc/core.py").write_text("tampered after review\n", encoding="utf-8", newline="\n")
     res = attempt(p, "review", "ingest", story, "--evidence", ev)
     assert res.returncode != 0 and res.error["code"] == "OBSERVATION_MUTATED", res.stdout or res.stderr
+
+
+# ------------------------------------------------------------------ Re-review of 0552116 (M2_followup_probe.py)
+# The follow-up probes, with the reviewer's bodies and this repository's imports. The three early-refusal
+# probes confirm that the fixes refuse at the move or edge edit and leave the structure unchanged.
+
+
+def _cap_nonmutating_concurrency(p, cap):
+    from aew.util import dump_yaml, load_yaml
+
+    policy = p.root / ".aew/policy/gates.yaml"
+    gates = load_yaml(policy.read_text(encoding="utf-8"), source="gates")
+    gates["non_mutating_concurrency"] = cap
+    policy.write_text(dump_yaml(gates), encoding="utf-8")
+
+
+def test_redispatch_respects_nonmutating_concurrency_after_ingest(tmp_path):
+    """Re-review Major: with a cap of one, A's record ingested (its executor ended), B dispatched, then A
+    redispatched. Redispatch skipped the cap check and left two active executors."""
+    p = sample_project(tmp_path)
+    _cap_nonmutating_concurrency(p, 1)
+    first = create_investigation(p, tmp_path, title="First")
+    second = create_investigation(p, tmp_path, title="Second")
+    role, _ = dispatch(p, first)
+    record = submit_record(role, "discovery_record")["evidence"]
+    p.lead("evidence", "ingest", first, "--evidence", record)
+    dispatch(p, second)
+    result = attempt(p, "work", "redispatch", first, "--reason", "refresh first record")
+    assert result.returncode != 0, "redispatch exceeded the configured concurrency cap: " + result.stdout
+    assert result.error["code"] == "CONCURRENCY_LIMIT", result.stderr
+    assert unit(p, first)["execution"]["record"]["id"] == record  # the refused redispatch changed nothing
+
+
+def test_redispatch_replacing_active_attempt_stays_within_cap(tmp_path):
+    """Control: a redispatch that replaces its own active executor is within a cap of one."""
+    p = sample_project(tmp_path)
+    _cap_nonmutating_concurrency(p, 1)
+    child = create_investigation(p, tmp_path)
+    _, first = dispatch(p, child)
+    second = p.lead("work", "redispatch", child, "--reason", "refresh")
+    assert second["execution"]["attempt"] == 2
+    assert p.ok("invoke", "show", first["invocation"])["status"] == "superseded"
+    assert p.ok("invoke", "show", second["invocation"])["status"] == "active"
+
+
+def test_started_nonmutating_move_refusal_preserves_parent(tmp_path):
+    p = sample_project(tmp_path)
+    upstream = create_investigation(p, tmp_path, title="Unfinished upstream")
+    parent = create_unit(p, "story", "Depends on upstream", cls=0)
+    p.lead("work", "depend", parent, "--add", f"{upstream}:evidence", "--reason", "upstream required")
+    child = create_investigation(p, tmp_path, title="Consumer")
+    dispatch(p, child)
+    result = attempt(p, "work", "move", child, "--parent", parent, "--reason", "join scope")
+    assert result.error["code"] == "ILLEGAL_TRANSITION"
+    assert unit(p, child)["parent"] is None
+
+
+def test_finished_child_blocks_late_parent_dependency_edit(tmp_path):
+    p = sample_project(tmp_path)
+    parent = create_unit(p, "story", "Dependent parent", cls=0)
+    child = create_investigation(p, tmp_path, parent=parent, cls=0)
+    complete_investigation(p, child)
+    upstream = create_investigation(p, tmp_path, title="Unfinished prerequisite")
+    result = attempt(p, "work", "depend", parent, "--add", f"{upstream}:evidence", "--reason", "late")
+    assert result.error["code"] == "ILLEGAL_TRANSITION"
+    assert unit(p, parent)["depends_on"] == []
+
+
+def test_started_mutating_move_refusal_preserves_parent(tmp_path):
+    p = sample_project(tmp_path)
+    upstream = create_planned_ticket(p, tmp_path, title="Upstream mutation", cls=0)
+    parent = create_unit(p, "story", "Waits for upstream", cls=0)
+    p.lead("work", "depend", parent, "--add", f"{upstream}:mutating", "--reason", "needs integrated upstream")
+    child = create_planned_ticket(p, tmp_path, title="Consumer mutation", cls=0)
+    assign(p, child)
+    result = attempt(p, "work", "move", child, "--parent", parent, "--reason", "scope expanded")
+    assert result.error["code"] == "ILLEGAL_TRANSITION"
+    assert unit(p, child)["parent"] is None
+
+
+def test_parent_acceptance_evidence_waits_for_its_dependency_output(tmp_path):
+    """Re-review contract question (M2_followup_probe.py line 13), decided by the operator: parent review and
+    verification are downstream assignments of the parent's dependencies (WC §8). The reviewer's sequence is
+    attempted step by step; the safe end state is that the parent never closes on acceptance reports that were
+    dispatched before its prerequisite was accepted."""
+    p = sample_project(tmp_path)
+    prerequisite = create_investigation(p, tmp_path, title="Prerequisite survey", cls=0)
+    parent = create_unit(p, "story", "Dependent objective", cls=1, extra=("--depends-on", f"{prerequisite}:evidence"))
+    plan_unit(p, tmp_path, parent)
+    child = create_investigation(p, tmp_path, title="Completed child", cls=0)
+    complete_investigation(p, child)
+    p.lead("work", "move", child, "--parent", parent, "--reason", "accept this result")
+    early = []
+    for role in ("reviewer", "verifier"):
+        out = attempt(p, "invoke", "create", parent, "--role", role)
+        if out.returncode == 0:  # the unfixed engine dispatched it: produce and ingest the early report
+            actor = Role(p, out.json["invocation_token"], Path(out.json["observation"]["path"]))
+            if role == "reviewer":
+                ev = actor.submit("review", {"claim": "early", "review": {"independence": "R1", "disposition": "pass",
+                                                                         "findings": [], "resolved_findings": []}})
+            else:
+                check = actor.check("unit")["evidence"]
+                ev = actor.submit("verification", {"claim": "early", "verification": {"scope": "parent", "claims": [
+                    {"type": "goal_backwards", "claim": "met", "result": "pass", "checks": [check]},
+                    {"type": "contract", "claim": "held", "result": "pass", "checks": [check]}]}})
+            early.append(attempt(p, "review" if role == "reviewer" else "verify", "ingest", parent, "--evidence",
+                                 ev["evidence"]))
+        else:
+            assert out.error["code"] == "DEPENDENCY_UNSATISFIED", out.stderr
+    assert attempt(p, "work", "close", parent, "--reason", "gates passed").returncode != 0
+    complete_investigation(p, prerequisite)
+    attempt(p, "work", "close", parent, "--reason", "prerequisite finished")
+    assert unit(p, parent)["state"] != "DONE", "parent closed on reports that predate its prerequisite output"

@@ -55,10 +55,13 @@ class HierarchyOps(NonMutatingOps):
                    "children_complete": {"status": G.CURRENT if complete else G.MISSING,
                                          "children": {k: state["work"][k]["state"] for k in kids}}}
 
+        edges = effective_edge_set(state, work_id)
+
         def is_current(e: dict[str, Any]) -> bool:
             snap = e["evaluated_snapshot"]
+            dispatched_with = (state["invocations"].get(e["producer"]["invocation"]) or {}).get("dependencies")
             return snap["relevant_inputs_fingerprint"].endswith(f"+children:{digest}") \
-                and self._same_source(snap.get("base_revision"), commit)
+                and self._same_source(snap.get("base_revision"), commit) and dispatched_with == edges
 
         results = G.evaluate_evidence_unit(state, work_id, evidence, obligations=obligations, special=special,
                                            is_current=is_current)
@@ -101,9 +104,21 @@ class HierarchyOps(NonMutatingOps):
             gc = self._parent_gate_context(state, work_id)
             chosen = self.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
             commit = self.authoritative_commit()
+            # Parent acceptance is a downstream assignment (WC §8: a dependency is satisfied only when the upstream
+            # output is in the downstream assignment's recorded input/source snapshot; operator decision after the
+            # M2 re-review). Its reviewer and verifier start only once the parent's own and inherited dependencies
+            # are satisfied, and they consume the prerequisite records under the ADR-0008 input rule.
+            blockers = dependency_blockers(state, unit, repo_root=self.repo_root, base_commit=commit, work_id=work_id)
+            if blockers:
+                raise DependencyUnsatisfied(f"{work_id}'s acceptance review and verification wait for its "
+                                            "dependencies", blockers=blockers)
+            inputs = self.dispatch_inputs(state, work_id, commit)
             inv_id, inv_token, snapshot = self._dispatch_observer(
-                ctx, work_id, card=chosen, scope="parent", commit=commit,
+                ctx, work_id, card=chosen, scope="parent", commit=commit, inputs=inputs,
                 children_digest=gc["snapshot"]["children_digest"])
+            # Its report is bound to the dependencies it was dispatched under: a later edge change (a move, an
+            # edit) makes it STALE, like a change of the child set.
+            state["invocations"][inv_id]["dependencies"] = effective_edge_set(state, work_id)
             ctx.summary = f"{inv_id} ({chosen.id}) dispatched for {work_id} acceptance"
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
@@ -132,6 +147,10 @@ class HierarchyOps(NonMutatingOps):
                     and self._same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
                 raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
                                       "parent snapshot (stale)", evaluated=snap, current=gc["snapshot"])
+            edges = effective_edge_set(state, work_id)
+            if inv.get("dependencies") != edges:
+                raise GateUnsatisfied(f"{evidence_id} was dispatched under other dependencies than {work_id}'s current "
+                                      "ones (stale)", dispatched_with=inv.get("dependencies"), current=edges)
             plan = unit.get("plan") or {}
             if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
@@ -257,7 +276,12 @@ class HierarchyOps(NonMutatingOps):
                 "decision": decision, "plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
                 "baseline_commit": unit.get("baseline_commit"), "authoritative_commit": gc["snapshot"]["base_revision"],
                 "children_digest": gc["snapshot"]["children_digest"], "children": children,
+                "dependencies": [{**e, "state": state["work"][e["id"]]["state"],
+                                  "completion_sha256": self.completion_sha(state, e["id"])}
+                                 for e in effective_edge_set(state, work_id)],
                 "gates": {g: v["status"] for g, v in gc["gates"].items()},
+                "basis": {g: v["evidence"] for g, v in sorted(gc["gates"].items())
+                          if isinstance(v.get("evidence"), str)},
                 "evidence": [{"id": e["id"], "kind": e["kind"], "result": e["result"], "sha256": e["sha256"]}
                              for e in unit.get("evidence", [])],
                 "classifications": unit.get("classifications", []), "waivers": unit.get("waivers", [])}

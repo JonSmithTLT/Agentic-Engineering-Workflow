@@ -10,7 +10,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main, ci/test-strategy]   # TEMP: validation runs before the PR; reverted before hand-off
+    branches: [main]
   merge_group:
   workflow_dispatch:
 

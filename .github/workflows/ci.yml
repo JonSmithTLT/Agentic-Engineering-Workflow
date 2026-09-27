@@ -73,7 +73,8 @@ jobs:
           - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 1, of: 1}
           - {os: ubuntu-latest, python: "3.11", lane: adversarial, shard: 1, of: 1}
           - {os: windows-latest, python: "3.13", lane: integration, shard: 1, of: 1}
-          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 1, of: 1}
+          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 1, of: 2}
+          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 2, of: 2}
           - {os: windows-latest, python: "3.13", lane: regression, shard: 1, of: 2}
           - {os: windows-latest, python: "3.13", lane: regression, shard: 2, of: 2}
           - {os: windows-latest, python: "3.13", lane: adversarial, shard: 1, of: 1}

@@ -33,8 +33,8 @@ from aew.util import dump_yaml
 from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
 from invariants import control_violations
 
-SEEDS = [int(s) for s in os.environ.get("AEW_HWALK_SEEDS", "7,19,31").split(",")]
-STEPS = int(os.environ.get("AEW_HWALK_STEPS", "60"))
+SEEDS = [int(s) for s in os.environ.get("AEW_HWALK_SEEDS", "7,19,31,43,59").split(",")]
+STEPS = int(os.environ.get("AEW_HWALK_STEPS", "80"))
 FAULT_RATE = float(os.environ.get("AEW_HWALK_FAULT_RATE", "0.06"))
 
 FAST_CHECKS = {
@@ -75,7 +75,13 @@ class HierarchyWalk:
     # ------------------------------------------------------------------ plumbing
 
     def state(self) -> dict[str, Any]:
-        return self.engine.store.read()
+        """Committed control state, re-read only when control.yaml changed (every commit atomically replaces
+        it). The walk consults state dozens of times per step; the engine itself always reads fresh."""
+        st = os.stat(self.engine.store.control_path)
+        key = (st.st_mtime_ns, st.st_size, st.st_ino)
+        if getattr(self, "_state_key", None) != key:
+            self._state, self._state_key = self.engine.store.read(), key
+        return self._state
 
     def unit(self, wid: str) -> dict[str, Any]:
         return self.state()["work"][wid]

@@ -67,7 +67,12 @@ The **scale regression** runs every measured command on one project at 12 and ag
 - Every command now parses the control state exactly once, at every size. Git process counts are constant (`status` 3, `resume` 14, `work dispatch` 13, `review ingest` 24).
 - A polling process's read of an unchanged 500-unit state: **1.65 s → 0.10 s**.
 
-## 5. Remaining: the control state grows with completed work (decision needed)
+## 5. Remaining: the control state grows with completed work (decided: ADR-0011)
+
+**Decision (operator and designer, 2026-09-27):**
+- Option 1 below is the chosen architecture direction, recorded as ADR-0011 (hot/cold control state).
+- The schema is not changed in M3.
+- Completing the archival, against ADR-0011's completion criteria, is a **prerequisite for M4**: done after M3's acceptance, before M4 begins.
 
 After the fixes, every command still costs time **linear in the size of `control.yaml`**. At 500 units that is 1.5 s to parse; a commit adds about 1.1 s to write it. The file grows with **completed** work, which never leaves it.
 
@@ -81,7 +86,7 @@ What the 7.0 MB at 500 units consists of:
 
 A DONE Ticket with its four invocations costs about 20 KB of control state; a planned one about 1 KB. With libyaml, PyYAML still builds the Python objects in Python, which caps parsing at about 4–5 MB/s.
 
-This is a property of the persistence design (ADR-0001: one control file is the commit point and holds everything), not a defect a small change removes. Fixing it changes the control-state schema, so it is **not done in M3** (whose schemas change only additively). Options, for a decision:
+This is a property of the persistence design (ADR-0001: one control file is the commit point and holds everything), not a defect a small change removes. Fixing it changes the control-state schema, so it is **not done in M3** (whose schemas change only additively). The options that were considered:
 
 1. **Archive terminal records out of the hot state.** When an invocation ends and its unit is terminal, move its pack sources and card content into an immutable, content-addressed record committed through the existing redo mechanism, leaving a stub with its hash. Revoked credential entries shrink to what rule 17 needs. Moving DONE units' detail into their completion records as well would bring a DONE Ticket to roughly 1 KB.
 2. **Deduplicate pinned role cards.** Store each (card, version, sha256) once and reference it from invocations. This is smaller in effect (about 14%) and in scope.

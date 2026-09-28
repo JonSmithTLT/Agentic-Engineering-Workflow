@@ -68,7 +68,7 @@
     - P2: `status` and `resume` spawned `git rev-parse` per open unit. The scale regression failed on this before the fix.
     - P3: the unchanged state was re-parsed repeatedly within a process: `resume`, the ingest and dispatch routing, and supervisor and broker polling. Identical bytes now reuse the parse.
   - After the fixes, at 500 units: reads 1.8–2.2 s, `resume` 5.4 s, commits 3.0–3.3 s (3.8–5.9× faster). A polling read takes 0.10 s.
-  - **Decision needed (not fixed in M3):** cost remains linear in `control.yaml`'s size, which grows about 20 KB per DONE Ticket, 59% of it in completed invocations. Fixing it changes the control-state schema. The options are in `m3-performance.md` §5.
+  - **Decided (M3-B8, operator and designer, 2026-09-27):** cost remains linear in `control.yaml`'s size, which grows about 20 KB per DONE Ticket, 59% of it in completed invocations. Hot/cold archival (option 1) is the chosen direction, recorded as ADR-0011. The schema is unchanged in M3, and completing the archival is a prerequisite for M4, after M3's acceptance.
   - **Results:** Windows 905 passed with the 4 pinned platform skips, plus the serial lane (10 passed, 1 skip); the full parallel run fell from 745 s to 610 s. Linux (WSL, Python 3.11) 909 passed, plus 11 serial. Live on OpenCode 2.0.18: 21 passed, 1 skipped by design.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
@@ -423,6 +423,7 @@ Rejecting per-turn `run` removes the one choice that would have blocked coordina
 | M3-B5 | capabilities vs tools | permission profile as defense in depth |
 | M3-B6 | reviewer shares the implementer's workspace | probe → `WORKSPACE_MUTATED` if confirmed |
 | M3-B7 | credentials in model-controlled processes | custody bridge (§2.3); a harness permission layer is never treated as secret isolation |
+| M3-B8 | ADR-0001's single control file vs. growth with completed work (measured in step 7) | operator and designer, 2026-09-27: hot/cold archival is the direction (ADR-0011). No schema change in M3. It is a prerequisite for M4, done after M3's acceptance. |
 
 There is no frozen-contract contradiction.
 

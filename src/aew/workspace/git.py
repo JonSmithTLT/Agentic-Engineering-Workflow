@@ -6,6 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from aew import profile
 from aew.errors import GitError
 
 AEW_IDENTITY = {"name": "AEW Engine", "email": "aew-engine@invalid"}
@@ -23,7 +24,10 @@ def git(
     full_env["LC_ALL"] = "C"
     if env:
         full_env.update(env)
-    proc = subprocess.run(["git", *args], cwd=cwd, env=full_env, capture_output=True, input=input)
+    profile.count("git")
+    profile.count(f"git:{args[0] if args else ''}")
+    with profile.phase("git"):
+        proc = subprocess.run(["git", *args], cwd=cwd, env=full_env, capture_output=True, input=input)
     if check and proc.returncode != 0:
         raise GitError(
             f"git {' '.join(args)} failed ({proc.returncode})",

@@ -60,6 +60,16 @@
     - `OpenCodeDriver` moved into the shared helper.
   - **Not observable live:** the delivered prompt (the live driver runs scripted steps) and a second execution profile (one free model). Both are asserted in CI only. The real TUI's Lead environment remains the operator's TUI check (plan §9).
   - **Results:** Windows 876 passed with the 4 pinned platform skips, plus the serial lane (10 passed, 1 skip). Linux (WSL, Python 3.11) 880 passed, plus 11 serial. Live on OpenCode 2.0.18: 21 passed and 1 skipped by design; the Lead-projection test was rerun on its own after its fix. The 8 new CI tests passed 3 more times under 8-way parallel load.
+- **Step 7 is complete** (control-plane performance; `m3-performance.md`; ADR-0001 amendment).
+  - `AEW_PROFILE` records each command's phases and counts. `tools/perf/control_plane.py` builds engine-validated projects of 50, 500 and 3,000 units and measures the real CLI.
+  - Before the fixes, every command took 7.5–27 s at 500 units and 48–168 s at 3,000.
+  - **Three pathologies found and fixed**, each with a regression:
+    - P1: YAML was parsed and written by pure-Python PyYAML. It now uses libyaml, with identical values and bytes.
+    - P2: `status` and `resume` spawned `git rev-parse` per open unit. The scale regression failed on this before the fix.
+    - P3: the unchanged state was re-parsed repeatedly within a process: `resume`, the ingest and dispatch routing, and supervisor and broker polling. Identical bytes now reuse the parse.
+  - After the fixes, at 500 units: reads 1.8–2.2 s, `resume` 5.4 s, commits 3.0–3.3 s (3.8–5.9× faster). A polling read takes 0.10 s.
+  - **Decision needed (not fixed in M3):** cost remains linear in `control.yaml`'s size, which grows about 20 KB per DONE Ticket, 59% of it in completed invocations. Fixing it changes the control-state schema. The options are in `m3-performance.md` §5.
+  - **Results:** Windows 905 passed with the 4 pinned platform skips, plus the serial lane (10 passed, 1 skip); the full parallel run fell from 745 s to 610 s. Linux (WSL, Python 3.11) 909 passed, plus 11 serial. Live on OpenCode 2.0.18: 21 passed, 1 skipped by design.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

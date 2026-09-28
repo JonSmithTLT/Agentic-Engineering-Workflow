@@ -221,9 +221,12 @@ class NonMutatingOps(IntegrationOps):
     def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
         """Non-raising view of ``dispatch_inputs`` (resume, status): would each input allow a dispatch now?"""
         unit = state["work"][work_id]
+        inputs = self.consumed_inputs(state, work_id)
+        if not inputs:  # most units: no git subprocess for a commit nothing would be compared with (M3 step 7)
+            return []
         commit = self.dispatch_commit(unit)
         out = []
-        for inp in self.consumed_inputs(state, work_id):
+        for inp in inputs:
             try:
                 ev = self._find_unit_evidence(inp["from"], inp["id"])
             except (GateUnsatisfied, NotFound) as exc:

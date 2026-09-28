@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from aew import profile
 from aew.errors import IntegrityError, PermissionDenied, ValidationFailed
 from aew.schemas import validate
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text
@@ -80,6 +81,12 @@ def read(path: Path) -> tuple[dict[str, Any], str]:
 
 def scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]]:
     """All sealed evidence for a work unit in recording order, plus integrity problems found."""
+    profile.count("scan")
+    with profile.phase("scan"):
+        return _scan(aew_root, work_id)
+
+
+def _scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]]:
     directory = evidence_dir(aew_root, work_id)
     records: list[dict[str, Any]] = []
     problems: list[str] = []
@@ -94,6 +101,7 @@ def scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]]
         meta["_path"] = str(path.relative_to(aew_root)).replace("\\", "/")
         meta["_sha256"] = sha256_file(path)
         records.append(meta)
+    profile.count("scan_files", len(records) + len(problems))
     records.sort(key=lambda m: m.get("seq", 0))
     return records, problems
 

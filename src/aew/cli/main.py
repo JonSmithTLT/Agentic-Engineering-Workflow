@@ -14,6 +14,7 @@ import sys
 from typing import Any, Callable
 
 from aew import SPEC_SET, __version__
+from aew import profile
 from aew.errors import AEWError
 
 Handler = Callable[[argparse.Namespace], Any]
@@ -63,8 +64,19 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
 
 
 def main(argv: list[str] | None = None) -> int:
-    _utf8_streams()
     argv = list(sys.argv[1:] if argv is None else argv)
+    if not profile.cli_start():
+        return _main(argv)
+    code = 1
+    try:
+        code = _main(argv)
+        return code
+    finally:
+        profile.cli_finish(argv, code)
+
+
+def _main(argv: list[str]) -> int:
+    _utf8_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)

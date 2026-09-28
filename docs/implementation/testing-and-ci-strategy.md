@@ -24,7 +24,7 @@ The **directory** says what a test is. **Markers** are used only for properties 
 | `adversarial` | marker `exploratory` | The seeded walks: the M1 composition walk (5 seeds × 60 steps) and the M2 hierarchy walk (5 seeds × 80 steps). Their default budgets are merge gates; larger budgets run nightly. | Seeded exploration, deterministic per seed |
 | `fast` | `tests/unit/**`, `tests/test_spec_pin.py` | Pure logic, schemas, the store model and in-process fault injection, the frozen-spec pin, CI tooling | Deterministic |
 | `integration` | `tests/integration/**` | Engine features over real git and the real CLI | Deterministic |
-| `regression` | `tests/regression/**` | Independent-review probes (preserved **unchanged**), composition tests, the cross-operation invariant oracle | **Permanent deterministic regression** |
+| `regression` | `tests/regression/**` | Independent-review probes (preserved **unchanged**), composition tests, the cross-operation invariant oracle, and the timing-free control-plane scale regression (M3: each command's counts of git processes, parses, commits and renders must not grow with the project; `m3-performance.md`) | **Permanent deterministic regression** |
 
 ### Deterministic regression versus exploration
 

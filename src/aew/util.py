@@ -47,7 +47,14 @@ def sha256_file(path: Path) -> str | None:
 # --------------------------------------------------------------------------- YAML
 
 
-class _Dumper(yaml.SafeDumper):
+# libyaml when PyYAML was built with it (M3 step 7, m3-performance.md): about 6x faster in both directions on AEW's
+# control state, with the same Python constructors and representers, so the values read and the bytes written are
+# identical (checked on every YAML document of a large project; tests/unit/test_yaml_backends.py).
+_SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_SafeDumperBase = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
+
+
+class _Dumper(_SafeDumperBase):  # type: ignore[valid-type,misc]
     pass
 
 
@@ -67,7 +74,7 @@ def dump_yaml(data: Any) -> str:
 
 def load_yaml(text: str, *, source: str = "<yaml>") -> Any:
     try:
-        return yaml.safe_load(text)
+        return yaml.load(text, Loader=_SafeLoader)
     except yaml.YAMLError as exc:
         raise ValidationFailed(f"{source}: invalid YAML: {exc}") from exc
 

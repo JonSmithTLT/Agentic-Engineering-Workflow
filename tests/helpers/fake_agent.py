@@ -59,14 +59,18 @@ def aew_argv() -> list[str]:
     return [exe] if exe else [sys.executable, "-m", "aew"]
 
 
-def run(argv: list[str], **kw: Any) -> dict[str, Any]:
+def run(argv: list[str], *, input_bytes: bytes | None = None, **kw: Any) -> dict[str, Any]:
+    if input_bytes is not None:  # piped into the command, byte for byte, as a shell pipe delivers it
+        proc = subprocess.run(argv, input=input_bytes, capture_output=True, creationflags=NO_WINDOW, **kw)
+        out, err = (b.decode("utf-8", "replace").replace("\r\n", "\n") for b in (proc.stdout, proc.stderr))
+        return {"exit": proc.returncode, "stdout": out, "stderr": err}
     proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
                           stdin=subprocess.DEVNULL, creationflags=NO_WINDOW, **kw)
     return {"exit": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
-def aew(*args: str, env: dict[str, str] | None = None) -> dict[str, Any]:
-    out = run([*aew_argv(), *args], env={**os.environ, **env} if env else None)
+def aew(*args: str, env: dict[str, str] | None = None, input_bytes: bytes | None = None) -> dict[str, Any]:
+    out = run([*aew_argv(), *args], env={**os.environ, **env} if env else None, input_bytes=input_bytes)
     for stream in ("stdout", "stderr"):
         try:
             out[f"{stream}_json"] = json.loads(out[stream])
@@ -122,9 +126,12 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)
         rev = json.loads(aew("lead", "show")["stdout"])["revision"]
         return aew(*s["args"], "--expect-rev", str(rev))
-    if do == "submit_raw":  # whatever text the model produced, well-formed or not
+    if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it
+        data = s["text"].encode(s.get("encoding", "utf-8"))  # e.g. "utf-8-sig" or "utf-16": Windows PowerShell 5.1
+        if s.get("stdin"):
+            return aew("submit", "--kind", s["kind"], "--file", "-", input_bytes=data)
         path = Path(state["tmp"]) / f"submission-{state['n']}.md"
-        path.write_text(s["text"], encoding="utf-8")
+        path.write_bytes(data)
         return aew("submit", "--kind", s["kind"], "--file", str(path))
     if do == "submit":
         import yaml

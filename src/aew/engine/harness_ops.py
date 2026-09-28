@@ -216,9 +216,19 @@ class HarnessOps(ResumeOps):
                     changed = changed_paths(workspace, base)
                 except Exception:
                     changed = None
+            # Evidence evaluated on a workspace state that is no longer the current one satisfies no gate: say so,
+            # or a relaunched agent reads "pass" and stops (found live in M3 step 8).
+            now = (self.current_snapshot(state["work"][inv["work_unit"]]) or {}).get("relevant_inputs_fingerprint")
+
+            def entry(e: dict[str, Any]) -> dict[str, Any]:
+                out = {"id": e["id"], "kind": e["kind"], "result": e["result"]}
+                seen = (e.get("evaluated_snapshot") or {}).get("relevant_inputs_fingerprint")
+                if now and seen and seen != now:
+                    out["stale"] = True
+                return out
+
             continuation = {"previous_runs": [r["run"] for r in runs[:-1]],
-                            "evidence": [{"id": e["id"], "kind": e["kind"], "result": e["result"]} for e in mine],
-                            "changed_paths": changed}
+                            "evidence": [entry(e) for e in mine], "changed_paths": changed}
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])
@@ -232,6 +242,7 @@ class HarnessOps(ResumeOps):
             expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
             pack_path=str(self.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
             continuation=continuation, run_dir=str(runlog.run_dir(self.aew_root, run)),
+            scratch=str(runlog.run_dir(self.aew_root, run) / "scratch"),
             # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
             # variables the harness server needs (never their values; the policy's current list, not a pin).
             extra={"card_skills": sorted(content.get("skills") or []), "card_capabilities": sorted(capabilities),
@@ -380,7 +391,8 @@ class HarnessOps(ResumeOps):
         runs = inv.get("runs") or []
         contract = self.harness_contract(state, invocation or "", K.run_id(invocation or "", len(runs) + 1))
         state_dir = os.path.realpath(runlog.run_dir(self.aew_root, contract.run) / "harness")
-        config = projection.invocation_config(contract, private_dirs=projection.private_output_dirs(state_dir, os.sep))
+        config = projection.invocation_config(contract, private_dirs=projection.private_output_dirs(
+            state_dir, os.sep, scratch=os.path.realpath(contract.scratch)))
         directory = os.path.realpath(contract.workspace)
         return {"harness": harness, "target": invocation, "for_run": contract.run, "config": config,
                 "session": projection.session_body(contract, directory, config["permissions"]),

@@ -149,8 +149,10 @@ class Supervisor:
             self.bridge = bridge.BridgeServer(self.handle)
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
+            Path(contract.scratch).mkdir(parents=True, exist_ok=True)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
-                                            invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"])
+                                            invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
+                                            scratch=contract.scratch)
             self.adapter = registry.load(profile["harness"])(self.tree, self.run_dir, self.events)
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
@@ -277,7 +279,8 @@ class Supervisor:
             self.record["evidence"] = self._evidence()
             self.record.update(status=status, reason=reason, ended_at=utc_now())
             if self.bridge is not None:
-                self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused)
+                self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
+                                             outcomes=self.bridge.outcomes)
             self._event("ended", status=status, reason=reason)
             self._drop_credential()
             leaks = runlog.scan_for_credentials(self.run_dir)

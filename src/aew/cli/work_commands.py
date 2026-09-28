@@ -27,6 +27,12 @@ def _as_invocation(args: argparse.Namespace, op: str, bridge_args: dict[str, Any
     return direct(_inv_token(args))
 
 
+def _submit(a: argparse.Namespace) -> Any:
+    text = bridge.read_submission(a.file)  # read once: `--file -` is a stream (M3 step 8)
+    return _as_invocation(a, "submit", {"kind": a.kind, "text": text},
+                          lambda token: _engine(a).submit(invocation_token=token, kind=a.kind, text=text))
+
+
 def _add_launch(q: argparse.ArgumentParser) -> None:
     q.add_argument("--launch", action="store_true",
                    help="start a harness run for the new invocation (ADR-0009); its credential goes to the run's "
@@ -304,9 +310,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
                                                      "discovery_record", "research_record", "plan_proposal"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
     q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
-    q.set_defaults(handler=lambda a: _as_invocation(
-        a, "submit", {"kind": a.kind, "text": bridge.read_submission(a.file)},
-        lambda token: _engine(a).submit(invocation_token=token, kind=a.kind, text=_read_text_arg(a.file))))
+    q.set_defaults(handler=_submit)
 
     q = sub.add_parser("whoami", help="the invocation this credential or harness run acts as (bounded role)")
     q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")

@@ -57,6 +57,9 @@ def now_ms() -> float:
     return time.time() * 1000
 
 
+TOOL_INPUT = "fake-tool-input-must-not-be-logged"
+
+
 def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(12)}"
 
@@ -199,7 +202,10 @@ class FakeOpenCode:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
         do = step["do"]
         self.assistant(s, i, "tool-calls", tool="shell")
-        self.emit("session.tool.called", {"sessionID": s.info["id"], "name": "shell"})
+        call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
+        self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell"})
+        self.emit("session.tool.called", {"sessionID": s.info["id"], "id": call, "input": {"command": TOOL_INPUT},
+                                          "executed": True})
         if do == "exit":
             if step.get("code", 0):
                 os._exit(int(step["code"]))  # the harness crashed

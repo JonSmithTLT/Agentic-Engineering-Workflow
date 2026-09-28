@@ -148,7 +148,12 @@ class HarnessLab:
         return self.aew(*self.lead_args(*args), env=env)
 
     def wait(self, run: str, timeout: float = 120) -> dict[str, Any]:
-        out = self.ok("harness", "wait", run, "--timeout", str(timeout))
+        from conftest import run_aew  # the CLI's own time limit must outlast the wait (a live model run can take minutes)
+
+        res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
+                      timeout=timeout + 120)
+        assert res.returncode == 0, f"aew harness wait {run} failed: {res.stderr or res.stdout}"
+        out = res.json
         assert not out["timed_out"], f"{run} still running after {timeout}s: {out}"
         return out
 

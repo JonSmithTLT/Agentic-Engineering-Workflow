@@ -2,7 +2,9 @@
 """Control-plane performance: synthetic projects and per-command measurements (M3 plan §2.10; m3-performance.md).
 
     python tools/perf/control_plane.py run --sizes 50,500,3000 --work DIR [--reps 3] [--json results.json]
+    python tools/perf/control_plane.py sweep --points 20:250,20:3000,200:250 --work DIR [--json results.json]
     python tools/perf/control_plane.py build --units 500 --out DIR           # a project only (read-only use)
+    python tools/perf/control_plane.py footprint PROJECT                     # any project, read-only
 
 **Projects.** A template is made by the real engine, in-process:
 - T-0001 is taken through its whole lifecycle to DONE: four invocations, their evidence, a completion record;
@@ -12,11 +14,25 @@
 - T-0004 is a READY investigation (the dispatch target: T-0003 holds the one mutating slot, and a read-only
   dispatch also creates a worktree).
 
-The rest is cloned from T-0001 and T-0002, two DONE for each planned, until the project has the requested number of
-units. Every id (unit, invocation, credential id, decision), path, evidence seal and content hash is rewritten, so
+The rest is cloned from T-0001 and T-0002: for ``run``, two DONE for each planned, until the project has the
+requested number of units; for ``sweep``, until it has the requested numbers of open and completed units. Every id (unit, invocation, credential id, decision), path, evidence seal and content hash is rewritten, so
 the engine accepts the result as its own. The build checks this: the control state parses and validates, `doctor`
 passes, `status` finds every record intact, `resume` finds no contradiction, and cloned evidence verifies. Clones
 are top-level Tickets.
+
+**Footprint.** How the bytes of ``control.yaml`` divide between the work that is open and the project's history
+(ADR-0011, designer note 2026-09-27: hot state and latency should track active complexity, not lifetime history).
+Each record is sized as it is serialized in the file:
+- *open*: each open unit's record, its invocations (live, and ended ones it still carries) and their credentials
+  (active, and revoked ones);
+- *history*: each DONE or CANCELLED unit's record, with its invocations and credentials;
+- *other*: the Lead, its credentials and handoff offers, counters, and the file's own structure.
+
+*Terminal records* are everything ADR-0011 would move out of the hot state: the history, plus the ended invocations
+and revoked credentials of open units. The rest is the *live* part.
+
+A **sweep** measures the same commands at several ``open:completed`` points, so the dependence of cost on each can be
+read separately: points with the same open count and growing history show what history alone costs.
 
 **Measurements.** Each command runs as the real CLI in its own process, with ``AEW_PROFILE`` recording its phases
 and counts; wall time is measured around the process. Mutations are measured on the project and undone after
@@ -261,6 +277,17 @@ def grow(root: Path, units: int) -> None:
     cloner.save()
 
 
+def add_units(root: Path, *, done: int, planned: int) -> None:
+    """Clone ``done`` more DONE Tickets and ``planned`` more planned ones."""
+    cloner = Cloner(root)
+    bundles = {"T-0001": ids_of(cloner.state, root / ".aew", "T-0001"),
+               "T-0002": ids_of(cloner.state, root / ".aew", "T-0002")}
+    for wid, n in (("T-0001", done), ("T-0002", planned)):
+        for _ in range(n):
+            cloner.clone(wid, bundles[wid])
+    cloner.save()
+
+
 def build(root: Path, units: int) -> Template:
     t = make_template(root)
     grow(root, units)
@@ -281,6 +308,72 @@ def validate(root: Path) -> dict[str, Any]:
         assert not problems, (wid, problems)
     return {"units": len(state["work"]), "invocations": len(state["invocations"]), "tokens": len(state["tokens"]),
             "control_bytes": (root / ".aew/state/control.yaml").stat().st_size}
+
+
+# ---------------------------------------------------------------------------------------------- footprint
+
+TERMINAL_UNITS = frozenset({"DONE", "CANCELLED"})
+
+
+def _bytes(section: str, key: str, value: Any) -> int:
+    """A record's size as it sits in ``control.yaml`` (under its section, at the file's indentation)."""
+    return len(dump_yaml({section: {key: value}}).encode("utf-8")) - len(f"{section}:\n")
+
+
+def footprint(state: dict[str, Any], control_bytes: int) -> dict[str, Any]:
+    work, invocations, tokens = state["work"], state["invocations"], state["tokens"]
+    open_units = {w for w, u in work.items() if u["state"] not in TERMINAL_UNITS}
+    owner: dict[str, str] = {}  # credential id -> invocation
+    for iid, inv in invocations.items():
+        for tid in [inv.get("token_id"), *(r.get("token_id") for r in inv.get("runs") or [])]:
+            if tid:
+                owner[tid] = iid
+    for tid, tok in tokens.items():
+        iid = (tok.get("scope") or {}).get("invocation_id")
+        if tok.get("kind") == "invocation" and iid:
+            owner.setdefault(tid, iid)
+    live = {"units": 0, "live_invocations": 0, "ended_invocations": 0, "active_credentials": 0,
+            "revoked_credentials": 0}
+    history = {"units": 0, "invocations": 0, "credentials": 0}
+    for wid, unit in work.items():
+        if wid in open_units:
+            live["units"] += _bytes("work", wid, unit)
+        else:
+            history["units"] += _bytes("work", wid, unit)
+    for iid, inv in invocations.items():
+        size = _bytes("invocations", iid, inv)
+        if inv.get("work_unit") not in open_units:
+            history["invocations"] += size
+        else:
+            live["live_invocations" if inv.get("status") == "active" else "ended_invocations"] += size
+    for tid, tok in tokens.items():
+        iid = owner.get(tid)
+        if iid is None:
+            continue  # the Lead's credentials and handoff offers: "other"
+        size = _bytes("tokens", tid, tok)
+        if invocations.get(iid, {}).get("work_unit") not in open_units:
+            history["credentials"] += size
+        else:
+            live["revoked_credentials" if tok.get("revoked_at") else "active_credentials"] += size
+    open_total, history_total = sum(live.values()), sum(history.values())
+    terminal = history_total + live["ended_invocations"] + live["revoked_credentials"]
+    n_open, n_done = len(open_units), len(work) - len(open_units)
+    return {"units": {"open": n_open, "completed": n_done},
+            "control_bytes": control_bytes,
+            "open_bytes": {**live, "total": open_total},
+            "history_bytes": {**history, "total": history_total},
+            "other_bytes": control_bytes - open_total - history_total,
+            "per_open_unit_bytes": round(open_total / n_open) if n_open else None,
+            "per_completed_unit_bytes": round(history_total / n_done) if n_done else None,
+            "terminal_record_bytes": terminal,
+            "live_bytes": control_bytes - terminal}
+
+
+def project_footprint(root: Path) -> dict[str, Any]:
+    path = root / ".aew/state/control.yaml"
+    raw = path.read_bytes()
+    from aew.engine.store import deserialize_control
+    return footprint(deserialize_control(raw, source="control.yaml"), len(raw))
 
 
 # ---------------------------------------------------------------------------------------------- measuring
@@ -434,6 +527,45 @@ def table(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def sweep_points(spec: str) -> list[tuple[int, int]]:
+    """``open:completed,...``, measured in order on as few projects as possible: a point that has at least the
+    previous point's open and completed units grows that project; any other starts a new one."""
+    return [(int(a), int(b)) for a, b in (p.split(":") for p in spec.split(","))]
+
+
+def sweep(points: list[tuple[int, int]], work: Path, reps: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    t: Template | None = None
+    have = (0, 0)
+    for n, (want_open, want_done) in enumerate(points):
+        if t is None or want_open < have[0] or want_done < have[1]:
+            t = make_template(work / f"sweep-{n}" / "repo")  # 3 open (T-0002..T-0004), 1 completed (T-0001)
+            have = (3, 1)
+        t0 = time.perf_counter()
+        add_units(t.root, done=max(want_done - have[1], 0), planned=max(want_open - have[0], 0))
+        have = (max(want_open, have[0]), max(want_done, have[1]))
+        info = {**validate(t.root), "build_s": round(time.perf_counter() - t0, 1)}
+        fp = project_footprint(t.root)
+        print(f"point open={fp['units']['open']} completed={fp['units']['completed']} {info}", flush=True)
+        results.append({"point": {"open": fp["units"]["open"], "completed": fp["units"]["completed"]},
+                        "project": info, "footprint": fp, "micro": micro(t.root),
+                        "ops": measure(t, reps if want_done + want_open < 3000 else 1)})
+    return results
+
+
+def sweep_table(results: list[dict[str, Any]]) -> str:
+    head = "| Command | " + " | ".join(f"{r['point']['open']} open, {r['point']['completed']} completed"
+                                       for r in results) + " |"
+    lines = [head, "|---" * (len(results) + 1) + "|",
+             "| control.yaml | " + " | ".join(f"{r['footprint']['control_bytes'] / 1e6:.2f} MB" for r in results)
+             + " |",
+             "| live part (ADR-0011) | " + " | ".join(f"{r['footprint']['live_bytes'] / 1e3:.0f} KB" for r in results)
+             + " |"]
+    for i, row in enumerate(results[0]["ops"]):
+        lines.append(f"| {row['op']} | " + " | ".join(f"{r['ops'][i]['wall_s']:.2f} s" for r in results) + " |")
+    return "\n".join(lines)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -445,10 +577,26 @@ def main() -> int:
     r.add_argument("--work", type=Path, required=True)
     r.add_argument("--reps", type=int, default=3)
     r.add_argument("--json", type=Path)
+    s = sub.add_parser("sweep")
+    s.add_argument("--points", default="20:250,20:1000,20:3000,200:250")
+    s.add_argument("--work", type=Path, required=True)
+    s.add_argument("--reps", type=int, default=3)
+    s.add_argument("--json", type=Path)
+    f = sub.add_parser("footprint")
+    f.add_argument("project", type=Path)
     args = ap.parse_args()
     if args.cmd == "build":
         build(args.out, args.units)
         print(json.dumps(validate(args.out), indent=1))
+        return 0
+    if args.cmd == "footprint":
+        print(json.dumps(project_footprint(args.project), indent=1))
+        return 0
+    if args.cmd == "sweep":
+        swept = sweep(sweep_points(args.points), args.work, args.reps)
+        print(sweep_table(swept))
+        if args.json:
+            args.json.write_text(json.dumps(swept, indent=1), encoding="utf-8")
         return 0
     results = []
     for n in (int(x) for x in args.sizes.split(",")):
@@ -457,7 +605,8 @@ def main() -> int:
         t = build(root, n)
         info = {**validate(root), "build_s": round(time.perf_counter() - t0, 1)}
         print(f"built {info}", flush=True)
-        results.append({"project": info, "micro": micro(root), "ops": measure(t, args.reps if n < 3000 else 1)})
+        results.append({"project": info, "footprint": project_footprint(root), "micro": micro(root),
+                        "ops": measure(t, args.reps if n < 3000 else 1)})
         print(json.dumps(results[-1]["micro"]), flush=True)
     print(table(results))
     if args.json:

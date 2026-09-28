@@ -18,7 +18,7 @@ The **directory** says what a test is. **Markers** are used only for properties 
 
 | Lane | Rule (in order) | What it holds | Class |
 |---|---|---|---|
-| `live` | `tests/live/**`, collected **only with `--live`** | Real harness binaries and real models: the harness conformance scenarios and the live twins of AT-14..AT-17 on OpenCode 2.0.18 (M3). Opt-in and local; never part of CI or the assurance check, which never collect it. | Live evidence; not a merge gate |
+| `live` | `tests/live/**`, collected **only with `--live`** | Real harness binaries and real models: the harness conformance scenarios, the live twins of AT-14..AT-17 on OpenCode 2.0.18, and unscripted free-model trials (a Ticket through implementer, reviewer and verifier; and a seeded defect through rejection and rework), where AEW's invariants are asserted and the models' outcomes are recorded (M3). Opt-in and local; never part of CI or the assurance check, which never collect it. | Live evidence; not a merge gate |
 | `serial` | marker `serial` | Properties that *are* timing or real-process concurrency: 2×50 racing writers, the real `os._exit` kill matrix and the cross-process stale writer (`tests/integration/test_store_processes.py`), and the pty operator takeover (AT-4b) | Deterministic regression; never parallel |
 | `acceptance` | marker `acceptance(id)` | AT-1..AT-17 and KC §26 scenarios through the real CLI and real git; M3's AT-14..AT-17 through real supervisors and harness processes (the fake harness and the OpenCode adapter against a fake V2 server). `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
 | `adversarial` | marker `exploratory` | The seeded walks: the M1 composition walk (5 seeds × 60 steps) and the M2 hierarchy walk (5 seeds × 80 steps). Their default budgets are merge gates; larger budgets run nightly. | Seeded exploration, deterministic per seed |
@@ -167,6 +167,7 @@ python -m pytest -m acceptance -q                       # all acceptance scenari
 AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q     # reproduce a nightly seed
 python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
+AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # a free model, unscripted
 ```
 
 Seeds and budgets are controlled by these environment knobs; the defaults are the merge-gate values:

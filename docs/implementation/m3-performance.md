@@ -102,6 +102,56 @@ Also measured but not changed:
 
 ```bash
 python tools/perf/control_plane.py run --sizes 50,500 --work /tmp/aew-perf --reps 3 --json results.json
+python tools/perf/control_plane.py sweep --points 20:250,20:1000,20:3000,200:250 --work /tmp/aew-sweep --json sweep.json
+python tools/perf/control_plane.py footprint path/to/project   # any project: open vs history bytes (read-only)
 AEW_PROFILE=/tmp/profile.jsonl aew resume --json        # one command's phases and counts
 python -m pytest tests/regression/test_m3_control_plane_scale.py -q
 ```
+
+## 7. Open work versus history: the baseline for ADR-0011 (step 8)
+
+**Why (designer, 2026-09-27).** ADR-0011's success is not a smaller file. After archival, steady-state hot-state size and command latency must **primarily track active project complexity, not lifetime project history**. This section measures that property on the M3 code, as the baseline ADR-0011's completion criteria (H1–H4, A1) are stated against. Steps 8–10 also record it for every real project they produce: the live model trials (`harness-conformance.md` §6) and the dogfood projects (step 9).
+
+**Method.**
+- `control_plane.py footprint` attributes every record of `control.yaml`, sized as it is serialized in the file:
+  - *open*: each open unit's record, with its invocations (live and ended) and their credentials (active and revoked);
+  - *history*: each DONE or CANCELLED unit's record, with its invocations and credentials;
+  - *other*: the Lead, its credentials, counters, and the file's own structure (about 1 KB).
+- The *live part* is what ADR-0011 would keep hot: everything except history and the ended invocations and revoked credentials of open units.
+- `control_plane.py sweep` builds projects with a given number of open and completed units and measures every command as in §4 (median of 3 runs; 1 run at 3,000 completed). A point with at least the previous point's units grows the same project.
+- Two series:
+  - **history**: 20 open units (the template's in-flight Tickets, including one awaiting review ingest with a live reviewer, plus planned Tickets) with 250, 1,000 and 3,000 completed Tickets;
+  - **active**: 250 completed Tickets with 20 and 200 open units.
+- Raw results: `eval/m3/perf/sweep.json`.
+
+**Footprint.**
+
+| Open, completed | `control.yaml` | Open units | History | Per open unit | Per completed Ticket | Live part |
+|---|---|---|---|---|---|---|
+| 20, 250 | 5.20 MB | 26 KB | 5.17 MB | 1.30 KB | 20.7 KB | 24 KB |
+| 20, 1,000 | 20.70 MB | 26 KB | 20.67 MB | 1.30 KB | 20.7 KB | 24 KB |
+| 20, 3,000 | 62.07 MB | 26 KB | 62.05 MB (99.96%) | 1.30 KB | 20.7 KB | 24 KB |
+| 200, 250 | 5.36 MB | 187 KB | 5.17 MB | 0.93 KB | 20.7 KB | 184 KB |
+
+**Latency (wall time per command).**
+
+| Command | 20 open, 250 completed | 20 open, 1,000 completed | 20 open, 3,000 completed | 200 open, 250 completed |
+|---|---|---|---|---|
+| CLI floor (`aew --version`) | 0.10 s | 0.11 s | 0.11 s | 0.11 s |
+| `lead show` | 1.44 s | 6.74 s | 21.62 s | 1.40 s |
+| `status` | 1.66 s | 7.38 s | 24.06 s | 1.67 s |
+| `work tree` | 1.40 s | 6.82 s | 22.25 s | 1.40 s |
+| `resume` | 3.93 s | 16.41 s | 50.39 s | 4.31 s |
+| `gate show` | 1.49 s | 6.87 s | 22.43 s | 1.52 s |
+| `context pack` | 1.40 s | 6.81 s | 22.54 s | 1.40 s |
+| `harness status` | 1.31 s | 6.52 s | 22.43 s | 1.38 s |
+| `checkpoint` | 2.09 s | 10.34 s | 35.94 s | 2.21 s |
+| `work dispatch` | 2.32 s | 10.56 s | 35.84 s | 2.48 s |
+| `review ingest` | 2.47 s | 12.64 s | 37.98 s | 2.62 s |
+
+**Reading.**
+- **Today, cost tracks history almost entirely.** Each completed Ticket adds 20.7 KB of hot state, 7–13 ms to every command and 17 ms to `resume`. At 20 open and 3,000 completed, 99.96% of the file is history, and `lead show` spends 20.2 s of its 21.6 s parsing it. A supervisor's re-parse of the changed state takes about 20 s, twice the heartbeat staleness limit.
+- **Open work costs little.** 180 more open (planned) units add 160 KB and no measurable latency to any command but `resume` (+0.4 s). An open unit costs 0.9–1.3 KB, depending on how many invocations it carries.
+- **The live part is flat:** 24 KB at every history size. This is the size ADR-0011's hot state would approach if history left it entirely.
+- **Terminal records also build up inside open units.** In the step-8 live trials, a single open Ticket at VERIFIED carried about 12 KB of ended invocations and revoked credentials out of about 17 KB (`harness-conformance.md` §6).
+- **Consequence for ADR-0011.** Its first size criterion, at most 1.5 KB of hot stubs per completed Ticket, would still leave the hot state about 99% history at 20 open and 3,000 completed. The criteria are therefore restated around history independence (ADR-0011, amended): history held in the hot state only as constant-size aggregates, with listings and lookups by id served from a compact, hash-pinned cold index. The thresholds proposed there await the designer's confirmation.

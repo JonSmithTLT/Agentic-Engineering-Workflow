@@ -34,6 +34,7 @@ from typing import Any
 from aew import errors
 from aew.engine.authority import require_lead
 from aew.harness import bridge
+from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
 ENV_KEY = "AEW_LEAD_BROKER_KEY"
@@ -158,7 +159,7 @@ class LeadBroker:
 
 def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     """Client side: send a Lead-authenticated command to this Lead session's broker."""
-    stdin = sys.stdin.read() if "-" in argv else ""
+    stdin = read_text_input("-") if "-" in argv else ""  # decoded here like any text input; parsed by the broker
     cwd = str(Path(args.cwd or os.getcwd()).resolve())
     return bridge.call("lead.cli", {"argv": list(argv), "cwd": cwd, "stdin": stdin}, env_names=ENV_NAMES)
 

@@ -56,6 +56,9 @@ class LaunchContract:
     continuation: dict[str, Any] | None
     run_dir: str
     extra: dict[str, Any] = field(default_factory=dict)
+    # The run's private directory for files the agent keeps outside the workspace (reports, notes, scratch work).
+    # Without a named place, models guessed one: one wrote into the operator's own repository (M3 step 8).
+    scratch: str = ""
 
     def to_record(self) -> dict[str, Any]:
         """The contract as recorded in the run record (the pack text is referenced, not copied)."""
@@ -88,6 +91,11 @@ def preamble(c: LaunchContract) -> str:
         "`aew submit` records nothing and changes no AEW state.",
         f"- Work only in `{c.workspace}`. Do not start background processes that outlive your commands.",
     ]
+    if c.scratch:
+        lines.append(f"- Your private scratch directory is `{c.scratch}` (also `AEW_SCRATCH` in your environment). "
+                     "Write reports and any other file you need outside the workspace there, and nowhere else: a "
+                     "file left in the workspace changes the work under evaluation. Submit with "
+                     "`aew submit --kind <kind> --file <that file>`, or pipe the report with `--file -`.")
     return "\n".join(lines)
 
 
@@ -101,7 +109,12 @@ def continuation_text(c: LaunchContract) -> str | None:
     lines.append(f"- Earlier runs: {', '.join(cont.get('previous_runs') or []) or 'none'}")
     ev = cont.get("evidence") or []
     lines.append("- Evidence already recorded by this invocation: "
-                 + (", ".join(f"{e['id']} ({e['kind']}, {e['result']})" for e in ev) if ev else "none"))
+                 + (", ".join(f"{e['id']} ({e['kind']}, {e['result']}{'; STALE' if e.get('stale') else ''})"
+                              for e in ev) if ev else "none"))
+    if any(e.get("stale") for e in ev):
+        lines.append("- STALE evidence was evaluated on a workspace state that is no longer the current one: the "
+                     "workspace changed after it was recorded, so it does not count for the work as it is now. If "
+                     "your work is complete, record it again on the current state (`aew check run`, `aew submit`).")
     changed = cont.get("changed_paths")
     if changed is not None:
         lines.append("- Workspace changes relative to the dispatch base: "

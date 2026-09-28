@@ -125,6 +125,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.permission_rejected: list[dict[str, Any]] = []
         self.forms_cancelled: list[str] = []
         self.foreign_sessions: list[str] = []
+        self.tool_names: dict[str, str] = {}  # tool call id -> tool name (V2 names a tool only when its input starts)
         self.poll_errors = 0
         self._idle_seen: str | None = None
         self._lead_interrupted = False
@@ -145,7 +146,9 @@ class OpenCodeAdapter(HarnessAdapter):
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
         config = projection.invocation_config(
-            contract, private_dirs=projection.private_output_dirs(os.path.realpath(self.state_dir), os.sep))
+            contract, private_dirs=projection.private_output_dirs(
+                os.path.realpath(self.state_dir), os.sep,
+                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""))
         self.skills = projection.skills(contract)
         rules = config["permissions"]
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
@@ -314,6 +317,8 @@ class OpenCodeAdapter(HarnessAdapter):
             return
         if kind == "session.step.started" and isinstance(data.get("model"), dict):
             self.step_models.append(data["model"])
+        if kind == "session.tool.input.started" and data.get("id"):
+            self.tool_names[str(data["id"])] = str(data.get("name"))
         if kind in LOGGED_EVENTS:
             summary: dict[str, Any] = {"event": f"opencode.{kind}"}
             for key in ("finish", "reason", "action", "inboxID", "assistantMessageID"):
@@ -321,8 +326,8 @@ class OpenCodeAdapter(HarnessAdapter):
                     summary[key] = data[key]
             if isinstance(data.get("model"), dict):
                 summary["model"] = data["model"]
-            if kind == "session.tool.called":
-                summary["tool"] = data.get("name") or data.get("tool")
+            if kind in ("session.tool.called", "session.tool.failed"):  # the name only: never the tool's input
+                summary["tool"] = self.tool_names.get(str(data.get("id")))
             if isinstance(data.get("tokens"), dict):
                 summary["tokens"] = data["tokens"]
             if isinstance(data.get("error"), dict):

@@ -55,6 +55,27 @@ def test_no_command_does_per_unit_work(tmp_path):
     assert not growth, f"counts that grew with the project ({SMALL} -> {LARGE} units): {growth}"
 
 
+def test_the_footprint_attributes_every_byte_to_open_work_or_history(tmp_path):
+    """The designer's metric for ADR-0011 (m3-performance.md §7): every byte of control.yaml is attributed to open
+    units, to history, or to neither (the Lead, counters, structure), and each kind of unit grows only its own share.
+    Timing-free: this pins the measurement, not a target."""
+    t = CP.make_template(tmp_path / "repo")  # 3 open units (T-0002..T-0004), 1 completed (T-0001)
+    CP.add_units(t.root, done=3, planned=2)
+    before = CP.project_footprint(t.root)
+    assert before["units"] == {"open": 5, "completed": 4}
+    total = before["open_bytes"]["total"] + before["history_bytes"]["total"] + before["other_bytes"]
+    assert total == before["control_bytes"] and 0 < before["other_bytes"] < 2048
+    CP.add_units(t.root, done=5, planned=0)
+    history = CP.project_footprint(t.root)
+    assert history["open_bytes"] == before["open_bytes"]
+    assert 0 <= history["other_bytes"] - before["other_bytes"] <= 16  # only the counters' digits
+    assert history["history_bytes"]["total"] - before["history_bytes"]["total"] == 5 * before["per_completed_unit_bytes"]
+    CP.add_units(t.root, done=0, planned=4)
+    active = CP.project_footprint(t.root)
+    assert active["history_bytes"] == history["history_bytes"] and active["units"] == {"open": 9, "completed": 9}
+    assert active["live_bytes"] > history["live_bytes"]
+
+
 def test_no_engine_operation_changes_the_shared_parse(tmp_path, monkeypatch):
     """The store reuses its parse of unchanged bytes and hands callers copies. Every load during a real workload (a
     Ticket through its whole lifecycle, reviews, dispatches, then every read command in-process) is checked against a

@@ -1,6 +1,7 @@
 # ADR-0011 — Hot/cold control state: archiving terminal records out of the commit point
 
 - **Status:** **Accepted direction** (operator and designer, 2026-09-27). **Not implemented.** The control-state schema is unchanged in M3.
+- **Amended** (designer, 2026-09-27, during M3 step 8): success is **history independence**, not a smaller file. The completion criteria below are restated around it; the thresholds are proposed from the step-8 baseline and **await the designer's confirmation** before implementation begins.
 - **Sequencing:** a **prerequisite for M4**. It is implemented and accepted after M3's acceptance (independent review) and **before any M4 work begins**. M4 does not start while this ADR is open.
 - **Spec basis:**
   - ADR-0001: one control file is the atomic commit point, with redo staging and an advisory lock.
@@ -69,7 +70,49 @@ After step 7, at 500 units, reads take 1.8–2.2 s and commits about 3 s. At 3,0
 
 This ADR is closed only when all of these hold. They are measured with `tools/perf/control_plane.py` on the reference Windows machine used in `m3-performance.md`.
 
-- **Size.** Hot state per DONE Ticket, with its invocations and credentials, is **≤ 1.5 KB** (from about 20 KB). A timing-free regression asserts the hot bytes added per cloned DONE Ticket.
+### The property: history independence (designer, 2026-09-27)
+
+After archival, steady-state hot-state size and command latency must **primarily track active project complexity** (open units, invocations that can act, active credentials), **not lifetime project history** (completed units). A smaller YAML file is not the goal; this property is.
+
+It is measured with `control_plane.py sweep` on two series:
+- **history series:** 20 open units, with 250, 1,000 and 3,000 completed Tickets;
+- **active series:** 250 completed Tickets, with 20 and 200 open units.
+
+`control_plane.py footprint` attributes every byte of the control state to open units, to history, or to neither (the Lead, counters).
+
+**Baseline (M3, the code as of step 8; `m3-performance.md` §7, `eval/m3/perf/sweep.json`):**
+
+| | 20 open, 250 completed | 20 open, 3,000 completed | 200 open, 250 completed |
+|---|---|---|---|
+| `control.yaml` | 5.2 MB | 62.1 MB | 5.4 MB |
+| of which open units (live and ended records) | 26 KB | 26 KB | 187 KB |
+| of which history | 5.17 MB | 62.05 MB (99.96%) | 5.17 MB |
+| `lead show` | 1.44 s | 21.6 s | 1.40 s |
+| `checkpoint` | 2.09 s | 35.9 s | 2.21 s |
+| `resume` | 3.9 s | 50.4 s | 4.3 s |
+
+Today, each completed Ticket adds about 20.7 KB of hot state, 7–13 ms to every command and 17 ms to `resume`; each open (planned) unit adds about 0.9–1.3 KB and no measurable latency.
+
+**Why the per-item stub budget is not enough.** The criterion this ADR first stated, at most 1.5 KB of hot state per DONE Ticket, would still leave hot state at 20 open and 3,000 completed about 99% history (4.5 MB of stubs against 26 KB of open work). Even a 100-byte index entry per completed Ticket would leave it about 92% history. Meeting the property therefore implies that the hot state carries history only as **constant-size aggregates** (counters, and the hash of a cold index), and that lookups by id and listings of completed items are served from a **compact, hash-pinned cold index** that only the commands needing history read. That is a consequence of the property, not a decision on layout (see "Not decided here").
+
+**Proposed thresholds (awaiting the designer's confirmation):**
+
+- **H1, hot state.**
+  - Along the history series, hot state at 3,000 completed is at most **1.25×** its size at 250 completed (baseline: 11.9×).
+  - At 20 open and 3,000 completed, history is at most **20%** of the hot state (baseline: 99.96%).
+  - A timing-free regression asserts both on the scale-regression project.
+- **H2, latency.**
+  - Along the history series, every measured command except `resume` takes at most **0.25 s longer** at 3,000 completed than at 250 completed (baseline: 20–36 s longer).
+  - This includes `status` and `work tree`, whose output lists completed units and may read the cold index.
+- **H3, heartbeat.** A supervisor's re-parse of a changed hot state at 20 open and 3,000 completed takes **≤ 0.25 s** (baseline: about 20 s, twice the 10 s staleness limit).
+- **H4, `resume`.** Everything except its evidence-integrity sweep meets H2. The sweep verifies every unit's sealed evidence on every call (baseline: 2.0 s → 24.0 s along the history series). Whether it stays exhaustive over history is a KC §15.1 decision for the designer (see "Not decided here"). If it stays, its cost is reported separately as the one history-linear term.
+- **A1, active complexity.** Along the active series, the hot bytes and the latency added per open unit are no worse than the M3 baseline (about 0.9–1.3 KB and 0–2 ms per open unit).
+
+The absolute bounds below remain as a floor.
+
+### Absolute bounds and coverage
+
+- **Size.** *Superseded by H1 (2026-09-27).* The original criterion was hot state per DONE Ticket, with its invocations and credentials, ≤ 1.5 KB.
 - **Speed at 3,000 units.**
   - Every measured read (`lead show`, `status`, `work tree`, `gate show`, `context pack`, `harness status`): **≤ 2 s**.
   - `checkpoint`, `work dispatch` and `review ingest`: **≤ 4 s**.
@@ -86,10 +129,15 @@ This ADR is closed only when all of these hold. They are measured with `tools/pe
 
 These are left to the implementation, within the invariants:
 
-- the cold-record layout and naming;
+- the cold-record layout and naming, and the cold index's form (one file, segments, a hash chain), provided the hot state pins it by hash;
 - whether archival happens at the terminal transition or in a Lead-initiated compaction;
 - how Stories and Epics archive their closed children's detail;
 - whether the control schema version changes.
+
+These are for the designer, before implementation:
+
+- whether `resume`'s evidence-integrity sweep stays exhaustive over completed history on every call (KC §15.1), or verifies a completed unit's evidence once, at archival, and afterwards only the cold records' pinned hashes (H4);
+- confirmation of the H1–H3 and A1 thresholds.
 
 ## Alternatives considered
 

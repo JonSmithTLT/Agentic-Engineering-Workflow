@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import os
 import re
@@ -15,9 +16,40 @@ from typing import Any
 
 import yaml
 
-from aew.errors import IntegrityError, ValidationFailed
+from aew.errors import IntegrityError, UsageError, ValidationFailed
 
 IS_WINDOWS = sys.platform == "win32"
+_BYTE_ORDER_MARKS = ((codecs.BOM_UTF8, "utf-8"), (codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be"))
+
+
+def decode_text(raw: bytes, *, source: str) -> str:
+    """Text given to AEW is UTF-8. A byte-order mark is honoured and removed: UTF-8's, which Windows PowerShell 5.1
+    writes for ``-Encoding utf8``, and UTF-16's, which it writes for ``>`` and ``Out-File``. Anything else that is
+    not UTF-8 is refused: it is never decoded with a platform code page (found by the M3 step-8 live trials)."""
+    encoding = "utf-8"
+    for mark, codec in _BYTE_ORDER_MARKS:
+        if raw.startswith(mark):
+            raw, encoding = raw[len(mark):], codec
+            break
+    try:
+        return raw.decode(encoding)
+    except UnicodeDecodeError as exc:
+        raise UsageError(f"{source} is not {encoding.upper()} text (an undecodable byte at offset {exc.start}); "
+                         "AEW reads text as UTF-8", source=source) from None
+
+
+def read_text_input(value: str | None) -> str:
+    """A ``--file``-style argument: a path, or ``-`` for stdin. Read once, as bytes (:func:`decode_text`)."""
+    if not value:
+        return ""
+    if value == "-":
+        stream = getattr(sys.stdin, "buffer", None)
+        return decode_text(stream.read(), source="stdin") if stream is not None else sys.stdin.read()
+    try:
+        raw = Path(value).read_bytes()
+    except OSError as exc:
+        raise UsageError(f"cannot read {value}: {exc.strerror or exc}", path=value) from None
+    return decode_text(raw, source=value)
 
 
 def utc_now() -> str:

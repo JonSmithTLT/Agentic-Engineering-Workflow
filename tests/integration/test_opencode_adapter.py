@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+import fake_opencode
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir
@@ -82,8 +83,9 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     config = json.loads((hdir / "opencode-config.json").read_text(encoding="utf-8"))
     assert started["config"] == config
     denied = [projection.rule(a, "deny") for a in projection.ALWAYS_DENIED]
-    private = projection.private_output_dirs(os.path.realpath(hdir), os.sep)
-    assert config["permissions"][-6:] == denied + [projection.rule("external_directory", "allow", p) for p in private]
+    private = projection.private_output_dirs(os.path.realpath(hdir), os.sep,
+                                             scratch=os.path.realpath(hdir.parent / "scratch"))
+    assert config["permissions"][-7:] == denied + [projection.rule("external_directory", "allow", p) for p in private]
     assert projection.rule("edit", "allow") in config["permissions"]  # an implementer
     assert config["plugins"] == [projection.COMPATIBILITY_PLUGIN] and config["share"] == "disabled"
     # the server's environment: the named provider variable, private state, no project config, nothing of AEW's
@@ -103,6 +105,20 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert record["launch"]["health"]["version"] == "2.0.18" and record["launch"]["health"]["tested"]
     assert record["result"]["effective"] == [{"provider": "fakeprov", "model": "fake-model", "effort": "high"}]
     assert record["model_check"]["status"] == "match" and record["result"]["prompts"] == 1
+
+
+def test_tool_calls_are_logged_by_name_never_by_input(lab, tmp_path):
+    """V2 names a tool in `session.tool.input.started`; `session.tool.called` carries only the call id and input
+    (found live in M3 step 8: the log said `"tool": null`). The run's event log names each call's tool and never
+    records its input."""
+    script(lab, IMPLEMENT)
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    called = [e for e in events(lab) if e["event"] == "opencode.session.tool.called"]
+    assert [e.get("tool") for e in called] == ["shell"] * len(IMPLEMENT)
+    log = (runlog.run_dir(lab.aew_root, run) / "events.jsonl").read_text(encoding="utf-8")
+    assert fake_opencode.TOOL_INPUT not in log
+    assert lab.record(run)["result"]["tools_called"] == {"shell": len(IMPLEMENT)}
 
 
 def test_a_read_only_role_gets_no_edit_and_no_web(lab, tmp_path):
@@ -274,8 +290,9 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     shown = out.json
     used = json.loads((harness_dir(lab) / "opencode-config.json").read_text(encoding="utf-8"))
     assert shown["for_run"] == "R-INV-0001-2"  # the next run: the same rules, its own private output directories
-    assert shown["config"]["permissions"][:-3] == used["permissions"][:-3]
-    assert all("R-INV-0001-2" in r["resource"] for r in shown["config"]["permissions"][-3:])
+    # The run's own private output directories and scratch directory come last.
+    assert shown["config"]["permissions"][:-4] == used["permissions"][:-4]
+    assert all("R-INV-0001-2" in r["resource"] for r in shown["config"]["permissions"][-4:])
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
     assert shown["server_env"]["provider_variables"] == ["OPENAI_API_KEY"]
     lead = lab.ok("harness", "config", "opencode", "--lead")

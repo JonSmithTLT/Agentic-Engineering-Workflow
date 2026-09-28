@@ -1,7 +1,7 @@
 """The environment of every model-controlled process (ADR-0009).
 
 Built from an **allowlist**: operating-system basics, ``PATH`` (with the running ``aew`` first), and the
-run's bridge coordinates. It never contains an AEW credential, a provider secret, the harness server's
+run's bridge coordinates and private scratch directory. It never contains an AEW credential, a provider secret, the harness server's
 password, the Lead's environment, or anything else the Lead's shell happened to hold.
 """
 
@@ -21,11 +21,12 @@ WINDOWS_KEEP = frozenset({
     "COMPUTERNAME",
 })
 POSIX_KEEP = frozenset({"HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "TERM", "SHELL", "TMPDIR", "TZ"})
-AGENT_VARS = ("AEW_INVOCATION", "AEW_RUN", "AEW_WORK_UNIT", bridge.ENV_ENDPOINT, bridge.ENV_KEY)
+SCRATCH = "AEW_SCRATCH"
+AGENT_VARS = ("AEW_INVOCATION", "AEW_RUN", "AEW_WORK_UNIT", bridge.ENV_ENDPOINT, bridge.ENV_KEY, SCRATCH)
 
 
 def build(base: Mapping[str, str], *, endpoint: str, key_hex: str, invocation: str, run: str,
-          work_unit: str) -> dict[str, str]:
+          work_unit: str, scratch: str = "") -> dict[str, str]:
     keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP
     env = {k: v for k, v in base.items()
            if k.upper() in keep or (sys.platform != "win32" and k.startswith("LC_"))}
@@ -35,4 +36,6 @@ def build(base: Mapping[str, str], *, endpoint: str, key_hex: str, invocation: s
     env["PYTHONUTF8"] = "1"
     env.update({"AEW_INVOCATION": invocation, "AEW_RUN": run, "AEW_WORK_UNIT": work_unit,
                 bridge.ENV_ENDPOINT: endpoint, bridge.ENV_KEY: key_hex})
+    if scratch:
+        env[SCRATCH] = scratch
     return env

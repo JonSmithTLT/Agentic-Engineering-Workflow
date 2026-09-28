@@ -87,12 +87,13 @@ def permissions(contract: LaunchContract, exposed_skills: list[str],
     return rules
 
 
-def private_output_dirs(state_dir: str, sep: str) -> tuple[str, ...]:
+def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple[str, ...]:
     """Where OpenCode V2 keeps a run's tool output, shell output and temporary files, given AEW's private XDG and
-    TEMP layout (the same patterns V2's own defaults allow)."""
+    TEMP layout (the same patterns V2's own defaults allow), and the run's scratch directory (the contract's)."""
     data = sep.join([state_dir, "xdg-data", "opencode"])
-    return (sep.join([data, "tool-output", "*"]), sep.join([data, "shell", "*", "*"]),
+    dirs = (sep.join([data, "tool-output", "*"]), sep.join([data, "shell", "*", "*"]),
             sep.join([state_dir, "tmp", "opencode", "*"]))
+    return dirs + ((sep.join([scratch, "*"]),) if scratch else ())
 
 
 def system_text(contract: LaunchContract, unavailable_skills: list[str]) -> str:
@@ -108,7 +109,10 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str]) -> str:
         "exists here and none is needed.",
         "- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.",
         f"- Work only in {contract.workspace}. {edit}",
-        "- Write report files outside the workspace, or pipe them: `aew submit --kind <kind> --file -`.",
+        (f"- Write reports and any other file you need outside the workspace only in your private scratch directory "
+         f"{contract.scratch} (`AEW_SCRATCH`), never anywhere else; or pipe a report: "
+         "`aew submit --kind <kind> --file -`." if contract.scratch else
+         "- Write report files outside the workspace, or pipe them: `aew submit --kind <kind> --file -`."),
         "- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.",
         "- Tools that are unavailable here are unavailable by design. Do not work around them.",
     ]

@@ -36,7 +36,7 @@ def contract(role: str = "implementer", *, card: str = "python_engineer", skills
                            "selected_by": "policy", "rule": "default", "policy_sha256": "1" * 64},
         workspace="/work/aew-workspaces/T-0003", expected_kinds=["implementation_report"],
         operations=["check.run", "context.read", "submit.implementation_report"], pack_path="/p", pack_sha256="2" * 64,
-        pack_text="# pack\n", continuation=None, run_dir="/r",
+        pack_text="# pack\n", continuation=None, run_dir="/r", scratch="/r/scratch",
         extra={"card_skills": skills if skills is not None else ["python-development"],
                "card_capabilities": capabilities_ or ["exact_code_search", "source_mutation"],
                "provider_env": ["ANTHROPIC_API_KEY"]})
@@ -56,7 +56,8 @@ def golden(name: str, value: Any) -> None:
 
 def test_implementer_projection_golden():
     c = contract(max_steps=40)
-    config = projection.invocation_config(c, private_dirs=projection.private_output_dirs("/r/harness", "/"))
+    config = projection.invocation_config(c, private_dirs=projection.private_output_dirs("/r/harness", "/",
+                                                                                         scratch=c.scratch))
     golden("projection-implementer", {"config": config, "session": projection.session_body(c, "/ws", config[
         "permissions"]), "skills": projection.skills(c)})
 
@@ -98,9 +99,9 @@ def test_invocation_rules_never_ask_and_deny_what_no_role_may_do(role, edit, web
 
 
 def test_only_the_runs_own_opencode_output_is_readable_outside_the_workspace():
-    private = projection.private_output_dirs("/r/harness", "/")
+    private = projection.private_output_dirs("/r/harness", "/", scratch="/r/scratch")
     assert private == ("/r/harness/xdg-data/opencode/tool-output/*", "/r/harness/xdg-data/opencode/shell/*/*",
-                       "/r/harness/tmp/opencode/*")
+                       "/r/harness/tmp/opencode/*", "/r/scratch/*")  # the last: the run's scratch (M3 step 8)
     rules = projection.invocation_config(contract(), private_dirs=private)["permissions"]
     assert effect(rules, "external_directory") == "deny"
     assert all(effect(rules, "external_directory", p) == "allow" for p in private)

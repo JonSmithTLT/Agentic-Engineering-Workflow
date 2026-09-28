@@ -9,6 +9,7 @@ from typing import Any
 
 from aew import doctor
 from aew.errors import UsageError
+from aew.util import read_text_input
 
 
 # ---------------------------------------------------------------------- shared helpers
@@ -34,13 +35,7 @@ def _lead_token(args: argparse.Namespace) -> str:
 
 
 def _read_text_arg(value: str | None) -> str:
-    if not value:
-        return ""
-    if value == "-":
-        import sys
-
-        return sys.stdin.read()
-    return Path(value).read_text(encoding="utf-8")
+    return read_text_input(value)
 
 
 def _add_json(p: argparse.ArgumentParser) -> None:

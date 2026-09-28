@@ -79,6 +79,10 @@ def test_bridge_round_trip_redacts_and_refuses(server):
         bridge.call("submit", {"kind": "k", "text": "t"}, endpoint=srv.address, key=srv.key_hex)
     assert "aew1.<redacted>" in exc.value.message and CRED not in exc.value.message
     assert [c[0] for c in calls] == ["whoami", "submit"] and (srv.requests, srv.refused) == (2, 1)
+    with pytest.raises(errors.PermissionDenied):
+        bridge.call("lead.acquire", {}, endpoint=srv.address, key=srv.key_hex)
+    # Telemetry for the run record: outcomes by operation and error code, nothing of the request or reply.
+    assert srv.outcomes == {"whoami": {"ok": 1}, "submit": {"STALE_AUTHORITY": 1}, "invalid": {"PERMISSION_DENIED": 1}}
 
 
 def test_bridge_refuses_a_foreign_key(server):

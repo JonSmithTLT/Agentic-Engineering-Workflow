@@ -33,6 +33,7 @@ from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
+from aew.schemas import validate_property
 from aew.snapshot.fingerprint import changed_paths
 from aew.workspace.integration import changed_between as git_changed_between
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
@@ -519,7 +520,11 @@ class EvidenceOps(WorkspaceOps):
                 if meta["result"] not in {"pass", "blocked"}:
                     raise ValidationFailed("an implementation report result is pass (complete) or blocked")
             elif kind == "review":
-                review = dict(submitted.get("review") or {})
+                review = submitted.get("review") or {}
+                validate_property("evidence", "review", {**review, "findings": [
+                    {"required": False, **f} if isinstance(f, dict) else f for f in review.get("findings") or []]}
+                    if isinstance(review, dict) else review, source="submission")  # its shape, before it is read
+                review = dict(review)
                 if review.get("independence") == "R0":
                     raise ValidationFailed("R0 self-review is not independent review (WC §10.2)")
                 review.setdefault("specialty", inv.get("specialty"))
@@ -530,6 +535,15 @@ class EvidenceOps(WorkspaceOps):
                         f["required"] = True
                 if review.get("disposition") == "pass" and any(f.get("required") for f in review.get("findings", [])):
                     raise ValidationFailed("disposition pass is inconsistent with required findings")
+                # Checked here, while the reviewer can still correct it, not only at the Lead's ingest (M3 step 8).
+                known = {f["id"]: f for f in unit.get("findings") or []}
+                unknown = [r for r in review.get("resolved_findings") or [] if r not in known]
+                if unknown:
+                    listed = sorted(i for i, f in known.items() if f.get("status") == "open")
+                    raise ValidationFailed(
+                        f"review resolves unknown finding(s) {', '.join(map(str, unknown))}: name each exactly as the "
+                        f"pack lists it; the open findings are {', '.join(listed) or 'none'}",
+                        unknown=unknown, open_findings=listed)
                 meta["review"] = review
                 meta["evaluated_snapshot"] = inv["snapshot"]
                 meta["result"] = "pass" if review.get("disposition") == "pass" else "fail"
@@ -555,9 +569,11 @@ class EvidenceOps(WorkspaceOps):
 
     def _verification_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any],
                               submitted: dict[str, Any]) -> dict[str, Any]:
-        v = dict(submitted.get("verification") or {})
+        v = submitted.get("verification") or {}
         dispatched = {"integration": "integration", "parent": "parent"}.get(inv.get("scope") or "ticket", "ticket")
-        v.setdefault("scope", dispatched)
+        if isinstance(v, dict):
+            v = {"scope": dispatched, **v}
+        validate_property("evidence", "verification", v, source="submission")  # its shape, before it is read
         if v["scope"] != dispatched:
             raise ValidationFailed("verification scope must match the dispatched scope")
         claims = v.get("claims") or []

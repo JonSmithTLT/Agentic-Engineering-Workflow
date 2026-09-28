@@ -34,11 +34,11 @@ import threading
 from collections.abc import Callable
 from multiprocessing.connection import Client, Listener
 from multiprocessing import AuthenticationError
-from pathlib import Path
 from typing import Any
 
 from aew import errors
 from aew.harness.contract import redact
+from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_AGENT_ENDPOINT"
 ENV_KEY = "AEW_AGENT_KEY"
@@ -102,6 +102,9 @@ class BridgeServer:
         self._thread = threading.Thread(target=self._serve, name="aew-bridge", daemon=True)
         self.requests = 0
         self.refused = 0
+        # Telemetry: per operation, how many requests succeeded ("ok") or were refused, by error code. Never
+        # arguments or output.
+        self.outcomes: dict[str, dict[str, int]] = {}
         self._in_flight = 0
         self._idle = threading.Condition()
 
@@ -127,11 +130,17 @@ class BridgeServer:
                 break
             threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
 
+    def _count(self, op: str, outcome: str) -> None:
+        with self._idle:
+            by_op = self.outcomes.setdefault(op, {})
+            by_op[outcome] = by_op.get(outcome, 0) + 1
+
     def _handle(self, conn: Any) -> None:
         with self._idle:
             self._in_flight += 1
         try:
             raw = conn.recv_bytes(MAX_REQUEST)
+            op = "invalid"
             try:
                 op, args = validate_request(json.loads(raw.decode("utf-8")), self.operations)
                 with self._serial:
@@ -150,6 +159,7 @@ class BridgeServer:
             except Exception as exc:  # never let a request kill the supervisor
                 self.refused += 1
                 reply = {"ok": False, "error": {"code": "BRIDGE_ERROR", "message": f"{type(exc).__name__}: {exc}"}}
+            self._count(op, "ok" if reply["ok"] else str(reply["error"].get("code")))  # op: "invalid" until validated
             conn.send_bytes(redact(json.dumps(reply, default=str)).encode("utf-8"))
         except (OSError, EOFError):
             pass
@@ -223,10 +233,8 @@ def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str
 
 
 def read_submission(path: str) -> str:
-    """``--file`` is read by the client, in the agent's own working directory."""
-    if path == "-":
-        return sys.stdin.read()
-    return Path(path).read_text(encoding="utf-8")
+    """``--file`` is read by the client, in the agent's own working directory, exactly as the CLI reads it."""
+    return read_text_input(path)
 
 
 def private_address() -> tuple[str, str, str | None]:

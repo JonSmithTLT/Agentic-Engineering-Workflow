@@ -243,6 +243,7 @@ In rework trial 3 the verifier, looking for a place outside the workspace to wri
 - But this is the first live instance of an agent writing outside its workspace into the operator's files. It is within the documented threat model: OpenCode's permissions are not a filesystem boundary, the agent's shell runs as the operator (M3 plan §2.3, M3-B7), and custody, not the harness, protects AEW's authority.
 - M3-D6 removes the cause seen here (no named place to write). It does not stop a model that decides to write elsewhere.
 - **For dogfood on real repositories (step 9) and the operator's TUI session,** use scratch clones away from repositories the operator cares about. OS-level isolation (a separate account, a container or a sandbox) is the operator's decision.
+- **The guarantee is now stated, never implied** (companion review B2; `AEW-INV-ISO-001`). Every run record and `aew harness status` carry `containment: workdir_separation_only`, and `aew doctor` explains it. Real containment is a post-M3 prerequisite for real-repository dogfood and internal alpha (`future-work.md` F2).
 
 ### 6.6 Footprint (designer note; `m3-performance.md` §7)
 

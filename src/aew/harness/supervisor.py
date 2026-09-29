@@ -60,6 +60,7 @@ class Supervisor:
         self.ack = ack
         self.events = runlog.EventLog(run_dir / "events.jsonl")
         self.record: dict[str, Any] = {"schema": K.RUN_SCHEMA, "run": self.run, "invocation": self.inv_id,
+                                       "containment": K.CONTAINMENT,
                                        "status": K.STARTING, "supervisor_pid": os.getpid(), "custody_at": utc_now(),
                                        "timeline": [{"at": utc_now(), "event": "custody"}]}
         self.bridge: bridge.BridgeServer | None = None

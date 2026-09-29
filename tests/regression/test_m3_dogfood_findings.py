@@ -79,6 +79,22 @@ def test_a_scope_glob_with_a_comma_is_refused_saying_to_repeat_the_option(tmp_pa
     assert p.ok("work", "show", wid)["control"]["kind"] == "ticket"
 
 
+def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_path):
+    """Companion review B2 (AEW-INV-ISO-001, FALSE_CONTAINMENT_CLAIM): until AEW has OS-level containment, run
+    metadata and operator status say `workdir_separation_only`, so its absence is never read as containment."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("R-INV-0001-1", IMPLEMENT)
+    lab.lead("work", "assign", wid, "--launch")
+    lab.wait("R-INV-0001-1")
+    assert lab.record("R-INV-0001-1")["containment"] == "workdir_separation_only"
+    [run] = lab.ok("harness", "status")["runs"]
+    assert run["containment"] == "workdir_separation_only"
+    doctor = {c["check"]: c for c in lab.ok("doctor", "--json")["checks"]}
+    assert doctor["containment"]["status"] == "WARN"
+    assert doctor["containment"]["detail"].startswith("workdir separation only")
+    assert "no OS-level filesystem containment" in doctor["containment"]["detail"]
+
+
 def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_path):
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", IMPLEMENT)

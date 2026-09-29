@@ -227,6 +227,8 @@ class Engine(HarnessOps, LeadOps, StatusOps):
                 add("policy:execution", "PASS", f"configured; default profile {execution['routing']['default']}")
         except Exception as exc:
             add("policy:execution", "FAIL", str(exc))
+        from aew.harness import contract as K
+        add("containment", "WARN", K.CONTAINMENT_NOTE)  # the actual guarantee, never implied (AEW-INV-ISO-001)
         try:
             checks_policy = self.policy("checks")
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]

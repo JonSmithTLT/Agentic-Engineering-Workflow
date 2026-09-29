@@ -113,6 +113,8 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str]) -> str:
          f"{contract.scratch} (`AEW_SCRATCH`), never anywhere else; or pipe a report: "
          "`aew submit --kind <kind> --file -`." if contract.scratch else
          "- Write report files outside the workspace, or pipe them: `aew submit --kind <kind> --file -`."),
+        "- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), "
+        "never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.",
         "- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.",
         "- Tools that are unavailable here are unavailable by design. Do not work around them.",
     ]
@@ -171,6 +173,12 @@ LEAD_SYSTEM = "\n".join([
     "with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its "
     "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
+    "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
+    "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
+    "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class 1 "
+    "--expect-rev N --fields - <<'EOF'`, then `title: ...`, `goal: [...]`, `contract: [...]`, `scope: [...]`, "
+    "then `EOF`). Plans and notes go the same way with `--file -` or `--note-file -`. In PowerShell, pipe a "
+    "single-quoted here-string (`@'` ... `'@ | aew ...`).",
     "- Do not implement substantial changes yourself. You cannot edit files in this session.",
     "- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are "
     "refused here.",
@@ -194,8 +202,9 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
         "description": "AEW: draft a Ticket and plan for an objective",
         "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\n"
                     "Propose the Ticket (title, risk class 0-4 with reasons, scope, completion criteria) and a plan. "
-                    "Show them to me first. Only after I agree, run `aew work create ticket ...` and "
-                    "`aew plan propose ...` (see `aew work create --help`).",
+                    "Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and "
+                    "`aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone "
+                    "(see `aew work create --help`).",
     },
     "aew-next": {
         "description": "AEW: take the next Lead action on one work unit",

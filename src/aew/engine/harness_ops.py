@@ -302,6 +302,7 @@ class HarnessOps(ResumeOps):
                 out.append({"run": r["run"], "invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
+                            "containment": (record or {}).get("containment") or K.CONTAINMENT,
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),

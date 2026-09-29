@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from aew import SPEC_SET, __version__
 from aew import profile
+from aew.cli import fields
 from aew.errors import AEWError
 
 Handler = Callable[[argparse.Namespace], Any]
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-C", dest="cwd", default=None, help="run as if started in this directory")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     commands.register(sub)
+    fields.register(parser)
     return parser
 
 
@@ -78,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
 def _main(argv: list[str]) -> int:
     _utf8_streams()
     parser = build_parser()
+    try:
+        argv = fields.expand(argv, parser)  # authored values arrive as data, never as shell text (B1)
+    except AEWError as exc:
+        sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
+        return exc.exit_code
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:

@@ -68,6 +68,17 @@ assumed.
 Each hypothesis is reported as supported, not supported, or inconclusive (too few runs). No composite score is
 computed.
 
+## Amendments
+
+**A1, 2026-09-28.** Made after the first paid run (T1 in AEW mode on GPT-5.6 Luna, at `55412aa`), before any other paid run. The reasons are the companion design review's M3 hardening blockers (`docs/implementation/m3-companion-review-triage.md`) and what T1 showed.
+
+- **B1, intent ingress.** AEW gained `--fields FILE|-`, which passes any command's option values as data. The Lead's system text, the role preamble and this dogfood's brief now tell models to pass free text that way, or with quoted heredocs. In T1 the shell had corrupted a Ticket goal and a classify reason (`$1` expanded).
+- **B2, the containment label.** Runs and `doctor` now state `workdir separation only`.
+- **B3, failure names.** Observed failures are classified by the classes in `docs/design/failure-class-registry.md`. A failure that no class covers is reported as unmapped.
+- **Also between the two runs:** M3-D9, where AEW now refuses a comma inside a scope glob.
+
+T1's first record stays as it is. It is a result on the code before hardening, and its AEW commit is `55412aa` (that record predates the `aew_commit` field). It is not re-scored. T1's later trials run on the hardened code.
+
 ## Budget and stopping
 
 - The operator's budget is USD 10 for the paid runs.

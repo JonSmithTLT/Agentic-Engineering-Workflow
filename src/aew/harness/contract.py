@@ -13,6 +13,14 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 RUN_SCHEMA = "aew/harness-run/v1"
+# The filesystem guarantee a run actually has, stated so that its absence is never read as containment
+# (AEW-INV-ISO-001; execution-workspace-and-isolation design §3.1). Runs get their own workspace or observation,
+# private harness state and a scratch directory; nothing stops an agent's shell writing where the operator can.
+CONTAINMENT = "workdir_separation_only"
+CONTAINMENT_NOTE = ("workdir separation only: each run has its own workspace or observation, private harness state and "
+                    "a scratch directory, but no OS-level filesystem containment. An agent's shell runs as you and can "
+                    "read and write whatever your account can, so evaluate on scratch repositories until containment "
+                    "exists (docs/design/execution-workspace-and-isolation-design-v0.1.md)")
 
 # Run status, as recorded in the local run record (telemetry, never read by a gate).
 STARTING, RUNNING = "starting", "running"
@@ -90,6 +98,9 @@ def preamble(c: LaunchContract) -> str:
         f"- Only submitted AEW evidence counts. Expected output: {kinds}. Ending the conversation without "
         "`aew submit` records nothing and changes no AEW state.",
         f"- Work only in `{c.workspace}`. Do not start background processes that outlive your commands.",
+        "- Report text is data. A shell rewrites `$`, backticks, globs and quotes in a command line, so never put a "
+        "report into one: pipe it with a quoted heredoc (`aew submit --kind <kind> --file - <<'EOF'` ... `EOF`; "
+        "in PowerShell `@'` ... `'@ | aew submit --kind <kind> --file -`), or write the file the same way first.",
     ]
     if c.scratch:
         lines.append(f"- Your private scratch directory is `{c.scratch}` (also `AEW_SCRATCH` in your environment). "

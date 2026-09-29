@@ -118,14 +118,15 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8", newline="\n")
         return {"wrote": sorted(s["files"])}
+    stdin = s["stdin"].encode("utf-8") if isinstance(s.get("stdin"), str) else None  # piped, as a heredoc pipes it
     if do == "aew":  # {FORGED_CREDENTIAL} is built here, so no credential-shaped string sits in any file
         forged = "aew1.tk_" + "0" * 16 + "." + "F" * 43
-        return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=s.get("env"))
+        return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=s.get("env"), input_bytes=stdin)
     if do == "check":
         return aew("check", "run", s["id"])
     if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)
         rev = json.loads(aew("lead", "show")["stdout"])["revision"]
-        return aew(*s["args"], "--expect-rev", str(rev))
+        return aew(*s["args"], "--expect-rev", str(rev), input_bytes=stdin)
     if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it
         data = s["text"].encode(s.get("encoding", "utf-8"))  # e.g. "utf-8-sig" or "utf-16": Windows PowerShell 5.1
         if s.get("stdin"):

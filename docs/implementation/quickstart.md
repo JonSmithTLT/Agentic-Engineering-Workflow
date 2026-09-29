@@ -38,6 +38,20 @@ aew work assign  T-0001 --expect-rev N    # workspace + implementer credential +
 aew work transition T-0001 --to RUNNING --expect-rev N
 ```
 
+**Free text is data.** Any command takes `--fields FILE|-`: a YAML or JSON mapping of its option values, applied literally. Use it whenever a shell would otherwise see titles, goals, contract clauses, scopes, reasons or notes, because a shell rewrites `$`, backticks, globs and quotes:
+
+```bash
+aew work create ticket --class 1 --expect-rev N --fields - <<'EOF'
+title: Show refunds as -$15.00
+goal:
+  - format_amount(Decimal("-15")) == "-$15.00"
+contract: [changes stay within ledger/ and tests/]
+scope: [ledger/**, tests/**]
+EOF
+```
+
+The quoted `'EOF'` keeps the shell out. In PowerShell, pipe a single-quoted here-string (`@'` … `'@ | aew ...`) instead.
+
 Launch the implementer with its pack (`aew context show INV-0001`) and its credential.
 
 The implementer works in the workspace path printed by `aew work assign`:

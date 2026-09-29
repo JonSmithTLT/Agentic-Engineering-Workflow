@@ -664,7 +664,7 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
         record["safety"]["checkout_untouched"] = git(ROOT, "status", "--porcelain",
                                                      "--untracked-files=all") == checkout_before
         record["totals"] = totals(record, model_key(profile))
-        with results.open("a", encoding="utf-8") as fh:
+        with results.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(record, sort_keys=True, default=str) + "\n")
     return record
 

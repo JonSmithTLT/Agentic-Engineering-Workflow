@@ -397,6 +397,10 @@ def lead_child(spec_path: Path) -> int:
                 break
             if done():
                 break
+            if "failed (provider." in str(session.detail):  # quota, authentication: a nudge cannot help
+                out["stop"] = f"provider_error: {session.detail}"
+                stop_runs("dogfood provider error")
+                break
             if out["nudges"] >= MAX_NUDGES:
                 out["stop"] = "not_done_after_nudges"
                 break

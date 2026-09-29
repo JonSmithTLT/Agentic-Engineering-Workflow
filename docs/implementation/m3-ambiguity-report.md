@@ -102,6 +102,11 @@
     - M3-D10: `resume` inside a Lead session.
   - **Spend:** USD 6.08 of the operator's USD 10. Every safety check was clean.
   - **Results:** Windows 951 passed with the 4 pinned platform skips; Linux 955 passed.
+- **Step 10 (documentation) is complete, except for the operator's TUI session result:**
+  - ADR-0009 and ADR-0010 are accepted, and ADR-0005 and ADR-0006 are amended;
+  - `opencode.md` is the operator's guide, and the quickstart gained an M3 section;
+  - the status table, `acceptance.md` and the testing strategy are updated;
+  - `m3-reviewer-brief.md` has a marked slot for the TUI session.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

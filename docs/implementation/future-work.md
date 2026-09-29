@@ -6,7 +6,7 @@
 
 **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Remove an entry when its work is accepted, and name the commit or document that closed it.
 
-*Last updated: 2026-09-28, during M3 step 9.*
+*Last updated: 2026-09-29, during M3 step 9 (the capability discovery design added as F13 and Q8).*
 
 ## 1. Gates on the way (in order)
 
@@ -31,7 +31,8 @@
 | F9 | Live coordination and assumption propagation | `docs/design/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md` | Frozen. Revisit when M3 dogfood evidence justifies it; staging in its §24 (M3.x or M4 holds, then the M5 scheduler) | M3 kept the extension points (runs, `send`, continuations). |
 | F10 | Mutating concurrency above 1: integration queue, merge revalidation | `m1-implementation-plan.md`; `implementation-status.md` | M4 (after F1) | Interacts with F3. |
 | F11 | Dynamic scheduler | Workflow Contract; `implementation-status.md` | M5 | |
-| F12 | Workbench capability manifests, resolver, provider health in `doctor`, an MCP adapter over the Engine API | `m1-implementation-plan.md`; `m2-ambiguity-report.md` | M6 | |
+| F12 | Workbench capability manifests, resolver, provider health in `doctor`, an MCP adapter over the Engine API | `m1-implementation-plan.md`; `m2-ambiguity-report.md` | M6 | Extended by F13. |
+| F13 | Capability discovery and progressive disclosure: an Effective Capability Manifest per invocation that keeps available, authorized and active apart; lazy expansion from L0 awareness to L3 exact schema; adapters advertising harness-native capabilities (sandbox, compaction, native review or orchestration, resume); skills that name abstract capability classes; manifests and schemas recorded by reference and hash; a context-economy acceptance test (a large, unrelated MCP server must not inflate baseline context) | `docs/design/capability-discovery-and-progressive-disclosure-design-v0.1.md` | After M3's acceptance, with or after F12 (M6). Sequence in §18: the registry and contract, then the manifest, then lazy expansion, then harness-native capabilities, then a Codex adapter on the same contract, then evaluation. | Does not expand M3. Today M3 gives runs no skills (reported unavailable) and denies OpenCode's `subagent` outright. The design would allow bounded harness-native orchestration under a capability grant, with no AEW identity, credential or authority for the helpers (§8). M3's custody bridge is the boundary that makes that safe. Candidate failure classes and invariants: Q8. |
 
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
@@ -39,7 +40,7 @@
 |---|---|---|---|
 | D1 | Bridge hardening by the peer process's ancestry | M3 plan §2.3 and §8 | Documented as possible, not built. |
 | D2 | An installer, and deeper harness integration (installed commands, one control surface) | M3 plan §8 | Discussed with the operator during M3; a follow-up for the designer. |
-| D3 | Skills for AEW agents (Lead and role skills), made reachable through the capability registry | M3 plan §8; `docs/skills/` (the operator's proposal package and candidates, added over time); Workflow Contract §15.3 | The operator adds skills to `docs/skills/` periodically, and they are committed as the operator writes them. The goal: the capability registry (F12, M6) resolves them, so agents can reach them when a card calls for one. Until then, M3 reports requested skills as unavailable (WC §16.10). The dogfood's Lead brief is a stand-in. |
+| D3 | Skills for AEW agents (Lead and role skills), made reachable through the capability registry | M3 plan §8; `docs/skills/` (the operator's proposal package and candidates, added over time); Workflow Contract §15.3 | The operator adds skills to `docs/skills/` periodically, and they are committed as the operator writes them. The goal: the capability registry (F12, M6) resolves them, so agents can reach them when a card calls for one. Skills should name abstract capability classes, not concrete providers, and are disclosed progressively (F13 §9, §11). Until then, M3 reports requested skills as unavailable (WC §16.10). The dogfood's Lead brief is a stand-in. |
 | D4 | A deterministic `checks` adapter for integration-scope verifiers | M3 plan §7 | Only if the dogfood shows the LLM post-integration verifier dominates. In T1 it cost USD 0.0025. |
 | D5 | Model optimization and routing policy | M3 plan §8 | The dogfood's model comparison is evidence for it. |
 
@@ -54,6 +55,7 @@
 | Q5 | The open questions each design lists | Designer | hierarchy §21; lead/operator §23; isolation §16 |
 | Q6 | Whether "a goal met by changing its inputs" (O3) becomes a registry failure class | Designer | `failure-class-registry.md` §5; `m3-dogfood-report.md` §7 |
 | Q7 | What the next dogfood should use: tasks where one model session fails or regresses, since this one's tasks hit a ceiling | Designer | `m3-dogfood-report.md` §11 and §12 |
+| Q8 | Reconcile the capability design's six candidate failure classes (`CAPABILITY_CONTEXT_BLOAT`, `CAPABILITY_DISCOVERY_FAILURE`, `CAPABILITY_AUTHORITY_CONFUSION`, `CAPABILITY_SCHEMA_OVEREXPOSURE`, `HARNESS_FEATURE_SUPPRESSION`, `HARNESS_AUTHORITY_LEAK`) with the failure-class registry, and add its invariants (§16) to the invariant index, before F13 is implemented | Designer (owner of both indexes) | capability design §15 and §16 |
 
 ## 5. Dogfood findings left open (small)
 

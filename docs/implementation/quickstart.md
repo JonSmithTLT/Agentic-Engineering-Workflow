@@ -1,6 +1,8 @@
-# AEW quickstart (operator and Lead, M1 + M2)
+# AEW quickstart (operator and Lead, M1 to M3)
 
-M1 is harness-neutral: a Lead agent (or a person) drives everything through the `aew` CLI. Bounded roles act only with their own invocation credential, from inside their Ticket workspace. The OpenCode adapter arrives in M3.
+AEW is harness-neutral: a Lead agent (or a person) drives everything through the `aew` CLI. Bounded roles act only through their own invocation's authority, from inside their Ticket workspace.
+
+The sections below use the CLI directly, with scripted roles and printed credentials. **With M3, the usual way is OpenCode**: the Lead in OpenCode's TUI and every role a harness run, with no credential in any model's hands. See [Running with OpenCode](#m3-running-with-opencode) and `opencode.md`.
 
 ## Install
 
@@ -123,12 +125,32 @@ aew work close S-0001 --reason "..." --expect-rev N
 - `aew work promote <T> --to story --title ...` keeps the Ticket's identity and evidence;
 - `aew work depend <id> --add X[:evidence|mutating] --remove Y`.
 
+## M3: running with OpenCode
+
+Configure `.aew/policy/execution.yaml` (which harness, provider, model and effort run each role) and set your provider key, as `opencode.md` describes. Then:
+
+```bash
+aew doctor                      # policy:execution PASS; containment WARN (workdir separation only)
+aew opencode --acquire          # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
+```
+
+In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <id>` takes one step at a time. Dispatches carry `--launch`, so each role runs in its own private OpenCode server and acts through a run-scoped bridge:
+
+```bash
+aew work assign T-0001 --launch --expect-rev N    # run R-INV-0001-1 starts; no credential is printed
+aew harness wait R-INV-0001-1 --timeout 110       # its evidence and the next actions
+aew harness launch INV-0001 --expect-rev N        # relaunch (a fresh session; the credential rotates)
+```
+
+A run's end moves nothing: the Lead still ingests and transitions, as above. Every run works with **workdir separation only**, not filesystem containment, so use scratch repositories and clones until containment exists.
+
 ## Losing the session
 
 - Run `aew resume` in a fresh session. It is read-only and rebuilds everything from `.aew/`.
 - If the old Lead is gone, **the operator** runs `aew lead takeover --reason "..." --expect-rev N` at an interactive terminal and types the challenge code. Agents cannot do this for themselves.
-- In-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
+- **With OpenCode:** losing the TUI or its state loses nothing. Run `aew opencode` again and `/aew-resume`. Harness runs keep going, and a lost run is relaunched with `aew harness launch`. A lost harness is not an interruption: the Ticket and its invocation are unchanged.
+- After a takeover, in-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
 
 ## Useful views
 
-`aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`.
+`aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`, `aew harness status`, `aew harness config opencode <INV>|--lead`.

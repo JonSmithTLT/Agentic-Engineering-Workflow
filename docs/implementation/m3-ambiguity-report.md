@@ -87,6 +87,21 @@
   - Also: the model mistakes the engine caught and the models corrected in one step (check citations not run through AEW, invalid YAML, a report left in the shared workspace, a reviewer trying to run a check). `bridge.outcomes` in the run record shows them without reading a transcript.
   - **Designer note (2026-09-27): history independence.** `tools/perf/control_plane.py footprint` and `sweep` measure hot-state bytes per open unit against the completed-unit count (`m3-performance.md` §7). On the M3 code, cost tracks history almost entirely: at 20 open units, going from 250 to 3,000 completed Tickets takes `lead show` from 1.4 s to 21.6 s, while the open work is 26 KB throughout. ADR-0011 is amended: history independence is its primary completion criterion (H1–H4, A1). The thresholds are proposed and **await the designer's confirmation**.
   - **Results:** Windows 926 passed with the 4 pinned platform skips, plus the serial lane (10 passed, 1 skip). Linux (WSL, Python 3.11) 930 passed, plus 11 serial. Live on OpenCode 2.0.18: the clean full lane (25 passed, 1 skipped by design), then three rework trials on the final code (all VERIFIED).
+- **Step 9 is the dogfood** (`m3-dogfood-report.md`). The paid runs are complete; the operator's TUI session remains.
+  - **Setup:** AEW with a headless model Lead against plain OpenCode, on six tasks with hidden tests. GPT-5.6 Luna and GPT-6 Sol, two trials per task, mode and model. The rubric was pre-registered, with amendments A1 and A2 recorded.
+  - **Results:**
+    - Plain OpenCode passed 20 of 20.
+    - AEW passed 24 of 26 on the hardened code, and all 12 on Sol. It cost about 7× as much and took about 7× as long; the Lead was about 40% of that cost.
+    - AEW's value appeared as resume after losing the Lead's harness (3 of 3), independent review catching the seeded defect (4 of 4, plus 6 of 6 in the model comparison), and investigation Tickets.
+    - In one run AEW was worse: T4 on Luna, where a goal was met by editing its own inputs.
+    - The tasks were too easy for either mode to fail, so AEW's quality claim remains untested.
+  - **The companion design review** (`m3-companion-review-triage.md`) was triaged before the dogfood resumed. B1: authored text as data (`--fields`). B2: the `workdir_separation_only` label. B3: registry failure names. All three are done.
+  - **Defects found and fixed,** each with regressions:
+    - M3-D8: next actions after a harness run;
+    - M3-D9: a scope glob containing a comma;
+    - M3-D10: `resume` inside a Lead session.
+  - **Spend:** USD 6.08 of the operator's USD 10. Every safety check was clean.
+  - **Results:** Windows 951 passed with the 4 pinned platform skips; Linux 955 passed.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

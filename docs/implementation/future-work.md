@@ -52,6 +52,8 @@
 | Q3 | Whether containment is required for personal real-project dogfood, or only for internal alpha | Designer | isolation design §16 |
 | Q4 | Fail-closed rules for `verify classify` and risk class | Designer | F6 |
 | Q5 | The open questions each design lists | Designer | hierarchy §21; lead/operator §23; isolation §16 |
+| Q6 | Whether "a goal met by changing its inputs" (O3) becomes a registry failure class | Designer | `failure-class-registry.md` §5; `m3-dogfood-report.md` §7 |
+| Q7 | What the next dogfood should use: tasks where one model session fails or regresses, since this one's tasks hit a ceiling | Designer | `m3-dogfood-report.md` §11 and §12 |
 
 ## 5. Dogfood findings left open (small)
 
@@ -59,3 +61,5 @@
 |---|---|---|---|
 | O1 | A file named `nul` in a workspace makes AEW's fingerprint fail with git's raw error. `nul` is a reserved device name on Windows, created by a Windows-style `> nul` redirect in bash. | M3 dogfood shakedown | A clearer refusal that names the file and the cause. Low severity. |
 | O2 | The headless Lead's shell allow-list refused `git -C <dir>`, `git branch` and chained commands (`a; b`) | M3 dogfood | By design for the TUI, where the operator is asked. For headless use, consider a read-only allow-list that fits Lead investigation. |
+| O3 | A goal met by changing its own inputs: AEW integrated a wrong T4 change after the implementer edited the sample data the goal was stated against. Review and verification passed it. | `m3-dogfood-report.md` §6.2 | Options for the designer: goals that refer only to unchanged inputs (Lead guidance), protected paths for data that goals refer to, and a reviewer item that flags changed acceptance inputs. Registry: see Q6. |
+| O4 | The Lead is about 40% of AEW's cost, much of it waiting in `aew harness wait` slices that re-send the whole context | `m3-dogfood-report.md` §6.3 | A push-style wait, or the coordination design's event delivery (F9). |

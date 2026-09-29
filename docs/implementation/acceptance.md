@@ -55,6 +55,12 @@ The same scenarios run on **real OpenCode 2.0.18** in the opt-in live lane (`tes
 
 Each scenario was checked against a deliberate regression, which it fails: relaunch without a continuation (AT-15), a reviewer allowed to edit its workspace (AT-16), the Lead TUI inheriting the operator's whole environment (AT-17), and per-role routing ignored (AT-14).
 
+**Real models (evidence, not acceptance scenarios).** The scenarios above use scripted models, so that each property is asserted deterministically. Real models ran the same machinery twice more, with AEW's invariants asserted on every run and the models' outcomes recorded rather than asserted:
+- step 8, free models, every role unscripted, including a rejection and rework of a seeded defect (`harness-conformance.md` §6);
+- step 9, the paid dogfood, with a headless model Lead (`m3-dogfood-report.md`).
+
+**Regressions from real models:** `tests/regression/test_m3_live_findings.py` (M3-D2, M3-D4 to M3-D7) and `test_m3_dogfood_findings.py` (M3-D8 to M3-D10, the containment label), plus `test_m3_intent_ingress.py` (`--fields`, companion review B1).
+
 **Regressions:**
 - `tests/regression/test_m2_compositions.py` holds the operator-review sequences: ancestor first-acceptance, attempt supersession, stale inputs (acknowledge, re-refuse, refresh), record freshness at accept, handoff of read-only work, a moved DONE child's review completeness, and parent cancel versus `publishing`.
 - `tests/regression/test_hierarchy_walk.py` is a separate seeded walk (`AEW_HWALK_SEEDS`, `AEW_HWALK_STEPS`, `AEW_HWALK_FAULT_RATE`). The M1 walk is unchanged.

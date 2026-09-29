@@ -168,7 +168,10 @@ AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q   
 python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
 AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # a free model, unscripted
+AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
 ```
+
+The paid dogfood (M3 step 9) is not a test lane. It is an evaluation with its own driver, fixtures, hidden tests and pre-registered rubric in `eval/m3/dogfood/` (see its README), reported in `m3-dogfood-report.md`.
 
 Seeds and budgets are controlled by these environment knobs; the defaults are the merge-gate values:
 

@@ -33,7 +33,9 @@ Two scenarios:
 
 ``AEW_LIVE_ROUTING`` routes roles to other models (``implementer=opencode/<model>,reviewer=opencode/<model>#<effort>``;
 unnamed roles use ``AEW_LIVE_OPENCODE_MODEL``), through the execution policy's per-archetype routing: each invocation
-pins its own model at dispatch.
+pins its own model at dispatch. ``AEW_LIVE_PROVIDER_KEY_ENV`` names the environment variable of a paid provider's key
+(``OPENAI_API_KEY`` for ``openai/...`` models, M3 step 9): the policy names it, the runs' servers receive its real value
+(never an agent's shell), and the leak checks look for that value instead of the placeholder.
 
 Each trial's record (outcomes, usage, telemetry, the project's control-state footprint) is appended to
 ``AEW_LIVE_RESULTS`` if set. Run it with::
@@ -70,6 +72,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get(adapter.BIN_ENV) and adapter.
                                 reason="no OpenCode binary (set AEW_OPENCODE_BIN)")
 
 RESULTS_ENV = "AEW_LIVE_RESULTS"
+PAID_KEY_ENV = "AEW_LIVE_PROVIDER_KEY_ENV"
 TRIALS = int(os.environ.get("AEW_LIVE_MODEL_TRIALS", "1"))
 DEADLINE_S = float(os.environ.get("AEW_LIVE_MODEL_DEADLINE_S", "900"))
 MAX_STEPS = 40
@@ -89,22 +92,35 @@ def profile(ref: str) -> dict[str, Any]:
             "max_steps": MAX_STEPS, "deadline_s": DEADLINE_S}
 
 
+def provider_key() -> tuple[str, str]:
+    """The provider variable the policy names and the value its runs' servers get: a paid provider's real key when
+    ``AEW_LIVE_PROVIDER_KEY_ENV`` names one, else a placeholder (the free ``opencode/*`` models need none)."""
+    name = os.environ.get(PAID_KEY_ENV)
+    if not name:
+        return "OPENAI_API_KEY", PROVIDER_SECRET
+    if not os.environ.get(name):
+        pytest.skip(f"{PAID_KEY_ENV}={name}, but {name} is not set")
+    return name, os.environ[name]
+
+
 def model_lab(tmp_path: Path) -> HarnessLab:
     routes = routing()
+    key_name, key_value = provider_key()
     profiles = {"standard": profile(FREE_MODEL)}
     archetypes = {}
     for role, ref in sorted(routes.items()):
         profiles[f"{role}-route"] = profile(ref)
         archetypes[role] = f"{role}-route"
-    policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"], "profiles": profiles,
+    policy = {**POLICY, "harness": "opencode", "provider_env": [key_name], "profiles": profiles,
               "routing": {**POLICY["routing"], "archetypes": archetypes}}
     return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
-        "OPENAI_API_KEY": PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240"})
+        key_name: key_value, "AEW_LAUNCH_ACK_S": "240"})
 
 
 def new_trial(scenario: str, trial: int) -> dict[str, Any]:
     return {"schema": "aew/live-model-trial/v1", "scenario": scenario, "model": FREE_MODEL, "routing": routing(),
             "trial": trial, "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "provider_key": "real" if os.environ.get(PAID_KEY_ENV) else "placeholder",
             "agent_shell": "bash" if os.environ.get("SHELL") else "powershell", "max_steps": MAX_STEPS,
             "deadline_s": DEADLINE_S, "runs": [], "lead": {}}
 
@@ -287,7 +303,8 @@ def test_a_free_model_carries_out_real_launch_contracts(trial, tmp_path):
 
 def nothing_leaked(tmp_path: Path) -> None:
     assert not credential_hits(tmp_path), "a credential string was left in a file"
-    leaked = [str(p) for p in tmp_path.rglob("*") if p.is_file() and PROVIDER_SECRET.encode() in p.read_bytes()]
+    secret = provider_key()[1].encode()
+    leaked = [str(p) for p in tmp_path.rglob("*") if p.is_file() and secret in p.read_bytes()]
     assert not leaked, leaked
 
 

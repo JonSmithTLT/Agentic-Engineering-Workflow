@@ -73,12 +73,14 @@ class ResumeOps(HierarchyOps):
                 continue
             run = inv["runs"][-1]["run"]
             status, record = runlog.observed_status(runlog.run_dir(self.aew_root, run))
-            evidence = sorted(e["id"] for e in E.scan(self.aew_root, inv["work_unit"])[0]  # the store, not the record
-                              if e["producer"].get("run") == run)
+            produced = [e for e in E.scan(self.aew_root, inv["work_unit"])[0]  # the store, not the record
+                        if e["producer"].get("run") == run]
+            evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
                 action = f"{run} is running for {inv_id}: follow it with `aew harness wait {run}`"
             elif status == K.ENDED_WITH_EVIDENCE:
-                action = f"{run} ended with evidence {', '.join(evidence)}: ingest it (the run itself decides nothing)"
+                action = (f"{run} ended with evidence {', '.join(evidence)}: "
+                          f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
             else:
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
                           f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
@@ -86,6 +88,34 @@ class ResumeOps(HierarchyOps):
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
         return out
+
+    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]]) -> str:
+        """What the Lead does with a finished run's evidence, as the command that applies (M3-D8)."""
+        wid = inv["work_unit"]
+        unit = state["work"].get(wid) or {}
+        if inv["role"] == "implementer":
+            return f"its implementation report moves {wid} on by transition: {self._after_implementation(state, wid)}"
+        command = {"reviewer": "aew review ingest", "verifier": "aew verify ingest"}.get(inv["role"])
+        if command is None and is_nm_ticket(unit):
+            command = "aew evidence ingest"
+        records = sorted(e["id"] for e in produced if e["kind"] != "check") or ["<id>"]
+        if command is None:
+            return "ingest it"
+        return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e}`" for e in records)
+
+    def _after_implementation(self, state: dict[str, Any], wid: str) -> str:
+        """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
+        unit = state["work"][wid]
+        try:
+            gc = self.gate_context(state, wid)
+            to = ("REVIEW_PENDING" if self._review_gates(gc) else "VERIFY_PENDING" if self._verification_gates(gc)
+                  else "COMMIT_READY")
+            step = f"`aew work transition {wid} --to {to}`"
+        except AEWError:
+            step = f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as its gates require)"
+        if unit["state"] == "ASSIGNED":
+            return f"`aew work transition {wid} --to RUNNING`, then {step}"
+        return step
 
     def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
@@ -199,12 +229,17 @@ class ResumeOps(HierarchyOps):
             return out
         if st == "READY":
             return ["staff it (`aew work roles` / `aew work staff`), then `aew work assign`"]
+        implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
-            return [f"launch the implementer from its pack ({u.get('implementer_invocation')}), then move to RUNNING"]
+            if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
+                return [f"implementer {implementer} was launched: `aew work transition {wid} --to RUNNING`"]
+            return [f"launch the implementer from its pack ({implementer}), then move to RUNNING"]
         if st == "RUNNING":
-            if u.get("implementer_invocation") in active:
-                return [f"implementer {u['implementer_invocation']} in progress; when its report and checks are in, "
-                        "advance to REVIEW_PENDING"]
+            if implementer in active:
+                if self._submitted(state, wid, u, "implementation_report"):
+                    return [f"implementer {implementer} reported: {self._after_implementation(state, wid)}"]
+                return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
+                        "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
             return ["dispatch a fresh implementer (`aew invoke create`)"]
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")

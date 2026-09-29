@@ -312,7 +312,9 @@ class ResumeOps(HierarchyOps):
         return {"name": name, "path": rel, "freshness": "CURRENT" if source == current else "STALE",
                 "source_revision": source, "authoritative_revision": current}
 
-    def resume(self) -> dict[str, Any]:
+    def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
+        """``session``: inside a Lead session, whether its broker holds Lead authority (``lead_broker.
+        session_authority``; M3-D10). ``None`` (outside a Lead session) keeps the guidance for a fresh reader."""
         state = self.store.read()
         lead = state["lead"]
         work = []
@@ -377,6 +379,16 @@ class ResumeOps(HierarchyOps):
             f"Lead authority is held by {holder}. This session must not act as Lead unless authority is "
             "transferred: a cooperative `aew lead handoff accept`, or — if the previous session is lost — an "
             "operator-authorized `aew lead takeover` run by the operator at an interactive terminal."))
+        reachable = "unknown"
+        if session is not None and lead["status"] == "active":
+            if session.get("holds"):
+                reachable = "this_session"
+                guidance = (f"This session holds Lead authority ({holder}) through its Lead session broker: act as "
+                            "the Lead. Mutations still take `--expect-rev N`.")
+            else:
+                reachable = "no"
+                guidance = (f"This session's Lead broker does not hold Lead authority ({session.get('detail')}). "
+                            f"{guidance}")
         catalog = self.role_catalog()
         return {
             "order": RESUME_ORDER,
@@ -384,7 +396,7 @@ class ResumeOps(HierarchyOps):
             "project": {"id": self.project_id, "name": self.manifest["project"]["name"], "manifest": MANIFEST},
             "control": {"revision": state["revision"], "last_transition": state["last_transition"]},
             "lead": {"status": lead["status"], "generation": lead["generation"],
-                     "session_label": lead.get("session_label"), "holder_reachable": "unknown"},
+                     "session_label": lead.get("session_label"), "holder_reachable": reachable},
             "authority_guidance": guidance,
             "work": work,
             "latest_handoff": handoff,

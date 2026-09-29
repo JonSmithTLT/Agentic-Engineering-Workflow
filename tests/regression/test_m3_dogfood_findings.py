@@ -14,14 +14,24 @@ M3-D9. Two model Leads (a free model and GPT-5.6 Luna) gave a Ticket's scope as 
 (``--scope "ledger/money.py,tests/test_money.py"``). AEW stored it as a single glob that matches no path, so the
 implementer's correct change was out of scope and the Lead cancelled and recreated the Ticket. A scope glob with a
 comma is now refused at creation, saying to repeat ``--scope``.
+
+M3-D10. Inside a Lead session (``aew opencode``, or the dogfood's headless Lead), ``aew resume`` told the Lead that
+"this session must not act as Lead unless authority is transferred" (handoff or takeover): resume is read-only, runs
+without the broker, and assumed the reader holds no authority. A GPT-5.6 Luna Lead believed it, wrote a checkpoint
+asking the operator for a takeover, and stopped. Resume now asks the session's Lead broker, and says that this session
+holds Lead authority, or that its broker no longer does. Outside a Lead session its guidance is unchanged.
 """
 
 from __future__ import annotations
 
+import json
+import sys
+
 import pytest
 
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
-from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
+from conftest import IS_WINDOWS, run_aew
+from fake_harness import AGENT, IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
 
 IMPLEMENT = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit"},
@@ -77,6 +87,32 @@ def test_a_scope_glob_with_a_comma_is_refused_saying_to_repeat_the_option(tmp_pa
     assert p.rev() == rev  # nothing was created
     wid = p.lead(*ticket, "--scope", "calc/core.py", "--scope", "tests/test_core.py")["id"]
     assert p.ok("work", "show", wid)["control"]["kind"] == "ticket"
+
+
+def test_resume_inside_a_lead_session_says_this_session_holds_lead_authority(tmp_path):
+    p = sample_project(tmp_path)
+    script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
+    script.write_text(json.dumps([{"do": "aew", "args": ["resume", "--json"]}]), encoding="utf-8")
+    res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
+                  "--transcript", str(transcript), env={"AEW_LEAD_TOKEN": p.token}, timeout=300)
+    assert res.returncode == 0, res.stderr
+    [step] = [json.loads(line)["result"] for line in transcript.read_text(encoding="utf-8").splitlines()]
+    inside = json.loads(step["stdout"])
+    assert inside["lead"]["holder_reachable"] == "this_session"
+    assert inside["authority_guidance"].startswith("This session holds Lead authority"), inside["authority_guidance"]
+    assert "must not act as Lead" not in inside["authority_guidance"]
+
+    outside = p.ok("resume", "--json")  # no Lead session: the guidance for a fresh reader is unchanged
+    assert outside["lead"]["holder_reachable"] == "unknown" and "must not act as Lead" in outside["authority_guidance"]
+
+
+def test_resume_in_a_lead_session_whose_broker_is_gone_says_it_holds_no_authority(tmp_path):
+    p = sample_project(tmp_path)
+    gone = r"\\.\pipe\aew-lead-broker-gone" if IS_WINDOWS else str(tmp_path / "gone.sock")
+    report = p.ok("resume", "--json", env={"AEW_LEAD_BROKER": gone, "AEW_LEAD_BROKER_KEY": "00" * 32})
+    assert report["lead"]["holder_reachable"] == "no"
+    assert report["authority_guidance"].startswith("This session's Lead broker does not hold Lead authority")
+    assert "must not act as Lead" in report["authority_guidance"]
 
 
 def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_path):

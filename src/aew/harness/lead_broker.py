@@ -39,7 +39,8 @@ from aew.util import read_text_input
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
 ENV_KEY = "AEW_LEAD_BROKER_KEY"
 ENV_NAMES = (ENV_ENDPOINT, ENV_KEY)
-OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin": str}}
+OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin": str},
+                                 "lead.whoami": {}}  # does this session hold Lead authority? (M3-D10)
 
 CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
                        frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}))
@@ -113,6 +114,9 @@ class LeadBroker:
             self.superseded = problem
             self.server.close()
             raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {problem}")
+        if op == "lead.whoami":
+            lead = self.engine.store.read()["lead"]
+            return {"generation": lead["generation"], "session_label": lead.get("session_label")}
         return self._run_cli(list(args["argv"]), args["cwd"], args["stdin"])
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
@@ -162,6 +166,19 @@ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     stdin = read_text_input("-") if "-" in argv else ""  # decoded here like any text input; parsed by the broker
     cwd = str(Path(args.cwd or os.getcwd()).resolve())
     return bridge.call("lead.cli", {"argv": list(argv), "cwd": cwd, "stdin": stdin}, env_names=ENV_NAMES)
+
+
+def session_authority() -> dict[str, Any] | None:
+    """Inside a Lead session, whether this session's broker holds the current Lead's authority (M3-D10): a read-only
+    command such as `aew resume` runs without the broker and would otherwise assume that its reader holds none.
+    ``None`` outside a Lead session."""
+    if not os.environ.get(ENV_ENDPOINT):
+        return None
+    try:
+        who = bridge.call("lead.whoami", {}, env_names=ENV_NAMES)
+    except errors.AEWError as exc:
+        return {"holds": False, "detail": exc.message}
+    return {"holds": True, **(who or {})}
 
 
 def routes(args: argparse.Namespace) -> bool:

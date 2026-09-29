@@ -233,8 +233,10 @@ def _opencode(args: argparse.Namespace) -> Any:
 
 
 def _resume(args: argparse.Namespace) -> Any:
+    from aew.harness import lead_broker
+
     engine = _engine(args)
-    report = engine.resume()
+    report = engine.resume(session=lead_broker.session_authority())
     return report if args.json else engine.render_resume(report)
 
 

@@ -4,6 +4,7 @@
 **Scope:** Post-M2/M3 AEW coordination primitive; no change to M1/M2 frozen contracts  
 **Primary implementation window:** First usable form after the live harness exists (M3+); scheduler-driven automation may arrive later with M5  
 **Purpose:** Let concurrently running agents share useful discoveries, blockers, contradictions, and partial knowledge while work is still in flight, without creating a second authority system or collapsing bounded context.
+**Review integration:** 2026-09-28 companion-design review incorporated. The advisory relevance-hint path and load-bearing overlap dependency are retained; coordination remains frozen future work until the governing freshness/resume semantics and M3 dogfood evidence justify implementation.
 
 ---
 
@@ -821,12 +822,12 @@ Later scheduler-era walk should mix:
 
 ## 24. Implementation staging
 
-**Freeze status:** v0.1 is intentionally frozen as **Designed** after independent review. It should not be actively refined in parallel with M2 merely to anticipate hypothetical implementation details. This design should not expand the current M2 implementation scope.
+**Freeze status:** v0.1 remains intentionally frozen as **Designed** after independent review and companion-design review. M2 is accepted; this document remains future coordination work and must not be pulled into M3 merely because the live harness now exists.
 
-Revisit this design when implementation evidence exists, especially after:
+Revisit implementation when evidence justifies it, especially after:
 
-- M2 hierarchy, staleness, resume, and non-mutating semantics are accepted;
-- M3 provides real live Lead/subagent invocations;
+- the accepted M2 hierarchy/staleness/resume semantics remain stable under M3 dogfood;
+- M3 provides accepted real live Lead/worker invocations;
 - at least one multi-agent research or code-mapping dogfood run exposes actual coordination behavior;
 - a material change lands in resume, freshness, dependency, plan-binding, or invocation-supersession semantics; or
 - implementation demonstrates a concrete contradiction or missing invariant in this document.
@@ -922,6 +923,15 @@ Independent review should attack the following questions:
 14. Can the system incorrectly preserve an "unaffected" subtree merely because technical overlap was undeclared or undiscovered?
 
 ---
+
+## 26.1 Cross-document indexes
+
+Coordination uses the canonical cross-document indexes:
+
+- `invariant-index.md` for advisory-hint, authority, stale-evidence, and fail-closed classification invariants;
+- `failure-class-registry.md` for named failure classes owned by companion designs.
+
+These indexes do not create coordination authority and do not replace this document's governing text.
 
 ## 27. Design summary
 

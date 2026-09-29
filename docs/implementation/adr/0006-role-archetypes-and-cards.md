@@ -1,6 +1,6 @@
 # ADR-0006 — Role archetypes (authority classes) and Role cards (catalog)
 
-- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25. Amended for M2 (2026-09-27).
+- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25. Amended for M2 (2026-09-27) and M3 (2026-09-29).
 - **Spec basis:**
   - WC §5: roles are reusable execution templates with authority and context contracts.
   - WC §5.8: specialists supply guidance *within another role* and create no parallel authority.
@@ -124,3 +124,15 @@ role_plan:
   None of them can submit another archetype's kind, drive control state, accept a plan or mutate source (`OBSERVATION_MUTATED`).
 - **Unchanged.** Selection precedence, `use_when` (advisory), operator pins (enforced in the execute slot, including for non-mutating Tickets), forbids and escalation checks. No archetype is added.
 - **Specialist remains a card modifier.** Substantial audit work, such as a security audit or a performance characterization, is a non-mutating Ticket executed by an investigator-based card. Routine review and verification remain gates (WC §7).
+
+## Amendment 2026-09-29 — M3: skills and capabilities projected into a harness (ADR-0009)
+
+The M1 note "M3: skill loading by harness adapters" is resolved as follows. No archetype, card field or authority rule changes.
+
+- **A card's skills and capabilities reach the harness as projection, never as authority.** The adapter turns the pinned card into the harness's own configuration: a system text and a permission rule set. Authority is still enforced by the engine and keyed by archetype only. Harness permissions are defense in depth.
+- **Skills (WC §15.3, §16.10).** A harness may expose only the skills it actually provides for the card; everything else is denied.
+  - **M3 provides none.** The OpenCode projection denies `skill` except for skills the harness provides, and disables OpenCode's compatibility plugin, so the operator's own `~/.claude` or `~/.agents` skills never load.
+  - A card's requested skills are therefore recorded per run as `requested`, `exposed` and `unavailable`, and the system text names the unavailable ones and tells the model to proceed without them and say so.
+  - Making skills reachable is future work: the operator's skills in `docs/skills/`, resolved through the capability registry (M6), and disclosed progressively (`future-work.md` D3, F12, F13).
+- **Capabilities.** Only one ordinary capability changes the projection in M3: `documentation_lookup` opens web fetch and search; otherwise both are denied. `source_mutation` remains the implementer's alone, and maps to OpenCode's `edit`. Other capabilities stay "requested, resolution pending" until M6.
+- **Nested delegation stays closed.** OpenCode's `subagent` is denied for every role, and any session other than the run's own is recorded as `foreign_sessions`. Allowing bounded harness-native orchestration under a capability grant is designed (`docs/design/capability-discovery-and-progressive-disclosure-design-v0.1.md` §8; `future-work.md` F7, F13), not implemented.

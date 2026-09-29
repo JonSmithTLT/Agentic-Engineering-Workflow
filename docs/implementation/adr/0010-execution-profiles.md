@@ -1,11 +1,17 @@
 # ADR-0010 — Execution profiles: model, provider and effort pinned per invocation
 
-- **Status:** Proposed (M3 step 0, 2026-09-27; implemented in M3 step 1); finalized at M3 closeout.
+- **Status:** Accepted (M3, 2026-09-29). Operator-approved plan: `m3-ambiguity-report.md` §2.4.
+  - Proposed in M3 step 0 and implemented in step 1. Subject to the M3 independent review (`m3-reviewer-brief.md`).
 - **Spec basis:**
   - WC §18: model routing is policy, not architecture.
   - WC §9.9 and KC §11: validation provenance "who" includes model/provider.
   - WC §17: a model change needs configuration and evaluation, never a lifecycle change.
   - KC §20: project overrides never weaken an invariant.
+- **Evidence:**
+  - `tests/unit/test_execution_policy.py` and the dispatch and provenance tests of step 1;
+  - AT-14: the reviewer routed to its own profile, requested and effective model both recorded;
+  - step 8 (`harness-conformance.md` §6): the first live runs of a pinned effort variant, and per-role routing through the policy alone;
+  - step 9 (`m3-dogfood-report.md` §5): the model comparison routed a cheap implementer with strong reviewers and verifiers, and the reverse, by editing `routing.archetypes` only. All 147 role runs recorded in the dogfood and the comparison have `model_check: match`.
 - **Nature:** an implementation choice. It adds a policy file, a pin on the invocation, and engine-owned provenance fields. It adds no authority: a model choice never changes what an invocation may do.
 
 ## Decision
@@ -88,6 +94,7 @@ A self-declared `producer.model`, `provider` or `harness` stays accepted. The ev
 
 - Model and effort choices are auditable per invocation and per evidence record. Changing the policy never changes an in-flight invocation.
 - **Model-diverse review (R2)** becomes expressible as a routing entry with no engine change. Evaluating it stays future work (WC §22).
+- **Routing is now measurable.** The dogfood's comparison showed that cost follows where the invocations are: review and verification were three of four runs, so a strong reviewer and verifier cost more than a strong implementer (`m3-dogfood-report.md` §5). Choosing a routing policy is model optimization (`future-work.md` D5), not part of this ADR.
 - **Additive changes.**
   - Existing evidence is not rewritten.
   - New evidence gains three producer fields.

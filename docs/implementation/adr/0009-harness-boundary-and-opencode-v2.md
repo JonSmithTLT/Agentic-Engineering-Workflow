@@ -1,6 +1,8 @@
 # ADR-0009 — Harness boundary, runs, credential custody, and the OpenCode V2 adapter
 
-- **Status:** Proposed (M3 step 0, 2026-09-27). The harness core was implemented in M3 step 2, the Lead broker in step 3 and the OpenCode adapter in step 4. Adversarial regressions were added in step 5 and acceptance scenarios AT-14..AT-17 in step 6. Finalized at M3 closeout.
+- **Status:** Accepted (M3, 2026-09-29). Operator-approved plan: `m3-ambiguity-report.md` (§0, §2.1–§2.3, §2.5–§2.11).
+  - Proposed in M3 step 0. The harness core was implemented in step 2, the Lead broker in step 3 and the OpenCode adapter in step 4. Adversarial regressions were added in step 5, acceptance scenarios AT-14..AT-17 in step 6, live model conformance in step 8, and the dogfood ran in step 9.
+  - Subject to the M3 independent review (`m3-reviewer-brief.md`), as ADR-0007 and ADR-0008 were for M2.
 - **Spec basis:**
   - WC §2 and §17: harness independence.
   - WC §5 and §15.4: bounded invocations from launch contracts; the Lead is reconstructible.
@@ -14,6 +16,8 @@
   - The fake-harness conformance tests `tests/integration/test_harness_runs.py` and `tests/regression/test_m3_harness_adversarial.py`, run on Windows and on Linux.
   - The harness conformance suite against the real OpenCode adapter: in CI against a fake V2 server (`tests/integration/test_harness_conformance.py`, `test_opencode_adapter.py`), and in the opt-in live lane against OpenCode 2.0.18 (`tests/live/test_opencode_live.py`).
   - Acceptance scenarios AT-14..AT-17 (`acceptance.md`): `tests/acceptance/test_at14_at17_harness.py` (fake harness; OpenCode adapter with fake V2 server and `aew opencode`), and their live twins on OpenCode 2.0.18 (`tests/live/test_opencode_acceptance_live.py`).
+  - Live model conformance (step 8, `harness-conformance.md` §6): real free models in every role through the production adapter, including rejection and rework (`tests/live/test_opencode_model_live.py`, results in `eval/m3/live/`).
+  - The paid dogfood (step 9, `m3-dogfood-report.md`): 47 runs with a headless model Lead and every role a real run, on GPT-5.6 Luna and GPT-6 Sol. Every run's credential scan was clean, no run wrote to the AEW checkout, and resume after losing the Lead's harness succeeded 3 of 3.
 - **Nature:** an implementation of frozen semantics. It adds no new authority, no new state machine and no new knowledge store.
 
 ## Decision
@@ -95,7 +99,8 @@
 **The agent's environment is an allowlist** (`agentenv.py`):
 - OS basics;
 - `PATH`, with the running `aew` first;
-- `AEW_AGENT_ENDPOINT`, `AEW_AGENT_KEY`, `AEW_INVOCATION`, `AEW_RUN`, `AEW_WORK_UNIT`.
+- `AEW_AGENT_ENDPOINT`, `AEW_AGENT_KEY`, `AEW_INVOCATION`, `AEW_RUN`, `AEW_WORK_UNIT`;
+- `AEW_SCRATCH`: a private scratch directory under the run, the named place for files that belong neither in the workspace nor in evidence (M3-D6).
 
 It carries no AEW credential, no provider secret, no harness password, and nothing else from the Lead's shell.
 
@@ -103,7 +108,9 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
 
 **The Lead is symmetric** (`src/aew/harness/lead_broker.py`, M3 step 3).
 - `aew lead session [--acquire] -- <harness command>` holds the Lead credential in memory and serves a **Lead bridge**. `aew opencode` is this command with an OpenCode TUI (below). The credential comes from `AEW_LEAD_TOKEN` in the operator's own shell (removed from the session's environment), or from an in-process `--acquire`.
-- The Lead bridge is the same `BridgeServer` (JSON, key challenge, typed exact arguments, redaction, drain) with one operation, `lead.cli {argv, cwd, stdin}`. The CLI routes every Lead-authenticated command there when the session supplies no credential, and the broker runs the same command handler with the held credential.
+- The Lead bridge is the same `BridgeServer` (JSON, key challenge, typed exact arguments, redaction, drain) with two operations:
+  - `lead.cli {argv, cwd, stdin}`. The CLI routes every Lead-authenticated command there when the session supplies no credential, and the broker runs the same command handler with the held credential.
+  - `lead.whoami {}` returns the held authority's generation and session label, never the credential. `aew resume` inside a session uses it, so a session that holds Lead authority is told so, instead of being told to take over (M3-D10).
 - **The broker refuses:**
   - credential-emitting commands (`lead acquire|takeover|release`, `lead handoff offer|accept`), refused locally in the session too;
   - dispatch without `--launch`;
@@ -126,6 +133,12 @@ The supervisor owns the harness process tree independently of any harness lease.
 - **POSIX:** the tree is one process group. A **sentinel** outside the group kills the group when its pipe from the supervisor closes, including on `SIGKILL`. There is no `preexec_fn`, because the supervisor is multi-threaded. A descendant that calls `setsid` escapes (residual; authority is unaffected).
 - **Liveness is a heartbeat file's mtime.** A pid is never trusted alone, because pids are reused. Tooling that must act on a pid checks the process start time against the run's custody time (`procs.same_process`).
 - OpenCode's `--stdio` lease is used but not relied on.
+
+### Containment label (`AEW-INV-ISO-001`; companion review B2)
+What M3 provides is **workdir separation**: each run has its own workspace or observation, private harness state and a scratch directory. It provides **no OS-level filesystem containment**: an agent's shell runs as the operator and can read and write whatever the operator's account can.
+- Every run record carries `containment: workdir_separation_only`, and `aew harness status` shows it.
+- `aew doctor` reports `containment` as WARN with that explanation.
+- Nothing in AEW claims more. Real containment is designed (`docs/design/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
 
 ### Pause points (tests)
 `AEW_PAUSE=<point>=<file>` holds a process at a named point while the file exists (`faults.pause`, next to the `AEW_FAULT` crash points):
@@ -221,6 +234,15 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - Retiring the implementer at RUNNING→REVIEW_PENDING already ends its authority, so a still-running implementer run is stopped and cannot be relaunched (`test_the_retired_implementers_run_stops_when_review_begins`).
 - **Run records are telemetry that a model-controlled process can write** (same user). `aew harness status`, `harness wait` and `aew resume` therefore read a run's evidence from the evidence store (sealed, engine-stamped `producer.run`), never from its record. A run exists only in control state, and no gate reads a record. A forged status can mislead the display for a moment; it cannot move state (`test_forged_run_records_and_harness_success_move_nothing`).
 - **Sessions other than the run's own** (a subagent's, however started) are recorded as `foreign_sessions`, from the event stream and from a session listing at the end of each turn, and shown by `aew harness status`.
+- **Found by live models (steps 8 and 9)**, each fixed with a regression written first (in `tests/regression/test_m3_live_findings.py` and `test_m3_dogfood_findings.py`; M3-D3 in `tests/integration/test_opencode_adapter.py`):
+  - M3-D3: the run's event log did not name the tools called;
+  - M3-D4: a relaunch's continuation listed stale evidence as passing;
+  - M3-D5: a malformed but parseable review or verification section crashed `submit` through the bridge (`BRIDGE_ERROR`); it is now a validation refusal;
+  - M3-D6: no named place for files outside the workspace, after a verifier wrote into the operator's own checkout (`AEW_SCRATCH`);
+  - M3-D7: resolved findings were checked only when the Lead ingested the review, after the reviewer's run had ended; `submit` now checks them;
+  - M3-D8: after an implementer run, the next action named an ingest instead of the transition to review;
+  - M3-D10: `resume` inside a Lead session said the session held no authority (`lead.whoami`, above).
+- **Authored text travels as data** (companion review B1). A Lead writes goals, reasons and reports through `--fields FILE|-` or `--file`, with quoted heredocs, never interpolated into a shell command line. The Lead projection and the role preamble say so. Before this, a shell expanded `$1` inside a goal (`m3-dogfood-report.md` §7).
 - **Known V2 risks:**
   - no stability policy;
   - `--stdio` is undocumented;

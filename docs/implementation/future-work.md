@@ -39,7 +39,7 @@
 |---|---|---|---|
 | D1 | Bridge hardening by the peer process's ancestry | M3 plan §2.3 and §8 | Documented as possible, not built. |
 | D2 | An installer, and deeper harness integration (installed commands, one control surface) | M3 plan §8 | Discussed with the operator during M3; a follow-up for the designer. |
-| D3 | Authoring skills (AEW Lead and role skills) | M3 plan §8 | The operator's `docs/skills/` work in progress. The dogfood's Lead brief is a stand-in. |
+| D3 | Skills for AEW agents (Lead and role skills), made reachable through the capability registry | M3 plan §8; `docs/skills/` (the operator's proposal package and candidates, added over time); Workflow Contract §15.3 | The operator adds skills to `docs/skills/` periodically, and they are committed as the operator writes them. The goal: the capability registry (F12, M6) resolves them, so agents can reach them when a card calls for one. Until then, M3 reports requested skills as unavailable (WC §16.10). The dogfood's Lead brief is a stand-in. |
 | D4 | A deterministic `checks` adapter for integration-scope verifiers | M3 plan §7 | Only if the dogfood shows the LLM post-integration verifier dominates. In T1 it cost USD 0.0025. |
 | D5 | Model optimization and routing policy | M3 plan §8 | The dogfood's model comparison is evidence for it. |
 

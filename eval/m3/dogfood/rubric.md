@@ -29,7 +29,7 @@ assumed.
 | T3 | bug that needs investigation | monthly summaries omit each month's last day; the objective states only the symptom | yes |
 | T4 | wrong initial hypothesis | the operator blames float arithmetic; the cause is amount parsing (`23.4` read as 23.04) | yes |
 | T5 | review with a seeded defect | a plausible `split_amount` whose shares do not add up; its own tests pass | yes (asked to review and fix) |
-| T6 | resume after losing the Lead's harness | T2's objective; once a role run has run 60 s, the Lead's OpenCode is killed and its state is wiped, and a fresh session resumes from AEW alone | T2's |
+| T6 | resume after losing the Lead's harness | T2's objective; once the Lead has launched its first role run, its OpenCode is killed and its state is wiped, and a fresh session resumes from AEW alone (amendment A2) | T2's |
 
 ## Per-run measures
 
@@ -78,6 +78,8 @@ computed.
 - **Also between the two runs:** M3-D9, where AEW now refuses a comma inside a scope glob.
 
 T1's first record stays as it is. It is a result on the code before hardening, and its AEW commit is `55412aa` (that record predates the `aew_commit` field). It is not re-scored. T1's later trials run on the hardened code.
+
+**A2, 2026-09-29, after the GPT-5.6 Luna set.** T6's trigger for losing the Lead's harness was "a role run has been running for 60 s". It never fired: every Luna role run finished sooner, so both Luna T6 runs were effectively T2 repeats. They are reported as such, not as T6 results. The trigger is now "the Lead has launched its first role run", which fires whatever the model's speed. T6 is rerun on the fixed driver.
 
 ## Budget and stopping
 

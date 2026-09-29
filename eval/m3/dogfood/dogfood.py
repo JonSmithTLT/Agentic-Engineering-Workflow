@@ -62,7 +62,8 @@ SCOPE = ("ledger/*", "tests/*", "README.md")
 ROLE_STEPS, ROLE_DEADLINE_S = 60, 900
 LEAD_STEPS, RAW_STEPS = 150, 80
 MAX_NUDGES = 2
-LOSS_AFTER_S = 60  # T6: the Lead's OpenCode is lost once a role run has been running this long
+# T6: the Lead's OpenCode is lost as soon as its first role run has been launched (amendment A2: a time trigger,
+# "a run running for 60 s", never fired because GPT-5.6 Luna's runs finish sooner).
 # USD per million tokens, from OpenCode 2.0.18's model catalog on 2026-09-28 (the tier below 200k context).
 PRICES = {
     "openai/gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cache_read": 0.02, "cache_write": 0.25},
@@ -370,12 +371,8 @@ def lead_child(spec_path: Path) -> int:
         spent = spent_closed + float(session.live_usage().get("cost") or 0) + role_cost()
         if spent > cap:
             return "cost_cap"
-        if spec["lead_loss"] and not out["lost"]:
-            for d in runs_root.glob("*") if runs_root.is_dir() else []:
-                status, record = runlog.observed_status(d)
-                started = (record or {}).get("started_at")
-                if status == K.RUNNING and started and time.time() - epoch(started) >= LOSS_AFTER_S:
-                    return "lose"
+        if spec["lead_loss"] and not out["lost"] and runs_root.is_dir() and any(runs_root.glob("*")):
+            return "lose"  # the Lead has launched its first role run: its harness is lost mid-Ticket (amendment A2)
         return None
 
     session = open_session(1)

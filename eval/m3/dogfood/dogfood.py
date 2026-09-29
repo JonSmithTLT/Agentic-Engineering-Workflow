@@ -65,8 +65,8 @@ MAX_NUDGES = 2
 LOSS_AFTER_S = 60  # T6: the Lead's OpenCode is lost once a role run has been running this long
 # USD per million tokens, from OpenCode 2.0.18's model catalog on 2026-09-28 (the tier below 200k context).
 PRICES = {
-    "openai/gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cache_read": 0.02},
-    "openai/gpt-6-sol": {"input": 2.00, "output": 10.00, "cache_read": 0.20},
+    "openai/gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cache_read": 0.02, "cache_write": 0.25},
+    "openai/gpt-6-sol": {"input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50},
 }
 PROVIDER_ENV = {"openai": "OPENAI_API_KEY"}
 
@@ -203,14 +203,15 @@ def provider_env(profile: dict[str, Any]) -> list[str]:
 
 
 def priced(key: str, tokens: dict[str, Any] | None) -> float | None:
-    """Cost from tokens at catalog prices (reasoning billed as output), as a cross-check of OpenCode's own."""
+    """Cost from tokens at catalog prices (reasoning billed as output; cache writes at the catalog's cache-write
+    price, as OpenCode charges them), as a cross-check of OpenCode's own figure."""
     price = PRICES.get(key)
     if not price or not isinstance(tokens, dict):
         return None
-    cached = (tokens.get("cache") or {}).get("read") or 0
+    cache = tokens.get("cache") or {}
     out = (tokens.get("output") or 0) + (tokens.get("reasoning") or 0)
-    return round(((tokens.get("input") or 0) * price["input"] + cached * price["cache_read"] + out * price["output"])
-                 / 1e6, 6)
+    return round(((tokens.get("input") or 0) * price["input"] + (cache.get("read") or 0) * price["cache_read"]
+                  + (cache.get("write") or 0) * price["cache_write"] + out * price["output"]) / 1e6, 6)
 
 
 def add_tokens(*many: dict[str, Any] | None) -> dict[str, Any]:
@@ -598,6 +599,7 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
     checkout_before = git(ROOT, "status", "--porcelain", "--untracked-files=all")
     record: dict[str, Any] = {"schema": SCHEMA, "task": task_id, "title": task.title, "mode": mode, "model": model,
                               "routing": routing, "cap_usd": cap, "started_at": now(), "workdir": str(work),
+                              "aew_commit": git(ROOT, "rev-parse", "--short", "HEAD").strip(),
                               "agent_shell": "bash" if os.environ.get("SHELL") else "powershell",
                               "limits": {"role_steps": ROLE_STEPS, "role_deadline_s": ROLE_DEADLINE_S,
                                          "lead_steps": LEAD_STEPS, "raw_steps": RAW_STEPS,

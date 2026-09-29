@@ -169,6 +169,11 @@ class WorkOps(EngineBase):
             raise UsageError("risk class must be 0..4")
         if min_descendant_class is not None and not rationale:
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
+        joined = [s for s in scope_paths or [] if "," in s]
+        if joined:  # M3-D9: several globs given as one value would match nothing, and every change would be out of scope
+            raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
+                             "globs: give one glob per --scope and repeat --scope for each",
+                             scope=joined)
         with self.lead_txn(token, expect_rev, "work.create") as ctx:
             state = ctx.state
             if parent is not None:

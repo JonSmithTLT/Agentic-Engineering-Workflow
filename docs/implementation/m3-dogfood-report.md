@@ -183,6 +183,21 @@ What might prevent this (for the designer; see `future-work.md` O3):
   - **Correction (2026-09-29, `m3-audit-findings.md` L1).** Re-analysing the 29 Lead sessions shows waiting is 12% of the Lead's steps (a median of 4 of 34), although it is about 55% of the Lead's wall time. The Lead's cost comes from the workflow choreography: a median of 20 workflow commands per session, each a model step that re-reads a growing context. The results in this report are unchanged; only this explanation is corrected. The response is the Lead workflow efficiency design (`future-work.md` F15).
 - **Risk class.** After the hardening, Leads chose Class 1 or 2 for every task, T1 included, so the Class 0 fast path was never used. This follows the fail-closed default the companion review asks for, and costs the full review and verification each time.
 
+### 6.4 The Class 0 path (rubric amendment A3, 2026-09-30)
+
+T1 was meant to exercise the Class 0 path and never did: on the hardened code the Leads chose Class 1 or 2 for all 30 Tickets, T1's included (§6.3). The M3 audit (X4) and the designer asked for the path to be tested. Task T1C0 is T1's objective plus one operator sentence, "It is a trivial, low-risk fix: handle it as a Class 0 Ticket", judged by T1's hidden test. It was pre-registered before any run (`rubric.md`, A3).
+
+| Trial | Class chosen | Path | Role runs | Hidden test | USD | Wall s | Lead steps | Refused `aew` commands |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0 | ASSIGNED → RUNNING → COMMIT_READY → DONE | implementer, post-integration verifier | passed | 0.017 | 183 | 24 | 2 |
+| 2 | 0 | the same | the same | passed | 0.016 | 85 | 26 | 3 |
+
+- **The path works end to end.** Both Leads chose Class 0 as directed. Both Tickets went from RUNNING straight to COMMIT_READY, with no review and no Ticket verification, integrated, passed their post-integration verification and the hidden test.
+- **The refusals** were all correction steps: `aew evidence ingest` on the implementation report (both trials; the brief lists that command among the ingest commands) and, once, `aew verify ingest` in the wrong state. Each Lead recovered on its next step. The refusal messages now name the command that applies (audit X1); the brief is part of the registered runs and was not changed. The command log now records these refusals (audit T3).
+- **Calibration stays open.** Unprompted, no Lead chose Class 0. Whether that is the intended fail-closed behaviour, and what should make Class 0 selectable, is the designer's question Q10 (`future-work.md`).
+- As registered, T1C0 is not compared with T1 for quality or cost: its instruction differs.
+- A first attempt (2026-09-29) stopped before any model step, because the provider key had expired: USD 0, recorded.
+
 ## 7. Failures by registry class
 
 Named with the classes in `docs/design/failure-class-registry.md` (amendment A1).
@@ -217,7 +232,7 @@ Also from the companion review: **B2**, the `workdir_separation_only` label on r
 
 ## 10. Safety and cost
 
-**Safety,** in all 47 dogfood runs:
+**Safety,** in all 50 dogfood runs (47, plus the three T1C0 attempts of amendment A3):
 - no AEW credential string in any file the run left: the whole scratch tree, including OpenCode's databases;
 - the provider key's value in no file;
 - the AEW checkout untouched.
@@ -235,7 +250,8 @@ The model-comparison trials ran under the live lane's own checks: credential sca
 | Model comparison, A (3 trials) | 0.196 |
 | Model comparison, B (3 trials) | 0.132 |
 | The attempt without credit | 0.000 |
-| **Total** (OpenCode's figures; OpenAI's bill may differ slightly) | **6.078** |
+| T1C0, the Class 0 path (A3): 2 trials, plus an attempt stopped by an expired key at USD 0 | 0.033 |
+| **Total** (OpenCode's figures; OpenAI's bill may differ slightly) | **6.111** |
 
 About USD 0.07 was spent on runs that measured less than intended (the two untriggered T6 runs). A few cents went to Lead steps lost to defects now fixed.
 

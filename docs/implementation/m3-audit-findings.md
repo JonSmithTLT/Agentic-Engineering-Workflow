@@ -39,7 +39,10 @@
   - X1, X2: refusals and next actions name the command that applies (`d2f8972`);
   - A2: `aew doctor` reports the YAML backend (`c7be45b`);
   - D1, D2, D3: the README, the testing strategy and a dated correction in the dogfood report.
-- **Next:** C2, re-sizing shards after a complete CI run; X4, targeted Class 0 runs of T1, which record classification calibration as an explicit issue; T3, instrumenting the dogfood's command log first.
+- **Also done:**
+  - T3: the dogfood's command log records exit and AEW error codes (`d817f5a`);
+  - X4: the Class 0 path works end to end, 2 of 2 operator-directed trials (`m3-dogfood-report.md` §6.4); classification calibration is the designer's Q10;
+  - C2: the shard timings are refreshed from the first complete CI run. The heaviest job is about 6 minutes against its 30-minute limit, so no shard count changed.
 - **Tracked:** L1 as F15 (the Lead workflow efficiency design); X3 as O2; L2, T1, T2, T4, A1, A3 and the lint cleanup as E1 to E7 in `future-work.md` §6.
 - The designer's independent audit (I1 to I5) and its fixes: `review-response-2026-09-29.md`.
 

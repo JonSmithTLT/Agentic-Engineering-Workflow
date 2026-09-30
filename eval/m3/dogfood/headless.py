@@ -113,11 +113,10 @@ def assistant_steps(state_dir: Path) -> int:
     return sum(1 for m in _messages(state_dir) if m["type"] == "assistant")
 
 
-def last_text(state_dir: Path) -> str:
-    """The text of the session's last assistant message that has any (for the rubric A5 debrief)."""
-    for message in reversed(_messages(state_dir)):
-        if message["type"] != "assistant":
-            continue
+def last_text(state_dir: Path, skip: int = 0) -> str:
+    """The text of the session's last assistant message that has any (for the debrief, rubric A5 and A6), among
+    those after its first ``skip`` steps: a debrief that says nothing must not be credited with an earlier answer."""
+    for message in reversed([m for m in _messages(state_dir) if m["type"] == "assistant"][skip:]):
         text = "\n".join(str(p.get("text") or "") for p in message.get("content") or []
                          if isinstance(p, dict) and p.get("type") == "text").strip()
         if text:
@@ -186,9 +185,9 @@ class HeadlessSession(oc.OpenCodeAdapter):
         with self.events_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"t": round(time.time(), 3), **event}, default=str) + "\n")
 
-    def open(self, *, directory: Path, profile: dict[str, Any], agent: str, config: dict[str, Any],
-             env: dict[str, str], provider_env: list[str], rules: list[dict[str, str]] | None = None,
-             title: str = "AEW dogfood") -> None:
+    def _start(self, *, directory: Path, profile: dict[str, Any], config: dict[str, Any],
+               provider_env: list[str]) -> None:
+        """A private server on this session's state, with the pinned model in its catalog."""
         self.opened_at = time.monotonic()
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -201,15 +200,39 @@ class HeadlessSession(oc.OpenCodeAdapter):
         self.client = self.server.client
         self.version = (self.client.get("/api/info") or {}).get("version")
         self.model_info = self._await_model(profile)
+
+    def _attach(self, env: dict[str, str]) -> None:
+        """The session's shell environment (held only in the server's memory), then its events."""
+        assert self.client is not None and self.session is not None
+        self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(env)})
+        self.events = EventStream(self.client, self._on_event, self.server.alive)
+        self.events.start()
+
+    def open(self, *, directory: Path, profile: dict[str, Any], agent: str, config: dict[str, Any],
+             env: dict[str, str], provider_env: list[str], rules: list[dict[str, str]] | None = None,
+             title: str = "AEW dogfood") -> None:
+        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env)
+        assert self.client is not None
         body: dict[str, Any] = {"title": title, "agent": agent, "model": projection.model_ref(profile),
                                 "location": {"directory": self.directory}}
         if rules is not None:
             body["permissions"] = rules  # applied last: the session's rules win
         self.session = str(self.client.post("/api/session", body)["data"]["id"])
-        self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(env)})
-        self.events = EventStream(self.client, self._on_event, self.server.alive)
-        self.events.start()
+        self._attach(env)
         self._log({"event": "dogfood.opened", "version": self.version, "agent": agent,
+                   "model": projection.model_ref(profile), "env_names": sorted(env)})
+
+    def resume(self, *, session: str, directory: Path, profile: dict[str, Any], config: dict[str, Any],
+               env: dict[str, str], provider_env: list[str]) -> None:
+        """Reopen a session this class ran before, from its saved state (rubric A6: a finished Lead's debrief).
+        The session exists already, so nothing is created. Its shell environment lived only in the old server's
+        memory, so it is curated again here: without it, the shell would get this server's own environment."""
+        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env)
+        assert self.client is not None
+        self.client.get(f"/api/session/{session}")  # it exists, or this raises
+        self.session = session
+        self._attach(env)
+        self._log({"event": "dogfood.resumed", "version": self.version, "session": session,
                    "model": projection.model_ref(profile), "env_names": sorted(env)})
 
     def say(self, text: str) -> None:

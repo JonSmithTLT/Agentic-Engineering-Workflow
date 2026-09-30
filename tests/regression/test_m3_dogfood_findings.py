@@ -239,3 +239,55 @@ def test_the_headless_lead_takes_a_new_turn_after_its_last_one_ended(tmp_path, m
         assert session.turn == "running" and len(session.sent) == 2
     finally:
         session.tree.close()
+
+
+class _SavedSessionServer(_PromptServer):
+    """A server that has a saved session: it can be read, and given a shell environment."""
+
+    def __init__(self, session: str) -> None:
+        super().__init__()
+        self.session, self.puts = session, []
+
+    def get(self, path, params=None, **_):
+        if path == f"/api/session/{self.session}":
+            return {"data": {"id": self.session}}
+        raise AssertionError(f"unexpected GET {path}")
+
+    def put(self, path, body=None, **_):
+        self.puts.append((path, body))
+        return {"data": {}}
+
+
+def test_a_saved_headless_session_is_reopened_with_its_shell_environment_curated_again(tmp_path, monkeypatch):
+    """Rubric A6 reopens each finished Lead's saved session to ask it the debrief. A session's shell environment
+    lives only in the server's memory, so a reopened session would give its shell the new server's own environment,
+    which holds the provider key. `resume` must set the curated one again, and create nothing."""
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "eval" / "m3" / "dogfood"))
+    import headless
+
+    session = headless.HeadlessSession(tmp_path / "lead")
+    server = _SavedSessionServer("ses_saved")
+
+    def start(**_):
+        session.server = session.client = server
+        session.state_dir = tmp_path / "lead" / "harness"
+
+    class NoEvents:
+        def __init__(self, *_):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(session, "_start", start)
+    monkeypatch.setattr(headless, "EventStream", NoEvents)
+    try:
+        session.resume(session="ses_saved", directory=tmp_path, config={}, provider_env=["OPENAI_API_KEY"],
+                       profile={"provider": "openai", "model": "gpt-5.6-luna", "effort": "medium"},
+                       env={"PATH": "bin"})
+        assert server.posts == [] and session.session == "ses_saved"
+        assert server.puts == [("/api/session/ses_saved/environment", {"variables": {"PATH": "bin"}})]
+    finally:
+        session.tree.close()

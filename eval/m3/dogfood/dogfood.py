@@ -403,7 +403,7 @@ def lead_child(spec_path: Path) -> int:
                   "commands": len(headless.command_log(session.state_dir)), "revision": engine.store.read()["revision"]}
         session.say(DEBRIEF)
         outcome = session.wait_turn(time.monotonic() + DEBRIEF_S, stop)
-        return {"outcome": outcome, "text": headless.last_text(session.state_dir)[:4000],
+        return {"outcome": outcome, "text": headless.last_text(session.state_dir, before["steps"])[:4000],
                 "cost_usd": round(float(session.live_usage().get("cost") or 0) - before["cost"], 6),
                 "steps": headless.assistant_steps(session.state_dir) - before["steps"],
                 "commands": len(headless.command_log(session.state_dir)) - before["commands"],
@@ -766,6 +766,86 @@ def setup(task_id: str, directory: Path, model: str) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------------------------- the debrief, afterwards
+
+
+DEBRIEFS = HERE / "debriefs.jsonl"
+DEBRIEF_ROOT = Path(tempfile.gettempdir()) / "aew-debrief"
+DEBRIEF_CAP_USD = 0.10
+DENY_ALL = [{"action": "*", "resource": "*", "effect": "deny"}]
+
+
+def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
+    """Rubric A6: ask a finished run's Lead the debrief question (``DEBRIEF``) in its own session, reopened from a
+    copy of its saved state. The same model and system text as in its run (with or without the guide); every tool
+    denied, in the configuration and in the session's stored rules (which win over the configuration); its shell
+    environment curated again, without the provider key or a Lead broker. The run's own files are never written."""
+    import sqlite3
+
+    import headless
+    from aew.engine.api import Engine
+    from aew.harness.opencode import projection
+
+    record = next(r for r in (json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()
+                              if line.strip()) if r.get("workdir") and Path(r["workdir"]).name == name)
+    work = Path(record["workdir"])
+    guide = record.get("lead_guide")
+    guide = {True: "embedded", False: "pointer"}.get(guide, guide) if isinstance(guide, bool) else guide
+    profile = profile_of(record["model"])
+    names = provider_env(profile)
+    missing = [n for n in names if not os.environ.get(n)]
+    if missing:
+        raise SystemExit(f"{', '.join(missing)} is not set: the provider key must be in the environment")
+    secret = os.environ.get(names[0]) if names else None
+    copy = DEBRIEF_ROOT / name / "lead-1"
+    if copy.exists():
+        shutil.rmtree(copy)
+    shutil.copytree(work / "lead" / "lead-1", copy)
+    con = sqlite3.connect(copy / "harness" / "xdg-data" / "opencode" / "opencode.db")
+    try:
+        sessions = [row[0] for row in con.execute("select id from session_v2")]
+        if len(sessions) != 1:
+            raise SystemExit(f"{name}: expected one saved session, found {len(sessions)}")
+        con.execute("update session_v2 set permission = ?", (json.dumps(DENY_ALL),))
+        con.commit()
+    finally:
+        con.close()
+    engine = Engine.discover(work / "repo")
+    config, _ = headless.lead_config(profile, LEAD_STEPS, guide=engine.lead_guide() if guide == "embedded" else "",
+                                     pointer=guide != "none")
+    config["agents"][projection.LEAD_AGENT]["permissions"] = DENY_ALL
+    config["permissions"] = DENY_ALL
+    entry: dict[str, Any] = {"schema": "aew/dogfood-debrief/v1", "run": name, "task": record["task"],
+                             "lead_guide": guide, "model": record["model"], "session": sessions[0],
+                             "asked_at": now(), "question": DEBRIEF}
+    checkout_before = git(ROOT, "status", "--porcelain", "--untracked-files=all")
+    session = headless.HeadlessSession(copy)
+    try:
+        session.resume(session=sessions[0], directory=work / "repo", profile=profile, config=config,
+                       env=headless.shell_env(os.environ), provider_env=names)
+        before = {"cost": float(session.live_usage().get("cost") or 0),
+                  "steps": headless.assistant_steps(session.state_dir),
+                  "commands": len(headless.command_log(session.state_dir))}
+        session.say(DEBRIEF)
+        entry["outcome"] = session.wait_turn(
+            time.monotonic() + DEBRIEF_S,
+            lambda: "cost_cap" if float(session.live_usage().get("cost") or 0) - before["cost"] > DEBRIEF_CAP_USD
+            else None)
+        entry["answer"] = headless.last_text(session.state_dir, before["steps"])
+        entry["cost_usd"] = round(float(session.live_usage().get("cost") or 0) - before["cost"], 6)
+        entry["steps"] = headless.assistant_steps(session.state_dir) - before["steps"]
+        entry["tool_calls"] = headless.command_log(session.state_dir)[before["commands"]:]
+    finally:
+        closed = session.close()
+    entry["detail"] = closed.get("last_detail")
+    entry["safety"] = scan_secrets(copy, secret)
+    entry["safety"]["checkout_untouched"] = git(ROOT, "status", "--porcelain",
+                                                "--untracked-files=all") == checkout_before
+    with out.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(entry, sort_keys=True, default=str) + "\n")
+    return entry
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="dogfood")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -788,9 +868,21 @@ def main() -> int:
     s.add_argument("task", choices=sorted(TASKS))
     s.add_argument("--dir", type=Path, required=True)
     s.add_argument("--model", required=True)
+    d = sub.add_parser("debrief", help="rubric A6: ask finished runs' Leads the debrief question in their saved sessions")
+    d.add_argument("runs", nargs="+", help="run folder names (T1-aew-...)")
+    d.add_argument("--results", type=Path, default=RESULTS)
+    d.add_argument("--out", type=Path, default=DEBRIEFS)
     args = parser.parse_args()
     if args.cmd == "lead-child":
         return lead_child(args.spec)
+    if args.cmd == "debrief":
+        for name in args.runs:
+            entry = debrief_run(name, args.results, args.out)
+            print(json.dumps({"run": entry["run"], "lead_guide": entry["lead_guide"], "outcome": entry.get("outcome"),
+                              "cost_usd": entry.get("cost_usd"), "steps": entry.get("steps"),
+                              "tool_calls": len(entry.get("tool_calls") or []),
+                              "answer_chars": len(entry.get("answer") or ""), "safety": entry["safety"]}))
+        return 0
     if args.cmd == "selfcheck":
         return selfcheck()
     if args.cmd == "setup":

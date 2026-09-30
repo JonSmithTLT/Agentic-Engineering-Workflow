@@ -110,6 +110,12 @@ T1C0 is not compared with T1 for quality or cost: its instruction differs.
 - **Kept.** Each run's working directory (the Lead's and the roles' OpenCode databases, and `.aew/`) is copied out of the temporary directory to durable local storage for later study. It is not published: it holds whole conversations.
 - **Limits.** As A4's, and these runs follow A4's instead of alternating with them, so drift over the day is not controlled.
 
+**A6, 2026-09-30, before any of its calls: the debrief, asked afterwards.** A5 registered a debrief once the measured work was over, and a defect in this driver meant it was never asked (the report's §9). The operator asked for the Leads' own account of working with AEW.
+
+- **Who and how.** All 18 Leads of A4 and A5, in order. Each is asked A5's `DEBRIEF` question once, in its own session, reopened from a copy of the state it left (`dogfood.py debrief`). Nothing else changes: the same model and effort, and the same system text as in its run (with the guide, with the pointer, or with neither). Every tool is denied, in the configuration and in the session's stored rules, and the shell environment is curated again (no provider key, no Lead broker). The run's own files are never written.
+- **Limits.** One turn each, at most 180 s and USD 0.10 per Lead; about USD 0.08 in all, since the contexts are 8,000 to 23,000 tokens. The question comes hours after the run, not at its end. Each Lead reads its own transcript, so an answer is a reconstruction, not a memory. All the Leads are GPT-5.6 Luna.
+- **Use.** The answers go to `debriefs.jsonl` as given, and are not scored. They are leads for the synthesis the operator and designer asked for, and each is checked against what that Lead actually did before it is relied on. What the Leads say about learning AEW is compared across the three arms.
+
 ## Budget and stopping
 
 - The operator's budget is USD 10 for the paid runs.

@@ -61,6 +61,13 @@ def code(step: dict[str, Any]) -> str | None:
     return ((step.get("stderr_json") or {}).get("error") or {}).get("code")
 
 
+def guide_of(lab) -> str:
+    """The project's Lead guide, as `aew opencode` puts it in the Lead's system text (F16)."""
+    from aew.engine.api import Engine
+
+    return Engine.discover(lab.root).lead_guide()
+
+
 def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab, tmp_path):
     sync = tmp_path / "sync"
     sync.mkdir()
@@ -80,7 +87,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "OPENAI_API_KEY", "AEW_HARNESS_ADAPTERS",
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config()
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab))  # with the guide (F16)
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
     assert steps[2]["exit"] == 0, steps[2]  # a Lead mutation, carried out by the broker
     assert code(steps[3]) == "USAGE"        # a credential-emitting command is refused in the session
@@ -101,7 +108,10 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
                   env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
     assert res.returncode == 0, res.stderr
     shown = res.json
-    assert shown["config"] == projection.lead_config() and shown["command"][-2:] == ["--standalone", str(lab.root)]
+    assert shown["config"] == projection.lead_config(guide_of(lab))
+    assert shown["command"][-2:] == ["--standalone", str(lab.root)]
+    system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]
+    assert system.startswith(projection.LEAD_SYSTEM) and "# How work gets done in AEW: the Lead's guide" in system
     assert "OPENAI_API_KEY" not in shown["env_names"] and "AEW_LEAD_BROKER" in shown["env_names"]
     assert SECRET not in res.stdout and lab.project.token not in res.stdout
     assert not (Path(lab.env["AEW_OPENCODE_BIN"]).parent / "tui-argv.json").exists()

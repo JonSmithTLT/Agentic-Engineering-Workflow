@@ -95,14 +95,14 @@ def pinned(profile: dict[str, Any]) -> dict[str, Any]:
     return projection.config_model(profile)
 
 
-def lead_config(profile: dict[str, Any], steps: int) -> tuple[dict[str, Any], list[dict[str, str]]]:
+def lead_config(profile: dict[str, Any], steps: int, guide: str = "") -> tuple[dict[str, Any], list[dict[str, str]]]:
     """The production Lead projection, made headless: nobody answers, so every ``ask`` is a ``deny`` (the Lead's
     shell runs only ``aew`` and read-only ``git``), and ``question`` is denied."""
     rules = []
     for r in projection.LEAD_RULES:
         effect = "deny" if r["effect"] == "ask" or r["action"] == "question" else r["effect"]
         rules.append({**r, "effect": effect})
-    config = projection.lead_config()
+    config = projection.lead_config(guide)  # with the project's Lead guide, as `aew opencode` gives it (F16)
     agent = config["agents"][projection.LEAD_AGENT]
     agent.update(permissions=rules, model=pinned(profile), steps=steps)
     for name in projection.AUXILIARY_AGENTS:

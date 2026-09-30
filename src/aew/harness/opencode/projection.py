@@ -173,6 +173,9 @@ LEAD_SYSTEM = "\n".join([
     "with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its "
     "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
+    "- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket "
+    "lifecycle, and the command for each step. Work from it, not by trial and error. When it is included below, it "
+    "is the same text.",
     "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
     "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
     "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class <0-4> "
@@ -203,7 +206,8 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
     "aew-ticket": {
         "description": "AEW: draft a Ticket and plan for an objective",
         "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\n"
-                    "Propose the Ticket (title, risk class 0-4 with reasons, scope, completion criteria) and a plan. "
+                    "Propose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your "
+                    "reasons, scope, completion criteria) and a plan. "
                     "Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and "
                     "`aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone "
                     "(see `aew work create --help`).",
@@ -225,9 +229,13 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
 }
 
 
-def lead_config() -> dict[str, Any]:
-    """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration."""
+def lead_config(guide: str = "") -> dict[str, Any]:
+    """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration.
+
+    ``guide`` is the project's Lead guide (``aew guide``, F16), rendered from its own policy: appended to the Lead's
+    system text so every Lead works from how AEW actually runs here, not by trial and error."""
+    system = f"{LEAD_SYSTEM}\n\n{guide}" if guide else LEAD_SYSTEM
     return {"share": "disabled", "default_agent": LEAD_AGENT,
             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
-                                    "system": LEAD_SYSTEM, "permissions": LEAD_RULES}},
+                                    "system": system, "permissions": LEAD_RULES}},
             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}

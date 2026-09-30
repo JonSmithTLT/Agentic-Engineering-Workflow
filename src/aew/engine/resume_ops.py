@@ -428,6 +428,12 @@ class ResumeOps(HierarchyOps):
             **({"harness_runs": runs} if (runs := self.harness_resume(state)) else {}),
         }
 
+    def lead_guide(self) -> str:
+        """How work flows in AEW for this project's Lead, from its own policy (F16). Read-only."""
+        from aew.engine import guide
+
+        return guide.render(self.policy("gates"), self.policy("checks"))
+
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",
                  f"Lead: {r['lead']['status']} (generation {r['lead']['generation']})", r["authority_guidance"], ""]

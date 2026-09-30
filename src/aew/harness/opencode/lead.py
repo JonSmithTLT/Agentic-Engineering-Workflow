@@ -26,7 +26,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-from aew.errors import HarnessIncompatible, UsageError
+from aew.errors import AEWError, HarnessIncompatible, UsageError
 from aew.harness import agentenv, lead_broker
 from aew.harness.contract import CREDENTIAL_RE
 from aew.harness.opencode import capabilities, projection
@@ -35,7 +35,15 @@ from aew.harness.opencode.adapter import binary_command
 PASSED_THROUGH = ("OPENCODE_CONFIG", "SHELL")  # the operator's own config file and shell choice
 
 
-def tui_env(base: Mapping[str, str], *, provider_env: list[str]) -> dict[str, str]:
+def guide_of(engine: Any) -> str:
+    """The project's Lead guide (F16), or nothing when its policy cannot be read (the Lead then sees why elsewhere)."""
+    try:
+        return str(engine.lead_guide())
+    except AEWError:
+        return ""
+
+
+def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "") -> dict[str, str]:
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper().startswith("XDG_")
            or (sys.platform != "win32" and k.startswith("LC_")) or k.upper() in PASSED_THROUGH}
@@ -52,7 +60,7 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str]) -> dict[str, st
         if CREDENTIAL_RE.search(value):
             raise UsageError(f"--provider-env {name}: it holds an AEW credential")
         env[name] = value
-    env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(projection.lead_config(), sort_keys=True),
+    env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(projection.lead_config(guide), sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
     return env
 
@@ -80,12 +88,13 @@ def check_version() -> str:
 
 def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | None = None) -> dict[str, Any]:
     """What `aew opencode` would run, without starting anything (no values of environment variables)."""
-    env = tui_env(os.environ, provider_env=provider_env)
+    guide = guide_of(engine)
+    env = tui_env(os.environ, provider_env=provider_env, guide=guide)
     try:
         argv: list[str] | str = command(engine, extra_args or [])
     except HarnessIncompatible as exc:
         argv = f"unavailable: {exc.message}"
-    return {"command": argv, "config": projection.lead_config(),
+    return {"command": argv, "config": projection.lead_config(guide),
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env,
             "notes": ["The TUI's own environment becomes every Lead session's shell environment (V2 --standalone).",
                       "No AEW credential and no provider key is in it unless passed with --provider-env."]}
@@ -96,7 +105,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if print_config:
         return {"ok": True, **describe(engine, provider_env=provider_env, extra_args=extra_args)}
     version = check_version()
-    env = tui_env(os.environ, provider_env=provider_env)
+    env = tui_env(os.environ, provider_env=provider_env, guide=guide_of(engine))
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")

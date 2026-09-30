@@ -345,7 +345,7 @@ def lead_child(spec_path: Path) -> int:
     runs_root = runlog.run_dir(engine.aew_root, "x").parent
     broker = {k: os.environ[k] for k in ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")}
     env = headless.shell_env(os.environ, broker)
-    config, rules = headless.lead_config(profile, LEAD_STEPS)
+    config, rules = headless.lead_config(profile, LEAD_STEPS, guide=engine.lead_guide())
     deadline = time.monotonic() + float(spec["deadline_s"])
     out: dict[str, Any] = {"sessions": [], "nudges": 0, "stop": None, "lost": False}
     spent_closed = 0.0

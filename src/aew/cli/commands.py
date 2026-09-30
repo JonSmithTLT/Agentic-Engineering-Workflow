@@ -71,6 +71,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_json(p)
     p.set_defaults(handler=_resume)
 
+    p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
+                                     "requires, the Ticket lifecycle and the command for each step (read-only)")
+    _add_json(p)
+    p.set_defaults(handler=lambda a: {"guide": _engine(a).lead_guide()} if a.json else _engine(a).lead_guide())
+
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
     p.add_argument("--note-file", help="checkpoint notes (file or - for stdin)")
     p.add_argument("--next", dest="next_action", help="the Lead's next intended action")

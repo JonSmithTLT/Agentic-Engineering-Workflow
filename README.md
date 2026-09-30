@@ -12,6 +12,7 @@ Provider-neutral, contract-first engineering workflow for AI coding agents. AEW 
 | Document | Contents |
 |---|---|
 | [`docs/implementation/quickstart.md`](docs/implementation/quickstart.md) | Install, initialize, run one Ticket end to end |
+| [`docs/implementation/lead-guide.md`](docs/implementation/lead-guide.md) | How work flows in AEW, for a Lead: risk classes and their gates, the Ticket lifecycle, the command for each step (`aew guide`) |
 | [`docs/implementation/opencode.md`](docs/implementation/opencode.md) | Running AEW with OpenCode: configuration, the Lead's TUI, harness runs, containment |
 | [`docs/implementation/acceptance.md`](docs/implementation/acceptance.md) | Acceptance scenarios and how to run them |
 | [`docs/implementation/implementation-status.md`](docs/implementation/implementation-status.md) | Implemented / Staged / Designed |

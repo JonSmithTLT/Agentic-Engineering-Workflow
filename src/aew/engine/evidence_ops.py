@@ -661,7 +661,8 @@ class EvidenceOps(WorkspaceOps):
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["state"] != "REVIEW_PENDING":
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not REVIEW_PENDING")
+                raise IllegalTransition(f"{work_id} is {unit['state']}, not REVIEW_PENDING. "
+                                        f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
             ev = self._find_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             if ev["kind"] != "review" or inv["role"] not in REVIEW_ROLES or inv["work_unit"] != work_id:
@@ -724,7 +725,8 @@ class EvidenceOps(WorkspaceOps):
             scope = ev["verification"]["scope"]
             if scope == "ticket":
                 if unit["state"] != "VERIFY_PENDING":
-                    raise IllegalTransition(f"{work_id} is {unit['state']}, not VERIFY_PENDING")
+                    raise IllegalTransition(f"{work_id} is {unit['state']}, not VERIFY_PENDING. "
+                                            f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
                 current = (self.current_snapshot(unit) or {}).get("relevant_inputs_fingerprint")
             else:
                 integ = unit.get("integration") or {}

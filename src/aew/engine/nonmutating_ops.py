@@ -60,10 +60,24 @@ class NonMutatingOps(IntegrationOps):
         unit = self.unit(self.store.read(), work_id)
         return unit["kind"] != "ticket" or not unit.get("mutating")
 
+    # What a Lead does instead for a mutating Ticket (M3 audit X1: Leads tried these first, from the dogfood).
+    _MUTATING_INSTEAD = {
+        "`aew work dispatch`": "start a mutating Ticket with `aew work assign {w} --launch`",
+        "`aew work redispatch`": "a mutating Ticket gets a new implementer with "
+                                 "`aew invoke create {w} --role implementer --launch`",
+        "`aew evidence ingest`": "a mutating Ticket's implementation report is accepted by its transition, "
+                                 "`aew work transition {w} --to REVIEW_PENDING` (or VERIFY_PENDING or COMMIT_READY, "
+                                 "as its gates allow); reviews and verifications use `aew review ingest` and "
+                                 "`aew verify ingest`",
+    }
+
     def _require_nm_ticket(self, unit: dict[str, Any], work_id: str, what: str) -> None:
         if not is_nm_ticket(unit):
+            mutating = unit["kind"] == "ticket"
+            instead = self._MUTATING_INSTEAD.get(what) if mutating else None
             raise IllegalTransition(f"{what} applies to non-mutating (evidence-only) Tickets; {work_id} is "
-                                    + ("a mutating Ticket" if unit["kind"] == "ticket" else f"a {unit['kind']}"))
+                                    + ("a mutating Ticket" if mutating else f"a {unit['kind']}")
+                                    + (f": {instead.format(w=work_id)}" if instead else ""))
 
     def _referenced_paths(self, state: dict[str, Any]) -> set[str]:
         paths = {u["workspace"]["path"] for u in state["work"].values()
@@ -760,7 +774,8 @@ class NonMutatingOps(IntegrationOps):
             self._require_nm_ticket(unit, work_id, "this ingest")
             expected_state = "REVIEW_PENDING" if kind == "review" else "VERIFY_PENDING"
             if unit["state"] != expected_state:
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}")
+                raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}. "
+                                        f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
             ev = self._find_unit_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             role = "reviewer" if kind == "review" else "verifier"

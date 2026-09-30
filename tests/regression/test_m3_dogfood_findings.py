@@ -147,3 +147,58 @@ def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_p
     evidence = review[0].split("--evidence ")[1].split("`")[0]
     lab.lead("review", "ingest", wid, "--evidence", evidence)  # the advice is a legal step
     assert lab.ok("work", "show", wid)["control"]["state"] == "REVIEW_PASSED"
+
+
+def _refusal(p, *args, stdin=None) -> str:
+    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()), input=stdin)
+    assert res.returncode != 0, res.stdout
+    return res.error["message"]
+
+
+def test_a_refusal_names_the_command_that_applies_instead(tmp_path):
+    """M3 audit X1, from the dogfood (§6.3): most Leads made one to three calls that a refusal then corrected, and
+    each correction cost a model step, because the refusal said what was wrong and never what to do instead:
+    `evidence ingest` or `work dispatch` on a mutating Ticket, `work assign` or `review ingest` in the wrong state,
+    and a mistyped `--fields` key (`goals:`)."""
+    from aewflow import assign
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    assert f"aew work assign {wid} --launch" in _refusal(p, "work", "dispatch", wid)
+    assign(p, wid)
+    assert f"aew work transition {wid} --to REVIEW_PENDING" in _refusal(p, "evidence", "ingest", wid,
+                                                                         "--evidence", "INV-0001-impl-1")
+    assert "aew work transition <T> --to REVIEW_PENDING" in _refusal(p, "work", "assign", wid)
+    assert f"aew work transition {wid} --to REVIEW_PENDING" in _refusal(p, "review", "ingest", wid,
+                                                                         "--evidence", "INV-0001-impl-1")
+    assert "did you mean --goal?" in _refusal(p, "work", "create", "ticket", "--class", "1", "--fields", "-",
+                                              stdin="title: 'x'\ngoals: ['y']\n")
+
+
+def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
+    """M3 audit X2, from the dogfood: 37 `--help` lookups in 29 Lead sessions, 20 of them `aew authority --help`,
+    because `resume` named commands without their arguments (`aew authority list`, then accept/reject;
+    `aew plan propose/accept`; `aew work assign`). Each next action now gives a command with its unit id, its required
+    options and `--expect-rev N` (placeholders in <...>)."""
+    from conftest import Project
+
+    from aewflow import create_unit
+
+    fresh = Project(repo)
+    fresh.ok("init")
+    actions = "\n".join(fresh.ok("resume", "--json")["next_actions"])
+    assert "aew authority accept <candidate> --class <" in actions and "--expect-rev N" in actions, actions
+
+    p = sample_project(tmp_path / "sample")  # `repo` above is tmp_path/repo
+    wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--scope", "calc/**")["id"]
+    story = create_unit(p, "story", "s")
+    actions = "\n".join(p.ok("resume", "--json")["next_actions"])
+    assert f"aew plan propose {wid} --file - --expect-rev N" in actions, actions
+    assert f"aew plan accept {wid} --revision <n> --expect-rev N" in actions, actions
+    assert f"aew work create ticket --parent {story}" in actions, actions
+    plan = tmp_path / "plan.md"
+    plan.write_text("Do it.\n", encoding="utf-8")
+    p.lead("plan", "propose", wid, "--file", str(plan))
+    p.lead("plan", "accept", wid, "--revision", "1")
+    actions = "\n".join(p.ok("resume", "--json")["next_actions"])
+    assert f"aew work assign {wid} --launch --expect-rev N" in actions, actions

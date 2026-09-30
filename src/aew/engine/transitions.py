@@ -121,12 +121,35 @@ for _dst in ("ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_PASSED", "VERIFY_P
     RULES[("INTERRUPTED", _dst)] = Rule("reconcile", reason_required=True, guard="not_beyond_interrupted_phase")
 
 
+# The Lead command behind each operation, for refusals that say what applies instead (M3 audit X1).
+_COMMANDS = {
+    "transition": "aew work transition {w} --to {to}",
+    "assign": "aew work assign {w} --launch",
+    "review.ingest": "aew review ingest {w} --evidence <id>",
+    "verify.ingest": "aew verify ingest {w} --evidence <id>",
+    "verify.classify": "aew verify classify {w} ...",
+    "plan.accept": "aew plan accept {w} --revision <n>",
+    "integrate.publish": "aew integrate publish {w}",
+    "accept": "aew work accept {w}",
+}
+_NOTES = {"accept": " (non-mutating Tickets)"}
+_EXCEPTIONAL = frozenset({"BLOCKED", "CANCELLED", "ESCALATED", "INTERRUPTED", "REPLAN_REQUIRED"})
+
+
+def next_steps(frm: str, work_id: str = "<T>") -> str:
+    """The forward moves from ``frm``, each as the command that makes it (cancelling, escalating, replanning and
+    interrupting are left out: they are decisions, not the next step)."""
+    steps = [f"{dst} by `{_COMMANDS[via].format(w=work_id, to=dst)}`{_NOTES.get(via, '')}"
+             for dst, via in allowed_from(frm).items() if dst not in _EXCEPTIONAL and via in _COMMANDS]
+    return f"From {frm}: " + "; ".join(steps) + " (each with --expect-rev N)." if steps else ""
+
+
 def check(frm: str, to: str, via: str) -> Rule:
     rule = RULES.get((frm, to))
     if rule is None or rule.via != via:
         allowed = sorted(dst for (src, dst), r in RULES.items() if src == frm and r.via == via)
         raise IllegalTransition(
-            f"{frm} -> {to} is not permitted via {via}",
+            f"{frm} -> {to} is not permitted via {via}. {next_steps(frm)}".rstrip(),
             from_state=frm, to_state=to, via=via, allowed_via_this_operation=allowed,
             required_operation=rule.via if rule else None,
         )

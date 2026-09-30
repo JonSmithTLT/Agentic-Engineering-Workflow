@@ -40,7 +40,9 @@ class ResumeOps(HierarchyOps):
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
         if any(c["status"] == "proposed" for c in self.manifest["authority"]["candidates"]):
-            actions.append("classify authority candidates: `aew authority list`, then accept/reject")
+            actions.append("classify authority candidates: `aew authority list`, then for each "
+                           "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> "
+                           "--expect-rev N` or `aew authority reject <candidate> --reason ... --expect-rev N`")
         try:
             unconfigured = [k for k, v in self.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:
@@ -144,14 +146,16 @@ class ResumeOps(HierarchyOps):
                   "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "INTERRUPTED", "REPLAN_REQUIRED", "ESCALATED"}:
             actions = self._ticket_actions(state, wid, u)
             if st == "REVIEW_PASSED":
-                actions = ["advance to VERIFY_PENDING, or accept the record (`aew work accept`) if no verification applies"]
+                actions = [f"advance to VERIFY_PENDING (`aew work transition {wid} --to VERIFY_PENDING --expect-rev N`), or "
+                           f"accept the record (`aew work accept {wid} --expect-rev N`) if no verification applies"]
             if st == "VERIFIED":
-                actions = ["accept the record (`aew work accept`)"]
+                actions = [f"accept the record (`aew work accept {wid} --expect-rev N`)"]
             if st == "INTERRUPTED":
                 actions.append("then start a new attempt (`aew work redispatch`)")
             return actions
         if st == "READY":
-            return ["dispatch it (`aew work dispatch`); the executor card is pinned with its output kind"]
+            return [f"dispatch it (`aew work dispatch {wid} --launch --expect-rev N`); the executor card is pinned "
+                    "with its output kind"]
         if st == "ASSIGNED":
             return [f"launch executor {execution.get('invocation')} (attempt {execution.get('attempt')}, "
                     f"{execution.get('expected_kind')}) from its pack, then move to RUNNING"]
@@ -161,7 +165,8 @@ class ResumeOps(HierarchyOps):
                 unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
                 if unmet:
                     return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
-                return ["advance to review/verification, or accept the record (`aew work accept`)"]
+                return [f"advance to review or verification (`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING "
+                        f"--expect-rev N`), or accept the record (`aew work accept {wid} --expect-rev N`)"]
             if executor.get("status") == "active":
                 pending = self._submitted(state, wid, u, execution.get("expected_kind") or "")
                 if pending:
@@ -169,7 +174,7 @@ class ResumeOps(HierarchyOps):
                 return [f"executor {execution['invocation']} (attempt {execution['attempt']}) in progress"]
             return ["no live executor for the current attempt: start a new one (`aew work redispatch --reason ...`)"]
         if st == "VERIFIED":
-            return ["accept the record (`aew work accept`)"]
+            return [f"accept the record (`aew work accept {wid} --expect-rev N`)"]
         return []
 
     def _parent_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -180,7 +185,9 @@ class ResumeOps(HierarchyOps):
         if self.plan_binding_problem(state, wid):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}`")
         if st in {"PLANNING", "OPEN"}:
-            out.append("plan it and create its children (`aew plan propose/accept`, `aew work create --parent`)")
+            out.append(f"plan it and create its children (`aew plan propose {wid} --file - --expect-rev N`, "
+                       f"`aew plan accept {wid} --revision <n> --expect-rev N`, "
+                       f"`aew work create ticket --parent {wid} ... --expect-rev N`)")
         elif st == "IN_PROGRESS" and u.get("blocked_descendants"):
             out.append("every open descendant is BLOCKED: check their dependencies")
         elif st == "ACCEPTANCE_PENDING":
@@ -221,14 +228,16 @@ class ResumeOps(HierarchyOps):
             out = []
             for b in u.get("blocked_by", []):
                 if b["kind"] == "plan_not_accepted":
-                    out.append("propose and accept a plan (`aew plan propose/accept`)")
+                    out.append(f"propose and accept a plan (`aew plan propose {wid} --file - --expect-rev N`, the plan "
+                               f"in a quoted heredoc, then `aew plan accept {wid} --revision <n> --expect-rev N`)")
                 elif b["kind"] == "plan_binding_stale":
                     out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid}` or a new plan revision")
                 else:
                     out.append(f"waiting on {b['id']} ({b['reason']})")
             return out
         if st == "READY":
-            return ["staff it (`aew work roles` / `aew work staff`), then `aew work assign`"]
+            return [f"staff it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} ...`), "
+                    f"then `aew work assign {wid} --launch --expect-rev N`"]
         implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)

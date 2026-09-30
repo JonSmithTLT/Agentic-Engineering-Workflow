@@ -20,6 +20,7 @@ data, never as shell text.
 from __future__ import annotations
 
 import argparse
+import difflib
 import re
 from typing import Any
 
@@ -155,8 +156,11 @@ def expand(argv: list[str], parser: argparse.ArgumentParser) -> list[str]:
             raise UsageError(f"--fields: {REFUSED[name]}")
         option = f"--{name}"
         action = command._option_string_actions.get(option)
-        if action is None:
-            raise UsageError(f"--fields: this command has no option {option} (see its --help)")
+        if action is None:  # M3 audit X1: say which option was meant, not only that this one does not exist
+            known = [o for o in command._option_string_actions if o.startswith("--") and o not in {OPTION, "--help"}]
+            close = difflib.get_close_matches(option, known, n=1)
+            raise UsageError(f"--fields: this command has no option {option}"
+                             + (f"; did you mean {close[0]}?" if close else " (see its --help)"))
         items = [_scalar(v, key) for v in value] if isinstance(value, list) else [_scalar(value, key)]
         if action.nargs == 0:  # an on/off switch
             if len(items) != 1 or items[0].lower() not in FLAG_VALUES:

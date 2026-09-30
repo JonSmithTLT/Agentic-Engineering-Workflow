@@ -49,3 +49,48 @@ def test_every_dispatch_pins_the_pack_that_durable_state_regenerates(tmp_path, m
     assert len(seen) >= 10, seen
     drifted = [s for s in seen if not s[2]]
     assert not drifted, f"pinned packs that durable state does not regenerate: {drifted}"
+
+
+def test_a_lead_session_that_ends_during_an_authority_check_is_not_superseded(monkeypatch):
+    """M3-D11 (found by CI on PR #5, Linux: `test_an_acquired_seat_is_released_or_held_explicitly` reported the
+    seat "superseded"). The Lead broker's watchdog checks, every poll, that its credential is still the current
+    Lead's. `close()` cleared the credential while a check could still be in progress: a check whose state read
+    was slow (a loaded machine) then tested an empty credential, was refused, and recorded the session as
+    superseded. The operator was told another Lead had taken over, and a seat that should have been reported
+    held (or released) was not."""
+    import threading
+
+    from aew import errors
+    from aew.harness import lead_broker
+
+    entered, release = threading.Event(), threading.Event()
+
+    class Store:
+        slow = False
+
+        def read(self):
+            if self.slow:
+                entered.set()
+                release.wait(10)
+            return {}
+
+    class Engine:
+        store = Store()
+
+    def require_lead(state, token):
+        if token != "the-lead-credential":
+            raise errors.StaleAuthority("Lead authority superseded")
+
+    monkeypatch.setattr(lead_broker, "require_lead", require_lead)
+    monkeypatch.setattr(lead_broker, "POLL_S", 0.01)
+    broker = lead_broker.LeadBroker(Engine(), "the-lead-credential")
+    broker.start()
+    Engine.store.slow = True
+    assert entered.wait(10), "the watchdog never checked"
+    closing = threading.Thread(target=broker.close)
+    closing.start()  # the session ends while the watchdog's check is reading state
+    closing.join(0.5)
+    release.set()
+    closing.join(10)
+    broker._watch.join(10)
+    assert broker.superseded is None

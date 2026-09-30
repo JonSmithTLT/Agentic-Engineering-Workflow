@@ -241,7 +241,8 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - M3-D6: no named place for files outside the workspace, after a verifier wrote into the operator's own checkout (`AEW_SCRATCH`);
   - M3-D7: resolved findings were checked only when the Lead ingested the review, after the reviewer's run had ended; `submit` now checks them;
   - M3-D8: after an implementer run, the next action named an ingest instead of the transition to review;
-  - M3-D10: `resume` inside a Lead session said the session held no authority (`lead.whoami`, above).
+  - M3-D10: `resume` inside a Lead session said the session held no authority (`lead.whoami`, above);
+  - M3-D11 (found by CI on PR #5): a Lead session ending while the broker's watchdog was mid-check could be reported "superseded", because `close()` cleared the credential under the check. The check now takes the credential before reading state, and `close()` waits for it. Regression in `tests/regression/test_m3_found_defects.py`.
 - **Authored text travels as data** (companion review B1). A Lead writes goals, reasons and reports through `--fields FILE|-` or `--file`, with quoted heredocs, never interpolated into a shell command line. The Lead projection and the role preamble say so. Before this, a shell expanded `$1` inside a goal (`m3-dogfood-report.md` §7).
 - **Known V2 risks:**
   - no stability policy;

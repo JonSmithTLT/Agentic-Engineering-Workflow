@@ -117,6 +117,8 @@ Step 9 saw one Windows failure: a launch acknowledgement timed out while the Lin
 
 Neither has reproduced under normal load. **Recommendation:** watch C1's first CI runs, whose runners are slower than the operator's machine. If either recurs, raise the test-side timeouts, not the product's.
 
+**Update (PR #5 CI):** the second one was not a timeout. It recurred on CI's Linux runner, and it was a real race in the Lead broker, M3-D11: a session ending while the broker's watchdog was mid-check was reported "superseded". It is fixed, with a deterministic regression (ADR-0009). CI also exposed a race in the fake OpenCode server (it reported a turn idle before saving it); that was a test-helper fix.
+
 ### T3. The dogfood's command log (Low, next dogfood)
 
 `headless.command_log` records each shell call's harness status (`completed` or `error`) but not `aew`'s exit code. A refused `aew` command (wrong state, wrong key, a `USAGE` error) shows as `completed`. The dogfood report's friction counts (§6.3) were therefore gathered by reading transcripts.

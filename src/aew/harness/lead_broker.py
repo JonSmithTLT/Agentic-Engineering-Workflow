@@ -89,11 +89,14 @@ class LeadBroker:
         self._stop.set()
         self.server.close()
         self.server.drain(60)
+        if self._watch.is_alive():
+            self._watch.join(60)  # a check in progress finishes before the credential goes (M3-D11)
         self._token = ""
 
     def _authority_problem(self) -> str | None:
+        token = self._token  # taken before the (possibly slow) read: close() may clear it meanwhile (M3-D11)
         try:
-            require_lead(self.engine.store.read(), self._token)
+            require_lead(self.engine.store.read(), token)
         except errors.AEWError as exc:
             return exc.message
         return None
@@ -101,7 +104,7 @@ class LeadBroker:
     def _watchdog(self) -> None:
         while not self._stop.wait(POLL_S):
             problem = self._authority_problem()
-            if problem:
+            if problem and not self._stop.is_set():
                 self.superseded = problem
                 self.server.close()
                 return

@@ -12,6 +12,8 @@
 
 **Rubric:** fixed before the paid runs, with five recorded amendments, each made before the runs it governs (`eval/m3/dogfood/rubric.md`).
 
+**Synthesis:** `m3-evidence-synthesis.md` draws this report, step 8's live trials and the Leads' debriefs together, for the operator and the designer.
+
 **Data:**
 - `eval/m3/dogfood/results.jsonl`: one record per run;
 - `eval/m3/dogfood/comparison.jsonl`: the model comparison;
@@ -241,7 +243,7 @@ All 18 runs passed their hidden test and reached DONE, with no nudges and clean 
   - H2 (class choice without the guide): answered above.
   - G3 and H3 (outcomes no worse): held, 18 of 18.
   - G4 and H4 (steps and cost): with the guide, fewer steps on the multi-step tasks. Total cost was lower without it, because of T1's class.
-- **The registered debrief was not asked,** because of a defect in the driver (§9). The Leads' sessions are kept, so they can still be asked.
+- **The registered debrief was not asked,** because of a defect in the driver (§9). All 18 Leads were asked afterwards, in their saved sessions (rubric A6): `eval/m3/dogfood/debriefs.jsonl`, summarized in `m3-evidence-synthesis.md` §3.4.
 
 ### 6.6 A Ticket whose scope missed the code (A4, T1, trial 2)
 
@@ -261,8 +263,8 @@ This is the plan assurance design's "required scope missing" (its scope-validity
 
 What follows from it is in `future-work.md`:
 
-- E8 to E11: AEW's side, meaning next actions that read the evidence, a remedy in the scope refusal, scope feedback at creation, and telling the Lead how it can read the project;
-- O5: the brief;
+- E8 to E11: AEW's side, meaning next actions that read the evidence, a remedy in the scope refusal, scope feedback at creation, and telling the Lead how it can read the project (all fixed on 2026-09-30, `ea94bac`);
+- O5: the brief (corrected, rubric A7);
 - F4: Ticket revisions, which the designer has since adopted.
 
 ## 7. Failures by registry class

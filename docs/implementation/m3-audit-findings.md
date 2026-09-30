@@ -33,6 +33,16 @@
 | A3 | A run's bridge serves one request at a time, so a long `check.run` blocks the run's `whoami` and `submit` | Low | Post-M3 |
 | A4 | Known, already tracked: linear control-state cost (ADR-0011) and its false `lost` heartbeats at 3,000 units | — | Tracked (F1) |
 
+**Status (2026-09-29), after the operator's and designer's dispositions:**
+- **Done before the review:**
+  - C1: the branch is pushed and CI runs on PR #5;
+  - X1, X2: refusals and next actions name the command that applies (`d2f8972`);
+  - A2: `aew doctor` reports the YAML backend (`c7be45b`);
+  - D1, D2, D3: the README, the testing strategy and a dated correction in the dogfood report.
+- **Next:** C2, re-sizing shards after a complete CI run; X4, targeted Class 0 runs of T1, which record classification calibration as an explicit issue; T3, instrumenting the dogfood's command log first.
+- **Tracked:** L1 as F15 (the Lead workflow efficiency design); X3 as O2; L2, T1, T2, T4, A1, A3 and the lint cleanup as E1 to E7 in `future-work.md` §6.
+- The designer's independent audit (I1 to I5) and its fixes: `review-response-2026-09-29.md`.
+
 ## 1. CI and CD
 
 ### C1. CI has never run on M3 (High, before review)

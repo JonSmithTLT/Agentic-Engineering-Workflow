@@ -107,6 +107,7 @@
   - `opencode.md` is the operator's guide, and the quickstart gained an M3 section;
   - the status table, `acceptance.md` and the testing strategy are updated;
   - `m3-reviewer-brief.md` has a marked slot for the TUI session.
+- **After step 10: two audits** (2026-09-29). A read-only audit (`m3-audit-findings.md`) and the designer's independent audit (`m3-independent-audit-2026-09-29.md`). The findings chosen for before the review are fixed with regressions (`review-response-2026-09-29.md`): I1 to I5, X1, X2 and A2. The first CI run on M3 (PR #5) found M3-D11 in the Lead broker and a race in the fake OpenCode server, both fixed.
 - **Step 2 focus cases** (designer request, 2026-09-27). Each is a permanent regression in `tests/regression/test_m3_harness_adversarial.py`. They pass on Windows (Python 3.13, 16-way parallel, repeated) and on Linux (WSL, Python 3.11).
 
   | Case | Test | Safe end state asserted |

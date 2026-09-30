@@ -6,7 +6,7 @@
 
 **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Remove an entry when its work is accepted, and name the commit or document that closed it.
 
-*Last updated: 2026-09-29, after M3 step 10 (the Lead workflow efficiency design added as F15; O4 corrected by the audit).*
+*Last updated: 2026-09-29, after M3 step 10 (F15 added; O4 corrected; §6 holds the M3 audits' engineering follow-ups).*
 
 ## 1. Gates on the way (in order)
 
@@ -68,3 +68,17 @@
 | O2 | The headless Lead's shell allow-list refused `git -C <dir>`, `git branch` and chained commands (`a; b`) | M3 dogfood | By design for the TUI, where the operator is asked. For headless use, consider a read-only allow-list that fits Lead investigation. |
 | O3 | A goal met by changing its own inputs: AEW integrated a wrong T4 change after the implementer edited the sample data the goal was stated against. Review and verification passed it. | `m3-dogfood-report.md` §6.2 | Options for the designer: goals that refer only to unchanged inputs (Lead guidance), protected paths for data that goals refer to, and a reviewer item that flags changed acceptance inputs. Registry: see Q6. **Addressed by the plan assurance design (F14)**; its Phase 1 makes this run a replayable fixture. Stays open until F14's fix is accepted. |
 | O4 | The Lead is about 40% of AEW's cost. The dogfood report blamed `aew harness wait` slices; the M3 audit (L1) found waiting is 12% of Lead steps and the cost is workflow choreography (a median 20 workflow-command steps per session) | `m3-dogfood-report.md` §6.3; `m3-audit-findings.md` L1, L2 | Addressed by F15 (stage commands). A push-style or wait-any `harness wait` is M4 work (F9, audit L2). |
+
+## 6. Engineering follow-ups (the M3 audits)
+
+From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the operator's and designer's dispositions of 2026-09-29. The findings fixed before the M3 review are recorded in those documents, not here.
+
+| # | Work | Source | When | Notes |
+|---|---|---|---|---|
+| E1 | `aew harness wait` on any of several runs, woken by the supervisor instead of polled | audit L2 | M4 (mutating concurrency above 1), with F9 | Waits are 12% of the Lead's steps today (audit L1). |
+| E2 | Subprocess-aware coverage of the harness code (supervisor, bridge, broker, adapter) | audit T1; `testing-and-ci-strategy.md` §12 | Early M4 reconnaissance | Evidence for where tests are thin; not a merge or review gate. Nothing measures coverage today. |
+| E3 | Watch CI for load-sensitive timing | audit T2 | Ongoing | The step-3 case was a real race (M3-D11, fixed). The launch acknowledgement wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. Raise test-side timeouts, never the product's. |
+| E4 | A scheduled live smoke run against the pinned OpenCode | audit T4 | The operator's choice | Launch-time capability probes already fail closed on drift within V2. |
+| E5 | Explicit collaborators for the Engine's hook points, instead of 13 mixins that override each other through the class hierarchy | audit A1 | With ADR-0011, before M4 | Working and tested; not refactored before the review. |
+| E6 | Let `whoami` through a run's bridge while a long `check.run` holds it | audit A3 | Only if measured pain appears | Serializing a run's requests is conservative and correct. |
+| E7 | Lint cleanup: a shared flake8 and pylint configuration matching the code (lines up to about 120 characters), then the remaining findings | operator, 2026-09-29 | Eventually; not critical | Most of what editors flag today is line length against flake8's default of 79. |

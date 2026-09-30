@@ -3,6 +3,7 @@
 **For:** the independent reviewer(s) of AEW M3, before M4 begins.
 **Branch:** `impl/m3-opencode`, from `main` at `adef640` (M2 accepted and merged, PR #4). **Frozen specs:** WC v0.7, KC v0.4, SPT-R v0.2 (`aew-spec-frozen-2026-09-25`, unchanged).
 **Pending when this brief was written:** the operator's own TUI session (M3 plan §9). Its result will be added here: _pending_.
+**Audits before this review:** a read-only audit ([`m3-audit-findings.md`](m3-audit-findings.md)) and the designer's independent audit ([`m3-independent-audit-2026-09-29.md`](m3-independent-audit-2026-09-29.md)). The findings the operator and designer chose to fix before this review are fixed; the response, with every commit and regression, is [`review-response-2026-09-29.md`](review-response-2026-09-29.md). The rest are tracked in `future-work.md` §6.
 
 ## What M3 claims
 
@@ -12,6 +13,7 @@
 4. **Execution profiles.** Harness, provider, model and effort are policy, pinned per invocation at dispatch and stamped on evidence by the engine. The harness's effective model is checked against the pin.
 5. **Harness state never moves AEW state.** A run's end, success or crash changes nothing. Only the Lead's ingests, transitions and decisions do (WC §8.2).
 6. **M1 and M2 are unchanged.** Every M1/M2 test, reviewer probe, walk and AT-1..AT-13 passes unchanged. Schema changes are additive. Dispatch output is unchanged without `--launch`. Packs are unchanged.
+   - **One M1 rule is tightened** (independent audit I1, ADR-0002 amendment): a check result proves only the check definition that ran, so changing a check's command makes earlier results for it `STALE`. Before, they stayed `CURRENT`.
 
 The approved plan is `m3-ambiguity-report.md`. The decisions are ADR-0009 (harness boundary, runs, custody, the OpenCode adapter) and ADR-0010 (execution profiles), with amendments to ADR-0005 (custody and rotation), ADR-0006 (skills and capabilities as projection) and ADR-0001 (step 7, performance). The OpenCode V2 facts are in `m3-opencode-v2-rebaseline.md`.
 
@@ -95,7 +97,10 @@ Each with a regression written before the fix:
 - run records could be rewritten by a later run, and `harness status` showed forged evidence lists (display only; no state moved);
 - M3-D2 to M3-D7, found by live free models (step 8): Windows text encodings, the event log's tool names, stale evidence in a continuation, a malformed section crashing `submit`, no scratch directory, resolved findings checked too late;
 - M3-D8 to M3-D10, found by the paid dogfood (step 9): the next action after an implementer run, a comma inside a scope glob, `resume` inside a Lead session;
-- three performance pathologies (step 7, `m3-performance.md`).
+- three performance pathologies (step 7, `m3-performance.md`);
+- M3-D11, found by the first CI run: a Lead session ending while the broker's watchdog was mid-check could be reported "superseded";
+- the designer's independent audit, I1 to I5: a check result bound to its definition, a check's whole process tree ended before its evidence is sealed, a Lead message racing a turn's end, an effort that cannot be observed never reported as a match, and `--fields` input that YAML would silently change refused (`review-response-2026-09-29.md`);
+- from the read-only audit: refusals and `resume` next actions that name the command that applies (X1, X2), and `aew doctor` reporting the YAML backend (A2).
 
 The companion design review (2026-09-28, `m3-companion-review-triage.md`) was triaged into M3 blockers and post-M3 prerequisites. The three blockers were done before the dogfood resumed: B1 authored text as data (`--fields`), B2 the `workdir_separation_only` containment label, B3 failure names from the registry.
 
@@ -116,7 +121,7 @@ python -m pytest tests/regression/test_m3_harness_adversarial.py tests/integrati
 python -m pytest --live tests/live -n 4 -q        # opt-in: real OpenCode 2.0.18, a free model (see opencode.md)
 ```
 
-Last full results (end of step 9): Windows 951 passed with the 4 pinned platform skips, plus the serial lane; Linux (WSL, Python 3.11) 955 passed. Live lane on 2.0.18: 25 passed, 1 skipped by design (step 8). Every M1 and M2 reviewer probe file runs unchanged.
+Last full results (after the audit fixes, 2026-09-29): Windows 984 passed with the 4 pinned platform skips, plus the serial lane. CI (`assurance`, Linux and Windows) is green on PR #5 through the independent audit's I5; see the PR for the latest run. Live lane on 2.0.18: 25 passed, 1 skipped by design (step 8; not rerun for the audit fixes, which the fake V2 server and in-memory regressions cover). Every M1 and M2 reviewer probe file runs unchanged.
 
 ## Known limits (Staged / Designed, not defects)
 

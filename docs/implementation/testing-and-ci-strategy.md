@@ -201,7 +201,7 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 
 ## 12. Known cost drivers and follow-ups
 
-- **CLI subprocesses are ~80 % of test time.** A read-only `aew` call costs ~250 ms: ~100 ms of imports (jsonschema ~50 ms) and ~65 ms of pure-Python YAML parsing of `control.yaml`. Cutting that is a separately reviewed `src/` change to the persistence core.
+- **CLI subprocesses dominate test time** (about 80 % when measured for M2). Then, a read-only `aew` call cost about 250 ms, including about 65 ms of pure-Python YAML parsing of `control.yaml`. M3 step 7 changed the persistence core: YAML now goes through libyaml where PyYAML has it (`aew doctor` reports which), and identical control-state bytes reuse their parse within a process. The bare CLI floor is now about 0.1 s (`m3-performance.md`). The remaining cost is linear in `control.yaml`'s size, which ADR-0011 addresses before M4.
 - **The M1 walk re-parses `control.yaml` for every harness query** (~40 times per step). The M2 hierarchy walk caches the parsed state by the file's identity, which cut a seed from 150–320 s to ~20 s with step-for-step identical paths; applying the same harness change to `test_composition_walk.py` is a separately reviewed change to an M1 regression file.
 - **The ruleset's code-coverage rule has no report yet.** Subprocess-aware coverage, combined across shards, is a separate decision.
 - **A Rocky Linux 8 container job** (the SPT target) is a candidate for the nightly lane.

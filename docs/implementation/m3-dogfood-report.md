@@ -178,7 +178,9 @@ What might prevent this (for the designer; see `future-work.md` O3):
   - `aew evidence ingest` on an implementation report (most runs; the brief lists `evidence ingest` among the ingest commands);
   - a first `--fields` attempt with a wrong key such as `goals:` (refused, then corrected);
   - `aew work assign` or `dispatch` on a Ticket in the wrong state.
+  - Since 2026-09-29 these refusals name the command that applies, and `resume`'s next actions give runnable commands (`m3-audit-findings.md` X1, X2).
 - **Leads spend many steps waiting.** `aew harness wait` in 110-second slices re-sends the whole context each time. This is a large part of why the Lead is about 40% of AEW's cost.
+  - **Correction (2026-09-29, `m3-audit-findings.md` L1).** Re-analysing the 29 Lead sessions shows waiting is 12% of the Lead's steps (a median of 4 of 34), although it is about 55% of the Lead's wall time. The Lead's cost comes from the workflow choreography: a median of 20 workflow commands per session, each a model step that re-reads a growing context. The results in this report are unchanged; only this explanation is corrected. The response is the Lead workflow efficiency design (`future-work.md` F15).
 - **Risk class.** After the hardening, Leads chose Class 1 or 2 for every task, T1 included, so the Class 0 fast path was never used. This follows the fail-closed default the companion review asks for, and costs the full review and verification each time.
 
 ## 7. Failures by registry class
@@ -251,6 +253,7 @@ About USD 0.07 was spent on runs that measured less than intended (the two untri
 1. **What this suggests to test next.** AEW's quality claim needs tasks where one model session fails or regresses without independent checks: longer multi-Ticket work, ambiguous objectives, defects subtle enough that a single session misses them, and real repositories (after containment, P1). This dogfood measured the price of AEW's rigour, which is about 7× on small tasks, but it could not measure the benefit.
 2. **T4.** Should goals reference only unchanged inputs? Should the data that goals refer to be protected by default? Should reviewers flag changes to acceptance inputs? Is a new registry class warranted? (`future-work.md` O3.)
 3. **The Lead's cost** (about 40%). Much of it is waiting in slices. A push-style wait, or the coordination design's event delivery, would cut it (`future-work.md` O4).
+   - **Correction (2026-09-29):** waiting is 12% of the Lead's steps; the cost is the workflow choreography (§6.3; `m3-audit-findings.md` L1). The Lead workflow efficiency design (`future-work.md` F15) addresses it; a push-style wait remains M4 work.
 4. **Class choice.** Every Lead chose Class 1 or 2 for a one-line fix. That fits fail-closed classification (F6), and it is the ceremony cost the designer is choosing.
 5. **Evidence for P2 and P3** (supersession lineage; fail-closed `verify classify`). In run 1 the Lead classified a verifier-found plan defect correctly, as the heavier `PLAN_OR_DESIGN_DEFECT`, without any rule forcing it.
 

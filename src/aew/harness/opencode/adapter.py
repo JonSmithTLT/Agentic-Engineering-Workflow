@@ -36,7 +36,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aew.errors import HarnessIncompatible
+from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, LaunchContract
@@ -277,6 +277,9 @@ class OpenCodeAdapter(HarnessAdapter):
         assert self.client is not None and self.session is not None
         mid = new_message_id()
         with self._lock:  # recorded first, so a poll never mistakes the previous turn's idle for this one's
+            if self.turn == "ended":  # nothing watches an ended run: reviving it would leave it hanging (audit I3)
+                raise HarnessError("this run's harness turn has ended, so the message was not delivered; "
+                                   "relaunch the run to continue it (`aew harness launch`)")
             self.sent.append(mid)
             self.turn = "running"
             self._idle_seen = None
@@ -407,21 +410,25 @@ class OpenCodeAdapter(HarnessAdapter):
                 self._idle_seen = idle.get("id")  # confirm on the next poll: a queue boundary can reopen the turn
                 self._wake.set()
                 return
-        self._turn_over(str(idle.get("outcome")))
+        self._turn_over(str(idle.get("outcome")), last)
 
-    def _turn_over(self, outcome: str) -> None:
+    def _turn_over(self, outcome: str, last: str) -> None:
+        """Close the turn whose last prompt was ``last``, unless a newer prompt arrived since the poll decided."""
         self._take_snapshot()
-        with self._lock:
+        with self._lock:  # the decision and the state change are one step for `_prompt` (independent audit I3)
+            if self.turn != "running" or self.sent[-1] != last:
+                self._idle_seen = None  # a Lead message arrived meanwhile: the run goes on
+                return
             if outcome == "interrupted" and self._lead_interrupted:
                 self._lead_interrupted = False
                 self.turn = "held"  # the Lead interrupted: the session waits for `send`, a stop or the deadline
                 self.emit({"event": "opencode.held", "outcome": outcome})
                 return
-        error = next((m.get("error") for m in reversed((self.snapshot or {}).get("assistant", [])) if m.get("error")),
-                     None)
-        detail = f"the agent's turn ended: {outcome}" + (f" ({error.get('type')}: {error.get('message')})"
-                                                          if isinstance(error, dict) else "")
-        self._end(EXIT_CODES.get(outcome, 1), detail)
+            error = next((m.get("error") for m in reversed((self.snapshot or {}).get("assistant", []))
+                          if m.get("error")), None)
+            detail = f"the agent's turn ended: {outcome}" + (f" ({error.get('type')}: {error.get('message')})"
+                                                              if isinstance(error, dict) else "")
+            self._end(EXIT_CODES.get(outcome, 1), detail)
 
     def _end(self, code: int, detail: str) -> None:
         with self._lock:

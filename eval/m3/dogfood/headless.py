@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -45,9 +46,14 @@ def shell_env(base: Mapping[str, str], extra: Mapping[str, str] | None = None) -
     return env
 
 
+AEW_ERROR = re.compile(r'"code":\s*"([A-Z][A-Z_]+)"')
+
+
 def command_log(state_dir: Path) -> list[dict[str, Any]]:
     """What an OpenCode session did, tool by tool, from its private database: the tool, the leading words of a shell
-    command (``aew harness wait``, ``git log``: never its arguments or any other input), the outcome and the time."""
+    command (``aew harness wait``, ``git log``: never its arguments or any other input), the outcome and the time.
+    For a shell command, also its exit code, and for a refused ``aew`` command the AEW error code from its output
+    (nothing else of the output): the harness's own ``status`` says only that the tool ran (M3 audit T3)."""
     import sqlite3
 
     db = state_dir / "xdg-data" / "opencode" / "opencode.db"
@@ -68,6 +74,14 @@ def command_log(state_dir: Path) -> list[dict[str, Any]]:
             if part.get("name") == "shell":
                 words = str((state.get("input") or {}).get("command") or "").split()
                 entry["cmd"] = " ".join(words[:3] if words[:1] == ["aew"] else words[:2])
+                exit_code = (state.get("metadata") or {}).get("exit")
+                if exit_code is not None:
+                    entry["exit"] = exit_code
+                if exit_code not in (None, 0) and words[:1] == ["aew"]:
+                    text = " ".join(str(c.get("text") or "") for c in state.get("content") or [] if isinstance(c, dict))
+                    found = AEW_ERROR.search(text)
+                    if found:
+                        entry["aew_error"] = found.group(1)
             if isinstance(state.get("error"), dict):
                 entry["error"] = state["error"].get("type")
             times = part.get("time") or {}

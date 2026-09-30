@@ -135,6 +135,14 @@ Neither has reproduced under normal load. **Recommendation:** watch C1's first C
 
 **Recommendation:** record the exit code and the AEW error code from the shell output, so the next dogfood (Q7, F14 §29) can measure refusals and recovery directly.
 
+**Done (2026-09-29).** `command_log` now records each shell command's exit code, and for a refused `aew` command the AEW error code from its output (nothing else of the output). Run over the 26 hardened AEW runs' Lead sessions after the fact:
+- 51 of 887 `aew` commands were refused (5.7%): a median of 2 per session, at most 8.
+- By command: `evidence ingest` 22, `work create` 6 (usage and `--fields` errors), `work dispatch`, `work transition` and `work assign` 4 each, `verify ingest` 3, and 7 others.
+- By error: `ILLEGAL_TRANSITION` 32, argparse usage errors (exit 2) 8, `USAGE` 7, `GATE_UNSATISFIED` 3, `NOT_FOUND` 1.
+- The three T6 Lead sessions from before the loss are not counted: the scenario wipes their state by design.
+
+`evidence ingest` on a mutating Ticket, the largest group, is the refusal X1 fixed.
+
 ### T4. No scheduled live run (Low, designer or operator)
 
 The live lane is opt-in and manual, by design (a real binary, a model, the operator's machine). OpenCode V2 has no stability policy and the Desktop app auto-updates its own copy. AEW pins the versioned 2.0.18 CLI and probes capabilities at every launch, so drift fails closed rather than silently. But nothing notices a new version until someone upgrades.

@@ -53,6 +53,14 @@ def environment_checks() -> list[dict[str, str]]:
             checks.append(_check(f"module:{module}", "PASS", "importable"))
         except ImportError as exc:
             checks.append(_check(f"module:{module}", "FAIL", str(exc)))
+    from aew.util import yaml_backend  # the step-7 speed-up depends on it (m3-performance.md P1; M3 audit A2)
+
+    if yaml_backend() == "libyaml":
+        checks.append(_check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state"))
+    else:
+        checks.append(_check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and "
+                             "writes the control state several times slower on a large project; install a PyYAML "
+                             "built with libyaml"))
     return checks
 
 

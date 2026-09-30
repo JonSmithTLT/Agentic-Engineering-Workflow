@@ -90,6 +90,11 @@ class _Dumper(_SafeDumperBase):  # type: ignore[valid-type,misc]
     pass
 
 
+def yaml_backend() -> str:
+    """``libyaml`` when PyYAML was built with it, else ``pure-python`` (``aew doctor`` reports it: M3 audit A2)."""
+    return "libyaml" if _SafeLoader is getattr(yaml, "CSafeLoader", None) else "pure-python"
+
+
 def _str_representer(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
     style = "|" if "\n" in value else None
     return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)

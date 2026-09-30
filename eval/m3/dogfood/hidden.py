@@ -112,7 +112,7 @@ def t5(tree: Path):
     yield "parts < 1 raises ValueError", raised, None
 
 
-TASKS = {"T1": t1, "T2": t2, "T3": t3, "T4": t4, "T5": t5, "T6": t2}
+TASKS = {"T1": t1, "T1C0": t1, "T2": t2, "T3": t3, "T4": t4, "T5": t5, "T6": t2}
 
 
 def main() -> int:

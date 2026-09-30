@@ -82,6 +82,9 @@ T2_OBJECTIVE = ("Add a `--category NAME` option to `python -m ledger summary`. I
                 "the known categories. Document the option in README.md.")
 
 
+REFERENCE_OF = {"T6": "T2", "T1C0": "T1"}  # tasks that share another task's starting point and hidden test
+
+
 @dataclass(frozen=True)
 class Task:
     id: str
@@ -94,10 +97,14 @@ class Task:
     raw_deadline_s: int = 900
 
 
+T1_OBJECTIVE = ("In reports, negative amounts come out as `$-15.00`; they should read `-$15.00`, with the minus sign "
+                "before the dollar sign (a refund row in a ledger CSV shows it). Fix it.")
+
 TASKS = {t.id: t for t in (
-    Task("T1", "tiny fix (Class 0)", "In reports, negative amounts come out as `$-15.00`; they should read "
-         "`-$15.00`, with the minus sign before the dollar sign (a refund row in a ledger CSV shows it). Fix it.",
-         overlay="T1"),
+    Task("T1", "tiny fix (Class 0)", T1_OBJECTIVE, overlay="T1"),
+    # Amendment A3 (rubric.md): T1 with the operator directing Class 0, to exercise the Class 0 path end to end.
+    Task("T1C0", "tiny fix, operator-directed Class 0", T1_OBJECTIVE + " It is a trivial, low-risk fix: handle it as "
+         "a Class 0 Ticket.", overlay="T1"),
     Task("T2", "multi-file feature", T2_OBJECTIVE),
     Task("T3", "bug that needs investigation", "The monthly summaries don't add up. For data/sample.csv, the "
          "summaries for 2025-12, 2026-01 and 2026-02 together come to $4,713.70, but all the rows in the file add "
@@ -701,7 +708,7 @@ def selfcheck() -> int:
             repo = Path(tmp) / tid
             build_repo(task, repo, with_seed=task.seeded)
             start = hidden(tid, repo)
-            for rel, src in references[tid if tid != "T6" else "T2"].items():
+            for rel, src in references[REFERENCE_OF.get(tid, tid)].items():
                 shutil.copyfile(src, repo / rel)
             solved = hidden(tid, repo)
             good = start.get("project_tests") and not start.get("passed") and solved.get("passed") and solved.get(

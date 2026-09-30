@@ -30,6 +30,7 @@ assumed.
 | T4 | wrong initial hypothesis | the operator blames float arithmetic; the cause is amount parsing (`23.4` read as 23.04) | yes |
 | T5 | review with a seeded defect | a plausible `split_amount` whose shares do not add up; its own tests pass | yes (asked to review and fix) |
 | T6 | resume after losing the Lead's harness | T2's objective; once the Lead has launched its first role run, its OpenCode is killed and its state is wiped, and a fresh session resumes from AEW alone (amendment A2) | T2's |
+| T1C0 | tiny fix, operator-directed Class 0 (amendment A3) | T1's objective plus one operator sentence: "It is a trivial, low-risk fix: handle it as a Class 0 Ticket." | T1's |
 
 ## Per-run measures
 
@@ -80,6 +81,13 @@ computed.
 T1's first record stays as it is. It is a result on the code before hardening, and its AEW commit is `55412aa` (that record predates the `aew_commit` field). It is not re-scored. T1's later trials run on the hardened code.
 
 **A2, 2026-09-29, after the GPT-5.6 Luna set.** T6's trigger for losing the Lead's harness was "a role run has been running for 60 s". It never fired: every Luna role run finished sooner, so both Luna T6 runs were effectively T2 repeats. They are reported as such, not as T6 results. The trigger is now "the Lead has launched its first role run", which fires whatever the model's speed. T6 is rerun on the fixed driver.
+
+**A3, 2026-09-29, after the Sol set and before any T1C0 run.** The M3 audit (X4) and the designer: T1 was meant to exercise the Class 0 path, and never did. On the hardened code, the Leads chose Class 1 or 2 for all 30 Tickets across 26 runs, T1's 4 included, although the brief says "Class 0 is for trivial, low-risk changes". Two questions, answered separately:
+
+- **Calibration** (recorded from the runs above, not rerun): unprompted, no Lead chose Class 0, even for a one-line fix. This is recorded as an explicit issue for the designer (`future-work.md` Q10). It is consistent with the fail-closed classification the companion review asks for (F6), and it is also why every T1 paid for review and verification.
+- **The path:** with the operator directing Class 0 (task T1C0), does the Class 0 path work end to end? Two trials, AEW mode, GPT-5.6 Luna (the cheap model), the same brief and caps. Recorded: the class the Lead chose, the role runs, the gates, the hidden test, cost, wall time and refusals (the instrumented command log, audit T3). The path works if a trial reaches DONE with the hidden test passing and runs only what Class 0 requires: local checks, then the post-integration verification. A Lead choosing another class despite the instruction is a calibration result, not a failure of the path.
+
+T1C0 is not compared with T1 for quality or cost: its instruction differs.
 
 ## Budget and stopping
 

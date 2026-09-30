@@ -197,6 +197,8 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
 | `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11 | Broader environment |
 
+**Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python and GitHub Actions on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
+
 ## 12. Known cost drivers and follow-ups
 
 - **CLI subprocesses are ~80 % of test time.** A read-only `aew` call costs ~250 ms: ~100 ms of imports (jsonschema ~50 ms) and ~65 ms of pure-Python YAML parsing of `control.yaml`. Cutting that is a separately reviewed `src/` change to the persistence core.

@@ -171,10 +171,22 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         lines += ["", f"Checks not configured yet (their gates stay blocked): {', '.join(unconfigured)}."]
     lines += [
         "",
+        "## Before the first Ticket",
+        "",
+        "- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, "
+        "and gives them no authority. `aew status` asks you to classify them first: `aew authority list`, then "
+        "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev N` or "
+        "`aew authority reject <candidate> --reason ... --expect-rev N`. This tells AEW which documents govern the "
+        "work and which only orient it.",
+        "- Look at the project before you describe work in it. You cannot edit files, but you can read and search them "
+        "with your read, glob and grep tools.",
+        "",
         "## A mutating Ticket, step by step",
         "",
         "1. Create it with its text as data: `aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'`, "
-        "then single-quoted YAML (`title: '...'`, `goal: ['...']`, `contract: ['...']`, `scope: ['...']`), then `EOF`.",
+        "then single-quoted YAML (`title: '...'`, `goal: ['...']`, `contract: ['...']`, `scope: ['...']`), then `EOF`. "
+        "Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about a "
+        "scope glob that matches no file.",
         "2. Plan it: `aew plan propose <T> --file - --expect-rev N` (the plan in a quoted heredoc), then "
         "`aew plan accept <T> --revision <n> --expect-rev N`. It becomes READY when its plan is accepted and its "
         "dependencies are satisfied.",

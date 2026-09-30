@@ -182,8 +182,8 @@ class EvidenceOps(WorkspaceOps):
             # An ancestor's accepted plan changed after this plan was accepted (ADR-0007, fail closed).
             results["accepted_plan"] = {"status": G.STALE, "detail": binding,
                                         "action": f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision"}
-        return {"snapshot": snapshot, "guardrails": guard, "obligations": obligations, "gates": results,
-                "evidence": evidence, "evidence_problems": problems,
+        return {"work_id": work_id, "snapshot": snapshot, "guardrails": guard, "obligations": obligations,
+                "gates": results, "evidence": evidence, "evidence_problems": problems,
                 "open_required_findings": G.open_required_findings(unit), "plan_binding": binding,
                 "dispatch_binding": self.dispatch_binding_problem(state, work_id)}
 
@@ -205,7 +205,11 @@ class EvidenceOps(WorkspaceOps):
         if gc["evidence_problems"]:
             raise GateUnsatisfied("evidence integrity problems", problems=gc["evidence_problems"])
         if gc["guardrails"]["violations"]:
-            raise GateUnsatisfied(f"{what}: guardrail violations", violations=gc["guardrails"]["violations"])
+            violations = gc["guardrails"]["violations"]
+            message = f"{what}: guardrail violations: {GR.describe(violations)}"
+            if any(v["rule"] == "outside_ticket_scope" for v in violations):  # M3 dogfood report §6.6 (E9)
+                message += ". " + GR.scope_remedy(gc.get("work_id") or "<T>")
+            raise GateUnsatisfied(message, violations=violations)
         if gc.get("plan_binding"):
             # An accepted plan stays bound to its ancestors' plans whatever the risk path lists: a class 0 path
             # has no accepted_plan gate, yet its plan is just as stale (ADR-0007, fail closed; M2 review B1).

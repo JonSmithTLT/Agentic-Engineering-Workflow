@@ -140,7 +140,7 @@ In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <
 
 ```bash
 aew work assign T-0001 --launch --expect-rev N    # run R-INV-0001-1 starts; no credential is printed
-aew harness wait R-INV-0001-1 --timeout 110       # its evidence and the next actions
+aew harness wait R-INV-0001-1 --timeout 110       # its evidence, each item's result, and the next action
 aew harness launch INV-0001 --expect-rev N        # relaunch (a fresh session; the credential rotates)
 ```
 

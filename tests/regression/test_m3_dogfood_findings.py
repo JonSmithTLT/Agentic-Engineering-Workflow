@@ -291,3 +291,102 @@ def test_a_saved_headless_session_is_reopened_with_its_shell_environment_curated
         assert server.puts == [("/api/session/ses_saved/environment", {"variables": {"PATH": "bin"}})]
     finally:
         session.tree.close()
+
+
+# --------------------------------------------------------------- the scope case (report §6.6) and the debriefs (A6)
+
+
+OUT_OF_SCOPE_REPORT = {
+    "claim": "subtract implemented with a focused test", "result": "blocked",
+    "producer": {"model": "scripted", "harness": "pytest"},
+    "implementation": {"files_changed": ["calc/core.py", "tests/test_subtract.py"], "checks_run": ["unit"],
+                       "deviations": ["calc/core.py is outside the Ticket's declared scope"],
+                       "self_review": {"completed": True, "notes": "the change is right; the scope is not"}},
+}
+
+
+def _implemented_outside_its_scope(p, tmp_path) -> str:
+    """A Ticket whose scope misses the code (report §6.6): the implementer changes calc/, which the scope does not
+    cover, and reports that it is blocked."""
+    from aewflow import assign
+
+    wid = create_planned_ticket(p, tmp_path, scope=("lib/**", "tests/**"))
+    impl = assign(p, wid)
+    impl.write(SUBTRACT_PATCH)
+    assert impl.check("unit")["result"] == "pass"
+    impl.submit("implementation_report", OUT_OF_SCOPE_REPORT, "Blocked by the Ticket's scope.\n")
+    return wid
+
+
+def test_after_a_blocked_implementation_the_next_action_says_what_blocks_it(tmp_path):
+    """E8 (report §6.6): the implementer fixed a file outside the Ticket's scope and reported `blocked`, yet
+    `aew status` proposed the accepting transition, which the gate refused, and proposed it again after the
+    refusal: the next actions tested only that a report existed. They must say what blocks the Ticket, and never
+    propose a transition its gates will refuse."""
+    p = sample_project(tmp_path)
+    wid = _implemented_outside_its_scope(p, tmp_path)
+    running = [a for a in p.ok("status", "--json")["next_actions"] if a.startswith(f"{wid}:")]
+    assert not any("--to REVIEW_PENDING" in a for a in running), running
+    assert any("blocked" in a and "calc/core.py" in a and f"aew gate show {wid}" in a for a in running), running
+
+
+def test_a_change_outside_the_scope_is_refused_saying_what_the_lead_can_do(tmp_path):
+    """E9 (report §6.6): the refusal named the path outside the scope and nothing else, and the Lead spent four
+    `--help` lookups finding out that a scope cannot change. The refusal must say so, and what the Lead can do."""
+    p = sample_project(tmp_path)
+    wid = _implemented_outside_its_scope(p, tmp_path)
+    message = _refusal(p, "work", "transition", wid, "--to", "REVIEW_PENDING")
+    assert "scope is fixed" in message and f"aew work transition {wid} --to CANCELLED" in message, message
+
+
+def test_work_create_warns_about_scope_globs_that_match_no_tracked_file(tmp_path):
+    """E10 (report §6.6): a Lead that could not look at the project guessed seven scope globs, none of them the
+    code's directory, and AEW accepted them without a word. Creation now names the globs that match no tracked
+    file: a warning, not a refusal, since a Ticket may create new directories."""
+    p = sample_project(tmp_path)
+    out = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g",
+                 "--scope", "src/**", "--scope", "calc/**")
+    warnings = " ".join(out.get("warnings") or [])
+    assert "src/**" in warnings and "calc/**" not in warnings, out
+
+
+def test_the_lead_is_told_how_to_read_the_project_and_that_a_scope_is_fixed():
+    """E11 (report §6.6; the A6 debriefs): no Lead was told it can read files (its tools were never named), and one
+    guessed a scope, which is fixed once the Ticket exists. Eight of the twelve guided Leads were also surprised by
+    the authority-candidate step that comes first, which the guide did not mention."""
+    from aew.engine import guide
+    from aew.harness.opencode import projection
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+
+    assert "read, glob and grep" in projection.LEAD_SYSTEM
+    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert "read, glob and grep" in text and "scope is fixed" in text
+    assert "authority candidates" in text
+
+
+def test_the_dogfood_brief_describes_the_leads_real_permissions(monkeypatch):
+    """O5 (report §6.6; A6): the brief said the Lead's shell runs "read-only `git` commands" (it runs four) and
+    never named its read tools, so a Lead tried `git grep` and `git ls-files` and then guessed a scope. It also
+    listed `aew evidence ingest` among the ingest commands (the most refused command), and said Class 0 skips
+    verification "before integration" without the post-integration one, which three Leads read as a conflict."""
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "eval" / "m3" / "dogfood"))
+    import dogfood
+
+    assert "`git status|diff|log|show`" in dogfood.WORKING and "read, glob and grep" in dogfood.WORKING
+    assert "accepted by its transition" in dogfood.WORKING
+    assert "post-integration verification" in dogfood.WORKING
+
+
+def test_harness_wait_shows_the_result_of_each_evidence_item(lab, tmp_path):
+    """E8 (report §6.6): `aew harness wait` listed a run's evidence ids without their results or what to do next
+    (the docs said it gave both), so the Lead never saw that its implementer's report said `blocked`, and went
+    straight to a transition the gate refused."""
+    wid = create_planned_ticket(lab.project, tmp_path, cls=1)
+    lab.script("R-INV-0001-1", IMPLEMENT)
+    lab.lead("work", "assign", wid, "--launch")
+    out = lab.wait("R-INV-0001-1")
+    assert out["status"] == "ended_with_evidence"
+    assert set(out.get("results") or {}) == set(out["evidence"]) and set(out["results"].values()) == {"pass"}, out
+    assert f"aew work transition {wid} --to RUNNING" in (out.get("next_action") or ""), out

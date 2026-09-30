@@ -116,6 +116,14 @@ T1C0 is not compared with T1 for quality or cost: its instruction differs.
 - **Limits.** One turn each, at most 180 s and USD 0.10 per Lead; about USD 0.08 in all, since the contexts are 8,000 to 23,000 tokens. The question comes hours after the run, not at its end. Each Lead reads its own transcript, so an answer is a reconstruction, not a memory. All the Leads are GPT-5.6 Luna.
 - **Use.** The answers go to `debriefs.jsonl` as given, and are not scored. They are leads for the synthesis the operator and designer asked for, and each is checked against what that Lead actually did before it is relied on. What the Leads say about learning AEW is compared across the three arms.
 
+**A7, 2026-09-30, after A6: the brief corrected.** The brief described the Lead's tools wrongly and invited the most refused command (the report's §6.6; A6). From here on the brief (`WORKING` in `dogfood.py`):
+
+- names the Lead's read, glob and grep tools and its exact shell allow-list (`aew` and `git status|diff|log|show`), instead of "read-only `git` commands";
+- says that a mutating Ticket's implementation report is accepted by its transition, and that `aew evidence ingest` is for a non-mutating Ticket's records, instead of listing `evidence ingest` among the ingest commands;
+- says that Class 0 still runs its checks, the guardrails and the post-integration verification, instead of "needs no review or verification before integration".
+
+Every run up to and including A6 used the earlier text. Friction in later runs is not comparable with theirs unless this is taken into account.
+
 ## Budget and stopping
 
 - The operator's budget is USD 10 for the paid runs.

@@ -184,7 +184,9 @@ LEAD_SYSTEM = "\n".join([
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
-    "- Do not implement substantial changes yourself. You cannot edit files in this session.",
+    "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
+    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show`; anything "
+    "else needs the operator.",
     "- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are "
     "refused here.",
     "- Report contradictions between artifacts to the operator. Never resolve them silently.",

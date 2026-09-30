@@ -96,6 +96,9 @@ class ResumeOps(HierarchyOps):
         wid = inv["work_unit"]
         unit = state["work"].get(wid) or {}
         if inv["role"] == "implementer":
+            blocked = self._implementation_blocker(state, wid)
+            if blocked:
+                return f"its implementation report is in, but {blocked}"
             return f"its implementation report moves {wid} on by transition: {self._after_implementation(state, wid)}"
         command = {"reviewer": "aew review ingest", "verifier": "aew verify ingest"}.get(inv["role"])
         if command is None and is_nm_ticket(unit):
@@ -118,6 +121,33 @@ class ResumeOps(HierarchyOps):
         if unit["state"] == "ASSIGNED":
             return f"`aew work transition {wid} --to RUNNING`, then {step}"
         return step
+
+    def _implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
+        """Why a mutating Ticket cannot move on although its implementer has reported, or None: a report that is not
+        a pass, or a gate the next transition would refuse. A next action never proposes a transition its gates will
+        refuse (M3 dogfood report §6.6, E8: `aew status` proposed one, twice)."""
+        unit = state["work"][wid]
+        try:
+            gc = self.gate_context(state, wid)
+        except AEWError:
+            return None
+        reasons = []
+        reports = [e for e in gc["evidence"] if e["kind"] == "implementation_report"
+                   and e["producer"].get("invocation") == unit.get("implementer_invocation")]
+        if reports:
+            report = max(reports, key=lambda e: e.get("seq") or 0)
+            if report.get("result") != "pass":
+                deviations = (report.get("implementation") or {}).get("deviations") or []
+                first = str(deviations[0]) if deviations else ""
+                reasons.append(f"its implementer's report is {report.get('result')}"
+                               + (f" ({first[:160]}{'...' if len(first) > 160 else ''})" if first else ""))
+        try:
+            self._require_gates(gc, self.PRE_REVIEW, what="the next transition")
+        except AEWError as exc:
+            reasons.append(exc.message)
+        if not reasons:
+            return None
+        return f"{wid} cannot move on yet: {'; '.join(reasons)}. `aew gate show {wid}` shows what blocks it"
 
     def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
@@ -246,6 +276,9 @@ class ResumeOps(HierarchyOps):
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
+                    blocked = self._implementation_blocker(state, wid)
+                    if blocked:
+                        return [f"implementer {implementer} reported, but {blocked}"]
                     return [f"implementer {implementer} reported: {self._after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]

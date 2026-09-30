@@ -287,6 +287,15 @@ class HarnessOps(ResumeOps):
             cache[work_unit] = E.scan(self.aew_root, work_unit)[0]
         return sorted(e["id"] for e in cache[work_unit] if e["producer"].get("run") == run)
 
+    def run_results(self, work_unit: str, run: str, _cache: dict[str, list[dict[str, Any]]] | None = None
+                    ) -> dict[str, str]:
+        """Each of a run's evidence items with its result (pass, fail, blocked), from the same store: a Lead must see
+        a `blocked` report before it acts on the run (M3 dogfood report §6.6, E8)."""
+        cache = {} if _cache is None else _cache
+        if work_unit not in cache:
+            cache[work_unit] = E.scan(self.aew_root, work_unit)[0]
+        return {e["id"]: e.get("result") for e in cache[work_unit] if e["producer"].get("run") == run}
+
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         state = self.store.read()
         cache: dict[str, list[dict[str, Any]]] = {}
@@ -308,6 +317,7 @@ class HarnessOps(ResumeOps):
                             "supervisor_pid": (record or {}).get("supervisor_pid"),
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
+                            "results": self.run_results(inv["work_unit"], r["run"], cache),
                             "model_check": ((record or {}).get("model_check") or {}).get("status"),
                             "foreign_sessions": ((record or {}).get("result") or {}).get("foreign_sessions") or [],
                             "run_dir": str(directory)})
@@ -333,8 +343,15 @@ class HarnessOps(ResumeOps):
         while True:
             status, record = runlog.observed_status(directory)
             if not runlog.possibly_live(status, launched_at):
-                return {"run": run, "status": status, "reason": (record or {}).get("reason"),
-                        "evidence": self.run_evidence(inv["work_unit"], run), "timed_out": False}
+                out = {"run": run, "status": status, "reason": (record or {}).get("reason"),
+                       "evidence": self.run_evidence(inv["work_unit"], run),
+                       "results": self.run_results(inv["work_unit"], run), "timed_out": False}
+                resume = getattr(self, "harness_resume", None)  # the run's next action, as `aew status` gives it
+                action = next((h["action"] for h in resume(self.store.read()) if h["run"] == run), None) \
+                    if resume else None
+                if action:
+                    out["next_action"] = action
+                return out
             if time.monotonic() >= deadline:
                 return {"run": run, "status": status, "timed_out": True}
             time.sleep(0.2)

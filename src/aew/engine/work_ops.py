@@ -9,9 +9,9 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import EngineBase, TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
-from aew.errors import GateUnsatisfied, IllegalTransition, NotFound, UsageError
+from aew.errors import GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
-from aew.util import sha256_text, utc_now
+from aew.util import glob_any, sha256_text, utc_now
 from aew.workspace import git
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
@@ -220,7 +220,26 @@ class WorkOps(EngineBase):
                                      "review": [], "verify": [], "forbidden": []}
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.before_commit(ctx)
-        return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and is_mutating else []
+        if unmatched:
+            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                               "otherwise a change there needs a scope that names it" for g in unmatched]
+        return out
+
+    def _unmatched_scope(self, scope_paths: list[str]) -> list[str]:
+        """The scope globs that match no file at the authoritative commit (M3 dogfood report §6.6, E10: a Lead that
+        could not look at the project guessed seven globs, none of them the code's directory, and nothing said so).
+        A Ticket's scope is fixed once it exists, so this is said at creation; it is a warning, not a refusal, since
+        a Ticket may create new directories."""
+        commit = self.authoritative_commit()
+        if not scope_paths or not commit:
+            return []
+        try:
+            files = git.out("ls-tree", "-r", "--name-only", commit, cwd=self.repo_root).splitlines()
+        except GitError:
+            return []
+        return [g for g in scope_paths if not any(glob_any(f, [g]) for f in files)]
 
     def _check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
         parent_unit = self.unit(state, parent)

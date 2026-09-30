@@ -151,6 +151,15 @@ WORKING = """## Working with AEW
 When the work is DONE, reply with a short summary: what changed, the evidence for it, and anything the operator should decide."""
 NUDGE = ("The objective is not DONE yet: `aew status` shows open work. Continue as the Lead until it is DONE, or record "
          "in a checkpoint why it cannot be finished without the operator, and end your turn.")
+# Rubric A5: asked once the measured work is over. Its answer is a lead for the analysis, checked against the
+# transcript, never a score; its cost and steps are recorded so that comparisons leave them out.
+DEBRIEF = ("The work is over. One last question, from the people who build AEW: your answer changes nothing in this "
+           "project, so do not run any commands. In a few short bullets: (1) what in AEW's commands, messages or "
+           "instructions confused you or cost you steps; (2) what you expected to exist or to be told that was not "
+           "there; (3) how you chose each Ticket's risk class; (4) where you looked to learn how AEW works. Be "
+           "specific, and say 'nothing' where nothing applies.")
+DEBRIEF_S = 180
+GUIDE_MODES = ("embedded", "pointer", "none")
 RAW_TAIL = "\n\nNobody will answer questions during this session: make reasonable decisions and finish the task."
 
 
@@ -345,8 +354,11 @@ def lead_child(spec_path: Path) -> int:
     runs_root = runlog.run_dir(engine.aew_root, "x").parent
     broker = {k: os.environ[k] for k in ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")}
     env = headless.shell_env(os.environ, broker)
+    guide = spec.get("guide", "embedded")
+    guide = {True: "embedded", False: "pointer"}.get(guide, guide) if isinstance(guide, bool) else guide  # A4's specs
     config, rules = headless.lead_config(profile, LEAD_STEPS,
-                                         guide=engine.lead_guide() if spec.get("guide", True) else "")
+                                         guide=engine.lead_guide() if guide == "embedded" else "",
+                                         pointer=guide != "none")
     deadline = time.monotonic() + float(spec["deadline_s"])
     out: dict[str, Any] = {"sessions": [], "nudges": 0, "stop": None, "lost": False}
     spent_closed = 0.0
@@ -383,6 +395,20 @@ def lead_child(spec_path: Path) -> int:
             return "lose"  # the Lead has launched its first role run: its harness is lost mid-Ticket (amendment A2)
         return None
 
+    def debrief(session: Any, stop: Any) -> dict[str, Any]:
+        """Rubric A5: one question about AEW, after the measured work. Its own cost, steps and commands are recorded
+        so that comparisons leave them out, and so is whether it changed AEW state (it should not)."""
+        before = {"cost": float(session.live_usage().get("cost") or 0),
+                  "steps": headless.assistant_steps(session.state_dir),
+                  "commands": len(headless.command_log(session.state_dir)), "revision": engine.store.read()["revision"]}
+        session.say(DEBRIEF)
+        outcome = session.wait_turn(time.monotonic() + DEBRIEF_S, stop)
+        return {"outcome": outcome, "text": headless.last_text(session.state_dir)[:4000],
+                "cost_usd": round(float(session.live_usage().get("cost") or 0) - before["cost"], 6),
+                "steps": headless.assistant_steps(session.state_dir) - before["steps"],
+                "commands": len(headless.command_log(session.state_dir)) - before["commands"],
+                "revision_changed": engine.store.read()["revision"] != before["revision"]}
+
     session = open_session(1)
     session.say(spec["prompt"])
     try:
@@ -412,6 +438,8 @@ def lead_child(spec_path: Path) -> int:
                 break
             out["nudges"] += 1
             session.say(NUDGE)
+        if out["stop"] in (None, "not_done_after_nudges"):
+            out["debrief"] = debrief(session, lambda: "cost_cap" if tick(session) == "cost_cap" else None)
     finally:
         out["sessions"].append(session.close())
         (state_root / "lead.json").write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
@@ -587,7 +615,7 @@ def stop_leftovers(repo: Path) -> list[str]:
 
 
 def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float, results: Path,
-        guide: bool = True) -> dict[str, Any]:
+        guide: str = "embedded") -> dict[str, Any]:
     import headless
 
     task, profile = TASKS[task_id], profile_of(model)
@@ -605,7 +633,7 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
     checkout_before = git(ROOT, "status", "--porcelain", "--untracked-files=all")
     record: dict[str, Any] = {"schema": SCHEMA, "task": task_id, "title": task.title, "mode": mode, "model": model,
                               "routing": routing, "cap_usd": cap, "started_at": now(), "workdir": str(work),
-                              "lead_guide": guide if mode == "aew" else None,  # rubric A4
+                              "lead_guide": guide if mode == "aew" else None,  # rubric A4 (true/false), A5 (mode)
                               "aew_commit": git(ROOT, "rev-parse", "--short", "HEAD").strip(),
                               "agent_shell": "bash" if os.environ.get("SHELL") else "powershell",
                               "limits": {"role_steps": ROLE_STEPS, "role_deadline_s": ROLE_DEADLINE_S,
@@ -646,7 +674,8 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
                 if (work / "lead" / "lead.json").exists() else {}
             record["stopped_runs"] = stop_leftovers(repo)
             record["lead"] = {"sessions": [session_summary(s, model_key(profile)) for s in lead.get("sessions") or []],
-                              "nudges": lead.get("nudges"), "stop": lead.get("stop"), "lost": lead.get("lost")}
+                              "nudges": lead.get("nudges"), "stop": lead.get("stop"), "lost": lead.get("lost"),
+                              "debrief": lead.get("debrief")}
             record.update(collect_aew(repo, base, work))
             record["interventions"] = lead.get("nudges") or 0
         else:
@@ -684,7 +713,9 @@ def totals(record: dict[str, Any], key: str) -> dict[str, Any]:
     cost = sum(float(p.get("cost") or 0) for p in parts)
     from_tokens = [p.get("cost_from_tokens") for p in parts]
     lead_cost = sum(float(s.get("cost") or 0) for s in (record.get("lead") or {}).get("sessions") or [])
+    debrief = (record.get("lead") or {}).get("debrief") or {}
     return {"cost_usd": round(cost, 6),
+            "debrief_cost_usd": debrief.get("cost_usd"),  # rubric A5: included in cost_usd, left out of comparisons
             "cost_from_tokens_usd": round(sum(float(c) for c in from_tokens if c is not None), 6)
             if any(c is not None for c in from_tokens) else None,
             "lead_cost_share": round(lead_cost / cost, 3) if cost else None,
@@ -743,8 +774,11 @@ def main() -> int:
     r.add_argument("--mode", choices=("aew", "raw"), required=True)
     r.add_argument("--model", required=True, help="provider/model[#effort]")
     r.add_argument("--routing", default="", help="role=provider/model[#effort],... (AEW mode)")
-    r.add_argument("--no-guide", action="store_true",
-                   help="AEW mode: the Lead without the project's guide (rubric A4, the 'before' arm)")
+    r.add_argument("--guide", choices=GUIDE_MODES, default="embedded",
+                   help="AEW mode: the project's guide in the Lead's system text (embedded), only the system text's "
+                        "pointer to `aew guide` (pointer: rubric A4's before arm), or neither (none: rubric A5)")
+    r.add_argument("--no-guide", dest="guide", action="store_const", const="pointer", default=argparse.SUPPRESS,
+                   help="the same as --guide pointer (rubric A4's before arm)")
     r.add_argument("--cap-usd", type=float, default=1.50, help="stop the run when its cost passes this")
     r.add_argument("--results", type=Path, default=RESULTS)
     c = sub.add_parser("lead-child")
@@ -762,7 +796,7 @@ def main() -> int:
     if args.cmd == "setup":
         return setup(args.task, args.dir, args.model)
     routing = dict(item.split("=", 1) for item in args.routing.split(",") if item.strip())
-    record = run(args.task, args.mode, args.model, routing, args.cap_usd, args.results, guide=not args.no_guide)
+    record = run(args.task, args.mode, args.model, routing, args.cap_usd, args.results, guide=args.guide)
     t = record["totals"]
     print(json.dumps({"task": record["task"], "mode": record["mode"], "model": record["model"],
                       "passed": t["passed"], "done": t["done"], "cost_usd": t["cost_usd"],

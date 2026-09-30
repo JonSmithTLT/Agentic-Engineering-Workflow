@@ -47,32 +47,44 @@ def shell_env(base: Mapping[str, str], extra: Mapping[str, str] | None = None) -
 
 
 AEW_ERROR = re.compile(r'"code":\s*"([A-Z][A-Z_]+)"')
+AEW_MESSAGE = re.compile(r'"message":\s*"((?:[^"\\]|\\.)*)"')
+FRICTION_CHARS = 300
 
 
-def command_log(state_dir: Path) -> list[dict[str, Any]]:
-    """What an OpenCode session did, tool by tool, from its private database: the tool, the leading words of a shell
-    command (``aew harness wait``, ``git log``: never its arguments or any other input), the outcome and the time.
-    For a shell command, also its exit code, and for a refused ``aew`` command the AEW error code from its output
-    (nothing else of the output): the harness's own ``status`` says only that the tool ran (M3 audit T3)."""
+def _messages(state_dir: Path) -> list[dict[str, Any]]:
+    """The session's messages, in order, from its private database (read-only)."""
     import sqlite3
 
     db = state_dir / "xdg-data" / "opencode" / "opencode.db"
     if not db.exists():
         return []
-    out: list[dict[str, Any]] = []
     con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
     try:
-        rows = con.execute("select data from session_message order by seq").fetchall()
+        rows = con.execute("select type, data from session_message order by seq").fetchall()
     finally:
         con.close()
-    for (data,) in rows:
-        for part in json.loads(data).get("content") or []:
+    return [{"type": typ, **json.loads(data)} for typ, data in rows]
+
+
+def command_log(state_dir: Path) -> list[dict[str, Any]]:
+    """What an OpenCode session did, tool by tool, from its private database: the tool, the leading words of a shell
+    command (``aew harness wait``, ``git log``), the outcome and the time. For a shell command, also its exit code,
+    and for a refused ``aew`` command the AEW error code from its output: the harness's own ``status`` says only that
+    the tool ran (M3 audit T3).
+
+    Friction (rubric A5) also keeps the command itself and, for a refused ``aew`` command, the error's message, each
+    clipped to 300 characters: for a refused or permission-denied command and for a ``--help`` lookup, never for
+    any other call. Nothing else of the input or output is kept."""
+    out: list[dict[str, Any]] = []
+    for message in _messages(state_dir):
+        for part in message.get("content") or []:
             if not isinstance(part, dict) or part.get("type") != "tool":
                 continue
             state = part.get("state") or {}
             entry: dict[str, Any] = {"tool": part.get("name"), "status": state.get("status")}
             if part.get("name") == "shell":
-                words = str((state.get("input") or {}).get("command") or "").split()
+                command = str((state.get("input") or {}).get("command") or "")
+                words = command.split()
                 entry["cmd"] = " ".join(words[:3] if words[:1] == ["aew"] else words[:2])
                 exit_code = (state.get("metadata") or {}).get("exit")
                 if exit_code is not None:
@@ -82,6 +94,11 @@ def command_log(state_dir: Path) -> list[dict[str, Any]]:
                     found = AEW_ERROR.search(text)
                     if found:
                         entry["aew_error"] = found.group(1)
+                    said = AEW_MESSAGE.search(text)
+                    if said:
+                        entry["message"] = said.group(1)[:FRICTION_CHARS]
+                if exit_code not in (None, 0) or "--help" in words or isinstance(state.get("error"), dict):
+                    entry["full"] = command[:FRICTION_CHARS]
             if isinstance(state.get("error"), dict):
                 entry["error"] = state["error"].get("type")
             times = part.get("time") or {}
@@ -91,19 +108,49 @@ def command_log(state_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
+def assistant_steps(state_dir: Path) -> int:
+    """The session's steps so far, counted as the adapter counts them (one per assistant message)."""
+    return sum(1 for m in _messages(state_dir) if m["type"] == "assistant")
+
+
+def last_text(state_dir: Path) -> str:
+    """The text of the session's last assistant message that has any (for the rubric A5 debrief)."""
+    for message in reversed(_messages(state_dir)):
+        if message["type"] != "assistant":
+            continue
+        text = "\n".join(str(p.get("text") or "") for p in message.get("content") or []
+                         if isinstance(p, dict) and p.get("type") == "text").strip()
+        if text:
+            return text
+    return ""
+
+
 def pinned(profile: dict[str, Any]) -> dict[str, Any]:
     return projection.config_model(profile)
 
 
-def lead_config(profile: dict[str, Any], steps: int, guide: str = "") -> tuple[dict[str, Any], list[dict[str, str]]]:
+GUIDE_POINTER = "- `aew guide` explains how AEW works in this project"
+
+
+def lead_config(profile: dict[str, Any], steps: int, guide: str = "",
+                pointer: bool = True) -> tuple[dict[str, Any], list[dict[str, str]]]:
     """The production Lead projection, made headless: nobody answers, so every ``ask`` is a ``deny`` (the Lead's
-    shell runs only ``aew`` and read-only ``git``), and ``question`` is denied."""
+    shell runs only ``aew`` and read-only ``git``), and ``question`` is denied.
+
+    ``pointer=False`` also removes the system text's pointer to ``aew guide`` (rubric A5: the Lead with no guide at
+    all; A4's before arm kept it, and every one of its Leads ran ``aew guide``)."""
     rules = []
     for r in projection.LEAD_RULES:
         effect = "deny" if r["effect"] == "ask" or r["action"] == "question" else r["effect"]
         rules.append({**r, "effect": effect})
     config = projection.lead_config(guide)  # with the project's Lead guide, as `aew opencode` gives it (F16)
     agent = config["agents"][projection.LEAD_AGENT]
+    if not pointer:
+        lines = agent["system"].split("\n")
+        kept = [line for line in lines if not line.startswith(GUIDE_POINTER)]
+        if len(kept) != len(lines) - 1:
+            raise RuntimeError("the Lead's system text no longer has exactly one line pointing to `aew guide`")
+        agent["system"] = "\n".join(kept)
     agent.update(permissions=rules, model=pinned(profile), steps=steps)
     for name in projection.AUXILIARY_AGENTS:
         config["agents"][name] = {"model": pinned(profile)}

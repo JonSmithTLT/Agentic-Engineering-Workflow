@@ -160,6 +160,26 @@ def test_supervisor_spawns_then_the_launcher_crashes_after_handing_over_custody(
     assert_control_invariants(lab.project)
 
 
+def test_harness_wait_keeps_waiting_while_a_just_launched_run_may_still_start(lab, tmp_path):
+    """Found by CI on PR #5 (Linux), in the test above: its launcher crashed right after handing over custody, and
+    `aew harness wait` returned `unconfirmed` at once, because the supervisor had not yet written its first record.
+    Launch treats such a run as possibly live for its first 30 s (a relaunch is refused, RUN_LIVE); `harness wait`
+    must too, instead of telling the Lead the run never started."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script(R1, IMPLEMENT)
+    held = hold(tmp_path / "supervisor-held")
+    res = lab.lead_res("work", "assign", wid, "--launch", env={
+        "AEW_FAULT": "harness.launch.after_handoff", **pause_env(("harness.supervisor.before_custody", held))})
+    assert res.returncode == 86
+    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held before its first record")
+    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
+    assert early.returncode == 0 and early.json["timed_out"], early.json  # possibly live: still waited on
+    held.unlink()
+    done = lab.wait(R1)
+    assert done["status"] == "ended_with_evidence" and len(done["evidence"]) == 2
+    assert_control_invariants(lab.project)
+
+
 def test_supervisor_crash_takes_the_whole_harness_tree_with_it(lab, tmp_path, sync):
     wid, out = assigned(lab, tmp_path, [{"do": "spawn_orphan", "pidfile": str(sync / "orphan")},
                                         {"do": "pid", "path": str(sync / "agent")}, touch(sync / "ready"),

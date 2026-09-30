@@ -129,6 +129,7 @@ class Supervisor:
     # ------------------------------------------------------------------ lifecycle
 
     def start(self) -> bool:
+        faults.pause("harness.supervisor.before_custody")  # tests: a supervisor slow to take custody
         state = self.engine.store.read()
         try:
             inv_id, inv, _ = require_invocation(state, self._credential, "context.read")

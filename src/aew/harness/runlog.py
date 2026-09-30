@@ -88,10 +88,12 @@ def observed_status(directory: Path) -> tuple[str, dict[str, Any] | None]:
     return status or K.STARTING, record
 
 
-def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = 30.0) -> bool:
-    """Could a supervisor for this run still hold custody? Conservative: an unconfirmed run launched
-    moments ago may be between its launch commit and its first heartbeat."""
-    status, _ = observed_status(directory)
+UNCONFIRMED_GRACE_S = 30.0
+
+
+def possibly_live(status: str, launched_at: str | None, *, grace_s: float = UNCONFIRMED_GRACE_S) -> bool:
+    """Could a supervisor for a run in ``status`` still hold custody? Conservative: an unconfirmed run launched
+    moments ago may be between its launch commit and its first record."""
     if status in (K.STARTING, K.RUNNING):
         return True
     if status == K.UNCONFIRMED and launched_at:
@@ -101,6 +103,12 @@ def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = 30
             return False
         return time.time() - launched < grace_s
     return False
+
+
+def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = UNCONFIRMED_GRACE_S) -> bool:
+    """:func:`possibly_live` for the run's observed status now."""
+    status, _ = observed_status(directory)
+    return possibly_live(status, launched_at, grace_s=grace_s)
 
 
 def request(directory: Path, kind: str, payload: dict[str, Any] | None = None) -> Path:

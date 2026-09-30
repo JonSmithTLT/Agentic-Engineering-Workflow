@@ -322,13 +322,17 @@ class HarnessOps(ResumeOps):
         raise NotFound(f"no run {run}")
 
     def harness_wait(self, run: str, *, timeout: float = 600.0) -> dict[str, Any]:
-        """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost)."""
+        """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost).
+
+        A run launched moments ago whose supervisor has not written its first record yet is possibly live, as
+        the launch preconditions treat it: it is waited on, not reported unconfirmed at once (found by CI)."""
         _, inv = self._find_run(self.store.read(), run)
+        launched_at = next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None)
         directory = runlog.run_dir(self.aew_root, run)
         deadline = time.monotonic() + timeout
         while True:
             status, record = runlog.observed_status(directory)
-            if status not in (K.STARTING, K.RUNNING):
+            if not runlog.possibly_live(status, launched_at):
                 return {"run": run, "status": status, "reason": (record or {}).get("reason"),
                         "evidence": self.run_evidence(inv["work_unit"], run), "timed_out": False}
             if time.monotonic() >= deadline:

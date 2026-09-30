@@ -345,7 +345,8 @@ def lead_child(spec_path: Path) -> int:
     runs_root = runlog.run_dir(engine.aew_root, "x").parent
     broker = {k: os.environ[k] for k in ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")}
     env = headless.shell_env(os.environ, broker)
-    config, rules = headless.lead_config(profile, LEAD_STEPS, guide=engine.lead_guide())
+    config, rules = headless.lead_config(profile, LEAD_STEPS,
+                                         guide=engine.lead_guide() if spec.get("guide", True) else "")
     deadline = time.monotonic() + float(spec["deadline_s"])
     out: dict[str, Any] = {"sessions": [], "nudges": 0, "stop": None, "lost": False}
     spent_closed = 0.0
@@ -585,7 +586,8 @@ def stop_leftovers(repo: Path) -> list[str]:
 # ---------------------------------------------------------------------------------------------- one run
 
 
-def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float, results: Path) -> dict[str, Any]:
+def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float, results: Path,
+        guide: bool = True) -> dict[str, Any]:
     import headless
 
     task, profile = TASKS[task_id], profile_of(model)
@@ -603,6 +605,7 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
     checkout_before = git(ROOT, "status", "--porcelain", "--untracked-files=all")
     record: dict[str, Any] = {"schema": SCHEMA, "task": task_id, "title": task.title, "mode": mode, "model": model,
                               "routing": routing, "cap_usd": cap, "started_at": now(), "workdir": str(work),
+                              "lead_guide": guide if mode == "aew" else None,  # rubric A4
                               "aew_commit": git(ROOT, "rev-parse", "--short", "HEAD").strip(),
                               "agent_shell": "bash" if os.environ.get("SHELL") else "powershell",
                               "limits": {"role_steps": ROLE_STEPS, "role_deadline_s": ROLE_DEADLINE_S,
@@ -623,7 +626,8 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
                                                 "REVIEW_PENDING"], "ticket": ticket}
             spec = {"task": task_id, "repo": str(repo), "state": str(work / "lead"), "profile": profile,
                     "provider_env": provider_env(profile), "cap_usd": cap, "deadline_s": task.lead_deadline_s,
-                    "lead_loss": task.lead_loss, "prompt": lead_prompt(task, ticket), "resume_prompt": resume_prompt()}
+                    "lead_loss": task.lead_loss, "prompt": lead_prompt(task, ticket), "resume_prompt": resume_prompt(),
+                    "guide": guide}
             (work / "lead").mkdir()
             spec_path = work / "lead-spec.json"
             spec_path.write_text(json.dumps(spec, indent=1), encoding="utf-8")
@@ -739,6 +743,8 @@ def main() -> int:
     r.add_argument("--mode", choices=("aew", "raw"), required=True)
     r.add_argument("--model", required=True, help="provider/model[#effort]")
     r.add_argument("--routing", default="", help="role=provider/model[#effort],... (AEW mode)")
+    r.add_argument("--no-guide", action="store_true",
+                   help="AEW mode: the Lead without the project's guide (rubric A4, the 'before' arm)")
     r.add_argument("--cap-usd", type=float, default=1.50, help="stop the run when its cost passes this")
     r.add_argument("--results", type=Path, default=RESULTS)
     c = sub.add_parser("lead-child")
@@ -756,7 +762,7 @@ def main() -> int:
     if args.cmd == "setup":
         return setup(args.task, args.dir, args.model)
     routing = dict(item.split("=", 1) for item in args.routing.split(",") if item.strip())
-    record = run(args.task, args.mode, args.model, routing, args.cap_usd, args.results)
+    record = run(args.task, args.mode, args.model, routing, args.cap_usd, args.results, guide=not args.no_guide)
     t = record["totals"]
     print(json.dumps({"task": record["task"], "mode": record["mode"], "model": record["model"],
                       "passed": t["passed"], "done": t["done"], "cost_usd": t["cost_usd"],

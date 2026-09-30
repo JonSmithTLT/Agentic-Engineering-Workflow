@@ -31,6 +31,7 @@ assumed.
 | T5 | review with a seeded defect | a plausible `split_amount` whose shares do not add up; its own tests pass | yes (asked to review and fix) |
 | T6 | resume after losing the Lead's harness | T2's objective; once the Lead has launched its first role run, its OpenCode is killed and its state is wiped, and a fresh session resumes from AEW alone (amendment A2) | T2's |
 | T1C0 | tiny fix, operator-directed Class 0 (amendment A3) | T1's objective plus one operator sentence: "It is a trivial, low-risk fix: handle it as a Class 0 Ticket." | T1's |
+| T1, T2, T3 with `--no-guide` | the Lead without its guide (amendment A4's before arm) | as T1, T2, T3 | as T1, T2, T3 |
 
 ## Per-run measures
 
@@ -88,6 +89,14 @@ T1's first record stays as it is. It is a result on the code before hardening, a
 - **The path:** with the operator directing Class 0 (task T1C0), does the Class 0 path work end to end? Two trials, AEW mode, GPT-5.6 Luna (the cheap model), the same brief and caps. Recorded: the class the Lead chose, the role runs, the gates, the hidden test, cost, wall time and refusals (the instrumented command log, audit T3). The path works if a trial reaches DONE with the hidden test passing and runs only what Class 0 requires: local checks, then the post-integration verification. A Lead choosing another class despite the instruction is a calibration result, not a failure of the path.
 
 T1C0 is not compared with T1 for quality or cost: its instruction differs.
+
+**A4, 2026-09-30, before any of its runs: the Lead's guide, before and after.** F16 gave the Lead a guide to how AEW works in its project (`aew guide`), in its system text. The operator asked for a run that shows whether the Lead acts differently with it.
+
+- **Arms.** Both on the same code, identical except for the guide: *before* (`--no-guide`, the Lead's system text without it) and *after* (with it). The earlier runs are not the "before" arm, because the refusal hints (audit X1, X2), the neutral class example (X4a) and other fixes landed since.
+- **Tasks and model.** T1 (the tiny fix: does the class choice change?), T2 (the multi-file feature) and T3 (the investigation), in AEW mode on GPT-5.6 Luna, with the same brief, caps and limits. Two trials per task and arm: 12 runs, about USD 0.5. The arms alternate (before, after, before, after) so that time drift does not favour one.
+- **Recorded per run,** from the run record and the instrumented command log (audit T3): the class of every Ticket; the refused `aew` commands and their error codes; `--help` lookups; Lead steps; the Lead's and the run's cost; wall time; role runs; DONE and the hidden test.
+- **Stated before the runs.** G1: with the guide, fewer refused commands and fewer `--help` lookups per session. G2: with the guide, T1's Leads choose Class 0 at least once, which they never did before (the guide gives no eligibility criteria beyond the Workflow Contract's, Q10). G3: outcomes, DONE and the hidden test, are no worse. G4: the Lead's steps and cost; the longer system text costs more per step and fewer corrections cost less, and the net is reported either way.
+- **Limits.** Two trials per cell show direction, not significance. Counts are reported as they are, and a result against a hypothesis is reported as such.
 
 ## Budget and stopping
 

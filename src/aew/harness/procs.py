@@ -177,6 +177,27 @@ class ProcessTree:
         if self._sentinel is not None and self._sentinel.stdin:
             self._sentinel.stdin.close()  # the sentinel exits (its kill is now a no-op)
 
+    def close(self, timeout_s: float = 10.0) -> int:
+        """End every process still in the tree and wait until none runs. Returns how many were still running.
+
+        For a tree whose owner is done with it (a check that returned): nothing it started may outlive it."""
+        import time
+
+        left = self.active()
+        if left:
+            self.kill()
+        deadline = time.monotonic() + timeout_s
+        while self.active() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if IS_WINDOWS and self._job:
+            _k32.CloseHandle(self._job)  # KILL_ON_JOB_CLOSE: anything still there ends with the handle
+            self._job = None
+        elif self._sentinel is not None:
+            if self._sentinel.stdin and not self._sentinel.stdin.closed:
+                self._sentinel.stdin.close()
+            self._sentinel.wait(timeout_s)
+        return left
+
 
 def harden_current_process() -> None:
     """Make the credential-holding supervisor harder to inspect from same-user processes.

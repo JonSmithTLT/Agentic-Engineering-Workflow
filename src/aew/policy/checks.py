@@ -31,19 +31,34 @@ def resolve(checks_policy: dict[str, Any], check_id: str) -> dict[str, Any]:
 
 
 def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
+    after-snapshot describes everything the check did (independent audit I2)."""
+    from aew.harness.procs import ProcessTree
+
     command = [part.replace("{python}", sys.executable) for part in cfg["command"]]
     cwd = (workspace / cfg.get("cwd", ".")).resolve()
+    timeout = cfg.get("timeout_s", 900)
     started = time.monotonic()
+    tree = ProcessTree()
+    exit_code: int | None = None
     try:
-        proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                              timeout=cfg.get("timeout_s", 900), stdin=subprocess.DEVNULL, env=env)
-        exit_code: int | None = proc.returncode
-        log = f"$ {' '.join(command)}\n(cwd {cwd})\n\n--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
-    except subprocess.TimeoutExpired as exc:
-        exit_code = None
-        log = f"$ {' '.join(command)}\nTIMEOUT after {exc.timeout}s\n{exc.stdout or ''}\n{exc.stderr or ''}"
-    except OSError as exc:
-        exit_code = None
-        log = f"$ {' '.join(command)}\nfailed to start: {exc}"
+        try:
+            proc = tree.spawn(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              stdin=subprocess.DEVNULL, env=env, text=True)
+        except OSError as exc:
+            log = f"$ {' '.join(command)}\nfailed to start: {exc}"
+        else:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+                exit_code = proc.returncode
+                log = f"$ {' '.join(command)}\n(cwd {cwd})\n\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+            except subprocess.TimeoutExpired:
+                tree.kill()
+                stdout, stderr = proc.communicate()
+                log = f"$ {' '.join(command)}\nTIMEOUT after {timeout}s\n{stdout or ''}\n{stderr or ''}"
+    finally:
+        left = tree.close()
+    if left and exit_code is not None:
+        log += "\n--- processes the check left running were ended when it returned ---\n"
     return {"exit_code": exit_code, "duration_s": round(time.monotonic() - started, 3), "log": log,
             "command": command}

@@ -540,14 +540,20 @@ def _created(message: dict[str, Any]) -> float:
 
 
 def _effective(models: list[Any]) -> list[dict[str, Any]]:
-    """Distinct ``{provider, model, effort}`` in first-use order (OpenCode's ``default`` variant = no effort)."""
+    """Distinct ``{provider, model, effort}`` in first-use order.
+
+    OpenCode's ``default`` variant is an observation: no effort variant ran (``effort: None``). A missing or empty
+    variant is not an observation, so the entry is marked ``effort_unreported`` and never counts as a match for a
+    requested effort (independent audit I4)."""
     out: list[dict[str, Any]] = []
     for m in models:
         if not isinstance(m, dict):
             continue
         variant = m.get("variant")
-        entry = {"provider": m.get("providerID"), "model": m.get("id"),
-                 "effort": None if variant in (None, "", "default") else variant}
+        entry: dict[str, Any] = {"provider": m.get("providerID"), "model": m.get("id"),
+                                 "effort": None if variant in (None, "", "default") else variant}
+        if variant in (None, ""):
+            entry["effort_unreported"] = True
         if entry not in out:
             out.append(entry)
     return out

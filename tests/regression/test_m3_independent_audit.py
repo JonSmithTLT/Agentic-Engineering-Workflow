@@ -121,3 +121,45 @@ def test_a_lead_message_sent_after_the_turn_ended_is_refused_never_revives_it(tm
     with pytest.raises(HarnessError):
         adapter.send("Too late.")
     assert fake.posts == [] and adapter.turn == "ended" and not adapter.inspect()["alive"]
+
+
+# --------------------------------------------------------------------------------------------- I4
+
+
+def _model_check(requested_effort, effective):
+    from aew.harness.supervisor import Supervisor
+
+    sup = Supervisor.__new__(Supervisor)  # only the comparison: no run, no process
+    sup.record = {"timeline": [], "result": {"effective": effective},
+                  "execution_profile": {"provider": "openai", "model": "gpt-6-sol", "effort": requested_effort}}
+    sup.events = lambda _event: None
+    sup._compare_effective()
+    return sup.record["model_check"]
+
+
+def test_the_adapter_tells_a_default_effort_from_an_unreported_one():
+    """I4, at the adapter boundary. OpenCode's `default` variant is an observation (no effort variant ran); a
+    missing or empty variant is not an observation at all. Both became `effort: None`."""
+    from aew.harness.opencode.adapter import _effective
+
+    observed = _effective([{"providerID": "openai", "id": "gpt-6-sol", "variant": "default"}])
+    assert observed == [{"provider": "openai", "model": "gpt-6-sol", "effort": None}]
+    for unreported in ({"providerID": "openai", "id": "gpt-6-sol"},
+                       {"providerID": "openai", "id": "gpt-6-sol", "variant": ""}):
+        assert _effective([unreported]) == [{"provider": "openai", "model": "gpt-6-sol", "effort": None,
+                                             "effort_unreported": True}]
+
+
+@pytest.mark.parametrize("requested, effective, status", [
+    ("high", {"effort": None}, "mismatch"),                               # default ran, high was requested
+    ("high", {"effort": None, "effort_unreported": True}, "effort_unreported"),  # cannot be verified: never "match"
+    ("high", {"effort": "high"}, "match"),
+    (None, {"effort": None}, "match"),                                    # nothing requested, default ran
+    (None, {"effort": None, "effort_unreported": True}, "match"),         # nothing requested, nothing to verify
+    (None, {"effort": "high"}, "mismatch"),
+])
+def test_a_requested_effort_is_verified_or_reported_unverified_never_assumed(requested, effective, status):
+    """I4. The supervisor compared effort only when the harness reported one, so a run requested at `high` that
+    ran at the default variant (or whose variant was not reported) was recorded `model_check: match`."""
+    check = _model_check(requested, [{"provider": "openai", "model": "gpt-6-sol", **effective}])
+    assert check["status"] == status, check

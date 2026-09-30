@@ -318,11 +318,18 @@ class Supervisor:
                 "provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}}
             return
         wanted = {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}
+        # Effort is always compared, unless the adapter says the harness did not report it (`effort_unreported`):
+        # `effort: None` means "no effort variant ran", which differs from a requested effort (independent audit I4).
         mismatches = [e for e in effective
                       if e.get("provider") != wanted["provider"] or e.get("model") != wanted["model"]
-                      or (e.get("effort") is not None and e.get("effort") != wanted["effort"])]
-        self.record["model_check"] = {"status": "mismatch" if mismatches else "match", "requested": wanted,
+                      or (not e.get("effort_unreported") and e.get("effort") != wanted["effort"])]
+        unverified = [e for e in effective
+                      if e not in mismatches and e.get("effort_unreported") and wanted["effort"] is not None]
+        status = "mismatch" if mismatches else "effort_unreported" if unverified else "match"
+        self.record["model_check"] = {"status": status, "requested": wanted,
                                       "effective": effective, "mismatches": mismatches}
+        if unverified:
+            self.record["model_check"]["effort_unreported"] = unverified
         if mismatches:
             self._event("model_mismatch", requested=wanted, effective=mismatches)
 

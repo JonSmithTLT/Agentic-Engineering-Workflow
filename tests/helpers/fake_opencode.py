@@ -255,10 +255,13 @@ class FakeOpenCode:
                 s.messages.append({"id": new_id("msg"), "type": "idle", "outcome": outcome,
                                    "time": {"created": now_ms()}})
                 s.info["outcome"] = outcome
+            # Saved before the session stops being active: a client that sees the turn end may stop the server at
+            # once, and the saved conversation must already hold everything the turn did (a CI race, PR #5).
+            self.persist()
+            with self.lock:
                 s.running = False
                 s.interrupted.clear()
                 pending = bool(s.inbox)
-            self.persist()
             self.emit(f"session.execution.{outcome}", {"sessionID": sid})
         if pending and self.knobs.get("idle_before_queue_s") is not None:
             # The race a real server has: the turn is idle, a prompt queued during it is not yet delivered, and

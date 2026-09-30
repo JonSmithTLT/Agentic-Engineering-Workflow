@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from aew.policy import checks
+from aew.util import parse_frontmatter
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
@@ -163,3 +164,82 @@ def test_a_requested_effort_is_verified_or_reported_unverified_never_assumed(req
     ran at the default variant (or whose variant was not reported) was recorded `model_check: match`."""
     check = _model_check(requested, [{"provider": "openai", "model": "gpt-6-sol", **effective}])
     assert check["status"] == status, check
+
+
+# --------------------------------------------------------------------------------------------- I5
+
+
+def _expand(tmp_path, text: str) -> list[str]:
+    from aew.cli import fields
+    from aew.cli.main import build_parser
+
+    path = tmp_path / "fields.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    return fields.expand(["work", "create", "ticket", "--fields", str(path)], build_parser())
+
+
+SILENTLY_CHANGED = {  # what the YAML layer stored for each, before this fix
+    "comment after a value": "goal: Finish #1 with $5.00\n",            # "Finish"
+    "comment after a list item": "goal:\n  - one # two\n",               # "one"
+    "duplicate key": "goal: first\ngoal: second\n",                      # "second" only
+    "two spellings of one option": "expect_rev: 1\nexpect-rev: 2\n",     # "2" only
+    "anchor": "goal: &1 is the first case\n",                            # "is the first case"
+    "alias": "title: &t x\ngoal: [*t]\n",                                # a copy of another value
+    "tag": "goal: !x value\n",                                           # "value"
+    "plain value over two lines": "goal: first line\n  second line\n",   # "first line second line"
+}
+
+
+@pytest.mark.parametrize("text", SILENTLY_CHANGED.values(), ids=SILENTLY_CHANGED.keys())
+def test_fields_input_that_yaml_would_silently_change_is_refused(tmp_path, text):
+    """I5. `--fields` protects authored text from the shell, but its YAML layer changed it silently: a ` #` began
+    a comment, a repeated key replaced the first, anchors and tags were dropped, a plain value's line break became
+    a space. Each is refused, saying how to write the value, so the author's text is never changed unseen."""
+    from aew.errors import UsageError
+
+    with pytest.raises(UsageError):
+        _expand(tmp_path, text)
+
+
+@pytest.mark.parametrize("text, goal", [
+    ("goal: 'Finish #1 with $5.00'\n", "Finish #1 with $5.00"),
+    (r"goal: 'it''s C:\temp\new: ok'" + "\n", r"it's C:\temp\new: ok"),
+    ("goal: |-\n  Finish #1 with $5.00\n  and: more\n", "Finish #1 with $5.00\nand: more"),
+    (r'{"goal": "Finish #1 with $5.00 in C:\\temp"}', r"Finish #1 with $5.00 in C:\temp"),
+    ("goal: plain text stays as written\n", "plain text stays as written"),
+    ("# a note on its own line\ngoal: x\n", "x"),
+], ids=["single-quoted", "single-quoted backslashes", "block", "json", "plain", "own-line comment"])
+def test_quoted_block_and_json_values_arrive_exactly(tmp_path, text, goal):
+    assert f"--goal={goal}" in _expand(tmp_path, text)
+
+
+def test_a_goal_is_stored_as_intended_or_refused_never_truncated(tmp_path):
+    """I5, end to end: the stored goal is compared with the value its author intended."""
+    from aewflow import sample_project
+
+    p = sample_project(tmp_path)
+
+    def create(text: str):
+        return p.aew("work", "create", "ticket", "--class", "1", "--title", "t", "--fields", "-",
+                     "--token", p.token, "--expect-rev", str(p.rev()), input=text)
+
+    intended = "Finish #1 with $5.00"
+    refused = create(f"goal: {intended}\n")
+    assert refused.returncode != 0 and refused.error["code"] == "USAGE", refused.stdout
+    assert "quote" in refused.error["message"]
+    created = create(f"goal: '{intended}'\n")
+    assert created.returncode == 0, created.stderr
+    wid = created.json["id"]
+    meta = parse_frontmatter((p.root / ".aew" / "work" / wid / "ticket.md").read_text(encoding="utf-8"), source=wid)[0]
+    assert meta["acceptance"]["goal_backwards"] == [intended]
+
+
+def test_invalid_fields_yaml_says_how_to_fix_it(tmp_path):
+    """I5, seen in the dogfood: 5 of the Leads' 89 `--fields` inputs indented a key by one space (` goal:`), and the
+    refusal was YAML's own "mapping values are not allowed here". It must say where, and what to do instead."""
+    from aew.errors import UsageError
+
+    with pytest.raises(UsageError) as refused:
+        _expand(tmp_path, "title: Add category filtering\n goal:\n  - it filters\n")
+    message = refused.value.message
+    assert "line 2" in message and "beginning of its line" in message and "single quotes" in message, message

@@ -40,17 +40,19 @@ aew work assign  T-0001 --expect-rev N    # workspace + implementer credential +
 aew work transition T-0001 --to RUNNING --expect-rev N
 ```
 
-**Free text is data.** Any command takes `--fields FILE|-`: a YAML or JSON mapping of its option values, applied literally. Use it whenever a shell would otherwise see titles, goals, contract clauses, scopes, reasons or notes, because a shell rewrites `$`, backticks, globs and quotes:
+**Free text is data.** Any command takes `--fields FILE|-`: a YAML or JSON mapping of its option values, which become the command's options without passing through a shell. Use it whenever a shell would otherwise see titles, goals, contract clauses, scopes, reasons or notes, because a shell rewrites `$`, backticks, globs and quotes:
 
 ```bash
 aew work create ticket --class 1 --expect-rev N --fields - <<'EOF'
-title: Show refunds as -$15.00
+title: 'Fix #12: show refunds as -$15.00'
 goal:
-  - format_amount(Decimal("-15")) == "-$15.00"
-contract: [changes stay within ledger/ and tests/]
-scope: [ledger/**, tests/**]
+  - 'format_amount(Decimal("-15")) == "-$15.00"'
+contract: ['changes stay within ledger/ and tests/']
+scope: ['ledger/**', 'tests/**']
 EOF
 ```
+
+The mapping is parsed as YAML, so put each value in single quotes (write `''` for a quote inside one), or write a longer value as a block (`goal: |-` followed by indented lines). Unquoted, YAML would cut `Fix #12` where a space precedes the `#`, and join a value's lines with spaces; AEW refuses such input rather than store changed text, and it also refuses a key given twice, anchors, aliases and tags. JSON works too; its double quotes process escapes, so write a backslash as `\\`.
 
 The quoted `'EOF'` keeps the shell out. In PowerShell, pipe a single-quoted here-string (`@'` … `'@ | aew ...`) instead.
 

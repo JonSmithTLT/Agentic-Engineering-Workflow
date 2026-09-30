@@ -176,9 +176,11 @@ LEAD_SYSTEM = "\n".join([
     "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
     "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
     "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class 1 "
-    "--expect-rev N --fields - <<'EOF'`, then `title: ...`, `goal: [...]`, `contract: [...]`, `scope: [...]`, "
-    "then `EOF`). Plans and notes go the same way with `--file -` or `--note-file -`. In PowerShell, pipe a "
-    "single-quoted here-string (`@'` ... `'@ | aew ...`).",
+    "--expect-rev N --fields - <<'EOF'`, then `title: '...'`, `goal: ['...', '...']`, `contract: ['...']`, "
+    "`scope: ['...']`, then `EOF`). Put every value in single quotes (two single quotes for one inside it), or "
+    "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
+    "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
+    "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
     "- Do not implement substantial changes yourself. You cannot edit files in this session.",
     "- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are "
     "refused here.",

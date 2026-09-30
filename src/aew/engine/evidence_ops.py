@@ -175,7 +175,8 @@ class EvidenceOps(WorkspaceOps):
         plan_ok = bool(plan) and sha256_file(self.aew_root / plan["path"]) == plan["sha256"]
         fingerprint = snapshot["relevant_inputs_fingerprint"] if snapshot else None
         results = G.evaluate(state, work_id, evidence, obligations=obligations, gates_policy=gates_policy,
-                             fingerprint=fingerprint, plan_ok=plan_ok)
+                             fingerprint=fingerprint, plan_ok=plan_ok,
+                             check_definitions=C.current_definitions(self.policy("checks"), self.policy("guardrails")))
         binding = self.plan_binding_problem(state, work_id)
         if binding and results.get("accepted_plan", {}).get("status") == G.CURRENT:
             # An ancestor's accepted plan changed after this plan was accepted (ADR-0007, fail closed).
@@ -436,6 +437,7 @@ class EvidenceOps(WorkspaceOps):
                 card_id = (inv.get("card") or {}).get("id")
                 raise PermissionDenied(f"role card {card_id} does not permit check {check_id}")
             cfg = C.resolve(self.policy("checks"), check_id)
+            definition = C.definition_digest(cfg, guardrails=self.policy("guardrails") if cfg.get("builtin") else None)
             scope_paths = (self._record_meta(unit).get("scope") or {}).get("paths", [])
             plan = unit.get("plan") or {}
         if not workspace.exists():
@@ -473,7 +475,7 @@ class EvidenceOps(WorkspaceOps):
                 "result": result,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.aew_root / log_rel)}],
                 "check": {"check_id": check_id, "exit_code": run["exit_code"], "duration_s": run["duration_s"],
-                          "mutated_inputs": mutated,
+                          "mutated_inputs": mutated, "definition_sha256": definition,
                           **({"violations": verdict["violations"], "triggered_gates": verdict["triggered_gates"]}
                              if verdict else {})},
             }
@@ -585,6 +587,7 @@ class EvidenceOps(WorkspaceOps):
         work_id = inv["work_unit"]
         records = {e["id"]: e for e in E.scan(self.aew_root, work_id)[0]}
         expected_fp = (inv.get("observation") or {}).get("fingerprint") or inv["snapshot"]["relevant_inputs_fingerprint"]
+        definitions = C.current_definitions(self.policy("checks"), self.policy("guardrails"))
         for c in claims:
             for cid in c.get("checks", []):
                 ev = records.get(cid)
@@ -593,6 +596,9 @@ class EvidenceOps(WorkspaceOps):
                 if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != expected_fp:
                     raise ValidationFailed(
                         f"{cid} evaluated a different snapshot than this verification package; re-run the check")
+                if not C.proves_current_definition(ev, definitions):
+                    raise ValidationFailed(f"{cid} ran check {ev['check']['check_id']} as it was defined before "
+                                           "policy/checks.yaml changed; re-run the check (independent audit I1)")
         results = [c["result"] for c in claims]
         if "fail" in results:
             overall = "fail"

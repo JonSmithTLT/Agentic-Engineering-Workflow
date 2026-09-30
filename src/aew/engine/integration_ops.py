@@ -19,6 +19,7 @@ from aew.engine import faults, transitions
 from aew.engine.context_ops import ContextOps
 from aew.errors import GateUnsatisfied, IllegalTransition, IntegrityError, StaleCandidate
 from aew.knowledge import evidence as E
+from aew.policy import checks as C
 from aew.policy import guardrails as GR
 from aew.util import render_frontmatter, utc_now
 from aew.workspace import git, worktrees
@@ -196,12 +197,15 @@ class IntegrationOps(ContextOps):
             raise GateUnsatisfied("post-integration verification is not bound to the integrated snapshot")
         self._require_bound_report(state, unit, ver, scope="integration")
         cited = {cid for c in ver["verification"]["claims"] for cid in c.get("checks", [])}
+        definitions = C.current_definitions(self.policy("checks"), self.policy("guardrails"))
         passed = {evidence[c]["check"]["check_id"] for c in cited
                   if c in evidence and evidence[c]["result"] == "pass"
-                  and evidence[c]["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fp}
+                  and evidence[c]["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fp
+                  and C.proves_current_definition(evidence[c], definitions)}  # independent audit I1
         missing = [c for c in policy["checks"] if c not in passed]
         if missing:
-            raise GateUnsatisfied("policy-required post-integration checks are missing", missing=missing)
+            raise GateUnsatisfied("policy-required post-integration checks are missing, or ran under a check "
+                                  "definition that policy/checks.yaml has since changed", missing=missing)
 
     def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         # Phase 1: record intent (publishing H -> M) after re-validating everything.

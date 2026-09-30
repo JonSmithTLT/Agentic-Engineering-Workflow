@@ -243,3 +243,59 @@ def test_invalid_fields_yaml_says_how_to_fix_it(tmp_path):
         _expand(tmp_path, "title: Add category filtering\n goal:\n  - it filters\n")
     message = refused.value.message
     assert "line 2" in message and "beginning of its line" in message and "single quotes" in message, message
+
+
+# --------------------------------------------------------------------------------------------- I1
+
+
+def _redefine_check(p, check_id: str, **changes) -> None:
+    import yaml as _yaml
+
+    policy = p.root / ".aew" / "policy" / "checks.yaml"
+    data = _yaml.safe_load(policy.read_text(encoding="utf-8"))
+    data["checks"][check_id].update(changes)
+    policy.write_text(_yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+
+
+def _unit_check(p, wid: str) -> dict:
+    return p.ok("gate", "show", wid)["gates"]["local_checks"]["checks"]["unit"]
+
+
+def test_a_passed_check_goes_stale_when_its_definition_changes(tmp_path):
+    """I1. A passing `unit` result stayed CURRENT after `unit`'s command in policy/checks.yaml changed: the gate
+    matched evidence by check id, workspace fingerprint and plan revision only, so one check id stood for two
+    acceptance conditions. Decision (a): an in-flight Ticket satisfies the current definition, so the old result
+    is STALE (never silently CURRENT) and the check must run again. A description is not part of the definition."""
+    from aewflow import assign, create_planned_ticket, implement, sample_project
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    implement(impl)
+    assert _unit_check(p, wid)["status"] == "CURRENT"
+    _redefine_check(p, "unit", description="reworded, same check")
+    assert _unit_check(p, wid)["status"] == "CURRENT"
+    _redefine_check(p, "unit", command=["{python}", "-c", "raise SystemExit(1)"])
+    stale = _unit_check(p, wid)
+    assert stale["status"] == "STALE" and "definition" in stale.get("reason", ""), stale
+    assert impl.check("unit")["result"] == "fail"  # run again under the definition now in force
+    assert _unit_check(p, wid)["status"] == "FAILED"
+
+
+def test_a_post_integration_check_counts_only_under_its_current_definition(tmp_path):
+    """I1, the same boundary at publication: a policy-required post-integration check is satisfied only by a
+    result for the check as it is defined now."""
+    import copy
+
+    from aewflow import prepare_and_validate, sample_project, to_commit_ready
+
+    from aew.knowledge.manifest import DEFAULT_GATES
+
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["local_checks"] = []  # only the post-integration requirement depends on `unit` here
+    p = sample_project(tmp_path, gates=gates)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    _redefine_check(p, "unit", command=["{python}", "-c", "raise SystemExit(1)"])
+    refused = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert refused.returncode != 0 and "post-integration" in refused.error["message"], refused.stdout

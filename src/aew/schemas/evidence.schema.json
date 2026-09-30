@@ -161,6 +161,8 @@
         "exit_code": {"type": ["integer", "null"]},
         "duration_s": {"type": "number"},
         "mutated_inputs": {"type": "boolean"},
+        "definition_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                              "description": "digest of the check definition that ran (command, cwd, timeout; for guardrails, its policy): a result proves only that definition"},
         "violations": {"type": "array"},
         "triggered_gates": {"type": "array", "items": {"type": "string"}}
       }

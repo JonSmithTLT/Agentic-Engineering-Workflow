@@ -182,6 +182,7 @@ What might prevent this (for the designer; see `future-work.md` O3):
 - **Leads spend many steps waiting.** `aew harness wait` in 110-second slices re-sends the whole context each time. This is a large part of why the Lead is about 40% of AEW's cost.
   - **Correction (2026-09-29, `m3-audit-findings.md` L1).** Re-analysing the 29 Lead sessions shows waiting is 12% of the Lead's steps (a median of 4 of 34), although it is about 55% of the Lead's wall time. The Lead's cost comes from the workflow choreography: a median of 20 workflow commands per session, each a model step that re-reads a growing context. The results in this report are unchanged; only this explanation is corrected. The response is the Lead workflow efficiency design (`future-work.md` F15).
 - **Risk class.** After the hardening, Leads chose Class 1 or 2 for every task, T1 included, so the Class 0 fast path was never used. This follows the fail-closed default the companion review asks for, and costs the full review and verification each time.
+  - **Correction (2026-09-30).** The one pre-hardening run chose Class 1 too, so the hardening did not cause this. The Leads' reasoning points to three causes: the Lead's only example command used `--class 1` (now neutral), Class 0 read as insufficiently evidenced, and no operational criteria for Class 0 (`future-work.md` Q10: X4a, X4b, X4c).
 
 ### 6.4 The Class 0 path (rubric amendment A3, 2026-09-30)
 
@@ -194,7 +195,7 @@ T1 was meant to exercise the Class 0 path and never did: on the hardened code th
 
 - **The path works end to end.** Both Leads chose Class 0 as directed. Both Tickets went from RUNNING straight to COMMIT_READY, with no review and no Ticket verification, integrated, passed their post-integration verification and the hidden test.
 - **The refusals** were all correction steps: `aew evidence ingest` on the implementation report (both trials; the brief lists that command among the ingest commands) and, once, `aew verify ingest` in the wrong state. Each Lead recovered on its next step. The refusal messages now name the command that applies (audit X1); the brief is part of the registered runs and was not changed. The command log now records these refusals (audit T3).
-- **Calibration stays open.** Unprompted, no Lead chose Class 0. Whether that is the intended fail-closed behaviour, and what should make Class 0 selectable, is the designer's question Q10 (`future-work.md`).
+- **Calibration stays open.** Unprompted, no Lead chose Class 0. The Leads' reasoning shows why: example anchoring, Class 0 read as insufficiently evidenced, and no operational eligibility criteria (§6.3). What should make Class 0 selectable is the designer's question Q10 (`future-work.md`).
 - As registered, T1C0 is not compared with T1 for quality or cost: its instruction differs.
 - A first attempt (2026-09-29) stopped before any model step, because the provider key had expired: USD 0, recorded.
 

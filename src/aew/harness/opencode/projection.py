@@ -175,7 +175,7 @@ LEAD_SYSTEM = "\n".join([
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
     "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
     "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
-    "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class 1 "
+    "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class <0-4> "
     "--expect-rev N --fields - <<'EOF'`, then `title: '...'`, `goal: ['...', '...']`, `contract: ['...']`, "
     "`scope: ['...']`, then `EOF`). Put every value in single quotes (two single quotes for one inside it), or "
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "

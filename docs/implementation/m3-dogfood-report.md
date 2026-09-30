@@ -4,13 +4,13 @@
 
 **Method:** AEW with a real model as Lead, against plain OpenCode, on the same six tasks, the same models and the same isolation.
 
-**Runs:** 47 dogfood runs and a 6-trial model comparison, on 2026-09-28 and 29.
+**Runs:** 47 dogfood runs and a 6-trial model comparison, on 2026-09-28 and 29; 20 more on 2026-09-30 for amendments A3 to A5 (the Class 0 path, and the Lead's guide).
 
 **Models:** GPT-5.6 Luna (cheap) and GPT-6 Sol (strong), both at medium effort, on OpenCode 2.0.18.
 
-**Spend:** USD 6.08 of the operator's USD 10.
+**Spend:** USD 6.72 of the operator's USD 10.
 
-**Rubric:** fixed before the paid runs, with two recorded amendments (`eval/m3/dogfood/rubric.md`).
+**Rubric:** fixed before the paid runs, with five recorded amendments, each made before the runs it governs (`eval/m3/dogfood/rubric.md`).
 
 **Data:**
 - `eval/m3/dogfood/results.jsonl`: one record per run;
@@ -41,6 +41,8 @@
   - M3-D10: `resume` inside a Lead session said the session held no authority.
 
   It also motivated the companion review's hardening **B1**: authored text now travels as data. Its failure class stopped occurring after the fix.
+- **The Lead's guide (F16) is what ended the trial and error** (amendments A4 and A5, §6.5). Without it, Leads made 20 refused commands and 16 `--help` lookups in 6 runs; with it, 1 and 6 in 12. It also moved every Ticket to Class 1: without it, T1's Leads chose Class 0, at half the cost. All 18 runs passed.
+- **A Ticket's scope cannot change** once the Ticket exists, so a Lead's scope mistake costs the whole Ticket and its correct implementation (§6.6, the second such case). The designer has since adopted Ticket revisions (`docs/design/ticket-revision-amendment-review-2026-09-30.md`).
 - **Verdict for the designer.** On small, well-specified tasks that a single model already solves, AEW adds cost and time and no correctness. Its value, as measured here, is durability, independent review and traceability. The tasks were too easy to show a quality difference: both models solved all of them unaided. A fair test of AEW's quality claim needs harder, longer work (§11).
 
 ## 2. What ran
@@ -199,6 +201,70 @@ T1 was meant to exercise the Class 0 path and never did: on the hardened code th
 - As registered, T1C0 is not compared with T1 for quality or cost: its instruction differs.
 - A first attempt (2026-09-29) stopped before any model step, because the provider key had expired: USD 0, recorded.
 
+### 6.5 The Lead's guide, before and after (rubric amendments A4 and A5, 2026-09-30)
+
+F16 gave the Lead a guide to how AEW works in its project (`aew guide`, generated from the project's gates policy and the engine's transition table) in its system text. The operator asked whether Leads act differently with it. Two pre-registered batches answer it: 18 runs, all on GPT-5.6 Luna, with the same brief, tasks (T1, T2, T3), caps and product code.
+
+- **A4** meant to compare the Lead with and without the guide. Its "before" arm kept the system text's one-line pointer to `aew guide`, and all six of its Leads ran the command at the start. A4 therefore compared the guide **read on demand** with the guide **embedded**.
+- **A5** added the arm with neither the guide nor the pointer. It was pre-registered after A4's runs and before its own. None of its Leads found `aew guide` by itself (the manipulation check).
+
+| Arm, 6 runs each | Ran `aew guide` | Refused `aew` commands | `--help` lookups | Denied by permissions | Lead steps on T2 and T3 (mean) | Lead USD on T2 and T3 | Role runs | T1's class |
+|---|---|---|---|---|---|---|---|---|
+| no guide (A5) | 0 | 20 | 16 | 1 | 39.8 | 0.066 | 22 | 0, 0 |
+| guide on demand (A4) | 6 | 1 | 4 | 3 | 30.8 | 0.056 | 25 | 1, 0 |
+| guide embedded (A4) | 0 | 0 | 2 | 1 | 31.5 | 0.060 | 28 | 1, 1 |
+
+All 18 runs passed their hidden test and reached DONE, with no nudges and clean safety checks. A5 cost USD 0.183 and A4 USD 0.429 (on demand 0.211, embedded 0.219). The counts come from each Lead's own session database, since A4's records keep only a command's leading words.
+
+- **The guide is what ended the trial and error.**
+  - Without it, Leads learned AEW by refusal again: 20 refused commands and 16 `--help` lookups in 6 runs, against 1 and 6 in the 12 guided runs (5 of those 7 in the single run of §6.6).
+  - The most common refusal is the original dogfood's (§6.3): `aew evidence ingest` on a mutating Ticket's implementation report, in all six runs. The rest:
+    - `verify ingest --scope integration`, an option that belongs to `invoke create` (3);
+    - `--fields` keys the command does not have (2);
+    - a dispatch before the plan was accepted (2);
+    - an ingest before RUNNING (2);
+    - one each of REVIEW_PENDING for a Class 0 Ticket, a publish before the post-integration verification, ASSIGNED → REVIEW_PENDING, a stale revision, and a check result offered as a record.
+  - Each refusal named the command that applies (audit X1), and the next call was right, so outcomes did not suffer. The cost is steps: on T2 and T3, about a quarter more Lead steps than with the guide, and 11 to 18% more Lead cost, although its context lacks the guide's 2,400 or so tokens (the on-demand Leads loaded them with `aew guide`).
+- **The guide changes the risk class Leads choose, in the opposite direction from the hypothesis.**
+  - A4's G2 expected T1's Leads to choose Class 0 with the guide. Instead:
+    - with the guide embedded, T1 was Class 1 in both runs;
+    - read on demand, Class 1 once and Class 0 once;
+    - with no guide, Class 0 in both runs, at half the cost (USD 0.012 and 0.016 against 0.026 to 0.032; two role runs instead of four).
+  - Without the guide, the only class guidance is the brief's sentence "Class 0 is for trivial, low-risk changes: it needs no review or verification before integration".
+  - The guide adds the Workflow Contract's definitions (§7.4): Class 0 is "trivial/mechanical ... one obvious mechanical edit", and Class 1 is "routine engineering ... bounded normal work". The Leads weigh exactly those words ("Maybe class 0 seems too mechanical and obvious, but it might require tests. Class 1 looks more suitable"). A fix that needs a test reads as routine engineering.
+  - Without the guide, the classes also spread upward: three of the no-guide arm's six T2 and T3 Tickets were Class 2, against none in the guided runs.
+  - With two trials per cell this is a direction, not a rate. Which choice is right is the designer's question (Q10). As written, the contract's definitions make Class 0 unreachable for a small, fully specified behaviour fix with a test.
+- **On demand or embedded.** With this model the pointer was enough. All six on-demand Leads read the guide once, at the start, and their friction and outcomes matched the embedded arm's, at about 4% less Lead cost. `aew opencode` embeds the guide, and that stays the default, because it does not depend on the model following a pointer.
+- **Against the pre-registered hypotheses:**
+  - G1 and H1 (fewer refusals and lookups with the guide): supported. It could only be shown once the true no-guide arm existed.
+  - G2 (Class 0 for T1 with the guide): not supported; the reverse.
+  - H2 (class choice without the guide): answered above.
+  - G3 and H3 (outcomes no worse): held, 18 of 18.
+  - G4 and H4 (steps and cost): with the guide, fewer steps on the multi-step tasks. Total cost was lower without it, because of T1's class.
+- **The registered debrief was not asked,** because of a defect in the driver (§9). The Leads' sessions are kept, so they can still be asked.
+
+### 6.6 A Ticket whose scope missed the code (A4, T1, trial 2)
+
+One run of A4's on-demand arm went round a loop the others did not. Its Lead's conversation is kept, and this is what it shows.
+
+1. **The Lead could not find the code.** Before creating the Ticket, it tried `git grep` and `git ls-files`. Its permissions allow only `git status|diff|log|show`, so both were denied. The brief says "Your shell runs only `aew` and read-only `git` commands", and neither the brief nor the Lead's system text mentions the read, glob and grep tools the Lead has. This Lead never used them; 9 of A4's 12 Leads did. Other Leads' reasoning shows the same doubt ("dedicated read might be prohibited").
+2. **It guessed the scope:** `src/**`, `lib/**`, `app/**`, `reports/**`, `test/**`, `tests/**`, `spec/**`. The code is in `ledger/`, which none of these match. AEW accepted the Ticket without comment.
+3. **The implementer did everything right.** It fixed `ledger/money.py`, ran the checks, saw the guardrail check fail on scope, and submitted its report as `blocked`, with the reason: "The implementation necessarily changes ledger/money.py, but the declared Ticket scope permits only src/**, …".
+4. **AEW did not show the Lead that the report was blocked.** `aew harness wait` listed the evidence ids without their results. `aew status` proposed the accepting transition: "its implementation report moves T-0001 on by transition: `aew work transition T-0001 --to COMMIT_READY`". The next actions check that a report exists, not what it says.
+5. **The gate held.** The transition was refused: `GATE_UNSATISFIED`, `ledger/money.py` `outside_ticket_scope`. The refusal named the path but no way forward, and `aew status` then proposed the same transition again.
+6. **A scope cannot be changed.** It is set when the Ticket is created, and no command or plan revision changes it. After four `--help` lookups the Lead reached that conclusion correctly. It moved the Ticket to REPLAN_REQUIRED and then CANCELLED ("Superseded because its immutable scope omitted ledger/**"), created T-0002 with `ledger/**` added, and ran a new implementer. T-0002 reached DONE, and the hidden test passed.
+7. **The cost** was a discarded, correct implementation, a second implementer run and about eight extra Lead steps: USD 0.032 and 133 s, against 0.026 to 0.028 and 115 to 131 s for A4's other T1 runs. That is small at Luna's prices on a one-line fix. On a real Ticket with a stronger model, a discarded implementation costs real money.
+
+Nothing unsafe happened. The class stayed 0 (the Lead chose 0 for both Tickets), no gate was bypassed, and every step is a recorded decision with its reason. The replacement links to the Ticket it replaces only through that reason (`LOST_SUPERSESSION_LINEAGE`, §7). It also still carries six globs that match nothing: the Lead never learned the project's layout.
+
+This is the plan assurance design's "required scope missing" (its scope-validity check, and "targeted current-source reconnaissance before scope selection"), caught only at the gate, after the implementation. It is also the second time a scope mistake cost a Ticket: M3-D9 (§8) was the first.
+
+What follows from it is in `future-work.md`:
+
+- E8 to E11: AEW's side, meaning next actions that read the evidence, a remedy in the scope refusal, scope feedback at creation, and telling the Lead how it can read the project;
+- O5: the brief;
+- F4: Ticket revisions, which the designer has since adopted.
+
 ## 7. Failures by registry class
 
 Named with the classes in `docs/design/failure-class-registry.md` (amendment A1).
@@ -206,11 +272,11 @@ Named with the classes in `docs/design/failure-class-registry.md` (amendment A1)
 | Class | Count | Where |
 |---|---|---|
 | `INTENT_INGRESS_CORRUPTION` | 2 | Run 1 (before B1): a Ticket goal, and the Lead's `verify classify` reason. Bash expanded `$1`, so `-$15.00` became `-5.00`. None afterwards: 17 later stored texts containing `$` are intact. |
-| `LOST_SUPERSESSION_LINEAGE` | 1 | Run 1: the replacement Ticket T-0003 records no link to T-0001 and T-0002. There is no way yet to record one (post-M3 P2). |
+| `LOST_SUPERSESSION_LINEAGE` | 2 | Run 1: the replacement Ticket T-0003 records no link to T-0001 and T-0002. A4, T1 trial 2 (§6.6): T-0002 replaces T-0001, linked only by the cancellation's reason. There is no way yet to record a link (post-M3 P2; Ticket revisions, F4, make most replacements unnecessary). |
 | `UNNECESSARY_STAKEHOLDER_INTERRUPTION` | 1 | Run 24: the Lead asked the operator for a takeover it did not need, because `aew resume` told it that it held no authority (M3-D10, fixed). |
 | unmapped: **a goal met by changing its inputs** | 1 | Run 18 (T4, §6.2). A candidate registry class for the designer, perhaps an acceptance-input class. |
 | unmapped: AEW defects | 2 | M3-D8 and M3-D9 (§8). |
-| `HOST_WRITE_ESCAPE`, `FALSE_CONTAINMENT_CLAIM` | 0 | The AEW checkout was untouched in all 47 runs, and every run is labelled `workdir_separation_only`. The check covers only the AEW checkout, not the whole disk. |
+| `HOST_WRITE_ESCAPE`, `FALSE_CONTAINMENT_CLAIM` | 0 | The AEW checkout was untouched in all 68 runs (§10), and every run is labelled `workdir_separation_only`. The check covers only the AEW checkout, not the whole disk. |
 
 ## 8. AEW defects found and fixed in step 9
 
@@ -230,10 +296,12 @@ Also from the companion review: **B2**, the `workdir_separation_only` label on r
 - **A billing failure.** The first paid attempt found the API account without credit: every turn failed at the provider, at USD 0. The driver nudged twice anyway. It now stops on provider errors (`8b95a10`), and the attempt is not in the results.
 - **The T6 trigger** ("a role run running for 60 s") never fired with Luna, whose runs finish sooner. Two runs became T2 repeats, costing USD 0.067. Fixed by amendment A2 (`6069ca7`).
 - **Results line endings** were CRLF in the first two records; fixed (`fe64ded`).
+- **A4's before arm had the guide after all.** The Lead's system text kept its pointer to `aew guide`, and every one of the arm's Leads ran it. A4 therefore compared two ways of delivering the guide, not its absence. This was found in A4's analysis, and A5 added the missing arm, pre-registered before its runs (§6.5).
+- **The debrief was never asked.** Audit I3 (2026-09-29) made the adapter refuse a message to an ended turn. The dogfood's headless Lead reuses the adapter for a session of several turns, so every nudge and debrief raised instead. No run needed a nudge after I3, and A5's registered debrief failed in all six runs, after the measured work and at no cost. Fixed, with a regression (`32e8a2e`).
 
 ## 10. Safety and cost
 
-**Safety,** in all 50 dogfood runs (47, plus the three T1C0 attempts of amendment A3):
+**Safety,** in all 68 dogfood runs (47, the three T1C0 attempts of amendment A3, and the 18 runs of amendments A4 and A5):
 - no AEW credential string in any file the run left: the whole scratch tree, including OpenCode's databases;
 - the provider key's value in no file;
 - the AEW checkout untouched.
@@ -252,7 +320,9 @@ The model-comparison trials ran under the live lane's own checks: credential sca
 | Model comparison, B (3 trials) | 0.132 |
 | The attempt without credit | 0.000 |
 | T1C0, the Class 0 path (A3): 2 trials, plus an attempt stopped by an expired key at USD 0 | 0.033 |
-| **Total** (OpenCode's figures; OpenAI's bill may differ slightly) | **6.111** |
+| The Lead's guide, on demand and embedded (A4): 12 runs | 0.429 |
+| The Lead with no guide (A5): 6 runs | 0.183 |
+| **Total** (OpenCode's figures; OpenAI's bill may differ slightly) | **6.723** |
 
 About USD 0.07 was spent on runs that measured less than intended (the two untriggered T6 runs). A few cents went to Lead steps lost to defects now fixed.
 
@@ -272,7 +342,9 @@ About USD 0.07 was spent on runs that measured less than intended (the two untri
 3. **The Lead's cost** (about 40%). Much of it is waiting in slices. A push-style wait, or the coordination design's event delivery, would cut it (`future-work.md` O4).
    - **Correction (2026-09-29):** waiting is 12% of the Lead's steps; the cost is the workflow choreography (§6.3; `m3-audit-findings.md` L1). The Lead workflow efficiency design (`future-work.md` F15) addresses it; a push-style wait remains M4 work.
 4. **Class choice.** Every Lead chose Class 1 or 2 for a one-line fix. That fits fail-closed classification (F6), and it is the ceremony cost the designer is choosing.
+   - **Update (2026-09-30, §6.5):** the Workflow Contract's own class definitions, as the guide presents them, are what lead to Class 1. With them, every Ticket in 12 runs was Class 1 (apart from four Class 0 choices where the guide was read on demand). Without them, both T1 Leads chose Class 0. "Mechanical" and "routine engineering" decide it (Q10).
 5. **Evidence for P2 and P3** (supersession lineage; fail-closed `verify classify`). In run 1 the Lead classified a verifier-found plan defect correctly, as the heavier `PLAN_OR_DESIGN_DEFECT`, without any rule forcing it.
+6. **Ticket revisions.** Twice a scope mistake cost a Ticket and its correct implementation (M3-D9 and §6.6), because a scope cannot change once the Ticket exists. The designer adopted Ticket revisions on 2026-09-30 (`docs/design/ticket-revision-amendment-review-2026-09-30.md`, decisions D1 to D7).
 
 ## 13. Reproduce
 

@@ -202,3 +202,40 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     p.lead("plan", "accept", wid, "--revision", "1")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
     assert f"aew work assign {wid} --launch --expect-rev N" in actions, actions
+
+
+class _PromptServer:
+    """Just enough of a V2 server to take a prompt."""
+
+    def __init__(self) -> None:
+        self.posts: list[tuple[str, dict]] = []
+
+    def alive(self) -> bool:
+        return True
+
+    def post(self, path, body=None, params=None, **_):
+        self.posts.append((path, body))
+        return {"data": {"id": (body or {}).get("id")}}
+
+
+def test_the_headless_lead_takes_a_new_turn_after_its_last_one_ended(tmp_path, monkeypatch):
+    """Rubric A5, a defect of the dogfood driver: its headless Lead is one session of several turns (a nudge, and
+    since A5 a debrief, starts a new turn after the last one ended), and its `say` restarts the turn monitor itself.
+    Audit I3 made the adapter refuse a message to an ended turn, which is right for a role run, where nothing would
+    watch it. Here it made every nudge and debrief raise instead: the debrief of all six A5 runs was never asked."""
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "eval" / "m3" / "dogfood"))
+    import headless
+
+    session = headless.HeadlessSession(tmp_path / "lead")
+    try:
+        server = _PromptServer()
+        session.server = session.client = server
+        session.session, session.sent, session.turn = "ses_1", ["msg_first"], "ended"
+        monkeypatch.setattr(session, "_watch", lambda: None)  # the monitor is not under test
+        session.say("One last question.")
+        assert [path for path, _ in server.posts] == ["/api/session/ses_1/prompt"]
+        assert session.turn == "running" and len(session.sent) == 2
+    finally:
+        session.tree.close()

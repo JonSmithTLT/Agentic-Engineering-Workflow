@@ -213,8 +213,13 @@ class HeadlessSession(oc.OpenCodeAdapter):
                    "model": projection.model_ref(profile), "env_names": sorted(env)})
 
     def say(self, text: str) -> None:
-        """A new turn. The adapter's monitor ends with each turn, so it is restarted for this one."""
+        """A new turn. The adapter's monitor ends with each turn, so it is restarted for this one.
+
+        A role run's adapter refuses a message to an ended turn, because nothing would watch it (audit I3). This
+        session watches every turn it starts, so an ended turn is where its next one begins (a nudge, the debrief)."""
         with self._lock:
+            if self.turn == "ended":
+                self.turn = "starting"
             self.exit_code, self.detail = None, None
         self.turns.append({"at_s": self.elapsed(), "bytes": len(text.encode("utf-8"))})
         self._prompt(text)

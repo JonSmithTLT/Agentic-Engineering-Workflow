@@ -15,7 +15,7 @@
 |---|---|---|---|
 | C1 | CI has never run on any M3 commit: the branch was never pushed | **High** | Before review |
 | C2 | CI shard sizes come from M2 timings, with no M3 tests in them | Medium | Before review (with C1) |
-| L1 | The Lead's cost comes from step count, not waiting: about 20 of a median 34 steps are workflow commands for one Ticket | **High** (cost) | Designer |
+| L1 | The Lead's cost comes from step count, not waiting: a median 20 of 34 steps per Lead session are workflow commands (1.15 Tickets per run) | **High** (cost) | Designer: `lead-workflow-efficiency-design-v0.1.md` (F15) |
 | L2 | `harness wait` waits on one run at a time, in short slices through the Lead's shell | Medium | Post-M3 (M4) |
 | X1 | Refusals say what is wrong but not what to do instead (`evidence ingest` on a mutating Ticket) | Medium | Before review |
 | X2 | `resume`'s next actions name commands without their syntax: 37 `--help` lookups in 29 Lead sessions | Low | Before review |

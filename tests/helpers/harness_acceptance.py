@@ -60,7 +60,7 @@ def plan_ticket(tmp_path: Path) -> list[dict[str, Any]]:
     """The Lead turns an objective into a planned Ticket."""
     plan = tmp_path / "lead-plan.md"
     return [{"do": "write", "files": {str(plan): PLAN}}, lead(*TICKET),
-            lead("plan", "propose", WID, "--file", str(plan), "--affected", "calc/core.py"),
+            lead("plan", "propose", "--assurance", "none", WID, "--file", str(plan), "--affected", "calc/core.py"),
             lead("plan", "accept", WID, "--revision", "1")]
 
 

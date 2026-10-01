@@ -824,13 +824,15 @@ class NonMutatingOps(IntegrationOps):
     # ------------------------------------------------------------------ plan adoption and reconfirmation
 
     def plan_adopt(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, review: list[str] | None = None, verify: list[str] | None = None,
+                   no_assurance: bool = False) -> dict[str, Any]:
         """Create a *proposed* plan revision on any unit from an accepted Planner plan_proposal (ADR-0008)."""
         with self.lead_txn(token, expect_rev, "plan.adopt", reason=reason) as ctx:
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.resolve_plan_assurance(unit, review=review, verify=verify, none=no_assurance)
             src = self.unit(state, source)
             rec = (src.get("execution") or {}).get("record") or {}
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id
@@ -848,7 +850,7 @@ class NonMutatingOps(IntegrationOps):
             inv = state["invocations"][ev["producer"]["invocation"]]
             path, revision = self._propose(
                 ctx, work_id, unit, body=body, reason=reason, affected_paths=proposal.get("affected_paths"),
-                author={"role": "planner", "invocation": ev["producer"]["invocation"],
+                assurance=assurance, author={"role": "planner", "invocation": ev["producer"]["invocation"],
                         "card": (inv.get("card") or {}).get("id"), "adopted_by_generation": ctx.actor["generation"]},
                 source_evidence={"id": evidence_id, "sha256": ev["_sha256"], "work_unit": source,
                                  "invocation": ev["producer"]["invocation"]})

@@ -337,7 +337,7 @@ def safe_div_ticket(lab: HarnessLab, tmp_path: Path) -> str:
     wid = p.lead(*args)["id"]
     plan = tmp_path / f"{wid}-plan.md"
     plan.write_text(SAFE_DIV_PLAN, encoding="utf-8")
-    p.lead("plan", "propose", wid, "--file", str(plan), "--affected", "calc/core.py")
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--affected", "calc/core.py")
     p.lead("plan", "accept", wid, "--revision", "1")
     return wid
 

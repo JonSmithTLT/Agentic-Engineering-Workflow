@@ -212,7 +212,8 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
                     "reasons, scope, completion criteria) and a plan. "
                     "Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and "
                     "`aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone "
-                    "(see `aew work create --help`).",
+                    "(see `aew work create --help`). The plan declares its assurance (`--assurance none`, or "
+                    "`--review`/`--verify` cards that become required gates): say which in the proposal.",
     },
     "aew-next": {
         "description": "AEW: take the next Lead action on one work unit",

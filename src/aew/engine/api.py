@@ -218,6 +218,9 @@ class Engine(HarnessOps, LeadOps, StatusOps):
                 add(f"policy:{name}", "PASS", "valid")
             except Exception as exc:
                 add(f"policy:{name}", "FAIL", str(exc))
+        found = self.policy_problems()
+        add("policy:consistency", "FAIL" if found else "PASS",
+            " ".join(found) if found else "gates, checks and role cards agree")
         try:
             execution, _ = self.execution_policy()
             if execution is None or not execution["configured"]:

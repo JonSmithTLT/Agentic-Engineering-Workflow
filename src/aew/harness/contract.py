@@ -82,6 +82,10 @@ class LaunchContract:
 def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
+    # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
+    # 2026-09-30, R-INV-0007-1).
+    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+                          "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
         f"# AEW harness run {c.run}",
         "",
@@ -92,7 +96,7 @@ def preamble(c: LaunchContract) -> str:
         "## How you act on AEW",
         "",
         "- In this environment the `aew` command is already connected to AEW for this run. Use it exactly as the "
-        "contract shows (`aew check run <check>`, `aew submit --kind <kind> --file <file>`, `aew whoami`).",
+        f"contract shows ({commands}).",
         "- **There is no credential to set.** Ignore the contract's instruction to set `AEW_INVOCATION_TOKEN`: "
         "you never see, need or ask for an AEW credential, and none exists in this environment.",
         f"- Only submitted AEW evidence counts. Expected output: {kinds}. Ending the conversation without "
@@ -125,7 +129,8 @@ def continuation_text(c: LaunchContract) -> str | None:
     if any(e.get("stale") for e in ev):
         lines.append("- STALE evidence was evaluated on a workspace state that is no longer the current one: the "
                      "workspace changed after it was recorded, so it does not count for the work as it is now. If "
-                     "your work is complete, record it again on the current state (`aew check run`, `aew submit`).")
+                     "your work is complete, record it again on the current state ("
+                     + ("`aew check run`, " if "check.run" in c.operations else "") + "`aew submit`).")
     changed = cont.get("changed_paths")
     if changed is not None:
         lines.append("- Workspace changes relative to the dispatch base: "

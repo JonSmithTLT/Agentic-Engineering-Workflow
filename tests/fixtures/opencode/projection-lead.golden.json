@@ -97,7 +97,7 @@
   "aew-ticket": {
    "agent": "aew-lead",
    "description": "AEW: draft a Ticket and plan for an objective",
-   "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\nPropose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your reasons, scope, completion criteria) and a plan. Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and `aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone (see `aew work create --help`)."
+   "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\nPropose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your reasons, scope, completion criteria) and a plan. Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and `aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone (see `aew work create --help`). The plan declares its assurance (`--assurance none`, or `--review`/`--verify` cards that become required gates): say which in the proposal."
   }
  },
  "default_agent": "aew-lead",

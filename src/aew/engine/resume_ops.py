@@ -20,6 +20,7 @@ from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.errors import AEWError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
+from aew.policy import consistency
 from aew.util import parse_frontmatter
 
 RESUME_ORDER = [
@@ -30,6 +31,19 @@ RESUME_ORDER = [
 
 
 class ResumeOps(HierarchyOps):
+    # ------------------------------------------------------------------ policy consistency
+
+    def policy_problems(self) -> list[str]:
+        """Contradictions between the policy files and what the engine can evaluate (``policy.consistency``).
+
+        Empty when a policy file is itself invalid: that is reported on its own, and nothing can be compared."""
+        try:
+            gates, checks = self.policy("gates"), self.policy("checks")
+            specialties = {c.meta["specialty"] for c in self.role_catalog().cards.values() if c.meta.get("specialty")}
+        except AEWError:
+            return []
+        return consistency.problems(gates, checks, specialties)
+
     # ------------------------------------------------------------------ next actions
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
@@ -49,6 +63,7 @@ class ResumeOps(HierarchyOps):
                 actions.append(f"configure checks {unconfigured} in policy/checks.yaml (gates needing them stay blocked)")
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
+        actions.extend(f"fix the policy: {problem}" for problem in self.policy_problems())
         for wid, u in sorted(state["work"].items()):
             if u["kind"] != "ticket":
                 actions.extend(f"{wid}: {a}" for a in self._parent_actions(state, wid, u))
@@ -103,7 +118,7 @@ class ResumeOps(HierarchyOps):
         command = {"reviewer": "aew review ingest", "verifier": "aew verify ingest"}.get(inv["role"])
         if command is None and is_nm_ticket(unit):
             command = "aew evidence ingest"
-        records = sorted(e["id"] for e in produced if e["kind"] != "check") or ["<id>"]
+        records = sorted(e["id"] for e in produced if e["kind"] != "check_result") or ["<id>"]
         if command is None:
             return "ingest it"
         return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e}`" for e in records)
@@ -215,7 +230,8 @@ class ResumeOps(HierarchyOps):
         if self.plan_binding_problem(state, wid):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}`")
         if st in {"PLANNING", "OPEN"}:
-            out.append(f"plan it and create its children (`aew plan propose {wid} --file - --expect-rev N`, "
+            out.append(f"plan it and create its children (`aew plan propose {wid} --file - "
+                       f"--assurance none|--review <card>|--verify <card> --expect-rev N`, "
                        f"`aew plan accept {wid} --revision <n> --expect-rev N`, "
                        f"`aew work create ticket --parent {wid} ... --expect-rev N`)")
         elif st == "IN_PROGRESS" and u.get("blocked_descendants"):
@@ -258,7 +274,8 @@ class ResumeOps(HierarchyOps):
             out = []
             for b in u.get("blocked_by", []):
                 if b["kind"] == "plan_not_accepted":
-                    out.append(f"propose and accept a plan (`aew plan propose {wid} --file - --expect-rev N`, the plan "
+                    out.append(f"propose and accept a plan (`aew plan propose {wid} --file - "
+                               f"--assurance none|--review <card>|--verify <card> --expect-rev N`, the plan "
                                f"in a quoted heredoc, then `aew plan accept {wid} --revision <n> --expect-rev N`)")
                 elif b["kind"] == "plan_binding_stale":
                     out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid}` or a new plan revision")

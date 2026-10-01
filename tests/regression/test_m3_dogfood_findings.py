@@ -193,12 +193,12 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--scope", "calc/**")["id"]
     story = create_unit(p, "story", "s")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    assert f"aew plan propose {wid} --file - --expect-rev N" in actions, actions
+    assert f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> --expect-rev N"         in actions, actions
     assert f"aew plan accept {wid} --revision <n> --expect-rev N" in actions, actions
     assert f"aew work create ticket --parent {story}" in actions, actions
     plan = tmp_path / "plan.md"
     plan.write_text("Do it.\n", encoding="utf-8")
-    p.lead("plan", "propose", wid, "--file", str(plan))
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan))
     p.lead("plan", "accept", wid, "--revision", "1")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
     assert f"aew work assign {wid} --launch --expect-rev N" in actions, actions

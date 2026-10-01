@@ -187,9 +187,12 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "then single-quoted YAML (`title: '...'`, `goal: ['...']`, `contract: ['...']`, `scope: ['...']`), then `EOF`. "
         "Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about a "
         "scope glob that matches no file.",
-        "2. Plan it: `aew plan propose <T> --file - --expect-rev N` (the plan in a quoted heredoc), then "
-        "`aew plan accept <T> --revision <n> --expect-rev N`. It becomes READY when its plan is accepted and its "
-        "dependencies are satisfied.",
+        "2. Plan it: `aew plan propose <T> --file - --assurance none --expect-rev N` (the plan in a quoted "
+        "heredoc), then `aew plan accept <T> --revision <n> --expect-rev N`. It becomes READY when its plan is "
+        "accepted and its dependencies are satisfied. Every plan declares its assurance: `--assurance none`, or "
+        "`--review default` and/or `--verify default` (or a card) when the plan relies on a review or verification "
+        "beyond the class path. Accepting the plan makes them required gates; a review promised only in the "
+        "plan's text binds nothing.",
         "3. Start the implementer: `aew work assign <T> --launch --expect-rev N`, then "
         "`aew work transition <T> --to RUNNING --expect-rev N`. Follow the run with `aew harness wait <run>`.",
         "4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks "

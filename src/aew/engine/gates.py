@@ -158,6 +158,12 @@ def evaluate(
         elif gate == "local_checks":
             checks = {}
             for check_id in gates_policy.get("local_checks", []):
+                if check_id not in check_definitions:
+                    # Say why it can never pass, rather than a bare MISSING (UAT 2026-09-30, policy consistency).
+                    checks[check_id] = {"status": MISSING, "evidence": None,
+                                        "reason": f"check `{check_id}` is not defined and configured in "
+                                                  "policy/checks.yaml, so no result can satisfy it"}
+                    continue
                 cands = [e for e in by_role("implementer")
                          if e["kind"] == "check_result" and e["check"]["check_id"] == check_id]
                 # A result proves the check as it was defined when it ran; only the current definition counts

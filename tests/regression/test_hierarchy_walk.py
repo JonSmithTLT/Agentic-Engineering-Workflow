@@ -103,7 +103,7 @@ class HierarchyWalk:
 
     def plan(self, wid: str, reason: str | None = None) -> None:
         self.variant += 1
-        rev = self.lead("plan_propose", work_id=wid, body=f"Walk plan {self.variant}.\n", reason=reason)["revision_number"]
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body=f"Walk plan {self.variant}.\n", reason=reason)["revision_number"]
         self.lead("plan_accept", work_id=wid, revision=rev)
 
     def new_ticket(self, parent: str | None, *, mutating: bool) -> str:

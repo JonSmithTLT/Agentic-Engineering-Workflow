@@ -33,8 +33,16 @@ Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew st
 aew authority accept C-001 --class decisions --expect-rev N         # classify candidates
 aew work create ticket --title "..." --class 1 --scope "src/**" \
     --goal "observable outcome" --contract "conformance rule" --expect-rev N
-aew plan propose T-0001 --file plan.md --expect-rev N
+aew plan propose T-0001 --file plan.md --assurance none --expect-rev N   # or --review/--verify <card|default>
 aew plan accept  T-0001 --revision 1   --expect-rev N               # -> READY
+```
+
+Every plan declares its assurance. `--review` and `--verify` name the cards the plan relies on (`default` is the
+archetype's default card); accepting the plan makes them required gates, and only a new plan revision changes them.
+`--assurance none` declares that the plan adds nothing to the unit's policy path. A review promised only in the plan's
+text binds nothing, which is why the declaration is required.
+
+```bash
 aew work staff   T-0001 --execute python_engineer --review code_reviewer --expect-rev N   # optional
 aew work assign  T-0001 --expect-rev N    # workspace + implementer credential + launch contract/pack
 aew work transition T-0001 --to RUNNING --expect-rev N
@@ -89,7 +97,7 @@ Small work stays small: a standalone Ticket needs no Story or Epic. When work ha
 aew work create epic  --title "Toolchain readiness" --class 1 --expect-rev N
 aew work create story --title "Durable state" --class 2 --parent E-0001 \
     --mandatory-gate review_security --expect-rev N          # non-waivable for every descendant
-aew plan propose S-0001 --file story-plan.md --expect-rev N && aew plan accept S-0001 --revision 1 --expect-rev N
+aew plan propose S-0001 --file story-plan.md --review default --expect-rev N && aew plan accept S-0001 --revision 1 --expect-rev N
 aew work create ticket --title "Survey the store" --class 1 --parent S-0001 --non-mutating \
     --card investigator --goal "..." --expect-rev N         # or researcher / planner
 aew work create ticket --title "Harden the store" --class 2 --parent S-0001 \
@@ -111,7 +119,7 @@ aew work redispatch T-0001 --reason "..." --expect-rev N   # instead: supersede 
 ```
 
 - If a consumed discovery or plan proposal no longer matches the source, the next dispatch of its consumer is refused with `INPUT_STALE`. Refresh the input (a new investigation, plus `aew work depend`), or record that you rechecked it for this commit: `aew work acknowledge-input T-0002 --input <E> --from T-0001 --reason "..."`.
-- A Planner's accepted proposal becomes a *proposed* plan revision with `aew plan adopt <T> --evidence <E> --from <planning Ticket>`. You still accept it.
+- A Planner's accepted proposal becomes a *proposed* plan revision with `aew plan adopt <T> --evidence <E> --from <planning Ticket>` and the plan's assurance declaration. You still accept it.
 
 **Closing a parent.** When every child is DONE or CANCELLED, the parent is ACCEPTANCE_PENDING. Review and verify the parent (the packs carry every child's own integrated change), then close it:
 

@@ -228,6 +228,20 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--file")
     q.set_defaults(handler=lambda a: _engine(a).role_validate(a.file))
 
+    def _add_assurance(q: argparse.ArgumentParser) -> None:
+        g = q.add_argument_group(
+            "assurance (required: the declared review and verification become required gates when the plan is "
+            "accepted)")
+        g.add_argument("--review", action="append", default=[], metavar="CARD",
+                       help="a reviewer card the plan requires (repeatable; `default` = the default reviewer)")
+        g.add_argument("--verify", action="append", default=[], metavar="CARD",
+                       help="a verifier card the plan requires (repeatable; `default` = the default verifier)")
+        g.add_argument("--assurance", choices=["none"],
+                       help="`none`: the plan requires no review or verification beyond the unit's policy path")
+
+    def _assurance(a: argparse.Namespace) -> dict[str, Any]:
+        return {"review": a.review, "verify": a.verify, "no_assurance": a.assurance == "none"}
+
     p = sub.add_parser("plan", help="plan revisions (immutable once accepted)")
     psub = p.add_subparsers(dest="plan_cmd", required=True)
     q = psub.add_parser("propose")
@@ -235,10 +249,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--file", required=True, help="plan body (Markdown; file or - for stdin)")
     q.add_argument("--reason")
     q.add_argument("--affected", action="append", default=[], metavar="PATH")
+    _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_propose(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, body=_read_text_arg(a.file),
-        reason=a.reason, affected_paths=a.affected))
+        reason=a.reason, affected_paths=a.affected, **_assurance(a)))
     q = psub.add_parser("accept")
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)
@@ -250,10 +265,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--evidence", required=True)
     q.add_argument("--from", dest="source", required=True, help="the DONE planning Ticket that produced it")
     q.add_argument("--reason")
+    _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_adopt(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
-        source=a.source, reason=a.reason))
+        source=a.source, reason=a.reason, **_assurance(a)))
     q = psub.add_parser("reconfirm", help="rebind an accepted plan after an ancestor's plan changed (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)

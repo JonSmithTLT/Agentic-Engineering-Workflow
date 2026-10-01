@@ -278,22 +278,27 @@ class WorkOps(EngineBase):
     # ------------------------------------------------------------------ plans
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
-                     reason: str | None = None, affected_paths: list[str] | None = None) -> dict[str, Any]:
+                     reason: str | None = None, affected_paths: list[str] | None = None,
+                     review: list[str] | None = None, verify: list[str] | None = None,
+                     no_assurance: bool = False) -> dict[str, Any]:
         if not body.strip():
             raise UsageError("plan body is empty")
         with self.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
             unit = self.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.resolve_plan_assurance(  # type: ignore[attr-defined]  (RoleOps)
+                unit, review=review, verify=verify, none=no_assurance)
             path, revision = self._propose(ctx, work_id, unit, body=body, reason=reason,
-                                           affected_paths=affected_paths)
+                                           affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
     def _propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
-                 affected_paths: list[str] | None, author: dict[str, Any] | None = None,
+                 affected_paths: list[str] | None, assurance: dict[str, list[str]],
+                 author: dict[str, Any] | None = None,
                  source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
         """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
         revision = len(unit["plans"]) + 1
@@ -305,14 +310,14 @@ class WorkOps(EngineBase):
             author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
                               "generation": ctx.actor["generation"]},
             body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            source_evidence=source_evidence,
+            source_evidence=source_evidence, assurance=assurance,
         )
         text = record.render()
         path = f"work/{work_id}/plan-v{revision}.md"
         ctx.session.write(path, text)
         ctx.refs.append(path)
         unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
-                              "supersedes": supersedes, "status": "proposed"})
+                              "supersedes": supersedes, "status": "proposed", "assurance": assurance})
         return path, revision
 
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
@@ -337,6 +342,8 @@ class WorkOps(EngineBase):
             entry["status"] = "accepted"
             unit["plan"] = {"accepted": revision, "path": entry["path"], "sha256": entry["sha256"],
                             "ancestor_plans": self.ancestor_plan_snapshot(ctx.state, work_id)}
+            # The plan's declared review and verification become required gates (UAT 2026-09-30).
+            self.bind_plan_assurance(unit, revision, entry.get("assurance"))  # type: ignore[attr-defined]
             if H.is_parent(unit) and not unit.get("baseline_commit"):
                 unit["baseline_commit"] = self.authoritative_commit()
             decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",

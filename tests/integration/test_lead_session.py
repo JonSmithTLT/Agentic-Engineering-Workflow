@@ -164,7 +164,7 @@ def test_an_acquired_seat_is_released_or_held_explicitly(tmp_path, sync):
         res, steps = session(lab, "acq-2", [
             {"do": "lead", "args": ["work", "create", "ticket", "--title", "Survey", "--class", "0", "--non-mutating",
                                     "--goal", "g", "--scope", "calc/**"]},
-            {"do": "lead", "args": ["plan", "propose", "T-0001", "--file", str(plan)]},
+            {"do": "lead", "args": ["plan", "propose", "--assurance", "none", "T-0001", "--file", str(plan)]},
             {"do": "lead", "args": ["plan", "accept", "T-0001", "--revision", "1"]},
             {"do": "lead", "args": ["work", "dispatch", "T-0001", "--launch"]},
         ], acquire=True, token=False)

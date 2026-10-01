@@ -132,7 +132,7 @@ class Template:
         wid = self.lead("work_create", kind="ticket", title=title, risk_class=1, mutating=mutating,
                         scope_paths=["calc/**", "tests/**"], goal_backwards=["calc.core.subtract(5, 3) == 2"],
                         contract=["changes stay in calc/ and tests/"])["id"]
-        self.lead("plan_propose", work_id=wid, body=PLAN, affected_paths=["calc/core.py"])
+        self.lead("plan_propose", no_assurance=True, work_id=wid, body=PLAN, affected_paths=["calc/core.py"])
         self.lead("plan_accept", work_id=wid, revision=1)
         return wid
 

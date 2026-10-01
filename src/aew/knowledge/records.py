@@ -81,6 +81,7 @@ def plan_record(
     reason: str | None = None,
     affected_paths: list[str] | None = None,
     source_evidence: dict[str, Any] | None = None,
+    assurance: dict[str, list[str]] | None = None,
 ) -> Record:
     meta = {
         "schema": "aew/plan/v1",
@@ -94,6 +95,8 @@ def plan_record(
     }
     if source_evidence:
         meta["source_evidence"] = source_evidence
+    if assurance is not None:
+        meta["assurance"] = assurance
     validate("plan", meta, source=f"{work_unit} plan v{revision}")
     return Record(meta, body)
 

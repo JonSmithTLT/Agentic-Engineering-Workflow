@@ -38,7 +38,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the spec-pin test verifies the frozen tag
       - run: git fetch --tags --force
@@ -54,7 +54,7 @@ jobs:
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lane-report-${{ runner.os }}-core
@@ -85,7 +85,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -94,7 +94,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider --durations=15
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}
@@ -108,12 +108,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: python -m pip install "PyYAML>=6.0"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: lane-report-*
           path: lane-reports

@@ -38,11 +38,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from aew.errors import IntegrityError
+from aew.errors import GitError, IntegrityError
 from aew.workspace import git
 
 AEW_ROOT_REL = ".aew"
 NUL = "\x00"
+# Windows device names: a file with one of these names (any extension, any case) cannot be read
+# through the ordinary path, so ``git add`` fails on it ("short read"). Usually made by a bash
+# ``> nul`` redirect on Windows.
+WINDOWS_RESERVED_NAMES = frozenset(
+    ["CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))])
 # Settings that let Git trust cached/filesystem-monitor state instead of reading files: forced off
 # for snapshot synthesis (GIT_CONFIG_COUNT needs git >= 2.31, the supported floor).
 READ_ALL_CONTENT = {
@@ -64,10 +69,34 @@ def _working_index(workspace: Path) -> Iterator[dict[str, str]]:
             shutil.copy2(real_index, tmp_index)  # reuse stat cache: fast on large trees
         env = {"GIT_INDEX_FILE": str(tmp_index), **READ_ALL_CONTENT}
         _neutralize_index_flags(workspace, env)
-        git.git("add", "-A", "--", ".", cwd=workspace, env=env)
+        try:
+            git.git("add", "-A", "--", ".", cwd=workspace, env=env)
+        except GitError:
+            _refuse_reserved_names(workspace, env)
+            raise
         yield env
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def reserved_device_names(paths: list[str]) -> list[str]:
+    """The paths whose last component is a Windows device name (``nul``, ``con.txt``, ``LPT1``, ...)."""
+    def stem(path: str) -> str:
+        return path.rsplit("/", 1)[-1].split(".", 1)[0].rstrip(" ").upper()
+    return [p for p in paths if stem(p) in WINDOWS_RESERVED_NAMES]
+
+
+def _refuse_reserved_names(workspace: Path, env: dict[str, str]) -> None:
+    """After ``git add`` failed: if untracked files with device names explain it, refuse naming them."""
+    proc = git.git("ls-files", "--others", "--exclude-standard", "-z", cwd=workspace, env=env, check=False)
+    if proc.returncode != 0:
+        return
+    found = reserved_device_names([p for p in proc.stdout.decode("utf-8", "replace").split(NUL) if p])
+    if found:
+        raise IntegrityError(
+            f"the workspace contains a file named after a Windows device ({', '.join(found[:5])}), which git "
+            "cannot read, so no snapshot can be taken. It is usually left by a `> nul` redirect in bash on "
+            "Windows; delete it and retry", workspace=str(workspace), paths=found[:20], count=len(found))
 
 
 def _neutralize_index_flags(workspace: Path, env: dict[str, str]) -> None:

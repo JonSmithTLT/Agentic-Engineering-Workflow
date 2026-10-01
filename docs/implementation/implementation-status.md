@@ -34,6 +34,7 @@ This is operational metadata (WC Appendix C). It does not replace the workflow s
 | Controlled integration | Implemented | AT-2, AT-4a (publish crashes), ADR-0004 (+ 2026-09-26 amendment); review probes B1/B2/M1/M6; `tests/integration/test_worktree_sync.py` |
 | Verification-failure classification | Implemented | AT-6 |
 | Validation provenance | Implemented | AT-1, AT-3; evidence records what/who/when/against/how/result/evidence plus role card |
+| Plan assurance binding and policy consistency | Implemented (UAT 2026-09-30) | ADR-0006 amendment 2026-09-30; every plan declares its review and verification (or `none`), and acceptance makes them required gates; cross-file policy contradictions in `aew doctor`, next actions and gates (`aew.policy.consistency`); `tests/regression/test_uat_2026_09_30.py`, `tests/unit/test_policy_consistency.py`. The full plan-assurance design is Designed (`future-work.md` F14) |
 | Project guardrails | Implemented (deterministic subset) | Protected/generated paths, Ticket scope, review triggers (optionally naming a card); dependency rules are representable but not enforced |
 | Build/test impact analysis | Designed | — |
 | SCM/Jira enforcement | Designed | — |

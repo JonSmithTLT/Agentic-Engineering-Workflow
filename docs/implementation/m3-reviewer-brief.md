@@ -87,7 +87,8 @@ Suggested probes:
 - a doctored `/openapi.json` or model catalog;
 - a Lead command through the broker that emits a credential through an unusual path (error text, `--help`, a JSON field);
 - a relaunch racing an ingest; a takeover while a run is mid-submit;
-- `aew resume` after `.aew/local` is wiped with runs live.
+- `aew resume` after `.aew/local` is wiped with runs live;
+- **plan assurance binding** (ADR-0006 amendment 2026-09-30): a plan-bound review or verification removed without a new plan revision (staff, forbid, a racing plan accept, an adopted Planner proposal), or a stale binding surviving supersession.
 
 ## Found and fixed during M3
 
@@ -101,6 +102,7 @@ Each with a regression written before the fix:
 - M3-D11, found by the first CI run: a Lead session ending while the broker's watchdog was mid-check could be reported "superseded";
 - the designer's independent audit, I1 to I5: a check result bound to its definition, a check's whole process tree ended before its evidence is sealed, a Lead message racing a turn's end, an effort that cannot be observed never reported as a match, and `--fields` input that YAML would silently change refused (`review-response-2026-09-29.md`);
 - from the read-only audit: refusals and `resume` next actions that name the command that applies (X1, X2), and `aew doctor` reporting the YAML backend (A2).
+- from the operator's TUI acceptance session (2026-09-30) and the Lead's debrief: an accepted plan's promised review and verification now bind as required gates (ADR-0006 amendment 2026-09-30); contradictions between the policy files are reported in `doctor`, next actions and at the gate (`aew.policy.consistency`); next actions no longer offer check results for `ingest`; each role's briefing names only the `aew` commands it may use (`test_uat_2026_09_30.py`; `future-work.md` §7).
 
 The companion design review (2026-09-28, `m3-companion-review-triage.md`) was triaged into M3 blockers and post-M3 prerequisites. The three blockers were done before the dogfood resumed: B1 authored text as data (`--fields`), B2 the `workdir_separation_only` containment label, B3 failure names from the registry.
 

@@ -51,22 +51,30 @@ REQUIRED_OPERATIONS: tuple[Op, ...] = (
     _op("DELETE", "/api/session/{sessionID}/form/{formID}"),
 )
 
-# Fields the adapter reads from responses, and configuration keys it sets.
-REQUIRED_FIELDS: dict[str, frozenset[str]] = {
-    "ServerInfo": frozenset({"version"}),
-    "Model.Info": frozenset({"id", "providerID", "variants", "enabled"}),
-    "Model.Variant": frozenset({"id"}),
-    "Model.Ref": frozenset({"id", "providerID", "variant"}),
-    "Agent.Info": frozenset({"id", "system", "permissions", "model", "steps"}),
-    "Session.Info": frozenset({"id", "model", "outcome", "tokens", "cost"}),
-    "Session.Message.User": frozenset({"id", "time", "type"}),
-    "Session.Message.Assistant": frozenset({"id", "model", "tokens", "cost", "finish", "error", "time"}),
-    "Session.Message.Idle": frozenset({"id", "outcome", "time"}),
-    "Permission.Request": frozenset({"id", "action", "resources"}),
-    "Config.InfoEncoded": frozenset({"agents", "plugins", "snapshots", "update", "share", "lsp", "formatter",
-                                     "default_agent", "permissions", "commands"}),
-    "Config.AgentEncoded": frozenset({"model", "system", "mode", "permissions", "steps", "description"}),
-    "Config.CommandEncoded": frozenset({"template", "description", "agent"}),
+# Fields the adapter reads from responses, and configuration keys it sets, each with the JSON type the adapter
+# relies on: the served schema must still offer that type (through ``$ref`` and ``anyOf``/``oneOf``/``allOf``). A dotted
+# name is a property of a property. Kept complete against the adapter (independent review R2, 2026-09-30): a field
+# read only for telemetry is listed too, since health is the one place drift is caught.
+S, I, N, B, O, A = "string", "integer", "number", "boolean", "object", "array"
+REQUIRED_FIELDS: dict[str, dict[str, str]] = {
+    "ServerInfo": {"version": S},
+    "Model.Info": {"id": S, "providerID": S, "variants": A, "enabled": B},
+    "Model.Variant": {"id": S},
+    "Model.Ref": {"id": S, "providerID": S, "variant": S},
+    "Agent.Info": {"id": S, "system": S, "permissions": A, "model": O, "steps": I},
+    "Session.Info": {"id": S, "model": O, "outcome": S, "tokens": O, "cost": N},
+    "Session.Message.User": {"id": S, "time": O, "type": S},
+    "Session.Message.Assistant": {"id": S, "type": S, "agent": S, "model": O, "tokens": O, "cost": N, "finish": S,
+                                  "error": O, "time": O, "content": A},
+    "Session.Message.Assistant.Tool": {"type": S, "name": S},
+    "Session.Message.Idle": {"id": S, "type": S, "outcome": S, "time": O},
+    "SessionMessagesResponse": {"data": A, "cursor": O, "cursor.next": S},
+    "Permission.Request": {"id": S, "action": S, "resources": A},
+    "Permission.Rule": {"action": S, "resource": S, "effect": S},
+    "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
+                           "formatter": B, "default_agent": S, "permissions": A, "commands": O},
+    "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
+    "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
 }
 REQUIRED_ENUMS: dict[str, frozenset[str]] = {
     "Permission.Effect": frozenset({"allow", "deny"}),
@@ -106,6 +114,49 @@ def _properties(spec: dict[str, Any], schema: Any) -> set[str]:
     return names
 
 
+def _property(spec: dict[str, Any], schema: Any, name: str) -> list[Any]:
+    """Every declaration of property ``name`` in an object schema (one per ``anyOf``/``oneOf``/``allOf`` branch)."""
+    schema = _resolve(spec, schema)
+    if not isinstance(schema, dict):
+        return []
+    found = [schema["properties"][name]] if name in (schema.get("properties") or {}) else []
+    for key in ("anyOf", "oneOf", "allOf"):
+        for part in schema.get(key) or []:
+            found += _property(spec, part, name)
+    return found
+
+
+def _types(spec: dict[str, Any], schema: Any, depth: int = 0) -> set[str]:
+    """The JSON types a schema admits; empty when it declares none (it then admits any)."""
+    schema = _resolve(spec, schema)
+    if not isinstance(schema, dict) or depth > 10:
+        return set()
+    declared = schema.get("type")
+    out = {declared} if isinstance(declared, str) else set(declared or [])
+    for key in ("anyOf", "oneOf", "allOf"):
+        for part in schema.get(key) or []:
+            out |= _types(spec, part, depth + 1)
+    return out
+
+
+def _field_problem(spec: dict[str, Any], schema: Any, path: str, want: str) -> str | None:
+    """Why the schema does not offer ``path`` with type ``want`` (None when it does)."""
+    candidates = [schema]
+    for part in path.split("."):
+        candidates = [d for c in candidates for d in _property(spec, c, part)]
+        if not candidates:
+            return "missing"
+    offered: set[str] = set()
+    for c in candidates:
+        types = _types(spec, c)
+        if not types:
+            return None  # no declared type: anything goes
+        offered |= types
+    if want in offered or (want == "number" and "integer" in offered):
+        return None
+    return f"not {want} (declares {sorted(offered)})"
+
+
 def _enum(spec: dict[str, Any], schema: Any) -> set[str]:
     schema = _resolve(spec, schema)
     if not isinstance(schema, dict):
@@ -143,9 +194,12 @@ def problems(spec: Any, extra: tuple[Op, ...] = ()) -> list[str]:
         if name not in schemas:
             out.append(f"schema {name} is missing")
             continue
-        missing = fields - _properties(spec, schemas[name])
+        found = {field: _field_problem(spec, schemas[name], field, want) for field, want in fields.items()}
+        missing = sorted(f for f, problem in found.items() if problem == "missing")
         if missing:
-            out.append(f"schema {name} lacks {sorted(missing)}")
+            out.append(f"schema {name} lacks {missing}")
+        out += [f"schema {name} field {f} is {problem}" for f, problem in found.items()
+                if problem and problem != "missing"]
     for name, values in REQUIRED_ENUMS.items():
         if name not in schemas:
             out.append(f"schema {name} is missing")

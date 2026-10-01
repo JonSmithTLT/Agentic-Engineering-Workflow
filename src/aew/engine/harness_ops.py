@@ -32,6 +32,7 @@ from aew.engine import faults
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.base import TxnContext
 from aew.engine.resume_ops import ResumeOps
+from aew.engine.store import Transition
 from aew.errors import HarnessLaunchFailed, IllegalTransition, NotFound, RunLive, UsageError
 from aew.harness import contract as K
 from aew.harness import procs, registry, runlog
@@ -104,6 +105,7 @@ class HarnessOps(ResumeOps):
                               "or relaunch with --replace (its credential is revoked either way)",
                               run=previous["run"])
             run = K.run_id(invocation, len(runs) + 1)
+            stop_old = self._record_request(previous, "stop", {"reason": f"superseded by {run}"}) if previous else None
             credential = rotate_invocation_token(state, invocation, f"rotated: {run}")
             runs.append({"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
                          "launched_at": utc_now(), "kind": "relaunch" if previous else "launch",
@@ -113,8 +115,8 @@ class HarnessOps(ResumeOps):
                 f" (supersedes {previous['run']})" if previous else "")
         revision = ctx.session.committed_revision
         old_dir = runlog.run_dir(self.aew_root, previous["run"]) if previous else None
-        if old_dir is not None and old_dir.exists():  # best effort: its credential is already dead, and its
-            runlog.request(old_dir, "stop", {"reason": f"superseded by {run}"})  # supervisor notices on its own
+        if old_dir is not None and old_dir.exists() and stop_old:  # best effort: its credential is already dead,
+            runlog.deliver_request(old_dir, *stop_old)  # and its supervisor notices on its own
         launched = self._spawn_run(invocation, run, credential)
         del credential
         return {"ok": True, "invocation": invocation, **launched,
@@ -356,42 +358,57 @@ class HarnessOps(ResumeOps):
                 return {"run": run, "status": status, "timed_out": True}
             time.sleep(0.2)
 
+    @staticmethod
+    def _record_request(entry: dict[str, Any], kind: str, payload: dict[str, Any]) -> tuple[str, str]:
+        """Record a Lead request on its run, in the transaction that authorizes it: the supervisor acts only on a
+        request file whose name and digest are recorded here (independent review R1). The file carries the payload,
+        so a message's text never enters control state."""
+        name, text = runlog.new_request(kind, payload)
+        entry.setdefault("requests", []).append({"file": name, "kind": kind, "sha256": sha256_text(text),
+                                                 "at": utc_now()})
+        return name, text
+
+    def _lead_request(self, token: str, run: str, kind: str, payload: dict[str, Any], *, current: bool,
+                      reason: str | None = None) -> dict[str, Any]:
+        """Record and deliver a Lead request for a run. Work and invocation state do not change. Like the Lead seat
+        operations, it needs no expected revision: it names one run and is checked against the state it commits on."""
+        directory = runlog.run_dir(self.aew_root, run)
+        with self.store.session() as s:
+            actor = require_lead(s.state, token)
+            inv_id, inv = self._find_run(s.state, run)
+            if current:
+                if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
+                    raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
+                                            f"latest run {inv['runs'][-1]['run']})")
+                status, _ = runlog.observed_status(directory)
+                if status not in (K.STARTING, K.RUNNING):
+                    raise IllegalTransition(f"{run} is {status}; relaunch with `aew harness launch` to continue its "
+                                            "invocation")
+            entry = next(r for r in inv["runs"] if r["run"] == run)
+            name, text = self._record_request(entry, kind, payload)
+            revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
+                                           reason=reason, refs=[f"run:{run}"]))
+        runlog.deliver_request(directory, name, text)
+        return {"ok": True, "run": run, "requested": kind, "file": name, "revision": revision}
+
     def harness_stop(self, *, token: str, run: str, reason: str) -> dict[str, Any]:
-        """Ask a run's supervisor to stop its harness. No AEW state changes; the invocation stays as it is."""
+        """Ask a run's supervisor to stop its harness. The invocation stays as it is."""
         if not (reason and reason.strip()):
             raise UsageError("stopping a run needs a reason")
-        with self.store.session() as s:
-            require_lead(s.state, token)
-            self._find_run(s.state, run)
-        path = runlog.request(runlog.run_dir(self.aew_root, run), "stop", {"reason": reason})
-        return {"ok": True, "run": run, "requested": path.name}
-
-    def _request_current_run(self, token: str, run: str, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Queue a Lead request for a run that still holds its invocation's authority and is running."""
-        with self.store.session() as s:
-            require_lead(s.state, token)
-            inv_id, inv = self._find_run(s.state, run)
-            if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
-                raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, latest run "
-                                        f"{inv['runs'][-1]['run']})")
-        directory = runlog.run_dir(self.aew_root, run)
-        status, _ = runlog.observed_status(directory)
-        if status not in (K.STARTING, K.RUNNING):
-            raise IllegalTransition(f"{run} is {status}; relaunch with `aew harness launch` to continue its invocation")
-        runlog.request(directory, kind, payload)
-        return {"ok": True, "run": run, "requested": kind}
+        return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
     def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        """Deliver a Lead message to a running agent after its current step. No AEW state changes."""
+        """Deliver a Lead message to a running agent after its current step. Work and invocation state do not change."""
         if not (text and text.strip()):
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
             raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
-        return self._request_current_run(token, run, "send", {"text": text})
+        return self._lead_request(token, run, "send", {"text": text}, current=True)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
-        """Stop a run's current turn, keeping its session: `harness send` continues it. No AEW state changes."""
-        return self._request_current_run(token, run, "interrupt", {})
+        """Stop a run's current turn, keeping its session: `harness send` continues it. Work and invocation state do
+        not change."""
+        return self._lead_request(token, run, "interrupt", {}, current=True)
 
     def harness_config(self, harness: str, *, invocation: str | None = None, lead: bool = False) -> dict[str, Any]:
         """The exact projection a harness receives, for inspection (read-only; prints no secret)."""

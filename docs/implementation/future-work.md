@@ -22,13 +22,13 @@
 
 The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's plan review ratifies or changes them.
 
-*Last updated: 2026-10-01 (post-M3 cleanup: M3 accepted; targets and §9 Closed; Q11, Q12 and F18; E14; O1 fixed. Earlier the same day: the milestone-start rule; F17, which absorbs U2, and §8, from the M3 review comparison). 2026-09-30 (§7: the operator's TUI acceptance session and the Lead's debrief; earlier the same day: F4: Ticket revisions adopted; F16 measured, and Q10's new evidence, from rubric amendments A4 and A5; O5 and E8 to E11 from A4's scope case; F16 and Q10's causes; F15, O4 and §6 from the M3 audits).*
+*Last updated: 2026-10-01 (ADR-0011's Q1 and Q2 approved, closed; F1 needs the storage-mechanism investigation first. Post-M3 cleanup: M3 accepted; targets and §9 Closed; Q11, Q12 and F18; E14; O1 fixed. Earlier the same day: the milestone-start rule; F17, which absorbs U2, and §8, from the M3 review comparison). 2026-09-30 (§7: the operator's TUI acceptance session and the Lead's debrief; earlier the same day: F4: Ticket revisions adopted; F16 measured, and Q10's new evidence, from rubric amendments A4 and A5; O5 and E8 to E11 from A4's scope case; F16 and Q10's causes; F15, O4 and §6 from the M3 audits).*
 
 ## 1. Gates on the way (in order)
 
 | Gate | Condition | Source |
 |---|---|---|
-| **Before M4** | ADR-0011 (hot and cold control state) is implemented and accepted against its completion criteria, H1 to H4 and A1. The thresholds await the designer's confirmation. | `adr/0011-hot-cold-control-state.md`; `m3-performance.md` §5 and §7 |
+| **Before M4** | ADR-0011 (hot and cold control state) is implemented and accepted against its completion criteria, H1 to H4, A1 and historical access (approved 2026-10-01). A storage-mechanism investigation comes before its implementation. | `adr/0011-hot-cold-control-state.md`; `m3-performance.md` §5 and §7 |
 | **Before real-repository dogfood or internal alpha** | Real filesystem containment passes the containment regression gate. Until then the guarantee is labelled `workdir separation only`, and the dogfood uses scratch repositories only. | `docs/design/execution-workspace-and-isolation-design-v0.1.md` §6.6 and §12; `m3-companion-review-triage.md` P1 and B2 |
 | **Before Linux runs rely on stop** | POSIX process ownership (E13): stopping a run ends every process it started. | E13 |
 
@@ -36,7 +36,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 | # | Work | Source (governing) | Belongs to or gated by | Notes |
 |---|---|---|---|---|
-| F1 | Hot and cold control state (archival of terminal records) | ADR-0011 | **Gate: before M4.** Needs Q1 and Q2 | History independence is the criterion. The `resume` evidence sweep is the designer's decision. |
+| F1 | Hot and cold control state (archival of terminal records) | ADR-0011 | **Gate: before M4.** Q1 and Q2 approved (2026-10-01) | History independence is the criterion: H1, H2 (fixed output cardinality), H3, A1, and a fully history-independent `resume` (H4), with an explicit full-integrity audit off the `resume` path. Cold history stays first-class knowledge: a supported surface to discover, inspect, trace and selectively load it (historical-access acceptance). **First step: the storage-mechanism investigation** (ADR-0011, "Implementation prerequisite"): compare file-backed content-addressed records with a durable index, a transactional indexed store, segmented manifests and hybrids, against ADR-0001's single commit point; a design that changes ADR-0001 needs its amendment first. |
 | F2 | Real filesystem containment (protected writable roots, enforced by the OS or runtime) | isolation design §3, §6.6, §12 | **Gate: before real-repository dogfood** or internal alpha | The mechanism is not chosen yet (containers, sandbox, overlay). Rocky 8 feasibility is an open question (§16). Research (not governing): [`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../design/containment-and-process-ownership-rocky8-research-2026-10-01.md), which proposes unprivileged bubblewrap with read-only roots and probes to run on the Q7 distro. |
 | F3 | Workspace strategy abstraction, role-sensitive isolation, repository-scale benchmarks | isolation design §4 to §14; lessons note, Incident B | **M4** (the concurrency part), with F2 | Isolation is a property, not a worktree. Benchmarks gate the choice of a project default. Mutable-serial locks are bound to an invocation (`AEW-INV-ISO-004`). |
 | F4 | Ticket supersession lineage, and a first-class goal-revision path | hierarchy design §8 to §10, §20 (Scenarios A and E) | **Hierarchy revision.** Before Leads routinely replace Tickets | Needs Workflow Contract and Knowledge Contract amendments. Observed in the M3 dogfood (T1: a recreated Ticket with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`; review, and the designer's decisions D1 to D7, in `ticket-revision-amendment-review-2026-09-30.md`). A material change becomes a new immutable revision of the same Ticket, not a replacement. Evidence binds to digests of the fields it depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse findings carry forward until resolved. A replacement stays for a change of kind, a move to another parent, or a goal that no longer overlaps. Evidence: twice a scope mistake cost a Ticket and its correct implementation (M3-D9; `m3-dogfood-report.md` §6.6). |
@@ -69,8 +69,6 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 | # | Question | Owner | Source |
 |---|---|---|---|
-| Q1 | The completion thresholds for ADR-0011 (H1 to H4, A1) | Designer | ADR-0011 |
-| Q2 | Whether `resume` should keep sweeping all historical evidence | Designer | ADR-0011 |
 | Q3 | Whether containment is required for personal real-project dogfood, or only for internal alpha | Designer | isolation design §16; research: [`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../design/containment-and-process-ownership-rocky8-research-2026-10-01.md) |
 | Q4 | Fail-closed rules for `verify classify` and risk class | Designer | F6 |
 | Q5 | The open questions each design lists | Designer | hierarchy §21; lead/operator §23; isolation §16 |
@@ -151,3 +149,5 @@ Entries leave the tables above when their work is accepted or another entry abso
 | U2 | An investigation-review coverage contract | 2026-10-01 | Absorbed into F17 (designer; `8eac795`, PR #6) |
 | O1 | A file named `nul` failed the fingerprint with git's raw error | 2026-10-01 | The post-M3 cleanup: the snapshot refuses it by name, with the cause and the remedy (`snapshot/fingerprint.py`; `tests/integration/test_fingerprint.py`) |
 | E15 | GitHub Action majors behind (Node 20 runtimes; CodeQL Action v3 deprecated December 2026) | 2026-10-01 | The post-M3 cleanup: checkout v7, setup-python v7, upload-artifact v7, download-artifact v8, codeql-action v4 |
+| Q1 | The completion thresholds for ADR-0011 (H1 to H4, A1) | 2026-10-01 | Approved by the operator and designer: H1, H3 and A1 kept; H2 measured at fixed output cardinality; H4 replaced by a history-independent `resume` (ADR-0011) |
+| Q2 | Whether `resume` should keep sweeping all historical evidence | 2026-10-01 | No: `resume` is an active-state operation; full cold-history verification is an explicit audit, and cold history stays first-class and discoverable (ADR-0011) |

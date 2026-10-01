@@ -11,7 +11,6 @@ supervisor the test started.
 
 from __future__ import annotations
 
-import calendar
 import json
 import os
 import subprocess
@@ -21,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from aew.harness import procs, runlog
+from aew.harness import runlog
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, TERMINAL, LaunchContract
@@ -180,30 +179,32 @@ class HarnessLab:
         raise AssertionError(f"timed out after {timeout}s waiting for {what}")
 
     def cleanup(self) -> None:
-        """End every run this lab started. A supervisor is asked to stop; one that does not answer is killed only
-        if its pid still names the same process (pids are reused, and other tests' processes run in parallel).
-        Its job object / sentinel then takes the harness tree. A Lead session still running is killed first (its
-        own Popen handle: never a bare pid)."""
+        """End every run this lab started. A live run is stopped through the Lead (a request file alone is refused,
+        independent review R1); when the project's Lead token no longer holds the seat, or a supervisor does not
+        answer, the supervisor is killed if its pid still names the same process (pids are reused, and other tests'
+        processes run in parallel). Its job object / sentinel then takes the harness tree. A Lead session still
+        running is killed first (its own Popen handle: never a bare pid)."""
+        from aew.engine.api import Engine
+        from aew.errors import AEWError
+
         for proc in self.sessions:
             if proc.poll() is None:
                 proc.kill()
                 proc.communicate()
         runs = runlog.run_dir(self.aew_root, "x").parent
         dirs = sorted(runs.glob("*")) if runs.is_dir() else []
-        for directory in dirs:
-            if runlog.observed_status(directory)[0] in (K.STARTING, K.RUNNING):
-                runlog.request(directory, "stop", {"reason": "test teardown"})
+        live = [d for d in dirs if runlog.observed_status(d)[0] in (K.STARTING, K.RUNNING)]
+        engine = Engine(self.root, self.aew_root) if live else None
+        for directory in live:
+            try:
+                engine.harness_stop(token=self.project.token, run=directory.name, reason="test teardown")
+            except AEWError:
+                runlog.end_supervisor(directory)
         deadline = time.monotonic() + 20
-        for directory in dirs:
+        for directory in live:
             while runlog.observed_status(directory)[0] in (K.STARTING, K.RUNNING) and time.monotonic() < deadline:
                 time.sleep(0.1)
-            record = runlog.read_record(directory) or {}
-            pid, custody = record.get("supervisor_pid"), record.get("custody_at")
-            if record.get("ended_at") or not pid or not custody:
-                continue
-            custody_epoch = calendar.timegm(time.strptime(custody, "%Y-%m-%dT%H:%M:%SZ"))
-            if procs.same_process(pid, custody_epoch):
-                procs.kill_pid(pid)
+            runlog.end_supervisor(directory)
 
 
 def credential_hits(*roots: Path) -> list[str]:

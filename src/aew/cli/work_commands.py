@@ -350,7 +350,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("run")
     q.add_argument("--timeout", type=float, default=600.0)
     q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run, timeout=a.timeout))
-    q = hsub.add_parser("stop", help="stop a run's harness; no AEW state changes (Lead)")
+    q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")
     q.add_argument("--reason", required=True)
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")

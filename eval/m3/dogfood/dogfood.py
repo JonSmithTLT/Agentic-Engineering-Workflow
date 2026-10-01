@@ -373,7 +373,7 @@ def lead_child(spec_path: Path) -> int:
     def stop_runs(reason: str) -> None:
         for d in runs_root.glob("*") if runs_root.is_dir() else []:
             if runlog.observed_status(d)[0] in (K.STARTING, K.RUNNING):
-                runlog.request(d, "stop", {"reason": reason})
+                runlog.end_supervisor(d)  # this child holds no Lead credential; a bare request file is refused
 
     def done() -> bool:
         work = engine.store.read()["work"]
@@ -602,7 +602,7 @@ def stop_leftovers(repo: Path) -> list[str]:
     stopped = []
     for d in sorted(runs_root.glob("*")) if runs_root.is_dir() else []:
         if runlog.observed_status(d)[0] in (K.STARTING, K.RUNNING):
-            runlog.request(d, "stop", {"reason": "dogfood teardown"})
+            runlog.end_supervisor(d)  # the Lead may be gone; a bare request file is refused (review R1)
             stopped.append(d.name)
     limit = time.monotonic() + 90
     for d in sorted(runs_root.glob("*")) if runs_root.is_dir() else []:

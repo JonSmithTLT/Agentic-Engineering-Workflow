@@ -111,28 +111,55 @@ def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = UN
     return possibly_live(status, launched_at, grace_s=grace_s)
 
 
-def request(directory: Path, kind: str, payload: dict[str, Any] | None = None) -> Path:
-    """Queue a Lead request (stop, send, interrupt) for the run's supervisor."""
+def new_request(kind: str, payload: dict[str, Any] | None = None) -> tuple[str, str]:
+    """A Lead request (stop, send, interrupt) for a run's supervisor: its file name and text.
+
+    The run directory is model-writable, so a request file alone authorizes nothing: the Lead operation records the
+    name and digest in control state first (``harness_ops``), then delivers the file with :func:`deliver_request`,
+    and the supervisor acts only on a file that matches a recorded request (independent review R1)."""
+    name = f"{time.time_ns()}-{os.getpid()}-{kind}.json"
+    return name, json.dumps({"kind": kind, "at": utc_now(), **(payload or {})})
+
+
+def deliver_request(directory: Path, name: str, text: str) -> Path:
     queue = directory / "requests"
     queue.mkdir(parents=True, exist_ok=True)
-    path = queue / f"{time.time_ns()}-{os.getpid()}-{kind}.json"
-    atomic_write(path, json.dumps({"kind": kind, "at": utc_now(), **(payload or {})}))
+    path = queue / name
+    atomic_write(path, text)
     return path
 
 
-def take_requests(directory: Path) -> list[dict[str, Any]]:
+def take_requests(directory: Path) -> list[tuple[str, str]]:
+    """Every queued request file as (name, text), removed from the queue. Nothing here is trusted."""
     queue = directory / "requests"
     out = []
     for path in sorted(queue.glob("*.json")) if queue.is_dir() else []:
         try:
-            out.append(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
+            out.append((path.name, path.read_bytes().decode("utf-8", errors="replace")))
+        except OSError:
             pass
         try:
             path.unlink()
         except OSError:
             pass
     return out
+
+
+def end_supervisor(directory: Path) -> bool:
+    """Kill a run's supervisor process, if it is still the one that took custody (pids are reused). Its job object
+    or process group then ends the harness tree. For teardown by the operator's own tooling, which can end any of
+    its processes anyway; it needs no request and leaves no state behind (the run shows as lost)."""
+    from aew.harness import procs
+
+    record = read_record(directory) or {}
+    pid, custody = record.get("supervisor_pid"), record.get("custody_at")
+    if record.get("ended_at") or not pid or not custody:
+        return False
+    custody_epoch = calendar.timegm(time.strptime(custody, "%Y-%m-%dT%H:%M:%SZ"))
+    if not procs.same_process(pid, custody_epoch):
+        return False
+    procs.kill_pid(pid)
+    return True
 
 
 class EventLog:

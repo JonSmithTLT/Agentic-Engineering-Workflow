@@ -56,7 +56,7 @@
   - a supervisor heartbeat within `STALE_AFTER_S` (10 s); or
   - an `unconfirmed` run launched less than 30 s ago, which could still be between its launch commit and its spawn.
 
-  A possibly-live run needs `--replace` (`RUN_LIVE`). Its credential dies in the relaunch commit either way, and a best-effort stop request is queued for its supervisor.
+  A possibly-live run needs `--replace` (`RUN_LIVE`). Its credential dies in the relaunch commit either way, and a best-effort stop request for its supervisor is recorded in the same commit.
 - **A session id is correlation only**, recorded in the local run record.
 - **Harness session loss is not INTERRUPTED.** The AEW execution identity (the invocation and its credential) survives and is re-bound by rotation. INTERRUPTED stays tied to authority changes (ADR-0003).
 
@@ -251,3 +251,18 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - the job object can be escaped through out-of-tree spawners (authority is unaffected).
 
   These are recorded in the reviewer brief's attack list.
+
+## Amendment 2026-10-01 — Lead run requests are recorded in control state (independent review R1)
+
+The independent M3 review found that a run's supervisor acted on any request file in `<run>/requests/`. Run directories are model-writable (same user), so one agent could stop another run, or deliver a message to an independent reviewer, without the Lead. No AEW state moved, but it contradicted this ADR's own rule that nothing deciding anything reads run records.
+
+- **A request is recorded before it is delivered.** `aew harness stop`, `send` and `interrupt` (and the stop a relaunch sends to the run it supersedes) append `{file, kind, sha256, at}` to the run's entry in `inv.runs[]`, in a commit made under the Lead credential, then write the file. The file carries the payload, so a message's text never enters control state.
+- **The supervisor acts only on a recorded request, once.** For each queued file it re-reads control state and requires the name to be recorded for its run, the digest and kind to match, and the name not to have been handled already. Anything else is discarded and logged to the event log as `request_refused` (never to the run record, so a flood of files cannot grow it).
+- **No expected revision.** Like the Lead seat operations, these requests name one run and are checked against the state they commit on; work and invocation state do not change.
+- **Trust level.** Control state is what the supervisor already trusts to end a run's authority. A same-user process that rewrites `control.yaml` and its checksum is outside the ADR-0005 threat model, as before; this closes the path that needed only an ordinary file write.
+- **Teardown tooling** that holds no Lead credential ends a supervisor process directly (`runlog.end_supervisor`), which any same-user process can already do.
+- Regressions: `tests/regression/test_m3_independent_review.py`.
+
+## Amendment 2026-10-01 — the capability probe checks types (independent review R2)
+
+`REQUIRED_FIELDS` now lists every response field the adapter reads, including those read only for run telemetry (assistant `content` and `agent`, the message page's `data` and `cursor.next`, tool `name`, idle `type`), and every configuration and permission-rule field it sends. Each carries the JSON type the adapter relies on. A field passes if the served schema still offers that type through `$ref` and `anyOf`/`oneOf`/`allOf`; a field with no declared type passes. Removing a field, or retyping one (for example `Config.AgentEncoded.model` to string only), now fails health as `HARNESS_INCOMPATIBLE`, naming it.

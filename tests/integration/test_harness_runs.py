@@ -137,7 +137,8 @@ def test_lead_stop_ends_the_run_but_not_the_invocation(lab, tmp_path, sync):
     lab.ok("harness", "stop", run, "--reason", "wrong approach", "--token", lab.project.token)
     done = lab.wait(run)
     assert done["status"] == "terminated" and done["reason"] == "stopped: wrong approach"
-    assert lab.project.rev() == rev and lab.ok("invoke", "show", out["invocation"])["status"] == "active"
+    # The stop request itself is recorded (independent review R1); the invocation is unchanged.
+    assert lab.project.rev() == rev + 1 and lab.ok("invoke", "show", out["invocation"])["status"] == "active"
     lab.script("R-INV-0001-2", [{"do": "exit", "code": 0}])
     assert lab.lead("harness", "launch", out["invocation"])["run"] == "R-INV-0001-2"  # a stopped run is not live
     lab.wait("R-INV-0001-2")

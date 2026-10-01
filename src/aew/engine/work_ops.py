@@ -336,6 +336,13 @@ class WorkOps(EngineBase):
                 raise NotFound(f"{work_id} has no plan revision {revision}")
             if entry["status"] != "proposed":
                 raise IllegalTransition(f"plan v{revision} is {entry['status']}")
+            # A revision replaces only the plan it was proposed against: accepting an older proposal would rebind
+            # its assurance over a newer plan's, and skip the reason a supersession needs (M3 review, B1).
+            current = (unit.get("plan") or {}).get("accepted")
+            if entry.get("supersedes") != current:
+                against = f"plan v{entry['supersedes']}" if entry.get("supersedes") else "no accepted plan"
+                raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
+                                        "accepted now; propose a new revision to change it")
             for p in unit["plans"]:
                 if p["status"] == "accepted":
                     p["status"] = "superseded"

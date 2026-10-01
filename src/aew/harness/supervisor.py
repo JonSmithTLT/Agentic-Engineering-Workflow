@@ -34,7 +34,7 @@ from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, procs, registry, runlog
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
-from aew.util import utc_now
+from aew.util import sha256_text, utc_now
 
 TICK_S = 0.25
 STATE_POLL_S = 2.0
@@ -59,6 +59,7 @@ class Supervisor:
         self.engine = Engine(Path(handoff["repo_root"]), Path(handoff["aew_root"]))
         self.ack = ack
         self.events = runlog.EventLog(run_dir / "events.jsonl")
+        self._handled: set[str] = set()  # request files acted on (a replayed one is refused)
         self.record: dict[str, Any] = {"schema": K.RUN_SCHEMA, "run": self.run, "invocation": self.inv_id,
                                        "containment": K.CONTAINMENT,
                                        "status": K.STARTING, "supervisor_pid": os.getpid(), "custody_at": utc_now(),
@@ -212,7 +213,7 @@ class Supervisor:
                 last_beat = now
             if self.stop_reason:
                 return self._finish(*self.stop_reason)
-            for req in runlog.take_requests(self.run_dir):
+            for req in self._authorized_requests():
                 kind = req.get("kind")
                 self._event("request", kind=kind)
                 if kind == "stop":
@@ -235,6 +236,43 @@ class Supervisor:
             if deadline is not None and now >= deadline:
                 return self._finish(K.TERMINATED, f"deadline of {deadline_s}s exceeded")
             time.sleep(TICK_S)
+
+    def _authorized_requests(self) -> list[dict[str, Any]]:
+        """Queued request files that a Lead operation recorded for this run, each acted on once.
+
+        The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
+        on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
+        else is recorded and discarded (independent review R1)."""
+        pending = runlog.take_requests(self.run_dir)
+        if not pending:
+            return []
+        try:
+            inv = self.engine.store.read()["invocations"].get(self.inv_id) or {}
+            entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
+            recorded = {r["file"]: r for r in entry.get("requests") or []}
+        except errors.AEWError as exc:
+            recorded = {}
+            self._event("request_state_unreadable", error=exc.message)
+        out = []
+        for name, text in pending:
+            want = recorded.get(name)
+            why = ("not recorded by a Lead operation" if want is None else
+                   "already handled" if name in self._handled else
+                   "content differs from the recorded request" if sha256_text(text) != want["sha256"] else None)
+            req: Any = None
+            if why is None:
+                try:
+                    req = json.loads(text)
+                except ValueError:
+                    req = None
+                if not isinstance(req, dict) or req.get("kind") != want["kind"]:
+                    why = "content differs from the recorded request"
+            if why is not None:  # the event log only: a flood of files never grows the run record
+                self.events({"event": "request_refused", "file": name[:200], "why": why})
+                continue
+            self._handled.add(name)
+            out.append(req)
+        return out
 
     def _finish_exited(self, status: dict[str, Any]) -> None:
         """The harness exited. Its exit status is never success: only a recorded expected output is progress,

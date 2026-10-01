@@ -6,7 +6,9 @@
 
 **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Remove an entry when its work is accepted, and name the commit or document that closed it.
 
-*Last updated: 2026-09-30 (§7: the operator's TUI acceptance session and the Lead's debrief; earlier the same day: F4: Ticket revisions adopted; F16 measured, and Q10's new evidence, from rubric amendments A4 and A5; O5 and E8 to E11 from A4's scope case; F16 and Q10's causes; F15, O4 and §6 from the M3 audits).*
+**At each milestone start** (operator, 2026-10-01): the milestone's ambiguity report goes through this register. It covers every entry whose *When* names that milestone or a gate before it, and any other open entry that fits the milestone's scope. It marks each one as **in scope**, **deferred** (with the reason) or **closed** (naming what closed it). Items with no fixed milestone may be pulled in where they fit. The operator and designer approve that scope at plan review, with the rest of the plan.
+
+*Last updated: 2026-10-01 (the milestone-start rule; F17, which absorbs U2, and §8, from the M3 review comparison). 2026-09-30 (§7: the operator's TUI acceptance session and the Lead's debrief; earlier the same day: F4: Ticket revisions adopted; F16 measured, and Q10's new evidence, from rubric amendments A4 and A5; O5 and E8 to E11 from A4's scope case; F16 and Q10's causes; F15, O4 and §6 from the M3 audits).*
 
 ## 1. Gates on the way (in order)
 

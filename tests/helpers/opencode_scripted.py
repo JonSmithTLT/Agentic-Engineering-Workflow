@@ -54,7 +54,7 @@ class ScriptedOpenCodeAdapter(OpenCodeAdapter):
         self.turn = "scripted"
         threading.Thread(target=self._run_script, args=(contract,), name="aew-scripted", daemon=True).start()
 
-    def _turn_over(self, outcome: str) -> None:
+    def _turn_over(self, outcome: str, last: str = "") -> None:
         """A model_step's turn ended: the script goes on (the base adapter would end the run here)."""
         self._take_snapshot()
         with self._lock:

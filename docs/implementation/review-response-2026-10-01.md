@@ -5,6 +5,7 @@
 - **AEW-Lead review (2026-10-01):** the same prompt and model, run as AEW work under an AEW Lead on a scratch clone of the tag. A dogfood comparison, not a second independent review: AEW reviewing AEW cannot be the acceptance verdict. It found one new defect (B1) and the R2 class; it missed R1.
 - **Adjudication:** every finding was checked against the code at the tag. No false positives. The reviewer's four probes failed at the tag as reported.
 - **Fix commit:** `812b492`. Local Windows: the full suite 1023 passed, 4 skipped (POSIX-only), and the serial lane 10 passed, 1 skipped.
+- **Outcome:** merged into `impl/m3-opencode` by PR #6 (`7d3a005`). The operator accepted M3 on 2026-10-01 on this response, without a re-review, and merged it by PR #5 (`169af1d`; tag `aew-m3-accepted-2026-10-01`).
 
 Every regression is in `tests/regression/test_m3_independent_review.py`. Each was seen failing at the tag (11 of 11) before its fix.
 

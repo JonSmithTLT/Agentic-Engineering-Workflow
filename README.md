@@ -6,8 +6,9 @@ Provider-neutral, contract-first engineering workflow for AI coding agents. AEW 
 - **Specification:** frozen set `aew-frozen-2026-09-25` in `docs/` (Workflow Contract v0.7, Knowledge Contract v0.4, manifest, SPT remediation appendix). It is pinned by the tag `aew-spec-frozen-2026-09-25` and guarded by `tests/test_spec_pin.py`.
 - **Implementation:**
   - **M1** (a deterministic state engine and CLI, `aew`: one serial Ticket lifecycle through controlled integration, Lead-session loss and reconstruction from durable state) and **M2** (Epic/Story hierarchy, non-mutating Tickets, Investigator/Researcher/Planner roles) are accepted and merged.
-  - **M3** (OpenCode V2 as the first agent harness: roles run as harness sessions, with no AEW credential in any model's hands) is implemented and documented on `impl/m3-opencode` (PR #5); the operator's own TUI session and the independent review remain. Start with [`m3-reviewer-brief.md`](docs/implementation/m3-reviewer-brief.md).
-  - What is implemented, staged or only designed: [`implementation-status.md`](docs/implementation/implementation-status.md). Deferred work: [`future-work.md`](docs/implementation/future-work.md).
+  - **M3** (OpenCode V2 as the first agent harness: roles run as harness sessions, with no AEW credential in any model's hands) is accepted and merged (PR #5; tag `aew-m3-accepted-2026-10-01`), after the independent review's fixes ([`review-response-2026-10-01.md`](docs/implementation/review-response-2026-10-01.md)). Start with [`m3-reviewer-brief.md`](docs/implementation/m3-reviewer-brief.md) and the operator's guide, [`opencode.md`](docs/implementation/opencode.md).
+  - **Next:** hot/cold control state (ADR-0011), the prerequisite for M4 (mutating concurrency above 1).
+  - What is implemented, staged or only designed: [`implementation-status.md`](docs/implementation/implementation-status.md). Deferred work, and how each milestone takes it up: [`future-work.md`](docs/implementation/future-work.md).
 
 | Document | Contents |
 |---|---|

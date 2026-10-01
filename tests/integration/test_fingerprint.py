@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from conftest import git, make_git_repo
 
-from aew.snapshot.fingerprint import changed_paths, relevant_inputs_fingerprint
+from aew.errors import IntegrityError
+from aew.snapshot.fingerprint import changed_paths, relevant_inputs_fingerprint, reserved_device_names
 
 
 def fixture(tmp_path):
@@ -88,3 +91,29 @@ def test_changed_paths_include_untracked_and_aew(tmp_path):
     (repo / ".aew").mkdir()
     (repo / ".aew/project.yaml").write_text("x: 1\n")
     assert sorted(changed_paths(repo, base)) == [".aew/project.yaml", "calc/core.py", "calc/new_module.py"]
+
+
+def test_reserved_device_names_match_any_case_and_extension():
+    assert reserved_device_names(["nul", "a/NUL.txt", "b/Con", "lpt9.log", "aux .md", "COM1"]) == [
+        "nul", "a/NUL.txt", "b/Con", "lpt9.log", "aux .md", "COM1"]
+    assert reserved_device_names(["null", "nul_x", "console.py", "com10", "lpt0", "a.nul", "nul/x.py"]) == []
+
+
+def test_device_named_file_refused_by_name_on_windows_and_ordinary_elsewhere(tmp_path):
+    """Future-work O1: a `nul` file (a bash `> nul` on Windows) made the fingerprint fail with git's raw error."""
+    repo = fixture(tmp_path)
+    nul = repo / "calc" / "nul"
+    if os.name != "nt":
+        nul.write_text("x\n")  # an ordinary name on POSIX
+        assert relevant_inputs_fingerprint(repo) != "git-tree:" + git("rev-parse", "HEAD^{tree}", cwd=repo)
+        return
+    extended = "\\\\?\\" + str(nul)  # the only way to create or delete a file with a device name
+    with open(extended, "w") as fh:
+        fh.write("x\n")
+    try:
+        with pytest.raises(IntegrityError) as err:
+            relevant_inputs_fingerprint(repo)
+        assert err.value.details["paths"] == ["calc/nul"]
+        assert "> nul" in str(err.value)
+    finally:
+        os.remove(extended)

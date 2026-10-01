@@ -8,6 +8,7 @@ from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg
 from aew.errors import UsageError
+from aew.harness import bridge
 
 
 def _inv_token(args: argparse.Namespace) -> str:
@@ -15,6 +16,47 @@ def _inv_token(args: argparse.Namespace) -> str:
     if not token:
         raise UsageError("invocation credential required: pass --invocation-token or set AEW_INVOCATION_TOKEN")
     return token
+
+
+def _as_invocation(args: argparse.Namespace, op: str, bridge_args: dict[str, Any], direct: Any) -> Any:
+    """Act as a bounded role: with an explicit credential, or, inside a harness run that supplied none,
+    through the run's custody bridge (the supervisor holds the credential; ADR-0009)."""
+    explicit = getattr(args, "invocation_token", None) or os.environ.get("AEW_INVOCATION_TOKEN")
+    if not explicit and bridge.available():
+        return bridge.call(op, bridge_args)
+    return direct(_inv_token(args))
+
+
+def _submit(a: argparse.Namespace) -> Any:
+    text = bridge.read_submission(a.file)  # read once: `--file -` is a stream (M3 step 8)
+    return _as_invocation(a, "submit", {"kind": a.kind, "text": text},
+                          lambda token: _engine(a).submit(invocation_token=token, kind=a.kind, text=text))
+
+
+def _add_launch(q: argparse.ArgumentParser) -> None:
+    q.add_argument("--launch", action="store_true",
+                   help="start a harness run for the new invocation (ADR-0009); its credential goes to the run's "
+                        "supervisor and is not printed")
+
+
+def _dispatch(args: argparse.Namespace, op: str, **kwargs: Any) -> Any:
+    engine = _engine(args)
+    out = getattr(engine, op)(token=_lead_token(args), expect_rev=args.expect_rev,
+                              execution_profile=_execution(args), launch=args.launch, **kwargs)
+    return engine.launch_dispatched(out) if args.launch else out
+
+
+def _add_execution(q: argparse.ArgumentParser) -> None:
+    """Lead override of the execution policy for the invocation this dispatch creates (ADR-0010)."""
+    g = q.add_argument_group("execution (default: policy/execution.yaml routing)")
+    g.add_argument("--profile", help="execution profile to pin (recorded as selected_by: lead)")
+    g.add_argument("--model", metavar="PROVIDER/MODEL", help="pin this model instead of a profile")
+    g.add_argument("--effort", help="reasoning-effort variant to pin")
+
+
+def _execution(args: argparse.Namespace) -> dict[str, Any] | None:
+    chosen = {k: getattr(args, k, None) for k in ("profile", "model", "effort")}
+    return {k: v for k, v in chosen.items() if v is not None} or None
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -28,7 +70,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--parent")
     q.add_argument("--depends-on", action="append", default=[], metavar="ID[:mutating|evidence]")
     q.add_argument("--non-mutating", action="store_true", help="Ticket changes no source (evidence only)")
-    q.add_argument("--scope", action="append", default=[], metavar="GLOB", help="allowed change paths")
+    q.add_argument("--scope", action="append", default=[], metavar="GLOB",
+                   help="an allowed change path glob; repeat --scope for each (e.g. --scope 'src/**' --scope 'tests/**')")
     q.add_argument("--goal", action="append", default=[], help="goal-backwards acceptance criterion")
     q.add_argument("--contract", action="append", default=[], help="contract/conformance criterion")
     q.add_argument("--mandatory-gate", action="append", default=[], help="Story/Epic: non-waivable gate for descendants")
@@ -58,9 +101,10 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     q = wsub.add_parser("assign", help="READY -> ASSIGNED: workspace + implementer invocation (Lead)")
     q.add_argument("work_id")
+    _add_execution(q)
+    _add_launch(q)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_assign(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                           work_id=a.work_id))
+    q.set_defaults(handler=lambda a: _dispatch(a, "work_assign", work_id=a.work_id))
 
     q = wsub.add_parser("roles", help="show a Ticket's stored and effective role plan")
     q.add_argument("work_id")
@@ -94,16 +138,19 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = wsub.add_parser("dispatch", help="READY -> ASSIGNED for a non-mutating Ticket: executor + observation (Lead)")
     q.add_argument("work_id")
     q.add_argument("--card", help="investigator/researcher/planner card (default: the staffed or default card)")
+    _add_execution(q)
+    _add_launch(q)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_dispatch(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                             work_id=a.work_id, card=a.card))
+    q.set_defaults(handler=lambda a: _dispatch(a, "work_dispatch", work_id=a.work_id, card=a.card))
     q = wsub.add_parser("redispatch", help="supersede a non-mutating Ticket's attempt and start the next (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
     q.add_argument("--card")
+    _add_execution(q)
+    _add_launch(q)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_redispatch(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                               work_id=a.work_id, reason=a.reason, card=a.card))
+    q.set_defaults(handler=lambda a: _dispatch(a, "work_redispatch", work_id=a.work_id, reason=a.reason,
+                                               card=a.card))
     q = wsub.add_parser("accept", help="accept a non-mutating Ticket's record: -> DONE (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason")
@@ -181,6 +228,20 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--file")
     q.set_defaults(handler=lambda a: _engine(a).role_validate(a.file))
 
+    def _add_assurance(q: argparse.ArgumentParser) -> None:
+        g = q.add_argument_group(
+            "assurance (required: the declared review and verification become required gates when the plan is "
+            "accepted)")
+        g.add_argument("--review", action="append", default=[], metavar="CARD",
+                       help="a reviewer card the plan requires (repeatable; `default` = the default reviewer)")
+        g.add_argument("--verify", action="append", default=[], metavar="CARD",
+                       help="a verifier card the plan requires (repeatable; `default` = the default verifier)")
+        g.add_argument("--assurance", choices=["none"],
+                       help="`none`: the plan requires no review or verification beyond the unit's policy path")
+
+    def _assurance(a: argparse.Namespace) -> dict[str, Any]:
+        return {"review": a.review, "verify": a.verify, "no_assurance": a.assurance == "none"}
+
     p = sub.add_parser("plan", help="plan revisions (immutable once accepted)")
     psub = p.add_subparsers(dest="plan_cmd", required=True)
     q = psub.add_parser("propose")
@@ -188,10 +249,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--file", required=True, help="plan body (Markdown; file or - for stdin)")
     q.add_argument("--reason")
     q.add_argument("--affected", action="append", default=[], metavar="PATH")
+    _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_propose(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, body=_read_text_arg(a.file),
-        reason=a.reason, affected_paths=a.affected))
+        reason=a.reason, affected_paths=a.affected, **_assurance(a)))
     q = psub.add_parser("accept")
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)
@@ -203,10 +265,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--evidence", required=True)
     q.add_argument("--from", dest="source", required=True, help="the DONE planning Ticket that produced it")
     q.add_argument("--reason")
+    _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_adopt(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
-        source=a.source, reason=a.reason))
+        source=a.source, reason=a.reason, **_assurance(a)))
     q = psub.add_parser("reconfirm", help="rebind an accepted plan after an ancestor's plan changed (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
@@ -226,10 +289,11 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--role", choices=["implementer", "reviewer", "verifier"],
                    help="archetype; picks its default card when --card is omitted")
     q.add_argument("--scope", choices=["ticket", "integration"], default="ticket")
+    _add_execution(q)
+    _add_launch(q)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).invoke_create(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, role=a.role, card=a.card,
-        scope=a.scope))
+    q.set_defaults(handler=lambda a: _dispatch(a, "invoke_create", work_id=a.work_id, role=a.role, card=a.card,
+                                               scope=a.scope))
     q = isub.add_parser("cancel")
     q.add_argument("invocation")
     q.add_argument("--reason", required=True)
@@ -254,15 +318,60 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = csub.add_parser("run")
     q.add_argument("check_id", help="a check from policy/checks.yaml, or the built-in `guardrails`")
     q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
-    q.set_defaults(handler=lambda a: _engine(a).check_run(invocation_token=_inv_token(a), check_id=a.check_id))
+    q.set_defaults(handler=lambda a: _as_invocation(
+        a, "check.run", {"check_id": a.check_id},
+        lambda token: _engine(a).check_run(invocation_token=token, check_id=a.check_id)))
 
     q = sub.add_parser("submit", help="submit role evidence (implementation report, review, verification)")
     q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
                                                      "discovery_record", "research_record", "plan_proposal"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
     q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
-    q.set_defaults(handler=lambda a: _engine(a).submit(invocation_token=_inv_token(a), kind=a.kind,
-                                                      text=_read_text_arg(a.file)))
+    q.set_defaults(handler=_submit)
+
+    q = sub.add_parser("whoami", help="the invocation this credential or harness run acts as (bounded role)")
+    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.set_defaults(handler=lambda a: _as_invocation(
+        a, "whoami", {}, lambda token: _engine(a).invocation_whoami(invocation_token=token)))
+
+    p = sub.add_parser("harness", help="harness runs of invocations (ADR-0009)")
+    hsub = p.add_subparsers(dest="harness_cmd", required=True)
+    q = hsub.add_parser("launch", help="start a harness run for an active invocation; rotates its credential (Lead)")
+    q.add_argument("invocation")
+    q.add_argument("--replace", action="store_true",
+                   help="relaunch even if the latest run may still be running (it loses its authority now)")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).harness_launch(
+        token=_lead_token(a), expect_rev=a.expect_rev, invocation=a.invocation, replace=a.replace))
+    q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
+    q.add_argument("invocation", nargs="?")
+    q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
+    q = hsub.add_parser("wait", help="wait until a run stops running")
+    q.add_argument("run")
+    q.add_argument("--timeout", type=float, default=600.0)
+    q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run, timeout=a.timeout))
+    q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
+    q.add_argument("run")
+    q.add_argument("--reason", required=True)
+    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    q.set_defaults(handler=lambda a: _engine(a).harness_stop(token=_lead_token(a), run=a.run, reason=a.reason))
+    q = hsub.add_parser("send", help="deliver a message to a running agent after its current step (Lead)")
+    q.add_argument("run")
+    src = q.add_mutually_exclusive_group(required=True)
+    src.add_argument("--text")
+    src.add_argument("--file", help="message file, or - for stdin")
+    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    q.set_defaults(handler=lambda a: _engine(a).harness_send(
+        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file)))
+    q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
+    q.add_argument("run")
+    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    q.set_defaults(handler=lambda a: _engine(a).harness_interrupt(token=_lead_token(a), run=a.run))
+    q = hsub.add_parser("config", help="print the exact projection a harness receives (read-only)")
+    q.add_argument("harness", choices=["opencode"])
+    q.add_argument("invocation", nargs="?")
+    q.add_argument("--lead", action="store_true", help="the Lead's TUI projection (`aew opencode`)")
+    q.set_defaults(handler=lambda a: _engine(a).harness_config(a.harness, invocation=a.invocation, lead=a.lead))
 
     q = sub.add_parser("gate", help="gate evaluation against the current evaluated snapshot")
     gsub = q.add_subparsers(dest="gate_cmd", required=True)

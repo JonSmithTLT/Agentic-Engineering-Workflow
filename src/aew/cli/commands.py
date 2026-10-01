@@ -9,6 +9,7 @@ from typing import Any
 
 from aew import doctor
 from aew.errors import UsageError
+from aew.util import read_text_input
 
 
 # ---------------------------------------------------------------------- shared helpers
@@ -34,13 +35,7 @@ def _lead_token(args: argparse.Namespace) -> str:
 
 
 def _read_text_arg(value: str | None) -> str:
-    if not value:
-        return ""
-    if value == "-":
-        import sys
-
-        return sys.stdin.read()
-    return Path(value).read_text(encoding="utf-8")
+    return read_text_input(value)
 
 
 def _add_json(p: argparse.ArgumentParser) -> None:
@@ -75,6 +70,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("resume", help="reconstruct the Lead's context from durable state (read-only)")
     _add_json(p)
     p.set_defaults(handler=_resume)
+
+    p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
+                                     "requires, the Ticket lifecycle and the command for each step (read-only)")
+    _add_json(p)
+    p.set_defaults(handler=lambda a: {"guide": _engine(a).lead_guide()} if a.json else _engine(a).lead_guide())
 
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
     p.add_argument("--note-file", help="checkpoint notes (file or - for stdin)")
@@ -147,6 +147,28 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a), expect_rev=a.expect_rev))
 
+    q = lsub.add_parser("session", help="run a Lead harness session that never sees the Lead credential (ADR-0009)")
+    q.add_argument("--acquire", action="store_true",
+                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    q.add_argument("--session-label")
+    q.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    q.add_argument("harness_command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
+    q.set_defaults(handler=_lead_session)
+
+    p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
+                                        "credential or, by default, any provider key (ADR-0009)")
+    p.add_argument("--acquire", action="store_true",
+                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    p.add_argument("--session-label")
+    p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
+                   help="pass this provider variable to the Lead's OpenCode (its shell can then read it); by default "
+                        "the Lead's model uses the credentials OpenCode stores (`opencode auth login`)")
+    p.add_argument("--print-config", action="store_true",
+                   help="print the Lead projection and the environment names; start nothing")
+    p.add_argument("opencode_args", nargs=argparse.REMAINDER, help="-- further OpenCode TUI arguments")
+    p.set_defaults(handler=_opencode)
+
 
 def _register_authority(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("authority", help="classify candidate authority sources discovered by init")
@@ -197,9 +219,29 @@ def _init(args: argparse.Namespace) -> Any:
     }
 
 
+def _lead_session(args: argparse.Namespace) -> Any:
+    from aew.harness import lead_broker
+
+    command = list(args.harness_command)
+    if command[:1] == ["--"]:
+        command = command[1:]
+    return lead_broker.run_session(_engine(args), command, acquire=args.acquire, session_label=args.session_label,
+                                   keep_seat=args.keep_seat)
+
+
+def _opencode(args: argparse.Namespace) -> Any:
+    from aew.harness.opencode import lead
+
+    return lead.run(_engine(args), acquire=args.acquire, session_label=args.session_label, keep_seat=args.keep_seat,
+                    provider_env=list(args.provider_env), extra_args=list(args.opencode_args),
+                    print_config=args.print_config)
+
+
 def _resume(args: argparse.Namespace) -> Any:
+    from aew.harness import lead_broker
+
     engine = _engine(args)
-    report = engine.resume()
+    report = engine.resume(session=lead_broker.session_authority())
     return report if args.json else engine.render_resume(report)
 
 

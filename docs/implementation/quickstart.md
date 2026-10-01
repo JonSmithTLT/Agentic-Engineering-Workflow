@@ -1,6 +1,8 @@
-# AEW quickstart (operator and Lead, M1 + M2)
+# AEW quickstart (operator and Lead, M1 to M3)
 
-M1 is harness-neutral: a Lead agent (or a person) drives everything through the `aew` CLI. Bounded roles act only with their own invocation credential, from inside their Ticket workspace. The OpenCode adapter arrives in M3.
+AEW is harness-neutral: a Lead agent (or a person) drives everything through the `aew` CLI. Bounded roles act only through their own invocation's authority, from inside their Ticket workspace.
+
+The sections below use the CLI directly, with scripted roles and printed credentials. **With M3, the usual way is OpenCode**: the Lead in OpenCode's TUI and every role a harness run, with no credential in any model's hands. See [Running with OpenCode](#m3-running-with-opencode) and `opencode.md`.
 
 ## Install
 
@@ -31,12 +33,36 @@ Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew st
 aew authority accept C-001 --class decisions --expect-rev N         # classify candidates
 aew work create ticket --title "..." --class 1 --scope "src/**" \
     --goal "observable outcome" --contract "conformance rule" --expect-rev N
-aew plan propose T-0001 --file plan.md --expect-rev N
+aew plan propose T-0001 --file plan.md --assurance none --expect-rev N   # or --review/--verify <card|default>
 aew plan accept  T-0001 --revision 1   --expect-rev N               # -> READY
+```
+
+Every plan declares its assurance. `--review` and `--verify` name the cards the plan relies on (`default` is the
+archetype's default card); accepting the plan makes them required gates, and only a new plan revision changes them.
+`--assurance none` declares that the plan adds nothing to the unit's policy path. A review promised only in the plan's
+text binds nothing, which is why the declaration is required.
+
+```bash
 aew work staff   T-0001 --execute python_engineer --review code_reviewer --expect-rev N   # optional
 aew work assign  T-0001 --expect-rev N    # workspace + implementer credential + launch contract/pack
 aew work transition T-0001 --to RUNNING --expect-rev N
 ```
+
+**Free text is data.** Any command takes `--fields FILE|-`: a YAML or JSON mapping of its option values, which become the command's options without passing through a shell. Use it whenever a shell would otherwise see titles, goals, contract clauses, scopes, reasons or notes, because a shell rewrites `$`, backticks, globs and quotes:
+
+```bash
+aew work create ticket --class 1 --expect-rev N --fields - <<'EOF'
+title: 'Fix #12: show refunds as -$15.00'
+goal:
+  - 'format_amount(Decimal("-15")) == "-$15.00"'
+contract: ['changes stay within ledger/ and tests/']
+scope: ['ledger/**', 'tests/**']
+EOF
+```
+
+The mapping is parsed as YAML, so put each value in single quotes (write `''` for a quote inside one), or write a longer value as a block (`goal: |-` followed by indented lines). Unquoted, YAML would cut `Fix #12` where a space precedes the `#`, and join a value's lines with spaces; AEW refuses such input rather than store changed text, and it also refuses a key given twice, anchors, aliases and tags. JSON works too; its double quotes process escapes, so write a backslash as `\\`.
+
+The quoted `'EOF'` keeps the shell out. In PowerShell, pipe a single-quoted here-string (`@'` … `'@ | aew ...`) instead.
 
 Launch the implementer with its pack (`aew context show INV-0001`) and its credential.
 
@@ -71,7 +97,7 @@ Small work stays small: a standalone Ticket needs no Story or Epic. When work ha
 aew work create epic  --title "Toolchain readiness" --class 1 --expect-rev N
 aew work create story --title "Durable state" --class 2 --parent E-0001 \
     --mandatory-gate review_security --expect-rev N          # non-waivable for every descendant
-aew plan propose S-0001 --file story-plan.md --expect-rev N && aew plan accept S-0001 --revision 1 --expect-rev N
+aew plan propose S-0001 --file story-plan.md --review default --expect-rev N && aew plan accept S-0001 --revision 1 --expect-rev N
 aew work create ticket --title "Survey the store" --class 1 --parent S-0001 --non-mutating \
     --card investigator --goal "..." --expect-rev N         # or researcher / planner
 aew work create ticket --title "Harden the store" --class 2 --parent S-0001 \
@@ -93,7 +119,7 @@ aew work redispatch T-0001 --reason "..." --expect-rev N   # instead: supersede 
 ```
 
 - If a consumed discovery or plan proposal no longer matches the source, the next dispatch of its consumer is refused with `INPUT_STALE`. Refresh the input (a new investigation, plus `aew work depend`), or record that you rechecked it for this commit: `aew work acknowledge-input T-0002 --input <E> --from T-0001 --reason "..."`.
-- A Planner's accepted proposal becomes a *proposed* plan revision with `aew plan adopt <T> --evidence <E> --from <planning Ticket>`. You still accept it.
+- A Planner's accepted proposal becomes a *proposed* plan revision with `aew plan adopt <T> --evidence <E> --from <planning Ticket>` and the plan's assurance declaration. You still accept it.
 
 **Closing a parent.** When every child is DONE or CANCELLED, the parent is ACCEPTANCE_PENDING. Review and verify the parent (the packs carry every child's own integrated change), then close it:
 
@@ -109,12 +135,32 @@ aew work close S-0001 --reason "..." --expect-rev N
 - `aew work promote <T> --to story --title ...` keeps the Ticket's identity and evidence;
 - `aew work depend <id> --add X[:evidence|mutating] --remove Y`.
 
+## M3: running with OpenCode
+
+Configure `.aew/policy/execution.yaml` (which harness, provider, model and effort run each role) and set your provider key, as `opencode.md` describes. Then:
+
+```bash
+aew doctor                      # policy:execution PASS; containment WARN (workdir separation only)
+aew opencode --acquire          # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
+```
+
+In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <id>` takes one step at a time. Dispatches carry `--launch`, so each role runs in its own private OpenCode server and acts through a run-scoped bridge:
+
+```bash
+aew work assign T-0001 --launch --expect-rev N    # run R-INV-0001-1 starts; no credential is printed
+aew harness wait R-INV-0001-1 --timeout 110       # its evidence, each item's result, and the next action
+aew harness launch INV-0001 --expect-rev N        # relaunch (a fresh session; the credential rotates)
+```
+
+A run's end moves nothing: the Lead still ingests and transitions, as above. Every run works with **workdir separation only**, not filesystem containment, so use scratch repositories and clones until containment exists.
+
 ## Losing the session
 
 - Run `aew resume` in a fresh session. It is read-only and rebuilds everything from `.aew/`.
 - If the old Lead is gone, **the operator** runs `aew lead takeover --reason "..." --expect-rev N` at an interactive terminal and types the challenge code. Agents cannot do this for themselves.
-- In-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
+- **With OpenCode:** losing the TUI or its state loses nothing. Run `aew opencode` again and `/aew-resume`. Harness runs keep going, and a lost run is relaunched with `aew harness launch`. A lost harness is not an interruption: the Ticket and its invocation are unchanged.
+- After a takeover, in-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
 
 ## Useful views
 
-`aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`.
+`aew guide` (how work flows in this project: risk classes, their gates, the Ticket lifecycle, the command for each step), `aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`, `aew harness status`, `aew harness config opencode <INV>|--lead`.

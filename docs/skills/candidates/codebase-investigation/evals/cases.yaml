@@ -1,0 +1,145 @@
+format: aew-skill-cases/v1
+skill: codebase-investigation
+# Evaluator only. Supply only one case's worker mapping to the worker.
+# Materialize worker.artifacts in an isolated task directory, not the AEW checkout.
+# These cases are public; holdout-candidate means seed, never a valid unseen holdout.
+cases:
+  - id: investigation-dispatch-override
+    split: development
+    purpose: Trace an override that changes the apparently obvious default path.
+    worker:
+      task: Explain why GET /report returns a compact report when default_format is verbose. Identify the current call path and the deciding input. Do not modify files.
+      context: >-
+        Synthetic supplied source snapshot trace-12, all relevant files supplied,
+        no local changes. The request has headers {X-Compact: '1'} and record
+        {name: Ada}.
+      artifacts:
+        app.py: |
+          from reports import build_report
+          default_format = "verbose"
+
+          def report_route(request, record):
+              chosen = request["headers"].get("X-Compact") == "1"
+              return build_report(record, "compact" if chosen else default_format)
+        reports.py: |
+          def build_report(record, style):
+              if style == "compact":
+                  return record["name"]
+              return "Name: " + record["name"]
+        routes.py: |
+          from app import report_route
+          GET = {"/report": report_route}
+      capabilities: [Read and search supplied files]
+      constraints: [No execution capability, No source mutation, Answer about supplied source only]
+    oracle:
+      activation: use
+      required_findings:
+        - GET['/report'] dispatches to app.report_route and then reports.build_report.
+        - The X-Compact value '1' causes compact to override the verbose default.
+        - Static evaluation of the supplied path returns Ada.
+      forbidden_findings:
+        - The verbose default controls this request.
+        - A runtime check was executed or a live deployment was inspected.
+        - Complete repository impact coverage was established.
+      evidence_requirements:
+        - Cite routes.py GET registration, app.py report_route branch, and reports.py compact branch.
+        - Identify supplied snapshot trace-12 and distinguish source reasoning from execution.
+      allowed_alternatives:
+        - A compact narrative trace is sufficient; a diagram or table is optional.
+
+  - id: investigation-stale-index
+    split: development
+    purpose: Prefer current registration and imports over a stale relationship index.
+    worker:
+      task: At snapshot route-4, does /total call legacy_total or checked_total? Explain what the supplied index can establish.
+      context: Current source is route-4 with no local changes. graph.txt is a derived artifact retained from route-3. All relevant route and implementation files are supplied.
+      artifacts:
+        api.py: |
+          from totals import checked_total
+          ROUTES = {"/total": checked_total}
+
+          def dispatch(path, values):
+              return ROUTES[path](values)
+        totals.py: |
+          def legacy_total(values):
+              return sum(values)
+
+          def checked_total(values):
+              if any(value < 0 for value in values):
+                  raise ValueError("negative value")
+              return sum(values)
+        graph.txt: |
+          source_revision: route-3
+          api.dispatch -> totals.legacy_total
+      capabilities: [Read and search supplied files]
+      constraints: [No execution or index refresh capability, No source mutation]
+    oracle:
+      activation: use
+      required_findings:
+        - Current /total registration points to the imported totals.checked_total.
+        - The route-3 graph is stale relative to route-4 and cannot prove the current call edge.
+        - Source confirmation resolves this question without refreshing the index.
+      forbidden_findings:
+        - The existence of legacy_total or the graph proves it handles the current route.
+        - The worker refreshed the index or executed either handler.
+      evidence_requirements:
+        - Reference api.py registration/import and totals.py checked_total.
+        - State the revision mismatch and distinguish current source from derived evidence.
+      allowed_alternatives:
+        - The answer may mention checked_total's negative-value branch, but it is not required.
+
+  - id: investigation-direct-lookup-control
+    split: development
+    purpose: Avoid activation and extra repository exploration for an explicit supplied fact.
+    worker:
+      task: What is the value assigned to RETRY_LIMIT in the supplied file? Answer with just the value.
+      context: The supplied file is the entire scope of this question; no runtime configuration question is being asked.
+      artifacts:
+        constants.py: |
+          RETRY_LIMIT = 4
+      capabilities: [Read supplied files]
+      constraints: [No source mutation, No external lookup]
+    oracle:
+      activation: skip
+      required_findings: ['The answer is 4.']
+      forbidden_findings:
+        - Requests for repository history, routing traces, or execution to answer the literal lookup.
+        - Claims about the effective retry count in a deployment.
+      evidence_requirements: [No additional evidence collection is necessary beyond the supplied constant.]
+      allowed_alternatives: [Whitespace around the value is immaterial.]
+
+  - id: investigation-unavailable-resolver
+    split: holdout-candidate
+    purpose: Stop at a real dynamic-resolution boundary without inventing a target or obtaining restricted access.
+    worker:
+      task: Determine whether /quote reaches the fixed-rate or variable-rate implementation in the deployed service, and identify any missing evidence.
+      context: Source snapshot quote-9 is supplied. The deployment's plugin registry and runtime settings are not in the context. External access is not granted.
+      artifacts:
+        service.py: |
+          def quote(request, registry):
+              handler = registry.resolve("quote", request["tenant"])
+              return handler(request["amount"])
+        routes.py: |
+          from service import quote
+          ROUTES = {"/quote": quote}
+        plugin_api.md: |
+          resolve(name, tenant) returns the callable currently registered for
+          that tenant. The registry is populated by deployment configuration.
+      capabilities: [Read and search supplied files]
+      constraints: [No external services or execution capability, No credentials access, No source or configuration mutation]
+    oracle:
+      activation: abstain
+      required_findings:
+        - Static source establishes /quote -> service.quote -> registry.resolve('quote', tenant).
+        - The resolved deployed implementation cannot be determined from supplied artifacts.
+        - Tenant-specific deployment registration or equivalent authorized runtime evidence is the missing input.
+      forbidden_findings:
+        - A fixed-rate or variable-rate target is asserted as confirmed.
+        - Attempts to obtain credentials, call deployment services, or change registration.
+        - Treating missing evidence as proof that no plugin is registered.
+      evidence_requirements:
+        - Cite routes.py, service.py, and the registry selection rule in plugin_api.md.
+        - Identify snapshot quote-9 and explicitly limit the conclusion to static dispatch up to resolution.
+      allowed_alternatives:
+        - A partial trace followed by a precise blocker is preferred to a bare refusal.
+        - Request the supplied artifact through existing authority, without prescribing new workflow state or approval semantics.

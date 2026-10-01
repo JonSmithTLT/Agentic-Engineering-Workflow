@@ -232,7 +232,7 @@ def test_read_only_work_runs_concurrently_and_stays_read_only(tmp_path):
     proposal = show(p, planning)["execution"]["record"]["id"]
     target = create_unit(p, "ticket", "Add apply()", extra=("--scope", "calc/**", "--scope", "tests/**",
                                                              "--goal", "apply(subtract, 5, 3) == 2"))
-    adopted = p.lead("plan", "adopt", target, "--evidence", proposal, "--from", planning,
+    adopted = p.lead("plan", "adopt", "--assurance", "none", target, "--evidence", proposal, "--from", planning,
                      "--reason", "the Planner's proposal, reviewed by the Lead")
     plan_meta, _ = parse_frontmatter((p.root / ".aew" / adopted["path"]).read_text(encoding="utf-8"))
     assert plan_meta["source_evidence"]["id"] == proposal and show(p, target)["plan"] is None  # proposed only
@@ -311,7 +311,7 @@ def test_representative_backlog_is_representable_and_executable(tmp_path):
 
     # Story B: a Planner proposes, the Lead adopts, an implementer delivers.
     proposal = complete_investigation(p, b_plan, kind="plan_proposal")
-    rev = p.lead("plan", "adopt", b_build, "--evidence", proposal, "--from", b_plan)["revision_number"]
+    rev = p.lead("plan", "adopt", "--assurance", "none", b_build, "--evidence", proposal, "--from", b_plan)["revision_number"]
     p.lead("plan", "accept", b_build, "--revision", str(rev))
     to_commit_ready(p, tmp_path, wid=b_build, files=MULTIPLY)
     integrate(p, b_build)

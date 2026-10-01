@@ -67,7 +67,7 @@ def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_pa
     p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'new acceptance requirements')
     plan = tmp_path / 'plan-v2.md'
     plan.write_text('Reassess the existing implementation against revised acceptance requirements.\n')
-    p.lead('plan', 'propose', wid, '--file', str(plan), '--reason', 'new acceptance requirements')
+    p.lead('plan', 'propose', '--assurance', 'none', wid, '--file', str(plan), '--reason', 'new acceptance requirements')
     p.lead('plan', 'accept', wid, '--revision', '2')
     to_verified(p, tmp_path, wid=wid)
     p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')

@@ -1,0 +1,54 @@
+{
+ "variant_pin": {
+  "session_model": {
+   "id": "space-bunny-free",
+   "providerID": "opencode",
+   "variant": "high"
+  },
+  "step_started_model": {
+   "id": "space-bunny-free",
+   "providerID": "opencode",
+   "variant": "high"
+  },
+  "assistant_models": [
+   {
+    "id": "space-bunny-free",
+    "providerID": "opencode",
+    "variant": "high"
+   }
+  ]
+ },
+ "invalid_variant": {
+  "create_status": 200,
+  "create_body": "{'data': {'id': 'ses_f1e12ee8cffeUX30MFxzELN02P', 'projectID': 'global', 'model': {'id': 'space-bunny-free', 'providerID': 'opencode', 'variant': 'no-such-variant'}, 'cost': 0, 'tokens': {'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}}, 'time': {'created': 1790496805305, '",
+  "prompt_status": 200,
+  "terminal": "session.execution.failed",
+  "error": {
+   "type": "provider.no-route",
+   "message": "Variant unavailable for opencode/space-bunny-free: no-such-variant"
+  },
+  "bad_model_create_status": 200,
+  "bad_model_body": "{'data': {'id': 'ses_f1e12ee21ffe3DCkvTMwkUhnVP', 'projectID': 'global', 'model': {'id': 'no-such-model', 'providerID': 'opencode', 'variant': 'default'}, 'cost': 0, 'tokens': {'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}}, 'time': {'created': 1790496805408, 'updated': 1"
+ },
+ "server_killed": {
+  "sse_error": "ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)",
+  "request_after_kill": "URLError(ConnectionRefusedError(10061, 'No connection could be made because the target machine actively refused it', None, 10061, None))",
+  "after_restart": {
+   "status": 200,
+   "outcome": null,
+   "active": {
+    "data": {}
+   }
+  }
+ },
+ "run_baseline": {
+  "exit": 0,
+  "wall_s": 5.08,
+  "types": [
+   "step_start",
+   "text"
+  ],
+  "step_finish": [],
+  "stderr_tail": ""
+ }
+}

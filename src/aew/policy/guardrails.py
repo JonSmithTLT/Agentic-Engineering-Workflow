@@ -37,3 +37,21 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str])
             "triggered": [{"name": t["name"], "card": t.get("card")} for t in fired],
             "changed_paths": sorted(changed),
             "unenforced": ["dependency_rules"] if policy.get("dependency_rules") else []}
+
+
+_RULE_TEXT = {"outside_ticket_scope": "is outside the Ticket's scope", "protected_path": "is a protected path",
+              "generated_path": "is a generated file (change its source instead)"}
+
+
+def describe(violations: list[dict[str, str]], limit: int = 3) -> str:
+    """The violations in words: ``calc/core.py is outside the Ticket's scope; ...`` (at most ``limit`` named)."""
+    words = [f"{v['path']} {_RULE_TEXT.get(v['rule'], v['rule'])}" for v in violations[:limit]]
+    more = len(violations) - limit
+    return "; ".join(words) + (f"; and {more} more" if more > 0 else "")
+
+
+def scope_remedy(work_id: str) -> str:
+    """What a Lead can do about a change outside its Ticket's scope (M3 dogfood report §6.6, E9)."""
+    return (f"A Ticket's scope is fixed when it is created: if the scope is wrong, cancel this Ticket "
+            f"(`aew work transition {work_id} --to CANCELLED --reason ...`) and create one with the scope the change "
+            "needs; if the change strayed outside it, have the implementer undo that part")

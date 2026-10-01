@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from types import TracebackType
 
+from aew import profile
 from aew.errors import LockTimeout
 from aew.util import IS_WINDOWS
 
@@ -23,18 +24,19 @@ class FileLock:
         self._fh = None
 
     def __enter__(self) -> "FileLock":
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fh = open(self.path, "a+b")
-        deadline = time.monotonic() + self.timeout
-        while True:
-            try:
-                self._try_lock(fh)
-                break
-            except OSError:
-                if time.monotonic() > deadline:
-                    fh.close()
-                    raise LockTimeout(f"could not lock {self.path} within {self.timeout}s") from None
-                time.sleep(0.01)
+        with profile.phase("lock"):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            fh = open(self.path, "a+b")
+            deadline = time.monotonic() + self.timeout
+            while True:
+                try:
+                    self._try_lock(fh)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        fh.close()
+                        raise LockTimeout(f"could not lock {self.path} within {self.timeout}s") from None
+                    time.sleep(0.01)
         self._fh = fh
         return self
 

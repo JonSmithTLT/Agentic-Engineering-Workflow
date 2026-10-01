@@ -60,10 +60,24 @@ class NonMutatingOps(IntegrationOps):
         unit = self.unit(self.store.read(), work_id)
         return unit["kind"] != "ticket" or not unit.get("mutating")
 
+    # What a Lead does instead for a mutating Ticket (M3 audit X1: Leads tried these first, from the dogfood).
+    _MUTATING_INSTEAD = {
+        "`aew work dispatch`": "start a mutating Ticket with `aew work assign {w} --launch`",
+        "`aew work redispatch`": "a mutating Ticket gets a new implementer with "
+                                 "`aew invoke create {w} --role implementer --launch`",
+        "`aew evidence ingest`": "a mutating Ticket's implementation report is accepted by its transition, "
+                                 "`aew work transition {w} --to REVIEW_PENDING` (or VERIFY_PENDING or COMMIT_READY, "
+                                 "as its gates allow); reviews and verifications use `aew review ingest` and "
+                                 "`aew verify ingest`",
+    }
+
     def _require_nm_ticket(self, unit: dict[str, Any], work_id: str, what: str) -> None:
         if not is_nm_ticket(unit):
+            mutating = unit["kind"] == "ticket"
+            instead = self._MUTATING_INSTEAD.get(what) if mutating else None
             raise IllegalTransition(f"{what} applies to non-mutating (evidence-only) Tickets; {work_id} is "
-                                    + ("a mutating Ticket" if unit["kind"] == "ticket" else f"a {unit['kind']}"))
+                                    + ("a mutating Ticket" if mutating else f"a {unit['kind']}")
+                                    + (f": {instead.format(w=work_id)}" if instead else ""))
 
     def _referenced_paths(self, state: dict[str, Any]) -> set[str]:
         paths = {u["workspace"]["path"] for u in state["work"].values()
@@ -221,9 +235,12 @@ class NonMutatingOps(IntegrationOps):
     def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
         """Non-raising view of ``dispatch_inputs`` (resume, status): would each input allow a dispatch now?"""
         unit = state["work"][work_id]
+        inputs = self.consumed_inputs(state, work_id)
+        if not inputs:  # most units: no git subprocess for a commit nothing would be compared with (M3 step 7)
+            return []
         commit = self.dispatch_commit(unit)
         out = []
-        for inp in self.consumed_inputs(state, work_id):
+        for inp in inputs:
             try:
                 ev = self._find_unit_evidence(inp["from"], inp["id"])
             except (GateUnsatisfied, NotFound) as exc:
@@ -353,6 +370,9 @@ class NonMutatingOps(IntegrationOps):
             "observed_commit": commit, "record": None, "started_at": utc_now(),
             "dependencies": effective_edge_set(state, work_id),
         }
+        # The pack states the attempt's output contract, which exists only now: pin the pack that durable state
+        # regenerates (M3-D1; a harness launch refuses a drifted pack).
+        self.build_pack(ctx, inv_id)
         return inv_id, inv_token
 
     def _end_attempt(self, state: dict[str, Any], unit: dict[str, Any], why: str, status: str) -> None:
@@ -375,9 +395,11 @@ class NonMutatingOps(IntegrationOps):
 
     # ------------------------------------------------------------------ dispatch / redispatch
 
-    def work_dispatch(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None) -> dict[str, Any]:
+    def work_dispatch(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+                      execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
         """READY -> ASSIGNED for a non-mutating Ticket: attempt 1 with its own observation, no mutation workspace."""
         with self.lead_txn(token, expect_rev, "work.dispatch") as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "`aew work dispatch`")
@@ -402,11 +424,13 @@ class NonMutatingOps(IntegrationOps):
                 "transition": change, "revision": ctx.session.committed_revision}
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
-                        card: str | None = None) -> dict[str, Any]:
+                        card: str | None = None, execution_profile: dict[str, Any] | None = None,
+                        launch: bool = False) -> dict[str, Any]:
         """Supersede the current attempt atomically and start the next one (operator review #2)."""
         if not (reason and reason.strip()):
             raise UsageError("a redispatch supersedes the current attempt; it needs a reason")
         with self.lead_txn(token, expect_rev, "work.redispatch", reason=reason) as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "`aew work redispatch`")
@@ -689,9 +713,11 @@ class NonMutatingOps(IntegrationOps):
         return H.is_parent(self.unit(self.store.read(), work_id))
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
-                             card: str | None, scope: str) -> dict[str, Any]:
+                             card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
+                             launch: bool = False) -> dict[str, Any]:
         """Review/verify invocations for a non-mutating Ticket, bound to the record they evaluate."""
         with self.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "this dispatch")
@@ -748,7 +774,8 @@ class NonMutatingOps(IntegrationOps):
             self._require_nm_ticket(unit, work_id, "this ingest")
             expected_state = "REVIEW_PENDING" if kind == "review" else "VERIFY_PENDING"
             if unit["state"] != expected_state:
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}")
+                raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}. "
+                                        f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
             ev = self._find_unit_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             role = "reviewer" if kind == "review" else "verifier"
@@ -797,13 +824,15 @@ class NonMutatingOps(IntegrationOps):
     # ------------------------------------------------------------------ plan adoption and reconfirmation
 
     def plan_adopt(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, review: list[str] | None = None, verify: list[str] | None = None,
+                   no_assurance: bool = False) -> dict[str, Any]:
         """Create a *proposed* plan revision on any unit from an accepted Planner plan_proposal (ADR-0008)."""
         with self.lead_txn(token, expect_rev, "plan.adopt", reason=reason) as ctx:
             state = ctx.state
             unit = self.unit(state, work_id)
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.resolve_plan_assurance(unit, review=review, verify=verify, none=no_assurance)
             src = self.unit(state, source)
             rec = (src.get("execution") or {}).get("record") or {}
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id
@@ -821,7 +850,7 @@ class NonMutatingOps(IntegrationOps):
             inv = state["invocations"][ev["producer"]["invocation"]]
             path, revision = self._propose(
                 ctx, work_id, unit, body=body, reason=reason, affected_paths=proposal.get("affected_paths"),
-                author={"role": "planner", "invocation": ev["producer"]["invocation"],
+                assurance=assurance, author={"role": "planner", "invocation": ev["producer"]["invocation"],
                         "card": (inv.get("card") or {}).get("id"), "adopted_by_generation": ctx.actor["generation"]},
                 source_evidence={"id": evidence_id, "sha256": ev["_sha256"], "work_unit": source,
                                  "invocation": ev["producer"]["invocation"]})

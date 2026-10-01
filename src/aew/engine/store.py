@@ -27,6 +27,13 @@ Model (ADR-0001):
   post-commit render — so callers can load files a transition may have
   replaced (the project manifest) from the same coherent snapshot (review
   2026-09-26 M8).
+* A process keeps its last parse of ``control.yaml`` together with the SHA-256
+  of the bytes it parsed. Every read still reads the file; only bytes identical
+  to the ones already parsed and verified reuse that parse (parsing is
+  deterministic, so this is exactly a re-parse), and any other bytes get a full
+  parse with checksum and schema validation. Long-lived processes (a run's
+  supervisor, the Lead broker) poll the state, and several commands read it more
+  than once (M3 step 7, ``m3-performance.md``).
 """
 
 from __future__ import annotations
@@ -38,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew import profile
 from aew.engine import faults
 from aew.engine.lock import FileLock
 from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision
@@ -107,7 +115,7 @@ class Session:
 
     def __init__(self, store: "ControlStore", state: dict[str, Any]) -> None:
         self._store = store
-        self._committed_state = state
+        self._committed_state = state  # the store's parse: never changed (``state`` is this session's copy)
         self.state = copy.deepcopy(state)
         self._writes: list[PendingWrite] = []
         self.committed_revision: int | None = None
@@ -143,6 +151,7 @@ class ControlStore:
         self.lock_timeout = lock_timeout
         self.after_apply = after_apply
         self.held = 0  # > 0 while this process holds the control lock through this store
+        self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
 
     # ------------------------------------------------------------------ paths
 
@@ -173,8 +182,12 @@ class ControlStore:
                 self.held -= 1
 
     def read(self) -> dict[str, Any]:
-        with self.session() as s:
-            return s.base_state()
+        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+            self.held += 1
+            try:
+                return copy.deepcopy(self._recover())
+            finally:
+                self.held -= 1
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.
@@ -197,6 +210,17 @@ class ControlStore:
     # ------------------------------------------------------------------ commit
 
     def _commit(
+        self,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        writes: list[PendingWrite],
+        transition: Transition,
+    ) -> int:
+        profile.count("commit")
+        with profile.phase("commit"):
+            return self._commit_unprofiled(before, after, writes, transition)
+
+    def _commit_unprofiled(
         self,
         before: dict[str, Any],
         after: dict[str, Any],
@@ -265,13 +289,28 @@ class ControlStore:
     # ------------------------------------------------------------------ recovery
 
     def _load(self) -> dict[str, Any]:
-        try:
-            raw = self.control_path.read_bytes()
-        except FileNotFoundError:
-            raise ProjectNotFound(f"no control state at {self.control_path}") from None
-        return deserialize_control(raw, source=str(self.control_path))
+        """The committed state: this process's last parse when the file holds the very bytes it parsed, else a verified
+        parse. The result is shared with the cache and must not be changed (a session changes its own copy)."""
+        with profile.phase("parse"):
+            try:
+                raw = self.control_path.read_bytes()
+            except FileNotFoundError:
+                raise ProjectNotFound(f"no control state at {self.control_path}") from None
+            digest = sha256_bytes(raw)
+            if self._parsed is not None and self._parsed[0] == digest:
+                profile.count("parse_cached")
+                return self._parsed[1]
+            profile.count("parse")
+            profile.count("parse_bytes", len(raw))
+            state = deserialize_control(raw, source=str(self.control_path))
+            self._parsed = (digest, state)
+            return state
 
     def _recover(self) -> dict[str, Any]:
+        with profile.phase("recover"):
+            return self._recover_unprofiled()
+
+    def _recover_unprofiled(self) -> dict[str, Any]:
         self._remove_temp_files()
         state = self._load()
         revision = state["revision"]
@@ -337,11 +376,13 @@ class ControlStore:
         if inject:
             faults.hit("txn.after_log")
         if self.renderer:
-            for rel, content in self.renderer(state).items():
-                target = self._abs(rel)
-                data = content.encode("utf-8")
-                if sha256_file(target) != sha256_bytes(data):
-                    atomic_write(target, data)
+            profile.count("render")
+            with profile.phase("render"):
+                for rel, content in self.renderer(state).items():
+                    target = self._abs(rel)
+                    data = content.encode("utf-8")
+                    if sha256_file(target) != sha256_bytes(data):
+                        atomic_write(target, data)
         if inject:
             faults.hit("txn.after_render")
 

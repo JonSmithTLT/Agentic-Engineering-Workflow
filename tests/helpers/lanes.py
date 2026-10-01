@@ -20,7 +20,8 @@ from typing import Any
 
 import pytest
 
-LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial")
+LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live")
+LIVE_DIR = "tests/live/"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
@@ -38,8 +39,11 @@ class Unclassified(Exception):
 def lane_of(path: str, markers: Iterable[str]) -> str:
     """The single lane of a test. ``path`` is the nodeid's file part relative to the rootdir (``/``-separated).
 
-    First match wins: the cross-cutting properties (serial, acceptance, exploratory) before the directory.
+    First match wins: the opt-in live lane (real harness binaries and models; collected only with ``--live``, never
+    part of CI assurance), then the cross-cutting properties (serial, acceptance, exploratory), then the directory.
     """
+    if path.startswith(LIVE_DIR):
+        return "live"
     marks = set(markers)
     if "serial" in marks:
         return "serial"
@@ -288,8 +292,22 @@ def process_isolation():
         pytest.fail(f"test leaked process state: env {env} -> {after}, cwd {cwd} -> {moved}", pytrace=False)
 
 
+def ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """``tests/live`` is collected only with ``--live``: CI never collects it, so assurance is unaffected."""
+    if config.getoption("aew_live"):
+        return None
+    live = Path(str(config.rootpath)) / LIVE_DIR
+    try:
+        Path(collection_path).resolve().relative_to(live.resolve())
+    except ValueError:
+        return None
+    return True
+
+
 def addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("aew-lanes", "AEW CI lanes (docs/implementation/testing-and-ci-strategy.md)")
+    group.addoption("--live", dest="aew_live", action="store_true", default=False,
+                    help="also collect tests/live: real harness binaries and real models (opt-in; never CI)")
     group.addoption("--lane", dest="aew_lane", choices=LANES, default=None,
                     help="run only this lane's tests")
     group.addoption("--shard", dest="aew_shard", default=None, metavar="K/N",

@@ -1,0 +1,394 @@
+{
+ "researcher": {
+  "agents": {
+   "aew": {
+    "description": "AEW researcher for INV-0007",
+    "mode": "primary",
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    },
+    "permissions": [
+     {
+      "action": "*",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "glob",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "grep",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "shell",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env.*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*.env.example"
+     },
+     {
+      "action": "edit",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "webfetch",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "websearch",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "skill",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "subagent",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "question",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "deny",
+      "resource": "*"
+     }
+    ],
+    "system": "You are an AEW bounded researcher (role card researcher) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You must not modify any file: your role is read-only.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them."
+   },
+   "compaction": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   },
+   "summary": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   },
+   "title": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic",
+     "variant": "high"
+    }
+   }
+  },
+  "default_agent": "aew",
+  "formatter": false,
+  "lsp": false,
+  "permissions": [
+   {
+    "action": "*",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "glob",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "grep",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env.*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*.env.example"
+   },
+   {
+    "action": "edit",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "webfetch",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "websearch",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "skill",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "subagent",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "question",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "deny",
+    "resource": "*"
+   }
+  ],
+  "plugins": [
+   "-opencode.config.compatibility"
+  ],
+  "share": "disabled",
+  "snapshots": false,
+  "update": "disable"
+ },
+ "reviewer": {
+  "agents": {
+   "aew": {
+    "description": "AEW reviewer for INV-0007",
+    "mode": "primary",
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic"
+    },
+    "permissions": [
+     {
+      "action": "*",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "glob",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "grep",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "shell",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env"
+     },
+     {
+      "action": "read",
+      "effect": "deny",
+      "resource": "*.env.*"
+     },
+     {
+      "action": "read",
+      "effect": "allow",
+      "resource": "*.env.example"
+     },
+     {
+      "action": "edit",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "webfetch",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "websearch",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "skill",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "subagent",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "question",
+      "effect": "deny",
+      "resource": "*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "deny",
+      "resource": "*"
+     }
+    ],
+    "system": "You are an AEW bounded reviewer (role card code_reviewer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You must not modify any file: your role is read-only.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Skills your role card requests that this harness does not provide: code-review. Proceed without them and say so in your report."
+   },
+   "compaction": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic"
+    }
+   },
+   "summary": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic"
+    }
+   },
+   "title": {
+    "model": {
+     "model": "claude-sonnet-5",
+     "providerID": "anthropic"
+    }
+   }
+  },
+  "default_agent": "aew",
+  "formatter": false,
+  "lsp": false,
+  "permissions": [
+   {
+    "action": "*",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "glob",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "grep",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env"
+   },
+   {
+    "action": "read",
+    "effect": "deny",
+    "resource": "*.env.*"
+   },
+   {
+    "action": "read",
+    "effect": "allow",
+    "resource": "*.env.example"
+   },
+   {
+    "action": "edit",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "webfetch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "websearch",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "skill",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "subagent",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "question",
+    "effect": "deny",
+    "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "deny",
+    "resource": "*"
+   }
+  ],
+  "plugins": [
+   "-opencode.config.compatibility"
+  ],
+  "share": "disabled",
+  "snapshots": false,
+  "update": "disable"
+ }
+}

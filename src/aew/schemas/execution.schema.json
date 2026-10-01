@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/execution/v1",
+  "title": "Execution policy: which harness, provider, model and effort run an invocation",
+  "description": "Model routing is policy, not architecture (WC §18). Resolved once at dispatch and pinned on the invocation (ADR-0010). With configured=false no invocation receives a policy-selected execution and harness launch is refused; there is no built-in provider or model. Only environment variable NAMES appear here, never values.",
+  "type": "object",
+  "required": ["schema", "configured", "profiles", "routing"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/execution/v1"},
+    "configured": {"type": "boolean"},
+    "harness": {"type": "string", "minLength": 1},
+    "profiles": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {"$ref": "#/$defs/profile"}
+    },
+    "routing": {
+      "type": "object",
+      "required": ["default"],
+      "additionalProperties": false,
+      "properties": {
+        "default": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]},
+        "archetypes": {"$ref": "#/$defs/route_map"},
+        "classes": {
+          "type": "object",
+          "propertyNames": {"enum": ["0", "1", "2", "3", "4"]},
+          "additionalProperties": {"$ref": "#/$defs/name"}
+        },
+        "cards": {"$ref": "#/$defs/route_map"}
+      }
+    },
+    "provider_env": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+      "uniqueItems": true
+    },
+    "description": {"type": "string"}
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "route_map": {
+      "type": "object",
+      "propertyNames": {"type": "string", "minLength": 1},
+      "additionalProperties": {"$ref": "#/$defs/name"}
+    },
+    "profile": {
+      "type": "object",
+      "required": ["provider", "model"],
+      "additionalProperties": false,
+      "properties": {
+        "harness": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "minLength": 1, "pattern": "^[^/\\s]+$"},
+        "model": {"type": "string", "minLength": 1, "pattern": "^\\S+$"},
+        "effort": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
+        "max_steps": {"type": "integer", "minimum": 1},
+        "deadline_s": {"type": "number", "exclusiveMinimum": 0},
+        "description": {"type": "string"}
+      }
+    }
+  }
+}

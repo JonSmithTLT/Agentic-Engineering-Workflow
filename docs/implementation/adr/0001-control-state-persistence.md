@@ -41,3 +41,18 @@ The hook covered every store session, but a public read that opens no session (f
 - Both files are only ever replaced atomically, so every committed change alters the identity.
 - Inside a session (`store.held`), the manifest loaded at session start is used, so the lock is never re-entered.
 - Tested: the re-review's long-lived `role_list()` probe; session-free project reads after another process's adoption; a manifest read inside a session.
+
+## Amendment 2026-09-27 — M3 step 7 (control-plane performance)
+
+Measured in `m3-performance.md`. The design is unchanged; three implementation refinements:
+
+- **Parse reuse for identical bytes.** A store keeps its last parse of `control.yaml` with the SHA-256 of the bytes it parsed.
+  - Every read still takes the lock, runs recovery and reads the file.
+  - Only bytes identical to those already parsed and verified reuse the parse. Parsing is deterministic, so this is exactly a re-parse. Any other bytes (a commit by any process, recovery, damage, an edit outside AEW) get the full parse with checksum and schema validation.
+  - The parse is never handed out: `read()` returns a copy, and a session changes its own copy.
+  - Long-lived processes (a run's supervisor, the Lead broker) poll the state. At 500 units, a repeated read of an unchanged state went from 1.65 s to 0.10 s.
+  - Tested: `tests/unit/test_store_cache.py`. `test_no_engine_operation_changes_the_shared_parse` checks every load of a real workload against a fresh parse.
+- **libyaml.** YAML is read and written through libyaml where PyYAML has it. The same Python constructors and representers run, so values and bytes are identical: checked on 4,442 real documents, and pinned in `tests/unit/test_yaml_backends.py`. At 500 units, parsing dropped from 7.5 s to 1.8 s and writing from 4.4 s to 1.3 s.
+- **Profiling.** `AEW_PROFILE=<file>` records each command's phases (lock, recover, parse, render, commit, git, scan) and counts.
+
+**Consequence, decided:** every command still costs time linear in the size of `control.yaml`, and the file grows with completed work, about 20 KB per DONE Ticket with its invocations. The operator and designer chose hot/cold control state (**ADR-0011**, 2026-09-27): terminal records move into cold records pinned by hash. That will amend this ADR's model. It is a prerequisite for M4, after M3's acceptance.

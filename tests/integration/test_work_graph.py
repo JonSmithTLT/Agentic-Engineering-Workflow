@@ -16,7 +16,7 @@ def make_ticket(project, *extra: str, title: str = "Add subtract()") -> str:
 
 
 def accept_plan(project, tmp_path, wid: str, text: str = "Implement it.\n") -> None:
-    rev = project.lead("plan", "propose", wid, "--file", body_file(tmp_path, f"{wid}-plan.md", text))
+    rev = project.lead("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, f"{wid}-plan.md", text))
     project.lead("plan", "accept", wid, "--revision", str(rev["revision_number"]))
 
 
@@ -76,10 +76,10 @@ def test_plan_revisions_are_immutable_and_hash_pinned(project, tmp_path):
 def test_new_plan_revision_must_state_reason_and_supersede(project, tmp_path):
     wid = make_ticket(project)
     accept_plan(project, tmp_path, wid)
-    res = project.aew("plan", "propose", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
+    res = project.aew("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
                       "--token", project.token, "--expect-rev", str(project.rev()))
     assert res.returncode == 2
-    out = project.lead("plan", "propose", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
+    out = project.lead("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
                        "--reason", "runtime evidence disproved assumption X")
     assert out["revision_number"] == 2
     project.lead("plan", "accept", wid, "--revision", "2")

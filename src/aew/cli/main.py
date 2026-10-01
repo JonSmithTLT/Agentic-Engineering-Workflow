@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Callable
 
 from aew import SPEC_SET, __version__
+from aew import profile
+from aew.cli import fields
 from aew.errors import AEWError
 
 Handler = Callable[[argparse.Namespace], Any]
@@ -33,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-C", dest="cwd", default=None, help="run as if started in this directory")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     commands.register(sub)
+    fields.register(parser)
     return parser
 
 
@@ -46,23 +50,55 @@ def _utf8_streams() -> None:
             pass
 
 
+def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[Any, bool]:
+    """Run a command here, or, inside a Lead session, through the session's Lead bridge (ADR-0009)."""
+    if os.environ.get("AEW_LEAD_BROKER"):
+        from aew.errors import UsageError
+        from aew.harness import lead_broker
+
+        refusal = lead_broker.refuses_locally(args)
+        if refusal:
+            raise UsageError(refusal)
+        if lead_broker.routes(args):
+            reply = lead_broker.forward(argv, args)
+            return reply["result"], reply["json"]
+    return handler(args), getattr(args, "json", False)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not profile.cli_start():
+        return _main(argv)
+    code = 1
+    try:
+        code = _main(argv)
+        return code
+    finally:
+        profile.cli_finish(argv, code)
+
+
+def _main(argv: list[str]) -> int:
     _utf8_streams()
     parser = build_parser()
+    try:
+        argv = fields.expand(argv, parser)  # authored values arrive as data, never as shell text (B1)
+    except AEWError as exc:
+        sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
+        return exc.exit_code
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()
         return 2
     try:
-        result = handler(args)
+        result, as_json = _run(args, argv, handler)
     except AEWError as exc:
         sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
         return exc.exit_code
     except KeyboardInterrupt:
         return 130
     if result is not None:
-        emit(result, as_json=getattr(args, "json", False))
+        emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     return 0

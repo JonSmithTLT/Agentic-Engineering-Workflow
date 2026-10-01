@@ -12,9 +12,9 @@ from typing import Any
 
 from aew import SPEC_SET
 from aew.engine.base import EngineBase
+from aew.engine.harness_ops import HarnessOps
 from aew.engine.lead_ops import LeadOps
 from aew.engine.status_ops import StatusOps
-from aew.engine.resume_ops import ResumeOps
 from aew.engine.store import ControlStore
 from aew.errors import IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.knowledge import discovery
@@ -31,6 +31,7 @@ from aew.knowledge.manifest import (
     render_manifest,
     roles_readme,
 )
+from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_text, utc_now
 from aew.workspace import git
@@ -44,7 +45,7 @@ def _slug(name: str) -> str:
     return slug or "project"
 
 
-class Engine(ResumeOps, LeadOps, StatusOps):
+class Engine(HarnessOps, LeadOps, StatusOps):
     # ------------------------------------------------------------------ init
 
     @classmethod
@@ -86,6 +87,7 @@ class Engine(ResumeOps, LeadOps, StatusOps):
             "policy/guardrails.yaml": dump_yaml(DEFAULT_GUARDRAILS),
             "policy/checks.yaml": dump_yaml(DEFAULT_CHECKS),
             "policy/gates.yaml": dump_yaml(DEFAULT_GATES),
+            X.REL_PATH: X.TEMPLATE,
             "roles/README.md": roles_readme(),
         }
         state = {
@@ -216,6 +218,20 @@ class Engine(ResumeOps, LeadOps, StatusOps):
                 add(f"policy:{name}", "PASS", "valid")
             except Exception as exc:
                 add(f"policy:{name}", "FAIL", str(exc))
+        found = self.policy_problems()
+        add("policy:consistency", "FAIL" if found else "PASS",
+            " ".join(found) if found else "gates, checks and role cards agree")
+        try:
+            execution, _ = self.execution_policy()
+            if execution is None or not execution["configured"]:
+                add("policy:execution", "WARN", "execution policy unconfigured: harness launch is refused until "
+                    f"{X.REL_PATH} is configured (or the Lead pins --profile/--model on dispatch)")
+            else:
+                add("policy:execution", "PASS", f"configured; default profile {execution['routing']['default']}")
+        except Exception as exc:
+            add("policy:execution", "FAIL", str(exc))
+        from aew.harness import contract as K
+        add("containment", "WARN", K.CONTAINMENT_NOTE)  # the actual guarantee, never implied (AEW-INV-ISO-001)
         try:
             checks_policy = self.policy("checks")
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]

@@ -106,6 +106,13 @@ class ObservationMutated(PermissionDenied):
     code = "OBSERVATION_MUTATED"
 
 
+class WorkspaceMutated(PermissionDenied):
+    """A reviewer's or verifier's workspace (a mutating Ticket's live workspace, or an integration candidate)
+    no longer holds what it was dispatched to evaluate (M3-B6)."""
+
+    code = "WORKSPACE_MUTATED"
+
+
 class IntegrityError(AEWError):
     """Durable state is damaged or was modified outside the engine."""
 
@@ -128,3 +135,28 @@ class GitError(AEWError):
 class LockTimeout(AEWError):
     code = "LOCK_TIMEOUT"
     exit_code = 8
+
+
+class HarnessError(AEWError):
+    """A harness run could not be started, supervised or reached (ADR-0009). Never an AEW state change."""
+
+    code = "HARNESS_ERROR"
+    exit_code = 9
+
+
+class HarnessIncompatible(HarnessError):
+    """The harness is unknown, or lacks a capability, model or variant this run needs."""
+
+    code = "HARNESS_INCOMPATIBLE"
+
+
+class HarnessLaunchFailed(HarnessError):
+    """The launch was committed (a run was recorded) but its supervisor did not take custody."""
+
+    code = "HARNESS_LAUNCH_FAILED"
+
+
+class RunLive(IllegalTransition):
+    """The invocation's latest harness run may still be running; relaunching needs --replace."""
+
+    code = "RUN_LIVE"

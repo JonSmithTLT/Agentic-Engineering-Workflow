@@ -1,0 +1,18 @@
+{
+ "A_job_kill_on_close": {
+  "server_pid": 36800,
+  "grandchild_pid": 4380,
+  "breakaway_pid_file": true,
+  "breakaway_shell": "None",
+  "server_alive_before": true,
+  "grandchild_alive_before": true,
+  "server_alive_after_supervisor_killed": false,
+  "grandchild_alive_after_supervisor_killed": false
+ },
+ "B_detached_from_shell_tool": {
+  "grandchild_pid": 9872,
+  "alive_after_command_exit": true,
+  "lease_exit_s": 0.051337999997485895,
+  "alive_after_server_exit": true
+ }
+}

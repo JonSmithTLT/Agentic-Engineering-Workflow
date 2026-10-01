@@ -13,7 +13,7 @@ def planned_ticket(project, tmp_path, title="Add subtract()"):
     wid = project.lead("work", "create", "ticket", "--title", title, "--class", "1", "--scope", "calc/**")["id"]
     plan = tmp_path / f"{wid}.md"
     plan.write_text("Add the function and a test.\n")
-    project.lead("plan", "propose", wid, "--file", str(plan))
+    project.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan))
     project.lead("plan", "accept", wid, "--revision", "1")
     return wid
 

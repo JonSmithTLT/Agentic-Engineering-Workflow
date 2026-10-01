@@ -14,6 +14,16 @@
     "created_at": {"type": "string"},
     "author": {"type": "object", "required": ["role"]},
     "affected_paths": {"type": "array", "items": {"type": "string"}},
+    "assurance": {
+      "type": "object",
+      "description": "The review and verification this plan commits to: the cards become required gates of the unit when the plan is accepted, and only a new plan revision changes them. Empty lists are an explicit 'no added assurance'. Plans written before it existed have no field.",
+      "required": ["review", "verify"],
+      "additionalProperties": false,
+      "properties": {
+        "review": {"type": "array", "items": {"type": "string"}},
+        "verify": {"type": "array", "items": {"type": "string"}}
+      }
+    },
     "source_evidence": {
       "type": ["object", "null"],
       "description": "set when the Lead adopted this revision from an accepted Planner plan_proposal (ADR-0008)",

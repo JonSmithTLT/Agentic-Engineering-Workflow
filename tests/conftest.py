@@ -25,6 +25,10 @@ def pytest_configure(config: pytest.Config) -> None:
     lanes.configure(config)
 
 
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    return lanes.ignore_collect(collection_path, config)
+
+
 @dataclass
 class CLIResult:
     returncode: int

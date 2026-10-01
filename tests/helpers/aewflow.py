@@ -105,7 +105,7 @@ def create_planned_ticket(p: Project, tmp_path: Path, *, title: str = "Add subtr
     wid = p.lead(*args)["id"]
     plan = tmp_path / f"{wid}-plan.md"
     plan.write_text("1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test.\n", encoding="utf-8")
-    p.lead("plan", "propose", wid, "--file", str(plan), "--affected", "calc/core.py")
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--affected", "calc/core.py")
     p.lead("plan", "accept", wid, "--revision", "1")
     return wid
 
@@ -215,7 +215,7 @@ def plan_unit(p: Project, tmp_path: Path, wid: str, text: str = "Plan.\n", reaso
     """Propose and accept the next plan revision of any unit (Ticket, Story or Epic)."""
     f = tmp_path / f"{wid}-plan-{len(p.ok('work', 'show', wid)['control']['plans']) + 1}.md"
     f.write_text(text, encoding="utf-8")
-    args = ["plan", "propose", wid, "--file", str(f)] + (["--reason", reason] if reason else [])
+    args = ["plan", "propose", "--assurance", "none", wid, "--file", str(f)] + (["--reason", reason] if reason else [])
     rev = p.lead(*args)["revision_number"]
     p.lead("plan", "accept", wid, "--revision", str(rev))
     return rev

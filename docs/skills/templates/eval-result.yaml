@@ -1,0 +1,165 @@
+# Proposed raw observation notation; one record per arm, including failed attempts.
+# Evaluator-only. Populate from captured artifacts; null means unknown/unmeasured,
+# never a successful zero. This empty template is not an experiment result.
+format: aew-skill-eval-result/v1
+experiment_id: null
+plan_sha256: null
+run_id: null
+pair:
+  case_id: null
+  target_profile_id: null
+  repeat_index: null
+  arm: null # A or B
+  randomized_position: null # 1 or 2
+  paired_run_id: null
+case_bundle_sha256: null
+oracle_and_rubric_sha256: null
+session:
+  id: null
+  fresh_session_verified: null
+  no_inherited_memory_verified: null
+  initial_fixture_reset_verified: null
+  evaluator_material_inaccessible_verified: null
+  started_at_utc: null
+  ended_at_utc: null
+
+artifacts:
+  # Add exact artifact references plus hashes. Keep fixtures and evaluator records
+  # inaccessible to the worker except the deliberately materialized worker fields.
+  delivered_messages: {ref: null, sha256: null}
+  worker_visible_manifest: {ref: null, sha256: null}
+  initial_fixture_manifest: {ref: null, sha256: null}
+  final_fixture_manifest: {ref: null, sha256: null}
+  baseline_instructions: {ref: null, sha256: null}
+  role_authority: {ref: null, sha256: null}
+  context_pack: {ref: null, sha256: null}
+  capabilities_and_tools: {ref: null, sha256: null}
+  environment_and_reference_manifest: {ref: null, sha256: null}
+  runtime_skill_manifest: {ref: null, sha256: null} # absent in A; explain below
+  full_transcript: {ref: null, sha256: null}
+  tool_trace: {ref: null, sha256: null}
+  final_answer: {ref: null, sha256: null}
+  acceptance_check_outputs: {ref: null, sha256: null}
+  raw_usage_telemetry: {ref: null, sha256: null}
+  final_patch_or_artifact: {ref: null, sha256: null}
+
+configuration:
+  requested: {provider: null, model: null, revision: null, effort: null, settings: {}}
+  observed: {provider: null, model: null, revision: null, effort: null, settings: {}}
+  identity_evidence_refs: []
+  unobservable_fields: []
+  harness_and_version: null
+  effective_limits: {}
+  cache_state_or_policy: null
+  sampling_seed: null
+  capability_availability_observations: []
+  mismatches: []
+
+exposure:
+  mode: null # procedure or selection
+  candidate_name: null
+  candidate_metadata_version: null
+  candidate_available: null
+  candidate_selected: null # not applicable for forced procedure trial
+  candidate_delivered_or_read: null
+  selected_runtime_paths: []
+  delivered_runtime_paths: []
+  exposure_trace_refs: []
+  baseline_contamination_check: null
+  static_skill_bytes_delivered: null
+  static_skill_tokens_delivered: null
+  token_measurement_method: null
+  delivery_count: null
+  discovery_tokens_delivered: null
+  skill_truncated: null
+  context_compactions: null
+  observed_procedure_behaviors: [] # trace evidence, not private reasoning
+  unknowns: []
+
+outcome:
+  terminal_reason: null # completed, timeout, output_limit, tool_failure, etc.
+  attempts: [] # attempt ID, kind, reason, timestamps, associated raw artifact refs
+  retries_by_kind: {} # launch, continuation, tool, verification; only observed counts
+  interventions: [] # timestamp, actor, reason, exact content ref, elapsed seconds
+  human_intervention_count: null
+  human_intervention_seconds: null
+  end_to_end_wall_seconds: null
+  execution_wall_seconds: null
+  elapsed_time_censored: null
+  truncation_or_budget_exhaustion: null
+  tool_call_count: null
+  additional_invocation_count: null
+  rework_count: null
+  rework_protocol_applied: null
+
+usage:
+  provider_reported_categories: {} # preserve names, units and subset relationships
+  category_interpretation: null # prevents input/cache double counting
+  total_input_tokens: null
+  total_output_tokens: null
+  cached_input_tokens: null
+  other_billed_token_categories: {}
+  all_attempts_included: null
+  initial_context_tokens: null
+  peak_context_tokens: null
+  context_measurement_method: null
+  model_charge: null
+  tool_or_service_charge: null
+  currency: null
+  price_source_and_date: null
+  total_recurring_charge: null
+  cost_is_bound_or_estimate: null
+  authoring_and_grading_cost_excluded_from_recurring: true
+  missing_telemetry: []
+
+scoring:
+  # Evaluator observations, not worker assertions; fill after collection.
+  completed: false # empty finding lists establish zero only after complete scoring
+  assessment_coverage: null
+  grader_identity: null
+  grader_instructions_sha256: null
+  treatment_blinded: null
+  unblinding_reason: null
+  task_criteria: [] # criterion ID, satisfied/failed/unknown, artifact/trace refs
+  task_correct: null
+  activation_expected: null # use, skip, abstain from evaluator oracle
+  activation_observed: null
+  activation_correct: null
+  acceptance_checks: [] # ID, command, artifact digest, outcome, output ref
+  required_verification_performed: null
+  verification_supports_final_snapshot: null
+  important_issues_eligible: []
+  important_issues_found: [] # distinct issue IDs with trace/evidence refs
+  important_issues_missed: []
+  false_or_irrelevant_findings: [] # finding, category, rationale, trace refs
+  unresolved_hypotheses: []
+  adjudicated_unanticipated_findings: []
+  introduced_defects: [] # distinct issue, severity, reproducer, output ref
+  unnecessary_tool_calls: [] # trace ID, predeclared rule, explanation
+  unnecessary_invocations: []
+  evidence_criteria: [] # criterion, satisfied/failed/unknown, references
+  stale_or_cross_snapshot_evidence: []
+  fabricated_or_unsupported_evidence: []
+  authority_violations: [] # boundary, claim/attempt/completed, trace refs
+  satisfactory_authorized_outcome: null
+  veto_triggered: null
+  disagreements_and_adjudication: []
+  scoring_limitations: []
+
+validity:
+  plan_deviations: []
+  paired_inputs_match_except_treatment: null
+  pairing_verified_against_run: null
+  inclusion: null # included, infrastructure_invalid, pending_adjudication
+  exclusion_rule_from_plan: null
+  infrastructure_failure_evidence: []
+  replacement_pair_ids: []
+  limitations: []
+
+# Paired effects and aggregate recommendations belong in the experiment report,
+# not in a single raw observation. Preserve this record even when invalidated.
+record_integrity:
+  recorded_at_utc: null
+  recorder: null
+  artifact_manifest_sha256: null
+  result_sha256_recorded_in: null # external manifest; avoids self-referential hash

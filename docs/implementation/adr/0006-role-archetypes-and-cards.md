@@ -1,6 +1,6 @@
 # ADR-0006 — Role archetypes (authority classes) and Role cards (catalog)
 
-- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25. Amended for M2 (2026-09-27).
+- **Status:** Accepted (M1, step 8b). Operator clarification, 2026-09-25. Amended for M2 (2026-09-27) and M3 (2026-09-29).
 - **Spec basis:**
   - WC §5: roles are reusable execution templates with authority and context contracts.
   - WC §5.8: specialists supply guidance *within another role* and create no parallel authority.
@@ -124,3 +124,27 @@ role_plan:
   None of them can submit another archetype's kind, drive control state, accept a plan or mutate source (`OBSERVATION_MUTATED`).
 - **Unchanged.** Selection precedence, `use_when` (advisory), operator pins (enforced in the execute slot, including for non-mutating Tickets), forbids and escalation checks. No archetype is added.
 - **Specialist remains a card modifier.** Substantial audit work, such as a security audit or a performance characterization, is a non-mutating Ticket executed by an investigator-based card. Routine review and verification remain gates (WC §7).
+
+## Amendment 2026-09-29 — M3: skills and capabilities projected into a harness (ADR-0009)
+
+The M1 note "M3: skill loading by harness adapters" is resolved as follows. No archetype, card field or authority rule changes.
+
+- **A card's skills and capabilities reach the harness as projection, never as authority.** The adapter turns the pinned card into the harness's own configuration: a system text and a permission rule set. Authority is still enforced by the engine and keyed by archetype only. Harness permissions are defense in depth.
+- **Skills (WC §15.3, §16.10).** A harness may expose only the skills it actually provides for the card; everything else is denied.
+  - **M3 provides none.** The OpenCode projection denies `skill` except for skills the harness provides, and disables OpenCode's compatibility plugin, so the operator's own `~/.claude` or `~/.agents` skills never load.
+  - A card's requested skills are therefore recorded per run as `requested`, `exposed` and `unavailable`, and the system text names the unavailable ones and tells the model to proceed without them and say so.
+  - Making skills reachable is future work: the operator's skills in `docs/skills/`, resolved through the capability registry (M6), and disclosed progressively (`future-work.md` D3, F12, F13).
+- **Capabilities.** Only one ordinary capability changes the projection in M3: `documentation_lookup` opens web fetch and search; otherwise both are denied. `source_mutation` remains the implementer's alone, and maps to OpenCode's `edit`. Other capabilities stay "requested, resolution pending" until M6.
+- **Nested delegation stays closed.** OpenCode's `subagent` is denied for every role, and any session other than the run's own is recorded as `foreign_sessions`. Allowing bounded harness-native orchestration under a capability grant is designed (`docs/design/capability-discovery-and-progressive-disclosure-design-v0.1.md` §8; `future-work.md` F7, F13), not implemented.
+
+## Amendment 2026-09-30 — plan assurance binds the role plan (operator UAT)
+
+In the operator's acceptance session, an accepted plan promised independent review and verification, but a plan was free text and the non-mutating Ticket's policy path required neither. AEW would have accepted the record on its executor's own result; the Lead noticed and staffed the review by hand. Operator decision (P0 before the M3 freeze): **required and explicit**.
+
+- **Every plan revision declares its assurance.** `aew plan propose` and `aew plan adopt` take `--review <card|default>` and `--verify <card|default>` (repeatable; `default` is the archetype's `default_card`), or `--assurance none`. Without one of them the command is refused, naming the options. The declaration is stored in the plan record (`assurance`, additive to `aew/plan/v1`) and in the unit's plan entry. Cards are validated at proposal against the slot (`_slot_ok`) and the unit's forbidden list.
+- **Acceptance binds it.** `aew plan accept` puts each declared card into the role plan with `selected_by: plan`, `pinned`, `plan_revision: N` (or marks an existing entry for the same card with `plan_revision`). Each becomes a required gate through the existing `plan_gates` (`review_card:<card>`, `verify_card:<card>`), sourced "accepted plan vN".
+- **Only a new plan revision changes it.** `aew work staff --remove` or `--forbid` of a plan-bound entry is refused. Accepting a later revision releases the earlier revision's entries (a Lead's or operator's own entry for the same card stays, without the plan binding) and binds the new declaration.
+- **A revision replaces only the plan it was proposed against** (added 2026-10-01, AEW-Lead review of the M3 tag). `aew plan accept` refuses a revision whose recorded `supersedes` is not the plan accepted now, asking for a new revision. Before this, an older proposal accepted after a newer plan rebound its own (possibly empty) assurance, dropping the newer plan's gates, and a revision proposed before an acceptance escaped the reason a supersession needs.
+- **No new semantics beyond that.** The gates, their evaluation and the precedence of operator pins are unchanged; plans accepted before this amendment carry no declaration and bind nothing. Archetype authority is unchanged.
+- Regressions: `tests/regression/test_uat_2026_09_30.py`. The wider plan-assurance design (`future-work.md` F14) remains post-M3.
+

@@ -9,9 +9,9 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import EngineBase, TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
-from aew.errors import GateUnsatisfied, IllegalTransition, NotFound, UsageError
+from aew.errors import GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
-from aew.util import sha256_text, utc_now
+from aew.util import glob_any, sha256_text, utc_now
 from aew.workspace import git
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
@@ -169,6 +169,11 @@ class WorkOps(EngineBase):
             raise UsageError("risk class must be 0..4")
         if min_descendant_class is not None and not rationale:
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
+        joined = [s for s in scope_paths or [] if "," in s]
+        if joined:  # M3-D9: several globs given as one value would match nothing, and every change would be out of scope
+            raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
+                             "globs: give one glob per --scope and repeat --scope for each",
+                             scope=joined)
         with self.lead_txn(token, expect_rev, "work.create") as ctx:
             state = ctx.state
             if parent is not None:
@@ -215,7 +220,26 @@ class WorkOps(EngineBase):
                                      "review": [], "verify": [], "forbidden": []}
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.before_commit(ctx)
-        return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and is_mutating else []
+        if unmatched:
+            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                               "otherwise a change there needs a scope that names it" for g in unmatched]
+        return out
+
+    def _unmatched_scope(self, scope_paths: list[str]) -> list[str]:
+        """The scope globs that match no file at the authoritative commit (M3 dogfood report §6.6, E10: a Lead that
+        could not look at the project guessed seven globs, none of them the code's directory, and nothing said so).
+        A Ticket's scope is fixed once it exists, so this is said at creation; it is a warning, not a refusal, since
+        a Ticket may create new directories."""
+        commit = self.authoritative_commit()
+        if not scope_paths or not commit:
+            return []
+        try:
+            files = git.out("ls-tree", "-r", "--name-only", commit, cwd=self.repo_root).splitlines()
+        except GitError:
+            return []
+        return [g for g in scope_paths if not any(glob_any(f, [g]) for f in files)]
 
     def _check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
         parent_unit = self.unit(state, parent)
@@ -254,22 +278,27 @@ class WorkOps(EngineBase):
     # ------------------------------------------------------------------ plans
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
-                     reason: str | None = None, affected_paths: list[str] | None = None) -> dict[str, Any]:
+                     reason: str | None = None, affected_paths: list[str] | None = None,
+                     review: list[str] | None = None, verify: list[str] | None = None,
+                     no_assurance: bool = False) -> dict[str, Any]:
         if not body.strip():
             raise UsageError("plan body is empty")
         with self.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
             unit = self.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.resolve_plan_assurance(  # type: ignore[attr-defined]  (RoleOps)
+                unit, review=review, verify=verify, none=no_assurance)
             path, revision = self._propose(ctx, work_id, unit, body=body, reason=reason,
-                                           affected_paths=affected_paths)
+                                           affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
     def _propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
-                 affected_paths: list[str] | None, author: dict[str, Any] | None = None,
+                 affected_paths: list[str] | None, assurance: dict[str, list[str]],
+                 author: dict[str, Any] | None = None,
                  source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
         """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
         revision = len(unit["plans"]) + 1
@@ -281,14 +310,14 @@ class WorkOps(EngineBase):
             author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
                               "generation": ctx.actor["generation"]},
             body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            source_evidence=source_evidence,
+            source_evidence=source_evidence, assurance=assurance,
         )
         text = record.render()
         path = f"work/{work_id}/plan-v{revision}.md"
         ctx.session.write(path, text)
         ctx.refs.append(path)
         unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
-                              "supersedes": supersedes, "status": "proposed"})
+                              "supersedes": supersedes, "status": "proposed", "assurance": assurance})
         return path, revision
 
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
@@ -307,12 +336,21 @@ class WorkOps(EngineBase):
                 raise NotFound(f"{work_id} has no plan revision {revision}")
             if entry["status"] != "proposed":
                 raise IllegalTransition(f"plan v{revision} is {entry['status']}")
+            # A revision replaces only the plan it was proposed against: accepting an older proposal would rebind
+            # its assurance over a newer plan's, and skip the reason a supersession needs (M3 review, B1).
+            current = (unit.get("plan") or {}).get("accepted")
+            if entry.get("supersedes") != current:
+                against = f"plan v{entry['supersedes']}" if entry.get("supersedes") else "no accepted plan"
+                raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
+                                        "accepted now; propose a new revision to change it")
             for p in unit["plans"]:
                 if p["status"] == "accepted":
                     p["status"] = "superseded"
             entry["status"] = "accepted"
             unit["plan"] = {"accepted": revision, "path": entry["path"], "sha256": entry["sha256"],
                             "ancestor_plans": self.ancestor_plan_snapshot(ctx.state, work_id)}
+            # The plan's declared review and verification become required gates (UAT 2026-09-30).
+            self.bind_plan_assurance(unit, revision, entry.get("assurance"))  # type: ignore[attr-defined]
             if H.is_parent(unit) and not unit.get("baseline_commit"):
                 unit["baseline_commit"] = self.authoritative_commit()
             decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",

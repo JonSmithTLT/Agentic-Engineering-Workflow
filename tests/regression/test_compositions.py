@@ -149,7 +149,7 @@ def replan(p, wid, tmp_path, revision):
     p.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", f"revise approach ({revision})")
     plan = tmp_path / f"{wid}-plan-v{revision}.md"
     plan.write_text(f"Revised approach {revision}.\n", encoding="utf-8")
-    p.lead("plan", "propose", wid, "--file", str(plan), "--reason", "new requirement")
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--reason", "new requirement")
     p.lead("plan", "accept", wid, "--revision", str(revision))
 
 

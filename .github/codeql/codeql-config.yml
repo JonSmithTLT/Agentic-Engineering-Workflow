@@ -1,0 +1,9 @@
+# CodeQL configuration for the advanced setup (.github/workflows/codeql.yml).
+#
+# eval/ holds research and evaluation scripts (the M3 spike, the dogfood driver) that the operator runs by hand on
+# their own machine, with paths and commands from their own command line. They are not shipped and take no input
+# from anyone else, so their "user-provided value" findings are the intended use (PR #5 triage).
+name: aew-codeql
+
+paths-ignore:
+  - eval/**

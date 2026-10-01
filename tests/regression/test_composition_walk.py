@@ -89,7 +89,7 @@ class Walk:
                         risk_class=1, scope_paths=["calc/**", "tests/**"],
                         goal_backwards=["calc.core imports and subtract works"],
                         contract=["changes stay within calc/ and tests/"])["id"]
-        rev = self.lead("plan_propose", work_id=wid, body="Change calc/core.py; keep tests green.\n")["revision_number"]
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body="Change calc/core.py; keep tests green.\n")["revision_number"]
         self.lead("plan_accept", work_id=wid, revision=rev)
         return wid
 
@@ -217,7 +217,7 @@ class Walk:
     def replan(self, wid: str) -> None:
         if self.unit(wid)["state"] != "REPLAN_REQUIRED":
             self.to(wid, "REPLAN_REQUIRED", "walk replan")
-        rev = self.lead("plan_propose", work_id=wid, body=f"Revised plan {self.variant}.\n",
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body=f"Revised plan {self.variant}.\n",
                         reason="walk replan")["revision_number"]
         self.lead("plan_accept", work_id=wid, revision=rev)
 

@@ -13,6 +13,10 @@ accepted one (WC §9.9, invariant 7). Otherwise the gate is STALE (passing evide
 exists for another snapshot/plan), FAILED (the latest evidence for this snapshot
 fails) or MISSING. Evidence is never modified; staleness is computed.
 
+A check result also proves only the check's definition that ran (its command, working directory and timeout in
+``policy/checks.yaml``, recorded as ``check.definition_sha256``). When the definition changes, an in-flight Ticket
+must satisfy the new one: a result for the old definition is STALE (decision (a), independent audit I1).
+
 Which evidence may satisfy a gate (review 2026-09-26 M4; KC §7.2/§16):
 
 * review and verification gates count only reports the Lead has **ingested** —
@@ -28,6 +32,8 @@ Which evidence may satisfy a gate (review 2026-09-26 M4; KC §7.2/§16):
 from __future__ import annotations
 
 from typing import Any
+
+from aew.policy import checks as C
 
 CURRENT, STALE, MISSING, FAILED, WAIVED = "CURRENT", "STALE", "MISSING", "FAILED", "WAIVED"
 REVIEW_GATES_PREFIX = "review_"
@@ -53,6 +59,12 @@ def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
         out.append(parent)
         parent = state["work"][parent].get("parent")
     return out
+
+
+def effective_class(state: dict[str, Any], work_id: str) -> int:
+    """A unit's risk class raised to the highest min_descendant_class floor of its ancestors."""
+    floors = [(state["work"][anc].get("policy") or {}).get("min_descendant_class") for anc in ancestors(state, work_id)]
+    return max([state["work"][work_id]["risk_class"], *(f for f in floors if f is not None)])
 
 
 def effective_obligations(
@@ -122,6 +134,7 @@ def evaluate(
     gates_policy: dict[str, Any],
     fingerprint: str | None,
     plan_ok: bool,
+    check_definitions: dict[str, str],
 ) -> dict[str, dict[str, Any]]:
     unit = state["work"][work_id]
     plan_rev = (unit.get("plan") or {}).get("accepted")
@@ -145,10 +158,24 @@ def evaluate(
         elif gate == "local_checks":
             checks = {}
             for check_id in gates_policy.get("local_checks", []):
+                if check_id not in check_definitions:
+                    # Say why it can never pass, rather than a bare MISSING (UAT 2026-09-30, policy consistency).
+                    checks[check_id] = {"status": MISSING, "evidence": None,
+                                        "reason": f"check `{check_id}` is not defined and configured in "
+                                                  "policy/checks.yaml, so no result can satisfy it"}
+                    continue
                 cands = [e for e in by_role("implementer")
                          if e["kind"] == "check_result" and e["check"]["check_id"] == check_id]
-                status, eid = _latest_status(cands, lambda e: e["result"] == "pass", fingerprint, plan_rev)
+                # A result proves the check as it was defined when it ran; only the current definition counts
+                # (decision (a), independent audit I1).
+                defined = [e for e in cands if C.proves_current_definition(e, check_definitions)]
+                status, eid = _latest_status(defined, lambda e: e["result"] == "pass", fingerprint, plan_rev)
                 checks[check_id] = {"status": status, "evidence": eid}
+                earlier = [e for e in cands if e["result"] == "pass" and e not in defined]
+                if status == MISSING and earlier:
+                    checks[check_id] = {"status": STALE, "evidence": earlier[-1]["id"],
+                                        "reason": "the check's definition in policy/checks.yaml changed after it "
+                                                  "passed; run it again"}
             worst = _worst([c["status"] for c in checks.values()]) if checks else CURRENT
             results[gate] = {"status": worst, "checks": checks}
         elif gate == "self_review":

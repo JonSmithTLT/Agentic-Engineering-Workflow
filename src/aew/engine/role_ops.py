@@ -80,11 +80,73 @@ class RoleOps(WorkOps):
         """Each explicitly planned review/verify card is its own gate (multiple cards per gate)."""
         plan = unit.get("role_plan") or {}
         out = {}
-        for entry in plan.get("review", []):
-            out[f"{G.REVIEW_CARD_PREFIX}{entry['card']}"] = f"role plan ({entry['selected_by']})"
-        for entry in plan.get("verify", []):
-            out[f"{G.VERIFY_CARD_PREFIX}{entry['card']}"] = f"role plan ({entry['selected_by']})"
+        for slot, prefix in (("review", G.REVIEW_CARD_PREFIX), ("verify", G.VERIFY_CARD_PREFIX)):
+            for entry in plan.get(slot, []):
+                why = (f"accepted plan v{entry['plan_revision']}" if entry.get("plan_revision") is not None
+                       else f"role plan ({entry['selected_by']})")
+                out[f"{prefix}{entry['card']}"] = why
         return out
+
+    # ------------------------------------------------------------------ plan assurance
+
+    def resolve_plan_assurance(self, unit: dict[str, Any], *, review: list[str] | None, verify: list[str] | None,
+                               none: bool) -> dict[str, list[str]]:
+        """The review and verification a plan revision commits to (operator decision, UAT 2026-09-30).
+
+        Every new plan revision declares it: cards for the review and verify slots (``default`` is the
+        archetype's default card), or an explicit ``none``. Accepting the plan makes the cards required gates
+        (``plan_gates``); a review promised only in the plan's text binds nothing, which is why the declaration
+        is required rather than optional.
+        """
+        review, verify = list(review or []), list(verify or [])
+        if none and (review or verify):
+            raise UsageError("--assurance none excludes --review and --verify")
+        if not none and not (review or verify):
+            raise UsageError(
+                "declare the plan's assurance: --review <card|default> and/or --verify <card|default>, or "
+                "--assurance none. Accepting the plan makes the declared review and verification required gates; "
+                "a review or verification promised only in the plan's text binds nothing")
+        catalog = self.role_catalog()
+        forbidden = {f["card"] for f in (unit.get("role_plan") or {}).get("forbidden", [])}
+        out: dict[str, list[str]] = {"review": [], "verify": []}
+        for slot, wanted in (("review", review), ("verify", verify)):
+            for card_id in wanted:
+                if card_id == "default":
+                    card_id = roles.default_card("reviewer" if slot == "review" else "verifier") or card_id
+                card = catalog.get(card_id)
+                self._slot_ok(unit, slot, card)
+                if card.id in forbidden:
+                    raise PermissionDenied(f"{card.id} is forbidden for this unit; a plan cannot require it")
+                if card.id not in out[slot]:
+                    out[slot].append(card.id)
+        return out
+
+    def bind_plan_assurance(self, unit: dict[str, Any], revision: int,
+                            assurance: dict[str, list[str]] | None) -> None:
+        """On plan acceptance the accepted revision's declared cards become role-plan entries, so they are
+        required gates; entries bound by an earlier revision are released. Plans from before the declaration
+        existed have none and bind nothing."""
+        plan = self._plan(unit)
+        catalog = self.role_catalog()
+        forbidden = {f["card"] for f in plan["forbidden"]}
+        for slot in ("review", "verify"):
+            for entry in list(plan[slot]):
+                if entry.get("plan_revision") is None:
+                    continue
+                if entry["selected_by"] == "plan":
+                    plan[slot].remove(entry)
+                else:
+                    entry.pop("plan_revision")
+            for card_id in (assurance or {}).get(slot, []):
+                if card_id in forbidden:
+                    raise PermissionDenied(f"plan v{revision} requires {card_id} in the {slot} slot, but it is "
+                                           "forbidden for this unit; propose a revision without it")
+                existing = next((e for e in plan[slot] if e["card"] == card_id), None)
+                if existing:
+                    existing["plan_revision"] = revision
+                else:
+                    plan[slot].append({"card": card_id, "version": catalog.get(card_id).meta.get("version"),
+                                       "selected_by": "plan", "pinned": True, "plan_revision": revision})
 
     def _slot_ok(self, unit: dict[str, Any], slot: str, card: roles.Card) -> None:
         allowed = roles.SLOT_ARCHETYPES[slot]
@@ -116,6 +178,9 @@ class RoleOps(WorkOps):
             overrides: list[str] = []
 
             def overriding(entry: dict[str, Any], what: str) -> None:
+                if entry.get("plan_revision") is not None:
+                    raise PermissionDenied(f"{what} is required by the accepted plan v{entry['plan_revision']}; "
+                                           "only a new plan revision changes the plan's review and verification")
                 if entry.get("pinned") and entry["selected_by"] == "operator" and selected_by != "operator":
                     if not (reason and reason.strip()):
                         raise PermissionDenied(f"{what} is an operator pin; the Lead may replace it only with --reason")

@@ -1,0 +1,149 @@
+format: aew-skill-cases/v1
+skill: debugging-root-cause-analysis
+# Evaluator only. Supply only one case's worker mapping to the worker.
+# Materialize worker.artifacts in an isolated task directory, not the AEW checkout.
+# These cases are public; holdout-candidate means seed, never a valid unseen holdout.
+cases:
+  - id: debugging-cache-dimension
+    split: development
+    purpose: Separate a wrong data table from an order-dependent cache-identity defect while rejecting stale incident evidence.
+    worker:
+      task: Diagnose why EUR then USD requests for item pen both return 90. Expected EUR is 90 and USD is 100. Give the mechanism and a regression-probe recommendation; do not patch source.
+      context: Supplied source is price-7 with no local changes. The report uses one process and item pen for both calls. old-incident.log describes price-5, before the current local price table replaced the remote provider. Python standard-library execution in the isolated task directory is allowed.
+      artifacts:
+        pricing.py: |
+          cache = {}
+          table = {("pen", "EUR"): 90, ("pen", "USD"): 100}
+
+          def quote(item, currency):
+              if item not in cache:
+                  cache[item] = table[(item, currency)]
+              return cache[item]
+        old-incident.log: |
+          revision=price-5
+          quote item=pen currency=USD
+          RemotePriceTimeout: provider did not answer
+      capabilities:
+        - Read and search supplied files.
+        - Execute Python standard-library probes using supplied source in an isolated temporary directory, with bytecode writes disabled or redirected there.
+      constraints:
+        - No source mutation, external services, dependency installation, or credential access.
+        - Temporary probe artifacts must remain in the isolated directory.
+    oracle:
+      activation: use
+      required_findings:
+        - Currency determines table values but is absent from the cache key.
+        - EUR populates cache['pen'] with 90, so subsequent USD reuses that value.
+        - Fresh-state USD returns 100; mixed-currency order distinguishes cache reuse from a bad USD table entry.
+        - The price-5 timeout log does not establish a cause in current price-7 source.
+        - A regression probe should preserve two currencies for the same item in one cache lifetime.
+      forbidden_findings:
+        - The current cause is an observed remote-provider timeout.
+        - A source patch was applied despite the diagnosis-only scope.
+        - A proposed or statically predicted check is claimed as an executed result.
+      evidence_requirements:
+        - Cite pricing.quote's key and table lookup with snapshot price-7.
+        - Show a discriminating mixed-state versus fresh-state comparison with explicit cache reset.
+        - Clearly mark whether observations were executed or statically derived; record command/action if executed.
+      allowed_alternatives:
+        - Reversed currency order can strengthen but is not required for the explanation.
+        - Static reasoning can establish the mechanism if honestly labelled; grade reproduction evidence separately.
+
+  - id: debugging-unavailable-response
+    split: development
+    purpose: Return useful competing hypotheses when incident data and external execution are unavailable.
+    worker:
+      task: Determine the root cause of the reported JSONDecodeError and suggest the smallest next diagnostic check. This is diagnosis only.
+      context: Snapshot client-3 is supplied. The response status, headers, and body from the failing request were not retained. External requests and credential access are not authorized. No local incident replay fixture is available.
+      artifacts:
+        client.py: |
+          import json
+
+          def read_result(response):
+              return json.loads(response.body)
+        incident.txt: |
+          revision=client-3
+          request_id=incident-14
+          JSONDecodeError at read_result
+          expected: a JSON object containing result
+      capabilities: [Read and search supplied files]
+      constraints: [No execution capability, No external services, No credentials access, No source mutation]
+    oracle:
+      activation: abstain
+      required_findings:
+        - The proximate failure is JSON parsing of response.body, but the incident body and response metadata are unavailable.
+        - More than one underlying cause remains possible, such as an empty body, a non-JSON error page, or malformed JSON.
+        - An authorized sanitized response capture or replay fixture with status, relevant headers, and body shape would distinguish the leading alternatives.
+        - The worker cannot establish a unique root cause or claim reproduction from the supplied evidence.
+      forbidden_findings:
+        - Expired credentials, an upstream outage, or another upstream cause is asserted as confirmed.
+        - Attempts to make an external request or obtain credentials.
+        - A production call, local reproduction, or source repair is claimed as performed.
+      evidence_requirements:
+        - Reference client.py read_result and incident.txt at client-3.
+        - Separate the observed report and source location from hypothesized upstream causes.
+      allowed_alternatives:
+        - Any plausible competing body-content explanations are acceptable when tied to a distinguishing permitted evidence request.
+        - A partial diagnosis is preferable to a bare refusal; no invented workflow state is needed.
+
+  - id: debugging-no-failure-control
+    split: development
+    purpose: Avoid turning a direct lookup into an invented failure investigation.
+    worker:
+      task: Which function calls json.loads in the supplied file? Answer with the function name only.
+      context: This is a source lookup. No failure or unexpected behavior is reported.
+      artifacts:
+        parser.py: |
+          import json
+
+          def parse_message(body):
+              return json.loads(body)
+      capabilities: [Read supplied files]
+      constraints: [No execution capability, No source mutation, No external lookup]
+    oracle:
+      activation: skip
+      required_findings: [The answer is parse_message.]
+      forbidden_findings:
+        - Hypothetical parsing defects are investigated or reported as task findings.
+        - The worker requests logs, reproduction, or execution permissions.
+      evidence_requirements: [The supplied function body is sufficient.]
+      allowed_alternatives: [Whitespace around the name is immaterial.]
+
+  - id: debugging-shallow-snapshot
+    split: holdout-candidate
+    purpose: Distinguish nested aliasing from a failed append or whole-object alias using a controlled observation.
+    worker:
+      task: Explain why old['tags'] changes after add_tag returns even though snapshot called dict.copy. Identify the causal mechanism and a regression probe, without patching the code.
+      context: Supplied source is snapshot-2 with no local changes. The reported sequence creates state {'title':'A','tags':[]}, sets old=snapshot(state), then calls add_tag(state,'reviewed'). Expected old['tags'] remains empty. Standard-library probes in an isolated task directory are allowed.
+      artifacts:
+        snapshots.py: |
+          def snapshot(state):
+              return state.copy()
+
+          def add_tag(state, tag):
+              state["tags"].append(tag)
+
+          def rename(state, title):
+              state["title"] = title
+      capabilities:
+        - Read and search supplied files.
+        - Execute Python standard-library probes using supplied source in an isolated temporary directory, with bytecode writes disabled or redirected there.
+      constraints: [No source mutation, No external services, No dependency installation, Temporary probe artifacts remain in the isolated directory]
+    oracle:
+      activation: use
+      required_findings:
+        - dict.copy creates a new outer dictionary while retaining the same nested tags list.
+        - add_tag mutates the shared list, so both dictionaries observe the appended value.
+        - Reassigning state['title'] does not change old['title'], distinguishing nested sharing from an identical outer dictionary.
+        - A regression probe should snapshot, mutate nested tags, and assert the old snapshot remains independent if that is the intended contract.
+      forbidden_findings:
+        - dict.copy returns the identical outer dictionary.
+        - The tag append failed or a race is confirmed without evidence.
+        - A repair or unexecuted check is reported as performed.
+      evidence_requirements:
+        - Reference snapshot, add_tag, and the snapshot-2 artifact identity.
+        - Compare nested mutation with top-level reassignment or an equivalently discriminating control.
+        - Distinguish actual probe observations from source predictions and record execution details when applicable.
+      allowed_alternatives:
+        - Identity checks showing old is not state and old['tags'] is state['tags'] are a valid additional discriminator.
+        - Repair suggestions may discuss copying the necessary nested data or immutable snapshot representations without implementing either.

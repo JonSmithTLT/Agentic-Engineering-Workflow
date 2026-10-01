@@ -41,7 +41,7 @@ def replan(p, wid, tmp_path):
     p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'revise approach')
     plan = tmp_path / 'revised-plan.md'
     plan.write_text('Use the revised approach and validate it.\n')
-    p.lead('plan', 'propose', wid, '--file', str(plan), '--reason', 'new requirement')
+    p.lead('plan', 'propose', '--assurance', 'none', wid, '--file', str(plan), '--reason', 'new requirement')
     p.lead('plan', 'accept', wid, '--revision', '2')
 
 

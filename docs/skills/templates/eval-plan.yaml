@@ -1,0 +1,155 @@
+# Proposed authoring notation, not an AEW runtime schema or executable runner config.
+# Copy, fill required nulls, remove unused metric examples, then freeze/hash this file.
+# All plan fields are evaluator-only. No target run has been performed by this template.
+format: aew-skill-eval-plan/v1
+experiment_id: REQUIRED
+status: draft # documentation status only
+owner: REQUIRED
+created_at_utc: null
+claim: REQUIRED_falsifiable_claim_for_one_target_profile_and_workload
+mode: procedure # procedure or selection; use separate plans for different estimands
+
+candidate:
+  name: REQUIRED
+  metadata_version: REQUIRED # copy metadata.version from SKILL.md
+  frontmatter_status: candidate
+  runtime_manifest:
+    - path: SKILL.md
+      sha256: null
+    # Add only explicitly approved runtime examples/references and their hashes.
+  runtime_manifest_sha256: null # hash the exact saved manifest bytes
+  excluded_from_worker: [evals, rubrics, solutions, plans, results, author_notes]
+  exposure_mechanism: REQUIRED_in_context_or_explicit_file_retrieval
+  exposure_verification: REQUIRED_actual_messages_or_read_trace_and_visible_manifest
+  discovery_metadata_sha256: null # required for selection; null if not applicable
+  selector_definition_sha256: null # required for selection; null if not applicable
+  other_skills_manifest_sha256: null # pin empty manifest if no other skills
+
+target:
+  provider: REQUIRED
+  model: REQUIRED
+  model_revision: null # explain if unavailable; a mutable alias limits reproducibility
+  effort: REQUIRED_or_explicitly_unavailable
+  settings: {} # fill every exposed sampling/context/output parameter and default
+  unavailable_settings: []
+  harness_name: REQUIRED
+  harness_version: REQUIRED
+  observed_identity_evidence_required: REQUIRED
+  tool_versions_manifest_sha256: null
+  execution_profile_artifact_sha256: null # experiment record; not a new AEW profile
+  limits:
+    input_tokens: null
+    output_tokens: null
+    steps: null
+    elapsed_seconds: null
+    unavailable_or_inapplicable_limits: []
+
+controlled_inputs:
+  baseline_messages_sha256: null
+  role_and_authority_artifact_sha256: null
+  context_pack_sha256: null
+  capability_configuration_sha256: null
+  capability_availability_check: REQUIRED
+  fixture_manifest_sha256: null
+  references_manifest_sha256: null
+  environment_manifest_sha256: null
+  network_and_service_snapshot_policy: REQUIRED
+  cache_policy: REQUIRED
+  fresh_session_and_reset_method: REQUIRED
+  inaccessible_evaluator_storage_check: REQUIRED
+  worker_packaging_method: worker_fields_only_and_runtime_allowlist
+  initial_token_overhead_policy: same_limits_skill_delta_measured_no_context_removed
+
+cases:
+  case_bundle_sha256: null
+  oracle_and_rubric_sha256: null
+  worker_material_manifest_sha256: null
+  public_development_ids: []
+  private_holdout_ids: [] # shipped public holdout-candidate files never qualify
+  independent_context_families: []
+  case_weighting: REQUIRED_equal_or_predeclared_workload_weights
+  selection_classes_covered: [use, skip, abstain]
+  holdout_custodian: null
+  holdout_author_access_history: null
+  near_duplicate_check: REQUIRED
+  private_holdout_requirement_for_claim: REQUIRED
+  insufficiency_if_no_private_holdout: REQUIRED
+
+design:
+  independent_context_count: null # owner chooses before running
+  paired_repeats_per_context: null # multiple repeats; not extra independent contexts
+  sample_size_rationale: REQUIRED_smallest_useful_effect_and_tolerated_uncertainty
+  order_method: randomized_balanced_AB_BA
+  order_seed_or_draw_record: REQUIRED
+  frozen_schedule_sha256: null
+  pairing_keys: [case_id, target_profile_id, repeat_index]
+  sampling_seed_policy: REQUIRED_or_unavailable
+  intervention_policy: REQUIRED_none_or_exact_fixed_followup_protocol
+  stopping_rule: REQUIRED_fixed_sample_or_predeclared_sequential_rule
+  infrastructure_exclusions: [] # enumerate objective criteria; no model failures
+  invalid_pair_replacement_policy: REQUIRED_retain_originals_and_replace_both_arms
+  missing_data_policy: REQUIRED_no_zero_imputation_no_silent_pair_dropping
+  deviations_create_new_experiment_when: REQUIRED
+
+measurement:
+  primary:
+    id: REQUIRED # e.g. important_finding_recall; cost may be primary with quality guardrails
+    operational_definition: REQUIRED
+    unit: REQUIRED
+    denominator: REQUIRED
+    direction: higher_is_better # or lower_is_better
+    minimum_practical_improvement: null
+    uncertainty_acceptance_rule: REQUIRED
+  secondary: [] # id, definition, unit, denominator, direction for each
+  guardrails: [] # id, definition, floor or regression margin, severe-failure rule
+  # Example guardrail kinds: false findings, missed critical issues, freshness,
+  # negative-control extra actions, harmful edits, correctness, verification.
+  vetoes:
+    - observed_B_authority_violation_or_unauthorized_authority_claim
+    - fabricated_required_evidence_in_B
+  economics:
+    recurring_measure: REQUIRED_total_usage_cost_time_or_combination_reported_separately
+    maximum_acceptable_increment: null
+    cost_per_satisfactory_authorized_outcome_definition: all_attempt_costs_divided_by_satisfactory_authorized_outcomes
+    rate_source_and_effective_date: null # null if monetary cost not claimed
+    cache_billing_interpretation: REQUIRED_or_unavailable
+    static_skill_token_estimator: REQUIRED_or_unavailable
+    authoring_costs_reported_separately: true
+    unavailable_metrics: [] # metric and reason, never substitute zero
+
+scoring:
+  rubric_sha256: null
+  grader_identity_or_profile: REQUIRED
+  grader_instructions_sha256: null
+  blind_arm_labels: true
+  necessary_unblinding_policy: REQUIRED
+  duplicate_and_partial_finding_rules: REQUIRED
+  alternative_correct_answer_rules: REQUIRED
+  new_oracle_issue_adjudication: REQUIRED_apply_equally_to_both_arms
+  disagreement_resolution: REQUIRED
+  human_calibration_sample: REQUIRED_if_model_grader_used_otherwise_not_applicable
+  verification_checks: [] # command/procedure, expected result, relevant artifact
+
+analysis:
+  unit_of_generalization: independent_context
+  report_strata: [target_profile, context_family, activation_class]
+  paired_effect_summary: REQUIRED
+  interval_method: REQUIRED_suitable_for_planned_sample_and_outcome
+  confidence_level: null
+  repeated_runs_dependence: preserve_context_clusters
+  multiple_comparison_and_variant_selection_policy: REQUIRED
+  report_severe_regressions_separately: true
+  improvement_rule: REQUIRED_primary_effect_AND_guardrails_AND_economics_AND_no_veto
+  regression_rule: REQUIRED
+  equivalence_rule: REQUIRED_or_equivalence_not_tested
+  inconclusive_rule: REQUIRED
+
+retention:
+  evaluator_only_location: REQUIRED
+  exact_inputs_outputs_traces_manifests_retained: true
+  raw_result_template: eval-result.yaml
+  access_and_redaction_policy: REQUIRED_keep_private_holdout_out_of_worker_access
+  aggregate_report_location: REQUIRED
+  plan_sha256_recorded_outside_plan: REQUIRED # avoids a self-referential file hash
+  recommendation_scope: REQUIRED_named_model_and_workload_only
+  authority_effect: none_advisory_documentation_only

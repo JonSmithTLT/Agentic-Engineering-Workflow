@@ -18,12 +18,13 @@ The **directory** says what a test is. **Markers** are used only for properties 
 
 | Lane | Rule (in order) | What it holds | Class |
 |---|---|---|---|
+| `live` | `tests/live/**`, collected **only with `--live`** | Real harness binaries and real models: the harness conformance scenarios, the live twins of AT-14..AT-17 on OpenCode 2.0.18, and unscripted free-model trials (a Ticket through implementer, reviewer and verifier; and a seeded defect through rejection and rework), where AEW's invariants are asserted and the models' outcomes are recorded (M3). Opt-in and local; never part of CI or the assurance check, which never collect it. | Live evidence; not a merge gate |
 | `serial` | marker `serial` | Properties that *are* timing or real-process concurrency: 2×50 racing writers, the real `os._exit` kill matrix and the cross-process stale writer (`tests/integration/test_store_processes.py`), and the pty operator takeover (AT-4b) | Deterministic regression; never parallel |
-| `acceptance` | marker `acceptance(id)` | AT-1..AT-13 and KC §26 scenarios through the real CLI and real git. `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
+| `acceptance` | marker `acceptance(id)` | AT-1..AT-17 and KC §26 scenarios through the real CLI and real git; M3's AT-14..AT-17 through real supervisors and harness processes (the fake harness and the OpenCode adapter against a fake V2 server). `pytest -m acceptance` selects them all, including those in `serial`. | Deterministic merge gate |
 | `adversarial` | marker `exploratory` | The seeded walks: the M1 composition walk (5 seeds × 60 steps) and the M2 hierarchy walk (5 seeds × 80 steps). Their default budgets are merge gates; larger budgets run nightly. | Seeded exploration, deterministic per seed |
 | `fast` | `tests/unit/**`, `tests/test_spec_pin.py` | Pure logic, schemas, the store model and in-process fault injection, the frozen-spec pin, CI tooling | Deterministic |
 | `integration` | `tests/integration/**` | Engine features over real git and the real CLI | Deterministic |
-| `regression` | `tests/regression/**` | Independent-review probes (preserved **unchanged**), composition tests, the cross-operation invariant oracle | **Permanent deterministic regression** |
+| `regression` | `tests/regression/**` | Independent-review probes (preserved **unchanged**), composition tests, the cross-operation invariant oracle, and the timing-free control-plane scale regression (M3: each command's counts of git processes, parses, commits and renders must not grow with the project; `m3-performance.md`) | **Permanent deterministic regression** |
 
 ### Deterministic regression versus exploration
 
@@ -164,7 +165,13 @@ python -m pytest --lane regression -n auto -q           # one lane in parallel
 python -m pytest -n auto -m "not serial" -q && python -m pytest --lane serial -q   # full, fast
 python -m pytest -m acceptance -q                       # all acceptance scenarios
 AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q     # reproduce a nightly seed
+python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
+python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
+AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # a free model, unscripted
+AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
 ```
+
+The paid dogfood (M3 step 9) is not a test lane. It is an evaluation with its own driver, fixtures, hidden tests and pre-registered rubric in `eval/m3/dogfood/` (see its README), reported in `m3-dogfood-report.md`.
 
 Seeds and budgets are controlled by these environment knobs; the defaults are the merge-gate values:
 
@@ -190,9 +197,11 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
 | `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11 | Broader environment |
 
+**Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python and GitHub Actions on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
+
 ## 12. Known cost drivers and follow-ups
 
-- **CLI subprocesses are ~80 % of test time.** A read-only `aew` call costs ~250 ms: ~100 ms of imports (jsonschema ~50 ms) and ~65 ms of pure-Python YAML parsing of `control.yaml`. Cutting that is a separately reviewed `src/` change to the persistence core.
+- **CLI subprocesses dominate test time** (about 80 % when measured for M2). Then, a read-only `aew` call cost about 250 ms, including about 65 ms of pure-Python YAML parsing of `control.yaml`. M3 step 7 changed the persistence core: YAML now goes through libyaml where PyYAML has it (`aew doctor` reports which), and identical control-state bytes reuse their parse within a process. The bare CLI floor is now about 0.1 s (`m3-performance.md`). The remaining cost is linear in `control.yaml`'s size, which ADR-0011 addresses before M4.
 - **The M1 walk re-parses `control.yaml` for every harness query** (~40 times per step). The M2 hierarchy walk caches the parsed state by the file's identity, which cut a seed from 150–320 s to ~20 s with step-for-step identical paths; applying the same harness change to `test_composition_walk.py` is a separately reviewed change to an M1 regression file.
 - **The ruleset's code-coverage rule has no report yet.** Subprocess-aware coverage, combined across shards, is a separate decision.
 - **A Rocky Linux 8 container job** (the SPT target) is a candidate for the nightly lane.

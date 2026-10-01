@@ -1,0 +1,160 @@
+{
+ "binary": "C:\\Users\\<user>\\AppData\\Roaming\\ai.opencode.desktop\\cli\\2.0.18\\opencode-cli.exe",
+ "exists": true,
+ "default": {
+  "start_s": 0.247,
+  "url": "http://127.0.0.1:52608",
+  "info": [
+   200,
+   {
+    "version": "2.0.18",
+    "pid": 30220,
+    "urls": [
+     "http://127.0.0.1:52608"
+    ],
+    "paths": {
+     "tmp": "C:\\Users\\<user>\\AppData\\Local\\Temp\\opencode"
+    }
+   }
+  ],
+  "openapi_status": 200,
+  "openapi_ops": 138,
+  "openapi_info": {
+   "title": "opencode HttpApi",
+   "version": "0.0.1",
+   "description": "Experimental HttpApi surface for selected instance routes."
+  },
+  "unauth_info_status": 401,
+  "models_status": 200,
+  "models": [],
+  "skills_status": 200,
+  "skills": [
+   {
+    "id": "opencode",
+    "path": "/builtin/opencode.md"
+   },
+   {
+    "id": "report",
+    "path": "/builtin/report.md"
+   }
+  ],
+  "agents": [
+   {
+    "id": "build",
+    "mode": "primary",
+    "hidden": false
+   },
+   {
+    "id": "general",
+    "mode": "subagent",
+    "hidden": false
+   },
+   {
+    "id": "explore",
+    "mode": "subagent",
+    "hidden": false
+   },
+   {
+    "id": "compaction",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "title",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "summary",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "plan",
+    "mode": "primary",
+    "hidden": false
+   }
+  ],
+  "lease_exit_s": 0.046348899995791726,
+  "exit_code": 0,
+  "stderr_tail": []
+ },
+ "compat_disabled": {
+  "start_s": 0.184,
+  "url": "http://127.0.0.1:64985",
+  "info": [
+   200,
+   {
+    "version": "2.0.18",
+    "pid": 26412,
+    "urls": [
+     "http://127.0.0.1:64985"
+    ],
+    "paths": {
+     "tmp": "C:\\Users\\<user>\\AppData\\Local\\Temp\\opencode"
+    }
+   }
+  ],
+  "openapi_status": 200,
+  "openapi_ops": 138,
+  "openapi_info": {
+   "title": "opencode HttpApi",
+   "version": "0.0.1",
+   "description": "Experimental HttpApi surface for selected instance routes."
+  },
+  "unauth_info_status": 401,
+  "models_status": 200,
+  "models": [],
+  "skills_status": 200,
+  "skills": [
+   {
+    "id": "opencode",
+    "path": "/builtin/opencode.md"
+   },
+   {
+    "id": "report",
+    "path": "/builtin/report.md"
+   }
+  ],
+  "agents": [
+   {
+    "id": "build",
+    "mode": "primary",
+    "hidden": false
+   },
+   {
+    "id": "general",
+    "mode": "subagent",
+    "hidden": false
+   },
+   {
+    "id": "explore",
+    "mode": "subagent",
+    "hidden": false
+   },
+   {
+    "id": "compaction",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "title",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "summary",
+    "mode": "primary",
+    "hidden": true
+   },
+   {
+    "id": "plan",
+    "mode": "primary",
+    "hidden": false
+   }
+  ],
+  "lease_exit_s": 0.04842659999849275,
+  "exit_code": 0,
+  "stderr_tail": []
+ }
+}

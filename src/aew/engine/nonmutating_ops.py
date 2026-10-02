@@ -47,6 +47,7 @@ from aew.workspace import git, worktrees
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import (
+        ArchivePort,
         ContextPacksPort,
         GatesPort,
         InputsPort,
@@ -98,7 +99,7 @@ class Inputs:
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
         for edge in H.effective_edges(state, work_id):
-            u = state["work"].get(edge["id"])
+            u = H.upstream(state, edge["id"])  # an archived upstream keeps its accepted record in archived_refs (R4)
             rec = ((u or {}).get("execution") or {}).get("record")
             if u and is_nm_ticket(u) and u["state"] == "DONE" and rec and rec["id"] not in seen:
                 seen.add(rec["id"])
@@ -175,7 +176,8 @@ class NonMutating:
     """Non-mutating (evidence-only) Tickets: attempts, observations, records, gates and acceptance."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, work: WorkCommandsPort) -> None:
+                 inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, work: WorkCommandsPort,
+                 archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -184,6 +186,7 @@ class NonMutating:
         self.packs = packs
         self.gates = gates
         self.work = work
+        self.archive = archive
 
     _MUTATING_INSTEAD = {
         "`aew work dispatch`": "start a mutating Ticket with `aew work assign {w} --launch`",
@@ -287,7 +290,7 @@ class NonMutating:
             unit = self.units.unit(state, work_id)
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
-            src = self.units.unit(state, source)
+            src = self.units.view(state, source)  # the source is usually finished, so archived (R7)
             rec = (src.get("execution") or {}).get("record") or {}
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id):
                 raise UsageError(f"{evidence_id} is not the accepted record of a DONE non-mutating Ticket {source}")
@@ -816,7 +819,7 @@ class NonMutating:
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             assurance = self.roles.resolve_plan_assurance(unit, review=review, verify=verify, none=no_assurance)
-            src = self.units.unit(state, source)
+            src = self.units.view(state, source)  # the source is usually finished, so archived (R7)
             rec = (src.get("execution") or {}).get("record") or {}
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id
                     and rec.get("kind") == "plan_proposal"):
@@ -830,7 +833,8 @@ class NonMutating:
                                  f"{work_id} first (`aew work acknowledge-input`) or plan again", freshness=fresh)
             _, body = parse_frontmatter((self.k.aew_root / ev["_path"]).read_text(encoding="utf-8"))
             proposal = ev.get("proposal") or {}
-            inv = state["invocations"][ev["producer"]["invocation"]]
+            producer = ev["producer"]["invocation"]  # the source is finished: its planner may be archived with it
+            inv = state["invocations"].get(producer) or self.archive.archived_invocation(state, producer) or {}
             path, revision = self.units.propose(
                 ctx, work_id, unit, body=body, reason=reason, affected_paths=proposal.get("affected_paths"),
                 assurance=assurance, author={"role": "planner", "invocation": ev["producer"]["invocation"],

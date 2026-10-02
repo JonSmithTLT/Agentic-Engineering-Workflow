@@ -38,6 +38,11 @@ class StatusViews:
                 found.append(f"{wid}: workspace {ws['id']} was retained after integration because it holds changes "
                              f"that are not in the integrated commit ({ws['path']}); inspect them, then carry them "
                              "into a new Ticket or discard them")
+        for r in state.get("retained_workspaces", []):  # of archived Tickets (R7): reported until resolved
+            if Path(r["path"]).exists():
+                found.append(f"{r['work_id']}: workspace {r['id']} was retained after integration because it holds "
+                             f"changes that are not in the integrated commit ({r['path']}); inspect them, then carry "
+                             "them into a new Ticket or discard them")
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv["status"] == "active" and state["lead"]["status"] == "vacant":
                 found.append(f"{inv_id}: active invocation but no Lead holds authority")

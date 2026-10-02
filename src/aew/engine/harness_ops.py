@@ -43,7 +43,7 @@ from aew.util import sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ContextPacksPort, GatesPort, InvocationsPort
+    from aew.engine.ports import ArchivePort, ContextPacksPort, GatesPort, InvocationsPort
 
 # Never handed to a supervisor (and therefore never to a harness or an agent).
 SCRUBBED_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
@@ -63,11 +63,13 @@ def supervisor_env(base: dict[str, str] | None = None) -> dict[str, str]:
 class Harness:
     """Harness runs of invocations (ADR-0009) and the next action each run implies."""
 
-    def __init__(self, k: Kernel, *, invocations: InvocationsPort, packs: ContextPacksPort, gates: GatesPort) -> None:
+    def __init__(self, k: Kernel, *, invocations: InvocationsPort, packs: ContextPacksPort, gates: GatesPort,
+                 archive: ArchivePort) -> None:
         self.k = k
         self.invocations = invocations
         self.packs = packs
         self.gates = gates
+        self.archive = archive
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over."""
@@ -251,7 +253,8 @@ class Harness:
 
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         state = self.k.store.read()
-        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read")
+        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read",
+                                            archived=self.archive.archived_credential)
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
         return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations.card_ref(inv),
                 "work_unit": inv["work_unit"], "scope": inv.get("scope"), "workspace": inv.get("workspace"),
@@ -278,6 +281,12 @@ class Harness:
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         state = self.k.store.read()
+        if invocation and invocation not in state["invocations"]:  # the runs of an archived invocation (R7)
+            state = self.archive.rehydrate_invocation(state, invocation) or state
+        elif not invocation:  # and the runs of the most recently finished work (bounded: ``recent``)
+            for r in state.get("recent", []):
+                if r["id"] not in state["work"]:
+                    state = self.archive.rehydrate(state, r["id"]) or state
         cache: dict[str, list[dict[str, Any]]] = {}
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):
@@ -309,6 +318,10 @@ class Harness:
         for inv_id, inv in state["invocations"].items():
             if any(r["run"] == run for r in inv.get("runs") or []):
                 return inv_id, inv
+        inv_id = K.invocation_of_run(run)  # a run of archived work (R7): its invocation names it
+        inv = self.archive.archived_invocation(state, inv_id) if inv_id else None
+        if inv is not None and any(r["run"] == run for r in inv.get("runs") or []):
+            return inv_id, inv
         raise NotFound(f"no run {run}")
 
     def harness_wait(self, run: str, *, timeout: float = 600.0) -> dict[str, Any]:
@@ -351,7 +364,7 @@ class Harness:
         operations, it needs no expected revision: it names one run and is checked against the state it commits on."""
         directory = runlog.run_dir(self.k.aew_root, run)
         with self.k.store.session() as s:
-            actor = require_lead(s.state, token)
+            actor = require_lead(s.state, token, archived=self.archive.archived_credential)
             inv_id, inv = self._find_run(s.state, run)
             if current:
                 if inv["status"] != "active" or inv["runs"][-1]["run"] != run:

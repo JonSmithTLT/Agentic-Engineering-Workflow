@@ -178,13 +178,28 @@ def test_a_lost_damaged_or_foreign_index_is_rebuilt(store, loss):
         path.unlink()
     elif loss == "damaged":
         path.write_bytes(b"not a database" * 100)
-    else:  # an index built against a history this root does not extend
+    else:  # an index built against a history this root does not extend: other entries, so another chain
         other = init(store.root.parent / "other")
-        archive(other, 6)
+        history = History(other.root)
+        with other.session() as s:
+            root = history.append(s, read_root(other.root), [dict(fields(k, "c" * 64), id=f"X-{k}") for k in range(1, 7)])
+            s.write(ROOT_REL, dump_yaml(root), immutable=False)
+            s.commit(Transition(op="x", actor={"kind": "test"}))
         HistoryIndex(other.root).sync(read_root(other.root))
         path.write_bytes((other.root / INDEX_REL).read_bytes())
     assert index.sync(read_root(store.root)) == {"mode": "rebuilt", "added": 4}
     assert [e["id"] for e in index.list()] == ["T-0004", "T-0003", "T-0002", "T-0001"]
+
+
+def test_an_index_already_ahead_of_the_root_is_used_up_to_that_root(store):
+    archive(store, 3)
+    earlier = read_root(store.root)
+    archive(store, 2)
+    HistoryIndex(store.root).sync(read_root(store.root))  # another process indexed the later root
+    index = HistoryIndex(store.root)
+    assert index.sync(earlier) == {"mode": "ahead", "added": 0}
+    assert [e["id"] for e in index.list()] == ["T-0003", "T-0002", "T-0001"]
+    assert index.by_id("T-0005") == []
 
 
 def test_annotations_are_entries_about_a_subject(store):

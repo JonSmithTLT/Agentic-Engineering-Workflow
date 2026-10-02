@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "aew/control/v1",
+  "$id": "aew/control/v2",
   "title": "AEW authoritative control state",
-  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3).",
+  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3). v2 (ADR-0011) adds the hot root of cold history and the bounded facts kept hot about archived work; a v1 document is still read.",
   "type": "object",
   "required": [
     "schema",
@@ -20,7 +20,7 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "aew/control/v1"
+      "enum": ["aew/control/v1", "aew/control/v2"]
     },
     "project_id": {
       "$ref": "#/$defs/slug"
@@ -339,9 +339,102 @@
           ]
         }
       }
+    },
+    "cold": {
+      "description": "ADR-0011: the root that pins the cold history (implementation plan R1).",
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": {"$ref": "#/$defs/history_root"}
+      }
+    },
+    "recent": {
+      "description": "The most recently archived units, newest last (bounded): what views show besides counts.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "state", "title", "at"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "title": {"type": "string"},
+          "at": {"type": "string"},
+          "parent": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "archived_refs": {
+      "description": "Facts about archived units that hot dependency edges still need (plan R4), counted by those edges.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "state", "refs", "bundle_sha256"],
+        "properties": {
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "mutating": {"type": ["boolean", "null"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "refs": {"type": "integer", "minimum": 0},
+          "bundle_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "retained_workspaces": {
+      "description": "Workspaces of archived Tickets retained after integration, until their directory is gone (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["work_id", "id", "path", "status"],
+        "properties": {
+          "work_id": {"type": "string"},
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v1"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["cold"]},
+            {"required": ["recent"]},
+            {"required": ["archived_refs"]},
+            {"required": ["retained_workspaces"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v2"}}},
+      "then": {"required": ["cold"]}
+    }
+  ],
   "$defs": {
+    "history_root": {
+      "type": "object",
+      "required": ["count", "head_h", "sealed_head"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "head_h": {"$ref": "#/$defs/sha256"},
+        "sealed_head": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["seq", "sha256"],
+              "additionalProperties": false,
+              "properties": {"seq": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+            }
+          ]
+        }
+      }
+    },
     "slug": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]*$"

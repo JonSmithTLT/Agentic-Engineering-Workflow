@@ -111,6 +111,14 @@ class Template:
         git("add", "-A", cwd=root)
         git("commit", "-q", "-m", "initial", cwd=root)
         Engine.initialize(root, project_id="perf")
+        # The M3 layout these measurements were defined on: control state v1, where finished work stays hot. ADR-0011's
+        # `aew migrate` (P2d) turns such a project into v2, which is how the series measure archival.
+        control = root / ".aew/state/control.yaml"
+        from aew.engine.store import deserialize_control
+        state = deserialize_control(control.read_bytes(), source="control.yaml")
+        state["schema"] = "aew/control/v1"
+        state.pop("cold", None)
+        control.write_bytes(serialize_control(state))
         policy = root / ".aew/policy"
         (policy / "checks.yaml").write_text(dump_yaml({
             "schema": "aew/checks/v1", "baseline_failures": [],

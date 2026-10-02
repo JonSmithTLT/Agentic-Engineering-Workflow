@@ -46,6 +46,12 @@ def run_id(inv_id: str, n: int) -> str:
     return f"R-{inv_id}-{n}"
 
 
+def invocation_of_run(run: str) -> str | None:
+    """The invocation a run id names (``R-<INV>-<n>``), or None if it is not one."""
+    head, sep, n = run.removeprefix("R-").rpartition("-")
+    return head if run.startswith("R-") and sep and n.isdigit() and head else None
+
+
 @dataclass
 class LaunchContract:
     run: str

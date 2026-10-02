@@ -15,7 +15,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import WorkUnitsPort
+    from aew.engine.ports import ArchivePort, WorkUnitsPort
 
 AEW_EXCLUDE = ":(exclude).aew"
 
@@ -23,9 +23,10 @@ AEW_EXCLUDE = ":(exclude).aew"
 class ContextPacks:
     """Context packs for invocations (WC §15.4; KC §15). Packs are rebuildable local data."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
+        self.archive = archive
 
     def _hierarchy_context(self, state: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         from aew.engine import gates as G
@@ -85,11 +86,13 @@ class ContextPacks:
             baseline = unit.get("baseline_commit")
             commit = (inv.get("observation") or {}).get("commit")
             children = []
-            for cid in H.children(state, wid):
-                c = state["work"][cid]
+            kids = sorted([(cid, state["work"][cid]) for cid in H.children(state, wid)]
+                          + self.archive.archived_children(state, wid))  # archived children, for this review only
+            for cid, c in kids:
                 entry = {"id": cid, "kind": c["kind"], "title": c["title"], "state": c["state"],
                          "completion_record": c.get("completion_record"),
-                         "completion_sha256": self.units.completion_sha(state, cid)}
+                         "completion_sha256": self.units.completion_sha(state, cid) if cid in state["work"]
+                         else c.get("completion_sha256")}
                 rec = (c.get("execution") or {}).get("record")
                 if rec and c["state"] == "DONE":
                     entry["record"] = rec["id"]
@@ -242,6 +245,8 @@ class ContextPacks:
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
         state = self.k.store.read()
+        if inv_id not in state["invocations"]:  # a completed invocation of archived work: its pack, regenerated (R7)
+            state = self.archive.rehydrate_invocation(state, inv_id) or state
         inv = state["invocations"].get(inv_id)
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")

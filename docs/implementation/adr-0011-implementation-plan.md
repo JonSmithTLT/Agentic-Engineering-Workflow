@@ -317,6 +317,38 @@ Each PR keeps the M1–M3 tests passing.
   - **Found by the P2a hierarchy baseline (2026-10-02).** Parent recomputation is quadratic in a parent's descendants: 0.011 s at 250, 0.29 s at 1,000 and 2.2 s at 3,000 completed, per commit (`eval/adr-0011/perf/README.md` §3). `descendants()` calls `children()` once per descendant, and `children()` scans every unit. P2b builds one children map per recomputation as well as archiving.
 - **The cold fallbacks** (R7).
 
+**P2b as built** (2026-10-02). Everything above, with these implementation choices:
+- **Schema v2.** `aew init` creates v2. Its top-level keys are:
+  - `cold`: `root`, plus `archived` counts by state;
+  - `recent`: the last 20 archived units;
+  - `archived_refs`;
+  - `retained_workspaces`.
+
+  A v1 project keeps working unchanged, without archival. The refusal of v1 mutations arrives in P2d together with `aew migrate`, so that no project is refused before the command that clears the refusal exists.
+- **Archival (R6).** The `Archive` collaborator is the `TxnFinalizer`. At the commit that finishes a unit, it archives every DONE or CANCELLED unit, deepest first, with its invocations and credentials.
+  - The finalizer hands the store a projection (`ctx.commit_state`), so the operation's own code keeps its working state.
+  - Retired observation worktrees of archived invocations are removed after the commit (`ctx.after_commit`).
+  - The finalizer does not recompute parents again. The operations' own `before_commit` already did, and oracle rule 22 checks that derivation from hot state and summaries equals derivation from the full state.
+- **R3.**
+  - The summary is `{done, cancelled, done_tickets_subtree, cancelled_tickets_subtree, acc}`. The fourth counter serves `rollup`.
+  - The v2 children digest is computed for every v2 project.
+  - `children_map` is built once per recomputation. It removes the quadratic recomputation the P2a baseline found.
+  - Moving an archived unit writes a `moved_to` annotation and moves its summary entries. A hot parent that moves carries its archived subtree counts and frontier with it.
+- **R4.** `archived_refs` is recomputed from the hot edges at each commit, with each entry counting the edges that name it. An edge to work archived earlier fills it from the index when the edge is parsed.
+- **R5.** An `integration_frontier` is kept on every ancestor of an archived integrated Ticket.
+- **R7.**
+  - **Lookups.** `work show`, `status <id>`, `invoke show`, `context pack`, `gate show`, `harness status <inv>` and `harness wait` read archived work by rehydrating that one unit into a copy of the state. `work list --state DONE|CANCELLED` is an explicit history query.
+  - **Acting on finished work.** It is still refused as `ILLEGAL_TRANSITION`.
+  - **Credentials.** An archived credential is `STALE_AUTHORITY` in the engine, the Lead broker and a run's supervisor.
+  - **Views.** The unfiltered `work tree`, `work list`, `resume` and `harness status` add the `recent` items, which are bounded. Views show counts and name `aew history list`.
+- **Lead credentials (the E5 carry-forward).** When the seat changes, ended Lead and handoff-offer credentials are archived as `history/lead/<n>.yaml`, with a manifest entry of kind `lead`. The finalizer does it for `lead_txn` commits; acquire, handoff accept and takeover do it explicitly.
+- **Manifest entries** carry `unit_kind` and `title`, so history listings need no bundle reads.
+- **Test-side changes** (invariant 8: raw layout only).
+  - The oracle rebuilds the full state from hot state and archive, runs every rule on it, and adds rules 19–23.
+  - The walks' `unit()` helpers and one intent-ingress assertion read archived units through the engine.
+  - The oracle-vacuity test corrupts the full state.
+  - The perf template builds the M3 (v1) layout. P2d's `migrate` turns it into v2 for the P3 series.
+
 **P2c: the history surface and the R2 audit.**
 - The commands in §3, and audit status in `status` (§4).
 - `history load` references in packs.

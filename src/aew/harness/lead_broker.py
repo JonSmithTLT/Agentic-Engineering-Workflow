@@ -71,7 +71,7 @@ class LeadBroker:
     def __init__(self, engine: Any, token: str) -> None:
         self.engine = engine
         self._token = token
-        require_lead(engine.store.read(), token)  # only the current Lead's credential is ever brokered
+        self._require_lead(engine.store.read(), token)  # only the current Lead's credential is ever brokered
         self.server = bridge.BridgeServer(self.handle, OPERATIONS)
         self.superseded: str | None = None
         self._stop = threading.Event()
@@ -93,10 +93,16 @@ class LeadBroker:
             self._watch.join(60)  # a check in progress finishes before the credential goes (M3-D11)
         self._token = ""
 
+    def _require_lead(self, state: dict[str, Any], token: str) -> None:
+        """The current Lead's credential, or refused; an archived one is stale authority (ADR-0011 R7) when the engine
+        keeps an archive."""
+        archived = getattr(self.engine, "archived_credential", None)
+        require_lead(state, token, **({"archived": archived} if archived else {}))
+
     def _authority_problem(self) -> str | None:
         token = self._token  # taken before the (possibly slow) read: close() may clear it meanwhile (M3-D11)
         try:
-            require_lead(self.engine.store.read(), token)
+            self._require_lead(self.engine.store.read(), token)
         except errors.AEWError as exc:
             return exc.message
         return None

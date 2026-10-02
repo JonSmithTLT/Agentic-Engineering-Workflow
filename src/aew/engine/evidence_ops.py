@@ -49,6 +49,7 @@ from aew.workspace.integration import changed_between as git_changed_between
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import (
+        ArchivePort,
         ContextPacksPort,
         GatesPort,
         InputsPort,
@@ -71,12 +72,13 @@ class Gates:
     Ticket's is computed here, a non-mutating Ticket's and a parent's by their own collaborators."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 kinds: KindRegistry) -> None:
+                 kinds: KindRegistry, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
         self.invocations = invocations
         self.kinds = kinds
+        self.archive = archive
 
     def record_meta(self, unit: dict[str, Any]) -> dict[str, Any]:
         return read_record(self.k.aew_root / unit["record"], "work-unit").meta
@@ -182,6 +184,8 @@ class Gates:
 
     def gate_show(self, work_id: str) -> dict[str, Any]:
         state = self.k.store.read()
+        if work_id not in state["work"]:  # an archived unit's gates, as they stood when it finished (R7)
+            state = self.archive.rehydrate(state, work_id) or state
         gc = self.gate_context(state, work_id)
         gc.pop("evidence")
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
@@ -413,7 +417,7 @@ class EvidenceCommands:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, nm: NonMutatingPort,
-                 kinds: KindRegistry) -> None:
+                 kinds: KindRegistry, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -423,6 +427,7 @@ class EvidenceCommands:
         self.gates = gates
         self.nm = nm
         self.kinds = kinds
+        self.archive = archive
 
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(INVOKE, MUTATING, self._invoke_ticket),
@@ -527,7 +532,7 @@ class EvidenceCommands:
 
     def invoke_show(self, invocation: str) -> dict[str, Any]:
         state = self.k.store.read()
-        inv = state["invocations"].get(invocation)
+        inv = state["invocations"].get(invocation) or self.archive.archived_invocation(state, invocation)
         if inv is None:
             raise NotFound(f"no invocation {invocation}")
         return {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
@@ -536,7 +541,8 @@ class EvidenceCommands:
         """Run a project check as a bounded role. ``env`` is the complete environment of the check's process
         (a harness run passes its agent environment, so a check never sees the supervisor's)."""
         with self.k.store.session() as s:
-            inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run")
+            inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run",
+                                                    archived=self.archive.archived_credential)
             work_id = inv["work_unit"]
             workspace, ws_id, base = self.invocations.invocation_workspace(s.state, inv)
             unit = s.state["work"][work_id]
@@ -566,7 +572,8 @@ class EvidenceCommands:
         result = "inconclusive" if mutated else ("pass" if run["exit_code"] == 0 else "fail")
         with self.k.store.session() as s:
             # Re-verify: a credential revoked while the check ran must not write evidence.
-            inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run")
+            inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run",
+                                                    archived=self.archive.archived_credential)
             seq = E.next_seq(self.k.aew_root, work_id)
             eid = f"{inv_id}-check-{check_id}-{seq}"
             log_rel = f"evidence/{work_id}/logs/{eid}.log"
@@ -600,7 +607,8 @@ class EvidenceCommands:
         submitted, body = parse_frontmatter(text, source="submission")
         with self.k.store.session() as s:
             state = s.state
-            inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}")
+            inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}",
+                                                    archived=self.archive.archived_credential)
             E.check_submission(inv["role"], kind, submitted)
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).

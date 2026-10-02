@@ -46,6 +46,7 @@ class HistoryIndex:
     def __init__(self, aew_root: Path) -> None:
         self.history = History(aew_root)
         self.path = aew_root / INDEX_REL
+        self.upto: int | None = None  # queries see entries up to the root last synced to (another process may be ahead)
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -60,12 +61,16 @@ class HistoryIndex:
     # ------------------------------------------------------------------ freshness
 
     def sync(self, root: dict[str, Any]) -> dict[str, Any]:
-        """Bring the index to ``root``: ``{"mode": "current" | "caught_up" | "rebuilt", "added": n}``."""
+        """Bring the index to ``root``: ``{"mode": "current" | "ahead" | "caught_up" | "rebuilt", "added": n}``.
+        ``ahead``: another process already indexed a later root that extends this one; queries then stop at ``root``.
+        """
         try:
-            return self._sync(root)
+            out = self._sync(root)
         except sqlite3.DatabaseError:  # damaged or not a database: derived data, so start over
             self.path.unlink(missing_ok=True)
-            return self._sync(root)
+            out = self._sync(root)
+        self.upto = root["count"]
+        return out
 
     def _sync(self, root: dict[str, Any]) -> dict[str, Any]:
         with self._db() as conn:
@@ -76,6 +81,10 @@ class HistoryIndex:
                 if built == target:
                     conn.execute("ROLLBACK")
                     return {"mode": "current", "added": 0}
+                ahead = built is not None and built["count"] > root["count"]
+                if ahead and self._indexed_h(conn, root) == root["head_h"]:
+                    conn.execute("ROLLBACK")
+                    return {"mode": "ahead", "added": 0}
                 mode = "caught_up"
                 since = built
                 if built is None or built["count"] > root["count"] or not self._on_chain(root, built):
@@ -101,6 +110,13 @@ class HistoryIndex:
             return None
         return {"count": int(meta["count"]), "h": meta["h"]}
 
+    @staticmethod
+    def _indexed_h(conn: sqlite3.Connection, root: dict[str, Any]) -> str | None:
+        if root["count"] == 0:
+            return M.GENESIS_H
+        row = conn.execute("SELECT h FROM entries WHERE seq = ?", (root["count"],)).fetchone()
+        return row[0] if row else None
+
     def _on_chain(self, root: dict[str, Any], built: dict[str, Any]) -> bool:
         if built["count"] == 0:
             return built["h"] == M.GENESIS_H
@@ -123,7 +139,8 @@ class HistoryIndex:
 
     def _rows(self, sql: str, args: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         with self._db() as conn:
-            return [json.loads(body) for (body,) in conn.execute(sql, args).fetchall()]
+            rows = [json.loads(body) for (body,) in conn.execute(sql, args).fetchall()]
+        return [r for r in rows if self.upto is None or r["seq"] <= self.upto]
 
     def by_id(self, record_id: str) -> list[dict[str, Any]]:
         """Every entry for ``record_id`` (a unit has one; an audit or Lead record id likewise), in history order."""
@@ -142,6 +159,19 @@ class HistoryIndex:
             sql += " LIMIT ?"
             args.append(limit)
         return self._rows(sql, tuple(args))
+
+    def units(self, state: str) -> list[dict[str, Any]]:
+        """Archived unit entries in a finished state (DONE or CANCELLED), in history order."""
+        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND state = ? ORDER BY seq", (state,))
+
+    def children(self, parent: str) -> list[dict[str, Any]]:
+        """Unit entries archived with ``parent`` as their parent (a move later is an annotation: apply those)."""
+        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND parent = ? ORDER BY seq", (parent,))
+
+    def linked(self, rel: str, target: str) -> list[dict[str, Any]]:
+        """Entries that record a ``rel`` link to ``target`` (the unit that archived an invocation or a credential)."""
+        return self._rows("SELECT e.body FROM entries e JOIN links l ON l.seq = e.seq WHERE l.rel = ? AND l.dst = ? "
+                          "ORDER BY e.seq", (rel, target))
 
     def annotations(self, subject: str) -> list[dict[str, Any]]:
         return self._rows("SELECT body FROM entries WHERE kind = 'annotation' AND subject = ? ORDER BY seq",

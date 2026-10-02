@@ -71,6 +71,8 @@
         "sha256": {"$ref": "#/$defs/sha256"},
         "at": {"type": "string", "minLength": 1},
         "state": {"type": ["string", "null"]},
+        "unit_kind": {"enum": ["ticket", "story", "epic"]},
+        "title": {"type": "string"},
         "parent": {"type": ["string", "null"]},
         "source": {"enum": ["engine", "operator", "model", "external"]},
         "subject": {"type": "string", "minLength": 1},

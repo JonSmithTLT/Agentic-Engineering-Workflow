@@ -32,7 +32,7 @@ from aew.engine.seams import (
 ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
                       "_nm", "_hierarchy", "_evidence", "_integration", "_harness", "_lead", "_views", "_resume",
-                      "_project")
+                      "_project", "_archive")
 
 
 @pytest.fixture
@@ -260,6 +260,7 @@ def test_unit_kinds():
     assert kind_of({"kind": "story"}) == kind_of({"kind": "epic"}) == PARENT
 
 
-def test_transaction_finalizers_start_empty(engine):
-    assert engine._k.finalizers.steps == []  # ADR-0011's archival attaches here
+def test_the_only_transaction_finalizer_is_archival(engine):
     assert isinstance(engine._k.finalizers, seams.TxnFinalizers)
+    assert [named(step) for step in engine._k.finalizers.steps] == ["Archive.finalize"]  # ADR-0011 R6
+    assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7

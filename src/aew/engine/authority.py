@@ -17,6 +17,7 @@ from __future__ import annotations
 import hmac
 import re
 import secrets
+from collections.abc import Callable
 from typing import Any
 
 from aew.errors import PermissionDenied, StaleAuthority
@@ -79,12 +80,24 @@ def token_id_of(token: str) -> str:
     return match.group(1)
 
 
-def _lookup(state: dict[str, Any], token: str) -> tuple[str, dict[str, Any]]:
+# Looks up a credential that was archived with finished work (ADR-0011, plan R7); None if it never was.
+ArchivedCredential = Callable[[dict[str, Any], str], "dict[str, Any] | None"]
+
+
+def _lookup(state: dict[str, Any], token: str,
+            archived: ArchivedCredential | None = None) -> tuple[str, dict[str, Any]]:
     match = TOKEN_RE.match(token or "")
     if not match:
         raise PermissionDenied("malformed credential")
     token_id, secret = match.groups()
     record = state["tokens"].get(token_id)
+    if record is None and archived is not None:
+        old = archived(state, token_id)
+        if old is not None and hmac.compare_digest(old["verifier"], sha256_text(secret)):
+            # Finished work keeps its credentials only in its archive: still revoked authority, never an unknown one.
+            raise StaleAuthority(f"this credential belongs to finished work and was revoked: "
+                                 f"{old.get('revoke_reason') or 'its work unit is archived'}",
+                                 token_id=token_id, revoke_reason=old.get("revoke_reason"), archived=True)
     if record is None or not hmac.compare_digest(record["verifier"], sha256_text(secret)):
         raise PermissionDenied("unknown or invalid credential")
     if record.get("expires_at") and record["expires_at"] <= utc_now():
@@ -101,9 +114,10 @@ def revoke(state: dict[str, Any], token_id: str | None, reason: str) -> None:
         record["revoke_reason"] = reason
 
 
-def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = False) -> dict[str, Any]:
+def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = False,
+                 archived: ArchivedCredential | None = None) -> dict[str, Any]:
     """Return the actor record for a valid *current* Lead credential."""
-    token_id, record = _lookup(state, token)
+    token_id, record = _lookup(state, token, archived)
     if record["kind"] != "lead":
         raise PermissionDenied("this operation requires the Lead credential", presented=record["kind"])
     lead = state["lead"]
@@ -129,10 +143,11 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
 
 
 def require_invocation(
-    state: dict[str, Any], token: str, operation: str, *, work_unit: str | None = None
+    state: dict[str, Any], token: str, operation: str, *, work_unit: str | None = None,
+    archived: ArchivedCredential | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Validate an invocation credential for ``operation``; return (invocation_id, invocation, actor)."""
-    token_id, record = _lookup(state, token)
+    token_id, record = _lookup(state, token, archived)
     if record["kind"] != "invocation":
         raise PermissionDenied(
             "this operation requires an invocation credential issued to a bounded role",

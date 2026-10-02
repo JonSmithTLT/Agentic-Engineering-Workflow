@@ -4,6 +4,11 @@ A test oracle, not engine code: it reads the durable, human-readable control
 state the same way an operator or another tool would, and checks properties
 that must hold after *any* sequence of operations — the compositions the
 independent review found unguarded.
+
+ADR-0011 (control state v2): finished work is archived. The oracle learns the cold side additively
+(invariant 8): it rebuilds the full state from the hot state and every archived bundle (moves applied), runs
+every rule on that, exactly as before archival, and adds the rules archival itself must keep (19-23). It may
+read the whole history; the engine's commit-time checks may not (invariant 13).
 """
 
 from __future__ import annotations
@@ -14,9 +19,12 @@ from typing import Any
 
 import yaml
 
+from aew.engine import hierarchy as H
+from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control
+from aew.history.store import History
 from aew.knowledge import evidence as E
-from aew.util import parse_frontmatter
+from aew.util import load_yaml, parse_frontmatter
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -28,9 +36,100 @@ def load_control(root: Path) -> dict[str, Any]:
     return deserialize_control(path.read_bytes(), source=str(path))
 
 
+def with_cold(root: Path, hot: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The full state: hot units, invocations and credentials plus every archived one, with each archived unit's
+    later moves applied; and the problems found reading the history (rule 19)."""
+    if hot.get("schema") != "aew/control/v2":
+        return hot, []
+    problems: list[str] = []
+    root_ = hot["cold"]["root"]
+    history = History(root / ".aew")
+    report = history.verify(root_)
+    if not report.ok:
+        return hot, [f"history does not verify: {report.problems[:3]}"]
+    work, invocations, tokens = {}, {}, {}
+    moves: dict[str, str | None] = {}
+    for entry in history.walk(root_):
+        if entry["kind"] == "unit":
+            doc = load_yaml((root / ".aew" / entry["path"]).read_text(encoding="utf-8"))
+            work[entry["id"]] = dict(doc["unit"])
+            invocations.update(doc.get("invocations", {}))
+            tokens.update(doc.get("tokens", {}))
+        elif entry["kind"] == "annotation" and entry.get("rel") == "moved_to":
+            moves[entry["subject"]] = (entry.get("links", {}).get("moved_to") or [None])[0]
+    for wid, parent in moves.items():
+        work[wid]["parent"] = parent
+    both = sorted(set(work) & set(hot["work"]))
+    if both:
+        problems.append(f"units both hot and archived: {both}")
+    full = dict(hot, work={**work, **hot["work"]}, invocations={**invocations, **hot["invocations"]},
+                tokens={**tokens, **hot["tokens"]})
+    full["_archived"] = sorted(work)
+    return full, problems
+
+
+def cold_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
+    """19-23: what archival must keep (ADR-0011; implementation plan R3-R5)."""
+    if hot.get("schema") != "aew/control/v2":
+        return []
+    problems: list[str] = []
+    archived = set(full["_archived"])
+    work = full["work"]
+    # 20. Only finished work is archived; a hot unit never has an archived ancestor.
+    for wid in sorted(archived):
+        if work[wid]["state"] not in {"DONE", "CANCELLED"}:
+            problems.append(f"{wid} is archived but {work[wid]['state']}")
+    for wid, u in sorted(hot["work"].items()):
+        anc = u.get("parent")
+        while anc:
+            if anc in archived:
+                problems.append(f"hot {wid} has the archived ancestor {anc}")
+            anc = work.get(anc, {}).get("parent")
+    # 21. Each hot parent's summary is the recount of its archived children and of the archived Tickets below it.
+    for wid, u in sorted(hot["work"].items()):
+        if u["kind"] == "ticket":
+            continue
+        kids = [c for c in archived if work[c].get("parent") == wid]
+        below = [d for d in H.descendants(full, wid) if d in archived and work[d]["kind"] == "ticket"]
+        acc = "0" * 64
+        for c in kids:
+            acc = add_leaf(acc, child_leaf(c, work[c]["state"], work[c].get("completion_sha256")))
+        expected = {"done": sum(work[c]["state"] == "DONE" for c in kids),
+                    "cancelled": sum(work[c]["state"] == "CANCELLED" for c in kids),
+                    "done_tickets_subtree": sum(work[d]["state"] == "DONE" for d in below),
+                    "cancelled_tickets_subtree": sum(work[d]["state"] == "CANCELLED" for d in below), "acc": acc}
+        if H.archived_summary(u) != expected:
+            problems.append(f"{wid}'s archived summary {H.archived_summary(u)} is not the recount {expected}")
+        # 22. Derivation from hot state and summaries equals derivation from the full state (R3).
+        flat = dict(full, schema="aew/control/v1",
+                    work={k: {kk: vv for kk, vv in x.items() if kk != "archived_children"} for k, x in work.items()})
+        if H.derive_parent(hot, wid) != H.derive_parent(flat, wid):
+            problems.append(f"{wid}: derived from hot state {H.derive_parent(hot, wid)}, from the full state "
+                            f"{H.derive_parent(flat, wid)}")
+        # 23. The integration frontier covers every archived integrated Ticket below it (R5).
+        frontier = u.get("integration_frontier") or {}
+        for d in below:
+            commit = (work[d].get("integration") or {}).get("commit")
+            if work[d].get("mutating") and work[d]["state"] == "DONE" and commit and not any(
+                    m == commit or _git("merge-base", "--is-ancestor", commit, m, cwd=root).returncode == 0
+                    for m in frontier):
+                problems.append(f"{wid}'s integration frontier does not cover {d}'s {commit[:12]}")
+    # 23b. Every hot edge to an archived unit has its facts kept, matching the archive (R4).
+    refs = hot.get("archived_refs") or {}
+    for wid, u in sorted(hot["work"].items()):
+        for e in u.get("depends_on", []):
+            if e["id"] in hot["work"]:
+                continue
+            ref = refs.get(e["id"])
+            if ref is None or e["id"] not in archived or ref["state"] != work[e["id"]]["state"]:
+                problems.append(f"{wid}'s edge to archived {e['id']} has no matching archived_refs entry ({ref})")
+    return problems
+
+
 def control_violations(root: Path) -> list[str]:
     root = Path(root)
-    state = load_control(root)
+    hot = load_control(root)
+    state, cold_problems = with_cold(root, hot)
     manifest = yaml.safe_load((root / ".aew/project.yaml").read_text(encoding="utf-8"))
     ref = f"refs/heads/{manifest['repository']['authoritative_branch']}"
     tokens = state["tokens"]
@@ -124,6 +223,8 @@ def control_violations(root: Path) -> list[str]:
     problems += m2_violations(root, state)
     # 17-18. M3 harness runs and credential rotation (ADR-0009).
     problems += m3_violations(root, state, evidence)
+    # 19-23. ADR-0011 archival.
+    problems += cold_problems + cold_violations(root, hot, state)
     return problems
 
 
@@ -239,6 +340,8 @@ def _dispatch_binding_violations(root: Path, state: dict[str, Any]) -> list[str]
 
 
 def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    if state.get("schema") == "aew/control/v2" and "_archived" not in state:  # a caller passed the hot state
+        state, _ = with_cold(Path(root), state)
     problems: list[str] = []
     work, invocations = state["work"], state["invocations"]
     tokens = state["tokens"]

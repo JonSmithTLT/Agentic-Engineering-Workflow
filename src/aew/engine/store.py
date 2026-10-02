@@ -147,7 +147,10 @@ class Session:
             raise IntegrityError(f"{path} is referenced with two different hashes")
         self._prewritten[path] = sha256
 
-    def commit(self, transition: Transition, *, expect_rev: int | None = None) -> int:
+    def commit(self, transition: Transition, *, expect_rev: int | None = None,
+               state: dict[str, Any] | None = None) -> int:
+        """Commit this session's state, or ``state`` when a finalizer projected the one to serialize (ADR-0011 R6).
+        """
         if self.committed_revision is not None:
             raise AEWError("session already committed")
         if expect_rev is not None and expect_rev != self.revision:
@@ -156,8 +159,8 @@ class Session:
                 expected=expect_rev,
                 current=self.revision,
             )
-        self.committed_revision = self._store._commit(self._committed_state, self.state, self._writes, transition,
-                                                      self._prewritten)
+        self.committed_revision = self._store._commit(self._committed_state, self.state if state is None else state,
+                                                      self._writes, transition, self._prewritten)
         return self.committed_revision
 
 

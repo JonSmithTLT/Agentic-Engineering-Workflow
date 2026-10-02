@@ -57,7 +57,7 @@ Plan assurance's candidate `INTENT_SUBSTITUTION` (derived plan language changes 
 
 ## 5. Plan assurance classes
 
-Owner: `plan-assurance-and-premise-validation-design-v0.3.md` (§26 for definitions, §28 for the adversarial evaluation suite, §31 for the conformance tests).
+Owner: `plan-assurance-and-premise-validation-design-v0.4.md`, adopted with this registry revision (§26 for definitions, §28 for the adversarial evaluation suite, §31 for the conformance tests).
 
 | Class | Primary owner | Definition | Detection / standing evaluation |
 |---|---|---|---|

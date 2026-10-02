@@ -27,7 +27,11 @@ with:
 >   - no consequential security, trust, persistence or compatibility boundary;
 >   - no inherited elevated obligation.
 >
->   AEW checks the predicate when Class 0 is requested, deterministically where it can and by recorded Lead attestation for the rest. A Class 0 request that fails it is refused with reasons and never silently reclassified: the Lead chooses a stronger class.
+>   AEW enforces the predicate when Class 0 is requested. Eligibility is deterministic structural checks, plus recorded semantic assertions by the Lead, plus no active hard assurance trigger:
+>   - a clear intended transformation or behavior is a recorded Lead assertion, and AEW requires an explicit objective and acceptance reference;
+>   - for current supporting inputs, AEW verifies that every declared supporting input is current under its freshness contract, and the Lead asserts that no known decision-sensitive input was omitted.
+>
+>   A Class 0 request that fails the predicate is refused with reasons and never silently reclassified: the Lead chooses a stronger class. During evaluation, a sample of Class 0 work receives an independent audit, which tests whether the semantic assertions are trustworthy.
 
 Classes 1–4 are unchanged.
 
@@ -43,7 +47,7 @@ with:
 
 ## 4. New paragraph after §7.4's class list: assurance on classes
 
-> **Assurance gates and triggers.** Classes are the only classification. Plan assurance adds obligations to them: a baseline per class, and hard triggers that apply regardless of class (for example a stakeholder-provided suspected cause, a mutable acceptance resource near the mutation scope, or an unexpected baseline result). A triggered Class 0 request fails eligibility. The obligations and triggers are defined in the plan assurance design (§22) and computed by one shared dispatch predicate.
+> **Assurance gates and triggers.** Classes are the only classification. The §7.5 paths remain the baseline obligations for Classes 1–4. Hard assurance triggers add premise-sensitive obligations regardless of class: for example, a stakeholder-supplied diagnosis or premise that is adopted by, or materially constrains, the intervention or acceptance; an acceptance input inside the mutation scope; or an unexpected baseline result. A triggered Class 0 request fails eligibility. Default assurance floors beyond §7.5 for Classes 1–4 are evaluation hypotheses, not part of this contract until controlled dogfood supports them. The triggers are defined in the plan assurance design (v0.4 §22) and computed by one shared dispatch predicate.
 
 ## 5. Amended §7.5: the Class 0 path
 
@@ -53,7 +57,7 @@ Replace:
 
 with:
 
-> **Ticket / Class 0:** Class 0 eligibility verified → Implement → focused check → complete, plus any inherited mandatory gates. During evaluation, a sample of Class 0 work receives an independent audit.
+> **Ticket / Class 0:** Class 0 eligibility verified → Implement → focused check → complete, plus any inherited mandatory gates. "Complete" retains §8's controlled integration semantics and any policy-required post-integration validation; this amendment removes no integration gate. During evaluation, a sample of Class 0 work receives an independent audit.
 
 ## 6. Unchanged, and how they fit
 
@@ -67,7 +71,7 @@ with:
 - **Evaluation:** the Class 0 sampling rubric uses the same predicate (F19).
 - **The rubric's T1 label** ("Class 0 is appropriate", dogfood A4 and A5) is consistent with the amended definition.
 
-## 8. Open for the designer
+## 8. Decided in review (designer, 2026-10-01)
 
-1. Should "current supporting inputs" and "clear intended transformation" stay Lead-attested, as drafted, or be narrowed until the engine can check them?
-2. Should the evaluation-period sample rate for Class 0 audits be set here, or by the evaluation preregistration (F19)?
+1. **The semantic assertions stay** during evaluation, as stated in §2. Narrowing Class 0 until everything is machine-checkable would make it unusable again. The sampled audit shows whether the assertions need stronger machinery.
+2. **The audit sample rate** is an experimental knob. It is set in the shared evaluation preregistration (F19), not in this contract, which only requires a sampled audit during evaluation.

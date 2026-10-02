@@ -63,11 +63,11 @@
 
 ## 6. Plan assurance
 
-Only the genuinely new cross-document invariants. Plan assurance §27 also restates authority, stakeholder, hierarchy and evidence invariants indexed above (for example `AEW-INV-LEAD-001`, `AEW-INV-HIER-001`, `AEW-INV-EVID-001`); those are referenced, not duplicated.
+Governing source: `plan-assurance-and-premise-validation-design-v0.4.md` ("Plan Assurance" below), adopted with this index revision. Only the genuinely new cross-document invariants. Plan assurance §27 also restates authority, stakeholder, hierarchy and evidence invariants indexed above (for example `AEW-INV-LEAD-001`, `AEW-INV-HIER-001`, `AEW-INV-EVID-001`); those are referenced, not duplicated.
 
 | ID | Invariant | Governing source |
 |---|---|---|
-| `AEW-INV-ASSURE-001` | Acceptance is independently reconstructed before the proposed plan is revealed to the assurance role. | Plan Assurance §7 |
+| `AEW-INV-ASSURE-001` | When independent assurance is required, acceptance is independently reconstructed before the proposed plan is revealed to the assurance role. | Plan Assurance §7 |
 | `AEW-INV-ASSURE-002` | Acceptance resources and protected conditions are distinct from the mutation subject. | Plan Assurance §9, §10 |
 | `AEW-INV-ASSURE-003` | A baseline counts only if it exercised the intended proposition. | Plan Assurance §11 |
 | `AEW-INV-ASSURE-004` | Assurance binds the versioned dependency set, not plan text alone. | Plan Assurance §16 |
@@ -77,6 +77,8 @@ Only the genuinely new cross-document invariants. Plan assurance §27 also resta
 | `AEW-INV-ASSURE-008` | A contradicted load-bearing premise holds the affected mutation until reassessed. | Plan Assurance §20 |
 | `AEW-INV-ASSURE-009` | Inherited parent obligations cannot disappear at a child. | Plan Assurance §21 |
 | `AEW-INV-ASSURE-010` | Passing child work does not prove composed parent behavior. | Plan Assurance §21 |
+
+Plan assurance does not satisfy or replace downstream review or verification gates required by the effective class and policy (Plan Assurance §27). That is a scope note, not a separate invariant: the gates themselves are the Workflow Contract's (§7.5).
 
 ## 7. Maintenance
 

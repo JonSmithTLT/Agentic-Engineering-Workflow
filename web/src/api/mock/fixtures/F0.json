@@ -1,0 +1,251 @@
+{
+  "fixture": "F0",
+  "name": "Empty project",
+  "contract_version": "0.1.0",
+  "contract_sha256": "f956f0b2f1f2de0840667c28301be08b6cc0b462271651a0d3cc9117b6034b70",
+  "responses": {
+    "/project": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "project:demo/aew",
+        "name": "Agentic Engineering Workflow",
+        "aew_version": "provisional"
+      }
+    },
+    "/capabilities": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "overview": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "work": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "runs": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "evidence": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "knowledge": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "history": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "integrity": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "queue": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "action_projection": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "activity": {
+          "state": "AVAILABLE",
+          "reasons": []
+        }
+      }
+    },
+    "/history/integrity": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "status": "VERIFIED",
+        "current_root": "root:42",
+        "verified_root": "root:42",
+        "verified_at": "2026-10-02T12:00:00Z",
+        "last_full_audit_at": "2026-10-02T12:00:00Z",
+        "backlog": 0,
+        "reasons": []
+      }
+    },
+    "/overview": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "project": {
+          "id": "project:demo/aew",
+          "name": "Agentic Engineering Workflow",
+          "aew_version": "provisional"
+        },
+        "health": {
+          "status": "HEALTHY",
+          "reasons": [],
+          "observed_at": "2026-10-02T12:00:00Z"
+        },
+        "summary": {
+          "format": "markdown",
+          "text": "No active work is reported."
+        },
+        "work": [],
+        "runs": [],
+        "attention": [],
+        "activity": [],
+        "counts": {
+          "work": 0,
+          "runs": 0,
+          "attention": 0
+        },
+        "capabilities": {
+          "overview": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "work": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "runs": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "evidence": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "knowledge": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "history": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "integrity": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "queue": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "action_projection": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "activity": {
+            "state": "AVAILABLE",
+            "reasons": []
+          }
+        }
+      }
+    },
+    "/work": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/runs": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/evidence": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/knowledge": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/history": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/queue": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/attention": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/activity": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    }
+  },
+  "models": {
+    "/project": "ProjectResponse",
+    "/capabilities": "CapabilitiesResponse",
+    "/history/integrity": "IntegrityResponse",
+    "/overview": "OverviewResponse",
+    "/work": "WorkListResponse",
+    "/runs": "RunListResponse",
+    "/evidence": "EvidenceListResponse",
+    "/knowledge": "KnowledgeListResponse",
+    "/history": "HistoryListResponse",
+    "/queue": "QueueListResponse",
+    "/attention": "AttentionListResponse",
+    "/activity": "ActivityListResponse"
+  },
+  "pages": {},
+  "scenarios": []
+}

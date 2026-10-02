@@ -1,0 +1,2381 @@
+openapi: 3.1.0
+info:
+  title: AEW Read-only Dashboard API — C0 PROVISIONAL
+  version: 0.1.0
+  description: Not approved for domain implementation. AEW main-line contracts remain
+    authoritative. Every route is same-origin GET/HEAD with authenticated cookies;
+    no durable storage layout exposed.
+servers:
+- url: /api/v1
+security:
+- session: []
+x-c0-review:
+  status: PENDING
+  questions:
+  - Accept action_projection as the capability name for /attention?
+  - Accept four-state capability objects with reasons, absent means UNKNOWN?
+  - Accept snake_case wire names and opaque string control_revision?
+  - Accept bounded cursor snapshots (100 default, 250 max), 409 expiration?
+  - Confirm all states, reason codes, queue fields and historical/currentness semantics
+    against Engine contracts.
+  - Confirm projection timestamps and ETag scope; no frontend derivation of conclusions.
+paths:
+  /project:
+    get:
+      operationId: projectResponse
+      parameters: &id001
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id002
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headProjectResponse
+      parameters: *id001
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id002
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /capabilities:
+    get:
+      operationId: capabilitiesResponse
+      parameters: &id003
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id004
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headCapabilitiesResponse
+      parameters: *id003
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id004
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /overview:
+    get:
+      operationId: overviewResponse
+      parameters: &id005
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id006
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headOverviewResponse
+      parameters: *id005
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id006
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /history/integrity:
+    get:
+      operationId: integrityResponse
+      parameters: &id007
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id008
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrityResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headIntegrityResponse
+      parameters: *id007
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id008
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /work:
+    get:
+      operationId: workListResponse
+      parameters: &id009
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id010
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headWorkListResponse
+      parameters: *id009
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id010
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /work/{id}:
+    get:
+      operationId: workResponse
+      parameters: &id011
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id012
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headWorkResponse
+      parameters: *id011
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id012
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /runs:
+    get:
+      operationId: runListResponse
+      parameters: &id013
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id014
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headRunListResponse
+      parameters: *id013
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id014
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /runs/{id}:
+    get:
+      operationId: runResponse
+      parameters: &id015
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id016
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headRunResponse
+      parameters: *id015
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id016
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /evidence:
+    get:
+      operationId: evidenceListResponse
+      parameters: &id017
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id018
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headEvidenceListResponse
+      parameters: *id017
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id018
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /evidence/{id}:
+    get:
+      operationId: evidenceResponse
+      parameters: &id019
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id020
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headEvidenceResponse
+      parameters: *id019
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id020
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /knowledge:
+    get:
+      operationId: knowledgeListResponse
+      parameters: &id021
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id022
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headKnowledgeListResponse
+      parameters: *id021
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id022
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /knowledge/{id}:
+    get:
+      operationId: knowledgeResponse
+      parameters: &id023
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id024
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headKnowledgeResponse
+      parameters: *id023
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id024
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /history:
+    get:
+      operationId: historyListResponse
+      parameters: &id025
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id026
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headHistoryListResponse
+      parameters: *id025
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id026
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /history/{id}:
+    get:
+      operationId: historyResponse
+      parameters: &id027
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id028
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headHistoryResponse
+      parameters: *id027
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id028
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /queue:
+    get:
+      operationId: queueListResponse
+      parameters: &id029
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id030
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headQueueListResponse
+      parameters: *id029
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id030
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /attention:
+    get:
+      operationId: attentionListResponse
+      parameters: &id031
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id032
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttentionListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headAttentionListResponse
+      parameters: *id031
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id032
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+  /activity:
+    get:
+      operationId: activityListResponse
+      parameters: &id033
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: &id034
+            ETag:
+              schema:
+                type: string
+              description: Opaque representation validator, scoped to route, project,
+                filters and cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+    head:
+      operationId: headActivityListResponse
+      parameters: *id033
+      responses:
+        '200':
+          description: Validated projection. Overview is a coherent composite.
+          headers: *id034
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at
+            and control_revision; update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '409':
+          description: Cursor snapshot expired; restart collection explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly
+            stale.
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: aew_session
+      description: Illustrative cookie name pending backend bootstrap/security review;
+        frontend uses same-origin credentials.
+  schemas:
+    OpaqueId:
+      type: string
+      description: Opaque, nonempty identifier. Never parse or derive ordering. Encode
+        as a path segment.
+      minLength: 1
+    Timestamp:
+      type: string
+      format: date-time
+      pattern: Z$
+      description: UTC timestamp.
+    Reason:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - code
+      - message
+      additionalProperties: false
+    EntityRef:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - id
+      - kind
+      - title
+      additionalProperties: false
+    RichText:
+      type: object
+      properties:
+        format:
+          type: string
+          x-known-values:
+          - plain
+          - markdown
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        text:
+          type: string
+      required:
+      - format
+      - text
+      additionalProperties: false
+    Capability:
+      type: object
+      properties:
+        state:
+          type: string
+          x-known-values:
+          - AVAILABLE
+          - UNAVAILABLE
+          - UNSUPPORTED
+          - UNKNOWN
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - state
+      - reasons
+      additionalProperties: false
+    Capabilities:
+      type: object
+      properties:
+        overview:
+          $ref: '#/components/schemas/Capability'
+        work:
+          $ref: '#/components/schemas/Capability'
+        runs:
+          $ref: '#/components/schemas/Capability'
+        evidence:
+          $ref: '#/components/schemas/Capability'
+        knowledge:
+          $ref: '#/components/schemas/Capability'
+        history:
+          $ref: '#/components/schemas/Capability'
+        integrity:
+          $ref: '#/components/schemas/Capability'
+        queue:
+          $ref: '#/components/schemas/Capability'
+        action_projection:
+          $ref: '#/components/schemas/Capability'
+        activity:
+          $ref: '#/components/schemas/Capability'
+      required: []
+      additionalProperties: false
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          x-known-values:
+          - HEALTHY
+          - DEGRADED
+          - UNHEALTHY
+          - UNKNOWN
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        observed_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+      - status
+      - reasons
+      - observed_at
+      additionalProperties: false
+    Project:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        name:
+          type: string
+        aew_version:
+          type: string
+      required:
+      - id
+      - name
+      - aew_version
+      additionalProperties: false
+    Work:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - epic
+          - story
+          - ticket
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        title:
+          type: string
+        state:
+          type: string
+        parent_id:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        revision:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+        classification:
+          anyOf:
+          - type: string
+          - type: 'null'
+        assurance:
+          anyOf:
+          - type: string
+          - type: 'null'
+        has_attention:
+          type: boolean
+        summary:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        related:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+      - id
+      - kind
+      - title
+      - state
+      - parent_id
+      - revision
+      - classification
+      - assurance
+      - has_attention
+      - summary
+      - reasons
+      - related
+      - updated_at
+      additionalProperties: false
+    Run:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        work:
+          $ref: '#/components/schemas/EntityRef'
+        status:
+          type: string
+        role:
+          type: string
+        started_at:
+          $ref: '#/components/schemas/Timestamp'
+        finished_at:
+          anyOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        summary:
+          $ref: '#/components/schemas/RichText'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - id
+      - work
+      - status
+      - role
+      - started_at
+      - finished_at
+      - summary
+      - evidence
+      - reasons
+      additionalProperties: false
+    Evidence:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+        result:
+          type: string
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        currentness:
+          type: string
+        requires_disposition:
+          type: boolean
+        claim:
+          $ref: '#/components/schemas/RichText'
+        body:
+          $ref: '#/components/schemas/RichText'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        deviations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        bindings:
+          type: object
+          additionalProperties: true
+        provenance:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+      required:
+      - id
+      - kind
+      - result
+      - subject
+      - currentness
+      - requires_disposition
+      - claim
+      - body
+      - findings
+      - deviations
+      - bindings
+      - provenance
+      additionalProperties: false
+    Knowledge:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - decision
+          - fact
+          - assumption
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        title:
+          type: string
+        state:
+          type: string
+        body:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        provenance:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+      required:
+      - id
+      - kind
+      - title
+      - state
+      - body
+      - reasons
+      - provenance
+      additionalProperties: false
+    History:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        recorded_at:
+          $ref: '#/components/schemas/Timestamp'
+        currentness:
+          type: string
+        annotation:
+          type: string
+        body:
+          $ref: '#/components/schemas/RichText'
+        lineage:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+      required:
+      - id
+      - subject
+      - recorded_at
+      - currentness
+      - annotation
+      - body
+      - lineage
+      additionalProperties: false
+    Integrity:
+      type: object
+      properties:
+        status:
+          type: string
+        current_root:
+          anyOf:
+          - type: string
+          - type: 'null'
+        verified_root:
+          anyOf:
+          - type: string
+          - type: 'null'
+        verified_at:
+          anyOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        last_full_audit_at:
+          anyOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        backlog:
+          type: integer
+          minimum: 0
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - status
+      - current_root
+      - verified_root
+      - verified_at
+      - last_full_audit_at
+      - backlog
+      - reasons
+      additionalProperties: false
+    Queue:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        work:
+          $ref: '#/components/schemas/EntityRef'
+        state:
+          type: string
+          x-known-values:
+          - QUEUED
+          - LEASED
+          - DEFERRED
+          - AWAITING_DISPOSITION
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        position:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+        commit_ready_seq:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+        attempt:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+        publication_mode:
+          anyOf:
+          - type: string
+            x-known-values:
+            - PUBLISH_IF_CLEAN
+            - VALIDATE_ONLY
+            description: Open semantic value. Unknown strings must display an explicit
+              warning with the raw value.
+          - type: 'null'
+        custodian:
+          anyOf:
+          - type: string
+          - type: 'null'
+        lease_started_at:
+          anyOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        current_base:
+          anyOf:
+          - type: string
+          - type: 'null'
+        latest_validation:
+          anyOf:
+          - $ref: '#/components/schemas/Reason'
+          - type: 'null'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - id
+      - work
+      - state
+      - position
+      - commit_ready_seq
+      - attempt
+      - publication_mode
+      - custodian
+      - lease_started_at
+      - current_base
+      - latest_validation
+      - reasons
+      additionalProperties: false
+    Attention:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - decision_required
+          - blocker
+          - required_finding
+          - anomaly
+          description: Open semantic value. Unknown strings must display an explicit
+            warning with the raw value.
+        severity:
+          type: string
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        title:
+          type: string
+        summary:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        first_seen_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+      - id
+      - kind
+      - severity
+      - subject
+      - title
+      - summary
+      - reasons
+      - first_seen_at
+      additionalProperties: false
+    Activity:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        title:
+          type: string
+        reason:
+          anyOf:
+          - $ref: '#/components/schemas/Reason'
+          - type: 'null'
+      required:
+      - id
+      - subject
+      - occurred_at
+      - title
+      - reason
+      additionalProperties: false
+    Overview:
+      type: object
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        health:
+          $ref: '#/components/schemas/Health'
+        summary:
+          $ref: '#/components/schemas/RichText'
+        work:
+          type: array
+          items:
+            $ref: '#/components/schemas/Work'
+          maxItems: 6
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Run'
+          maxItems: 6
+        attention:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attention'
+          maxItems: 6
+        activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/Activity'
+          maxItems: 10
+        counts:
+          type: object
+          properties:
+            work:
+              type: integer
+              minimum: 0
+            runs:
+              type: integer
+              minimum: 0
+            attention:
+              type: integer
+              minimum: 0
+          required:
+          - work
+          - runs
+          - attention
+          additionalProperties: false
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+      required:
+      - project
+      - health
+      - summary
+      - work
+      - runs
+      - attention
+      - activity
+      - counts
+      - capabilities
+      additionalProperties: false
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - code
+      - message
+      - reasons
+      additionalProperties: false
+    ProjectResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Project'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    CapabilitiesResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Capabilities'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    OverviewResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Overview'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    IntegrityResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Integrity'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    WorkResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Work'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    RunResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Run'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    EvidenceResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Evidence'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    KnowledgeResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Knowledge'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    HistoryResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/History'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    WorkListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Work'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    RunListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Run'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    EvidenceListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Evidence'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    KnowledgeListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Knowledge'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    HistoryListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/History'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    QueueListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Queue'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    AttentionListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Attention'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    ActivityListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.0
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/OpaqueId'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Activity'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/OpaqueId'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false

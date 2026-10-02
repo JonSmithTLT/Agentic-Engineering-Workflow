@@ -1,0 +1,1054 @@
+{
+  "fixture": "F11",
+  "name": "Unknown values and mixed revisions",
+  "contract_version": "0.1.0",
+  "contract_sha256": "f956f0b2f1f2de0840667c28301be08b6cc0b462271651a0d3cc9117b6034b70",
+  "responses": {
+    "/project": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "project:demo/aew",
+        "name": "Agentic Engineering Workflow",
+        "aew_version": "provisional"
+      }
+    },
+    "/capabilities": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "overview": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "work": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "runs": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "evidence": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "knowledge": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "integrity": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "queue": {
+          "state": "FUTURE_CAPABILITY",
+          "reasons": [
+            {
+              "code": "NEW_STATE",
+              "message": "Unknown state from a future backend"
+            }
+          ]
+        },
+        "action_projection": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "activity": {
+          "state": "AVAILABLE",
+          "reasons": []
+        }
+      }
+    },
+    "/history/integrity": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "status": "VERIFIED",
+        "current_root": "root:42",
+        "verified_root": "root:42",
+        "verified_at": "2026-10-02T12:00:00Z",
+        "last_full_audit_at": "2026-10-02T12:00:00Z",
+        "backlog": 0,
+        "reasons": []
+      }
+    },
+    "/overview": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "project": {
+          "id": "project:demo/aew",
+          "name": "Agentic Engineering Workflow",
+          "aew_version": "provisional"
+        },
+        "health": {
+          "status": "UNKNOWN",
+          "reasons": [],
+          "observed_at": "2026-10-02T12:00:00Z"
+        },
+        "summary": {
+          "format": "markdown",
+          "text": "Verification is running. Cache provenance needs a disposition."
+        },
+        "work": [
+          {
+            "id": "work:0",
+            "kind": "epic",
+            "title": "Observable engineering workflow",
+            "state": "FUTURE_WORK_STATE",
+            "parent_id": null,
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:1",
+            "kind": "story",
+            "title": "Explain evidence and execution",
+            "state": "ACTIVE",
+            "parent_id": "work:0",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:2",
+            "kind": "ticket",
+            "title": "Validate projection consistency",
+            "state": "IN_PROGRESS",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:3",
+            "kind": "ticket",
+            "title": "Document historical references",
+            "state": "PLANNED",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:4",
+            "kind": "ticket",
+            "title": "Review cache provenance",
+            "state": "AWAITING_DISPOSITION",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": true,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run:0",
+            "work": {
+              "id": "work:2",
+              "title": "Validate projection consistency",
+              "kind": "work"
+            },
+            "status": "RUNNING",
+            "role": "Verifier",
+            "started_at": "2026-10-02T12:00:00Z",
+            "finished_at": null,
+            "summary": {
+              "format": "markdown",
+              "text": "Checking the projection adapter against the accepted contract."
+            },
+            "evidence": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "reasons": []
+          }
+        ],
+        "attention": [
+          {
+            "id": "attention:0",
+            "kind": "decision_required",
+            "severity": "WARNING",
+            "subject": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "title": "Disposition required",
+            "summary": {
+              "format": "markdown",
+              "text": "Review the cache provenance finding."
+            },
+            "reasons": [
+              {
+                "code": "DECISION_REQUIRED",
+                "message": "Review the cache provenance finding."
+              }
+            ],
+            "first_seen_at": "2026-10-02T12:00:00Z"
+          }
+        ],
+        "activity": [
+          {
+            "id": "activity:0",
+            "subject": {
+              "id": "work:2",
+              "title": "Validate projection consistency",
+              "kind": "work"
+            },
+            "occurred_at": "2026-10-02T12:00:00Z",
+            "title": "Verification started",
+            "reason": null
+          }
+        ],
+        "counts": {
+          "work": 5,
+          "runs": 1,
+          "attention": 1
+        },
+        "capabilities": {
+          "overview": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "work": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "runs": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "evidence": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "knowledge": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "integrity": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "queue": {
+            "state": "FUTURE_CAPABILITY",
+            "reasons": [
+              {
+                "code": "NEW_STATE",
+                "message": "Unknown state from a future backend"
+              }
+            ]
+          },
+          "action_projection": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "activity": {
+            "state": "AVAILABLE",
+            "reasons": []
+          }
+        }
+      }
+    },
+    "/work": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "work:0",
+            "kind": "epic",
+            "title": "Observable engineering workflow",
+            "state": "FUTURE_WORK_STATE",
+            "parent_id": null,
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:1",
+            "kind": "story",
+            "title": "Explain evidence and execution",
+            "state": "ACTIVE",
+            "parent_id": "work:0",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:2",
+            "kind": "ticket",
+            "title": "Validate projection consistency",
+            "state": "IN_PROGRESS",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:3",
+            "kind": "ticket",
+            "title": "Document historical references",
+            "state": "PLANNED",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "work:4",
+            "kind": "ticket",
+            "title": "Review cache provenance",
+            "state": "AWAITING_DISPOSITION",
+            "parent_id": "work:1",
+            "revision": 3,
+            "classification": "CLASS_0",
+            "assurance": "REVIEW_REQUIRED",
+            "has_attention": true,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/work/work:0": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "work:0",
+        "kind": "epic",
+        "title": "Observable engineering workflow",
+        "state": "FUTURE_WORK_STATE",
+        "parent_id": null,
+        "revision": 3,
+        "classification": "CLASS_0",
+        "assurance": "REVIEW_REQUIRED",
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/work:1": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "work:1",
+        "kind": "story",
+        "title": "Explain evidence and execution",
+        "state": "ACTIVE",
+        "parent_id": "work:0",
+        "revision": 3,
+        "classification": "CLASS_0",
+        "assurance": "REVIEW_REQUIRED",
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/work:2": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "work:2",
+        "kind": "ticket",
+        "title": "Validate projection consistency",
+        "state": "IN_PROGRESS",
+        "parent_id": "work:1",
+        "revision": 3,
+        "classification": "CLASS_0",
+        "assurance": "REVIEW_REQUIRED",
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/work:3": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "work:3",
+        "kind": "ticket",
+        "title": "Document historical references",
+        "state": "PLANNED",
+        "parent_id": "work:1",
+        "revision": 3,
+        "classification": "CLASS_0",
+        "assurance": "REVIEW_REQUIRED",
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/work:4": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "work:4",
+        "kind": "ticket",
+        "title": "Review cache provenance",
+        "state": "AWAITING_DISPOSITION",
+        "parent_id": "work:1",
+        "revision": 3,
+        "classification": "CLASS_0",
+        "assurance": "REVIEW_REQUIRED",
+        "has_attention": true,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/runs": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r43",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "run:0",
+            "work": {
+              "id": "work:2",
+              "title": "Validate projection consistency",
+              "kind": "work"
+            },
+            "status": "RUNNING",
+            "role": "Verifier",
+            "started_at": "2026-10-02T12:00:00Z",
+            "finished_at": null,
+            "summary": {
+              "format": "markdown",
+              "text": "Checking the projection adapter against the accepted contract."
+            },
+            "evidence": [
+              {
+                "id": "evidence:0",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "reasons": []
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/runs/run:0": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "run:0",
+        "work": {
+          "id": "work:2",
+          "title": "Validate projection consistency",
+          "kind": "work"
+        },
+        "status": "RUNNING",
+        "role": "Verifier",
+        "started_at": "2026-10-02T12:00:00Z",
+        "finished_at": null,
+        "summary": {
+          "format": "markdown",
+          "text": "Checking the projection adapter against the accepted contract."
+        },
+        "evidence": [
+          {
+            "id": "evidence:0",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "reasons": []
+      }
+    },
+    "/evidence": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "evidence:0",
+            "kind": "verification",
+            "result": "PASS",
+            "subject": {
+              "id": "work:2",
+              "title": "Validate projection consistency",
+              "kind": "work"
+            },
+            "currentness": "CURRENT",
+            "requires_disposition": false,
+            "claim": {
+              "format": "markdown",
+              "text": "Projection responses match the contract."
+            },
+            "body": {
+              "format": "markdown",
+              "text": "The fixture checks cover **shape validation** and revision metadata.\n\n```json\n{\"revision\":\"r42\"}\n```"
+            },
+            "findings": [],
+            "deviations": [],
+            "bindings": {
+              "input_revision": "r42"
+            },
+            "provenance": [
+              {
+                "id": "run:0",
+                "title": "Contract verifier",
+                "kind": "run"
+              }
+            ]
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/evidence/evidence:0": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "evidence:0",
+        "kind": "verification",
+        "result": "PASS",
+        "subject": {
+          "id": "work:2",
+          "title": "Validate projection consistency",
+          "kind": "work"
+        },
+        "currentness": "CURRENT",
+        "requires_disposition": false,
+        "claim": {
+          "format": "markdown",
+          "text": "Projection responses match the contract."
+        },
+        "body": {
+          "format": "markdown",
+          "text": "The fixture checks cover **shape validation** and revision metadata.\n\n```json\n{\"revision\":\"r42\"}\n```"
+        },
+        "findings": [],
+        "deviations": [],
+        "bindings": {
+          "input_revision": "r42"
+        },
+        "provenance": [
+          {
+            "id": "run:0",
+            "title": "Contract verifier",
+            "kind": "run"
+          }
+        ]
+      }
+    },
+    "/knowledge": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "decision:0",
+            "kind": "decision",
+            "title": "Keep dashboard inspection read-only",
+            "state": "ACCEPTED",
+            "body": {
+              "format": "markdown",
+              "text": "Workflow decisions remain with the AEW Engine."
+            },
+            "reasons": [],
+            "provenance": [
+              {
+                "id": "evidence:0",
+                "title": "Contract checks",
+                "kind": "evidence"
+              }
+            ]
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/knowledge/decision:0": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "decision:0",
+        "kind": "decision",
+        "title": "Keep dashboard inspection read-only",
+        "state": "ACCEPTED",
+        "body": {
+          "format": "markdown",
+          "text": "Workflow decisions remain with the AEW Engine."
+        },
+        "reasons": [],
+        "provenance": [
+          {
+            "id": "evidence:0",
+            "title": "Contract checks",
+            "kind": "evidence"
+          }
+        ]
+      }
+    },
+    "/history": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "history:0",
+            "subject": {
+              "id": "work:3",
+              "title": "Document historical references",
+              "kind": "work"
+            },
+            "recorded_at": "2026-10-02T12:00:00Z",
+            "currentness": "HISTORICAL",
+            "annotation": "SUPERSEDED",
+            "body": {
+              "format": "markdown",
+              "text": "Archived projection. Not automatically authoritative for current work."
+            },
+            "lineage": [
+              {
+                "id": "work:3",
+                "title": "Document historical references",
+                "kind": "work"
+              }
+            ]
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/history/history:0": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "history:0",
+        "subject": {
+          "id": "work:3",
+          "title": "Document historical references",
+          "kind": "work"
+        },
+        "recorded_at": "2026-10-02T12:00:00Z",
+        "currentness": "HISTORICAL",
+        "annotation": "SUPERSEDED",
+        "body": {
+          "format": "markdown",
+          "text": "Archived projection. Not automatically authoritative for current work."
+        },
+        "lineage": [
+          {
+            "id": "work:3",
+            "title": "Document historical references",
+            "kind": "work"
+          }
+        ]
+      }
+    },
+    "/queue": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "queue:0",
+            "work": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "state": "QUEUED",
+            "position": 0,
+            "commit_ready_seq": 42,
+            "attempt": 1,
+            "publication_mode": "PUBLISH_IF_CLEAN",
+            "custodian": null,
+            "lease_started_at": null,
+            "current_base": "opaque-base-a",
+            "latest_validation": null,
+            "reasons": []
+          },
+          {
+            "id": "queue:1",
+            "work": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "state": "LEASED",
+            "position": 1,
+            "commit_ready_seq": 43,
+            "attempt": 1,
+            "publication_mode": "VALIDATE_ONLY",
+            "custodian": "publisher",
+            "lease_started_at": "2026-10-02T12:00:00Z",
+            "current_base": "opaque-base-a",
+            "latest_validation": null,
+            "reasons": []
+          },
+          {
+            "id": "queue:2",
+            "work": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "state": "DEFERRED",
+            "position": 2,
+            "commit_ready_seq": 44,
+            "attempt": 1,
+            "publication_mode": "PUBLISH_IF_CLEAN",
+            "custodian": null,
+            "lease_started_at": null,
+            "current_base": "opaque-base-a",
+            "latest_validation": {
+              "code": "BASE_MOVED",
+              "message": "Rebuild required"
+            },
+            "reasons": []
+          },
+          {
+            "id": "queue:3",
+            "work": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "state": "AWAITING_DISPOSITION",
+            "position": 3,
+            "commit_ready_seq": 45,
+            "attempt": 1,
+            "publication_mode": "VALIDATE_ONLY",
+            "custodian": null,
+            "lease_started_at": null,
+            "current_base": "opaque-base-a",
+            "latest_validation": null,
+            "reasons": []
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/attention": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "attention:0",
+            "kind": "decision_required",
+            "severity": "WARNING",
+            "subject": {
+              "id": "work:4",
+              "title": "Review cache provenance",
+              "kind": "work"
+            },
+            "title": "Disposition required",
+            "summary": {
+              "format": "markdown",
+              "text": "Review the cache provenance finding."
+            },
+            "reasons": [
+              {
+                "code": "DECISION_REQUIRED",
+                "message": "Review the cache provenance finding."
+              }
+            ],
+            "first_seen_at": "2026-10-02T12:00:00Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    },
+    "/activity": {
+      "schema_version": "0.1.0",
+      "project_id": "project:demo/aew",
+      "control_revision": "r42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [
+          {
+            "id": "activity:0",
+            "subject": {
+              "id": "work:2",
+              "title": "Validate projection consistency",
+              "kind": "work"
+            },
+            "occurred_at": "2026-10-02T12:00:00Z",
+            "title": "Verification started",
+            "reason": null
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "models": {
+    "/project": "ProjectResponse",
+    "/capabilities": "CapabilitiesResponse",
+    "/history/integrity": "IntegrityResponse",
+    "/overview": "OverviewResponse",
+    "/work": "WorkListResponse",
+    "/work/work:0": "WorkResponse",
+    "/work/work:1": "WorkResponse",
+    "/work/work:2": "WorkResponse",
+    "/work/work:3": "WorkResponse",
+    "/work/work:4": "WorkResponse",
+    "/runs": "RunListResponse",
+    "/runs/run:0": "RunResponse",
+    "/evidence": "EvidenceListResponse",
+    "/evidence/evidence:0": "EvidenceResponse",
+    "/knowledge": "KnowledgeListResponse",
+    "/knowledge/decision:0": "KnowledgeResponse",
+    "/history": "HistoryListResponse",
+    "/history/history:0": "HistoryResponse",
+    "/queue": "QueueListResponse",
+    "/attention": "AttentionListResponse",
+    "/activity": "ActivityListResponse"
+  },
+  "pages": {},
+  "scenarios": [
+    {
+      "kind": "mixed_revision",
+      "route": "/runs",
+      "revision": "r43"
+    },
+    {
+      "kind": "failed_refresh"
+    }
+  ]
+}

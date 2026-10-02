@@ -125,6 +125,7 @@ export function WorkTable({
                           {collapsed.has(w.id) ? '+' : '−'}
                         </button>
                       )}
+                      <code className="work-record-id">{w.id}</code>
                       <EntityAnchor
                         entity={{ id: w.id, kind: 'work', title: w.title }}
                       />

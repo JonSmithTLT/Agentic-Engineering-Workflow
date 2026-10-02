@@ -90,6 +90,7 @@ export function OverviewPage() {
                                 routeLocation.search
                               }
                             >
+                              <code className="work-record-id">{w.id}</code>{' '}
                               {w.title}
                             </Link>
                           </td>
@@ -218,7 +219,8 @@ export function OverviewPage() {
                               routeLocation.search
                             }
                           >
-                            {w.title}
+                            <code className="work-record-id">{w.id}</code>{' '}
+                              {w.title}
                           </Link>
                         </td>
                         <td>

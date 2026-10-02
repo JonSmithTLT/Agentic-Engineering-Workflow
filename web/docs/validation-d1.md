@@ -38,3 +38,7 @@ Tree relationships are limited to the loaded page; backend rollups are displayed
 Production main chunk is 521.78 kB (157.44 kB gzip), triggering Vite's 500 kB advisory. Route/content splitting is a non-blocking frontend optimization candidate; production fixture exclusion passes. Demo's separate fixture chunk is excluded from normal production.
 
 D2–D4 await the user's specified Overview/Ticket visual review. Independent frontend review at core freeze and integrated-system acceptance remain outstanding. No Engine code changes or AEW Python suite execution occurred.
+
+## Ticket identifier display follow-up — 2026-10-02
+
+User visual feedback: Work records showed titles without ticket numbers. Work table/tree and both Overview work lists now display backend opaque IDs alongside titles, with IDs kept visible before truncated titles. No contract or dependency changes. The same immutable offline gate passed again (51 tests, typecheck, lint and both builds); log `artifacts/d1-ticket-id-offline.log`. A focused compiled Chromium probe confirmed `T-0001` visible on Overview and Work; local screenshot `output/playwright-d1/work-ticket-ids.png`. Earlier 18-check browser evidence predates this display-only follow-up; the follow-up browser check covers the two affected routes. Visual review remains pending.

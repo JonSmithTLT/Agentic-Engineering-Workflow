@@ -702,3 +702,10 @@ section.panel > .muted {
     margin-left: auto;
   }
 }
+
+.work-record-id {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}

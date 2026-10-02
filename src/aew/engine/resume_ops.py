@@ -9,19 +9,33 @@ takeover.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dependencies import dependency_blockers
-from aew.engine.hierarchy_ops import HierarchyOps
 from aew.engine.nonmutating_ops import is_nm_ticket
-from aew.errors import AEWError
+from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
+from aew.errors import AEWError, NotFound
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
-from aew.policy import consistency
+from aew.knowledge.render import work_graph_lines
 from aew.util import parse_frontmatter
+
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
+    from aew.engine.ports import (
+        GatesPort,
+        HarnessPort,
+        HierarchyPort,
+        InputsPort,
+        LeadPort,
+        RolesPort,
+        StatusViewsPort,
+        WorkUnitsPort,
+    )
+    from aew.engine.seams import KindRegistry
 
 RESUME_ORDER = [
     "project_manifest", "control_state", "active_work", "accepted_plans", "latest_handoff",
@@ -30,21 +44,27 @@ RESUME_ORDER = [
 ]
 
 
-class ResumeOps(HierarchyOps):
-    # ------------------------------------------------------------------ policy consistency
+class Resume:
+    """`aew resume`, `aew status`, deterministic next actions and checkpoints."""
 
-    def policy_problems(self) -> list[str]:
-        """Contradictions between the policy files and what the engine can evaluate (``policy.consistency``).
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, inputs: InputsPort, gates: GatesPort,
+                 hierarchy: HierarchyPort, lead: LeadPort, views: StatusViewsPort, harness: HarnessPort,
+                 kinds: KindRegistry) -> None:
+        self.k = k
+        self.units = units
+        self.roles = roles
+        self.inputs = inputs
+        self.gates = gates
+        self.hierarchy = hierarchy
+        self.lead = lead
+        self.views = views
+        self.harness = harness
+        self.kinds = kinds
 
-        Empty when a policy file is itself invalid: that is reported on its own, and nothing can be compared."""
-        try:
-            gates, checks = self.policy("gates"), self.policy("checks")
-            specialties = {c.meta["specialty"] for c in self.role_catalog().cards.values() if c.meta.get("specialty")}
-        except AEWError:
-            return []
-        return consistency.problems(gates, checks, specialties)
-
-    # ------------------------------------------------------------------ next actions
+    def kind_registrations(self) -> list[KindRegistration]:
+        return [KindRegistration(NEXT_ACTIONS, MUTATING, self._ticket_next_actions),
+                KindRegistration(NEXT_ACTIONS, NON_MUTATING, self._nm_ticket_next_actions),
+                KindRegistration(NEXT_ACTIONS, PARENT, self._parent_actions)]
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         actions: list[str] = []
@@ -53,130 +73,41 @@ class ResumeOps(HierarchyOps):
             actions.append("acquire Lead authority: `aew lead acquire --expect-rev N`")
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
-        if any(c["status"] == "proposed" for c in self.manifest["authority"]["candidates"]):
+        if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates: `aew authority list`, then for each "
                            "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> "
                            "--expect-rev N` or `aew authority reject <candidate> --reason ... --expect-rev N`")
         try:
-            unconfigured = [k for k, v in self.policy("checks")["checks"].items() if not v.get("configured")]
+            unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:
                 actions.append(f"configure checks {unconfigured} in policy/checks.yaml (gates needing them stay blocked)")
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
-        actions.extend(f"fix the policy: {problem}" for problem in self.policy_problems())
+        actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())
         for wid, u in sorted(state["work"].items()):
-            if u["kind"] != "ticket":
-                actions.extend(f"{wid}: {a}" for a in self._parent_actions(state, wid, u))
-                continue
-            if is_nm_ticket(u):
-                actions.extend(f"{wid}: {a}" for a in self._nm_ticket_actions(state, wid, u))
-            else:
-                actions.extend(f"{wid}: {a}" for a in self._ticket_actions(state, wid, u))
-            actions.extend(f"{wid}: {a}" for a in self._common_actions(state, wid, u))
-        actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness_resume(state))
+            actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
+        actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         return actions
 
-    def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        """The latest harness run of every active invocation that has runs (ADR-0009; empty without runs).
+    def _ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        return self._ticket_actions(state, wid, u) + self._common_actions(state, wid, u)
 
-        Local telemetry, never read by a gate. A harness that ended, crashed or was lost changes no AEW state and
-        is not an interruption (M3-B1): the invocation keeps its authority and is relaunched or cancelled."""
-        from aew.harness import contract as K
-        from aew.harness import runlog
-
-        out = []
-        for inv_id, inv in sorted(state["invocations"].items()):
-            if inv["status"] != "active" or not inv.get("runs"):
-                continue
-            run = inv["runs"][-1]["run"]
-            status, record = runlog.observed_status(runlog.run_dir(self.aew_root, run))
-            produced = [e for e in E.scan(self.aew_root, inv["work_unit"])[0]  # the store, not the record
-                        if e["producer"].get("run") == run]
-            evidence = sorted(e["id"] for e in produced)
-            if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: follow it with `aew harness wait {run}`"
-            elif status == K.ENDED_WITH_EVIDENCE:
-                action = (f"{run} ended with evidence {', '.join(evidence)}: "
-                          f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
-            else:
-                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
-            out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
-                        "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
-                        "action": action})
-        return out
-
-    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]]) -> str:
-        """What the Lead does with a finished run's evidence, as the command that applies (M3-D8)."""
-        wid = inv["work_unit"]
-        unit = state["work"].get(wid) or {}
-        if inv["role"] == "implementer":
-            blocked = self._implementation_blocker(state, wid)
-            if blocked:
-                return f"its implementation report is in, but {blocked}"
-            return f"its implementation report moves {wid} on by transition: {self._after_implementation(state, wid)}"
-        command = {"reviewer": "aew review ingest", "verifier": "aew verify ingest"}.get(inv["role"])
-        if command is None and is_nm_ticket(unit):
-            command = "aew evidence ingest"
-        records = sorted(e["id"] for e in produced if e["kind"] != "check_result") or ["<id>"]
-        if command is None:
-            return "ingest it"
-        return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e}`" for e in records)
-
-    def _after_implementation(self, state: dict[str, Any], wid: str) -> str:
-        """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
-        unit = state["work"][wid]
-        try:
-            gc = self.gate_context(state, wid)
-            to = ("REVIEW_PENDING" if self._review_gates(gc) else "VERIFY_PENDING" if self._verification_gates(gc)
-                  else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to}`"
-        except AEWError:
-            step = f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as its gates require)"
-        if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING`, then {step}"
-        return step
-
-    def _implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
-        """Why a mutating Ticket cannot move on although its implementer has reported, or None: a report that is not
-        a pass, or a gate the next transition would refuse. A next action never proposes a transition its gates will
-        refuse (M3 dogfood report §6.6, E8: `aew status` proposed one, twice)."""
-        unit = state["work"][wid]
-        try:
-            gc = self.gate_context(state, wid)
-        except AEWError:
-            return None
-        reasons = []
-        reports = [e for e in gc["evidence"] if e["kind"] == "implementation_report"
-                   and e["producer"].get("invocation") == unit.get("implementer_invocation")]
-        if reports:
-            report = max(reports, key=lambda e: e.get("seq") or 0)
-            if report.get("result") != "pass":
-                deviations = (report.get("implementation") or {}).get("deviations") or []
-                first = str(deviations[0]) if deviations else ""
-                reasons.append(f"its implementer's report is {report.get('result')}"
-                               + (f" ({first[:160]}{'...' if len(first) > 160 else ''})" if first else ""))
-        try:
-            self._require_gates(gc, self.PRE_REVIEW, what="the next transition")
-        except AEWError as exc:
-            reasons.append(exc.message)
-        if not reasons:
-            return None
-        return f"{wid} cannot move on yet: {'; '.join(reasons)}. `aew gate show {wid}` shows what blocks it"
+    def _nm_ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        return self._nm_ticket_actions(state, wid, u) + self._common_actions(state, wid, u)
 
     def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
         out = []
         if u["state"] in H.TERMINAL:
             return out
-        if self.plan_binding_problem(state, wid):
+        if self.units.plan_binding_problem(state, wid):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}` or a "
                        "new plan revision")
-        if self.dispatch_binding_problem(state, wid):
+        if self.units.dispatch_binding_problem(state, wid):
             out.append("this attempt was dispatched with other dependencies than the Ticket now has: a new dispatch "
                        "is required (REPLAN_REQUIRED and a plan revision, or `aew work redispatch` if non-mutating)")
         if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
-            for i in self.input_status(state, wid):
+            for i in self.inputs.input_status(state, wid):
                 if i["blocks_dispatch"]:
                     out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: the next executor dispatch "
                                f"is refused until it is refreshed or acknowledged (`aew work acknowledge-input {wid} "
@@ -206,7 +137,7 @@ class ResumeOps(HierarchyOps):
                     f"{execution.get('expected_kind')}) from its pack, then move to RUNNING"]
         if st == "RUNNING":
             if execution.get("record"):
-                gc = self.gate_context(state, wid)
+                gc = self.gates.gate_context(state, wid)
                 unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
                 if unmet:
                     return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
@@ -227,7 +158,7 @@ class ResumeOps(HierarchyOps):
         out = list(f"attention: {a}" for a in u.get("attention", []))
         if st in H.TERMINAL:
             return []
-        if self.plan_binding_problem(state, wid):
+        if self.units.plan_binding_problem(state, wid):
             out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid}`")
         if st in {"PLANNING", "OPEN"}:
             out.append(f"plan it and create its children (`aew plan propose {wid} --file - "
@@ -238,11 +169,12 @@ class ResumeOps(HierarchyOps):
             out.append("every open descendant is BLOCKED: check their dependencies")
         elif st == "ACCEPTANCE_PENDING":
             try:
-                gc = self.gate_context(state, wid)
+                gc = self.gates.gate_context(state, wid)
             except AEWError as exc:
                 return out + [f"cannot evaluate parent gates: {exc.message}"]
             unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
-            waiting = dependency_blockers(state, u, repo_root=self.repo_root, base_commit=self.authoritative_commit(),
+            waiting = dependency_blockers(state, u, repo_root=self.k.repo_root,
+                                          base_commit=self.k.authoritative_commit(),
                                           work_id=wid)
             if (u.get("parent_verification") or {}).get("awaiting_classification"):
                 out.append(f"classify the failed parent verification (`aew verify classify {wid}`)")
@@ -263,7 +195,7 @@ class ResumeOps(HierarchyOps):
         """Evidence submitted by active invocations but not yet ingested by the Lead."""
         ingested = {e["id"] for e in u.get("evidence", [])}
         active = {i for i in u.get("invocations", []) if state["invocations"][i]["status"] == "active"}
-        records, _ = E.scan(self.aew_root, wid)
+        records, _ = E.scan(self.k.aew_root, wid)
         return [e["id"] for e in records
                 if e["kind"] == kind and e["producer"]["invocation"] in active and e["id"] not in ingested]
 
@@ -293,10 +225,10 @@ class ResumeOps(HierarchyOps):
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
-                    blocked = self._implementation_blocker(state, wid)
+                    blocked = self.harness.implementation_blocker(state, wid)
                     if blocked:
                         return [f"implementer {implementer} reported, but {blocked}"]
-                    return [f"implementer {implementer} reported: {self._after_implementation(state, wid)}"]
+                    return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
             return ["dispatch a fresh implementer (`aew invoke create`)"]
@@ -345,19 +277,17 @@ class ResumeOps(HierarchyOps):
             return ["record the escalation outcome and return the Ticket"]
         return []
 
-    # ------------------------------------------------------------------ resume
-
     def _plan_brief(self, u: dict[str, Any]) -> dict[str, Any] | None:
         plan = u.get("plan")
         if not plan:
             return None
-        _, body = parse_frontmatter((self.aew_root / plan["path"]).read_text(encoding="utf-8"))
+        _, body = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
         return {"revision": plan["accepted"], "path": plan["path"], "sha256": plan["sha256"], "text": body.strip()}
 
     def _freshness(self, name: str, rel: str | None) -> dict[str, Any]:
         if not rel:
             return {"name": name, "path": None, "freshness": "UNAVAILABLE", "detail": "not generated"}
-        path = self.aew_root / rel
+        path = self.k.aew_root / rel
         if not path.exists():
             return {"name": name, "path": rel, "freshness": "UNAVAILABLE", "detail": "missing"}
         try:
@@ -367,14 +297,14 @@ class ResumeOps(HierarchyOps):
         source = meta.get("source_revision")
         if not source:
             return {"name": name, "path": rel, "freshness": "AUTHORED", "detail": "maintained by people, not derived"}
-        current = self.authoritative_commit()
+        current = self.k.authoritative_commit()
         return {"name": name, "path": rel, "freshness": "CURRENT" if source == current else "STALE",
                 "source_revision": source, "authoritative_revision": current}
 
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
         """``session``: inside a Lead session, whether its broker holds Lead authority (``lead_broker.
         session_authority``; M3-D10). ``None`` (outside a Lead session) keeps the guidance for a fresh reader."""
-        state = self.store.read()
+        state = self.k.store.read()
         lead = state["lead"]
         work = []
         findings = []
@@ -387,12 +317,12 @@ class ResumeOps(HierarchyOps):
                 gc = None
                 if u["state"] not in {"DONE", "CANCELLED"}:
                     try:
-                        gc = self.gate_context(state, wid)
+                        gc = self.gates.gate_context(state, wid)
                     except AEWError:
                         gc = None
                 entry.update(
                     accepted_plan=self._plan_brief(u),
-                    role_plan={k: v for k, v in self.effective_role_plan(state, wid, gc)["effective"].items()},
+                    role_plan={k: v for k, v in self.roles.effective_role_plan(state, wid, gc)["effective"].items()},
                     workspace={k: u["workspace"][k] for k in ("id", "path", "base_commit", "status")}
                     if u.get("workspace") else None,
                     active_invocations=[{"id": i, "role": state["invocations"][i]["role"],
@@ -412,24 +342,25 @@ class ResumeOps(HierarchyOps):
                 if is_nm_ticket(u):
                     entry["execution"] = u.get("execution")
                     entry["attempts"] = u.get("attempts", 0)
-                entry["plan_binding"] = self.plan_binding_problem(state, wid)
-                entry["dispatch_binding"] = self.dispatch_binding_problem(state, wid)
+                entry["plan_binding"] = self.units.plan_binding_problem(state, wid)
+                entry["dispatch_binding"] = self.units.dispatch_binding_problem(state, wid)
                 if u["state"] not in H.TERMINAL:
-                    entry["inputs"] = self.input_status(state, wid)
+                    entry["inputs"] = self.inputs.input_status(state, wid)
                 if u.get("input_acknowledgements"):
                     entry["input_acknowledgements"] = u["input_acknowledgements"]
             else:
-                entry["rollup"] = self.rollup(state, wid)
+                entry["rollup"] = self.units.rollup(state, wid)
                 entry.update(accepted_plan=self._plan_brief(u), attention=u.get("attention", []),
                              blocked_descendants=u.get("blocked_descendants", False),
                              children=H.children(state, wid), closeout=u.get("closeout"),
-                             cancellation=u.get("cancellation"), plan_binding=self.plan_binding_problem(state, wid))
+                             cancellation=u.get("cancellation"),
+                             plan_binding=self.units.plan_binding_problem(state, wid))
                 findings += [dict(f, work_unit=wid) for f in u.get("findings", []) if f["status"] == "open"]
             work.append(entry)
         latest = state.get("latest_handoff")
         handoff = None
-        if latest and (self.aew_root / latest).exists():
-            handoff = {"path": latest, "text": (self.aew_root / latest).read_text(encoding="utf-8")}
+        if latest and (self.k.aew_root / latest).exists():
+            handoff = {"path": latest, "text": (self.k.aew_root / latest).read_text(encoding="utf-8")}
         holder = f"generation {lead['generation']}" + (f" ({lead['session_label']})" if lead.get("session_label") else "")
         guidance = {
             "vacant": "No Lead holds authority: acquire it with `aew lead acquire`.",
@@ -448,11 +379,11 @@ class ResumeOps(HierarchyOps):
                 reachable = "no"
                 guidance = (f"This session's Lead broker does not hold Lead authority ({session.get('detail')}). "
                             f"{guidance}")
-        catalog = self.role_catalog()
+        catalog = self.roles.role_catalog()
         return {
             "order": RESUME_ORDER,
             "spec_set": SPEC_SET,
-            "project": {"id": self.project_id, "name": self.manifest["project"]["name"], "manifest": MANIFEST},
+            "project": {"id": self.k.project_id, "name": self.k.manifest["project"]["name"], "manifest": MANIFEST},
             "control": {"revision": state["revision"], "last_transition": state["last_transition"]},
             "lead": {"status": lead["status"], "generation": lead["generation"],
                      "session_label": lead.get("session_label"), "holder_reachable": reachable},
@@ -461,28 +392,28 @@ class ResumeOps(HierarchyOps):
             "latest_handoff": handoff,
             "open_review_findings": findings,
             "verification_failures": failures,
-            "accepted_authority": self.manifest["authority"]["accepted"],
-            "authority_candidates_pending": [c for c in self.manifest["authority"]["candidates"]
+            "accepted_authority": self.k.manifest["authority"]["accepted"],
+            "authority_candidates_pending": [c for c in self.k.manifest["authority"]["candidates"]
                                              if c["status"] == "proposed"],
-            "guardrails": self.manifest["policy"]["guardrails"],
-            "derived_knowledge": [self._freshness(n, r) for n, r in sorted(self.manifest["knowledge"].items())],
+            "guardrails": self.k.manifest["policy"]["guardrails"],
+            "derived_knowledge": [self._freshness(n, r) for n, r in sorted(self.k.manifest["knowledge"].items())],
             "role_catalog": [{"id": c.id, "display_name": c.meta["display_name"], "extends": c.archetype,
                               "use_when": c.meta.get("use_when", [])}
                              for c in sorted(catalog.cards.values(), key=lambda c: c.id)],
             "role_catalog_problems": catalog.problems,
-            "tree": self.work_tree()["lines"],
+            "tree": self.hierarchy.work_tree()["lines"],
             "lead_note": state.get("next_action"),
             "next_actions": self.next_actions(state),
-            "contradictions": self.contradictions(state) + [f"evidence: {p}" for u in state["work"]
-                                                            for p in E.scan(self.aew_root, u)[1]],
-            **({"harness_runs": runs} if (runs := self.harness_resume(state)) else {}),
+            "contradictions": self.views.contradictions(state) + [f"evidence: {p}" for u in state["work"]
+                                                            for p in E.scan(self.k.aew_root, u)[1]],
+            **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
         }
 
     def lead_guide(self) -> str:
         """How work flows in AEW for this project's Lead, from its own policy (F16). Read-only."""
         from aew.engine import guide
 
-        return guide.render(self.policy("gates"), self.policy("checks"))
+        return guide.render(self.k.policy("gates"), self.k.policy("checks"))
 
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",
@@ -515,19 +446,42 @@ class ResumeOps(HierarchyOps):
             lines += ["", "## CONTRADICTIONS (resolve before proceeding)", *(f"- {c}" for c in r["contradictions"])]
         return "\n".join(lines)
 
-    # ------------------------------------------------------------------ checkpoint
-
-    def checkpoint(self, *, token: str, expect_rev: int, note: str = "", next_action: str | None = None) -> dict[str, Any]:
-        with self.lead_txn(token, expect_rev, "checkpoint") as ctx:
+    def checkpoint(self, *, token: str, expect_rev: int, note: str = "",
+                   next_action: str | None = None) -> dict[str, Any]:
+        with self.k.lead_txn(token, expect_rev, "checkpoint") as ctx:
             if next_action is not None:
                 ctx.state["next_action"] = next_action or None
-            path = self._write_handoff(ctx, note, [])
+            path = self.lead.write_handoff(ctx, note, [])
             ctx.summary = f"checkpoint {path}"
         return {"ok": True, "checkpoint": path, "revision": ctx.session.committed_revision}
 
-    def status(self, work_id: str | None = None) -> dict[str, Any]:  # adds role catalog health
-        out = super().status(work_id)
+    def status(self, work_id: str | None = None) -> dict[str, Any]:
+        """``aew status``: one unit's control record, or the project report with role catalog health."""
+        out = self._status_report(work_id)
         if work_id is None:
-            out["role_catalog_problems"] = self.role_catalog().problems
+            out["role_catalog_problems"] = self.roles.role_catalog().problems
         return out
 
+    def _status_report(self, work_id: str | None) -> dict[str, Any]:
+        state = self.k.store.read()
+        if work_id:
+            unit = state["work"].get(work_id)
+            if unit is None:
+                raise NotFound(f"no work unit {work_id}")
+            return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}
+        lead = state["lead"]
+        return {
+            "project": {"id": self.k.project_id, "name": self.k.manifest["project"]["name"]},
+            "revision": state["revision"],
+            "lead": {"status": lead["status"], "generation": lead["generation"],
+                     "session_label": lead.get("session_label")},
+            "work_graph": work_graph_lines(state),
+            "hierarchy": self.hierarchy.work_tree()["lines"] if any(u["kind"] != "ticket" for u in state["work"].values())
+            else [],
+            "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
+                           "blocked_by": u.get("blocked_by", [])}
+                     for wid, u in sorted(state["work"].items())},
+            "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
+            "next_actions": self.next_actions(state),
+            "contradictions": self.views.contradictions(state),
+        }

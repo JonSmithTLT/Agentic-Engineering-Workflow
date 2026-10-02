@@ -4,7 +4,7 @@ Every collaborator of the Engine (register E5) receives the ``Kernel`` explicitl
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,7 +13,7 @@ from typing import Any
 from aew.engine.authority import require_lead
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
-from aew.errors import IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
+from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -37,6 +37,13 @@ class TxnContext:
     execution_request: dict[str, Any] | None = None
     # --launch: the invocation this dispatch creates is recorded with harness run 1 (ADR-0009).
     launch_request: bool = False
+    # The state to serialize, when a finalizer projected one (ADR-0011 plan R6: archival changes what is committed,
+    # never the working state the operation's own code still reads after its commit). None commits ``state``.
+    commit_state: dict[str, Any] | None = None
+    # Side effects that must wait until the commit landed (removing a worktree the committed state no longer names).
+    after_commit: list[Callable[[], None]] = field(default_factory=list)
+    # History annotations this transition adds about archived units (a move), appended by the archival finalizer.
+    annotations: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -52,6 +59,8 @@ class Kernel:
         self._manifest_seen: tuple[Any, ...] | None = None  # file identities the cached manifest reflects
         self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
         self.finalizers = TxnFinalizers()  # run inside every Lead transaction before it commits
+        # Credentials archived with finished work (ADR-0011 R7), set by the composition root; None before archival.
+        self.archived_credential: Any = None
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -186,7 +195,7 @@ class Kernel:
         is superseded (STALE_AUTHORITY) rather than merely out of date.
         """
         with self.store.session() as s:
-            actor = require_lead(s.state, token, allow_pending=allow_pending)
+            actor = require_lead(s.state, token, allow_pending=allow_pending, archived=self.archived_credential)
             if expect_rev is None:
                 raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
                                     current=s.revision)
@@ -201,7 +210,12 @@ class Kernel:
             yield ctx
             self.finalizers.run(ctx)
             s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
-                     expect_rev=expect_rev)
+                     expect_rev=expect_rev, state=ctx.commit_state)
+            for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
+                try:
+                    effect()
+                except (AEWError, OSError):
+                    pass
 
     def new_decision(
         self,

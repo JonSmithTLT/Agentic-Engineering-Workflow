@@ -88,7 +88,9 @@ class HierarchyWalk:
         return self._state
 
     def unit(self, wid: str) -> dict[str, Any]:
-        return self.state()["work"][wid]
+        """A unit as the raw hot layout holds it, or, once finished and archived (ADR-0011), its archived record."""
+        state = self.state()
+        return state["work"][wid] if wid in state["work"] else self.engine.work_show(wid)["control"]
 
     def lead(self, method: str, **kw: Any) -> Any:
         return getattr(self.engine, method)(token=self.token, expect_rev=self.state()["revision"], **kw)

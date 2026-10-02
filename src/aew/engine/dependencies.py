@@ -35,6 +35,10 @@ def _integrated_in_base(up: dict[str, Any], base_commit: str | None, repo_root: 
     integrated = (up.get("integration") or {}).get("commit")
     if not integrated:
         return {"reason": "no_integration_record"}
+    return _commit_in_base(integrated, base_commit, repo_root)
+
+
+def _commit_in_base(integrated: str, base_commit: str | None, repo_root: Path) -> dict[str, Any] | None:
     if base_commit is None or not git.is_ancestor(integrated, base_commit, cwd=repo_root):
         return {"reason": "not_in_source_snapshot", "integrated_commit": integrated, "base_commit": base_commit}
     return None
@@ -42,19 +46,27 @@ def _integrated_in_base(up: dict[str, Any], base_commit: str | None, repo_root: 
 
 def _edge_blocker(state: dict[str, Any], dep: dict[str, Any], *, repo_root: Path,
                   base_commit: str | None) -> dict[str, Any] | None:
-    up = state["work"].get(dep["id"])
+    up = H.upstream(state, dep["id"])
     if up is None:
         return {"kind": "dependency", "id": dep["id"], "reason": "unknown_work_unit"}
     if H.is_parent(up):
         if up["state"] != "DONE":
             return {"kind": "dependency", "id": dep["id"], "reason": f"parent_not_closed ({up['state']})"}
         if dep["kind"] == "mutating":
-            for wid in H.descendants(state, dep["id"]):
-                d = state["work"][wid]
-                if d["kind"] == "ticket" and d.get("mutating") and d["state"] == "DONE":
-                    missing = _integrated_in_base(d, base_commit, repo_root)
-                    if missing:
-                        return {"kind": "dependency", "id": dep["id"], "via": wid, **missing}
+            # Every DONE mutating descendant's integrated commit in the base. Archived descendants are represented by
+            # the parent's integration frontier, the antichain of their integrated commits (R5): every member in the
+            # base is exactly every one of them in it. Hot ones (a v1 project, or this very commit) are checked too.
+            for commit, via in sorted((up.get("integration_frontier") or {}).items(), key=lambda kv: kv[1]):
+                missing = _commit_in_base(commit, base_commit, repo_root)
+                if missing:
+                    return {"kind": "dependency", "id": dep["id"], "via": via, **missing}
+            if not up.get("archived"):
+                for wid in H.descendants(state, dep["id"]):
+                    d = state["work"][wid]
+                    if d["kind"] == "ticket" and d.get("mutating") and d["state"] == "DONE":
+                        missing = _integrated_in_base(d, base_commit, repo_root)
+                        if missing:
+                            return {"kind": "dependency", "id": dep["id"], "via": wid, **missing}
         return None
     if dep["kind"] == "evidence":
         if up["state"] != "DONE":

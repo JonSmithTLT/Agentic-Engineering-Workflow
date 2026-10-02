@@ -322,7 +322,7 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     import copy
 
     from aew.engine.api import Engine
-    from invariants import m2_violations
+    from invariants import m2_violations, with_cold
 
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=0)
@@ -333,6 +333,8 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     _, out = dispatch(p, consumer)
     state = Engine.discover(p.root).store.read()
     assert m2_violations(p.root, state) == []
+
+    state, _ = with_cold(p.root, state)  # archived units corrupt as well (ADR-0011: the oracle reads both)
 
     def broken(mutate):
         s = copy.deepcopy(state)
@@ -573,7 +575,7 @@ def test_parent_acceptance_is_a_downstream_assignment_of_its_dependencies(tmp_pa
     import copy
 
     from aew.engine.api import Engine
-    from invariants import m2_violations
+    from invariants import m2_violations, with_cold
 
     p = sample_project(tmp_path)
     survey = create_investigation(p, tmp_path, title="Prerequisite survey")
@@ -632,7 +634,7 @@ def test_parent_acceptance_is_a_downstream_assignment_of_its_dependencies(tmp_pa
     assert show(p, free)["state"] == "DONE"
     assert_control_invariants(p)
 
-    state = Engine.discover(p.root).store.read()  # oracle rule 16 is not vacuous
+    state, _ = with_cold(p.root, Engine.discover(p.root).store.read())  # oracle rule 16 is not vacuous
     bad = copy.deepcopy(state)
     bad["invocations"][out["invocation"]]["dependencies"] = []
     assert "dispatched under dependencies" in " | ".join(m2_violations(p.root, bad))

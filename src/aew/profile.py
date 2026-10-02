@@ -10,6 +10,8 @@ Phases are exclusive (a nested phase's time is not counted in its parent):
 * ``commit``: staging, serializing and atomically publishing a transition;
 * ``git``: git subprocesses;
 * ``scan``: reading and verifying a work unit's sealed evidence;
+* ``derive``: recomputing the derived Story and Epic states inside a Lead commit (ADR-0011's hierarchy-history
+  series reports it apart);
 * ``compute``: everything else (the command's own logic, argument parsing, output).
 
 Counts accompany them: ``git`` (subprocesses, and ``git:<subcommand>``), ``parse`` (with ``parse_bytes``),
@@ -33,7 +35,7 @@ from typing import Any
 
 ENV = "AEW_PROFILE"
 SCHEMA = "aew/profile/v1"
-PHASES = ("lock", "recover", "parse", "render", "commit", "git", "scan")
+PHASES = ("lock", "recover", "parse", "render", "commit", "git", "scan", "derive")
 _WORD = re.compile(r"^[a-z][a-z-]*$")
 
 

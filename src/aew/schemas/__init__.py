@@ -24,6 +24,7 @@ SCHEMAS = {
     "execution": "execution.schema.json",
     "role": "role.schema.json",
     "role-archetype": "role-archetype.schema.json",
+    "history": "history.schema.json",
 }
 
 
@@ -50,6 +51,17 @@ def validate_property(name: str, prop: str, instance: Any, *, source: str) -> No
     """Validate one top-level property of a schema on its own: a submitted section, before the engine uses it
     (M3 step 8: a malformed but parseable section must be refused, never crash the code that reads it)."""
     _raise(_property_validator(name, prop), instance, f"{source}: `{prop}` does not match schema {name}", prop)
+
+
+@lru_cache(maxsize=None)
+def _def_validator(name: str, definition: str) -> Draft202012Validator:
+    schema = _validator(name).schema
+    return Draft202012Validator({"$ref": f"#/$defs/{definition}", "$defs": schema["$defs"]})
+
+
+def validate_def(name: str, definition: str, instance: Any, *, source: str) -> None:
+    """Validate against one ``$defs`` entry of a schema (a history entry or root, apart from its file)."""
+    _raise(_def_validator(name, definition), instance, f"{source}: does not match {name}#{definition}")
 
 
 def _raise(validator: Draft202012Validator, instance: Any, message: str, prefix: str | None = None) -> None:

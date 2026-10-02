@@ -17,10 +17,10 @@ from aew.engine import hierarchy as H
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
-from aew.errors import AEWError, NotFound
+from aew.errors import AEWError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
-from aew.knowledge.render import work_graph_lines
+from aew.knowledge.render import finished_summary, work_graph_lines
 from aew.util import parse_frontmatter
 
 if TYPE_CHECKING:
@@ -357,6 +357,9 @@ class Resume:
                              plan_binding=self.units.plan_binding_problem(state, wid))
                 findings += [dict(f, work_unit=wid) for f in u.get("findings", []) if f["status"] == "open"]
             work.append(entry)
+        # Finished work is archived: the most recent units, bounded, and the counts (ADR-0011; operator 2026-10-01).
+        work += [{**r, "archived": True} for r in state.get("recent", []) if r["id"] not in state["work"]]
+        work.sort(key=lambda w: w["id"])
         latest = state.get("latest_handoff")
         handoff = None
         if latest and (self.k.aew_root / latest).exists():
@@ -389,6 +392,7 @@ class Resume:
                      "session_label": lead.get("session_label"), "holder_reachable": reachable},
             "authority_guidance": guidance,
             "work": work,
+            **({"finished": finished} if (finished := finished_summary(state)) else {}),
             "latest_handoff": handoff,
             "open_review_findings": findings,
             "verification_failures": failures,
@@ -465,9 +469,7 @@ class Resume:
     def _status_report(self, work_id: str | None) -> dict[str, Any]:
         state = self.k.store.read()
         if work_id:
-            unit = state["work"].get(work_id)
-            if unit is None:
-                raise NotFound(f"no work unit {work_id}")
+            unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}
         lead = state["lead"]
         return {
@@ -484,4 +486,5 @@ class Resume:
             "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
             "next_actions": self.next_actions(state),
             "contradictions": self.views.contradictions(state),
+            **({"finished": finished} if (finished := finished_summary(state)) else {}),
         }

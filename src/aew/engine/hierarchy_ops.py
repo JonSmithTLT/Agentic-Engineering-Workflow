@@ -26,7 +26,15 @@ from aew.util import render_frontmatter, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import GatesPort, InputsPort, InvocationsPort, NonMutatingPort, RolesPort, WorkUnitsPort
+    from aew.engine.ports import (
+        ArchivePort,
+        GatesPort,
+        InputsPort,
+        InvocationsPort,
+        NonMutatingPort,
+        RolesPort,
+        WorkUnitsPort,
+    )
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 
@@ -35,7 +43,7 @@ class Hierarchy:
     """Story/Epic lifecycle: parent gates and closeout, cancellation, moves, promotion, dependency edits."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort) -> None:
+                 inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -43,6 +51,13 @@ class Hierarchy:
         self.inputs = inputs
         self.gates = gates
         self.nm = nm
+        self.archive = archive
+
+    def _completion_of(self, state: dict[str, Any], work_id: str) -> str | None:
+        """A unit's completion-record hash, hot or archived (what an edge or a closeout record pins)."""
+        if work_id in state["work"]:
+            return self.units.completion_sha(state, work_id)
+        return (H.upstream(state, work_id) or self.units.view(state, work_id)).get("completion_sha256")
 
     def children_digest(self, state: dict[str, Any], work_id: str) -> str:
         return H.children_digest(state, work_id, {c: self.units.completion_sha(state, c)
@@ -57,11 +72,15 @@ class Hierarchy:
         commit = self.k.authoritative_commit()
         digest = self.children_digest(state, work_id)
         kids = H.children(state, work_id)
-        complete = bool(kids) and all(state["work"][k]["state"] in H.TERMINAL for k in kids) \
-            and any(state["work"][k]["state"] == "DONE" for k in kids)
-        special = {"accepted_plan": self.gates.plan_gate_status(state, work_id),
-                   "children_complete": {"status": G.CURRENT if complete else G.MISSING,
-                                         "children": {k: state["work"][k]["state"] for k in kids}}}
+        archived = H.archived_summary(unit)  # finished children already archived (R3): all terminal, counted
+        complete = (bool(kids) or bool(archived["done"] + archived["cancelled"])) \
+            and all(state["work"][k]["state"] in H.TERMINAL for k in kids) \
+            and (any(state["work"][k]["state"] == "DONE" for k in kids) or archived["done"] > 0)
+        children = {"status": G.CURRENT if complete else G.MISSING,
+                    "children": {k: state["work"][k]["state"] for k in kids}}
+        if archived["done"] or archived["cancelled"]:
+            children["archived"] = {"done": archived["done"], "cancelled": archived["cancelled"]}
+        special = {"accepted_plan": self.gates.plan_gate_status(state, work_id), "children_complete": children}
 
         edges = effective_edge_set(state, work_id)
 
@@ -267,11 +286,14 @@ class Hierarchy:
     def _closeout_record(self, state: dict[str, Any], work_id: str, unit: dict[str, Any], gc: dict[str, Any],
                          decision: str) -> str:
         children = []
-        for cid in H.children(state, work_id):
-            c = state["work"][cid]
+        # Its own children, hot and archived: a closeout reads the bundles of this parent's children only (R3).
+        kids = sorted([(cid, state["work"][cid]) for cid in H.children(state, work_id)]
+                      + self.archive.archived_children(state, work_id))
+        for cid, c in kids:
             entry = {"id": cid, "kind": c["kind"], "state": c["state"], "mutating": c.get("mutating"),
                      "completion_record": c.get("completion_record"),
-                     "completion_sha256": self.units.completion_sha(state, cid)}
+                     "completion_sha256": self._completion_of(state, cid) if cid in state["work"]
+                     else c.get("completion_sha256")}
             if c["state"] == "CANCELLED":
                 entry["cancelled"] = next((h.get("reason") for h in reversed(c.get("history", []))
                                            if h.get("to") == "CANCELLED"), None) or (c.get("cancellation") or {}).get(
@@ -284,8 +306,8 @@ class Hierarchy:
                 "decision": decision, "plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
                 "baseline_commit": unit.get("baseline_commit"), "authoritative_commit": gc["snapshot"]["base_revision"],
                 "children_digest": gc["snapshot"]["children_digest"], "children": children,
-                "dependencies": [{**e, "state": state["work"][e["id"]]["state"],
-                                  "completion_sha256": self.units.completion_sha(state, e["id"])}
+                "dependencies": [{**e, "state": (H.upstream(state, e["id"]) or {}).get("state"),
+                                  "completion_sha256": self._completion_of(state, e["id"])}
                                  for e in effective_edge_set(state, work_id)],
                 "gates": {g: v["status"] for g, v in gc["gates"].items()},
                 "basis": {g: v["evidence"] for g, v in sorted(gc["gates"].items())
@@ -346,6 +368,8 @@ class Hierarchy:
 
     def _move(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
         state = ctx.state
+        if work_id not in state["work"]:
+            return self._move_archived(ctx, work_id, new_parent, why)
         unit = self.units.unit(state, work_id)
         old = unit.get("parent")
         if old and state["work"][old]["state"] in H.TERMINAL:
@@ -357,11 +381,28 @@ class Hierarchy:
                 raise UsageError(f"{work_id} cannot be moved under itself or its own descendant")
         subtree = [w for w in [work_id, *H.descendants(state, work_id)] if state["work"][w]["kind"] == "ticket"]
         before = {w: effective_edge_set(state, w) for w in subtree}
+        self.archive.move_hot_subtree(state, unit, old, new_parent)  # archived work below it moves too (R3)
         unit["parent"] = new_parent
         unit.setdefault("parent_history", []).append({"from": old, "to": new_parent, "at": utc_now(), "reason": why})
         self.units.refuse_cycles(state)
         self._refuse_dependency_change_of_started_work(state, before, "this move")
         return self._invalidate_bindings(state, work_id, f"moved from {old} to {new_parent}: {why}")
+
+    def _move_archived(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
+        """A finished unit moves too (into a live parent, whose acceptance then sees it). It is archived, so the move
+        updates both parents' summaries and is recorded as an annotation; nothing below it is hot (R3)."""
+        state = ctx.state
+        unit = self.units.view(state, work_id)
+        old = unit.get("parent")
+        if old:
+            old_state = (state["work"].get(old) or self.units.view(state, old))["state"]
+            if old_state in H.TERMINAL:
+                raise IllegalTransition(f"{work_id} belongs to {old}, which is {old_state}; a closed or cancelled "
+                                        "parent's children are part of its record")
+        if new_parent is not None:
+            self.units.check_parent(state, unit["kind"], new_parent)
+        self.archive.move(ctx, work_id, unit, new_parent, decision=None, note=why)
+        return []
 
     def _refuse_dependency_change_of_started_work(self, state: dict[str, Any], before: dict[str, list[dict[str, str]]],
                                                   what: str) -> None:
@@ -388,7 +429,7 @@ class Hierarchy:
         if not (reason and reason.strip()):
             raise UsageError("a hierarchy change needs a reason")
         with self.k.lead_txn(token, expect_rev, "work.move", reason=reason) as ctx:
-            old = self.units.unit(ctx.state, work_id).get("parent")
+            old = self.units.view(ctx.state, work_id).get("parent")
             decision = self.k.new_decision(ctx, "hierarchy_change", f"{work_id} moved from {old} to {parent}",
                                          work_unit=work_id, reason=reason)
             invalidated = self._move(ctx, work_id, parent, f"{reason} ({decision})")
@@ -471,6 +512,11 @@ class Hierarchy:
             # Ticket never runs again and contributes nothing, so it is not affected.
             busy = {a: state["work"][a]["state"] for a in sorted(affected) if state["work"][a]["kind"] == "ticket"
                     and state["work"][a]["state"] not in UNSTARTED | {"CANCELLED"}}
+            if unit["kind"] != "ticket" and H.archived_summary(unit)["done_tickets_subtree"]:
+                # Archived DONE Tickets below it finished under the current edges too (R3): the counter says so in
+                # O(1); only this refusal reads which ones.
+                busy.update({a: "DONE" for a in self.archive.archived_tickets_below(state, work_id, "DONE")})
+                busy = dict(sorted(busy.items()))
             if busy:
                 raise IllegalTransition("dependencies change only while every affected Ticket is BLOCKED, READY or "
                                         "REPLAN_REQUIRED; move started ones to REPLAN_REQUIRED first (a finished "
@@ -499,6 +545,8 @@ class Hierarchy:
         state = self.k.store.read()
 
         def node(wid: str) -> dict[str, Any]:
+            if wid not in state["work"]:
+                return archived_node(wid)
             u = state["work"][wid]
             out: dict[str, Any] = {"id": wid, "kind": u["kind"], "state": u["state"], "title": u["title"],
                                    "risk_class": u["risk_class"]}
@@ -512,14 +560,35 @@ class Hierarchy:
                 out["attention"] = u.get("attention", [])
                 out["blocked_descendants"] = u.get("blocked_descendants", False)
                 out["children"] = [node(c) for c in H.children(state, wid)]
+                archived = H.archived_summary(u)
+                if archived["done"] or archived["cancelled"]:
+                    out["archived"] = {"done": archived["done"], "cancelled": archived["cancelled"]}
             if u.get("depends_on"):
                 out["depends_on"] = u["depends_on"]
             return out
 
-        roots = [root] if root else sorted(w for w, u in state["work"].items() if not u.get("parent"))
-        for r in roots:
-            self.units.unit(state, r)
-        tree = [node(r) for r in roots]
+        def archived_node(wid: str) -> dict[str, Any]:
+            """An archived unit asked for by id: its record and its archived children, read on request (R7)."""
+            u = self.units.view(state, wid)
+            out = {"id": wid, "kind": u["kind"], "state": u["state"], "title": u["title"],
+                   "risk_class": u["risk_class"], "archived": True}
+            if u["kind"] == "ticket":
+                out["mutating"] = u.get("mutating")
+            else:
+                out["children"] = [archived_node(c) for c, _ in self.archive.archived_children(state, wid)]
+            return out
+
+        if root:
+            self.units.view(state, root)  # NotFound for an unknown id
+            tree = [node(root)]
+        else:
+            # The hot roots, and the most recently finished ones as single lines (``recent``, bounded): a view shows a
+            # bounded summary and recent items, never the whole history (ADR-0011, operator 2026-10-01).
+            recent = {r["id"]: r for r in state.get("recent", [])
+                      if r["id"] not in state["work"] and not (r.get("parent") and r["parent"] in state["work"])}
+            roots = sorted({w for w, u in state["work"].items() if not u.get("parent")} | set(recent))
+            tree = [node(r) if r in state["work"] else {**{k: recent[r][k] for k in ("id", "kind", "state", "title")},
+                                                         "archived": True} for r in roots]
         return {"revision": state["revision"], "tree": tree, "lines": self.tree_lines(tree)}
 
     @staticmethod
@@ -535,6 +604,10 @@ class Hierarchy:
                     else "]")
             if n.get("attention"):
                 extra += "  ! " + "; ".join(n["attention"])
+            if n.get("archived") is True:
+                extra += "  (archived)"
+            elif n.get("archived"):
+                extra += f"  ({n['archived']['done']} done, {n['archived']['cancelled']} cancelled, archived)"
             deps = ", ".join(e["id"] for e in n.get("depends_on", []))
             lines.append(f"{'  ' * indent}{tag} {n['id']} [{n['state']}] {n['title']}{extra}"
                          + (f"  -> {deps}" if deps else ""))

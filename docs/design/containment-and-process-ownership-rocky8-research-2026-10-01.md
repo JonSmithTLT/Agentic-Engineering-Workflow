@@ -1,6 +1,6 @@
 # Research: filesystem containment and process ownership on Rocky Linux 8
 
-- **Status:** research input for the designer, not governing. Nothing here is decided or implemented.
+- **Status:** research input for the designer, not governing. §8 records the designer's decisions on Q3 and E13 (2026-10-01); nothing here is implemented.
 - **Date:** 2026-10-01, after M3's acceptance.
 - **Feeds:**
   - `future-work.md` F2 (real filesystem containment) and its gate, "before real-repository dogfood";
@@ -137,6 +137,16 @@ Every row needs to be **run** on Rocky 8.10 before any claim. The table is the e
 3. Option 3 in §3.3 (a private object store per run): acceptable, or should agents never run git write commands at all?
 4. Should reviewers and verifiers get read-only workspaces by default under containment (§3.3, last paragraph)?
 5. Network containment: out of scope for F2, or a sibling entry?
+
+## 8. Designer's decisions (2026-10-01)
+
+Recorded as given:
+
+> **Q3 / F2:** Strong OS/runtime filesystem containment is required before any personal real-repository dogfood as well as internal alpha. The proposed unprivileged bubblewrap boundary is sufficient for personal dogfood once the Rocky 8 containment, OpenCode/bridge, Git-layout, fingerprint/prepare, fail-closed launch, and process-ownership probes pass. Internal alpha additionally requires representative isolation performance/operability acceptance.
+>
+> **E13:** Close POSIX process ownership through the same bubblewrap PID-namespace boundary. Do not implement a separate subreaper unless a pre-F2 Linux evaluation has a demonstrated need for reliable stop. Until the PID-namespace test passes, Linux process-group mode must not be represented as complete process ownership.
+
+These answer §7's questions 1 and 2. The probes the decision names map to §6: containment (§6 items 1, 2 and 6), OpenCode and the bridge (item 4), the Git layout and fingerprint/`prepare` (item 5), fail-closed launch (§5), and process ownership (items 2 and 3). Questions 3 to 5 (agents' git write commands, read-only reviewer and verifier workspaces, network containment) are still open.
 
 ## Sources
 

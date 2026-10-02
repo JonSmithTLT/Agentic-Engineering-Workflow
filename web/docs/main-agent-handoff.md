@@ -18,3 +18,7 @@ The original AEW checkout and concurrent tests remain untouched. Engine semantic
 ## D1 handoff
 
 Overview, filtered bounded Work table/tree, virtualization, cursor pagination and opaque-ID details are implemented without new dependencies. Backend owns all domain conclusions. `validation-d1.md` records the immutable offline gate (51 tests) and 18 compiled browser checks; `d1-visual-review.md` supplies running previews and screenshots. D2–D4 await the user/designer visual review explicitly required by the approved plan. Independent frontend review at core freeze remains a separate main-agent gate. Test-adapter success does not establish live-state/authentication integration.
+
+## Optional Work graph request
+
+The user identified large-project epic/story/ticket hierarchy and linkage as a useful graph use case. `work-graph-follow-up.md` records a proposed Work Graph view alongside Table/Tree, with focused bounded exploration and an explicit backend contract prerequisite. It remains separate work after core freeze; no graph implementation or date is claimed.

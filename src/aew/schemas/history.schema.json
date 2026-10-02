@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/history/v1",
+  "title": "AEW history manifest file (a sealed segment or the tail)",
+  "description": "ADR-0011 cold history: entries chained by hash, in bounded files under history/ (implementation plan R1).",
+  "type": "object",
+  "required": ["schema", "seq", "start", "prev", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"enum": ["aew/history/segment/v1", "aew/history/tail/v1"]},
+    "seq": {"type": "integer", "minimum": 1},
+    "start": {"$ref": "#/$defs/chain_state"},
+    "prev": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["seq", "sha256"],
+          "additionalProperties": false,
+          "properties": {"seq": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+        }
+      ]
+    },
+    "entries": {
+      "description": "Each entry is validated against #/$defs/entry when the manifest creates it. On read, the hash chain binds the stored entries to those validated ones (any altered entry breaks the chain), so a file is only checked for its envelope here.",
+      "type": "array",
+      "items": {"type": "object", "required": ["seq", "h"], "properties": {"seq": {"type": "integer", "minimum": 1}, "h": {"$ref": "#/$defs/sha256"}}}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "chain_state": {
+      "type": "object",
+      "required": ["count", "h"],
+      "additionalProperties": false,
+      "properties": {"count": {"type": "integer", "minimum": 0}, "h": {"$ref": "#/$defs/sha256"}}
+    },
+    "root": {
+      "type": "object",
+      "required": ["count", "head_h", "sealed_head"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "head_h": {"$ref": "#/$defs/sha256"},
+        "sealed_head": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["seq", "sha256"],
+              "additionalProperties": false,
+              "properties": {"seq": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+            }
+          ]
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["seq", "kind", "id", "path", "sha256", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"type": "integer", "minimum": 1},
+        "kind": {"enum": ["unit", "annotation", "audit", "lead"]},
+        "id": {"type": "string", "minLength": 1},
+        "path": {
+          "description": "POSIX path relative to the AEW root, never absolute and never through ..",
+          "type": "string",
+          "pattern": "^(?![/\\\\])(?!.*(^|/)\\.\\.(/|$))[^\\\\:]+$"
+        },
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "at": {"type": "string", "minLength": 1},
+        "state": {"type": ["string", "null"]},
+        "parent": {"type": ["string", "null"]},
+        "source": {"enum": ["engine", "operator", "model", "external"]},
+        "subject": {"type": "string", "minLength": 1},
+        "rel": {"type": "string", "minLength": 1},
+        "links": {
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"type": "string"}}
+        },
+        "h": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

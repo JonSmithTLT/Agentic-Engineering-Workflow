@@ -3,6 +3,8 @@
 
     python tools/perf/control_plane.py run --sizes 50,500,3000 --work DIR [--reps 3] [--json results.json]
     python tools/perf/control_plane.py sweep --points 20:250,20:3000,200:250 --work DIR [--json results.json]
+    python tools/perf/control_plane.py sweep --hierarchy --points 3:250,3:1000,3:3000 --work DIR [--json ...]
+    python tools/perf/control_plane.py coldwrite --records 1000,3000,10000,30000 --work DIR [--json ...]
     python tools/perf/control_plane.py build --units 500 --out DIR           # a project only (read-only use)
     python tools/perf/control_plane.py footprint PROJECT                     # any project, read-only
 
@@ -128,8 +130,15 @@ class Template:
     def lead(self, method: str, **kw: Any) -> dict[str, Any]:
         return getattr(self.eng, method)(token=self.token, expect_rev=self.rev(), **kw)
 
-    def planned(self, title: str, *, mutating: bool = True) -> str:
-        wid = self.lead("work_create", kind="ticket", title=title, risk_class=1, mutating=mutating,
+    def parent_unit(self, kind: str, title: str, parent: str | None) -> str:
+        """An Epic or Story with an accepted plan, so that Tickets below it can be dispatched (ADR-0007)."""
+        wid = self.lead("work_create", kind=kind, title=title, risk_class=1, parent=parent)["id"]
+        self.lead("plan_propose", no_assurance=True, work_id=wid, body=f"{title}: deliver its Tickets.\n")
+        self.lead("plan_accept", work_id=wid, revision=1)
+        return wid
+
+    def planned(self, title: str, *, mutating: bool = True, parent: str | None = None) -> str:
+        wid = self.lead("work_create", kind="ticket", title=title, risk_class=1, mutating=mutating, parent=parent,
                         scope_paths=["calc/**", "tests/**"], goal_backwards=["calc.core.subtract(5, 3) == 2"],
                         contract=["changes stay in calc/ and tests/"])["id"]
         self.lead("plan_propose", no_assurance=True, work_id=wid, body=PLAN, affected_paths=["calc/core.py"])
@@ -174,15 +183,20 @@ class Template:
         self.lead("integrate_publish", work_id=wid)
 
 
-def make_template(root: Path) -> Template:
+def make_template(root: Path, *, hierarchy: bool = False) -> Template:
+    """With ``hierarchy``, every Ticket (and so every clone) is a child of one open Story inside one open Epic: the
+    ADR-0011 hierarchy-history series, where completed descendants accumulate below ancestors that stay open."""
     t = Template(root)
-    t.done(t.planned("Add subtract()"))                    # T-0001: the DONE bundle
-    t.planned("Planned work")                              # T-0002: the planned bundle
-    target = t.planned("Awaiting review ingest")           # T-0003
+    parent = None
+    if hierarchy:
+        parent = t.parent_unit("story", "Representative story", t.parent_unit("epic", "Representative epic", None))
+    t.done(t.planned("Add subtract()", parent=parent))     # T-0001: the DONE bundle
+    t.planned("Planned work", parent=parent)               # T-0002: the planned bundle
+    target = t.planned("Awaiting review ingest", parent=parent)  # T-0003
     t.implemented(target)
     t.review_target = t.eng.submit(invocation_token=t.role(target, "reviewer"), kind="review",
                                    text=submission(REVIEW))["evidence"]
-    t.planned("Survey calc", mutating=False)               # T-0004: T-0003 holds the one mutating slot
+    t.planned("Survey calc", mutating=False, parent=parent)  # T-0004: T-0003 holds the one mutating slot
     return t
 
 
@@ -499,12 +513,16 @@ def measure(t: Template, reps: int) -> list[dict[str, Any]]:
 
 
 def micro(root: Path) -> dict[str, float]:
-    """Where a parse and a commit go: YAML (pure Python and libyaml), schema validation, deep copy."""
+    """Where a parse and a commit go: YAML (pure Python and libyaml), schema validation, deep copy; and
+    ``control_reparse_s``, the whole re-parse a run's supervisor does after a Lead commit changed the file (checksum,
+    YAML and schema: ADR-0011 H3 and its absolute heartbeat bound)."""
     import yaml
 
+    from aew.engine.store import deserialize_control
     from aew.schemas import validate as schema_validate
 
     raw = (root / ".aew/state/control.yaml").read_text(encoding="utf-8")
+    raw_bytes = raw.encode("utf-8")
     body = raw.rsplit("\n# aew-checksum", 1)[0] + "\n"
 
     def timed(fn: Any) -> float:
@@ -529,7 +547,163 @@ def micro(root: Path) -> dict[str, float]:
             "yaml_dump_python_s": timed(lambda: yaml.dump(state, Dumper=PythonDumper, **options)),
             "yaml_dump_libyaml_s": timed(lambda: yaml.dump(state, Dumper=LibyamlDumper, **options)),
             "schema_validate_s": timed(lambda: schema_validate("control", state, source="perf")),
-            "deepcopy_s": timed(lambda: copy.deepcopy(state))}
+            "deepcopy_s": timed(lambda: copy.deepcopy(state)),
+            "control_reparse_s": timed(lambda: deserialize_control(raw_bytes, source="control.yaml"))}
+
+
+# ---------------------------------------------------------------------------------------------- cold-write series
+
+COLD_ROOT_REL = "state/history-root.yaml"  # P2b keeps the root in control.yaml (schema v2); until then, a file
+COLD_AT = "2026-10-02T00:00:00Z"           # written in the same transaction (exactly as atomic, via the redo record)
+COLD_BUNDLE_BYTES = 20_000                 # a DONE Ticket with its invocations and credentials (M3: about 20.3 KB)
+
+
+class ColdStore:
+    """A synthetic ADR-0011 cold store: ``n`` archived units behind a real control store, built quickly from small
+    pre-written bundles; the measured archivals write realistic ones through the normal transaction path."""
+
+    def __init__(self, aew_root: Path) -> None:
+        from aew import SPEC_SET
+        from aew.engine.store import ControlStore
+        from aew.history.index import HistoryIndex
+        from aew.history.store import History
+
+        self.root = aew_root
+        self.store = ControlStore(aew_root, lock_timeout=120)
+        self.store.create({
+            "schema": "aew/control/v1", "project_id": "cold", "spec_set": SPEC_SET, "revision": 0,
+            "manifest_sha256": "0" * 64,
+            "lead": {"schema": "aew/lead/v1", "status": "vacant", "generation": 0, "session_label": None,
+                     "token_id": None, "acquired_at": None, "handoff": None},
+            "tokens": {}, "counters": {"n": 0}, "work": {}, "invocations": {},
+            "last_transition": {"revision": 0, "at": COLD_AT, "actor": {"kind": "init"}, "op": "init",
+                                "summary": None, "reason": None, "refs": [], "txn": None}}, {})
+        self.history = History(aew_root)
+        self.index = HistoryIndex(aew_root)
+
+    def current(self) -> dict[str, Any]:
+        from aew.history import manifest as M
+        from aew.util import load_yaml
+
+        path = self.root / COLD_ROOT_REL
+        return load_yaml(path.read_text(encoding="utf-8")) if path.exists() else M.empty_root()
+
+    @staticmethod
+    def fields(k: int, sha: str) -> dict[str, Any]:
+        """An entry as an archived Ticket's would be: its links are what history traversal follows."""
+        return {"kind": "unit", "id": f"T-{k:05d}", "path": f"work/T-{k:05d}/archive.yaml", "sha256": sha,
+                "at": COLD_AT, "state": "DONE", "parent": "S-0001", "source": "engine",
+                "links": {"depends_on": [f"T-{k - 1:05d}"], "decisions": [f"D-{2 * k:05d}", f"D-{2 * k + 1:05d}"],
+                          "evidence": [f"E-{5 * k + i:06d}" for i in range(5)],
+                          "integration_commit": [secrets.token_hex(20)],
+                          "completion": [f"work/T-{k:05d}/completion.md"]}}
+
+    def archive(self, count: int, *, realistic: bool) -> None:
+        """Archive ``count`` more units in one transaction: pre-written small bundles (building), or realistic
+        bundles staged through the redo record (what an archival in a Lead commit does)."""
+        from aew.engine.store import Transition
+        from aew.history.store import bundle_rel, prewrite
+        from aew.util import dump_yaml
+
+        k0 = self.store.read()["counters"]["n"]
+        body = "x" * (COLD_BUNDLE_BYTES if realistic else 200)
+        texts = {k: f"id: T-{k:05d}\npayload: {body}\n" for k in range(k0 + 1, k0 + count + 1)}
+        shas = {} if realistic else {k: prewrite(self.root, bundle_rel(f"T-{k:05d}"), text)
+                                     for k, text in texts.items()}
+        with self.store.session() as s:
+            items = []
+            for k, text in texts.items():
+                rel = bundle_rel(f"T-{k:05d}")
+                if realistic:
+                    sha = self.history.write_record(s, rel, text)
+                else:
+                    s.prewritten(rel, shas[k])
+                    sha = shas[k]
+                items.append(self.fields(k, sha))
+            root = self.history.append(s, self.current(), items)
+            s.write(COLD_ROOT_REL, dump_yaml(root), immutable=False)
+            s.state["counters"]["n"] = k0 + count
+            s.commit(Transition(op="history.archive", actor={"kind": "perf"}))
+
+    def fill_tail(self, occupancy: int) -> None:
+        """Archive (small bundles, in batches) until the tail holds ``occupancy`` entries."""
+        from aew.history import manifest as M
+
+        need = (occupancy - self.current()["count"]) % M.SEGMENT_SIZE
+        while need:
+            batch = min(need, 2000)
+            self.archive(batch, realistic=False)
+            need -= batch
+
+
+def timed(fn: Any) -> tuple[float, Any]:
+    t0 = time.perf_counter()
+    out = fn()
+    return time.perf_counter() - t0, out
+
+
+def coldwrite(records: list[int], work: Path, reps: int) -> list[dict[str, Any]]:
+    """ADR-0011's cold-write series. At each size, with the tail at a fixed occupancy so that sizes compare:
+    three archivals (tail 254 -> 255, the append that seals, and the first into an empty tail), incremental
+    verification and index catch-up over exactly those, and exact lookups. Full verification and an index rebuild
+    are recorded too: they are linear in history by design and never on a command's path."""
+    import random
+
+    from aew.history import manifest as M
+
+    results = []
+    for n in records:
+        cs = ColdStore(work / f"cold-{n}" / ".aew")
+        t0 = time.perf_counter()
+        while cs.current()["count"] < n:
+            cs.archive(min(2000, n - cs.current()["count"]), realistic=False)
+        build_s = time.perf_counter() - t0
+        rebuild_s, _ = timed(lambda: cs.index.sync(cs.current()))
+        samples: dict[str, list[float]] = {k: [] for k in ("append_tail_254", "append_seal", "append_tail_0",
+                                                            "verify_incremental", "index_catch_up")}
+        tail_bytes = 0
+        for _ in range(reps):
+            cs.fill_tail(M.SEGMENT_SIZE - 2)
+            tail_bytes = (cs.root / M.TAIL_REL).stat().st_size  # the tail the measured appends rewrite
+            before = cs.current()
+            for key in ("append_tail_254", "append_seal", "append_tail_0"):
+                samples[key].append(timed(lambda: cs.archive(1, realistic=True))[0])
+            after = cs.current()
+            report = cs.history.verify(after, {"count": before["count"], "h": before["head_h"]})
+            samples["verify_incremental"].append(timed(
+                lambda: cs.history.verify(after, {"count": before["count"], "h": before["head_h"]}))[0])
+            assert report.ok and report.entries == 3, report.problems
+            samples["index_catch_up"].append(timed(lambda: cs.index.sync(after))[0])
+        root = cs.current()
+        rng = random.Random(n)
+        ids = [f"T-{rng.randint(1, root['count']):05d}" for _ in range(50)]
+        seqs = [rng.randint(1, root["count"]) for _ in range(50)]
+        lookup = [timed(lambda i=i: cs.index.by_id(i))[0] for i in ids]
+        entry = [timed(lambda s=s: cs.history.entry(root, s))[0] for s in seqs]
+        full_s, full = timed(lambda: cs.history.verify(root))
+        assert full.ok, full.problems[:3]
+        out = {"records": root["count"], "segments": root["sealed_head"]["seq"] if root["sealed_head"] else 0,
+               "build_s": round(build_s, 1), "tail_bytes_at_254": tail_bytes,
+               **{f"{k}_s": round(statistics.median(v), 4) for k, v in samples.items()},
+               "lookup_by_id_s": round(statistics.median(lookup), 5),
+               "entry_by_seq_s": round(statistics.median(entry), 5),
+               "verify_full_s": round(full_s, 2), "index_rebuild_s": round(rebuild_s, 2)}
+        print(json.dumps(out), flush=True)
+        results.append(out)
+    return results
+
+
+def cold_table(results: list[dict[str, Any]]) -> str:
+    rows = [("one archival, tail 254", "append_tail_254_s"), ("one archival that seals", "append_seal_s"),
+            ("one archival, empty tail", "append_tail_0_s"), ("incremental verify (3)", "verify_incremental_s"),
+            ("index catch-up (3)", "index_catch_up_s"), ("lookup by id (index)", "lookup_by_id_s"),
+            ("entry by seq (files)", "entry_by_seq_s"), ("full verify (linear)", "verify_full_s"),
+            ("index rebuild (linear)", "index_rebuild_s")]
+    head = "| | " + " | ".join(f"{r['records']:,} records" for r in results) + " |"
+    lines = [head, "|---" * (len(results) + 1) + "|"]
+    for label, key in rows:
+        lines.append(f"| {label} | " + " | ".join(f"{r[key] * 1000:.1f} ms" for r in results) + " |")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------------------------- output
@@ -554,13 +728,15 @@ def sweep_points(spec: str) -> list[tuple[int, int]]:
     return [(int(a), int(b)) for a, b in (p.split(":") for p in spec.split(","))]
 
 
-def sweep(points: list[tuple[int, int]], work: Path, reps: int) -> list[dict[str, Any]]:
+def sweep(points: list[tuple[int, int]], work: Path, reps: int, *, hierarchy: bool = False) -> list[dict[str, Any]]:
+    """With ``hierarchy``, ``open`` counts the open Tickets below the Story; the Story and Epic are open as well."""
     results: list[dict[str, Any]] = []
     t: Template | None = None
     have = (0, 0)
     for n, (want_open, want_done) in enumerate(points):
         if t is None or want_open < have[0] or want_done < have[1]:
-            t = make_template(work / f"sweep-{n}" / "repo")  # 3 open (T-0002..T-0004), 1 completed (T-0001)
+            # 3 open Tickets (T-0002..T-0004) and 1 completed (T-0001); in a hierarchy, all below one Story and Epic
+            t = make_template(work / f"sweep-{n}" / "repo", hierarchy=hierarchy)
             have = (3, 1)
         t0 = time.perf_counter()
         add_units(t.root, done=max(want_done - have[1], 0), planned=max(want_open - have[0], 0))
@@ -569,6 +745,7 @@ def sweep(points: list[tuple[int, int]], work: Path, reps: int) -> list[dict[str
         fp = project_footprint(t.root)
         print(f"point open={fp['units']['open']} completed={fp['units']['completed']} {info}", flush=True)
         results.append({"point": {"open": fp["units"]["open"], "completed": fp["units"]["completed"]},
+                        "shape": "hierarchy" if hierarchy else "flat",
                         "project": info, "footprint": fp, "micro": micro(t.root),
                         "ops": measure(t, reps if want_done + want_open < 3000 else 1)})
     return results
@@ -600,12 +777,25 @@ def main() -> int:
     r.add_argument("--json", type=Path)
     s = sub.add_parser("sweep")
     s.add_argument("--points", default="20:250,20:1000,20:3000,200:250")
+    s.add_argument("--hierarchy", action="store_true",
+                   help="ADR-0011 hierarchy-history series: every Ticket below one open Story and Epic")
     s.add_argument("--work", type=Path, required=True)
     s.add_argument("--reps", type=int, default=3)
     s.add_argument("--json", type=Path)
     f = sub.add_parser("footprint")
     f.add_argument("project", type=Path)
+    c = sub.add_parser("coldwrite", help="ADR-0011 cold-write series: synthetic cold stores of these sizes")
+    c.add_argument("--records", default="1000,3000,10000,30000")
+    c.add_argument("--work", type=Path, required=True)
+    c.add_argument("--reps", type=int, default=3)
+    c.add_argument("--json", type=Path)
     args = ap.parse_args()
+    if args.cmd == "coldwrite":
+        cold = coldwrite([int(x) for x in args.records.split(",")], args.work, args.reps)
+        print(cold_table(cold))
+        if args.json:
+            args.json.write_text(json.dumps(cold, indent=1), encoding="utf-8")
+        return 0
     if args.cmd == "build":
         build(args.out, args.units)
         print(json.dumps(validate(args.out), indent=1))
@@ -614,7 +804,7 @@ def main() -> int:
         print(json.dumps(project_footprint(args.project), indent=1))
         return 0
     if args.cmd == "sweep":
-        swept = sweep(sweep_points(args.points), args.work, args.reps)
+        swept = sweep(sweep_points(args.points), args.work, args.reps, hierarchy=args.hierarchy)
         print(sweep_table(swept))
         if args.json:
             args.json.write_text(json.dumps(swept, indent=1), encoding="utf-8")

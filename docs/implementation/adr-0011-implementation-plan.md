@@ -284,11 +284,37 @@ Each PR keeps the M1–M3 tests passing.
 - **Tests:** unit tests and crash-matrix entries, including the benign unreachable bundle left by a rollback.
 - **`tools/perf/control_plane.py`:** a hierarchy-history series, the active series to 1,000 open units, and a `coldwrite` subcommand (1k, 3k, 10k and 30k records). Their baselines are run against the baseline commit.
 
+**P2a as built** (2026-10-02). Everything above, with these implementation choices:
+- **Where the root lives.** The library is pure over a root, `{count, head_h, sealed_head}`, that the caller keeps. P2b keeps it in `control.yaml` under the `cold` key that schema v2 adds. Until then, the tests and the perf tool keep it in a file written in the same transaction, which the redo record makes exactly as atomic.
+- **Fault points.**
+  - Each history write is tagged with its fault point through a new per-write tag on `Session.write`: `history.after_bundle`, `history.mid_seal` and `history.after_tail`.
+  - The pre-write helper hits `history.after_prewrite`. Migration (P2d) uses that helper, so it is the point `migrate.after_prewrite` named.
+  - `history.audit_before_record` arrives in P2c, with the code that records an audit.
+- **R8 in the store.** `Session.prewritten(path, sha256)`:
+  - the commit verifies each declared file;
+  - the redo record lists them by path and hash;
+  - `last_transition.txn` carries only `{count, sha256}` of that list.
+- **Validation.**
+  - An entry is validated against its schema when it is created.
+  - On read, a file is checked only for its envelope. The hash chain binds the stored entries to the validated ones, because an altered entry breaks the chain.
+- **New measurements.**
+  - `sweep --hierarchy` puts every Ticket below one open Story and Epic.
+  - A `derive` profile phase isolates parent recomputation.
+  - `micro.control_reparse_s` is the H3 re-parse.
+  - `coldwrite` holds the tail at a fixed occupancy, so that sizes compare.
+  - `tools/perf/rocky8-gate.sh` is the exact Rocky 8 script for §7.2.
+  - The active series to 1,000 open units was already a `sweep` point.
+- **Measured** (`eval/adr-0011/perf/README.md` §3–§4):
+  - the hierarchy-history baseline at `0eb8ecf`;
+  - the first cold-write series. Appends, incremental verification, index catch-up and lookup are flat from 1.5k to 30.7k records.
+
 **P2b: archival through the `TxnFinalizer`** (R3–R7).
 - **Bundle contents:** the unit, its ended invocations and their revoked tokens. Lead tokens are archived per generation at takeover, handoff accept and release.
+  - **Carry-forward from the E5 review (2026-10-02).** Lead acquire, handoff accept and takeover commit through their own sessions in `lead_ops.py`, not through `lead_txn`, so the `TxnFinalizer` does not run for them. The same holds for harness stop and kill requests. P2b either archives a Lead generation explicitly in those commits or routes them through the finalizers.
 - **Hot structures:** `archived_refs`, the frontier, the counters and the recent ring.
 - **Schema v2.**
 - **Readers:** `hierarchy.py` and `dependencies.py` read through the summaries and `upstream()`. `contradictions`, the `resume` evidence sweep and CURRENT.md become hot-only.
+  - **Found by the P2a hierarchy baseline (2026-10-02).** Parent recomputation is quadratic in a parent's descendants: 0.011 s at 250, 0.29 s at 1,000 and 2.2 s at 3,000 completed, per commit (`eval/adr-0011/perf/README.md` §3). `descendants()` calls `children()` once per descendant, and `children()` scans every unit. P2b builds one children map per recomputation as well as archiving.
 - **The cold fallbacks** (R7).
 
 **P2c: the history surface and the R2 audit.**

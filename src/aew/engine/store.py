@@ -14,6 +14,14 @@ Model (ADR-0001):
   **applied**. Recovery rolls a committed-but-unapplied transaction forward
   and discards staged transactions that never committed. A crash therefore
   exposes either the previous valid state or the complete new state.
+* A transition may also reference **pre-written immutable objects**
+  (``Session.prewritten``): files a caller already wrote, create-if-absent and
+  deterministic, before the commit (ADR-0011 migration, implementation plan
+  R8). The commit verifies each one's hash and records them in the redo record
+  by path and hash only, never by content, so a large batch keeps both the
+  redo record and ``last_transition`` bounded. If the commit never happens they
+  stay behind unreferenced, which is benign (ADR-0011): a retry rewrites the
+  same bytes.
 * Roll-forward is idempotent and conservative: a target is written only if it
   still has its pre-transaction content (or is at the post content already);
   anything else is an out-of-band modification and fails closed.
@@ -78,6 +86,7 @@ class PendingWrite:
     path: str  # POSIX path relative to the AEW root
     content: str
     immutable: bool
+    fault: str | None = None  # a fault point hit right after this write is applied (crash-safety tests)
 
 
 @dataclass
@@ -118,6 +127,7 @@ class Session:
         self._committed_state = state  # the store's parse: never changed (``state`` is this session's copy)
         self.state = copy.deepcopy(state)
         self._writes: list[PendingWrite] = []
+        self._prewritten: dict[str, str] = {}  # path -> sha256 of an immutable object written before the commit
         self.committed_revision: int | None = None
 
     @property
@@ -127,8 +137,15 @@ class Session:
     def base_state(self) -> dict[str, Any]:
         return copy.deepcopy(self._committed_state)
 
-    def write(self, path: str, content: str, *, immutable: bool = True) -> None:
-        self._writes.append(PendingWrite(path, content, immutable))
+    def write(self, path: str, content: str, *, immutable: bool = True, fault: str | None = None) -> None:
+        self._writes.append(PendingWrite(path, content, immutable, fault))
+
+    def prewritten(self, path: str, sha256: str) -> None:
+        """Reference an immutable object the caller already wrote at ``path``; the commit refuses unless the file
+        holds exactly ``sha256``."""
+        if self._prewritten.get(path, sha256) != sha256:
+            raise IntegrityError(f"{path} is referenced with two different hashes")
+        self._prewritten[path] = sha256
 
     def commit(self, transition: Transition, *, expect_rev: int | None = None) -> int:
         if self.committed_revision is not None:
@@ -139,7 +156,8 @@ class Session:
                 expected=expect_rev,
                 current=self.revision,
             )
-        self.committed_revision = self._store._commit(self._committed_state, self.state, self._writes, transition)
+        self.committed_revision = self._store._commit(self._committed_state, self.state, self._writes, transition,
+                                                      self._prewritten)
         return self.committed_revision
 
 
@@ -215,10 +233,11 @@ class ControlStore:
         after: dict[str, Any],
         writes: list[PendingWrite],
         transition: Transition,
+        prewritten: dict[str, str] | None = None,
     ) -> int:
         profile.count("commit")
         with profile.phase("commit"):
-            return self._commit_unprofiled(before, after, writes, transition)
+            return self._commit_unprofiled(before, after, writes, transition, prewritten or {})
 
     def _commit_unprofiled(
         self,
@@ -226,9 +245,14 @@ class ControlStore:
         after: dict[str, Any],
         writes: list[PendingWrite],
         transition: Transition,
+        prewritten: dict[str, str],
     ) -> int:
         revision = before["revision"] + 1
         after["revision"] = revision
+        for rel, digest in sorted(prewritten.items()):
+            if sha256_file(self._abs(rel)) != digest:
+                raise IntegrityError(f"pre-written object {rel} is missing or does not hold its declared content",
+                                     path=rel, expected=digest)
         staged = []
         for w in writes:
             target = self._abs(w.path)
@@ -239,16 +263,23 @@ class ControlStore:
             staged.append(
                 {"path": w.path, "before": current, "after": new_hash, "immutable": w.immutable, "content": w.content}
             )
+        fault_after = [w.fault for w in writes]
 
         txn_ref = None
         txn_bytes = b""
-        if staged:
-            txn_bytes = dump_yaml({"revision": revision, "writes": staged}).encode("utf-8")
+        if staged or prewritten:
+            record: dict[str, Any] = {"revision": revision, "writes": staged}
+            listing = [{"path": rel, "sha256": digest} for rel, digest in sorted(prewritten.items())]
+            if listing:
+                record["prewritten"] = listing
+            txn_bytes = dump_yaml(record).encode("utf-8")
             txn_ref = {
                 "path": f"{TXN_DIR}/{revision:06d}.yaml",
                 "sha256": sha256_bytes(txn_bytes),
                 "writes": [{k: s[k] for k in ("path", "before", "after")} for s in staged],
             }
+            if listing:  # bounded: the listing itself is in the hash-pinned redo record
+                txn_ref["prewritten"] = {"count": len(listing), "sha256": sha256_bytes(dump_yaml(listing).encode())}
         after["last_transition"] = {
             "revision": revision,
             "at": utc_now(),
@@ -279,7 +310,7 @@ class ControlStore:
         fsync_dir(self.control_path.parent)
         faults.hit("txn.after_replace")
 
-        self._apply(staged, inject=True)
+        self._apply(staged, inject=True, fault_after=fault_after)
         faults.hit("txn.after_apply")
         if self.after_apply:
             self.after_apply(after)
@@ -350,7 +381,8 @@ class ControlStore:
             raise IntegrityError(f"redo record {txn_ref['path']} is damaged")
         return load_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]
 
-    def _apply(self, staged: list[dict[str, Any]], *, inject: bool = False) -> None:
+    def _apply(self, staged: list[dict[str, Any]], *, inject: bool = False,
+               fault_after: list[str | None] | None = None) -> None:
         for i, w in enumerate(staged):
             target = self._abs(w["path"])
             current = sha256_file(target)
@@ -366,6 +398,8 @@ class ControlStore:
             atomic_write(target, w["content"])
             if inject and i == 0:
                 faults.hit("txn.mid_apply")
+            if inject and fault_after and fault_after[i]:
+                faults.hit(fault_after[i])
 
     def _post_commit(self, state: dict[str, Any], *, inject: bool = False) -> None:
         last = state.get("last_transition")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from aew import profile
 from aew.engine import dependencies as deps
 from aew.engine import hierarchy as H
 from aew.engine import transitions
@@ -39,10 +40,12 @@ class WorkUnits:
         """Keep BLOCKED/READY and the derived Story/Epic state consistent with the durable graph inside every
         Lead commit (WC §8: parent state is derived, never hand-maintained)."""
         at = utc_now()
-        derived = H.recompute_parents(ctx.state, at=at)
+        with profile.phase("derive"):
+            derived = H.recompute_parents(ctx.state, at=at)
         changed = recompute_readiness(ctx.state, repo_root=self.k.repo_root, base_commit=self.k.authoritative_commit(),
                                       plan_problem=self.plan_binding_problem)
-        derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
+        with profile.phase("derive"):
+            derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
         if changed:
             ctx.refs.extend(f"readiness:{wid}" for wid in changed)
         if derived:

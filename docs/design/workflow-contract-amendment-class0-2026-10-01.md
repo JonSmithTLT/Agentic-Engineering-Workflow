@@ -1,6 +1,6 @@
 # Workflow Contract amendment: one classification system, and Class 0 eligibility
 
-**Status:** DRAFT for designer review (implementer, 2026-10-01). Not adopted. It drafts the Workflow Contract change that the decisions of 2026-10-01 require (`plan-assurance-and-classification-decisions-2026-10-01.md` §2, §3.2; Q10). The frozen Workflow Contract (`agent-engineering-workflow-design-v0.7.md`, pinned by `docs/spec-pin.yaml`) is not edited. Like the Ticket-revision amendment, this text amends it once adopted.
+**Status:** Adopted 2026-10-01, accepted by the designer in review. It is the Workflow Contract change that the decisions of 2026-10-01 require (`plan-assurance-and-classification-decisions-2026-10-01.md` §2, §3.2; Q10). The frozen Workflow Contract (`agent-engineering-workflow-design-v0.7.md`, pinned by `docs/spec-pin.yaml`) is not edited; like the Ticket-revision amendment, this text amends it. The engine does not enforce the predicate until M4's first step (§7); until then, `aew guide` and `lead-guide.md` state the policy the engine enforces today.
 
 **Amends:** Workflow Contract v0.7 §7.4 (risk/complexity classes) and §7.5 (minimum paths).
 

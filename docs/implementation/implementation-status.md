@@ -44,5 +44,5 @@ This is operational metadata (WC Appendix C). It does not replace the workflow s
 | Build/test impact analysis | Designed | — |
 | SCM/Jira enforcement | Designed | — |
 | Model-diverse review | Staged | Expressible as an execution-policy route (ADR-0010) and run in the dogfood's model comparison. Policy and evaluation are later work (`future-work.md` D5) |
-| Plan assurance before mutating dispatch | Designed; adopted as the post-M3 direction (Q9, 2026-10-01) | `docs/design/plan-assurance-and-premise-validation-design-v0.3.md`. Its extension points and deterministic primitives land early in M4; gating dispatch on `ASSURED` needs a Workflow Contract amendment (`future-work.md` F14) |
+| Plan assurance before mutating dispatch | Designed; adopted as the post-M3 direction (Q9, 2026-10-01) | `docs/design/plan-assurance-and-premise-validation-design-v0.4.md` (adopted 2026-10-01; the Class 0 Workflow Contract amendment with it). Its extension points and deterministic primitives land early in M4; gating dispatch on `ASSURED` needs a Workflow Contract amendment (`future-work.md` F14) |
 | Lease-expiry automatic Lead takeover | Designed | Future ADR (ambiguity report A2) |

@@ -1,6 +1,6 @@
-# AEW Failure-Class Registry v0.2 (draft)
+# AEW Failure-Class Registry v0.2
 
-**Status:** Cross-document index. v0.2 DRAFT for designer review (implementer, 2026-10-01): adds the plan assurance classes (§5) as reconciled by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
+**Status:** Cross-document index. v0.2 (2026-10-01, accepted by the designer in review): adds the plan assurance classes (§5) as reconciled by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
 **Authority:** Non-authoritative index. Definitions point to owning design/contract text; this file must not become a second source of workflow authority.  
 **Purpose:** Prevent naming/definition drift across AEW design, dogfood, and evaluation documents.
 

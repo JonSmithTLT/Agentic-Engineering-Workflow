@@ -1,13 +1,13 @@
-# AEW Plan Assurance and Premise Validation Design v0.4 (draft)
+# AEW Plan Assurance and Premise Validation Design v0.4
 
-**Status:** v0.4 DRAFT for designer review (implementer, 2026-10-01). It applies the operator's and designer's decisions of 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md`) to v0.3, and the designer's review of this draft (2026-10-01). Adopted as the post-M3 direction (Q9). v0.3 (`plan-assurance-and-premise-validation-design-v0.3.md`) is unchanged; references move to this file atomically when v0.4 is adopted.  
-**Date:** 2026-09-29  
+**Status:** Adopted 2026-10-01: the post-M3 direction (Q9), accepted by the designer in review on 2026-10-01. v0.4 applies the operator's and designer's decisions of 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md`) to v0.3. It supersedes v0.3 (`plan-assurance-and-premise-validation-design-v0.3.md`), which stays unchanged as the proposal's record; current references point here.  
+**Date:** 2026-09-29 (v0.3); 2026-10-01 (v0.4)  
 **Scope:** Pre-execution validation of intent, acceptance, assumptions, and implementation plans before mutating work is dispatched  
 **Primary motivation:** M3 paid dogfood demonstrated a simple Ticket where an incorrect planning premise was accepted, the Implementer faithfully executed the wrong intervention, and downstream review/verification accepted the resulting false success  
 **Authority:** The Engineering Lead remains the sole authority for accepted plan revisions and workflow state. Assurance roles produce evidence and findings; they do not create a second planning authority.  
 **Implementation timing:** This design changes the conditions under which a mutating plan may become dispatchable and therefore requires explicit Workflow Contract adoption. Selected pieces can be dogfooded before contract amendment.
 
-## v0.4 change summary (draft)
+## v0.4 change summary
 
 v0.4 applies the decisions of 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md`); it adds no new mechanism.
 
@@ -1456,9 +1456,11 @@ A. plain coding agent
 B. existing Lead-only AEW
 C. AEW + deterministic lint only
 D. AEW v0.2-style fresh critic/baseline
-E. AEW v0.3 acceptance-first + probes + protected evaluator
+E. AEW v0.4 acceptance-first assurance + probes + protected evaluator
 F. mandatory human plan approval
 ```
+
+Arm E is this design as adopted (v0.4). Its acceptance-first mechanism originated in v0.3; results bind to the design version tested.
 
 Use the same downstream evaluator wherever possible.
 
@@ -1718,7 +1720,7 @@ Compare:
 ```text
 current AEW
 v0.2-style challenge
-v0.3 acceptance-first assurance
+v0.4 acceptance-first assurance
 ```
 
 Measure false success and false blocking.

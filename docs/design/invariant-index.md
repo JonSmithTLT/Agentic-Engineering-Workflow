@@ -1,6 +1,6 @@
-# AEW Cross-Document Invariant Index v0.2 (draft)
+# AEW Cross-Document Invariant Index v0.2
 
-**Status:** Cross-document index. v0.2 DRAFT for designer review (implementer, 2026-10-01): adds the plan assurance invariants (§6) selected by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
+**Status:** Cross-document index. v0.2 (2026-10-01, accepted by the designer in review): adds the plan assurance invariants (§6) selected by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
 **Authority:** Non-authoritative index. Referenced contracts/designs remain governing.  
 **Purpose:** Give implementation/review agents one place to enumerate AEW invariants without copying them into a second authority layer.
 

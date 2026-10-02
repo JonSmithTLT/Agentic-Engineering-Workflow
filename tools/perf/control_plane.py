@@ -405,9 +405,30 @@ class Snapshot:
         return {line.split(" ", 1)[1] for line in git("worktree", "list", "--porcelain", cwd=self.root).splitlines()
                 if line.startswith("worktree ")}
 
+    def _remove_worktree(self, wt: str) -> None:
+        """Windows: a worktree created moments ago can still be held (an antivirus or indexer scanning its new
+        files), and `git worktree remove` then fails. Retry; as a last resort delete it and prune git's record."""
+        for _ in range(50):
+            proc = subprocess.run(["git", "worktree", "remove", "--force", wt], cwd=self.root, capture_output=True,
+                                  text=True, **NO_WINDOW)
+            if proc.returncode == 0:
+                return
+            time.sleep(0.2)
+        for _ in range(50):
+            try:
+                shutil.rmtree(wt)
+                break
+            except FileNotFoundError:
+                break
+            except PermissionError:
+                time.sleep(0.2)
+        git("worktree", "prune", cwd=self.root)
+        if wt in self._worktrees():
+            raise RuntimeError(f"could not remove worktree {wt}: {proc.stderr.strip()}")
+
     def restore(self) -> None:
         for wt in self._worktrees() - self.worktrees:
-            git("worktree", "remove", "--force", wt, cwd=self.root)
+            self._remove_worktree(wt)
         for branch in set(git("branch", "--format=%(refname:short)", cwd=self.root).split()) - self.branches:
             git("branch", "-D", branch, cwd=self.root)
         for _ in range(50):  # Windows: a file closed a moment ago can still be held briefly

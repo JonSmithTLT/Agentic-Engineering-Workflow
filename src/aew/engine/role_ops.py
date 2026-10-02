@@ -20,13 +20,13 @@ from aew import roles
 from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.base import TxnContext
-from aew.policy import consistency
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
+from aew.policy import consistency
 from aew.util import load_yaml, sha256_bytes
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.work_ops import WorkUnits
+    from aew.engine.ports import WorkUnitsPort
 
 SLOTS = ("execute", "review", "verify")
 
@@ -34,7 +34,7 @@ SLOTS = ("execute", "review", "verify")
 class Roles:
     """The role catalog, role plans (staffing), plan assurance and dispatch-time card resolution (ADR-0006)."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort) -> None:
         self.k = k
         self.units = units
 
@@ -118,7 +118,7 @@ class Roles:
                 if card_id == "default":
                     card_id = roles.default_card("reviewer" if slot == "review" else "verifier") or card_id
                 card = catalog.get(card_id)
-                self._slot_ok(unit, slot, card)
+                self.slot_ok(unit, slot, card)
                 if card.id in forbidden:
                     raise PermissionDenied(f"{card.id} is forbidden for this unit; a plan cannot require it")
                 if card.id not in out[slot]:
@@ -152,7 +152,7 @@ class Roles:
                     plan[slot].append({"card": card_id, "version": catalog.get(card_id).meta.get("version"),
                                        "selected_by": "plan", "pinned": True, "plan_revision": revision})
 
-    def _slot_ok(self, unit: dict[str, Any], slot: str, card: roles.Card) -> None:
+    def slot_ok(self, unit: dict[str, Any], slot: str, card: roles.Card) -> None:
         allowed = roles.SLOT_ARCHETYPES[slot]
         if slot == "execute":
             if unit["kind"] != "ticket":
@@ -212,7 +212,7 @@ class Roles:
             for slot, wanted in (("execute", execute), ("review", review), ("verify", verify)):
                 for card_id in wanted or []:
                     card = catalog.get(card_id)
-                    self._slot_ok(unit, slot, card)
+                    self.slot_ok(unit, slot, card)
                     if card_id in forbidden:
                         raise PermissionDenied(f"{card_id} is forbidden for {work_id}",
                                                by=[f for f in plan["forbidden"] if f["card"] == card_id])
@@ -304,7 +304,7 @@ class Roles:
         card = catalog.get(card_id)
         if role and card.archetype != role:
             raise UsageError(f"card {card.id} extends {card.archetype}, not {role}")
-        self._slot_ok(unit, slot, card)
+        self.slot_ok(unit, slot, card)
         forbidden = {f["card"] for f in (unit.get("role_plan") or {}).get("forbidden", [])}
         if card.id in forbidden:
             raise PermissionDenied(f"{card.id} is forbidden for {work_id}")
@@ -340,7 +340,7 @@ class Roles:
         return bool(info) and info["status"] in {G.CURRENT, G.WAIVED}
 
     @staticmethod
-    def _pin_on(ctx: TxnContext, inv_id: str, card: roles.Card) -> None:
+    def pin_on(ctx: TxnContext, inv_id: str, card: roles.Card) -> None:
         inv = ctx.state["invocations"][inv_id]
         inv["card"] = card.pin()
         inv["specialty"] = card.meta.get("specialty")

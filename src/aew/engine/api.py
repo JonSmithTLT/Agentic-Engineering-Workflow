@@ -11,13 +11,11 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from aew import SPEC_SET
-from collections.abc import Iterator
-
-from aew import roles
+from aew import SPEC_SET, roles
 from aew.engine.base import Kernel, TxnContext
 from aew.engine.context_ops import ContextPacks
 from aew.engine.evidence_ops import EvidenceCommands, Gates
@@ -26,15 +24,16 @@ from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.nonmutating_ops import Inputs, NonMutating
+from aew.engine.ports import RolesPort
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
-from aew.engine.seams import NON_MUTATING, PARENT, GuardTable, KindGateContexts, StateHooks
+from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.status_ops import StatusViews
+from aew.engine.store import ControlStore
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations
-from aew.engine.store import ControlStore
-from aew.harness import contract as K
 from aew.errors import IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.harness import contract as K
 from aew.knowledge import discovery
 from aew.knowledge.manifest import (
     AEW_DIR,
@@ -66,7 +65,7 @@ def _slug(name: str) -> str:
 class ProjectAdmin:
     """The project's authority registry, manifest adoption and `aew doctor`."""
 
-    def __init__(self, k: Kernel, *, roles: Roles) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort) -> None:
         self.k = k
         self.roles = roles
 
@@ -213,13 +212,13 @@ class Engine:
 
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         k = self._k = Kernel(repo_root, aew_root)
-        hooks, guards, contexts = StateHooks(), GuardTable(), KindGateContexts()
+        hooks, guards, kinds = StateHooks(), GuardTable(), KindRegistry()
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards)
         self._roles = roles = Roles(k, units=units)
         self._invocations = invocations = Invocations(k, roles=roles)
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units)
-        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, contexts=contexts)
+        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds)
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations)
         self._assignment = Assignment(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
                                       packs=packs)
@@ -227,14 +226,14 @@ class Engine:
                                     gates=gates, work=work)
         self._hierarchy = hierarchy = Hierarchy(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
                                                 gates=gates, nm=nm)
-        self._evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
-                                          packs=packs, gates=gates, nm=nm, hierarchy=hierarchy)
+        self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
+                                                     inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds)
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates)
         self._lead = lead = Lead(k)
         self._views = views = StatusViews(k)
-        self._resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy, lead=lead,
-                              views=views, harness=harness)
+        self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
+                                       lead=lead, views=views, harness=harness, kinds=kinds)
         self._project = ProjectAdmin(k, roles=roles)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
@@ -242,8 +241,9 @@ class Engine:
         guards.register_all(units.guard_registrations())
         guards.register_all(gates.guard_registrations())
         guards.register_all(nm.guard_registrations())
-        contexts.register(NON_MUTATING, nm.evidence_gate_context)
-        contexts.register(PARENT, hierarchy.evidence_gate_context)
+        for owner in (gates, evidence, nm, hierarchy, resume):
+            kinds.register_all(owner.kind_registrations())
+        kinds.require_complete()
 
     @classmethod
     def discover(cls, start: Path) -> "Engine":
@@ -812,4 +812,4 @@ class Engine:
         return self._k.workspaces_root()
 
     def _require_gates(self, gc: dict[str, Any], names: list[str], *, what: str) -> None:
-        return self._gates._require_gates(gc, names, what=what)
+        return self._gates.require_gates(gc, names, what=what)

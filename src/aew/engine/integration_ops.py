@@ -26,9 +26,7 @@ from aew.workspace import integration as I
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.evidence_ops import Gates
-    from aew.engine.work_ops import WorkUnits
-    from aew.engine.workspace_ops import Invocations
+    from aew.engine.ports import GatesPort, InvocationsPort, WorkUnitsPort
 
 
 # An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
@@ -42,7 +40,7 @@ KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICAT
 class Integration:
     """Lead-controlled integration: prepare -> post-integration verification -> publish (CAS) -> DONE."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, invocations: Invocations, gates: Gates) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, invocations: InvocationsPort, gates: GatesPort) -> None:
         self.k = k
         self.units = units
         self.invocations = invocations
@@ -78,7 +76,7 @@ class Integration:
         for inv_id in unit.get("invocations", []):
             inv = state["invocations"].get(inv_id) or {}
             if inv.get("status") == "active" and inv.get("scope") == "integration":
-                self.invocations._complete_invocation(state, inv_id, "cancelled")
+                self.invocations.complete_invocation(state, inv_id, "cancelled")
         unit.setdefault("integration_history", []).append(record)
         unit["integration"] = None
 
@@ -107,7 +105,7 @@ class Integration:
             if integ:
                 self._retire_integration(state, unit, f"replaced by a new candidate (was {integ.get('status')})")
             gc = self.gates.gate_context(state, work_id)
-            self.gates._require_gates(gc, gc["obligations"]["gates"], what="integration")
+            self.gates.require_gates(gc, gc["obligations"]["gates"], what="integration")
             if gc["open_required_findings"]:
                 raise GateUnsatisfied("mandatory review findings are unresolved")
             gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
@@ -178,7 +176,7 @@ class Integration:
     def _require_obligations_at_acceptance(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
         """Every effective obligation — including any added after validation — is met at the accepted snapshot."""
         gc = self.gates.accepted_gate_context(state, work_id)
-        self.gates._require_gates(gc, gc["obligations"]["gates"], what="publication")
+        self.gates.require_gates(gc, gc["obligations"]["gates"], what="publication")
         if gc["open_required_findings"]:
             raise GateUnsatisfied("publication: mandatory review findings are unresolved and not waived",
                                   findings=[f["id"] for f in gc["open_required_findings"]])
@@ -202,7 +200,7 @@ class Integration:
         ver = evidence.get(integ.get("post_integration_evidence") or "")
         if ver is None or ver["evaluated_snapshot"]["relevant_inputs_fingerprint"] != fp or ver["result"] != "pass":
             raise GateUnsatisfied("post-integration verification is not bound to the integrated snapshot")
-        self.gates._require_bound_report(state, unit, ver, scope="integration")
+        self.gates.require_bound_report(state, unit, ver, scope="integration")
         cited = {cid for c in ver["verification"]["claims"] for cid in c.get("checks", [])}
         definitions = C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails"))
         passed = {evidence[c]["check"]["check_id"] for c in cited
@@ -326,8 +324,8 @@ class Integration:
                 ctx.session.write(f"work/{work_id}/completion.md", completion)
                 ctx.refs.append(f"work/{work_id}/completion.md")
                 unit["completion_record"] = f"work/{work_id}/completion.md"
-                self.units._set_state(unit, "DONE",
-                                      f"integrated as {candidate[:12]}; post-integration verification passed",
+                self.units.set_state(unit, "DONE",
+                                     f"integrated as {candidate[:12]}; post-integration verification passed",
                                 state=ctx.state)
                 remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
                 ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.k.authoritative_branch}"

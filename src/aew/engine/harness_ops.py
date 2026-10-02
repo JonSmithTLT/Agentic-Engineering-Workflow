@@ -30,8 +30,8 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
-from aew.engine.store import Transition
 from aew.engine.nonmutating_ops import is_nm_ticket
+from aew.engine.store import Transition
 from aew.errors import AEWError, HarnessLaunchFailed, IllegalTransition, NotFound, RunLive, UsageError
 from aew.harness import contract as K
 from aew.harness import procs, runlog
@@ -43,9 +43,7 @@ from aew.util import sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.context_ops import ContextPacks
-    from aew.engine.evidence_ops import Gates
-    from aew.engine.workspace_ops import Invocations
+    from aew.engine.ports import ContextPacksPort, GatesPort, InvocationsPort
 
 # Never handed to a supervisor (and therefore never to a harness or an agent).
 SCRUBBED_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
@@ -65,7 +63,7 @@ def supervisor_env(base: dict[str, str] | None = None) -> dict[str, str]:
 class Harness:
     """Harness runs of invocations (ADR-0009) and the next action each run implies."""
 
-    def __init__(self, k: Kernel, *, invocations: Invocations, packs: ContextPacks, gates: Gates) -> None:
+    def __init__(self, k: Kernel, *, invocations: InvocationsPort, packs: ContextPacksPort, gates: GatesPort) -> None:
         self.k = k
         self.invocations = invocations
         self.packs = packs
@@ -75,7 +73,7 @@ class Harness:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over."""
         with self.k.lead_txn(token, expect_rev, "harness.launch") as ctx:
             state = ctx.state
-            inv = self.invocations._require_launchable(state, invocation)
+            inv = self.invocations.require_launchable(state, invocation)
             pack = self._regenerated_pack(state, invocation)
             if pack["sha256"] != (inv.get("pack") or {}).get("sha256"):
                 raise IllegalTransition(
@@ -168,9 +166,9 @@ class Harness:
         return {**out, "status": K.RUNNING, **{k: v for k, v in started.items() if k in {"harness", "session"}}}
 
     def _regenerated_pack(self, state: dict[str, Any], inv_id: str) -> dict[str, Any]:
-        inputs, _ = self.packs._pack_inputs(state, inv_id)
+        inputs, _ = self.packs.pack_inputs(state, inv_id)
         text = ctxmod.render(inputs)
-        return {"text": text, "sha256": sha256_text(text), "path": self.packs._pack_rel(inv_id)}
+        return {"text": text, "sha256": sha256_text(text), "path": self.packs.pack_rel(inv_id)}
 
     def expected_kinds(self, state: dict[str, Any], inv: dict[str, Any]) -> list[str]:
         unit = state["work"][inv["work_unit"]]
@@ -190,7 +188,7 @@ class Harness:
         pack = self._regenerated_pack(state, inv_id)
         if pack["sha256"] != (inv.get("pack") or {}).get("sha256"):
             raise IllegalTransition(f"{inv_id}'s context pack no longer matches the pack pinned at dispatch")
-        workspace, _, base = self.invocations._invocation_workspace(state, inv)
+        workspace, _, base = self.invocations.invocation_workspace(state, inv)
         runs = inv.get("runs") or []
         continuation = None
         if len(runs) > 1:
@@ -255,7 +253,7 @@ class Harness:
         state = self.k.store.read()
         inv_id, inv, _ = require_invocation(state, invocation_token, "context.read")
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
-        return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations._card_ref(inv),
+        return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations.card_ref(inv),
                 "work_unit": inv["work_unit"], "scope": inv.get("scope"), "workspace": inv.get("workspace"),
                 "expected_kinds": self.expected_kinds(state, inv), "operations": self.operations_of(inv),
                 "execution_profile": inv.get("execution_profile")}
@@ -459,10 +457,10 @@ class Harness:
         wid = inv["work_unit"]
         unit = state["work"].get(wid) or {}
         if inv["role"] == "implementer":
-            blocked = self._implementation_blocker(state, wid)
+            blocked = self.implementation_blocker(state, wid)
             if blocked:
                 return f"its implementation report is in, but {blocked}"
-            return f"its implementation report moves {wid} on by transition: {self._after_implementation(state, wid)}"
+            return f"its implementation report moves {wid} on by transition: {self.after_implementation(state, wid)}"
         command = {"reviewer": "aew review ingest", "verifier": "aew verify ingest"}.get(inv["role"])
         if command is None and is_nm_ticket(unit):
             command = "aew evidence ingest"
@@ -471,12 +469,12 @@ class Harness:
             return "ingest it"
         return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e}`" for e in records)
 
-    def _after_implementation(self, state: dict[str, Any], wid: str) -> str:
+    def after_implementation(self, state: dict[str, Any], wid: str) -> str:
         """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
         unit = state["work"][wid]
         try:
             gc = self.gates.gate_context(state, wid)
-            to = ("REVIEW_PENDING" if self.gates._review_gates(gc) else "VERIFY_PENDING" if self.gates._verification_gates(gc)
+            to = ("REVIEW_PENDING" if self.gates.review_gates(gc) else "VERIFY_PENDING" if self.gates.verification_gates(gc)
                   else "COMMIT_READY")
             step = f"`aew work transition {wid} --to {to}`"
         except AEWError:
@@ -485,7 +483,7 @@ class Harness:
             return f"`aew work transition {wid} --to RUNNING`, then {step}"
         return step
 
-    def _implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
+    def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
         """Why a mutating Ticket cannot move on although its implementer has reported, or None: a report that is not
         a pass, or a gate the next transition would refuse. A next action never proposes a transition its gates will
         refuse (M3 dogfood report §6.6, E8: `aew status` proposed one, twice)."""
@@ -505,7 +503,7 @@ class Harness:
                 reasons.append(f"its implementer's report is {report.get('result')}"
                                + (f" ({first[:160]}{'...' if len(first) > 160 else ''})" if first else ""))
         try:
-            self.gates._require_gates(gc, self.gates.PRE_REVIEW, what="the next transition")
+            self.gates.require_gates(gc, self.gates.PRE_REVIEW, what="the next transition")
         except AEWError as exc:
             reasons.append(exc.message)
         if not reasons:

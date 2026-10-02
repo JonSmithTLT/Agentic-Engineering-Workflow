@@ -17,9 +17,8 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.role_ops import Roles
+    from aew.engine.ports import InvocationsPort, RolesPort, WorkUnitsPort
     from aew.engine.seams import GuardTable, StateHooks
-    from aew.engine.workspace_ops import Invocations
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
 PARENT_KINDS = H.PARENT_KINDS
@@ -90,8 +89,8 @@ class WorkUnits:
             raise NotFound(f"no work unit {work_id}")
         return unit
 
-    def _set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
-                   state: dict[str, Any]) -> dict[str, str]:
+    def set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
+                  state: dict[str, Any]) -> dict[str, str]:
         """The single place a work unit's state changes (so cross-state effects cannot be skipped).
 
         ``state`` is the transaction's control state: cross-state effects may revoke credentials.
@@ -104,7 +103,7 @@ class WorkUnits:
         self.hooks.run_after(state, unit, change, reason)
         return change
 
-    def _guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
+    def check_guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
         if not name:
             return
         self.guards.resolve(name, unit)(ctx, work_id, unit, to)
@@ -141,7 +140,7 @@ class WorkUnits:
                 "(success is never inferred from a prior invocation)"
             )
 
-    def _check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
+    def check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
         parent_unit = self.unit(state, parent)
         if parent_unit["kind"] not in PARENT_KINDS[kind]:
             raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
@@ -149,7 +148,7 @@ class WorkUnits:
             raise IllegalTransition(f"{parent} is {parent_unit['state']}; a closed or cancelled parent takes no new "
                                     "children (create a new unit instead)")
 
-    def _parse_edges(self, state: dict[str, Any], specs: list[str]) -> list[dict[str, str]]:
+    def parse_edges(self, state: dict[str, Any], specs: list[str]) -> list[dict[str, str]]:
         """Edges may point at Tickets (M1 kinds) or at Stories/Epics (satisfied when the parent is DONE)."""
         edges: list[dict[str, str]] = []
         for spec in specs:
@@ -169,16 +168,16 @@ class WorkUnits:
         return edges
 
     @staticmethod
-    def _refuse_cycles(state: dict[str, Any]) -> None:
+    def refuse_cycles(state: dict[str, Any]) -> None:
         cycle = H.find_cycle(state)
         if cycle:
             raise UsageError("this change would create a dependency cycle (including inherited edges and parents "
                              "waiting on their children): " + " -> ".join(cycle), cycle=cycle)
 
-    def _propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
-                 affected_paths: list[str] | None, assurance: dict[str, list[str]],
-                 author: dict[str, Any] | None = None,
-                 source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
+    def propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
+                affected_paths: list[str] | None, assurance: dict[str, list[str]],
+                author: dict[str, Any] | None = None,
+                source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
         """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
         revision = len(unit["plans"]) + 1
         supersedes = (unit.get("plan") or {}).get("accepted")
@@ -241,20 +240,12 @@ class WorkUnits:
                                         "a new dispatch is required (REPLAN_REQUIRED and a plan revision, or "
                                         "`aew work redispatch` for a non-mutating Ticket)", dispatch_binding=problem)
 
-    def _is_evidence_unit_id(self, work_id: str) -> bool:
-        """True for non-mutating Tickets and for Stories/Epics (the M2 gate/ingest paths)."""
-        unit = self.unit(self.k.store.read(), work_id)
-        return unit["kind"] != "ticket" or not unit.get("mutating")
-
-    def _is_parent_id(self, work_id: str) -> bool:
-        return H.is_parent(self.unit(self.k.store.read(), work_id))
-
 
 
 class WorkCommands:
     """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, roles: Roles, invocations: Invocations) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -296,8 +287,8 @@ class WorkCommands:
         with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
             state = ctx.state
             if parent is not None:
-                self.units._check_parent(state, kind, parent)
-            edges = self.units._parse_edges(state, depends_on or [])
+                self.units.check_parent(state, kind, parent)
+            edges = self.units.parse_edges(state, depends_on or [])
             counter = kind
             state["counters"][counter] = state["counters"].get(counter, 0) + 1
             work_id = format_id(KIND_PREFIX[kind], state["counters"][counter])
@@ -330,10 +321,10 @@ class WorkCommands:
             if promoted_from:
                 unit["promoted_from"] = promoted_from
             state["work"][work_id] = unit
-            self.units._refuse_cycles(state)
+            self.units.refuse_cycles(state)
             if card:
                 chosen = self.roles.role_catalog().get(card)
-                self.roles._slot_ok(unit, "execute", chosen)
+                self.roles.slot_ok(unit, "execute", chosen)
                 unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
                                                   "selected_by": "lead", "pinned": False}],
                                      "review": [], "verify": [], "forbidden": []}
@@ -372,7 +363,7 @@ class WorkCommands:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             assurance = self.roles.resolve_plan_assurance(
                 unit, review=review, verify=verify, none=no_assurance)
-            path, revision = self.units._propose(ctx, work_id, unit, body=body, reason=reason,
+            path, revision = self.units.propose(ctx, work_id, unit, body=body, reason=reason,
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.units.before_commit(ctx)
@@ -417,13 +408,13 @@ class WorkCommands:
             if unit["state"] == "REPLAN_REQUIRED":
                 # Work done under the superseded plan never continues implicitly: the old attempt's workspace
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
-                self.invocations._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
+                self.invocations.release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
                 blockers = readiness_blockers(ctx.state, unit, repo_root=self.k.repo_root,
                                               base_commit=self.k.authoritative_commit(), work_id=work_id,
                                               plan_problem=self.units.plan_binding_problem)
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
-                self.units._set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
+                self.units.set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
             ctx.summary = f"{work_id} plan v{revision} accepted ({decision})"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "accepted": revision, "decision": decision,
@@ -440,17 +431,17 @@ class WorkCommands:
             rule = transitions.check(frm, to, "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{frm} -> {to} requires --reason")
-            self.units._guard(rule.guard, ctx, work_id, unit, to)
+            self.units.check_guard(rule.guard, ctx, work_id, unit, to)
             if to == "ESCALATED":
                 unit["escalated_from"] = frm
             if frm == "ESCALATED":
                 unit.pop("escalated_from", None)
-            change = self.units._set_state(unit, to, reason, state=ctx.state)
+            change = self.units.set_state(unit, to, reason, state=ctx.state)
             decision = None
             if to == "CANCELLED":
                 decision = self.k.new_decision(ctx, "cancellation", f"{work_id} cancelled", work_unit=work_id,
                                              resulting_transition=change, reason=reason)
-                self.invocations._release_workspace(ctx, unit, "cancelled")
+                self.invocations.release_workspace(ctx, unit, "cancelled")
             elif to == "RUNNING" and transitions.PHASE_ORDER.get(frm, 0) > transitions.PHASE_ORDER["RUNNING"]:
                 decision = self.k.new_decision(ctx, "state_regression", f"{work_id} returned to RUNNING from {frm}",
                                              work_unit=work_id, resulting_transition=change, reason=reason)
@@ -468,9 +459,9 @@ class WorkCommands:
             rule = transitions.check(frm, to, "reconcile")
             if not (reason and reason.strip()):
                 raise UsageError("reconciliation requires --reason describing what was inspected")
-            self.units._guard(rule.guard, ctx, work_id, unit, to)
+            self.units.check_guard(rule.guard, ctx, work_id, unit, to)
             inspection = inspection or self.invocations.inspect_workspace(unit)
-            change = self.units._set_state(unit, to, reason, state=ctx.state)
+            change = self.units.set_state(unit, to, reason, state=ctx.state)
             unit.pop("interrupted_from", None)
             decision = self.k.new_decision(
                 ctx, "reconciliation", f"{work_id} reconciled from INTERRUPTED to {to}", work_unit=work_id,

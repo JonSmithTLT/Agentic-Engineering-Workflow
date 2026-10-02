@@ -25,8 +25,8 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
-from aew.engine.seams import NON_MUTATING, GuardRegistration
 from aew.engine.dependencies import dependency_blockers, effective_edge_set, readiness_blockers
+from aew.engine.seams import GATE_CONTEXT, INGEST, INVOKE, NON_MUTATING, GuardRegistration, KindRegistration
 from aew.errors import (
     ConcurrencyLimit,
     DependencyUnsatisfied,
@@ -46,11 +46,15 @@ from aew.workspace import git, worktrees
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.context_ops import ContextPacks
-    from aew.engine.evidence_ops import Gates
-    from aew.engine.role_ops import Roles
-    from aew.engine.work_ops import WorkCommands, WorkUnits
-    from aew.engine.workspace_ops import Invocations
+    from aew.engine.ports import (
+        ContextPacksPort,
+        GatesPort,
+        InputsPort,
+        InvocationsPort,
+        RolesPort,
+        WorkCommandsPort,
+        WorkUnitsPort,
+    )
 
 EXECUTE_STATES = frozenset({"ASSIGNED", "RUNNING"})
 NO_GUARDRAILS = {"violations": [], "triggered_gates": [], "changed_paths": []}
@@ -67,7 +71,7 @@ class Inputs:
     def __init__(self, k: Kernel) -> None:
         self.k = k
 
-    def _same_source(self, observed: str | None, current: str | None) -> bool:
+    def same_source(self, observed: str | None, current: str | None) -> bool:
         """The engineering source at two commits is identical (AEW's own files excluded)."""
         if not observed or not current:
             return False
@@ -75,7 +79,7 @@ class Inputs:
             return True
         return git.ok("diff", "--quiet", observed, current, "--", ".", F.AEW_EXCLUDE, cwd=self.k.repo_root)
 
-    def _find_unit_evidence(self, work_id: str, evidence_id: str) -> dict[str, Any]:
+    def find_unit_evidence(self, work_id: str, evidence_id: str) -> dict[str, Any]:
         records, problems = E.scan(self.k.aew_root, work_id)
         if problems:
             raise GateUnsatisfied("evidence integrity problems", problems=problems)
@@ -102,7 +106,7 @@ class Inputs:
                             "declared_on": edge.get("inherited_from") or work_id})
         return out
 
-    def _acknowledged(self, unit: dict[str, Any], evidence_id: str, sha: str, commit: str) -> dict[str, Any] | None:
+    def acknowledged(self, unit: dict[str, Any], evidence_id: str, sha: str, commit: str) -> dict[str, Any] | None:
         return next((a for a in unit.get("input_acknowledgements", [])
                      if a["evidence"] == evidence_id and a["sha256"] == sha and a["commit"] == commit), None)
 
@@ -116,11 +120,11 @@ class Inputs:
         unit = state["work"][work_id]
         pinned, stale = [], []
         for inp in self.consumed_inputs(state, work_id):
-            ev = self._find_unit_evidence(inp["from"], inp["id"])
+            ev = self.find_unit_evidence(inp["from"], inp["id"])
             if ev["_sha256"] != inp["sha256"]:
                 raise GateUnsatisfied(f"input {inp['id']} changed after it was accepted", input=inp)
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
-            ack = self._acknowledged(unit, inp["id"], inp["sha256"], commit or "")
+            ack = self.acknowledged(unit, inp["id"], inp["sha256"], commit or "")
             entry = {**inp, "freshness": fresh["status"], "basis": fresh.get("basis"),
                      "acknowledgement": (ack or {}).get("decision")}
             if F.is_acceptable_input(fresh) or ack:
@@ -153,12 +157,12 @@ class Inputs:
         out = []
         for inp in inputs:
             try:
-                ev = self._find_unit_evidence(inp["from"], inp["id"])
+                ev = self.find_unit_evidence(inp["from"], inp["id"])
             except (GateUnsatisfied, NotFound) as exc:
                 out.append({**inp, "freshness": "UNKNOWN", "detail": exc.message, "blocks_dispatch": True})
                 continue
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
-            ack = self._acknowledged(unit, inp["id"], inp["sha256"], commit or "")
+            ack = self.acknowledged(unit, inp["id"], inp["sha256"], commit or "")
             out.append({**inp, "freshness": fresh["status"], "basis": fresh.get("basis"),
                         "acknowledgement": (ack or {}).get("decision"),
                         "blocks_dispatch": ev["_sha256"] != inp["sha256"]
@@ -170,8 +174,8 @@ class Inputs:
 class NonMutating:
     """Non-mutating (evidence-only) Tickets: attempts, observations, records, gates and acceptance."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, roles: Roles, invocations: Invocations, inputs: Inputs,
-                 packs: ContextPacks, gates: Gates, work: WorkCommands) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
+                 inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, work: WorkCommandsPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -218,10 +222,10 @@ class NonMutating:
                 removed.append(obs["path"])
         return removed
 
-    def _dispatch_observer(self, ctx: TxnContext, work_id: str, *, card: Any, scope: str, commit: str,
-                           attempt: int | None = None, subject: dict[str, Any] | None = None,
-                           inputs: list[dict[str, Any]] | None = None,
-                           children_digest: str | None = None) -> tuple[str, str, dict[str, Any]]:
+    def dispatch_observer(self, ctx: TxnContext, work_id: str, *, card: Any, scope: str, commit: str,
+                          attempt: int | None = None, subject: dict[str, Any] | None = None,
+                          inputs: list[dict[str, Any]] | None = None,
+                          children_digest: str | None = None) -> tuple[str, str, dict[str, Any]]:
         """A read-only invocation with its own detached observation worktree at ``commit``."""
         state = ctx.state
         inv_id = format_id("INV", state["counters"].get("invocation", 0) + 1)
@@ -236,8 +240,8 @@ class NonMutating:
             snapshot = dict(snap)
             if children_digest is not None:
                 snapshot["relevant_inputs_fingerprint"] = f"{snap['relevant_inputs_fingerprint']}+children:{children_digest}"
-            got, token = self.invocations._new_invocation(ctx, card.archetype, work_id, scope=scope,
-                                                          workspace=ws["path"],
+            got, token = self.invocations.new_invocation(ctx, card.archetype, work_id, scope=scope,
+                                                         workspace=ws["path"],
                                               workspace_id=ws["workspace_id"], snapshot=snapshot, card=card)
             assert got == inv_id, (got, inv_id)
             inv = state["invocations"][inv_id]
@@ -288,7 +292,7 @@ class NonMutating:
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id):
                 raise UsageError(f"{evidence_id} is not the accepted record of a DONE non-mutating Ticket {source}")
             commit = self.k.authoritative_commit()
-            ev = self.inputs._find_unit_evidence(source, evidence_id)
+            ev = self.inputs.find_unit_evidence(source, evidence_id)
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             decision = self.k.new_decision(
                 ctx, "input_acknowledgement",
@@ -363,8 +367,8 @@ class NonMutating:
         self._check_nm_concurrency(state)
         attempt = unit.get("attempts", 0) + 1
         unit["attempts"] = attempt
-        inv_id, inv_token, _ = self._dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=commit,
-                                                       attempt=attempt, inputs=inputs)
+        inv_id, inv_token, _ = self.dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=commit,
+                                                      attempt=attempt, inputs=inputs)
         unit["execution"] = {
             "attempt": attempt, "invocation": inv_id, "archetype": chosen.archetype,
             "card": {"id": chosen.id, "version": chosen.meta.get("version"), "sha256": chosen.sha256},
@@ -388,7 +392,7 @@ class NonMutating:
             return
         inv = state["invocations"].get(execution["invocation"])
         if inv and inv["status"] == "active":
-            self.invocations._complete_invocation(state, execution["invocation"], status)
+            self.invocations.complete_invocation(state, execution["invocation"], status)
         if not execution.get("ended"):
             execution.update(ended=status if inv and inv["status"] == status else (inv or {}).get("status", status),
                              ended_at=utc_now(), end_reason=why)
@@ -413,7 +417,7 @@ class NonMutating:
                 raise DependencyUnsatisfied(f"{work_id} cannot be dispatched", blockers=blockers)
             inv_id, inv_token = self._start_attempt(ctx, work_id, unit, card, commit)
             execution = unit["execution"]
-            change = self.units._set_state(unit, "ASSIGNED", f"dispatched {inv_id} ({execution['card']['id']}, attempt "
+            change = self.units.set_state(unit, "ASSIGNED", f"dispatched {inv_id} ({execution['card']['id']}, attempt "
                                      f"{execution['attempt']}, expects {execution['expected_kind']}, "
                                      f"selected by {execution['selected_by']})", state=state)
             ctx.summary = f"{work_id} dispatched: {inv_id} observes {commit[:12]}"
@@ -486,7 +490,7 @@ class NonMutating:
             if unit["state"] != "RUNNING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; records are ingested while RUNNING")
             execution = unit.get("execution") or {}
-            ev = self.inputs._find_unit_evidence(work_id, evidence_id)
+            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
             inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
             problems: dict[str, Any] = {}
             if ev["kind"] != execution.get("expected_kind"):
@@ -508,9 +512,9 @@ class NonMutating:
                 raise GateUnsatisfied(f"{evidence_id} cannot be accepted for {work_id}'s current attempt; it remains "
                                       "history", **problems)
             self.require_observation_intact(ev["producer"]["invocation"], inv)  # changed since submission?
-            self.gates._ingest_ref(unit, ev)
+            self.gates.ingest_ref(unit, ev)
             execution["record"] = {"id": ev["id"], "sha256": ev["_sha256"], "kind": ev["kind"], "result": ev["result"]}
-            self.invocations._complete_invocation(state, ev["producer"]["invocation"])
+            self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             execution.update(ended="completed", ended_at=utc_now(), end_reason=f"record {ev['id']} ingested")
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} record {evidence_id} ingested ({ev['result']})"
@@ -568,6 +572,11 @@ class NonMutating:
 
     NM_PRE_REVIEW = ["accepted_plan", "execute_record"]
 
+    def kind_registrations(self) -> list[KindRegistration]:
+        return [KindRegistration(GATE_CONTEXT, NON_MUTATING, self.evidence_gate_context),
+                KindRegistration(INVOKE, NON_MUTATING, self.invoke_evidence_unit),
+                KindRegistration(INGEST, NON_MUTATING, self.ingest_evidence_unit_report)]
+
     def guard_registrations(self) -> list[GuardRegistration]:
         """Lead-transition guards for non-mutating Tickets (mutating Tickets keep their M1 guards): each replaces the
         general guard of the same name for this kind only. ``evidence_only_complete`` exists only here, for every
@@ -590,25 +599,25 @@ class NonMutating:
 
     def _guard_ready_for_review(self, ctx, work_id, unit, to) -> None:
         gc = self.gates.gate_context(ctx.state, work_id)
-        if not self.gates._review_gates(gc):
+        if not self.gates.review_gates(gc):
             raise GateUnsatisfied("no review gate applies; accept the record (`aew work accept`) or verify it")
-        self.gates._require_gates(gc, self.NM_PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
-        self.gates._record_relied_on(ctx, unit, gc, self.NM_PRE_REVIEW)
+        self.gates.require_gates(gc, self.NM_PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
+        self.gates.record_relied_on(ctx, unit, gc, self.NM_PRE_REVIEW)
 
     def _guard_ready_for_verification_without_review(self, ctx, work_id, unit, to) -> None:
         gc = self.gates.gate_context(ctx.state, work_id)
-        if self.gates._review_gates(gc):
+        if self.gates.review_gates(gc):
             raise GateUnsatisfied("independent review is required before verification",
-                                  required=self.gates._review_gates(gc))
-        if not self.gates._verification_gates(gc):
+                                  required=self.gates.review_gates(gc))
+        if not self.gates.verification_gates(gc):
             raise GateUnsatisfied("no verification gate applies; accept the record (`aew work accept`)")
-        self.gates._require_gates(gc, self.NM_PRE_REVIEW, what="RUNNING -> VERIFY_PENDING")
-        self.gates._record_relied_on(ctx, unit, gc, self.NM_PRE_REVIEW)
+        self.gates.require_gates(gc, self.NM_PRE_REVIEW, what="RUNNING -> VERIFY_PENDING")
+        self.gates.record_relied_on(ctx, unit, gc, self.NM_PRE_REVIEW)
 
     def _guard_review_current(self, ctx, work_id, unit, to) -> None:
         gc = self.gates.gate_context(ctx.state, work_id)
-        self.gates._require_gates(gc, self.NM_PRE_REVIEW + self.gates._review_gates(gc),
-                                  what="REVIEW_PASSED -> VERIFY_PENDING")
+        self.gates.require_gates(gc, self.NM_PRE_REVIEW + self.gates.review_gates(gc),
+                                 what="REVIEW_PASSED -> VERIFY_PENDING")
 
     def _refuse_commit_ready(self, work_id: str) -> None:
         raise IllegalTransition(f"{work_id} is non-mutating: it is never an integration candidate (COMMIT_READY); "
@@ -627,11 +636,11 @@ class NonMutating:
         if not is_nm_ticket(unit):
             raise IllegalTransition(f"{work_id} is mutating: it reaches DONE only through controlled integration")
         gc = self.gates.gate_context(ctx.state, work_id)
-        self.gates._require_gates(gc, gc["obligations"]["gates"], what="-> DONE (record acceptance)")
+        self.gates.require_gates(gc, gc["obligations"]["gates"], what="-> DONE (record acceptance)")
         if gc["open_required_findings"]:
             raise GateUnsatisfied("mandatory review findings are unresolved and not waived",
                                   findings=[f["id"] for f in gc["open_required_findings"]])
-        self.gates._record_relied_on(ctx, unit, gc, list(gc["gates"]))
+        self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
         ctx.accepted_gates = gc  # type: ignore[attr-defined]  (read by work_accept for the completion record)
 
     def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
@@ -642,7 +651,7 @@ class NonMutating:
             if unit["kind"] != "ticket":
                 raise IllegalTransition("Stories and Epics are closed with `aew work close`")
             rule = transitions.check(unit["state"], "DONE", "accept")
-            self.units._guard(rule.guard, ctx, work_id, unit, "DONE")
+            self.units.check_guard(rule.guard, ctx, work_id, unit, "DONE")
             gc = ctx.accepted_gates  # type: ignore[attr-defined]
             execution = unit["execution"]
             decision = self.k.new_decision(
@@ -655,7 +664,7 @@ class NonMutating:
             ctx.refs.append(path)
             unit["completion_record"] = path
             unit["completion_sha256"] = sha256_text(text)
-            change = self.units._set_state(unit, "DONE", reason or f"record accepted ({decision})", state=state)
+            change = self.units.set_state(unit, "DONE", reason or f"record accepted ({decision})", state=state)
             ctx.summary = f"{work_id} accepted -> DONE ({decision})"
             self.units.before_commit(ctx)
         self.prune_observations()
@@ -714,9 +723,9 @@ class NonMutating:
             record = (unit.get("execution") or {}).get("record")
             if not record:
                 raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
-            ev = self.inputs._find_unit_evidence(work_id, record["id"])
+            ev = self.inputs.find_unit_evidence(work_id, record["id"])
             # The reviewer/verifier observes exactly the source the executor observed.
-            inv_id, inv_token, snapshot = self._dispatch_observer(
+            inv_id, inv_token, snapshot = self.dispatch_observer(
                 ctx, work_id, card=chosen, scope="observation", commit=ev["evaluated_snapshot"]["base_revision"],
                 subject={"id": record["id"], "sha256": record["sha256"]})
             ctx.summary = f"{inv_id} ({chosen.id} / {chosen.archetype}) dispatched for {work_id}'s {record['id']}"
@@ -727,7 +736,7 @@ class NonMutating:
                 "revision": ctx.session.committed_revision}
 
     @staticmethod
-    def _record_review_findings(unit: dict[str, Any], ev: dict[str, Any], evidence_id: str) -> None:
+    def record_review_findings(unit: dict[str, Any], ev: dict[str, Any], evidence_id: str) -> None:
         """Same finding bookkeeping as M1 review ingest (resolved earlier findings; required vs noted)."""
         findings = unit.setdefault("findings", [])
         known = {f["id"] for f in findings}
@@ -755,7 +764,7 @@ class NonMutating:
             if unit["state"] != expected_state:
                 raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}. "
                                         f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
-            ev = self.inputs._find_unit_evidence(work_id, evidence_id)
+            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             role = "reviewer" if kind == "review" else "verifier"
             if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id:
@@ -769,27 +778,27 @@ class NonMutating:
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
             self.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":
-                self._record_review_findings(unit, ev, evidence_id)
-            self.gates._ingest_ref(unit, ev)
-            self.invocations._complete_invocation(state, ev["producer"]["invocation"])
+                self.record_review_findings(unit, ev, evidence_id)
+            self.gates.ingest_ref(unit, ev)
+            self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             gc = self.gates.gate_context(state, work_id)
             change = None
             if kind == "review":
                 open_required = G.open_required_findings(unit)
-                pending = G.unmet(gc["gates"], self.gates._review_gates(gc))
+                pending = G.unmet(gc["gates"], self.gates.review_gates(gc))
                 to = "REVIEW_FAILED" if ev["review"]["disposition"] != "pass" or open_required else (
                     None if pending else "REVIEW_PASSED")
                 via = "review.ingest"
             else:
                 unit["last_verification"] = {"evidence": evidence_id, "result": ev["result"], "scope": "ticket"}
                 to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(ev["result"], "VERIFICATION_INCONCLUSIVE")
-                pending = G.unmet(gc["gates"], self.gates._verification_gates(gc)) if to == "VERIFIED" else {}
+                pending = G.unmet(gc["gates"], self.gates.verification_gates(gc)) if to == "VERIFIED" else {}
                 if pending:
                     to = None
                 via = "verify.ingest"
             if to:
                 transitions.check(unit["state"], to, via)
-                change = self.units._set_state(unit, to, f"{kind} {evidence_id}: {ev['result']}", state=state)
+                change = self.units.set_state(unit, to, f"{kind} {evidence_id}: {ev['result']}", state=state)
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} {kind} {evidence_id} ingested" + (f" -> {to}" if to else " (pending)")
             self.units.before_commit(ctx)
@@ -812,17 +821,17 @@ class NonMutating:
             if not (is_nm_ticket(src) and src["state"] == "DONE" and rec.get("id") == evidence_id
                     and rec.get("kind") == "plan_proposal"):
                 raise UsageError(f"{evidence_id} is not the accepted plan_proposal of a DONE planning Ticket {source}")
-            ev = self.inputs._find_unit_evidence(source, evidence_id)
+            ev = self.inputs.find_unit_evidence(source, evidence_id)
             commit = self.k.authoritative_commit()
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
-            if not F.is_acceptable_input(fresh) and not self.inputs._acknowledged(unit, evidence_id, ev["_sha256"],
+            if not F.is_acceptable_input(fresh) and not self.inputs.acknowledged(unit, evidence_id, ev["_sha256"],
                                                                            commit or ""):
                 raise InputStale(f"{evidence_id} is {fresh['status']} against the current source; acknowledge it for "
                                  f"{work_id} first (`aew work acknowledge-input`) or plan again", freshness=fresh)
             _, body = parse_frontmatter((self.k.aew_root / ev["_path"]).read_text(encoding="utf-8"))
             proposal = ev.get("proposal") or {}
             inv = state["invocations"][ev["producer"]["invocation"]]
-            path, revision = self.units._propose(
+            path, revision = self.units.propose(
                 ctx, work_id, unit, body=body, reason=reason, affected_paths=proposal.get("affected_paths"),
                 assurance=assurance, author={"role": "planner", "invocation": ev["producer"]["invocation"],
                         "card": (inv.get("card") or {}).get("id"), "adopted_by_generation": ctx.actor["generation"]},

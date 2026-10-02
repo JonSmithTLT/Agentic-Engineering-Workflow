@@ -15,7 +15,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.work_ops import WorkUnits
+    from aew.engine.ports import WorkUnitsPort
 
 AEW_EXCLUDE = ":(exclude).aew"
 
@@ -23,7 +23,7 @@ AEW_EXCLUDE = ":(exclude).aew"
 class ContextPacks:
     """Context packs for invocations (WC §15.4; KC §15). Packs are rebuildable local data."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort) -> None:
         self.k = k
         self.units = units
 
@@ -109,7 +109,7 @@ class ContextPacks:
                                                        AEW_EXCLUDE, cwd=self.k.repo_root)
         return extras
 
-    def _pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
+    def pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         inv = state["invocations"][inv_id]
         if inv.get("scope") in {"observation", "parent"}:
             return self._m2_pack_inputs(state, inv_id)
@@ -227,15 +227,15 @@ class ContextPacks:
         ]
         return inputs, sources
 
-    def _pack_rel(self, inv_id: str) -> str:
+    def pack_rel(self, inv_id: str) -> str:
         return f"local/packs/{inv_id}/pack.md"
 
     def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
         inv = ctx.state["invocations"][inv_id]
         inv["evidence_seq_cutoff"] = E.next_seq(self.k.aew_root, inv["work_unit"]) - 1
-        inputs, sources = self._pack_inputs(ctx.state, inv_id)
+        inputs, sources = self.pack_inputs(ctx.state, inv_id)
         text = ctxmod.render(inputs)
-        rel = self._pack_rel(inv_id)
+        rel = self.pack_rel(inv_id)
         atomic_write(self.k.aew_root / rel, text)  # rebuildable local data, not control state
         inv["pack"] = {"path": rel, "sha256": sha256_text(text), "sources": sources}
 
@@ -245,16 +245,16 @@ class ContextPacks:
         inv = state["invocations"].get(inv_id)
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")
-        inputs, _ = self._pack_inputs(state, inv_id)
+        inputs, _ = self.pack_inputs(state, inv_id)
         text = ctxmod.render(inputs)
-        rel = self._pack_rel(inv_id)
+        rel = self.pack_rel(inv_id)
         atomic_write(self.k.aew_root / rel, text)
         recorded = (inv.get("pack") or {}).get("sha256")
         return {"ok": True, "invocation": inv_id, "path": str(self.k.aew_root / rel), "sha256": sha256_text(text),
                 "matches_recorded": recorded == sha256_text(text)}
 
     def context_show(self, inv_id: str) -> str:
-        path = self.k.aew_root / self._pack_rel(inv_id)
+        path = self.k.aew_root / self.pack_rel(inv_id)
         if not path.exists():
             self.context_pack(inv_id)
         return path.read_text(encoding="utf-8")

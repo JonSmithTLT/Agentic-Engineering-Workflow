@@ -22,10 +22,7 @@ from aew.workspace import worktrees
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.context_ops import ContextPacks
-    from aew.engine.nonmutating_ops import Inputs
-    from aew.engine.role_ops import Roles
-    from aew.engine.work_ops import WorkUnits
+    from aew.engine.ports import ContextPacksPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
 
 # Isolation + controlled integration for concurrency > 1 are not implemented yet (M5),
 # so the effective mutating concurrency is 1 regardless of policy (WC §8.1, §21.1).
@@ -36,7 +33,7 @@ class Invocations:
     """Evaluated snapshots and invocations: issue, pin, complete, the workspace an invocation may act in, and recording
     run 1 of a `--launch` dispatch (ADR-0009)."""
 
-    def __init__(self, k: Kernel, *, roles: Roles) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort) -> None:
         self.k = k
         self.roles = roles
 
@@ -53,7 +50,7 @@ class Invocations:
             return None
         return self.snapshot_of(ws["path"], ws["id"])
 
-    def _new_invocation(
+    def new_invocation(
         self,
         ctx: TxnContext,
         role: str,
@@ -80,7 +77,7 @@ class Invocations:
         state["invocations"][inv_id]["execution_profile"] = self._resolve_execution(ctx, role, work_id, card)
         state["work"][work_id]["invocations"].append(inv_id)
         if card is not None:
-            self.roles._pin_on(ctx, inv_id, card)
+            self.roles.pin_on(ctx, inv_id, card)
         if ctx.launch_request:
             self._record_launch_run(ctx, inv_id)
         ctx.refs.append(f"invocation:{inv_id}")
@@ -92,7 +89,7 @@ class Invocations:
         return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
                          risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request)
 
-    def _complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
+    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
@@ -107,7 +104,7 @@ class Invocations:
         if change["to"] in transitions.TERMINAL:
             # A finished Ticket has no assignments left: no credential outlives it (re-review walk finding).
             for inv_id in unit.get("invocations", []):
-                self._complete_invocation(state, inv_id, "cancelled")
+                self.complete_invocation(state, inv_id, "cancelled")
 
     def inspect_workspace(self, unit: dict[str, Any]) -> dict[str, Any]:
         ws = unit.get("workspace")
@@ -122,7 +119,7 @@ class Invocations:
                 snap["relevant_inputs_fingerprint"] != ws["base_snapshot"]["relevant_inputs_fingerprint"])
         return out
 
-    def _release_workspace(self, ctx: TxnContext, unit: dict[str, Any], why: str) -> None:
+    def release_workspace(self, ctx: TxnContext, unit: dict[str, Any], why: str) -> None:
         """End the current attempt: the workspace stops being live and every active invocation of the
         Ticket is cancelled (credentials revoked). The worktree is left on disk for inspection; the
         branch preserves provenance."""
@@ -130,9 +127,9 @@ class Invocations:
         if ws and ws.get("status") == "active":
             ws["status"] = f"released ({why})"
         for inv_id in unit.get("invocations", []):
-            self._complete_invocation(ctx.state, inv_id, "cancelled")
+            self.complete_invocation(ctx.state, inv_id, "cancelled")
 
-    def _require_launchable(self, state: dict[str, Any], inv_id: str, *, relaunch: bool = True) -> dict[str, Any]:
+    def require_launchable(self, state: dict[str, Any], inv_id: str, *, relaunch: bool = True) -> dict[str, Any]:
         inv = state["invocations"].get(inv_id)
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")
@@ -145,18 +142,18 @@ class Invocations:
                 "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
         registry.check(profile["harness"])
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction
-            self._invocation_workspace(state, inv)  # its workspace, candidate or observation is still live
+            self.invocation_workspace(state, inv)  # its workspace, candidate or observation is still live
         return inv
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
         """``--launch`` on a dispatch: run 1 adopts the credential this transaction issued."""
-        inv = self._require_launchable(ctx.state, inv_id, relaunch=False)
+        inv = self.require_launchable(ctx.state, inv_id, relaunch=False)
         run = K.run_id(inv_id, 1)
         inv["runs"] = [{"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
                         "launched_at": utc_now(), "kind": "dispatch", "generation": ctx.state["lead"]["generation"]}]
         ctx.refs.append(f"run:{run}")
 
-    def _invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
+    def invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
         """The workspace this invocation was dispatched for — and only while it is still live (review M2).
 
         An invocation is never retargeted to a later workspace or candidate of the same Ticket.
@@ -190,7 +187,7 @@ class Invocations:
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
     @staticmethod
-    def _execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:
+    def execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:
         """Engine-owned producer fields (ADR-0010), taken from control state and never from the submission:
         the execution pinned at dispatch, the credential that presented the request, and the harness run
         holding that credential (None for a scripted role)."""
@@ -198,7 +195,7 @@ class Invocations:
         return {"execution_profile": inv.get("execution_profile"), "run": run, "credential": inv["token_id"]}
 
     @staticmethod
-    def _card_ref(inv: dict[str, Any]) -> dict[str, Any] | None:
+    def card_ref(inv: dict[str, Any]) -> dict[str, Any] | None:
         card = inv.get("card")
         return {k: card[k] for k in ("id", "version", "sha256")} if card else None
 
@@ -207,8 +204,8 @@ class Invocations:
 class Assignment:
     """Assigning a mutating Ticket: its mutation workspace and implementer (WC §8, §8.1)."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, roles: Roles, invocations: Invocations, inputs: Inputs,
-                 packs: ContextPacks) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
+                 inputs: InputsPort, packs: ContextPacksPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -274,12 +271,12 @@ class Assignment:
                 # The dependencies this attempt is dispatched with; completion re-checks them (M2 review B2).
                 ws["dependencies"] = effective_edge_set(state, work_id)
                 unit["workspace"] = ws
-                inv_id, inv_token = self.invocations._new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
+                inv_id, inv_token = self.invocations.new_invocation(ctx, "implementer", work_id, workspace=ws["path"],
                                                          workspace_id=ws["id"], snapshot=snapshot, card=card)
                 unit["implementer_invocation"] = inv_id
                 state["invocations"][inv_id]["inputs"] = inputs
                 self.packs.build_pack(ctx, inv_id)
-                change = self.units._set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}", state=state)
+                change = self.units.set_state(unit, "ASSIGNED", f"assigned to {inv_id} in {ws['id']}", state=state)
                 ctx.summary = f"{work_id} assigned: {ws['id']} at {base[:12]}"
                 self.units.before_commit(ctx)
             except BaseException:

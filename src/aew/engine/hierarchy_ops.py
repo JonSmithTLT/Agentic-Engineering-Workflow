@@ -18,6 +18,7 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
+from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, IllegalTransition, NotFound, UsageError
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
@@ -25,11 +26,7 @@ from aew.util import render_frontmatter, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.evidence_ops import Gates
-    from aew.engine.nonmutating_ops import Inputs, NonMutating
-    from aew.engine.role_ops import Roles
-    from aew.engine.work_ops import WorkUnits
-    from aew.engine.workspace_ops import Invocations
+    from aew.engine.ports import GatesPort, InputsPort, InvocationsPort, NonMutatingPort, RolesPort, WorkUnitsPort
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 
@@ -37,8 +34,8 @@ PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 class Hierarchy:
     """Story/Epic lifecycle: parent gates and closeout, cancellation, moves, promotion, dependency edits."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, roles: Roles, invocations: Invocations, inputs: Inputs,
-                 gates: Gates, nm: NonMutating) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
+                 inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -72,7 +69,7 @@ class Hierarchy:
             snap = e["evaluated_snapshot"]
             dispatched_with = (state["invocations"].get(e["producer"]["invocation"]) or {}).get("dependencies")
             return snap["relevant_inputs_fingerprint"].endswith(f"+children:{digest}") \
-                and self.inputs._same_source(snap.get("base_revision"), commit) and dispatched_with == edges
+                and self.inputs.same_source(snap.get("base_revision"), commit) and dispatched_with == edges
 
         results = G.evaluate_evidence_unit(state, work_id, evidence, obligations=obligations, special=special,
                                            is_current=is_current)
@@ -82,8 +79,14 @@ class Hierarchy:
                 "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit),
                 "plan_binding": self.units.plan_binding_problem(state, work_id)}
 
+    def kind_registrations(self) -> list[KindRegistration]:
+        return [KindRegistration(GATE_CONTEXT, PARENT, self.evidence_gate_context),
+                KindRegistration(INVOKE, PARENT, self.invoke_evidence_unit),
+                KindRegistration(INGEST, PARENT, self.ingest_evidence_unit_report),
+                KindRegistration(CLASSIFY_VERIFICATION, PARENT, self.classify_parent_verification)]
+
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        """The gate context of a Story or Epic (registered for parents in ``KindGateContexts``)."""
+        """The gate context of a Story or Epic (its ``KindRegistry`` handler)."""
         return self._parent_gate_context(state, work_id)
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
@@ -121,7 +124,7 @@ class Hierarchy:
                 raise DependencyUnsatisfied(f"{work_id}'s acceptance review and verification wait for its "
                                             "dependencies", blockers=blockers)
             inputs = self.inputs.dispatch_inputs(state, work_id, commit)
-            inv_id, inv_token, snapshot = self.nm._dispatch_observer(
+            inv_id, inv_token, snapshot = self.nm.dispatch_observer(
                 ctx, work_id, card=chosen, scope="parent", commit=commit, inputs=inputs,
                 children_digest=gc["snapshot"]["children_digest"])
             # Its report is bound to the dependencies it was dispatched under: a later edge change (a move, an
@@ -142,7 +145,7 @@ class Hierarchy:
             unit = self.units.unit(state, work_id)
             if unit["state"] != "ACCEPTANCE_PENDING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}, not ACCEPTANCE_PENDING")
-            ev = self.inputs._find_unit_evidence(work_id, evidence_id)
+            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             role = "reviewer" if kind == "review" else "verifier"
             if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id or inv.get("scope") != "parent":
@@ -150,7 +153,7 @@ class Hierarchy:
             gc = self._parent_gate_context(state, work_id)
             snap = ev["evaluated_snapshot"]
             if not (snap["relevant_inputs_fingerprint"].endswith(f"+children:{gc['snapshot']['children_digest']}")
-                    and self.inputs._same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
+                    and self.inputs.same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
                 raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
                                       "parent snapshot (stale)", evaluated=snap, current=gc["snapshot"])
             edges = effective_edge_set(state, work_id)
@@ -162,15 +165,15 @@ class Hierarchy:
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
             self.nm.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":
-                self.nm._record_review_findings(unit, ev, evidence_id)
+                self.nm.record_review_findings(unit, ev, evidence_id)
             else:
                 unit["last_verification"] = {"evidence": evidence_id, "result": ev["result"], "scope": "parent"}
                 if ev["result"] == "fail":
                     unit["parent_verification"] = {"awaiting_classification": evidence_id,
                                                    "children_digest": gc["snapshot"]["children_digest"],
                                                    "plan_revision": plan.get("accepted")}
-            self.gates._ingest_ref(unit, ev)
-            self.invocations._complete_invocation(state, ev["producer"]["invocation"])
+            self.gates.ingest_ref(unit, ev)
+            self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} parent {kind} {evidence_id} ingested ({ev['result']})"
             self.units.before_commit(ctx)
@@ -219,7 +222,7 @@ class Hierarchy:
     def _end_parent_invocations(self, state: dict[str, Any], unit: dict[str, Any], status: str) -> None:
         """A closed or cancelled parent keeps no live credentials (as M1 does for terminal Tickets)."""
         for inv_id in unit.get("invocations", []):
-            self.invocations._complete_invocation(state, inv_id, status)
+            self.invocations.complete_invocation(state, inv_id, status)
 
     def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
         """Lead closeout of a Story/Epic: every child terminal, parent gates CURRENT, findings resolved."""
@@ -238,14 +241,14 @@ class Hierarchy:
                 raise DependencyUnsatisfied(f"{work_id} cannot close while its dependencies are unsatisfied",
                                             blockers=blockers)
             gc = self._parent_gate_context(state, work_id)
-            self.gates._require_gates(gc, gc["obligations"]["gates"], what="closeout")
+            self.gates.require_gates(gc, gc["obligations"]["gates"], what="closeout")
             if gc["open_required_findings"]:
                 raise GateUnsatisfied("parent-level findings are unresolved and not waived",
                                       findings=[f["id"] for f in gc["open_required_findings"]])
             unmet = self._classification_unmet(state, unit, gc["snapshot"]["children_digest"])
             if unmet:
                 raise GateUnsatisfied(f"{work_id}: {unmet}")
-            self.gates._record_relied_on(ctx, unit, gc, list(gc["gates"]))
+            self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
                                          reason=reason)
             path = f"work/{work_id}/closeout.md"
@@ -322,8 +325,8 @@ class Hierarchy:
                     self._end_parent_invocations(state, d, "cancelled")
                     continue
                 transitions.check(d["state"], "CANCELLED", "transition")
-                self.units._set_state(d, "CANCELLED", why, state=state)
-                self.invocations._release_workspace(ctx, d, "cancelled")
+                self.units.set_state(d, "CANCELLED", why, state=state)
+                self.invocations.release_workspace(ctx, d, "cancelled")
             self._end_parent_invocations(state, unit, "cancelled")
             unit["cancellation"] = {"decision": decision, "reason": reason, "at": utc_now()}
             ctx.summary = f"{work_id} cancelled ({decision}); {len(open_desc)} descendant(s) cancelled"
@@ -349,14 +352,14 @@ class Hierarchy:
             raise IllegalTransition(f"{work_id} belongs to {old}, which is {state['work'][old]['state']}; a closed or "
                                     "cancelled parent's children are part of its record")
         if new_parent is not None:
-            self.units._check_parent(state, unit["kind"], new_parent)
+            self.units.check_parent(state, unit["kind"], new_parent)
             if new_parent == work_id or new_parent in H.descendants(state, work_id):
                 raise UsageError(f"{work_id} cannot be moved under itself or its own descendant")
         subtree = [w for w in [work_id, *H.descendants(state, work_id)] if state["work"][w]["kind"] == "ticket"]
         before = {w: effective_edge_set(state, w) for w in subtree}
         unit["parent"] = new_parent
         unit.setdefault("parent_history", []).append({"from": old, "to": new_parent, "at": utc_now(), "reason": why})
-        self.units._refuse_cycles(state)
+        self.units.refuse_cycles(state)
         self._refuse_dependency_change_of_started_work(state, before, "this move")
         return self._invalidate_bindings(state, work_id, f"moved from {old} to {new_parent}: {why}")
 
@@ -418,8 +421,8 @@ class Hierarchy:
             # A promoted Ticket's attempt ends with its replan, so its own inherited edges may change in the move.
             if unit["kind"] == "ticket" and unit["state"] != "REPLAN_REQUIRED":
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")
-                self.units._set_state(unit, "REPLAN_REQUIRED", f"promoted to {new_id} ({decision}): {reason}",
-                                      state=state)
+                self.units.set_state(unit, "REPLAN_REQUIRED", f"promoted to {new_id} ({decision}): {reason}",
+                                     state=state)
             self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})")
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
@@ -478,12 +481,12 @@ class Hierarchy:
                 if not any(e["id"] == dep for e in edges):
                     raise NotFound(f"{work_id} has no dependency on {dep}")
                 edges = [e for e in edges if e["id"] != dep]
-            new = self.units._parse_edges(state, add or [])
+            new = self.units.parse_edges(state, add or [])
             clash = {e["id"] for e in new} & {e["id"] for e in edges}
             if clash:
                 raise UsageError(f"already a dependency: {sorted(clash)}")
             unit["depends_on"] = edges + new
-            self.units._refuse_cycles(state)
+            self.units.refuse_cycles(state)
             decision = self.k.new_decision(ctx, "dependency_change", f"{work_id} dependencies changed",
                                            work_unit=work_id,
                                          reason=reason, body=f"added: {add or []}\nremoved: {remove or []}\n")

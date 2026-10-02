@@ -60,7 +60,7 @@ A consistency check refuses:
 4. default.
 
 ### Pinning at dispatch
-The single invocation factory (`_new_invocation`) pins the following on every invocation it creates, including observers and executors:
+The single invocation factory (`Invocations.new_invocation`) pins the following on every invocation it creates, including observers and executors:
 
 ```text
 inv.execution_profile = {profile, harness, provider, model, effort, max_steps, deadline_s,

@@ -20,9 +20,9 @@ from aew import operator
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
 from aew.engine.store import Transition
-from aew.roles import NON_MUTATING_EXECUTORS
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
 from aew.knowledge.records import format_id
+from aew.roles import NON_MUTATING_EXECUTORS
 from aew.util import render_frontmatter, utc_now
 
 if TYPE_CHECKING:
@@ -155,7 +155,7 @@ class Lead:
             for inv in carry:
                 if state["invocations"].get(inv, {}).get("status") != "active":
                     raise IllegalTransition(f"cannot carry {inv}: not an active invocation")
-            path = self._write_handoff(ctx, note, carry)
+            path = self.write_handoff(ctx, note, carry)
             offer = issue_token(state, "handoff_offer", {"from_generation": state["lead"]["generation"]})
             state["lead"]["status"] = "handoff_pending"
             state["lead"]["handoff"] = {
@@ -273,7 +273,7 @@ class Lead:
             ctx.summary = "Lead authority released"
         return {"ok": True, "revision": ctx.session.committed_revision}
 
-    def _write_handoff(self, ctx: TxnContext, note: str, carry: list[str]) -> str:
+    def write_handoff(self, ctx: TxnContext, note: str, carry: list[str]) -> str:
         from aew.knowledge.render import work_graph_lines
 
         state = ctx.state

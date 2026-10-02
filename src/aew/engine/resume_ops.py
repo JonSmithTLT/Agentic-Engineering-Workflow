@@ -16,6 +16,7 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
+from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
 from aew.errors import AEWError, NotFound
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
@@ -24,14 +25,17 @@ from aew.util import parse_frontmatter
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.evidence_ops import Gates
-    from aew.engine.harness_ops import Harness
-    from aew.engine.hierarchy_ops import Hierarchy
-    from aew.engine.lead_ops import Lead
-    from aew.engine.nonmutating_ops import Inputs
-    from aew.engine.role_ops import Roles
-    from aew.engine.status_ops import StatusViews
-    from aew.engine.work_ops import WorkUnits
+    from aew.engine.ports import (
+        GatesPort,
+        HarnessPort,
+        HierarchyPort,
+        InputsPort,
+        LeadPort,
+        RolesPort,
+        StatusViewsPort,
+        WorkUnitsPort,
+    )
+    from aew.engine.seams import KindRegistry
 
 RESUME_ORDER = [
     "project_manifest", "control_state", "active_work", "accepted_plans", "latest_handoff",
@@ -43,8 +47,9 @@ RESUME_ORDER = [
 class Resume:
     """`aew resume`, `aew status`, deterministic next actions and checkpoints."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnits, roles: Roles, inputs: Inputs, gates: Gates,
-                 hierarchy: Hierarchy, lead: Lead, views: StatusViews, harness: Harness) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, inputs: InputsPort, gates: GatesPort,
+                 hierarchy: HierarchyPort, lead: LeadPort, views: StatusViewsPort, harness: HarnessPort,
+                 kinds: KindRegistry) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -54,6 +59,12 @@ class Resume:
         self.lead = lead
         self.views = views
         self.harness = harness
+        self.kinds = kinds
+
+    def kind_registrations(self) -> list[KindRegistration]:
+        return [KindRegistration(NEXT_ACTIONS, MUTATING, self._ticket_next_actions),
+                KindRegistration(NEXT_ACTIONS, NON_MUTATING, self._nm_ticket_next_actions),
+                KindRegistration(NEXT_ACTIONS, PARENT, self._parent_actions)]
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         actions: list[str] = []
@@ -74,16 +85,15 @@ class Resume:
             actions.append("fix invalid policy/checks.yaml")
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())
         for wid, u in sorted(state["work"].items()):
-            if u["kind"] != "ticket":
-                actions.extend(f"{wid}: {a}" for a in self._parent_actions(state, wid, u))
-                continue
-            if is_nm_ticket(u):
-                actions.extend(f"{wid}: {a}" for a in self._nm_ticket_actions(state, wid, u))
-            else:
-                actions.extend(f"{wid}: {a}" for a in self._ticket_actions(state, wid, u))
-            actions.extend(f"{wid}: {a}" for a in self._common_actions(state, wid, u))
+            actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         return actions
+
+    def _ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        return self._ticket_actions(state, wid, u) + self._common_actions(state, wid, u)
+
+    def _nm_ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
+        return self._nm_ticket_actions(state, wid, u) + self._common_actions(state, wid, u)
 
     def _common_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         """Plan bindings and stale inputs, for every Ticket (ADR-0007/0008)."""
@@ -215,10 +225,10 @@ class Resume:
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
-                    blocked = self.harness._implementation_blocker(state, wid)
+                    blocked = self.harness.implementation_blocker(state, wid)
                     if blocked:
                         return [f"implementer {implementer} reported, but {blocked}"]
-                    return [f"implementer {implementer} reported: {self.harness._after_implementation(state, wid)}"]
+                    return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
             return ["dispatch a fresh implementer (`aew invoke create`)"]
@@ -441,7 +451,7 @@ class Resume:
         with self.k.lead_txn(token, expect_rev, "checkpoint") as ctx:
             if next_action is not None:
                 ctx.state["next_action"] = next_action or None
-            path = self.lead._write_handoff(ctx, note, [])
+            path = self.lead.write_handoff(ctx, note, [])
             ctx.summary = f"checkpoint {path}"
         return {"ok": True, "checkpoint": path, "revision": ctx.session.committed_revision}
 

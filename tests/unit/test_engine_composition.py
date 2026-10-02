@@ -1,9 +1,10 @@
 """The Engine's composition (register E5): explicit collaborators instead of mixins.
 
 These pin the architecture, not behaviour: the facade is the only class with an Engine identity, every
-collaborator receives its dependencies through its constructor and never the Engine, nothing dispatches
-behaviour through ``super()`` or ``getattr``, and the seams between collaborators (state hooks, guards by unit
-kind, gate contexts by kind, transaction finalizers) are filled in one documented order.
+collaborator receives its dependencies through its constructor, typed by a narrow port (``ports``), and never the
+Engine, nothing dispatches behaviour through ``super()`` or ``getattr``, the unit's kind selects code only through
+the ``KindRegistry``, and the seams between collaborators (state hooks, guards by unit kind, kind operations,
+transaction finalizers) are filled in one documented order.
 """
 
 from __future__ import annotations
@@ -14,10 +15,19 @@ from pathlib import Path
 
 import pytest
 
-from aew.engine import api, seams
+from aew.engine import api, ports, seams
 from aew.engine.api import Engine
 from aew.engine.base import Kernel
-from aew.engine.seams import KINDS, MUTATING, NON_MUTATING, PARENT, GuardTable, kind_of
+from aew.engine.seams import (
+    KIND_OPERATIONS,
+    KINDS,
+    MUTATING,
+    NON_MUTATING,
+    PARENT,
+    GuardTable,
+    KindRegistry,
+    kind_of,
+)
 
 ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
@@ -130,10 +140,118 @@ def test_an_unknown_guard_is_refused_and_a_double_registration_is_an_error():
     guards.register("g", lambda *a: None, (MUTATING,), replace=True)
 
 
-def test_gate_contexts_of_evidence_only_kinds_come_from_their_owners(engine):
-    contexts = engine._gates.contexts
-    assert named(contexts.get(NON_MUTATING)) == "NonMutating.evidence_gate_context"
-    assert named(contexts.get(PARENT)) == "Hierarchy.evidence_gate_context"
+KIND_TABLE = {
+    ("gate_context", MUTATING): "Gates._ticket_gate_context",
+    ("gate_context", NON_MUTATING): "NonMutating.evidence_gate_context",
+    ("gate_context", PARENT): "Hierarchy.evidence_gate_context",
+    ("invoke", MUTATING): "EvidenceCommands._invoke_ticket",
+    ("invoke", NON_MUTATING): "NonMutating.invoke_evidence_unit",
+    ("invoke", PARENT): "Hierarchy.invoke_evidence_unit",
+    ("ingest", MUTATING): "EvidenceCommands._ingest_ticket_report",
+    ("ingest", NON_MUTATING): "NonMutating.ingest_evidence_unit_report",
+    ("ingest", PARENT): "Hierarchy.ingest_evidence_unit_report",
+    ("classify_verification", MUTATING): "EvidenceCommands._classify_ticket_verification",
+    ("classify_verification", NON_MUTATING): "EvidenceCommands._classify_ticket_verification",
+    ("classify_verification", PARENT): "Hierarchy.classify_parent_verification",
+    ("next_actions", MUTATING): "Resume._ticket_next_actions",
+    ("next_actions", NON_MUTATING): "Resume._nm_ticket_next_actions",
+    ("next_actions", PARENT): "Resume._parent_actions",
+}
+
+
+def test_every_kind_operation_has_one_registered_handler_per_kind(engine):
+    kinds = engine._gates.kinds
+    assert kinds is engine._evidence.kinds is engine._resume.kinds
+    assert {key: named(handler) for key, handler in kinds.table().items()} == KIND_TABLE
+    assert set(KIND_TABLE) == {(op, kind) for op in KIND_OPERATIONS for kind in KINDS}
+
+
+def test_the_kind_registry_refuses_gaps_duplicates_and_unknowns():
+    kinds = KindRegistry()
+    kinds.register("gate_context", MUTATING, lambda *a: None)
+    with pytest.raises(ValueError, match="already registered"):
+        kinds.register("gate_context", MUTATING, lambda *a: None)
+    with pytest.raises(ValueError, match="unknown kind operation"):
+        kinds.register("nope", MUTATING, lambda *a: None)
+    with pytest.raises(ValueError, match="unknown unit kind"):
+        kinds.register("gate_context", "nope", lambda *a: None)
+    with pytest.raises(ValueError, match="without a handler"):
+        kinds.require_complete()
+
+
+def test_evidence_only_entry_points_resolve_a_parent_or_else_the_non_mutating_handler(engine):
+    kinds = engine._gates.kinds
+    for unit, owner in (({"kind": "story"}, "Hierarchy"), ({"kind": "ticket", "mutating": False}, "NonMutating"),
+                        ({"kind": "ticket", "mutating": True}, "NonMutating")):
+        assert named(kinds.resolve_evidence_only("invoke", unit)).startswith(owner + ".")
+
+
+def test_only_the_kind_registry_selects_code_by_unit_kind():
+    """``kind_of`` is called only by the seams, and the per-call routing helpers it replaced are gone."""
+    for path in sorted(ENGINE_DIR.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for removed in ("_is_parent_id", "_is_evidence_unit_id", "KindGateContexts"):
+            assert removed not in source, f"{path.name} still uses {removed}"
+        if path.name == "seams.py":
+            continue
+        tree = ast.parse(source)
+        calls = [n.lineno for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "kind_of"]
+        assert not calls, f"{path.name}:{calls} selects by kind outside the KindRegistry"
+
+
+# ---------------------------------------------------------------- narrow ports
+
+PORTS = {name: cls for name, cls in vars(ports).items() if name.endswith("Port") and inspect.isclass(cls)}
+SEAM_TYPES = {"hooks": "StateHooks", "guards": "GuardTable", "kinds": "KindRegistry"}
+
+
+def port_members(port: type) -> set[str]:
+    return {n for n in vars(port) if not n.startswith("_")} | set(getattr(port, "__annotations__", {}))
+
+
+def dependencies(collaborator: object) -> dict[str, str]:
+    """Each constructor dependency of a collaborator and its declared type, as written."""
+    params = inspect.signature(type(collaborator).__init__).parameters
+    return {name: str(p.annotation) for name, p in params.items() if name not in ("self", "k")}
+
+
+def test_every_collaborator_dependency_is_typed_by_a_port_or_a_seam(engine):
+    for name, collaborator in collaborators(engine).items():
+        for param, annotation in dependencies(collaborator).items():
+            expected = SEAM_TYPES.get(param)
+            assert annotation == expected if expected else annotation in PORTS, (name, param, annotation)
+
+
+def test_a_collaborator_uses_of_each_dependency_only_what_its_port_declares(engine):
+    used_per_port: dict[str, set[str]] = {p: set() for p in PORTS}
+    for name, collaborator in collaborators(engine).items():
+        deps = {param: annotation for param, annotation in dependencies(collaborator).items() if annotation in PORTS}
+        tree = ast.parse(inspect.getsource(type(collaborator)))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)
+                    and isinstance(node.value.value, ast.Name) and node.value.value.id == "self"
+                    and node.value.attr in deps):
+                port = deps[node.value.attr]
+                assert node.attr in port_members(PORTS[port]), f"{name} uses {node.attr}, which {port} does not declare"
+                used_per_port[port].add(node.attr)
+    for port, used in used_per_port.items():
+        assert port_members(PORTS[port]) == used, f"{port} declares members no collaborator uses"
+
+
+def test_ports_are_public_and_every_implementation_matches_them(engine):
+    for collaborator in collaborators(engine).values():
+        for param, annotation in dependencies(collaborator).items():
+            if annotation not in PORTS:
+                continue
+            port, implementation = PORTS[annotation], getattr(collaborator, param)
+            for member in port_members(port):
+                assert not member.startswith("_"), (annotation, member)
+                assert hasattr(implementation, member), (annotation, member)
+                if callable(getattr(port, member, None)):
+                    want = inspect.signature(getattr(port, member))
+                    have = inspect.signature(getattr(type(implementation), member))
+                    assert str(have) == str(want), (annotation, member, str(have), str(want))
 
 
 def test_unit_kinds():

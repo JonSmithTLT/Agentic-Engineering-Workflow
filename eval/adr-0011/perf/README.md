@@ -6,6 +6,7 @@ These are the control-plane measurements taken before ADR-0011 is implemented. A
 - `baseline-linux.json` is a **supplement**, from a Linux cloud container (§2);
 - `baseline-hierarchy-windows.json` is the **hierarchy-history series** on the reference machine (§3);
 - `coldwrite-p2a-windows.json` is the first **cold-write series**, of the P2a cold store (§4). It has no "before": the store is new.
+- `coldwrite-p2a-review-ab-windows.json` compares the code before and after P2a's independent review back to back, on the same machine state (§4).
 
 The first two use the same sweep points.
 
@@ -125,7 +126,15 @@ The JSON also holds `work tree`, `gate show`, `context pack`, `harness status`, 
 ## 4. Cold-write series (P2a, Windows reference)
 
 - **When and where:** 2026-10-02, on the reference machine (§1).
-- **Code:** the P2a cold store (`src/aew/history/`).
+- **Code:** the P2a cold store (`src/aew/history/`), with the independent review's fixes.
+- **Rerun after the review.** The series was measured again after the independent review of P2a. Two things changed:
+  - **Index catch-up** now covers exactly the three measured archivals, and the tool asserts that. The first series also took in the setup records that filled the tail: 25 to 256 entries per sample.
+  - **An entry lookup in a sealed segment** now proves the segment against the root. It folds the segment's entries, then hashes every later sealed segment and reads only its header.
+- **The machine was slower than for the first series.** Operations the review did not touch took 10–25% longer in every run. To separate the code from the machine, `coldwrite-p2a-review-ab-windows.json` runs the code before the review (A, `64c5a22`) and after it (B) back to back, alternating, at 3,000 and 10,000 requested records:
+  - Appends, sealing, lookup by id, full verification and rebuild were level between A and B.
+  - Entry lookup by sequence number took about 9 ms more in B (33 ms to 43 ms): the fold and the trace to the root.
+  - Incremental verification took about 5 ms more in B: its starting point is now in a just-sealed segment, which the lookup folds.
+  - Index catch-up took less in B, because A's figure still included the setup records.
 - **Command:**
 
   ```text
@@ -147,22 +156,24 @@ The JSON also holds `work tree`, `gate show`, `context pack`, `harness status`, 
 
 | | 1,537 records | 3,585 records | 10,753 records | 30,721 records |
 |---|---|---|---|---|
-| one archival, tail at 254 | 87.8 ms | 88.9 ms | 88.7 ms | 88.6 ms |
-| one archival that seals | 112.4 ms | 110.8 ms | 102.7 ms | 109.5 ms |
-| one archival, empty tail | 51.7 ms | 56.0 ms | 47.2 ms | 54.7 ms |
-| incremental verification (3 entries) | 59.2 ms | 60.4 ms | 56.5 ms | 55.6 ms |
-| index catch-up (3 entries) | 101.9 ms | 105.3 ms | 109.0 ms | 113.3 ms |
-| lookup by id (index) | 0.8 ms | 0.7 ms | 0.7 ms | 0.7 ms |
-| entry by sequence number (files) | 27.2 ms | 27.4 ms | 27.6 ms | 27.2 ms |
-| full verification (linear by design) | 0.66 s | 1.57 s | 4.80 s | 16.23 s |
-| index rebuild (linear by design) | 0.28 s | 0.53 s | 1.62 s | 4.72 s |
+| one archival, tail at 254 | 95.5 ms | 107.8 ms | 102.6 ms | 97.4 ms |
+| one archival that seals | 122.5 ms | 136.7 ms | 132.0 ms | 133.4 ms |
+| one archival, empty tail | 52.0 ms | 58.4 ms | 49.2 ms | 61.0 ms |
+| incremental verification (3 entries) | 79.0 ms | 73.3 ms | 73.3 ms | 71.6 ms |
+| index catch-up (3 entries) | 117.4 ms | 127.4 ms | 112.7 ms | 132.1 ms |
+| lookup by id (index) | 0.8 ms | 1.2 ms | 1.1 ms | 1.1 ms |
+| entry by sequence number (files) | 37.0 ms | 40.2 ms | 45.2 ms | 53.0 ms |
+| full verification (linear by design) | 0.78 s | 1.86 s | 5.68 s | 16.41 s |
+| index rebuild (linear by design) | 0.27 s | 0.68 s | 2.10 s | 6.04 s |
 
 ### Cold-write reading
 
-- **Appends, verification and lookup do not depend on how much history there is.** From 1.5k to 30.7k records, every per-operation cost is flat within noise. Index catch-up rises by about 11% over a 20× larger store, which is the SQLite B-tree.
+- **Appends, verification and index lookups do not depend on how much history there is.** From 1.5k to 30.7k records, every per-operation cost is flat within noise, index catch-up included.
+- **An entry lookup by sequence number grows slowly with history, by design.** It proves its segment against the root, so it hashes every later sealed segment and reads its header: 37 ms at 6 segments, 53 ms at 120. That is about 0.14 ms per later segment, and the operator chose this over a one-hop check (plan, P2a review fixes). A lookup in recent history costs the least.
+- **Fixed costs dominate index catch-up.** Catching the index up by three entries costs about 110–130 ms here. That is about what the first series measured for 25 to 256 entries, so reading the tail and checking where the index stands outweigh the inserts.
 - **What an archival costs depends on the tail.**
-  - A full tail is about 150 KB (254 entries), and rewriting it costs about 35 ms more than an empty tail.
-  - Sealing adds about 20 ms.
+  - A full tail is about 150 KB (254 entries), and rewriting it costs about 45 ms more than an empty tail.
+  - Sealing adds about 30 ms.
   - These costs are bounded by the segment size (256, plan P2a) and do not grow with history. A smaller segment would lower the worst case, if P3 needs that.
 - **Full verification and index rebuild are linear.** That is by design: neither runs on a command's path. A full audit runs off the `resume` path (ADR-0011), and a rebuild runs only when `local/` is lost.
 

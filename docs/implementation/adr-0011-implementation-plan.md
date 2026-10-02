@@ -317,6 +317,8 @@ Each PR keeps the M1–M3 tests passing.
   python tools\perf\control_plane.py sweep --points 20:250,20:1000,20:3000,200:250,500:250,1000:250 --reps 3 --work <empty dir> --json eval\adr-0011\perf\baseline-windows.json
   ```
 
+  **Done** (2026-10-02): `eval/adr-0011/perf/baseline-windows.json`, at `aa533c5`. That commit has the same engine as `0eb8ecf`; only the perf tool differs. The README beside it records the machine and the results.
+
 ### 7.2 The gate
 
 - **Linux (here):**

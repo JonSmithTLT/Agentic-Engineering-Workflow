@@ -266,3 +266,18 @@ The independent M3 review found that a run's supervisor acted on any request fil
 ## Amendment 2026-10-01 — the capability probe checks types (independent review R2)
 
 `REQUIRED_FIELDS` now lists every response field the adapter reads, including those read only for run telemetry (assistant `content` and `agent`, the message page's `data` and `cursor.next`, tool `name`, idle `type`), and every configuration and permission-rule field it sends. Each carries the JSON type the adapter relies on. A field passes if the served schema still offers that type through `$ref` and `anyOf`/`oneOf`/`allOf`; a field with no declared type passes. Removing a field, or retyping one (for example `Config.AgentEncoded.model` to string only), now fails health as `HARNESS_INCOMPATIBLE`, naming it.
+
+## Amendment 2026-10-01 — a run keeps its heartbeat while it ends (found by CI on `main`)
+
+After PR #7 merged, CI on `main` (Windows) reported a healthy investigator run `lost`. A supervisor ends a run outside its watch loop. It:
+1. closes the bridge;
+2. stops the adapter (up to `TERMINATE_S`, 20 s);
+3. kills the process tree;
+4. collects the result;
+5. scans the run's evidence and its directory for credentials;
+6. writes the final record.
+
+Nothing beat during that. When it took longer than the 10 s staleness limit, `aew harness wait` returned `lost`, although the evidence was already recorded, and its next action proposed a relaunch. A slow real harness shutdown could do the same.
+
+- **Fix.** The supervisor beats from a background thread while it ends, as it already did while the harness starts. The thread stops once the final record is written. It also stops after at most `TERMINATE_S` + 60 s, so a supervisor stuck while ending still goes stale and is reported `lost`.
+- **Regression.** `test_a_run_that_takes_long_to_end_is_not_reported_lost` in `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.finishing`. It returned `lost` before the fix.

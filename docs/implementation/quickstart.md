@@ -129,11 +129,28 @@ aew invoke create S-0001 --role verifier --expect-rev N    # then: aew verify in
 aew work close S-0001 --reason "..." --expect-rev N
 ```
 
+An Epic closes only once the history is audited through the current root: run `aew history audit --expect-rev N` first.
+
 **Structure changes.** Each is a recorded Lead decision:
 - `aew work cancel <S|E>` cascades to the parent's open descendants;
 - `aew work move <id> --parent <P|none>`;
 - `aew work promote <T> --to story --title ...` keeps the Ticket's identity and evidence;
 - `aew work depend <id> --add X[:evidence|mutating] --remove Y`.
+
+## Finished work and its history
+
+Finished work leaves the active state when it finishes (ADR-0011). Views show counts and the most recent finished units; the history commands reach the rest by stable id, without knowing where anything is stored:
+
+```bash
+aew history list --kind unit --limit 20                     # newest first; --since/--until take UTC times
+aew history show T-0042                                     # the record, its annotations and its trust label
+aew history show INV-0101                                   # an invocation, credential or evidence of finished work
+aew history links T-0042 --depth 2                          # recorded provenance, in both directions
+aew history load T-0042 --into T-0107 --reason "..." --expect-rev N   # reference context for T-0107's next packs
+aew history audit                                           # advisory verification; add --expect-rev N to record it
+```
+
+A loaded record is reference, never current evidence: packs label it, and claims that depend on versions or current state are revalidated through normal evidence. `aew status` reports the audit backlog against the gates policy's optional `history_audit` thresholds.
 
 ## M3: running with OpenCode
 

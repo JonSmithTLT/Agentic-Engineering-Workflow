@@ -162,6 +162,11 @@ class HistoryIndex:
         """Every entry for ``record_id`` (a unit has one; an audit or Lead record id likewise), in history order."""
         return self._rows("SELECT body FROM entries WHERE id = ? AND seq <= ? ORDER BY seq", (record_id, self._upto()))
 
+    def by_seq(self, seq: int) -> dict[str, Any] | None:
+        """The entry with sequence number ``seq``, or None."""
+        rows = self._rows("SELECT body FROM entries WHERE seq = ? AND seq <= ?", (seq, self._upto()))
+        return rows[0] if rows else None
+
     def list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
              limit: int | None = None) -> list[dict[str, Any]]:
         """Entries by kind and a date range (``at`` compares as ISO-8601 text), newest first."""

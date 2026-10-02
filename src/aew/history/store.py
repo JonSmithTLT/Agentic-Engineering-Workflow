@@ -51,14 +51,23 @@ class Verification:
     entries: int = 0
     records: int = 0
     problems: list[str] = field(default_factory=list)
+    damaged: list[dict[str, Any]] = field(default_factory=list)  # entries whose record is missing or changed
 
     @property
     def ok(self) -> bool:
         return not self.problems and self.through is not None
 
 
+_READ: Any = object()  # read the tail from disk (rather than from a snapshot of its bytes)
+
+
 class History:
-    """The history manifest under ``aew_root``."""
+    """The history manifest under ``aew_root``.
+
+    Reads that may run outside the control lock (an audit, R2) take ``tail_raw``: the tail's bytes as copied under
+    the lock together with the root (None: there was no tail file). Sealed segments and records are immutable, so
+    only the tail needs the snapshot.
+    """
 
     def __init__(self, aew_root: Path) -> None:
         self.root = aew_root
@@ -137,12 +146,16 @@ class History:
                                  sealed_head=sealed)
         return doc
 
-    def tail(self, root: dict[str, Any]) -> dict[str, Any]:
+    def tail_bytes(self) -> bytes | None:
+        """The tail file's bytes, for a snapshot taken under the control lock (None: no tail file yet)."""
+        return self._read(M.TAIL_REL)
+
+    def tail(self, root: dict[str, Any], *, tail_raw: Any = _READ) -> dict[str, Any]:
         """The tail for ``root``, checked against it: it follows the root's newest sealed segment and its entries end
         exactly at the root. An empty history may have no tail file yet."""
         validate_def("history", "root", root, source="history root")
         sealed = root["sealed_head"]
-        raw = self._read(M.TAIL_REL)
+        raw = self._read(M.TAIL_REL) if tail_raw is _READ else tail_raw
         if raw is None:
             if root["count"] or sealed:
                 raise IntegrityError(f"history tail {M.TAIL_REL} is missing", path=M.TAIL_REL)
@@ -166,7 +179,7 @@ class History:
 
     # ------------------------------------------------------------------ lookup
 
-    def entry(self, root: dict[str, Any], seq: int) -> dict[str, Any]:
+    def entry(self, root: dict[str, Any], seq: int, *, tail_raw: Any = _READ) -> dict[str, Any]:
         """Entry ``seq`` of the history ``root`` pins (1-based)."""
         if not 1 <= seq <= root["count"]:
             raise IntegrityError(f"history has no entry {seq} (it has {root['count']})")
@@ -174,13 +187,14 @@ class History:
         if sealed and seq <= sealed["seq"] * M.SEGMENT_SIZE:
             doc = self.pinned_segment(root, M.segment_of(seq))
         else:
-            doc = self.tail(root)
+            doc = self.tail(root, tail_raw=tail_raw)
         entry = doc["entries"][seq - doc["start"]["count"] - 1]
         if entry["seq"] != seq:
             raise IntegrityError(f"history entry {seq} is out of place")
         return entry
 
-    def walk(self, root: dict[str, Any], since: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
+    def walk(self, root: dict[str, Any], since: dict[str, Any] | None = None, *,
+             tail_raw: Any = _READ) -> Iterator[dict[str, Any]]:
         """Every entry after ``since`` ({count, h}; default the genesis) through ``root``, in order, checking the chain
         as it goes: that ``since`` is on it, each entry's hash, each file's start and segment link, and that the walk
         ends exactly at ``root``. Raises ``IntegrityError`` at the first inconsistency."""
@@ -190,7 +204,7 @@ class History:
             raise IntegrityError("the starting point is beyond the current history", since=state, count=root["count"])
         if state["count"] == 0 and state["h"] != M.GENESIS_H:
             raise IntegrityError("an empty starting point must be the genesis hash")
-        if state["count"] and self.entry(root, state["count"])["h"] != state["h"]:
+        if state["count"] and self.entry(root, state["count"], tail_raw=tail_raw)["h"] != state["h"]:
             raise IntegrityError("the starting point is not on the current history's chain", since=state)
         sealed = root["sealed_head"]
         last_sealed = sealed["seq"] if sealed else 0
@@ -208,7 +222,7 @@ class History:
         if sealed and prev != sealed:
             raise IntegrityError("the newest sealed segment does not match the hot root", found=prev,
                                  sealed_head=sealed)
-        doc = self.tail(root)
+        doc = self.tail(root, tail_raw=tail_raw)
         yield from self._continue(doc, state, doc["prev"], M.TAIL_REL)
         if state != {"count": root["count"], "h": root["head_h"]}:
             raise IntegrityError("the history does not end at the hot root", reached=state)
@@ -234,14 +248,14 @@ class History:
     # ------------------------------------------------------------------ verification
 
     def verify(self, root: dict[str, Any], since: dict[str, Any] | None = None, *,
-               records: bool = True) -> Verification:
+               records: bool = True, tail_raw: Any = _READ) -> Verification:
         """Verify the history from ``since`` (an earlier verified root's {count, h}; default everything) through
         ``root``: the chain, and with ``records`` each record's content against its entry. Never raises for what it
         finds; every problem is reported."""
         start = dict(since) if since else {"count": 0, "h": M.GENESIS_H}
         report = Verification(start=start)
         try:
-            for entry in self.walk(root, since):
+            for entry in self.walk(root, since, tail_raw=tail_raw):
                 report.entries += 1
                 if records:
                     report.records += 1
@@ -250,12 +264,15 @@ class History:
                     except OSError as exc:
                         report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} cannot be "
                                                f"read: {exc.strerror or exc}")
+                        report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
                         continue
                     if found is None:
                         report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} is missing")
                     elif found != entry["sha256"]:
                         report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} does not hold "
                                                "the content its entry pins")
+                    if found != entry["sha256"]:
+                        report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
             report.through = {"count": root["count"], "h": root["head_h"]}
         except (IntegrityError, ValidationFailed) as exc:
             report.problems.append(f"chain: {exc.message}")

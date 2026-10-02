@@ -345,7 +345,14 @@
       "type": "object",
       "required": ["root"],
       "properties": {
-        "root": {"$ref": "#/$defs/history_root"}
+        "root": {"$ref": "#/$defs/history_root"},
+        "archived": {
+          "description": "How many units were archived, by finished state (plan R7: views show counts).",
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "verified": {"$ref": "#/$defs/verified_root"},
+        "last_full": {"$ref": "#/$defs/verified_root"}
       }
     },
     "recent": {
@@ -449,6 +456,18 @@
         }
       }
     },
+    "verified_root": {
+      "description": "A root the history audit verified (plan R2): the chain state through the audit's own entry, when, and by which audit record.",
+      "type": "object",
+      "required": ["count", "h", "at", "audit"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "h": {"$ref": "#/$defs/sha256"},
+        "at": {"type": "string"},
+        "audit": {"type": "string"}
+      }
+    },
     "slug": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]*$"
@@ -470,6 +489,24 @@
         "depends_on"
       ],
       "properties": {
+        "history_refs": {
+          "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "entry_seq", "sha256", "source", "reason", "loaded_at", "generation"],
+            "properties": {
+              "id": {"type": "string"},
+              "kind": {"enum": ["unit", "annotation", "audit", "lead"]},
+              "entry_seq": {"type": "integer", "minimum": 1},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "source": {"enum": ["engine", "operator", "model", "external"]},
+              "reason": {"type": "string", "minLength": 1},
+              "loaded_at": {"type": "string"},
+              "generation": {"type": "integer"}
+            }
+          }
+        },
         "kind": {
           "enum": [
             "ticket",

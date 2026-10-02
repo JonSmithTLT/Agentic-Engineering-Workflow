@@ -45,7 +45,9 @@ FAST_CHECKS = {
                         "timeout_s": 120, "description": "import smoke (fast walk check)"}},
     "baseline_failures": [],
 }
-TXN_FAULTS = ["txn.after_stage", "txn.after_replace", "txn.mid_apply", "txn.after_log"]
+TXN_FAULTS = ["txn.after_stage", "txn.after_replace", "txn.mid_apply", "txn.after_log",
+              # ADR-0011: they fire on the commits that archive finished work (plan section 8)
+              "history.after_bundle", "history.after_tail"]
 PUBLISH_FAULTS = ["integrate.after_publishing_record", "integrate.after_cas", "integrate.mid_sync",
                   "integrate.before_done", *TXN_FAULTS]
 RECONCILABLE = ("ASSIGNED", "RUNNING", "REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY")

@@ -109,6 +109,16 @@
       },
       "description": "gate paths for Story/Epic closeout (ADR-0007)"
     },
+    "history_audit": {
+      "description": "ADR-0011 audit thresholds (implementation plan section 4): status reports the history audit's backlog against them. Each is optional; built-in defaults apply.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_unverified_entries": {"type": "integer", "minimum": 0},
+        "max_unverified_age_hours": {"type": "number", "minimum": 0},
+        "max_full_age_days": {"type": "number", "minimum": 0}
+      }
+    },
     "non_mutating_concurrency": {
       "type": [
         "integer",

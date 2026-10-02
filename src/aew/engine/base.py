@@ -44,6 +44,9 @@ class TxnContext:
     after_commit: list[Callable[[], None]] = field(default_factory=list)
     # History annotations this transition adds about archived units (a move), appended by the archival finalizer.
     annotations: list[dict[str, Any]] = field(default_factory=list)
+    # Other history entries this transition adds (an audit record, already staged), appended by the archival
+    # finalizer first and in one append with everything else: a transaction appends to the history exactly once.
+    entries: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:

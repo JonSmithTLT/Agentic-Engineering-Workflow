@@ -92,7 +92,7 @@ class Archive:
 
     def __init__(self, k: Kernel) -> None:
         self.k = k
-        self.history = History(k.aew_root)
+        self.cold = History(k.aew_root)
 
     # ------------------------------------------------------------------ the finalizer (R6)
 
@@ -110,11 +110,14 @@ class Archive:
         # Removing a retired observation is an obligation that outlives its invocation: it stays listed until the
         # directory is gone, and every commit retries it, so a crash or a failed removal never loses it.
         ctx.after_commit.extend(lambda p=o["path"]: self._prune_observation(p) for o in retired)
-        if not order and not ctx.annotations and not lead_ended \
+        if not order and not ctx.annotations and not ctx.entries and not lead_ended \
                 and retained == state.get("retained_workspaces", []) \
                 and retired == state.get("retired_observations", []) and self._refs_unchanged(state, archived):
             return
-        entries, facts, recent, gone_invocations, gone_tokens = [], {}, [], set(), set()
+        # The operation's own entries go first, so the root right after them is known when it is staged (an audit
+        # records that root as verified; anything archived in the same commit follows it).
+        entries: list[dict[str, Any]] = list(ctx.entries)
+        facts, recent, gone_invocations, gone_tokens = {}, [], set(), set()
         for wid in order:
             unit = work[wid]
             invocations = [i for i in unit.get("invocations", []) if i in state["invocations"]]
@@ -125,7 +128,7 @@ class Archive:
                 "schema": ARCHIVE_SCHEMA, "id": wid, "unit": unit,
                 "invocations": {i: state["invocations"][i] for i in invocations},
                 "tokens": {t: state["tokens"][t] for t in tokens}})
-            sha = self.history.write_record(ctx.session, bundle_rel(wid), bundle)
+            sha = self.cold.write_record(ctx.session, bundle_rel(wid), bundle)
             at = ((unit.get("history") or [{}])[-1].get("at")) or utc_now()
             entries.append(self._entry(wid, unit, sha, at, invocations, tokens))
             facts[wid] = self._facts(unit, sha)
@@ -140,7 +143,7 @@ class Archive:
             gone_tokens.update(lead_ended)
         root = state["cold"]["root"]
         if entries:
-            root = self.history.append(ctx.session, root, entries)
+            root = self.cold.append(ctx.session, root, entries)
         hot = {w: u for w, u in work.items() if w not in archived}
         projected = dict(state)
         projected["work"] = hot
@@ -169,7 +172,7 @@ class Archive:
         state["counters"]["lead_archive"] = state["counters"].get("lead_archive", 0) + 1
         n = state["counters"]["lead_archive"]
         rid, rel = f"LEAD-{n:04d}", f"history/lead/{n:06d}.yaml"
-        sha = self.history.write_record(session, rel, dump_yaml({
+        sha = self.cold.write_record(session, rel, dump_yaml({
             "schema": LEAD_SCHEMA, "id": rid, "generation": state["lead"]["generation"],
             "tokens": {t: state["tokens"][t] for t in ended}}))
         return {"kind": "lead", "id": rid, "path": rel, "sha256": sha, "at": utc_now(), "source": "engine",
@@ -187,7 +190,7 @@ class Archive:
         entry = self._lead_entry(session, state, ended)
         for t in ended:
             del state["tokens"][t]
-        state["cold"] = dict(state["cold"], root=self.history.append(session, state["cold"]["root"], [entry]))
+        state["cold"] = dict(state["cold"], root=self.cold.append(session, state["cold"]["root"], [entry]))
 
     # ------------------------------------------------------------------ annotations (moves of archived units, R3)
 
@@ -218,7 +221,7 @@ class Archive:
                                 "rel": a["rel"], "object": a["object"], "at": a["at"],
                                 "actor": {"generation": a["generation"]}, "decision": a["decision"],
                                 "source": "engine", "note": a["note"]})
-            sha = self.history.write_record(ctx.session, rel, record)
+            sha = self.cold.write_record(ctx.session, rel, record)
             out.append({"kind": "annotation", "id": a["id"], "path": rel, "sha256": sha, "at": a["at"],
                         "subject": a["subject"], "rel": a["rel"], "source": "engine",
                         "links": {a["rel"]: [a["object"]] if a["object"] else []}})
@@ -418,6 +421,30 @@ class Archive:
                 state = self.k.store.read()
         raise AssertionError("unreachable")
 
+    def index(self, state: dict[str, Any]) -> HistoryIndex:
+        """The derived history index, synced to the cold root of ``state`` (queries stop at that root)."""
+        return self._index(state)
+
+    def record(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """The record a manifest entry pins (a bundle, an annotation, an audit or a Lead record), verified against
+        its hash when it is read: a missing or changed record is a contradiction here, not only at the next audit."""
+        rel = entry["path"]
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except FileNotFoundError:
+            raise IntegrityError(f"history record {rel} is missing", path=rel) from None
+        except OSError as exc:
+            raise IntegrityError(f"history record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+        if sha256_bytes(raw) != entry["sha256"]:
+            raise IntegrityError(f"history record {rel} does not hold the content its entry pins", path=rel)
+        try:
+            doc = load_yaml(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise IntegrityError(f"history record {rel} is not UTF-8 text", path=rel) from exc
+        if not isinstance(doc, dict) or doc.get("id") != entry["id"]:
+            raise IntegrityError(f"{rel} is not the record of {entry['id']}", path=rel)
+        return doc
+
     def bundle(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """An archived unit's bundle (verified against its manifest entry), or None if it was never archived."""
         if not is_v2(state):
@@ -433,12 +460,8 @@ class Archive:
         return self._load(entries[-1]) if entries else None
 
     def _load(self, entry: dict[str, Any]) -> dict[str, Any]:
-        raw = (self.k.aew_root / entry["path"]).read_bytes()
-        if sha256_bytes(raw) != entry["sha256"]:
-            raise IntegrityError(f"archived record {entry['path']} does not hold the content its entry pins",
-                                 path=entry["path"])
-        doc = load_yaml(raw.decode("utf-8"), source=entry["path"])
-        if doc.get("schema") not in {ARCHIVE_SCHEMA, LEAD_SCHEMA} or doc.get("id") != entry["id"]:
+        doc = self.record(entry)
+        if doc.get("schema") not in {ARCHIVE_SCHEMA, LEAD_SCHEMA}:
             raise IntegrityError(f"{entry['path']} is not the archive record of {entry['id']}")
         return doc
 
@@ -541,3 +564,24 @@ class Archive:
             if unit is not None and unit.get("parent") == parent:
                 out.append((wid, unit))
         return out
+
+
+def reference_summary(entry: dict[str, Any], doc: dict[str, Any]) -> str:
+    """What a context pack shows of a historical record loaded as reference (``aew history load``): for an archived
+    unit, its outcome and provenance (not its whole bundle); any other record as it was written. Deterministic, so a
+    regenerated pack matches the one recorded at dispatch."""
+    if entry["kind"] != "unit":
+        return dump_yaml({k: v for k, v in doc.items() if k != "schema"})
+    unit = doc["unit"]
+    summary: dict[str, Any] = {
+        "id": entry["id"], "kind": unit["kind"], "title": unit["title"], "state": unit["state"],
+        "parent": unit.get("parent"), "risk_class": unit.get("risk_class"), "mutating": unit.get("mutating"),
+        "accepted_record": ((unit.get("execution") or {}).get("record") or {}).get("id"),
+        "integration_commit": (unit.get("integration") or {}).get("commit"),
+        "completion_record": unit.get("completion_record"),
+        "evidence": [{"id": e["id"], "kind": e.get("kind"), "result": e.get("result")}
+                     for e in unit.get("evidence", [])],
+        "invocations": [{"id": i, "role": inv.get("role"), "status": inv.get("status")}
+                        for i, inv in sorted((doc.get("invocations") or {}).items())],
+    }
+    return dump_yaml(summary)

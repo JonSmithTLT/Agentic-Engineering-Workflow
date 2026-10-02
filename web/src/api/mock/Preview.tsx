@@ -1,9 +1,17 @@
+import {
+  ticketStates,
+  parentStates,
+  workStates,
+  invocationStatuses,
+  invocationRoles,
+} from '../vocabulary';
 /** Provisional presentation adapter. Domain assumptions stay here until C0. */
 import { Link, useParams } from 'react-router-dom';
 import { useProjection } from '../../client/queries';
 import { responseSchemas } from '../schema';
-import { overviewOf, selectedWorld, worlds } from './worlds';
+import { selectedWorld, worlds } from './worlds';
 import {
+  CapabilityWarnings,
   SnapshotBanner,
   SemanticValue,
   LoadError,
@@ -74,6 +82,7 @@ export function OverviewPreview() {
         )
       ) : (
         <>
+          <CapabilityWarnings values={data.capabilities} />
           <section className="briefing panel">
             <div>
               <span className="muted">Backend summary</span>
@@ -96,7 +105,7 @@ export function OverviewPreview() {
             <section className="panel">
               <div className="panel-heading">
                 <h2>
-                  Active work <span>{data.counts.work}</span>
+                  Active work <span>{data.counts.work.open}</span>
                 </h2>
                 <Link to={'/work' + location.search}>Inspect work</Link>
               </div>
@@ -119,17 +128,20 @@ export function OverviewPreview() {
                             {w.title}
                           </Link>
                         </td>
-                        <td>{w.kind}</td>
+                        <td>
+                          <SemanticValue
+                            value={w.kind}
+                            known={['epic', 'story', 'ticket']}
+                          />
+                        </td>
                         <td>
                           <SemanticValue
                             value={w.state}
-                            known={[
-                              'ACTIVE',
-                              'PLANNED',
-                              'IN_PROGRESS',
-                              'AWAITING_DISPOSITION',
-                              'DONE',
-                            ]}
+                            known={
+                              w.kind === 'ticket'
+                                ? ticketStates
+                                : parentStates
+                            }
                           />
                         </td>
                       </tr>
@@ -177,11 +189,16 @@ export function OverviewPreview() {
                 <article className="run-item" key={r.id}>
                   <div>
                     <h3>{r.work.title}</h3>
-                    <p>{r.role}</p>
+                    <p>
+                      <SemanticValue
+                        value={r.role}
+                        known={invocationRoles}
+                      />
+                    </p>
                   </div>
                   <SemanticValue
                     value={r.status}
-                    known={['RUNNING', 'COMPLETED', 'FAILED']}
+                    known={invocationStatuses}
                   />
                 </article>
               ))}
@@ -195,7 +212,9 @@ export function OverviewPreview() {
               </div>
               {data.activity.map((a) => (
                 <article className="activity-item" key={a.id}>
-                  <time>{new Date(a.occurred_at).toLocaleTimeString()}</time>
+                  <time>
+                    {new Date(a.occurred_at).toLocaleTimeString()}
+                  </time>
                   <div>
                     <h3>{a.title}</h3>
                     <p>{a.subject.title}</p>
@@ -204,6 +223,44 @@ export function OverviewPreview() {
               ))}
             </section>
           </div>
+          <section className="panel">
+            <div className="panel-heading">
+              <h2>Recently finished work</h2>
+              <span>At most 20 records</span>
+            </div>
+            <p className="muted">
+              Archived records are historical references, never current
+              evidence.
+            </p>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Work</th>
+                    <th>State</th>
+                    <th>Record</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recent.map((w) => (
+                    <tr key={w.id}>
+                      <td>
+                        <Link
+                          to={detailRoute('work', w.id) + location.search}
+                        >
+                          {w.title}
+                        </Link>
+                      </td>
+                      <td>
+                        <SemanticValue value={w.state} known={workStates} />
+                      </td>
+                      <td>{w.archived ? 'Archived' : 'Hot'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
           <div className="projection-meta">
             <span>
               Revision <code>{record.value.control_revision}</code>
@@ -223,7 +280,9 @@ export function OverviewPreview() {
 export function TicketPreview() {
   const { id } = useParams();
   const world = selectedWorld();
-  const work = overviewOf(world).data.work.find((w) => w.id === id);
+  const payload = world.responses[`/work/${id}`];
+  const parsed = responseSchemas.WorkResponse.safeParse(payload);
+  const work = parsed.success ? parsed.data.data : undefined;
   if (!work)
     return (
       <div className="empty">
@@ -242,18 +301,24 @@ export function TicketPreview() {
       <div className="page-heading">
         <div>
           <span className="muted">
-            {work.kind} · {work.id}
+            <SemanticValue
+              value={work.kind}
+              known={['epic', 'story', 'ticket']}
+            />{' '}
+            · {work.id}
           </span>
           <h1>{work.title}</h1>
         </div>
-        <SemanticValue
-          value={work.state}
-          known={['IN_PROGRESS', 'PLANNED', 'AWAITING_DISPOSITION']}
-        />
+        <SemanticValue value={work.state} known={workStates} />
       </div>
       <div className="preview-note" role="note">
         Provisional Ticket detail. Demo data; pending C0 contract approval.
       </div>
+      {work.archived && (
+        <p className="preview-note" role="note">
+          Archived work. Historical reference; never current evidence.
+        </p>
+      )}
       <div className="detail-grid">
         <section className="panel detail-main">
           <div className="panel-heading">
@@ -275,6 +340,9 @@ export function TicketPreview() {
           <div className="panel-heading">
             <h2>Backend reasons</h2>
           </div>
+          {work.blocked_by.map((r, i) => (
+            <p key={i}>{r.message ?? r.code}</p>
+          ))}
           {work.reasons.length ? (
             work.reasons.map((r) => (
               <p key={r.code}>
@@ -288,20 +356,35 @@ export function TicketPreview() {
         <aside className="panel facts">
           <h2>Projection fields</h2>
           <dl>
-            <dt>Classification</dt>
-            <dd>{work.classification}</dd>
-            <dt>Assurance</dt>
-            <dd>{work.assurance}</dd>
-            <dt>Work revision</dt>
-            <dd>{work.revision}</dd>
+            <dt>Risk class</dt>
+            <dd>{work.risk_class ?? 'Not supplied'}</dd>
+            <dt>Plan revision</dt>
+            <dd>{work.plan_revision ?? 'Not supplied'}</dd>
+            <dt>Mutating</dt>
+            <dd>
+              {work.mutating === null
+                ? 'Not applicable'
+                : work.mutating
+                  ? 'Yes'
+                  : 'No'}
+            </dd>
+            <dt>Archived</dt>
+            <dd>{work.archived ? 'Yes' : 'No'}</dd>
+            <dt>Integration status</dt>
+            <dd>
+              <SemanticValue
+                value={work.integration?.status ?? null}
+                known={['prepared', 'publishing', 'conflict', 'superseded']}
+              />
+            </dd>
             <dt>Last updated</dt>
             <dd>{work.updated_at}</dd>
             <dt>Attention</dt>
             <dd>{work.has_attention ? 'Reported' : 'None reported'}</dd>
           </dl>
           <p className="muted">
-            These are backend-reported values. The dashboard does not determine
-            gate legality.
+            These are backend-reported values. The dashboard does not
+            determine gate legality.
           </p>
         </aside>
       </div>

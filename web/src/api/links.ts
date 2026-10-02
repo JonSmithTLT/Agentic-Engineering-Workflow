@@ -3,7 +3,7 @@ const routes: Record<string, string> = {
   epic: 'work',
   story: 'work',
   ticket: 'work',
-  run: 'runs',
+  invocation: 'runs',
   evidence: 'evidence',
   knowledge: 'knowledge',
   decision: 'knowledge',

@@ -1,24 +1,24 @@
 {
   "fixture": "F3",
-  "name": "Archived and superseded history",
-  "contract_version": "0.1.0",
-  "contract_sha256": "f956f0b2f1f2de0840667c28301be08b6cc0b462271651a0d3cc9117b6034b70",
+  "name": "Archived work and move annotations",
+  "contract_version": "0.1.1",
+  "contract_sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
   "responses": {
     "/project": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "project:demo/aew",
+        "id": "aew-demo",
         "name": "Agentic Engineering Workflow",
-        "aew_version": "provisional"
+        "aew_version": "main-91c0d98"
       }
     },
     "/capabilities": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "overview": {
@@ -45,14 +45,6 @@
           "state": "AVAILABLE",
           "reasons": []
         },
-        "integrity": {
-          "state": "AVAILABLE",
-          "reasons": []
-        },
-        "queue": {
-          "state": "AVAILABLE",
-          "reasons": []
-        },
         "action_projection": {
           "state": "AVAILABLE",
           "reasons": []
@@ -60,34 +52,37 @@
         "activity": {
           "state": "AVAILABLE",
           "reasons": []
+        },
+        "queue": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Queue is future M4/M5 work."
+            }
+          ]
+        },
+        "integrity": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Integrity audit is future P2c work."
+            }
+          ]
         }
       }
     },
-    "/history/integrity": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
-      "generated_at": "2026-10-02T12:00:00Z",
-      "data": {
-        "status": "VERIFIED",
-        "current_root": "root:42",
-        "verified_root": "root:42",
-        "verified_at": "2026-10-02T12:00:00Z",
-        "last_full_audit_at": "2026-10-02T12:00:00Z",
-        "backlog": 0,
-        "reasons": []
-      }
-    },
     "/overview": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "project": {
-          "id": "project:demo/aew",
+          "id": "aew-demo",
           "name": "Agentic Engineering Workflow",
-          "aew_version": "provisional"
+          "aew_version": "main-91c0d98"
         },
         "health": {
           "status": "HEALTHY",
@@ -100,14 +95,26 @@
         },
         "work": [
           {
-            "id": "work:0",
+            "id": "E-0001",
             "kind": "epic",
             "title": "Observable engineering workflow",
-            "state": "ACTIVE",
+            "state": "IN_PROGRESS",
             "parent_id": null,
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "risk_class": null,
+            "plan_revision": null,
+            "mutating": null,
+            "archived": false,
+            "blocked_by": [],
+            "children": [
+              "S-0001"
+            ],
+            "children_truncated": false,
+            "rollup": {
+              "open": 1,
+              "done": 0,
+              "cancelled": 0
+            },
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -116,7 +123,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -124,14 +131,29 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:1",
+            "id": "S-0001",
             "kind": "story",
             "title": "Explain evidence and execution",
-            "state": "ACTIVE",
-            "parent_id": "work:0",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "IN_PROGRESS",
+            "parent_id": "E-0001",
+            "risk_class": null,
+            "plan_revision": null,
+            "mutating": null,
+            "archived": false,
+            "blocked_by": [],
+            "children": [
+              "T-0001",
+              "T-0002",
+              "T-0003",
+              "T-0004"
+            ],
+            "children_truncated": false,
+            "rollup": {
+              "open": 3,
+              "done": 1,
+              "cancelled": 0
+            },
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -140,7 +162,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -148,14 +170,20 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:2",
+            "id": "T-0001",
             "kind": "ticket",
             "title": "Validate projection consistency",
-            "state": "IN_PROGRESS",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "RUNNING",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -164,7 +192,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -172,14 +200,20 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:3",
+            "id": "T-0002",
             "kind": "ticket",
             "title": "Document historical references",
-            "state": "PLANNED",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "READY",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -188,7 +222,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -196,14 +230,25 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:4",
+            "id": "T-0003",
             "kind": "ticket",
             "title": "Review cache provenance",
-            "state": "AWAITING_DISPOSITION",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "BLOCKED",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [
+              {
+                "code": "DEPENDENCY_BLOCKED",
+                "message": "Waiting for the cache repair review."
+              }
+            ],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": true,
             "summary": {
               "format": "markdown",
@@ -212,7 +257,609 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          }
+        ],
+        "recent": [
+          {
+            "id": "T-0004",
+            "kind": "ticket",
+            "title": "Archived projection contract",
+            "state": "DONE",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0005",
+            "kind": "ticket",
+            "title": "Finished check 5",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0006",
+            "kind": "ticket",
+            "title": "Finished check 6",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0007",
+            "kind": "ticket",
+            "title": "Finished check 7",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0008",
+            "kind": "ticket",
+            "title": "Finished check 8",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0009",
+            "kind": "ticket",
+            "title": "Finished check 9",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0010",
+            "kind": "ticket",
+            "title": "Finished check 10",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0011",
+            "kind": "ticket",
+            "title": "Finished check 11",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0012",
+            "kind": "ticket",
+            "title": "Finished check 12",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0013",
+            "kind": "ticket",
+            "title": "Finished check 13",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0014",
+            "kind": "ticket",
+            "title": "Finished check 14",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0015",
+            "kind": "ticket",
+            "title": "Finished check 15",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0016",
+            "kind": "ticket",
+            "title": "Finished check 16",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0017",
+            "kind": "ticket",
+            "title": "Finished check 17",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0018",
+            "kind": "ticket",
+            "title": "Finished check 18",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0019",
+            "kind": "ticket",
+            "title": "Finished check 19",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0020",
+            "kind": "ticket",
+            "title": "Finished check 20",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0021",
+            "kind": "ticket",
+            "title": "Finished check 21",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0022",
+            "kind": "ticket",
+            "title": "Finished check 22",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0023",
+            "kind": "ticket",
+            "title": "Finished check 23",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -222,24 +869,33 @@
         ],
         "runs": [
           {
-            "id": "run:0",
+            "id": "INV-0001",
+            "role": "verifier",
+            "status": "active",
             "work": {
-              "id": "work:2",
+              "id": "T-0001",
               "title": "Validate projection consistency",
               "kind": "work"
             },
-            "status": "RUNNING",
-            "role": "Verifier",
-            "started_at": "2026-10-02T12:00:00Z",
-            "finished_at": null,
+            "created_at": "2026-10-02T12:00:00Z",
+            "runs": [
+              {
+                "id": "R-INV-0001-1",
+                "harness": "codex-cli",
+                "launched_at": "2026-10-02T12:00:00Z",
+                "kind": "launch",
+                "status": "running",
+                "authority": "current"
+              }
+            ],
             "summary": {
               "format": "markdown",
-              "text": "Checking the projection adapter against the accepted contract."
+              "text": "Checking the provisional projection adapter."
             },
             "evidence": [
               {
-                "id": "evidence:0",
-                "title": "Projection contract checks",
+                "id": "INV-0001-verification-1",
+                "title": "Contract verification",
                 "kind": "evidence"
               }
             ],
@@ -248,11 +904,11 @@
         ],
         "attention": [
           {
-            "id": "attention:0",
+            "id": "ATT-0001",
             "kind": "decision_required",
             "severity": "WARNING",
             "subject": {
-              "id": "work:4",
+              "id": "T-0003",
               "title": "Review cache provenance",
               "kind": "work"
             },
@@ -263,7 +919,7 @@
             },
             "reasons": [
               {
-                "code": "DECISION_REQUIRED",
+                "code": "BACKEND_EXPLANATION",
                 "message": "Review the cache provenance finding."
               }
             ],
@@ -272,9 +928,9 @@
         ],
         "activity": [
           {
-            "id": "activity:0",
+            "id": "ACT-0001",
             "subject": {
-              "id": "work:2",
+              "id": "T-0001",
               "title": "Validate projection consistency",
               "kind": "work"
             },
@@ -284,7 +940,11 @@
           }
         ],
         "counts": {
-          "work": 5,
+          "work": {
+            "open": 5,
+            "done": 17,
+            "cancelled": 8
+          },
           "runs": 1,
           "attention": 1
         },
@@ -313,14 +973,6 @@
             "state": "AVAILABLE",
             "reasons": []
           },
-          "integrity": {
-            "state": "AVAILABLE",
-            "reasons": []
-          },
-          "queue": {
-            "state": "AVAILABLE",
-            "reasons": []
-          },
           "action_projection": {
             "state": "AVAILABLE",
             "reasons": []
@@ -328,26 +980,56 @@
           "activity": {
             "state": "AVAILABLE",
             "reasons": []
+          },
+          "queue": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Queue is future M4/M5 work."
+              }
+            ]
+          },
+          "integrity": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Integrity audit is future P2c work."
+              }
+            ]
           }
         }
       }
     },
     "/work": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "work:0",
+            "id": "E-0001",
             "kind": "epic",
             "title": "Observable engineering workflow",
-            "state": "ACTIVE",
+            "state": "IN_PROGRESS",
             "parent_id": null,
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "risk_class": null,
+            "plan_revision": null,
+            "mutating": null,
+            "archived": false,
+            "blocked_by": [],
+            "children": [
+              "S-0001"
+            ],
+            "children_truncated": false,
+            "rollup": {
+              "open": 1,
+              "done": 0,
+              "cancelled": 0
+            },
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -356,7 +1038,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -364,14 +1046,29 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:1",
+            "id": "S-0001",
             "kind": "story",
             "title": "Explain evidence and execution",
-            "state": "ACTIVE",
-            "parent_id": "work:0",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "IN_PROGRESS",
+            "parent_id": "E-0001",
+            "risk_class": null,
+            "plan_revision": null,
+            "mutating": null,
+            "archived": false,
+            "blocked_by": [],
+            "children": [
+              "T-0001",
+              "T-0002",
+              "T-0003",
+              "T-0004"
+            ],
+            "children_truncated": false,
+            "rollup": {
+              "open": 3,
+              "done": 1,
+              "cancelled": 0
+            },
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -380,7 +1077,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -388,14 +1085,20 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:2",
+            "id": "T-0001",
             "kind": "ticket",
             "title": "Validate projection consistency",
-            "state": "IN_PROGRESS",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "RUNNING",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -404,7 +1107,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -412,14 +1115,20 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:3",
+            "id": "T-0002",
             "kind": "ticket",
             "title": "Document historical references",
-            "state": "PLANNED",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "READY",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": false,
             "summary": {
               "format": "markdown",
@@ -428,7 +1137,7 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -436,14 +1145,25 @@
             "updated_at": "2026-10-02T12:00:00Z"
           },
           {
-            "id": "work:4",
+            "id": "T-0003",
             "kind": "ticket",
             "title": "Review cache provenance",
-            "state": "AWAITING_DISPOSITION",
-            "parent_id": "work:1",
-            "revision": 3,
-            "classification": "CLASS_0",
-            "assurance": "REVIEW_REQUIRED",
+            "state": "BLOCKED",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": false,
+            "blocked_by": [
+              {
+                "code": "DEPENDENCY_BLOCKED",
+                "message": "Waiting for the cache repair review."
+              }
+            ],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
             "has_attention": true,
             "summary": {
               "format": "markdown",
@@ -452,7 +1172,607 @@
             "reasons": [],
             "related": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0004",
+            "kind": "ticket",
+            "title": "Archived projection contract",
+            "state": "DONE",
+            "parent_id": "S-0001",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0005",
+            "kind": "ticket",
+            "title": "Finished check 5",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0006",
+            "kind": "ticket",
+            "title": "Finished check 6",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0007",
+            "kind": "ticket",
+            "title": "Finished check 7",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0008",
+            "kind": "ticket",
+            "title": "Finished check 8",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0009",
+            "kind": "ticket",
+            "title": "Finished check 9",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0010",
+            "kind": "ticket",
+            "title": "Finished check 10",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0011",
+            "kind": "ticket",
+            "title": "Finished check 11",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0012",
+            "kind": "ticket",
+            "title": "Finished check 12",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0013",
+            "kind": "ticket",
+            "title": "Finished check 13",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0014",
+            "kind": "ticket",
+            "title": "Finished check 14",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0015",
+            "kind": "ticket",
+            "title": "Finished check 15",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0016",
+            "kind": "ticket",
+            "title": "Finished check 16",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0017",
+            "kind": "ticket",
+            "title": "Finished check 17",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0018",
+            "kind": "ticket",
+            "title": "Finished check 18",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0019",
+            "kind": "ticket",
+            "title": "Finished check 19",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0020",
+            "kind": "ticket",
+            "title": "Finished check 20",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0021",
+            "kind": "ticket",
+            "title": "Finished check 21",
+            "state": "CANCELLED",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0022",
+            "kind": "ticket",
+            "title": "Finished check 22",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
+                "title": "Projection contract checks",
+                "kind": "evidence"
+              }
+            ],
+            "updated_at": "2026-10-02T12:00:00Z"
+          },
+          {
+            "id": "T-0023",
+            "kind": "ticket",
+            "title": "Finished check 23",
+            "state": "DONE",
+            "parent_id": "S-0002",
+            "risk_class": 0,
+            "plan_revision": 3,
+            "mutating": false,
+            "archived": true,
+            "blocked_by": [],
+            "children": [],
+            "children_truncated": false,
+            "rollup": null,
+            "integration": null,
+            "has_attention": false,
+            "summary": {
+              "format": "markdown",
+              "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+            },
+            "reasons": [],
+            "related": [
+              {
+                "id": "INV-0001-verification-1",
                 "title": "Projection contract checks",
                 "kind": "evidence"
               }
@@ -463,20 +1783,32 @@
         "next_cursor": null
       }
     },
-    "/work/work:0": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/work/E-0001": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "work:0",
+        "id": "E-0001",
         "kind": "epic",
         "title": "Observable engineering workflow",
-        "state": "ACTIVE",
+        "state": "IN_PROGRESS",
         "parent_id": null,
-        "revision": 3,
-        "classification": "CLASS_0",
-        "assurance": "REVIEW_REQUIRED",
+        "risk_class": null,
+        "plan_revision": null,
+        "mutating": null,
+        "archived": false,
+        "blocked_by": [],
+        "children": [
+          "S-0001"
+        ],
+        "children_truncated": false,
+        "rollup": {
+          "open": 1,
+          "done": 0,
+          "cancelled": 0
+        },
+        "integration": null,
         "has_attention": false,
         "summary": {
           "format": "markdown",
@@ -485,7 +1817,7 @@
         "reasons": [],
         "related": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "title": "Projection contract checks",
             "kind": "evidence"
           }
@@ -493,20 +1825,35 @@
         "updated_at": "2026-10-02T12:00:00Z"
       }
     },
-    "/work/work:1": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/work/S-0001": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "work:1",
+        "id": "S-0001",
         "kind": "story",
         "title": "Explain evidence and execution",
-        "state": "ACTIVE",
-        "parent_id": "work:0",
-        "revision": 3,
-        "classification": "CLASS_0",
-        "assurance": "REVIEW_REQUIRED",
+        "state": "IN_PROGRESS",
+        "parent_id": "E-0001",
+        "risk_class": null,
+        "plan_revision": null,
+        "mutating": null,
+        "archived": false,
+        "blocked_by": [],
+        "children": [
+          "T-0001",
+          "T-0002",
+          "T-0003",
+          "T-0004"
+        ],
+        "children_truncated": false,
+        "rollup": {
+          "open": 3,
+          "done": 1,
+          "cancelled": 0
+        },
+        "integration": null,
         "has_attention": false,
         "summary": {
           "format": "markdown",
@@ -515,7 +1862,7 @@
         "reasons": [],
         "related": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "title": "Projection contract checks",
             "kind": "evidence"
           }
@@ -523,20 +1870,26 @@
         "updated_at": "2026-10-02T12:00:00Z"
       }
     },
-    "/work/work:2": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/work/T-0001": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "work:2",
+        "id": "T-0001",
         "kind": "ticket",
         "title": "Validate projection consistency",
-        "state": "IN_PROGRESS",
-        "parent_id": "work:1",
-        "revision": 3,
-        "classification": "CLASS_0",
-        "assurance": "REVIEW_REQUIRED",
+        "state": "RUNNING",
+        "parent_id": "S-0001",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": false,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
         "has_attention": false,
         "summary": {
           "format": "markdown",
@@ -545,7 +1898,7 @@
         "reasons": [],
         "related": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "title": "Projection contract checks",
             "kind": "evidence"
           }
@@ -553,20 +1906,26 @@
         "updated_at": "2026-10-02T12:00:00Z"
       }
     },
-    "/work/work:3": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/work/T-0002": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "work:3",
+        "id": "T-0002",
         "kind": "ticket",
         "title": "Document historical references",
-        "state": "PLANNED",
-        "parent_id": "work:1",
-        "revision": 3,
-        "classification": "CLASS_0",
-        "assurance": "REVIEW_REQUIRED",
+        "state": "READY",
+        "parent_id": "S-0001",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": false,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
         "has_attention": false,
         "summary": {
           "format": "markdown",
@@ -575,7 +1934,7 @@
         "reasons": [],
         "related": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "title": "Projection contract checks",
             "kind": "evidence"
           }
@@ -583,20 +1942,31 @@
         "updated_at": "2026-10-02T12:00:00Z"
       }
     },
-    "/work/work:4": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/work/T-0003": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "work:4",
+        "id": "T-0003",
         "kind": "ticket",
         "title": "Review cache provenance",
-        "state": "AWAITING_DISPOSITION",
-        "parent_id": "work:1",
-        "revision": 3,
-        "classification": "CLASS_0",
-        "assurance": "REVIEW_REQUIRED",
+        "state": "BLOCKED",
+        "parent_id": "S-0001",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": false,
+        "blocked_by": [
+          {
+            "code": "DEPENDENCY_BLOCKED",
+            "message": "Waiting for the cache repair review."
+          }
+        ],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
         "has_attention": true,
         "summary": {
           "format": "markdown",
@@ -605,7 +1975,727 @@
         "reasons": [],
         "related": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0004": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0004",
+        "kind": "ticket",
+        "title": "Archived projection contract",
+        "state": "DONE",
+        "parent_id": "S-0001",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0005": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0005",
+        "kind": "ticket",
+        "title": "Finished check 5",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0006": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0006",
+        "kind": "ticket",
+        "title": "Finished check 6",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0007": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0007",
+        "kind": "ticket",
+        "title": "Finished check 7",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0008": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0008",
+        "kind": "ticket",
+        "title": "Finished check 8",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0009": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0009",
+        "kind": "ticket",
+        "title": "Finished check 9",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0010": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0010",
+        "kind": "ticket",
+        "title": "Finished check 10",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0011": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0011",
+        "kind": "ticket",
+        "title": "Finished check 11",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0012": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0012",
+        "kind": "ticket",
+        "title": "Finished check 12",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0013": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0013",
+        "kind": "ticket",
+        "title": "Finished check 13",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0014": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0014",
+        "kind": "ticket",
+        "title": "Finished check 14",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0015": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0015",
+        "kind": "ticket",
+        "title": "Finished check 15",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0016": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0016",
+        "kind": "ticket",
+        "title": "Finished check 16",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0017": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0017",
+        "kind": "ticket",
+        "title": "Finished check 17",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0018": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0018",
+        "kind": "ticket",
+        "title": "Finished check 18",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0019": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0019",
+        "kind": "ticket",
+        "title": "Finished check 19",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0020": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0020",
+        "kind": "ticket",
+        "title": "Finished check 20",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0021": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0021",
+        "kind": "ticket",
+        "title": "Finished check 21",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0022": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0022",
+        "kind": "ticket",
+        "title": "Finished check 22",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0023": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0023",
+        "kind": "ticket",
+        "title": "Finished check 23",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
             "title": "Projection contract checks",
             "kind": "evidence"
           }
@@ -614,83 +2704,143 @@
       }
     },
     "/runs": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "run:0",
+            "id": "INV-0001",
+            "role": "verifier",
+            "status": "active",
             "work": {
-              "id": "work:2",
+              "id": "T-0001",
               "title": "Validate projection consistency",
               "kind": "work"
             },
-            "status": "RUNNING",
-            "role": "Verifier",
-            "started_at": "2026-10-02T12:00:00Z",
-            "finished_at": null,
+            "created_at": "2026-10-02T12:00:00Z",
+            "runs": [
+              {
+                "id": "R-INV-0001-1",
+                "harness": "codex-cli",
+                "launched_at": "2026-10-02T12:00:00Z",
+                "kind": "launch",
+                "status": "running",
+                "authority": "current"
+              }
+            ],
             "summary": {
               "format": "markdown",
-              "text": "Checking the projection adapter against the accepted contract."
+              "text": "Checking the provisional projection adapter."
             },
             "evidence": [
               {
-                "id": "evidence:0",
-                "title": "Projection contract checks",
+                "id": "INV-0001-verification-1",
+                "title": "Contract verification",
                 "kind": "evidence"
               }
             ],
+            "reasons": []
+          },
+          {
+            "id": "INV-0002",
+            "role": "reviewer",
+            "status": "completed",
+            "work": {
+              "id": "T-0002",
+              "title": "Document historical references",
+              "kind": "work"
+            },
+            "created_at": "2026-10-02T12:00:00Z",
+            "runs": [],
+            "summary": {
+              "format": "markdown",
+              "text": "Manual invocation; no harness runs."
+            },
+            "evidence": [],
             "reasons": []
           }
         ],
         "next_cursor": null
       }
     },
-    "/runs/run:0": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/runs/INV-0001": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "run:0",
+        "id": "INV-0001",
+        "role": "verifier",
+        "status": "active",
         "work": {
-          "id": "work:2",
+          "id": "T-0001",
           "title": "Validate projection consistency",
           "kind": "work"
         },
-        "status": "RUNNING",
-        "role": "Verifier",
-        "started_at": "2026-10-02T12:00:00Z",
-        "finished_at": null,
+        "created_at": "2026-10-02T12:00:00Z",
+        "runs": [
+          {
+            "id": "R-INV-0001-1",
+            "harness": "codex-cli",
+            "launched_at": "2026-10-02T12:00:00Z",
+            "kind": "launch",
+            "status": "running",
+            "authority": "current"
+          }
+        ],
         "summary": {
           "format": "markdown",
-          "text": "Checking the projection adapter against the accepted contract."
+          "text": "Checking the provisional projection adapter."
         },
         "evidence": [
           {
-            "id": "evidence:0",
-            "title": "Projection contract checks",
+            "id": "INV-0001-verification-1",
+            "title": "Contract verification",
             "kind": "evidence"
           }
         ],
         "reasons": []
       }
     },
+    "/runs/INV-0002": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "INV-0002",
+        "role": "reviewer",
+        "status": "completed",
+        "work": {
+          "id": "T-0002",
+          "title": "Document historical references",
+          "kind": "work"
+        },
+        "created_at": "2026-10-02T12:00:00Z",
+        "runs": [],
+        "summary": {
+          "format": "markdown",
+          "text": "Manual invocation; no harness runs."
+        },
+        "evidence": [],
+        "reasons": []
+      }
+    },
     "/evidence": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "kind": "verification",
-            "result": "PASS",
+            "result": "pass",
             "subject": {
-              "id": "work:2",
+              "id": "T-0001",
               "title": "Validate projection consistency",
               "kind": "work"
             },
@@ -698,22 +2848,40 @@
             "requires_disposition": false,
             "claim": {
               "format": "markdown",
-              "text": "Projection responses match the contract."
+              "text": "Projection responses match the provisional contract."
             },
             "body": {
               "format": "markdown",
-              "text": "The fixture checks cover **shape validation** and revision metadata.\n\n```json\n{\"revision\":\"r42\"}\n```"
+              "text": "The checks cover **shape validation** and revision metadata.\n\n```json\n{\"control_revision\":\"42\"}\n```"
             },
             "findings": [],
             "deviations": [],
             "bindings": {
-              "input_revision": "r42"
+              "evaluated_snapshot": {
+                "base_revision": "91c0d98",
+                "relevant_inputs_fingerprint": "32381523e63197c929b67f793a8098bed0ae3a6fa902634fdbcc6fa4567f3346",
+                "artifact_digests": [
+                  "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
+                ]
+              },
+              "plan_revision": {
+                "revision": 3,
+                "sha256": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"
+              },
+              "producer": {
+                "role": "verifier",
+                "invocation": "INV-0001",
+                "run": "R-INV-0001-1",
+                "model": null,
+                "provider": null,
+                "harness": "codex-cli"
+              }
             },
             "provenance": [
               {
-                "id": "run:0",
+                "id": "INV-0001",
                 "title": "Contract verifier",
-                "kind": "run"
+                "kind": "invocation"
               }
             ]
           }
@@ -721,17 +2889,17 @@
         "next_cursor": null
       }
     },
-    "/evidence/evidence:0": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/evidence/INV-0001-verification-1": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "evidence:0",
+        "id": "INV-0001-verification-1",
         "kind": "verification",
-        "result": "PASS",
+        "result": "pass",
         "subject": {
-          "id": "work:2",
+          "id": "T-0001",
           "title": "Validate projection consistency",
           "kind": "work"
         },
@@ -739,36 +2907,55 @@
         "requires_disposition": false,
         "claim": {
           "format": "markdown",
-          "text": "Projection responses match the contract."
+          "text": "Projection responses match the provisional contract."
         },
         "body": {
           "format": "markdown",
-          "text": "The fixture checks cover **shape validation** and revision metadata.\n\n```json\n{\"revision\":\"r42\"}\n```"
+          "text": "The checks cover **shape validation** and revision metadata.\n\n```json\n{\"control_revision\":\"42\"}\n```"
         },
         "findings": [],
         "deviations": [],
         "bindings": {
-          "input_revision": "r42"
+          "evaluated_snapshot": {
+            "base_revision": "91c0d98",
+            "relevant_inputs_fingerprint": "32381523e63197c929b67f793a8098bed0ae3a6fa902634fdbcc6fa4567f3346",
+            "artifact_digests": [
+              "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
+            ]
+          },
+          "plan_revision": {
+            "revision": 3,
+            "sha256": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"
+          },
+          "producer": {
+            "role": "verifier",
+            "invocation": "INV-0001",
+            "run": "R-INV-0001-1",
+            "model": null,
+            "provider": null,
+            "harness": "codex-cli"
+          }
         },
         "provenance": [
           {
-            "id": "run:0",
+            "id": "INV-0001",
             "title": "Contract verifier",
-            "kind": "run"
+            "kind": "invocation"
           }
         ]
       }
     },
     "/knowledge": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "decision:0",
+            "id": "D-0001",
             "kind": "decision",
+            "decision_type": "evidence_acceptance",
             "title": "Keep dashboard inspection read-only",
             "state": "ACCEPTED",
             "body": {
@@ -778,7 +2965,7 @@
             "reasons": [],
             "provenance": [
               {
-                "id": "evidence:0",
+                "id": "INV-0001-verification-1",
                 "title": "Contract checks",
                 "kind": "evidence"
               }
@@ -788,14 +2975,15 @@
         "next_cursor": null
       }
     },
-    "/knowledge/decision:0": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/knowledge/D-0001": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "decision:0",
+        "id": "D-0001",
         "kind": "decision",
+        "decision_type": "evidence_acceptance",
         "title": "Keep dashboard inspection read-only",
         "state": "ACCEPTED",
         "body": {
@@ -805,7 +2993,7 @@
         "reasons": [],
         "provenance": [
           {
-            "id": "evidence:0",
+            "id": "INV-0001-verification-1",
             "title": "Contract checks",
             "kind": "evidence"
           }
@@ -813,165 +3001,100 @@
       }
     },
     "/history": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "history:0",
-            "subject": {
-              "id": "work:3",
-              "title": "Document historical references",
-              "kind": "work"
+            "seq": 1,
+            "kind": "unit",
+            "id": "T-0004",
+            "at": "2026-10-02T12:00:00Z",
+            "state": "DONE",
+            "unit_kind": "ticket",
+            "title": "Archived projection contract",
+            "parent": "S-0001",
+            "subject": null,
+            "rel": null,
+            "links": {
+              "moved_to": [
+                "S-0001"
+              ],
+              "lineage": [
+                "T-0002"
+              ]
             },
-            "recorded_at": "2026-10-02T12:00:00Z",
-            "currentness": "HISTORICAL",
-            "annotation": "SUPERSEDED",
-            "body": {
-              "format": "markdown",
-              "text": "Archived projection. Not automatically authoritative for current work."
-            },
-            "lineage": [
-              {
-                "id": "work:3",
-                "title": "Document historical references",
-                "kind": "work"
-              }
-            ]
+            "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",
+            "source": "engine"
           }
         ],
         "next_cursor": null
       }
     },
-    "/history/history:0": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+    "/history/T-0004": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "history:0",
-        "subject": {
-          "id": "work:3",
-          "title": "Document historical references",
-          "kind": "work"
+        "seq": 1,
+        "kind": "unit",
+        "id": "T-0004",
+        "at": "2026-10-02T12:00:00Z",
+        "state": "DONE",
+        "unit_kind": "ticket",
+        "title": "Archived projection contract",
+        "parent": "S-0001",
+        "subject": null,
+        "rel": null,
+        "links": {
+          "moved_to": [
+            "S-0001"
+          ],
+          "lineage": [
+            "T-0002"
+          ]
         },
-        "recorded_at": "2026-10-02T12:00:00Z",
-        "currentness": "HISTORICAL",
-        "annotation": "SUPERSEDED",
-        "body": {
-          "format": "markdown",
-          "text": "Archived projection. Not automatically authoritative for current work."
-        },
-        "lineage": [
+        "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",
+        "source": "engine",
+        "annotations": [
           {
-            "id": "work:3",
-            "title": "Document historical references",
-            "kind": "work"
-          }
-        ]
-      }
-    },
-    "/queue": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
-      "generated_at": "2026-10-02T12:00:00Z",
-      "data": {
-        "items": [
-          {
-            "id": "queue:0",
-            "work": {
-              "id": "work:4",
-              "title": "Review cache provenance",
-              "kind": "work"
-            },
-            "state": "QUEUED",
-            "position": 0,
-            "commit_ready_seq": 42,
-            "attempt": 1,
-            "publication_mode": "PUBLISH_IF_CLEAN",
-            "custodian": null,
-            "lease_started_at": null,
-            "current_base": "opaque-base-a",
-            "latest_validation": null,
-            "reasons": []
+            "id": "AN-0001",
+            "rel": "moved_to",
+            "object": "S-0001",
+            "at": "2026-10-02T12:00:00Z",
+            "decision": "D-0001",
+            "source": "engine",
+            "note": "Parent updated after archival."
           },
           {
-            "id": "queue:1",
-            "work": {
-              "id": "work:4",
-              "title": "Review cache provenance",
-              "kind": "work"
-            },
-            "state": "LEASED",
-            "position": 1,
-            "commit_ready_seq": 43,
-            "attempt": 1,
-            "publication_mode": "VALIDATE_ONLY",
-            "custodian": "publisher",
-            "lease_started_at": "2026-10-02T12:00:00Z",
-            "current_base": "opaque-base-a",
-            "latest_validation": null,
-            "reasons": []
-          },
-          {
-            "id": "queue:2",
-            "work": {
-              "id": "work:4",
-              "title": "Review cache provenance",
-              "kind": "work"
-            },
-            "state": "DEFERRED",
-            "position": 2,
-            "commit_ready_seq": 44,
-            "attempt": 1,
-            "publication_mode": "PUBLISH_IF_CLEAN",
-            "custodian": null,
-            "lease_started_at": null,
-            "current_base": "opaque-base-a",
-            "latest_validation": {
-              "code": "BASE_MOVED",
-              "message": "Rebuild required"
-            },
-            "reasons": []
-          },
-          {
-            "id": "queue:3",
-            "work": {
-              "id": "work:4",
-              "title": "Review cache provenance",
-              "kind": "work"
-            },
-            "state": "AWAITING_DISPOSITION",
-            "position": 3,
-            "commit_ready_seq": 45,
-            "attempt": 1,
-            "publication_mode": "VALIDATE_ONLY",
-            "custodian": null,
-            "lease_started_at": null,
-            "current_base": "opaque-base-a",
-            "latest_validation": null,
-            "reasons": []
+            "id": "AN-0002",
+            "rel": "lineage",
+            "object": "T-0002",
+            "at": "2026-10-02T12:00:00Z",
+            "decision": null,
+            "source": "operator",
+            "note": "Historical provenance only; never current evidence."
           }
         ],
-        "next_cursor": null
+        "annotations_next_cursor": null
       }
     },
     "/attention": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "attention:0",
+            "id": "ATT-0001",
             "kind": "decision_required",
             "severity": "WARNING",
             "subject": {
-              "id": "work:4",
+              "id": "T-0003",
               "title": "Review cache provenance",
               "kind": "work"
             },
@@ -982,7 +3105,7 @@
             },
             "reasons": [
               {
-                "code": "DECISION_REQUIRED",
+                "code": "BACKEND_EXPLANATION",
                 "message": "Review the cache provenance finding."
               }
             ],
@@ -993,16 +3116,16 @@
       }
     },
     "/activity": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [
           {
-            "id": "activity:0",
+            "id": "ACT-0001",
             "subject": {
-              "id": "work:2",
+              "id": "T-0001",
               "title": "Validate projection consistency",
               "kind": "work"
             },
@@ -1013,31 +3136,254 @@
         ],
         "next_cursor": null
       }
+    },
+    "/work/T-0024": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0024",
+        "kind": "ticket",
+        "title": "Finished check 24",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0025": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0025",
+        "kind": "ticket",
+        "title": "Finished check 25",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0026": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0026",
+        "kind": "ticket",
+        "title": "Finished check 26",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0027": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0027",
+        "kind": "ticket",
+        "title": "Finished check 27",
+        "state": "CANCELLED",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
+    },
+    "/work/T-0028": {
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "T-0028",
+        "kind": "ticket",
+        "title": "Finished check 28",
+        "state": "DONE",
+        "parent_id": "S-0002",
+        "risk_class": 0,
+        "plan_revision": 3,
+        "mutating": false,
+        "archived": true,
+        "blocked_by": [],
+        "children": [],
+        "children_truncated": false,
+        "rollup": null,
+        "integration": null,
+        "has_attention": false,
+        "summary": {
+          "format": "markdown",
+          "text": "Keep the dashboard open beside AEW and understand **what is happening and why**.\n\nAll conclusions on this page are supplied by the backend."
+        },
+        "reasons": [],
+        "related": [
+          {
+            "id": "INV-0001-verification-1",
+            "title": "Projection contract checks",
+            "kind": "evidence"
+          }
+        ],
+        "updated_at": "2026-10-02T12:00:00Z"
+      }
     }
   },
   "models": {
     "/project": "ProjectResponse",
     "/capabilities": "CapabilitiesResponse",
-    "/history/integrity": "IntegrityResponse",
     "/overview": "OverviewResponse",
     "/work": "WorkListResponse",
-    "/work/work:0": "WorkResponse",
-    "/work/work:1": "WorkResponse",
-    "/work/work:2": "WorkResponse",
-    "/work/work:3": "WorkResponse",
-    "/work/work:4": "WorkResponse",
-    "/runs": "RunListResponse",
-    "/runs/run:0": "RunResponse",
+    "/work/E-0001": "WorkResponse",
+    "/work/S-0001": "WorkResponse",
+    "/work/T-0001": "WorkResponse",
+    "/work/T-0002": "WorkResponse",
+    "/work/T-0003": "WorkResponse",
+    "/work/T-0004": "WorkResponse",
+    "/work/T-0005": "WorkResponse",
+    "/work/T-0006": "WorkResponse",
+    "/work/T-0007": "WorkResponse",
+    "/work/T-0008": "WorkResponse",
+    "/work/T-0009": "WorkResponse",
+    "/work/T-0010": "WorkResponse",
+    "/work/T-0011": "WorkResponse",
+    "/work/T-0012": "WorkResponse",
+    "/work/T-0013": "WorkResponse",
+    "/work/T-0014": "WorkResponse",
+    "/work/T-0015": "WorkResponse",
+    "/work/T-0016": "WorkResponse",
+    "/work/T-0017": "WorkResponse",
+    "/work/T-0018": "WorkResponse",
+    "/work/T-0019": "WorkResponse",
+    "/work/T-0020": "WorkResponse",
+    "/work/T-0021": "WorkResponse",
+    "/work/T-0022": "WorkResponse",
+    "/work/T-0023": "WorkResponse",
+    "/runs": "InvocationListResponse",
+    "/runs/INV-0001": "InvocationResponse",
+    "/runs/INV-0002": "InvocationResponse",
     "/evidence": "EvidenceListResponse",
-    "/evidence/evidence:0": "EvidenceResponse",
+    "/evidence/INV-0001-verification-1": "EvidenceResponse",
     "/knowledge": "KnowledgeListResponse",
-    "/knowledge/decision:0": "KnowledgeResponse",
+    "/knowledge/D-0001": "KnowledgeResponse",
     "/history": "HistoryListResponse",
-    "/history/history:0": "HistoryResponse",
-    "/queue": "QueueListResponse",
+    "/history/T-0004": "HistoryResponse",
     "/attention": "AttentionListResponse",
-    "/activity": "ActivityListResponse"
+    "/activity": "ActivityListResponse",
+    "/work/T-0024": "WorkResponse",
+    "/work/T-0025": "WorkResponse",
+    "/work/T-0026": "WorkResponse",
+    "/work/T-0027": "WorkResponse",
+    "/work/T-0028": "WorkResponse"
   },
   "pages": {},
-  "scenarios": []
+  "page_models": {},
+  "scenarios": [
+    {
+      "kind": "archived_by_id",
+      "id": "T-0004"
+    },
+    {
+      "kind": "recent_finished_ring",
+      "count": 20,
+      "older_explicit_only": [
+        "T-0024",
+        "T-0025",
+        "T-0026",
+        "T-0027",
+        "T-0028"
+      ]
+    }
+  ],
+  "provisional_responses": {},
+  "provisional_models": {}
 }

@@ -1,6 +1,8 @@
-# D0 validation and handoff — 2026-10-02
+# Historical D0 validation at 59081d0 — 2026-10-02
 
-**Frontend foundation validated; C0 approval pending. Core frontend and integrated-system acceptance are not claimed.**
+**Historical evidence for contract 0.1.0 at `59081d0136bba947d645c2ec60132e5ca7e12e1a`. Main-line review subsequently returned AMEND.**
+
+Current candidate and validation: [C0 resubmission](c0-review-packet.md) and [amendment validation](validation-c0-amend.md). The counts and shapes below describe the original D0, not current approval or integration acceptance.
 
 ## Prerequisite and provenance
 

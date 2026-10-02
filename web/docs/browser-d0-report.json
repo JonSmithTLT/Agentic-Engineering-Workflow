@@ -11,7 +11,8 @@
     "keyboard skip navigation",
     "phone navigation and panel-confined table overflow",
     "hostile Markdown escaped, raw HTML and remote images suppressed under CSP",
-    "unknown state warning",
+    "unknown state and capability-key warnings",
+    "archived work by ID, deep-link reload and historical-reference warning",
     "failed refresh retains visibly stale data",
     "initial malformed-response error",
     "no unexpected console/page errors, remote subresource requests or API writes",
@@ -23,5 +24,8 @@
   ],
   "remote": [],
   "writes": [],
-  "scope": "D0 shell/provisional previews only; D1-D4 and integration not covered"
+  "scope": "D0 amended C0 shell and provisional previews only; no D1-D4 or live Engine integration coverage",
+  "contract_version": "0.1.1",
+  "contract_sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
+  "date": "2026-10-02"
 }

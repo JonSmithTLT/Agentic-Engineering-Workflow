@@ -17,7 +17,7 @@ export class ReadTransport {
     signal?: AbortSignal,
   ): Promise<Projection<T>> {
     if (
-      !/^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|queue|attention|activity)(?:[/?]|$)/.test(
+      !/^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/.test(
         route,
       ) ||
       route.includes('\\') ||
@@ -44,7 +44,9 @@ export class ReadTransport {
     } else {
       if (!response.ok)
         throw new Error(`Projection request failed (${response.status})`);
-      if (!response.headers.get('Content-Type')?.includes('application/json'))
+      if (
+        !response.headers.get('Content-Type')?.includes('application/json')
+      )
         throw new Error('Expected a JSON projection');
       const value = schema.parse(await response.json());
       next = {

@@ -59,11 +59,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description UNSUPPORTED until P2c audit exists. The future projection remains provisional; clients suppress the request while capability is not AVAILABLE. */
         get: operations["integrityResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
+        /** @description UNSUPPORTED until P2c audit exists. The future projection remains provisional; clients suppress the request while capability is not AVAILABLE. */
         head: operations["headIntegrityResponse"];
         patch?: never;
         trace?: never;
@@ -75,11 +77,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Default is hot work plus the most recent 20 archived DONE/CANCELLED units. Pagination never expands that recent ring into all archive history. state=DONE or state=CANCELLED explicitly selects archived work; kind and parent filter the selected scope. ETags and cursors include all filters and limit. */
         get: operations["workListResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
+        /** @description Default is hot work plus the most recent 20 archived DONE/CANCELLED units. Pagination never expands that recent ring into all archive history. state=DONE or state=CANCELLED explicitly selects archived work; kind and parent filter the selected scope. ETags and cursors include all filters and limit. */
         head: operations["headWorkListResponse"];
         patch?: never;
         trace?: never;
@@ -107,12 +111,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["runListResponse"];
+        get: operations["InvocationListResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        head: operations["headRunListResponse"];
+        head: operations["headInvocationListResponse"];
         patch?: never;
         trace?: never;
     };
@@ -123,12 +127,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["runResponse"];
+        get: operations["InvocationResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        head: operations["headRunResponse"];
+        head: operations["headInvocationResponse"];
         patch?: never;
         trace?: never;
     };
@@ -203,11 +207,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Append-only manifest history, bounded by kind/since/until. The first cursor pins the starting manifest count; later appends never invalidate it or enlarge that pagination session. Stable seq determines order. Invalid/wrong-scope cursors are 400, not revision-expiration 409. */
         get: operations["historyListResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
+        /** @description Append-only manifest history, bounded by kind/since/until. The first cursor pins the starting manifest count; later appends never invalidate it or enlarge that pagination session. Stable seq determines order. Invalid/wrong-scope cursors are 400, not revision-expiration 409. */
         head: operations["headHistoryListResponse"];
         patch?: never;
         trace?: never;
@@ -219,28 +225,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Historical manifest projection and a bounded annotations page. annotations_next_cursor pins the starting manifest count and survives appends. No archive storage paths or evidence-currentness conclusions. */
         get: operations["historyResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
+        /** @description Historical manifest projection and a bounded annotations page. annotations_next_cursor pins the starting manifest count and survives appends. No archive storage paths or evidence-currentness conclusions. */
         head: operations["headHistoryResponse"];
-        patch?: never;
-        trace?: never;
-    };
-    "/queue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["queueListResponse"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head: operations["headQueueListResponse"];
         patch?: never;
         trace?: never;
     };
@@ -280,7 +272,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description Opaque, nonempty identifier. Never parse or derive ordering. Encode as a path segment. */
+        /** @description Server-declared path-safe opaque identity (including project/card slugs). Do not parse identity, order, or storage layout. */
         OpaqueId: string;
         /**
          * Format: date-time
@@ -288,6 +280,7 @@ export interface components {
          */
         Timestamp: string;
         Reason: {
+            /** @description Any backend code string. A shared registry (including contradictions) is main-line integration work. Always show the backend message; never derive conclusions from this code. */
             code: string;
             message: string | null;
         };
@@ -306,6 +299,7 @@ export interface components {
             state: string;
             reasons: components["schemas"]["Reason"][];
         };
+        /** @description Known keys are optional. Missing means UNKNOWN. New capability keys validate as Capability objects and display an explicit unknown-capability warning without triggering requests. */
         Capabilities: {
             overview?: components["schemas"]["Capability"];
             work?: components["schemas"]["Capability"];
@@ -313,10 +307,14 @@ export interface components {
             evidence?: components["schemas"]["Capability"];
             knowledge?: components["schemas"]["Capability"];
             history?: components["schemas"]["Capability"];
+            /** @description UNSUPPORTED on the reviewed engine baseline until P2c audit ships. */
             integrity?: components["schemas"]["Capability"];
+            /** @description UNSUPPORTED on the reviewed engine baseline. No queue API is declared in 0.1.1; M4/M5 owns its future semantics. */
             queue?: components["schemas"]["Capability"];
             action_projection?: components["schemas"]["Capability"];
             activity?: components["schemas"]["Capability"];
+        } & {
+            [key: string]: components["schemas"]["Capability"];
         };
         Health: {
             /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
@@ -329,47 +327,44 @@ export interface components {
             name: string;
             aew_version: string;
         };
+        /** @description Hot or archived work projection. Archived-by-ID includes later moves; backend owns blockers, counts and integration facts. Assurance is omitted until its structured mapping is reviewed. */
         Work: {
             id: components["schemas"]["OpaqueId"];
             /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
             kind: string;
             title: string;
-            state: string;
+            state: components["schemas"]["WorkState"];
             parent_id: components["schemas"]["OpaqueId"] | null;
-            revision: number | null;
-            classification: string | null;
-            assurance: string | null;
             has_attention: boolean;
             summary: components["schemas"]["RichText"];
             reasons: components["schemas"]["Reason"][];
             related: components["schemas"]["EntityRef"][];
             updated_at: components["schemas"]["Timestamp"];
-        };
-        Run: {
-            id: components["schemas"]["OpaqueId"];
-            work: components["schemas"]["EntityRef"];
-            status: string;
-            role: string;
-            started_at: components["schemas"]["Timestamp"];
-            finished_at: components["schemas"]["Timestamp"] | null;
-            summary: components["schemas"]["RichText"];
-            evidence: components["schemas"]["EntityRef"][];
-            reasons: components["schemas"]["Reason"][];
+            risk_class: number | null;
+            plan_revision: number | null;
+            mutating: boolean | null;
+            archived: boolean;
+            blocked_by: components["schemas"]["Reason"][];
+            children: components["schemas"]["OpaqueId"][];
+            /** @description True when the bounded child-ID preview omits children. Backend rollup remains complete. Use bounded /work queries with parent and explicit terminal-state filters to inspect archived children. */
+            children_truncated: boolean;
+            rollup: components["schemas"]["WorkCounts"] | null;
+            integration: components["schemas"]["Integration"] | null;
         };
         Evidence: {
             id: components["schemas"]["OpaqueId"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
             kind: string;
-            result: string;
+            result: string | null;
             subject: components["schemas"]["EntityRef"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
             currentness: string;
             requires_disposition: boolean;
             claim: components["schemas"]["RichText"];
             body: components["schemas"]["RichText"];
             findings: components["schemas"]["Reason"][];
             deviations: components["schemas"]["Reason"][];
-            bindings: {
-                [key: string]: unknown;
-            };
+            bindings: components["schemas"]["EvidenceBindings"];
             provenance: components["schemas"]["EntityRef"][];
         };
         Knowledge: {
@@ -381,38 +376,35 @@ export interface components {
             body: components["schemas"]["RichText"];
             reasons: components["schemas"]["Reason"][];
             provenance: components["schemas"]["EntityRef"][];
+            decision_type: components["schemas"]["DecisionType"] | null;
         };
+        /** @description Path-free manifest entry projection, ordered by stable seq, with moves applied to current parent. Always display source and a historical-reference warning. Never current evidence. No storage path or currentness field. */
         History: {
+            seq: number;
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            kind: string;
             id: components["schemas"]["OpaqueId"];
-            subject: components["schemas"]["EntityRef"];
-            recorded_at: components["schemas"]["Timestamp"];
-            currentness: string;
-            annotation: string;
-            body: components["schemas"]["RichText"];
-            lineage: components["schemas"]["EntityRef"][];
+            at: components["schemas"]["Timestamp"];
+            state: components["schemas"]["WorkState"] | null;
+            unit_kind: string | null;
+            title: string | null;
+            parent: components["schemas"]["OpaqueId"] | null;
+            subject: components["schemas"]["OpaqueId"] | null;
+            rel: string | null;
+            links: {
+                [key: string]: components["schemas"]["OpaqueId"][];
+            };
+            sha256: components["schemas"]["Sha256"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            source: string;
         };
+        /** @description Future P2c audit projection. Capability remains UNSUPPORTED at reviewed baseline. Backlog/status are computed by backend, never by frontend arithmetic or age. */
         Integrity: {
             status: string;
-            current_root: string | null;
-            verified_root: string | null;
-            verified_at: components["schemas"]["Timestamp"] | null;
-            last_full_audit_at: components["schemas"]["Timestamp"] | null;
+            current_root: components["schemas"]["HistoryRoot"];
+            verified: components["schemas"]["VerifiedRoot"] | null;
             backlog: number;
-            reasons: components["schemas"]["Reason"][];
-        };
-        Queue: {
-            id: components["schemas"]["OpaqueId"];
-            work: components["schemas"]["EntityRef"];
-            /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
-            state: string;
-            position: number | null;
-            commit_ready_seq: number | null;
-            attempt: number | null;
-            publication_mode: string | null;
-            custodian: string | null;
-            lease_started_at: components["schemas"]["Timestamp"] | null;
-            current_base: string | null;
-            latest_validation: components["schemas"]["Reason"] | null;
+            last_audit: components["schemas"]["EntityRef"] | null;
             reasons: components["schemas"]["Reason"][];
         };
         Attention: {
@@ -433,20 +425,22 @@ export interface components {
             title: string;
             reason: components["schemas"]["Reason"] | null;
         };
+        /** @description One coherent backend read of control state, with hot work preview and a separate most-recent archived ring (maximum 20). Counts and all conclusions are backend supplied. */
         Overview: {
             project: components["schemas"]["Project"];
             health: components["schemas"]["Health"];
             summary: components["schemas"]["RichText"];
             work: components["schemas"]["Work"][];
-            runs: components["schemas"]["Run"][];
+            runs: components["schemas"]["Invocation"][];
             attention: components["schemas"]["Attention"][];
             activity: components["schemas"]["Activity"][];
             counts: {
-                work: number;
+                work: components["schemas"]["WorkCounts"];
                 runs: number;
                 attention: number;
             };
             capabilities: components["schemas"]["Capabilities"];
+            recent: components["schemas"]["Work"][];
         };
         Error: {
             code: string;
@@ -455,162 +449,272 @@ export interface components {
         };
         ProjectResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Project"];
         };
         CapabilitiesResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Capabilities"];
         };
         OverviewResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Overview"];
         };
         IntegrityResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Integrity"];
         };
         WorkResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Work"];
         };
-        RunResponse: {
-            /** @constant */
-            schema_version: "0.1.0";
-            project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
-            generated_at: components["schemas"]["Timestamp"];
-            data: components["schemas"]["Run"];
-        };
         EvidenceResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Evidence"];
         };
         KnowledgeResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: components["schemas"]["Knowledge"];
         };
         HistoryResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
-            data: components["schemas"]["History"];
+            data: components["schemas"]["HistoryDetail"];
         };
         WorkListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["Work"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
-            };
-        };
-        RunListResponse: {
-            /** @constant */
-            schema_version: "0.1.0";
-            project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
-            generated_at: components["schemas"]["Timestamp"];
-            data: {
-                items: components["schemas"]["Run"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
         EvidenceListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["Evidence"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
         KnowledgeListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["Knowledge"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
         HistoryListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["History"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
-            };
-        };
-        QueueListResponse: {
-            /** @constant */
-            schema_version: "0.1.0";
-            project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
-            generated_at: components["schemas"]["Timestamp"];
-            data: {
-                items: components["schemas"]["Queue"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
         AttentionListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["Attention"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
         ActivityListResponse: {
             /** @constant */
-            schema_version: "0.1.0";
+            schema_version: "0.1.1";
             project_id: components["schemas"]["OpaqueId"];
-            control_revision: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
             data: {
                 items: components["schemas"]["Activity"][];
-                next_cursor: components["schemas"]["OpaqueId"] | null;
+                next_cursor: components["schemas"]["Cursor"] | null;
+            };
+        };
+        /** @description Opaque cursor; not an entity ID. Scope includes project, route, filters and limit. History cursors pin the starting manifest count and stable sequence, and survive appends. Hot collection cursors expire on control_revision changes. */
+        Cursor: string;
+        /** @description Engine integer control revision serialized as a decimal string; monotonic per project. Observed harness telemetry can change without advancing this revision. */
+        ControlRevision: string;
+        Sha256: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        TicketState: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        ParentState: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        WorkState: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        InvocationRole: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        InvocationStatus: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        HarnessStatus: string;
+        /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+        DecisionType: string;
+        /** @description Backend-computed counts. Overview done/cancelled are archived counts; parent rollup covers child counts, not just the bounded child-ID preview. */
+        WorkCounts: {
+            open: number;
+            done: number;
+            cancelled: number;
+        };
+        Integration: {
+            status: string | null;
+            commit: string | null;
+            commit_ready_seq: number | null;
+        };
+        HarnessRun: {
+            id: components["schemas"]["OpaqueId"];
+            harness: components["schemas"]["OpaqueId"];
+            launched_at: components["schemas"]["Timestamp"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            kind: string;
+            status: components["schemas"]["HarnessStatus"];
+            /** @description Backend-reported authority text; never interpreted as a permission or gate conclusion. */
+            authority: string;
+        };
+        /** @description An engine invocation, including invocations with no harness run. /runs lists these objects. Nested statuses are observed harness telemetry and do not establish invocation completion or authority. */
+        Invocation: {
+            id: components["schemas"]["OpaqueId"];
+            role: components["schemas"]["InvocationRole"];
+            status: components["schemas"]["InvocationStatus"];
+            work: components["schemas"]["EntityRef"];
+            created_at: components["schemas"]["Timestamp"];
+            runs: components["schemas"]["HarnessRun"][];
+            summary: components["schemas"]["RichText"];
+            evidence: components["schemas"]["EntityRef"][];
+            reasons: components["schemas"]["Reason"][];
+        };
+        /** @description Explicit path-free snapshot projection. workspace_id and storage/workspace/observation paths are excluded. */
+        EvaluatedSnapshot: {
+            base_revision: string | null;
+            relevant_inputs_fingerprint: components["schemas"]["Sha256"];
+            artifact_digests: components["schemas"]["Sha256"][];
+        };
+        EvidencePlanRevision: {
+            revision: number;
+            sha256: components["schemas"]["Sha256"];
+        };
+        /** @description Curated producer identity; model/provider are declared metadata, not independently verified. No credential, run_dir, execution paths or arbitrary fields. */
+        Producer: {
+            role: components["schemas"]["InvocationRole"];
+            invocation: components["schemas"]["OpaqueId"];
+            run: components["schemas"]["OpaqueId"] | null;
+            model: string | null;
+            provider: string | null;
+            harness: components["schemas"]["OpaqueId"] | null;
+        };
+        EvidenceBindings: {
+            evaluated_snapshot: components["schemas"]["EvaluatedSnapshot"] | null;
+            plan_revision: components["schemas"]["EvidencePlanRevision"] | null;
+            producer: components["schemas"]["Producer"];
+        };
+        Annotation: {
+            id: components["schemas"]["OpaqueId"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            rel: string;
+            object: components["schemas"]["OpaqueId"] | null;
+            at: components["schemas"]["Timestamp"];
+            decision: components["schemas"]["OpaqueId"] | null;
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            source: string;
+            note: string | null;
+        };
+        /** @description Manifest projection plus the bounded annotation list. Relation links replace a separate lineage array. No raw storage record is exposed. */
+        HistoryDetail: {
+            seq: number;
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            kind: string;
+            id: components["schemas"]["OpaqueId"];
+            at: components["schemas"]["Timestamp"];
+            state: components["schemas"]["WorkState"] | null;
+            unit_kind: string | null;
+            title: string | null;
+            parent: components["schemas"]["OpaqueId"] | null;
+            subject: components["schemas"]["OpaqueId"] | null;
+            rel: string | null;
+            links: {
+                [key: string]: components["schemas"]["OpaqueId"][];
+            };
+            sha256: components["schemas"]["Sha256"];
+            /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
+            source: string;
+            annotations: components["schemas"]["Annotation"][];
+            annotations_next_cursor: components["schemas"]["Cursor"] | null;
+        };
+        HistoryRoot: {
+            count: number;
+            head_h: components["schemas"]["Sha256"];
+            sealed_head: {
+                seq: number;
+                sha256: components["schemas"]["Sha256"];
+            } | null;
+        };
+        VerifiedRoot: {
+            count: number;
+            h: components["schemas"]["Sha256"];
+        };
+        InvocationResponse: {
+            /** @constant */
+            schema_version: "0.1.1";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: components["schemas"]["Invocation"];
+        };
+        InvocationListResponse: {
+            /** @constant */
+            schema_version: "0.1.1";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: {
+                items: components["schemas"]["Invocation"][];
+                next_cursor: components["schemas"]["Cursor"] | null;
             };
         };
     };
@@ -633,10 +737,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -667,24 +771,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -705,10 +791,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -735,20 +821,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -769,10 +841,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -803,24 +875,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -841,10 +895,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -871,20 +925,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -905,10 +945,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description One coherent composite projection from a single control-state read. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -939,24 +979,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -977,10 +999,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description One coherent composite projection from a single control-state read. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1007,20 +1029,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -1041,10 +1049,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1075,24 +1083,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -1113,10 +1103,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1138,20 +1128,6 @@ export interface operations {
             };
             /** @description Capability unavailable. */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1170,7 +1146,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                state?: components["schemas"]["WorkState"];
+                kind?: string;
+                parent?: components["schemas"]["OpaqueId"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1180,10 +1159,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1197,6 +1176,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -1214,16 +1202,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1245,7 +1224,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                state?: components["schemas"]["WorkState"];
+                kind?: string;
+                parent?: components["schemas"]["OpaqueId"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1255,10 +1237,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1266,6 +1248,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1285,14 +1274,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1321,10 +1303,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1364,15 +1346,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -1395,10 +1368,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1432,13 +1405,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -1448,11 +1414,11 @@ export interface operations {
             };
         };
     };
-    runListResponse: {
+    InvocationListResponse: {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1462,15 +1428,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Invocation projection, including manual submissions with no harness runs. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunListResponse"];
+                    "application/json": components["schemas"]["InvocationListResponse"];
                 };
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
@@ -1479,6 +1445,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -1496,16 +1471,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1523,11 +1489,11 @@ export interface operations {
             };
         };
     };
-    headRunListResponse: {
+    headInvocationListResponse: {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1537,10 +1503,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Invocation projection, including manual submissions with no harness runs. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1548,6 +1514,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1567,14 +1540,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1590,7 +1556,7 @@ export interface operations {
             };
         };
     };
-    runResponse: {
+    InvocationResponse: {
         parameters: {
             query?: never;
             header?: {
@@ -1603,15 +1569,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Invocation projection, including manual submissions with no harness runs. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunResponse"];
+                    "application/json": components["schemas"]["InvocationResponse"];
                 };
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
@@ -1639,15 +1605,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1664,7 +1621,7 @@ export interface operations {
             };
         };
     };
-    headRunResponse: {
+    headInvocationResponse: {
         parameters: {
             query?: never;
             header?: {
@@ -1677,10 +1634,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Invocation projection, including manual submissions with no harness runs. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1709,13 +1666,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1734,7 +1684,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                work?: components["schemas"]["OpaqueId"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1744,10 +1695,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1761,6 +1712,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -1778,16 +1738,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1809,7 +1760,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                work?: components["schemas"]["OpaqueId"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -1819,10 +1771,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1830,6 +1782,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1849,14 +1808,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1885,10 +1837,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1928,15 +1880,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -1959,10 +1902,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1991,13 +1934,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2016,7 +1952,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2026,10 +1962,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2043,6 +1979,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -2060,16 +2005,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2091,7 +2027,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2101,10 +2037,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2112,6 +2048,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2131,14 +2074,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2167,10 +2103,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2210,15 +2146,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
             500: {
                 headers: {
@@ -2241,10 +2168,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2273,13 +2200,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2298,7 +2218,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                kind?: string;
+                since?: components["schemas"]["Timestamp"];
+                until?: components["schemas"]["Timestamp"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2308,10 +2231,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Bounded manifest entries; source must be displayed; these are historical references, never current evidence. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2326,6 +2249,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Session required. */
             401: {
                 headers: {
@@ -2335,24 +2267,6 @@ export interface operations {
             };
             /** @description Capability unavailable. */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2373,7 +2287,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
+                kind?: string;
+                since?: components["schemas"]["Timestamp"];
+                until?: components["schemas"]["Timestamp"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2383,10 +2300,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Bounded manifest entries; source must be displayed; these are historical references, never current evidence. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2394,6 +2311,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2408,20 +2332,6 @@ export interface operations {
             };
             /** @description Capability unavailable. */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2438,7 +2348,10 @@ export interface operations {
     };
     historyResponse: {
         parameters: {
-            query?: never;
+            query?: {
+                annotations_limit?: number;
+                annotations_cursor?: components["schemas"]["Cursor"];
+            };
             header?: {
                 "If-None-Match"?: string;
             };
@@ -2449,10 +2362,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2466,6 +2379,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid annotation limit or cursor scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -2485,15 +2407,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2512,7 +2425,10 @@ export interface operations {
     };
     headHistoryResponse: {
         parameters: {
-            query?: never;
+            query?: {
+                annotations_limit?: number;
+                annotations_cursor?: components["schemas"]["Cursor"];
+            };
             header?: {
                 "If-None-Match"?: string;
             };
@@ -2523,10 +2439,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2534,6 +2450,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid annotation limit or cursor scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2555,155 +2478,6 @@ export interface operations {
             };
             /** @description Opaque identity does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    queueListResponse: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
-            };
-            header?: {
-                "If-None-Match"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
-            200: {
-                headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
-                    ETag?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QueueListResponse"];
-                };
-            };
-            /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session required. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Capability unavailable. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    headQueueListResponse: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
-            };
-            header?: {
-                "If-None-Match"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
-            200: {
-                headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
-                    ETag?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session required. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Capability unavailable. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2722,7 +2496,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2732,10 +2506,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2749,6 +2523,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -2766,16 +2549,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2797,7 +2571,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2807,10 +2581,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2818,6 +2592,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2837,14 +2618,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2864,7 +2638,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2874,10 +2648,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2891,6 +2665,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Session required. */
             401: {
@@ -2908,16 +2691,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2939,7 +2713,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                cursor?: components["schemas"]["OpaqueId"];
+                cursor?: components["schemas"]["Cursor"];
             };
             header?: {
                 "If-None-Match"?: string;
@@ -2949,10 +2723,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated projection. Overview is a coherent composite. */
+            /** @description Validated read-only projection. */
             200: {
                 headers: {
-                    /** @description Opaque representation validator, scoped to route, project, filters and cursor. */
+                    /** @description Validator computed from the full representation, not control_revision alone: telemetry can change at the same revision. Includes route, project, filters, limit and cursor scope. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2960,6 +2734,13 @@ export interface operations {
             };
             /** @description Representation unchanged. No payload. Preserve generated_at and control_revision; update only client last_checked_at. */
             304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid limit, filter, or cursor for this query scope. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2979,14 +2760,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Opaque identity does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cursor snapshot expired; restart collection explicitly. */
+            /** @description Hot collection cursor expired because control_revision changed. Restart this bounded query explicitly. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -1,14 +1,7 @@
 import type { components } from '../types';
 type Envelope = components['schemas']['OverviewResponse'];
-export type World = {
-  fixture: string;
-  name: string;
-  contract_version: string;
-  contract_sha256: string;
-  responses: Record<string, unknown>;
-  pages: Record<string, unknown>;
-  scenarios: { kind: string; [key: string]: unknown }[];
-};
+import type { World } from './types';
+export type { World } from './types';
 const files = import.meta.glob<World>('./fixtures/F*.json', {
   eager: true,
   import: 'default',
@@ -19,7 +12,8 @@ export const worlds = Object.values(files).sort(
 export function selectedWorld() {
   return (
     worlds.find(
-      (w) => w.fixture === new URLSearchParams(location.search).get('fixture'),
+      (w) =>
+        w.fixture === new URLSearchParams(location.search).get('fixture'),
     ) ?? worlds.find((w) => w.fixture === 'F1')!
   );
 }

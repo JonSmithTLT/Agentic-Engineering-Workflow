@@ -1,3 +1,4 @@
+import { capabilityNames } from '../api/schema';
 import { useEffect, useRef, useState } from 'react';
 import {
   MixedRevisionClock,
@@ -90,5 +91,37 @@ export function LoadError({
       <p>{message}</p>
       <button onClick={retry}>Retry</button>
     </div>
+  );
+}
+
+export function CapabilityWarnings({
+  values,
+}: {
+  values: Record<
+    string,
+    { state: string; reasons: { code: string; message: string | null }[] }
+  >;
+}) {
+  const names: readonly string[] = capabilityNames;
+  const states = ['AVAILABLE', 'UNAVAILABLE', 'UNSUPPORTED', 'UNKNOWN'];
+  return (
+    <>
+      {Object.entries(values)
+        .filter(
+          ([name, value]) =>
+            !names.includes(name) || !states.includes(value.state),
+        )
+        .map(([name, value]) => (
+          <div className="preview-note" role="status" key={name}>
+            {!names.includes(name)
+              ? 'Unknown capability'
+              : 'Unknown capability state'}
+            : <code>{name}</code> · <code>{value.state}</code>
+            {value.reasons.map((r, i) => (
+              <p key={i}>{r.message ?? r.code}</p>
+            ))}
+          </div>
+        ))}
+    </>
   );
 }

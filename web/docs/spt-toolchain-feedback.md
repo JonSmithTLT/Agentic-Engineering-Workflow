@@ -78,3 +78,31 @@ D0 prerequisite observations, 2026-10-02. This log retains resolved findings so 
 - Workaround: AEW declares and installs only its consumed subset; this does not establish that every consumed dependency is advisory-free.
 - Proposed improvement/acceptance: retain advisory JSON and registry/time identity, compare baseline with the repaired lock, identify affected runtime versus development dependencies in downstream subsets, and record dispositions or separate validated fixes for any applicable advisories.
 - Status/fix/retest: OPEN / not triaged; no broad dependency changes or audit-fix operation performed.
+
+## C0 amendment retest — 2026-10-02
+
+- Identity/platform/versions: same final immutable Linux/amd64 carrier
+  `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`,
+  Node 22.22.2/npm 10.9.7, Vite 8.0.10, Tailwind/adapter 4.2.4. Lock/cache
+  identities remain those in `builder-provenance.json`; no dependency repair
+  or refresh was needed for the C0 amendment.
+- SPT-UI-001/002/005: resolved status retained. The amended consumer installed
+  offline from empty modules, regenerated OpenAPI types, typechecked, linted,
+  passed 38 tests and compiled both actual Tailwind/Vite builds in the same
+  carrier with networking disabled. Full-carrier checksum/import validation
+  remains the original prerequisite evidence; it was not rerun or relabeled
+  as current full-toolchain verification.
+- SPT-UI-003: temporary native CLI access to the WSL daemon was revalidated by
+  generation and full consumer gate. No workspace restart was required. The
+  PATH-selected stub was not rechecked, so that original observation remains
+  historical rather than a newly asserted current failure.
+- SPT-UI-004: unchanged matched browser artifact launched and passed compiled
+  browser checks. Staging was not repeated; browser revisions remain pinned.
+- SPT-UI-006: ephemeral native-storage install reported 11 seconds in the
+  first passing amendment iteration and 6 seconds in the final iteration. This is a run observation, not a controlled performance claim.
+- SPT-UI-007: no connected audit or dependency changes were performed; advisory
+  triage remains open. No new SPT build blocker was demonstrated.
+- Reproduction/evidence: use the commands in `validation-c0-amend.md`; logs are
+  `web/artifacts/c0-amend-offline-gate.log` and `c0-amend-browser.log`. The final
+  candidate's generator/typecheck/lint/test/build/browser retests are PASS;
+  main-line C0 approval remains pending independently of these tool results.

@@ -1,6 +1,11 @@
 import { z } from 'zod';
-
-export const id = z.string().min(1);
+export const id = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+export const cursor = z.string().min(1);
+export const controlRevision = z.string().regex(/^(0|[1-9][0-9]*)$/);
+export const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 export const timestamp = z.iso.datetime({ offset: false });
 export const reason = z.strictObject({
   code: z.string(),
@@ -31,11 +36,8 @@ export const capabilityNames = [
   'action_projection',
   'activity',
 ] as const;
-export const capabilities = z.strictObject(
-  Object.fromEntries(
-    capabilityNames.map((name) => [name, capability.optional()]),
-  ),
-);
+// New capability names are valid data, never a validation failure or permission.
+export const capabilities = z.record(z.string(), capability);
 export const project = z.strictObject({
   id,
   name: z.string(),
@@ -46,36 +48,82 @@ export const health = z.strictObject({
   reasons: z.array(reason).max(250),
   observed_at: timestamp,
 });
+export const workCounts = z.strictObject({
+  open: z.number().int().min(0),
+  done: z.number().int().min(0),
+  cancelled: z.number().int().min(0),
+});
+export const integration = z.strictObject({
+  status: z.string().nullable(),
+  commit: z.string().nullable(),
+  commit_ready_seq: z.number().int().min(0).nullable(),
+});
 export const work = z.strictObject({
   id,
   kind: z.string(),
   title: z.string(),
   state: z.string(),
   parent_id: id.nullable(),
-  revision: z.number().int().min(0).nullable(),
-  classification: z.string().nullable(),
-  assurance: z.string().nullable(),
+  risk_class: z.number().int().min(0).max(4).nullable(),
+  plan_revision: z.number().int().min(1).nullable(),
+  mutating: z.boolean().nullable(),
+  archived: z.boolean(),
+  blocked_by: z.array(reason).max(250),
+  children: z.array(id).max(250),
+  children_truncated: z.boolean(),
+  rollup: workCounts.nullable(),
+  integration: integration.nullable(),
   has_attention: z.boolean(),
   summary: richText,
   reasons: z.array(reason).max(250),
   related: z.array(entityRef).max(250),
   updated_at: timestamp,
 });
-export const run = z.strictObject({
+export const harnessRun = z.strictObject({
   id,
-  work: entityRef,
+  harness: id,
+  launched_at: timestamp,
+  kind: z.string(),
   status: z.string(),
+  authority: z.string(),
+});
+export const invocation = z.strictObject({
+  id,
   role: z.string(),
-  started_at: timestamp,
-  finished_at: timestamp.nullable(),
+  status: z.string(),
+  work: entityRef,
+  created_at: timestamp,
+  runs: z.array(harnessRun).max(250),
   summary: richText,
   evidence: z.array(entityRef).max(250),
   reasons: z.array(reason).max(250),
 });
+export const evaluatedSnapshot = z.strictObject({
+  base_revision: z.string().nullable(),
+  relevant_inputs_fingerprint: sha256,
+  artifact_digests: z.array(sha256).max(250),
+});
+export const evidencePlanRevision = z.strictObject({
+  revision: z.number().int().min(1),
+  sha256,
+});
+export const producer = z.strictObject({
+  role: z.string(),
+  invocation: id,
+  run: id.nullable(),
+  model: z.string().nullable(),
+  provider: z.string().nullable(),
+  harness: id.nullable(),
+});
+export const evidenceBindings = z.strictObject({
+  evaluated_snapshot: evaluatedSnapshot.nullable(),
+  plan_revision: evidencePlanRevision.nullable(),
+  producer,
+});
 export const evidence = z.strictObject({
   id,
   kind: z.string(),
-  result: z.string(),
+  result: z.string().nullable(),
   subject: entityRef,
   currentness: z.string(),
   requires_disposition: z.boolean(),
@@ -83,48 +131,64 @@ export const evidence = z.strictObject({
   body: richText,
   findings: z.array(reason).max(250),
   deviations: z.array(reason).max(250),
-  bindings: z.record(z.string(), z.unknown()),
+  bindings: evidenceBindings,
   provenance: z.array(entityRef).max(250),
 });
 export const knowledge = z.strictObject({
   id,
   kind: z.string(),
+  decision_type: z.string().nullable(),
   title: z.string(),
   state: z.string(),
   body: richText,
   reasons: z.array(reason).max(250),
   provenance: z.array(entityRef).max(250),
 });
-export const history = z.strictObject({
+export const annotation = z.strictObject({
   id,
-  subject: entityRef,
-  recorded_at: timestamp,
-  currentness: z.string(),
-  annotation: z.string(),
-  body: richText,
-  lineage: z.array(entityRef).max(250),
+  rel: z.string(),
+  object: id.nullable(),
+  at: timestamp,
+  decision: id.nullable(),
+  source: z.string(),
+  note: z.string().nullable(),
+});
+export const history = z.strictObject({
+  seq: z.number().int().min(1),
+  kind: z.string(),
+  id,
+  at: timestamp,
+  state: z.string().nullable(),
+  unit_kind: z.string().nullable(),
+  title: z.string().nullable(),
+  parent: id.nullable(),
+  subject: id.nullable(),
+  rel: z.string().nullable(),
+  links: z.record(z.string(), z.array(id).max(250)),
+  sha256,
+  source: z.string(),
+});
+export const historyDetail = history.extend({
+  annotations: z.array(annotation).max(250),
+  annotations_next_cursor: cursor.nullable(),
+});
+export const historyRoot = z.strictObject({
+  count: z.number().int().min(0),
+  head_h: sha256,
+  sealed_head: z
+    .strictObject({ seq: z.number().int().min(1), sha256 })
+    .nullable(),
+});
+export const verifiedRoot = z.strictObject({
+  count: z.number().int().min(0),
+  h: sha256,
 });
 export const integrity = z.strictObject({
   status: z.string(),
-  current_root: z.string().nullable(),
-  verified_root: z.string().nullable(),
-  verified_at: timestamp.nullable(),
-  last_full_audit_at: timestamp.nullable(),
+  current_root: historyRoot,
+  verified: verifiedRoot.nullable(),
   backlog: z.number().int().min(0),
-  reasons: z.array(reason).max(250),
-});
-export const queue = z.strictObject({
-  id,
-  work: entityRef,
-  state: z.string(),
-  position: z.number().int().min(0).nullable(),
-  commit_ready_seq: z.number().int().min(0).nullable(),
-  attempt: z.number().int().min(0).nullable(),
-  publication_mode: z.string().nullable(),
-  custodian: z.string().nullable(),
-  lease_started_at: timestamp.nullable(),
-  current_base: z.string().nullable(),
-  latest_validation: reason.nullable(),
+  last_audit: entityRef.nullable(),
   reasons: z.array(reason).max(250),
 });
 export const attention = z.strictObject({
@@ -149,11 +213,12 @@ export const overview = z.strictObject({
   health,
   summary: richText,
   work: z.array(work).max(6),
-  runs: z.array(run).max(6),
+  recent: z.array(work).max(20),
+  runs: z.array(invocation).max(6),
   attention: z.array(attention).max(6),
   activity: z.array(activity).max(10),
   counts: z.strictObject({
-    work: z.number().int().min(0),
+    work: workCounts,
     runs: z.number().int().min(0),
     attention: z.number().int().min(0),
   }),
@@ -161,30 +226,32 @@ export const overview = z.strictObject({
 });
 export const envelope = <T extends z.ZodType>(data: T) =>
   z.strictObject({
-    schema_version: z.literal('0.1.0'),
+    schema_version: z.literal('0.1.1'),
     project_id: id,
-    control_revision: id,
+    control_revision: controlRevision,
     generated_at: timestamp,
     data,
   });
 export const collection = <T extends z.ZodType>(item: T) =>
-  z.strictObject({ items: z.array(item).max(250), next_cursor: id.nullable() });
+  z.strictObject({
+    items: z.array(item).max(250),
+    next_cursor: cursor.nullable(),
+  });
 export const responseSchemas = {
   ProjectResponse: envelope(project),
   CapabilitiesResponse: envelope(capabilities),
   OverviewResponse: envelope(overview),
   IntegrityResponse: envelope(integrity),
   WorkResponse: envelope(work),
-  RunResponse: envelope(run),
+  InvocationResponse: envelope(invocation),
   EvidenceResponse: envelope(evidence),
   KnowledgeResponse: envelope(knowledge),
-  HistoryResponse: envelope(history),
+  HistoryResponse: envelope(historyDetail),
   WorkListResponse: envelope(collection(work)),
-  RunListResponse: envelope(collection(run)),
+  InvocationListResponse: envelope(collection(invocation)),
   EvidenceListResponse: envelope(collection(evidence)),
   KnowledgeListResponse: envelope(collection(knowledge)),
   HistoryListResponse: envelope(collection(history)),
-  QueueListResponse: envelope(collection(queue)),
   AttentionListResponse: envelope(collection(attention)),
   ActivityListResponse: envelope(collection(activity)),
 };

@@ -1,24 +1,24 @@
 {
   "fixture": "F0",
   "name": "Empty project",
-  "contract_version": "0.1.0",
-  "contract_sha256": "f956f0b2f1f2de0840667c28301be08b6cc0b462271651a0d3cc9117b6034b70",
+  "contract_version": "0.1.1",
+  "contract_sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
   "responses": {
     "/project": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
-        "id": "project:demo/aew",
+        "id": "aew-demo",
         "name": "Agentic Engineering Workflow",
-        "aew_version": "provisional"
+        "aew_version": "main-91c0d98"
       }
     },
     "/capabilities": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "overview": {
@@ -45,14 +45,6 @@
           "state": "AVAILABLE",
           "reasons": []
         },
-        "integrity": {
-          "state": "AVAILABLE",
-          "reasons": []
-        },
-        "queue": {
-          "state": "AVAILABLE",
-          "reasons": []
-        },
         "action_projection": {
           "state": "AVAILABLE",
           "reasons": []
@@ -60,34 +52,37 @@
         "activity": {
           "state": "AVAILABLE",
           "reasons": []
+        },
+        "queue": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Queue is future M4/M5 work."
+            }
+          ]
+        },
+        "integrity": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Integrity audit is future P2c work."
+            }
+          ]
         }
       }
     },
-    "/history/integrity": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
-      "generated_at": "2026-10-02T12:00:00Z",
-      "data": {
-        "status": "VERIFIED",
-        "current_root": "root:42",
-        "verified_root": "root:42",
-        "verified_at": "2026-10-02T12:00:00Z",
-        "last_full_audit_at": "2026-10-02T12:00:00Z",
-        "backlog": 0,
-        "reasons": []
-      }
-    },
     "/overview": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "project": {
-          "id": "project:demo/aew",
+          "id": "aew-demo",
           "name": "Agentic Engineering Workflow",
-          "aew_version": "provisional"
+          "aew_version": "main-91c0d98"
         },
         "health": {
           "status": "HEALTHY",
@@ -99,11 +94,16 @@
           "text": "No active work is reported."
         },
         "work": [],
+        "recent": [],
         "runs": [],
         "attention": [],
         "activity": [],
         "counts": {
-          "work": 0,
+          "work": {
+            "open": 0,
+            "done": 0,
+            "cancelled": 0
+          },
           "runs": 0,
           "attention": 0
         },
@@ -132,14 +132,6 @@
             "state": "AVAILABLE",
             "reasons": []
           },
-          "integrity": {
-            "state": "AVAILABLE",
-            "reasons": []
-          },
-          "queue": {
-            "state": "AVAILABLE",
-            "reasons": []
-          },
           "action_projection": {
             "state": "AVAILABLE",
             "reasons": []
@@ -147,14 +139,32 @@
           "activity": {
             "state": "AVAILABLE",
             "reasons": []
+          },
+          "queue": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Queue is future M4/M5 work."
+              }
+            ]
+          },
+          "integrity": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Integrity audit is future P2c work."
+              }
+            ]
           }
         }
       }
     },
     "/work": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -162,9 +172,9 @@
       }
     },
     "/runs": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -172,9 +182,9 @@
       }
     },
     "/evidence": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -182,9 +192,9 @@
       }
     },
     "/knowledge": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -192,19 +202,9 @@
       }
     },
     "/history": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
-      "generated_at": "2026-10-02T12:00:00Z",
-      "data": {
-        "items": [],
-        "next_cursor": null
-      }
-    },
-    "/queue": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -212,9 +212,9 @@
       }
     },
     "/attention": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -222,9 +222,9 @@
       }
     },
     "/activity": {
-      "schema_version": "0.1.0",
-      "project_id": "project:demo/aew",
-      "control_revision": "r42",
+      "schema_version": "0.1.1",
+      "project_id": "aew-demo",
+      "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
       "data": {
         "items": [],
@@ -235,17 +235,18 @@
   "models": {
     "/project": "ProjectResponse",
     "/capabilities": "CapabilitiesResponse",
-    "/history/integrity": "IntegrityResponse",
     "/overview": "OverviewResponse",
     "/work": "WorkListResponse",
-    "/runs": "RunListResponse",
+    "/runs": "InvocationListResponse",
     "/evidence": "EvidenceListResponse",
     "/knowledge": "KnowledgeListResponse",
     "/history": "HistoryListResponse",
-    "/queue": "QueueListResponse",
     "/attention": "AttentionListResponse",
     "/activity": "ActivityListResponse"
   },
   "pages": {},
-  "scenarios": []
+  "page_models": {},
+  "scenarios": [],
+  "provisional_responses": {},
+  "provisional_models": {}
 }

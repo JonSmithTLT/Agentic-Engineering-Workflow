@@ -8,7 +8,9 @@ fs.mkdirSync(out, { recursive: true });
 const manifest = JSON.parse(
   fs.readFileSync('node_modules/playwright-core/browsers.json', 'utf8'),
 );
-const revision = manifest.browsers.find((x) => x.name === 'chromium').revision;
+const revision = manifest.browsers.find(
+  (x) => x.name === 'chromium',
+).revision;
 const browserPath = path.resolve(
   `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
 );
@@ -46,30 +48,42 @@ context.on('request', (r) => {
 const checks = [];
 try {
   const response = await page.goto(base + '/?fixture=F1');
+  const demoHeaders = response.headers();
   assert(
-    response.headers()['content-security-policy'].includes("style-src 'self'"),
+    demoHeaders['content-security-policy'].includes("style-src 'self'"),
   );
-  assert(
-    !response.headers()['content-security-policy'].includes('unsafe-inline'),
-  );
+  assert(!demoHeaders['content-security-policy'].includes('unsafe-inline'));
   await page.getByRole('status').filter({ hasText: 'CURRENT' }).waitFor();
   assert(await page.getByText('Demo data', { exact: true }).isVisible());
   await page.getByLabel('Appearance').selectOption('light');
   assert.equal(
-    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    await page.evaluate(
+      () => getComputedStyle(document.body).backgroundColor,
+    ),
     'rgb(245, 247, 250)',
   );
-  await page.screenshot({ path: out + '/overview-light.png', fullPage: true });
+  await page.screenshot({
+    path: out + '/overview-light.png',
+    fullPage: true,
+  });
   checks.push('compiled Overview, light theme, CSP');
   await page.getByLabel('Appearance').selectOption('dark');
   assert.equal(
-    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    await page.evaluate(
+      () => getComputedStyle(document.body).backgroundColor,
+    ),
     'rgb(22, 27, 34)',
   );
-  await page.screenshot({ path: out + '/overview-dark.png', fullPage: true });
+  await page.screenshot({
+    path: out + '/overview-dark.png',
+    fullPage: true,
+  });
   checks.push('dark theme');
   await page
-    .getByRole('link', { name: 'Validate projection consistency', exact: true })
+    .getByRole('link', {
+      name: 'Validate projection consistency',
+      exact: true,
+    })
     .click();
   await page
     .getByRole('heading', {
@@ -94,7 +108,10 @@ try {
     'Skip to content',
   );
   await page.keyboard.press('Enter');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'content');
+  assert.equal(
+    await page.evaluate(() => document.activeElement.id),
+    'content',
+  );
   checks.push('keyboard skip navigation');
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.getByLabel('Toggle navigation').isVisible());
@@ -105,12 +122,17 @@ try {
   );
   await page.getByLabel('Toggle navigation').click();
   assert(
-    await page.getByRole('navigation', { name: 'Main navigation' }).isVisible(),
+    await page
+      .getByRole('navigation', { name: 'Main navigation' })
+      .isVisible(),
   );
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
-  await page.screenshot({ path: out + '/overview-phone.png', fullPage: true });
+  await page.screenshot({
+    path: out + '/overview-phone.png',
+    fullPage: true,
+  });
   checks.push('phone navigation and panel-confined table overflow');
-  await page.goto(base + '/work/work%3A2?fixture=F8');
+  await page.goto(base + '/work/T-0001?fixture=F8');
   await page
     .getByRole('heading', {
       name: 'Validate projection consistency',
@@ -121,7 +143,10 @@ try {
     await page.locator('main script, main img, main iframe').count(),
     0,
   );
-  assert.equal(await page.locator('main a[href^="javascript:"]').count(), 0);
+  assert.equal(
+    await page.locator('main a[href^="javascript:"]').count(),
+    0,
+  );
   assert.equal(await page.evaluate(() => window.pwned), undefined);
   assert(
     (await page.locator('pre code').textContent()).includes(
@@ -133,14 +158,40 @@ try {
   );
   await page.goto(base + '/?fixture=F11');
   await page.getByText('FUTURE_WORK_STATE', { exact: true }).waitFor();
-  checks.push('unknown state warning');
+  await page.getByText('future_projection', { exact: true }).waitFor();
+  checks.push('unknown state and capability-key warnings');
+  await page.goto(base + '/work/T-0004?fixture=F3');
+  await page
+    .getByRole('heading', {
+      name: 'Archived projection contract',
+      exact: true,
+    })
+    .waitFor();
+  await page
+    .getByText(
+      'Archived work. Historical reference; never current evidence.',
+      {
+        exact: true,
+      },
+    )
+    .waitFor();
+  await page.reload();
+  await page
+    .getByRole('heading', {
+      name: 'Archived projection contract',
+      exact: true,
+    })
+    .waitFor();
+  checks.push(
+    'archived work by ID, deep-link reload and historical-reference warning',
+  );
   faultScenario = true;
   await page.goto(base + '/?fixture=F11&fault=refresh-error');
   await page
     .getByRole('status')
     .filter({ hasText: 'STALE / DISCONNECTED' })
     .waitFor();
-  assert(await page.getByRole('table').isVisible());
+  assert(await page.getByRole('table').first().isVisible());
   checks.push('failed refresh retains visibly stale data');
   await page.goto(base + '/?fixture=F10&fault=malformed');
   await page.getByRole('alert').waitFor();
@@ -167,7 +218,8 @@ try {
     assert(!(await pp.getByText('Demo data', { exact: true }).count()));
     assert.equal(
       await pp.evaluate(
-        async () => (await navigator.serviceWorker.getRegistrations()).length,
+        async () =>
+          (await navigator.serviceWorker.getRegistrations()).length,
       ),
       0,
     );

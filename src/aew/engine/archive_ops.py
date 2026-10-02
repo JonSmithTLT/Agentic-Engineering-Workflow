@@ -106,10 +106,15 @@ class Archive:
         retained = self._retained(state, order)
         archived = set(order)
         lead_ended = self._ended_lead_credentials(state)
+        retired = self._retired_observations(state, order)
+        # Removing a retired observation is an obligation that outlives its invocation: it stays listed until the
+        # directory is gone, and every commit retries it, so a crash or a failed removal never loses it.
+        ctx.after_commit.extend(lambda p=o["path"]: self._prune_observation(p) for o in retired)
         if not order and not ctx.annotations and not lead_ended \
-                and retained == state.get("retained_workspaces", []) and self._refs_unchanged(state, archived):
+                and retained == state.get("retained_workspaces", []) \
+                and retired == state.get("retired_observations", []) and self._refs_unchanged(state, archived):
             return
-        entries, facts, recent, gone_invocations, gone_tokens, observations = [], {}, [], set(), set(), []
+        entries, facts, recent, gone_invocations, gone_tokens = [], {}, [], set(), set()
         for wid in order:
             unit = work[wid]
             invocations = [i for i in unit.get("invocations", []) if i in state["invocations"]]
@@ -129,8 +134,6 @@ class Archive:
             self._join(state, unit.get("parent"), dict(unit, id=wid), subtree=False)
             gone_invocations.update(invocations)
             gone_tokens.update(tokens)
-            observations += [state["invocations"][i]["observation"]["path"] for i in invocations
-                             if (state["invocations"][i].get("observation") or {}).get("path")]
         entries += self._annotation_entries(ctx)
         if lead_ended:
             entries.append(self._lead_entry(ctx.session, state, lead_ended))
@@ -149,8 +152,8 @@ class Archive:
         projected["recent"] = (list(state.get("recent", [])) + recent)[-RECENT:]
         projected["archived_refs"] = self._archived_refs(state, hot, facts)
         projected["retained_workspaces"] = retained
+        projected["retired_observations"] = retired
         ctx.commit_state = projected
-        ctx.after_commit.extend(lambda p=p: self._prune_observation(p) for p in observations)
 
     # ------------------------------------------------------------------ ended Lead credentials
 
@@ -221,9 +224,21 @@ class Archive:
                         "links": {a["rel"]: [a["object"]] if a["object"] else []}})
         return out
 
+    @staticmethod
+    def _retired_observations(state: dict[str, Any], order: list[str]) -> list[dict[str, str]]:
+        """Observation worktrees whose invocation is archived (by this commit or an earlier one) and that are still on
+        disk: ``retired_observations``, until each directory is gone."""
+        out = {o["path"]: o for o in state.get("retired_observations", []) if Path(o["path"]).exists()}
+        for wid in order:
+            for inv_id in state["work"][wid].get("invocations", []):
+                path = ((state["invocations"].get(inv_id) or {}).get("observation") or {}).get("path")
+                if path and Path(path).exists():
+                    out[path] = {"invocation": inv_id, "path": path}
+        return [out[p] for p in sorted(out)]
+
     def _prune_observation(self, path: str) -> None:
-        """An archived invocation's retired observation worktree leaves the hot state with it: remove it now, after
-        the commit (nothing else will see it again)."""
+        """Remove a retired observation worktree of an archived invocation, after the commit. A failure leaves it
+        listed in ``retired_observations``; the next commit retries it."""
         if Path(path).exists():
             worktrees.remove(self.k.repo_root, path)
 
@@ -338,6 +353,10 @@ class Archive:
         subject = dict(unit, id=work_id)
         self._leave(ctx.state, unit.get("parent"), subject)
         self._join(ctx.state, new_parent, subject, subtree=True)
+        # The bounded ``recent`` projection is hot state that views read: it follows the move (the bundle and its
+        # manifest entry never change; the annotation records the move).
+        ctx.state["recent"] = [dict(r, parent=new_parent) if r["id"] == work_id else r
+                               for r in ctx.state.get("recent", [])]
         return self.annotate(ctx, work_id, "moved_to", new_parent, decision=decision, note=note)
 
     def _advance_frontier(self, frontier: dict[str, str], commit: str, via: str) -> dict[str, str]:
@@ -457,15 +476,23 @@ class Archive:
         return unit
 
     def rehydrate(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
-        """A copy of ``state`` with one archived unit, its invocations and credentials back in it: a read about that
-        unit (its gates, an invocation's pack, a run) then answers exactly as it did before archival (R7). None if the
-        unit was never archived."""
+        """A copy of ``state`` with one archived unit, its invocations and credentials back in it, and its archived
+        ancestors (a read walks the unit's ancestry; at most a Story and an Epic): a read about that unit (its gates,
+        an invocation's pack, a run) then answers exactly as it did before archival (R7). None if the unit was never
+        archived."""
         doc = self.bundle(state, work_id)
         if doc is None:
             return None
         unit = self.archived_unit(state, work_id)
-        return dict(state, work={**state["work"], work_id: unit},
-                    invocations={**state["invocations"], **doc.get("invocations", {})},
+        work = {**state["work"], work_id: unit}
+        parent = unit.get("parent")
+        while parent and parent not in work:  # a hot unit never has an archived ancestor, so this stops at hot work
+            ancestor = self.archived_unit(state, parent)
+            if ancestor is None:
+                raise IntegrityError(f"{work_id}'s ancestor {parent} is neither hot nor archived")
+            work[parent] = ancestor
+            parent = ancestor.get("parent")
+        return dict(state, work=work, invocations={**state["invocations"], **doc.get("invocations", {})},
                     tokens={**state["tokens"], **doc.get("tokens", {})})
 
     def rehydrate_invocation(self, state: dict[str, Any], inv_id: str) -> dict[str, Any] | None:
@@ -474,9 +501,13 @@ class Archive:
         return self.rehydrate(state, doc["id"]) if doc else None
 
     def archived_units(self, state: dict[str, Any], finished: str) -> list[dict[str, Any]]:
-        """The manifest entries of every archived unit in ``finished`` (DONE or CANCELLED): an explicit history
-        query."""
-        return self._index(state).units(finished) if is_v2(state) else []
+        """The manifest entries of every archived unit in ``finished`` (DONE or CANCELLED), each with its current
+        parent (later moves applied): an explicit history query."""
+        if not is_v2(state):
+            return []
+        index = self._index(state)
+        moves = index.moves()
+        return [dict(e, parent=moves[e["id"]]) if e["id"] in moves else e for e in index.units(finished)]
 
     def archived_child_ids(self, state: dict[str, Any], parent: str) -> list[str]:
         """The ids of the archived units whose current parent is ``parent``, from the index alone (no bundle is read):

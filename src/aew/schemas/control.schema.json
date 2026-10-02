@@ -393,6 +393,19 @@
           "status": {"type": "string"}
         }
       }
+    },
+    "retired_observations": {
+      "description": "Observation worktrees of archived invocations still on disk: listed until each is removed, and retried at every Lead commit (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invocation", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "invocation": {"type": "string"},
+          "path": {"type": "string"}
+        }
+      }
     }
   },
   "allOf": [
@@ -404,7 +417,8 @@
             {"required": ["cold"]},
             {"required": ["recent"]},
             {"required": ["archived_refs"]},
-            {"required": ["retained_workspaces"]}
+            {"required": ["retained_workspaces"]},
+            {"required": ["retired_observations"]}
           ]
         }
       }

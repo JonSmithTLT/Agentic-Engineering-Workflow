@@ -28,6 +28,7 @@ from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set, readiness_blockers
 from aew.engine.seams import GATE_CONTEXT, INGEST, INVOKE, NON_MUTATING, GuardRegistration, KindRegistration
 from aew.errors import (
+    AEWError,
     ConcurrencyLimit,
     DependencyUnsatisfied,
     GateUnsatisfied,
@@ -223,6 +224,13 @@ class NonMutating:
             if obs and (inv["status"] != "active" or obs.get("status") != "active") and Path(obs["path"]).exists():
                 worktrees.remove(self.k.repo_root, obs["path"])
                 removed.append(obs["path"])
+        for obs in state.get("retired_observations", []):  # of archived invocations: retried until gone
+            if Path(obs["path"]).exists():
+                try:
+                    worktrees.remove(self.k.repo_root, obs["path"])
+                    removed.append(obs["path"])
+                except (AEWError, OSError):
+                    pass  # still listed, and reported by status, until a later attempt succeeds
         return removed
 
     def dispatch_observer(self, ctx: TxnContext, work_id: str, *, card: Any, scope: str, commit: str,

@@ -191,15 +191,48 @@ def test_a_lost_damaged_or_foreign_index_is_rebuilt(store, loss):
     assert [e["id"] for e in index.list()] == ["T-0004", "T-0003", "T-0002", "T-0001"]
 
 
-def test_an_index_already_ahead_of_the_root_is_used_up_to_that_root(store):
-    archive(store, 3)
-    earlier = read_root(store.root)
-    archive(store, 2)
-    HistoryIndex(store.root).sync(read_root(store.root))  # another process indexed the later root
+def append_entries(store, items: list[dict]) -> dict:
+    """Append ``items`` (entry fields without ``sha256``), each with a small record; the new root."""
+    history = History(store.root)
+    with store.session() as s:
+        items = [{**f, "sha256": history.write_record(s, f["path"], f"schema: test\nid: {f['id']}\n")} for f in items]
+        root = history.append(s, read_root(store.root), items)
+        s.write(ROOT_REL, dump_yaml(root), immutable=False)
+        s.commit(Transition(op="x", actor={"kind": "test"}))
+    return root
+
+
+def unit_entry(k: int, parent: str | None = None, depends_on: tuple[str, ...] = ()) -> dict:
+    return {"kind": "unit", "id": f"T-{k:04d}", "path": bundle_rel(f"T-{k:04d}"), "at": "2026-10-02T00:00:00Z",
+            "state": "DONE", "parent": parent, "source": "engine",
+            "links": {"depends_on": list(depends_on)} if depends_on else {}}
+
+
+def test_every_query_of_an_index_ahead_of_the_root_stops_at_that_root(store):
+    earlier = append_entries(store, [unit_entry(1, parent="S-0001")])
+    later = append_entries(store, [
+        unit_entry(2, parent="S-0001", depends_on=("T-0001",)),
+        {"kind": "annotation", "id": "AN-0001", "path": annotation_rel("T-0001", 1), "at": "2026-10-02T01:00:00Z",
+         "subject": "T-0001", "rel": "moved_to", "source": "engine", "links": {"moved_to": ["S-0009"]}}])
+    HistoryIndex(store.root).sync(later)  # another process indexed the later root
     index = HistoryIndex(store.root)
     assert index.sync(earlier) == {"mode": "ahead", "added": 0}
-    assert [e["id"] for e in index.list()] == ["T-0003", "T-0002", "T-0001"]
-    assert index.by_id("T-0005") == []
+    assert [e["id"] for e in index.list(limit=1)] == ["T-0001"]  # the bound applies before the limit
+    assert [e["id"] for e in index.list()] == ["T-0001"]
+    assert index.by_id("T-0002") == []
+    assert [e["id"] for e in index.units("DONE")] == ["T-0001"]
+    assert [e["id"] for e in index.children("S-0001")] == ["T-0001"]
+    assert index.linked("depends_on", "T-0001") == []
+    assert index.annotations("T-0001") == [] and index.moves() == {}
+    assert index.links("T-0001") == []
+    assert index.paths() == {bundle_rel("T-0001")}
+    assert index.sync(later) == {"mode": "current", "added": 0}  # synced forward, the same index sees it all
+    assert [e["id"] for e in index.list(limit=1)] == ["AN-0001"]
+    assert [e["id"] for e in index.children("S-0001")] == ["T-0001", "T-0002"]
+    assert [e["id"] for e in index.linked("depends_on", "T-0001")] == ["T-0002"]
+    assert index.moves() == {"T-0001": "S-0009"}
+    assert index.links("T-0001") == [{"from": "T-0002", "rel": "depends_on", "to": "T-0001"}]
+    assert len(index.paths()) == 3
 
 
 def test_annotations_are_entries_about_a_subject(store):

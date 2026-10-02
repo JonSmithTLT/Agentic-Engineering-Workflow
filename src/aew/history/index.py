@@ -137,24 +137,28 @@ class HistoryIndex:
 
     # ------------------------------------------------------------------ queries (call ``sync`` first)
 
+    def _upto(self) -> int:
+        """The last sequence number queries may see: the root last synced to (another process may have indexed more)."""
+        return self.upto if self.upto is not None else 2 ** 62
+
     def _rows(self, sql: str, args: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        """``sql`` selects entry bodies and binds the snapshot bound (``_upto``) itself, before any ordering or limit."""
         with self._db() as conn:
-            rows = [json.loads(body) for (body,) in conn.execute(sql, args).fetchall()]
-        return [r for r in rows if self.upto is None or r["seq"] <= self.upto]
+            return [json.loads(body) for (body,) in conn.execute(sql, args).fetchall()]
 
     def by_id(self, record_id: str) -> list[dict[str, Any]]:
         """Every entry for ``record_id`` (a unit has one; an audit or Lead record id likewise), in history order."""
-        return self._rows("SELECT body FROM entries WHERE id = ? ORDER BY seq", (record_id,))
+        return self._rows("SELECT body FROM entries WHERE id = ? AND seq <= ? ORDER BY seq", (record_id, self._upto()))
 
     def list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
              limit: int | None = None) -> list[dict[str, Any]]:
         """Entries by kind and a date range (``at`` compares as ISO-8601 text), newest first."""
-        where, args = [], []
+        where, args = ["seq <= ?"], [self._upto()]
         for clause, value in (("kind = ?", kind), ("at >= ?", since), ("at <= ?", until)):
             if value is not None:
                 where.append(clause)
                 args.append(value)
-        sql = "SELECT body FROM entries" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY seq DESC"
+        sql = f"SELECT body FROM entries WHERE {' AND '.join(where)} ORDER BY seq DESC"
         if limit is not None:
             sql += " LIMIT ?"
             args.append(limit)
@@ -162,29 +166,40 @@ class HistoryIndex:
 
     def units(self, state: str) -> list[dict[str, Any]]:
         """Archived unit entries in a finished state (DONE or CANCELLED), in history order."""
-        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND state = ? ORDER BY seq", (state,))
+        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND state = ? AND seq <= ? ORDER BY seq",
+                          (state, self._upto()))
 
     def children(self, parent: str) -> list[dict[str, Any]]:
         """Unit entries archived with ``parent`` as their parent (a move later is an annotation: apply those)."""
-        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND parent = ? ORDER BY seq", (parent,))
+        return self._rows("SELECT body FROM entries WHERE kind = 'unit' AND parent = ? AND seq <= ? ORDER BY seq",
+                          (parent, self._upto()))
 
     def linked(self, rel: str, target: str) -> list[dict[str, Any]]:
         """Entries that record a ``rel`` link to ``target`` (the unit that archived an invocation or a credential)."""
         return self._rows("SELECT e.body FROM entries e JOIN links l ON l.seq = e.seq WHERE l.rel = ? AND l.dst = ? "
-                          "ORDER BY e.seq", (rel, target))
+                          "AND e.seq <= ? ORDER BY e.seq", (rel, target, self._upto()))
 
     def annotations(self, subject: str) -> list[dict[str, Any]]:
-        return self._rows("SELECT body FROM entries WHERE kind = 'annotation' AND subject = ? ORDER BY seq",
-                          (subject,))
+        return self._rows("SELECT body FROM entries WHERE kind = 'annotation' AND subject = ? AND seq <= ? "
+                          "ORDER BY seq", (subject, self._upto()))
+
+    def moves(self) -> dict[str, str | None]:
+        """Each archived unit moved since it was archived, and its current parent: the target of its last ``moved_to``
+        annotation (None: moved to the top level)."""
+        out: dict[str, str | None] = {}
+        for a in self._rows("SELECT body FROM entries WHERE kind = 'annotation' AND rel = 'moved_to' AND seq <= ? "
+                            "ORDER BY seq", (self._upto(),)):
+            out[a["subject"]] = ((a.get("links") or {}).get("moved_to") or [None])[0]
+        return out
 
     def links(self, record_id: str) -> list[dict[str, str]]:
         """The links recorded from ``record_id``'s entries, and to it from others."""
         with self._db() as conn:
             out = [{"from": s, "rel": r, "to": d} for s, r, d in conn.execute(
-                "SELECT src, rel, dst FROM links WHERE src = ? OR dst = ? ORDER BY seq, rel, dst",
-                (record_id, record_id)).fetchall()]
+                "SELECT src, rel, dst FROM links WHERE (src = ? OR dst = ?) AND seq <= ? ORDER BY seq, rel, dst",
+                (record_id, record_id, self._upto())).fetchall()]
         return out
 
     def paths(self) -> set[str]:
         with self._db() as conn:
-            return {p for (p,) in conn.execute("SELECT path FROM entries").fetchall()}
+            return {p for (p,) in conn.execute("SELECT path FROM entries WHERE seq <= ?", (self._upto(),)).fetchall()}

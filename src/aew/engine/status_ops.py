@@ -43,6 +43,10 @@ class StatusViews:
                 found.append(f"{r['work_id']}: workspace {r['id']} was retained after integration because it holds "
                              f"changes that are not in the integrated commit ({r['path']}); inspect them, then carry "
                              "them into a new Ticket or discard them")
+        for o in state.get("retired_observations", []):  # of archived invocations: listed until removed
+            if Path(o["path"]).exists():
+                found.append(f"{o['invocation']}: retired observation worktree still on disk at {o['path']} (its "
+                             "removal is retried at every Lead commit)")
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv["status"] == "active" and state["lead"]["status"] == "vacant":
                 found.append(f"{inv_id}: active invocation but no Lead holds authority")

@@ -9,6 +9,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 HELPERS = Path(__file__).resolve().parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
@@ -25,7 +27,7 @@ from aewflow import (  # noqa: E402
     submit_record,
     to_commit_ready,
 )
-from conftest import run_aew  # noqa: E402
+from conftest import git, run_aew  # noqa: E402
 from invariants import assert_control_invariants, load_control  # noqa: E402
 
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
@@ -191,3 +193,85 @@ def test_a_crash_while_archiving_rolls_forward_to_the_archived_state(tmp_path):
     assert res.returncode == CRASH_EXIT_CODE
     assert show(p, wid)["state"] == "DONE" and wid not in hot(p)["work"]  # recovery applied the whole transition
     assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("closed", ["story", "epic"])
+def test_reads_of_archived_work_restore_its_archived_ancestors(tmp_path, closed):
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    plan_unit(p, tmp_path, epic)
+    story = create_unit(p, "story", "Objective", parent=epic)
+    plan_unit(p, tmp_path, story)
+    wid = create_investigation(p, tmp_path, parent=story)
+    role, out = dispatch(p, wid)
+    rec = submit_record(role, "discovery_record")["evidence"]
+    p.lead("evidence", "ingest", wid, "--evidence", rec)
+    p.lead("work", "accept", wid)
+    gates = p.ok("gate", "show", wid)["gates"]
+    close_parent(p, story)
+    if closed == "epic":
+        close_parent(p, epic)
+    state = hot(p)
+    assert story not in state["work"] and (epic in state["work"]) == (closed == "story")
+    # Each read restores the unit's archived ancestry (bounded by depth), never the whole history (R7).
+    assert p.ok("context", "pack", out["invocation"])["matches_recorded"] is True
+    assert p.ok("gate", "show", wid)["gates"] == gates
+    assert p.ok("gate", "show", story)  # the archived Story's own gates read its archived Epic too
+    assert p.ok("status", wid, "--json")["work_unit"]["parent"] == story
+    assert_control_invariants(p)
+
+
+def worktree_paths(p) -> set[str]:
+    listed = git("worktree", "list", "--porcelain", cwd=p.root)
+    return {Path(line[len("worktree "):]).resolve().as_posix() for line in listed.splitlines()
+            if line.startswith("worktree ")}
+
+
+def test_a_crash_while_archiving_keeps_the_observation_cleanup_until_it_is_done(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    _, out = dispatch(p, wid)
+    obs = Path(out["observation"]["path"])
+    assert obs.exists() and obs.resolve().as_posix() in worktree_paths(p)
+    res = run_aew("-C", str(p.root), "work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed",
+                  "--token", p.token, "--expect-rev", str(p.rev()), env={"AEW_FAULT": "history.after_bundle"})
+    assert res.returncode == CRASH_EXIT_CODE
+    assert show(p, wid)["state"] == "CANCELLED"  # recovery applies the cancellation and its archival...
+    state = hot(p)
+    assert out["invocation"] not in state["invocations"]
+    # ...but not the removal that was to follow the commit: that obligation is in the committed state.
+    assert state["retired_observations"] == [{"invocation": out["invocation"], "path": out["observation"]["path"]}]
+    assert obs.exists()
+    assert any(out["invocation"] in c and "retired observation" in c
+               for c in p.ok("status", "--json")["contradictions"])
+    p.lead("checkpoint")  # any Lead commit retries it
+    assert not obs.exists() and obs.resolve().as_posix() not in worktree_paths(p)
+    p.lead("checkpoint")  # and the next one drops it from the list
+    assert hot(p)["retired_observations"] == [] and p.ok("status", "--json")["contradictions"] == []
+    assert_control_invariants(p)
+
+
+def test_views_follow_moves_of_archived_work(tmp_path):
+    p = sample_project(tmp_path)
+    done = create_investigation(p, tmp_path, title="Finished elsewhere")
+    complete_investigation(p, done)
+    stories = []
+    for title in ("First objective", "Second objective"):
+        story = create_unit(p, "story", title)
+        plan_unit(p, tmp_path, story)
+        create_investigation(p, tmp_path, parent=story, title=f"{title} survey")  # keeps the Story open
+        stories.append(story)
+
+    def views() -> tuple[str | None, str | None, bool]:
+        listed = {i["id"]: i["parent"] for i in p.ok("work", "list", "--state", "DONE")["items"]}
+        recent = {r["id"]: r["parent"] for r in p.ok("resume", "--json")["finished"]["recent"]}
+        roots = {n["id"] for n in p.ok("work", "tree")["tree"]}
+        return listed[done], recent[done], done in roots
+
+    assert views() == (None, None, True)
+    for target in (*stories, "none", stories[1]):  # into a parent, to another, back to the top level, and again
+        p.lead("work", "move", done, "--parent", target, "--reason", "regrouped")
+        parent = None if target == "none" else target
+        assert show(p, done)["parent"] == parent
+        assert views() == (parent, parent, parent is None)  # the list, resume and the default tree agree
+        assert_control_invariants(p)

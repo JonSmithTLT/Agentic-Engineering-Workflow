@@ -322,7 +322,8 @@ Each PR keeps the M1–M3 tests passing.
   - `cold`: `root`, plus `archived` counts by state;
   - `recent`: the last 20 archived units;
   - `archived_refs`;
-  - `retained_workspaces`.
+  - `retained_workspaces`;
+  - `retired_observations` (added by the review fixes below).
 
   A v1 project keeps working unchanged, without archival. The refusal of v1 mutations arrives in P2d together with `aew migrate`, so that no project is refused before the command that clears the refusal exists.
 - **Archival (R6).** The `Archive` collaborator is the `TxnFinalizer`. At the commit that finishes a unit, it archives every DONE or CANCELLED unit, deepest first, with its invocations and credentials.
@@ -348,6 +349,14 @@ Each PR keeps the M1–M3 tests passing.
   - The walks' `unit()` helpers and one intent-ingress assertion read archived units through the engine.
   - The oracle-vacuity test corrupts the full state.
   - The perf template builds the M3 (v1) layout. P2d's `migrate` turns it into v2 for the P3 series.
+- **Independent review fixes** (2026-10-02, in PR #18).
+  - **A read of archived work restores its archived ancestors.** Rehydration brings back the unit's archived Story and Epic as well, bounded by depth, never the whole history. Before this, `context pack` and `gate show` for a Ticket whose Story had closed failed on the missing ancestor.
+  - **Removing an archived invocation's observation worktree is a persisted obligation.**
+    - `retired_observations` (v2) lists each such worktree until its directory is gone.
+    - Every Lead commit retries the removal, and so does the non-mutating operations' pruning. `status` reports any that are left as contradictions.
+    - Before this, a crash between the commit and the removal, or a failed removal, lost the worktree for good.
+  - **Views follow moves of archived work.** A move updates the unit's `recent` entry, which is hot state, and `work list --state DONE|CANCELLED` applies `moved_to` annotations from the index (`HistoryIndex.moves`). Bundles and their manifest entries are never rewritten.
+  - **An index that is ahead stops at the synced root in SQL.** Every query, `links` and `paths` included, binds `seq <= upto` before ordering and limits. Before this, a limited listing could return nothing, and links and paths leaked later entries.
 
 **P2c: the history surface and the R2 audit.**
 - The commands in §3, and audit status in `status` (§4).

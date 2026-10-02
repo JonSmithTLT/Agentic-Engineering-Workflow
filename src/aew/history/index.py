@@ -2,7 +2,9 @@
 
 It is never authoritative. It records the root it was built against; ``sync`` brings it to a newer root by walking
 only the entries appended since (when the newer root extends the recorded one), and rebuilds it from the manifest
-otherwise, or when the database is missing or damaged. Both walks check the hash chain (``History.walk``), so the
+otherwise, or when the database is missing, damaged or records no usable root. A database that is only busy (another
+process holds its write lock past the timeout) is never mistaken for damage: that is a ``LockTimeout``, and the file
+is kept. Both walks check the hash chain (``History.walk``), so the
 index only ever holds entries whose membership in the history the current root pins has been established.
 
 It serves the history surface: an exact lookup by id, a listing by kind and date range, the links an entry records
@@ -12,17 +14,21 @@ and the annotations about a subject, and the set of referenced paths (for unreac
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from aew.errors import LockTimeout
 from aew.history import manifest as M
 from aew.history.store import History
 
 INDEX_REL = "local/history.sqlite"
 INDEX_VERSION = "1"
+_COUNT = re.compile(r"[0-9]+")
+_HASH = re.compile(r"[0-9a-f]{64}")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -43,14 +49,15 @@ CREATE INDEX IF NOT EXISTS links_dst ON links (dst);
 class HistoryIndex:
     """The lookup index of the history under ``aew_root``."""
 
-    def __init__(self, aew_root: Path) -> None:
+    def __init__(self, aew_root: Path, *, timeout: float = 30.0) -> None:
         self.history = History(aew_root)
         self.path = aew_root / INDEX_REL
+        self.timeout = timeout  # how long to wait for another writer before reporting the index busy
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        conn = sqlite3.connect(self.path, timeout=self.timeout, isolation_level=None)
         try:
             conn.executescript(_SCHEMA)
             yield conn
@@ -63,8 +70,10 @@ class HistoryIndex:
         """Bring the index to ``root``: ``{"mode": "current" | "caught_up" | "rebuilt", "added": n}``."""
         try:
             return self._sync(root)
-        except sqlite3.DatabaseError:  # damaged or not a database: derived data, so start over
-            self.path.unlink(missing_ok=True)
+        except sqlite3.DatabaseError as exc:
+            if _contended(exc):  # healthy but busy: keep it, and say so
+                raise LockTimeout(f"the history index {INDEX_REL} is busy: {exc}") from exc
+            self.path.unlink(missing_ok=True)  # damaged or not a database: derived data, so start over
             return self._sync(root)
 
     def _sync(self, root: dict[str, Any]) -> dict[str, Any]:
@@ -96,10 +105,13 @@ class HistoryIndex:
 
     @staticmethod
     def _built(conn: sqlite3.Connection) -> dict[str, Any] | None:
+        """The chain state the index was built to, or None (rebuild) when its metadata is missing or malformed."""
         meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
-        if meta.get("version") != INDEX_VERSION or "count" not in meta:
+        count, h = meta.get("count"), meta.get("h")
+        if (meta.get("version") != INDEX_VERSION or not isinstance(count, str) or not _COUNT.fullmatch(count)
+                or not isinstance(h, str) or not _HASH.fullmatch(h)):
             return None
-        return {"count": int(meta["count"]), "h": meta["h"]}
+        return {"count": int(count), "h": h}
 
     def _on_chain(self, root: dict[str, Any], built: dict[str, Any]) -> bool:
         if built["count"] == 0:
@@ -158,3 +170,9 @@ class HistoryIndex:
     def paths(self) -> set[str]:
         with self._db() as conn:
             return {p for (p,) in conn.execute("SELECT path FROM entries").fetchall()}
+
+
+def _contended(exc: sqlite3.DatabaseError) -> bool:
+    """Whether ``exc`` is SQLite's busy or locked condition rather than damage."""
+    name = getattr(exc, "sqlite_errorname", "") or ""
+    return name.startswith(("SQLITE_BUSY", "SQLITE_LOCKED"))

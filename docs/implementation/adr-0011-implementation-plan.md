@@ -307,6 +307,15 @@ Each PR keeps the M1–M3 tests passing.
 - **Measured** (`eval/adr-0011/perf/README.md` §3–§4):
   - the hierarchy-history baseline at `0eb8ecf`;
   - the first cold-write series. Appends, incremental verification, index catch-up and lookup are flat from 1.5k to 30.7k records.
+- **Independent review fixes** (2026-10-02, in PR #17).
+  - **The tail proves where it starts.** It must start at the newest sealed segment's end, or at the genesis for the first tail. Before this, a tail that dropped its committed prefix but still ended at the root was accepted, and the next append committed over it. Once the count is fixed, ending at the root pins the starting hash too.
+  - **A sealed lookup proves the segment it reads against the root.**
+    - The segment must start at its position, and its entries must continue the chain.
+    - Its file hash must be linked to the root through every later sealed segment: each one's `prev` holds the hash of the one before, and the newest one's hash is the root's `sealed_head`.
+    - The later segments are only hashed, and only their headers are parsed, at a fraction of a millisecond each. Any change to any of those files, including a coordinated rewrite of several, is therefore a contradiction when it is accessed. The operator chose this over checking only the next segment (2026-10-02). It is cheaper, because it parses one whole segment instead of two, and it is complete.
+  - **Verification reports what it reads, never raises.** Bytes that are not UTF-8, and files that cannot be read, are reported as problems.
+  - **The index tells busy from damaged.** A lock held past the timeout is a `LockTimeout`, and the file is kept. Metadata that is missing or malformed means a rebuild.
+  - **`coldwrite` times only the three measured archivals.** Before this, the timed index catch-up also took in the setup records. The series was rerun (README §4).
 
 **P2b: archival through the `TxnFinalizer`** (R3–R7).
 - **Bundle contents:** the unit, its ended invocations and their revoked tokens. Lead tokens are archived per generation at takeover, handoff accept and release.

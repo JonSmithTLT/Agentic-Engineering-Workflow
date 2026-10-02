@@ -1,6 +1,6 @@
 # Research: integration queues for M4 (mutating concurrency above 1)
 
-- **Status:** research input for M4's plan, not governing. §7 records the designer's disposition (2026-10-01), which M4's plan adopts; §1 to §6 are unchanged.
+- **Status:** research input for M4's plan, not governing. §7 records the designer's disposition and §7.1 its follow-up dispositions (2026-10-01), which M4's plan adopts; §1 to §6 are unchanged.
 - **Date:** 2026-10-01.
 - **Feeds:** `future-work.md` F10 (integration queue and merge revalidation, M4), F3 (workspace strategy), E1 (`harness wait` on any of several runs) and D4 (deterministic integration checks). Also WC §8.1, §13 and §11.5's rule that "merge/conflict resolution and the integrated revision are new evidence-producing events; project policy determines which … checks, review findings, and verification steps must be rerun."
 - **Builds on:** ADR-0004 (validate a merged candidate M = H + Ticket, then publish by `update-ref <branch> M H`; a moved ref makes the candidate stale, so rebuild and revalidate).
@@ -108,7 +108,7 @@ How it answers §6:
 
 1. **Option A**, as a single serial integration lease over parallel Ticket execution. Option B is not in M4.
 2. **Order:** runnable entries are FIFO by default. The work graph, not the queue, decides dependency legality. The Lead may explicitly reorder or defer an entry.
-3. **No batching** and no shared post-integration evidence in M4. This is M4's scope; it does not amend the contract.
+3. **No batching** and no shared post-integration evidence in M4. Out of scope for M4, not forbidden by the contract (§7.1).
 4. **D4 is in M4** as a policy-selectable deterministic integration-validation path. Existing verifier policy stays the default until evaluation supports cheaper routing.
 5. **A merge conflict** releases the lease and returns the Ticket to the Lead for disposition. AEW never resolves a conflict automatically and never sends it straight to an Implementer.
 
@@ -117,7 +117,21 @@ Two changes to Option A as written in §4:
 - **No head-of-line blocking.** An entry that cannot proceed (deferred, or awaiting disposition) does not hold up independent runnable entries; the lease goes to the next runnable one. This replaces "head-of-queue `prepare` that refuses out of order".
 - **Every integration attempt recomputes the dispatch predicate** (`DispatchDecision`, M4's first step) and binds to the current authoritative head. Queue position never carries a stale ALLOW.
 
-The details belong to M4's ambiguity report: the lease's record and its owner, release on a crashed or lost holder, a third-party move of the ref while the lease is held, the queue states for deferred and awaiting-disposition entries, and which Ticket-scope evidence a new attempt after a conflict reruns (WC §11.5).
+### 7.1 Follow-up dispositions (designer, 2026-10-01)
+
+The implementer asked about five details the disposition left open. Recorded as given:
+
+> **Lease:** owned durably by the integration attempt/candidate, with an active invocation as custodian. A dead custodian is reconciled before transfer/release. No timeout alone releases a load-bearing lease. Publishing ambiguity always goes through ADR-0004 reconcile.
+>
+> **Head movement:** one automatic rebuild + revalidation on the new authoritative H is allowed while retaining the lease, only after proving no publication occurred and recomputing current dispatch legality. A second movement, conflict, failed validation, or changed legality returns to Lead disposition.
+>
+> **Queue states:** DEFERRED and AWAITING_DISPOSITION are queue/scheduling states. The Ticket may remain COMMIT_READY. Queue state never grants workflow eligibility.
+>
+> **Conflict evidence:** actual conflict resolution creates a new implementation attempt / fingerprint. Snapshot-bound checks, review and verification do not carry forward automatically; rerun the effective gates for the Ticket's class/policy. Plan/assurance is recomputed from its bindings. Every new integration candidate receives new integration validation. A simple authoritative-head move does not by itself invalidate unchanged Ticket-scope evidence.
+>
+> **Batching:** out of scope for M4, not forbidden by contract.
+
+M4's ambiguity report turns these into records, transitions and tests.
 
 ## Sources
 

@@ -352,7 +352,9 @@
           "additionalProperties": {"type": "integer", "minimum": 0}
         },
         "verified": {"$ref": "#/$defs/verified_root"},
-        "last_full": {"$ref": "#/$defs/verified_root"}
+        "last_full": {"$ref": "#/$defs/verified_root"},
+        "first_at": {"description": "When the first history entry was recorded: how old a never fully verified history is (invariant 11), kept here so that status never reads the history.", "type": "string"},
+        "unverified_since": {"description": "The time of the oldest entry the verified root does not cover; absent when it covers everything (invariant 11).", "type": "string"}
       }
     },
     "recent": {
@@ -497,7 +499,8 @@
             "required": ["id", "kind", "entry_seq", "sha256", "source", "reason", "loaded_at", "generation"],
             "properties": {
               "id": {"type": "string"},
-              "kind": {"enum": ["unit", "annotation", "audit", "lead"]},
+              "kind": {"enum": ["unit", "annotation", "audit", "lead", "evidence"]},
+              "held_by": {"description": "For an evidence record: the archived unit whose bundle holds it (entry_seq is that unit's entry, sha256 the evidence record's own hash).", "type": "string"},
               "entry_seq": {"type": "integer", "minimum": 1},
               "sha256": {"$ref": "#/$defs/sha256"},
               "source": {"enum": ["engine", "operator", "model", "external"]},

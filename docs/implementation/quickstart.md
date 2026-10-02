@@ -147,6 +147,7 @@ aew history show T-0042                                     # the record, its an
 aew history show INV-0101                                   # an invocation, credential or evidence of finished work
 aew history links T-0042 --depth 2                          # recorded provenance, in both directions
 aew history load T-0042 --into T-0107 --reason "..." --expect-rev N   # reference context for T-0107's next packs
+aew history load INV-0101-discovery-1 --into T-0107 --reason "..." --expect-rev N   # or an exact evidence record
 aew history audit                                           # advisory verification; add --expect-rev N to record it
 ```
 

@@ -23,14 +23,17 @@ import copy
 import time
 from typing import TYPE_CHECKING, Any
 
+import sqlite3
+
 from aew.engine import faults
+from aew.engine.archive_ops import evidence_source, held_evidence, pinned_records, redact
 from aew.engine.authority import require_lead
 from aew.errors import AEWError, IntegrityError, LockTimeout, NotFound, StaleRevision, UsageError
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History
 from aew.knowledge.records import format_id
-from aew.util import dump_yaml, parse_frontmatter, sha256_file, sha256_text, utc_now
+from aew.util import dump_yaml, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
@@ -50,13 +53,13 @@ def _epoch(stamp: str) -> int:
     return calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ"))
 
 
-def _redact(value: Any) -> Any:
-    """A record for display: credential verifiers are hashes of secrets and never printed."""
-    if isinstance(value, dict):
-        return {k: "<redacted>" if k == "verifier" else _redact(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_redact(v) for v in value]
-    return value
+def _public(entry: dict[str, Any]) -> dict[str, Any]:
+    """A manifest entry as the history surface shows it: by stable id and hash, never by where it is stored (its path,
+    and the completion relation, whose values are storage paths)."""
+    out = {k: v for k, v in entry.items() if k != "path"}
+    if "links" in out:
+        out["links"] = {rel: v for rel, v in out["links"].items() if rel != "completion"}
+    return out
 
 
 class _RootMoved(Exception):
@@ -102,16 +105,7 @@ class HistoryCommands:
 
     def _evidence(self, bundle: dict[str, Any], evidence_id: str) -> dict[str, Any]:
         """An archived unit's evidence record, verified against the hash its unit recorded at ingest."""
-        ref = next((r for r in bundle["unit"].get("evidence", []) if r["id"] == evidence_id), None)
-        if ref is None:
-            raise IntegrityError(f"{bundle['id']}'s bundle does not record evidence {evidence_id}")
-        path = self.k.aew_root / ref["path"]
-        found = sha256_file(path)
-        if found is None or found != ref.get("sha256", found):
-            raise IntegrityError(f"evidence record {ref['path']} is "
-                                 + ("missing" if found is None else "not the content its unit recorded"),
-                                 path=ref["path"])
-        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"), source=ref["path"])
+        _, meta, body = held_evidence(self.k.aew_root, bundle, evidence_id)
         return {"meta": meta, "body": body}
 
     def history_show(self, record_id: str) -> dict[str, Any]:
@@ -122,16 +116,17 @@ class HistoryCommands:
         doc = self.archive.record(entry)
         if held_as is None:
             out: dict[str, Any] = {"id": record_id, "kind": entry["kind"], "trust": self._trust(entry["source"]),
-                                   "entry": entry, "record": _redact(doc)}
+                                   "entry": _public(entry), "record": redact(doc)}
             if entry["kind"] == "unit":
                 unit = self.archive.archived_unit(state, record_id) or {}
                 out["current_parent"] = unit.get("parent")
             index = self.archive.index(state)
-            out["annotations"] = [{"entry": a, "record": self.archive.record(a)} for a in index.annotations(record_id)]
+            out["annotations"] = [{"entry": _public(a), "record": self.archive.record(a)}
+                                  for a in index.annotations(record_id)]
             return out
         if held_as == "evidence":
             record = self._evidence(doc, record_id)
-            source = "engine" if record["meta"].get("kind") == "check_result" else "model"
+            source = evidence_source(record["meta"])
         else:
             record = doc.get(held_as, {}).get(record_id)
             if record is None:
@@ -139,7 +134,7 @@ class HistoryCommands:
             source = "engine"
         return {"id": record_id, "kind": {"invocations": "invocation", "tokens": "credential",
                                           "evidence": "evidence"}[held_as],
-                "held_by": entry["id"], "trust": self._trust(source), "record": _redact(record)}
+                "held_by": entry["id"], "trust": self._trust(source), "record": redact(record)}
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT) -> dict[str, Any]:
@@ -180,6 +175,8 @@ class HistoryCommands:
             following = []
             for node in frontier:
                 for link in index.links(node):
+                    if link.get("rel") == "completion":  # a storage path, not a record id
+                        continue
                     if len(edges) >= LINKS_MAX_EDGES:
                         truncated = True
                         break
@@ -199,9 +196,13 @@ class HistoryCommands:
         state = self.k.store.read()
         self._require_v2(state)
         index = HistoryIndex(self.k.aew_root)
-        index.path.unlink(missing_ok=True)
-        out = index.sync(state["cold"]["root"])
-        return {"ok": True, "mode": out["mode"], "entries": out["added"], "path": str(index.path)}
+        try:
+            index.path.unlink(missing_ok=True)
+            out = index.sync(state["cold"]["root"])
+        except (OSError, sqlite3.Error) as exc:  # another process has the index open (Windows refuses the unlink)
+            raise LockTimeout("the history index is in use by another AEW process; run `aew history reindex` again "
+                              f"once it is free ({exc})") from None
+        return {"ok": True, "mode": out["mode"], "entries": out["added"]}
 
     # ------------------------------------------------------------------ loading as reference (invariant 14)
 
@@ -214,20 +215,24 @@ class HistoryCommands:
             state = ctx.state
             self._require_v2(state)
             unit = self.units.unit(state, into)  # hot only: finished work does not change
-            entries = self.archive.index(state).by_id(record_id)
-            if not entries:
-                raise NotFound(f"{record_id} is not a historical record; one can be loaded by its own id (an "
-                               "archived unit, an annotation, an audit or a Lead record)")
-            entry = entries[-1]
-            self.archive.record(entry)  # verified now, and again whenever a pack reads it
+            entry, held_as = self._found(state, record_id)
+            doc = self.archive.record(entry)  # verified now, and again whenever a pack reads it
             refs = unit.setdefault("history_refs", [])
             if any(r["id"] == record_id for r in refs):
                 raise UsageError(f"{record_id} is already loaded into {into}")
-            ref = {"id": record_id, "kind": entry["kind"], "entry_seq": entry["seq"], "sha256": entry["sha256"],
-                   "source": entry["source"], "reason": reason, "loaded_at": utc_now(),
-                   "generation": state["lead"]["generation"]}
+            if held_as is None:
+                ref = {"id": record_id, "kind": entry["kind"], "entry_seq": entry["seq"], "sha256": entry["sha256"],
+                       "source": entry["source"]}
+            elif held_as == "evidence":  # an exact evidence record, pinned by the hash its unit recorded at ingest
+                ev_ref, meta, _ = held_evidence(self.k.aew_root, doc, record_id)
+                ref = {"id": record_id, "kind": "evidence", "entry_seq": entry["seq"], "held_by": entry["id"],
+                       "sha256": ev_ref["sha256"], "source": evidence_source(meta)}
+            else:
+                raise UsageError(f"{record_id} is an archived {'invocation' if held_as == 'invocations' else 'credential'}"
+                                 f"; load the unit that holds it ({entry['id']}) or one of its evidence records")
+            ref.update(reason=reason, loaded_at=utc_now(), generation=state["lead"]["generation"])
             refs.append(ref)
-            ctx.refs.append(f"history:{record_id}@{entry['sha256']}")
+            ctx.refs.append(f"history:{record_id}@{ref['sha256']}")
             ctx.summary = f"history:{record_id} loaded into {into} as reference context"
         return {"ok": True, "work_id": into, "loaded": ref, "revision": ctx.session.committed_revision}
 
@@ -259,7 +264,7 @@ class HistoryCommands:
         start = None if full else self._verified_point(state["cold"])
         target = dict(state["cold"]["root"])
         # 2. Verification outside the lock: sealed segments and records are immutable, and the tail is the copy.
-        report = self.cold.verify(target, start, tail_raw=tail)
+        report = self.cold.verify(target, start, tail_raw=tail, pinned=pinned_records)
         checked = {"entries": report.entries, "records": report.records}
         problems, damaged = list(report.problems), list(report.damaged)
         result = {"mode": "full" if full else "incremental", "from": start or {"count": 0, "h": M.GENESIS_H},
@@ -284,7 +289,7 @@ class HistoryCommands:
             except _RootMoved as moved:
                 moved_root, moved_tail = moved.args
                 more = self.cold.verify(moved_root, {"count": target["count"], "h": target["head_h"]},
-                                        tail_raw=moved_tail)
+                                        tail_raw=moved_tail, pinned=pinned_records)
                 checked = {"entries": checked["entries"] + more.entries,
                            "records": checked["records"] + more.records}
                 problems, damaged, target = list(more.problems), list(more.damaged), moved_root
@@ -322,7 +327,7 @@ class HistoryCommands:
             for d in damaged:  # a damaged archived unit gets a finding about it; its bundle is never rewritten
                 if d["kind"] == "unit":
                     self.archive.annotate(ctx, d["id"], "audit_finding", audit_id,
-                                          note=f"{audit_id}: its record is missing or changed")
+                                          note=f"{audit_id}: its record, or a record it pins, is missing or changed")
             ctx.summary = f"history audit {audit_id}: {len(problems)} problem(s); the verified root is unchanged"
             return audit_id
         entry = M.new_entry(target["count"] + 1, target["head_h"], fields)
@@ -362,10 +367,9 @@ class HistoryCommands:
         root, verified, last_full = cold["root"], cold.get("verified"), cold.get("last_full")
         backlog = self.audit_backlog(state) or 0
         now, policy, over = time.time(), self._policy(), []
-        oldest_at = None
-        if backlog:
-            index = self.archive.index(state)
-            first = index.by_seq(root["count"] - backlog + 1)
+        oldest_at = cold.get("unverified_since") if backlog else None
+        if backlog and oldest_at is None:  # a v2 state from before these dates were kept: once, from the index
+            first = self.archive.index(state).by_seq(root["count"] - backlog + 1)
             oldest_at = first["at"] if first else None
         age_h = round((now - _epoch(oldest_at)) / 3600, 1) if oldest_at else 0.0
         if backlog > policy["max_unverified_entries"]:
@@ -377,8 +381,11 @@ class HistoryCommands:
             # Never fully verified: due once the history itself is older than the threshold, not at its first entry.
             since_d = full_age_d
             if since_d is None:
-                first = self.archive.index(state).by_seq(1)
-                since_d = round((now - _epoch(first["at"])) / 86400, 1) if first else 0.0
+                first_at = cold.get("first_at")
+                if first_at is None:  # as above
+                    first = self.archive.index(state).by_seq(1)
+                    first_at = first["at"] if first else None
+                since_d = round((now - _epoch(first_at)) / 86400, 1) if first_at else 0.0
             if since_d > policy["max_full_age_days"]:
                 over.append(f"no full verification for {since_d} days (policy: {policy['max_full_age_days']} days)")
         return {"current": {"count": root["count"], "h": root["head_h"]}, "verified": verified,

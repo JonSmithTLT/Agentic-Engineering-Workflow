@@ -23,6 +23,8 @@ from aewflow import (  # noqa: E402
     create_investigation,
     create_unit,
     dispatch,
+    parent_review,
+    parent_verify,
     plan_unit,
     sample_project,
     submit_record,
@@ -292,8 +294,6 @@ def test_an_epic_closes_only_once_the_history_is_audited_through_the_current_roo
     plan_unit(p, tmp_path, story)
     complete_investigation(p, create_investigation(p, tmp_path, parent=story))
     close_parent(p, story)
-    from aewflow import parent_review, parent_verify
-
     p.lead("review", "ingest", epic, "--evidence", parent_review(p, epic))
     p.lead("verify", "ingest", epic, "--evidence", parent_verify(p, epic))
     actions = p.ok("status", "--json")["next_actions"]
@@ -330,6 +330,160 @@ def test_reindex_rebuilds_the_derived_index(tmp_path):
     p = sample_project(tmp_path)
     finished_ticket(p, tmp_path)
     out = p.ok("history", "reindex")
-    assert out["mode"] == "rebuilt" and out["entries"] == hot(p)["cold"]["root"]["count"]
-    os.remove(out["path"])  # losing it loses nothing
+    assert out["mode"] == "rebuilt" and out["entries"] == hot(p)["cold"]["root"]["count"] and "path" not in out
+    os.remove(p.root / ".aew/local/history.sqlite")  # losing it loses nothing
     assert p.ok("history", "list", "--kind", "unit")["items"]
+
+
+# ---------------------------------------------------------------------------------------------- independent review
+
+def evidence_file(p, wid: str, evidence_id: str) -> Path:
+    """Where an archived unit's evidence record is (a test reads the raw layout; the surface never shows it)."""
+    bundle = load_yaml((p.root / ".aew/work" / wid / "archive.yaml").read_text(encoding="utf-8"))
+    return p.root / ".aew" / next(e["path"] for e in bundle["unit"]["evidence"] if e["id"] == evidence_id)
+
+
+def test_an_audit_covers_the_records_each_unit_pins_and_holds_the_epic_open(tmp_path):
+    """Review P2c-1: verifying a unit's bundle is not enough; the evidence it pins by hash is reachable from the root
+    too. Damage to it fails the audit (incremental and full), records a finding, and keeps the Epic open."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    plan_unit(p, tmp_path, epic)
+    story = create_unit(p, "story", "Objective", parent=epic)
+    plan_unit(p, tmp_path, story)
+    wid, _, rec = finished_ticket(p, tmp_path, parent=story)
+    p.lead("review", "ingest", story, "--evidence", parent_review(p, story))
+    p.lead("verify", "ingest", story, "--evidence", parent_verify(p, story))
+    p.lead("work", "close", story, "--reason", "acceptance gates passed")
+    p.lead("review", "ingest", epic, "--evidence", parent_review(p, epic))
+    p.lead("verify", "ingest", epic, "--evidence", parent_verify(p, epic))
+    record = evidence_file(p, wid, rec)
+    original = record.read_bytes()
+    record.write_bytes(original + b"# changed\n")  # the bundle and its manifest entry are untouched
+    for mode in ((), ("--full",)):
+        assert p.aew("history", "audit", *mode).error["code"] == "INTEGRITY_ERROR", mode
+    res = p.aew("history", "audit", "--full", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "INTEGRITY_ERROR" and res.error["details"]["audit"]["recorded"] is True
+    assert any(rec in problem or wid in problem for problem in res.error["details"]["audit"]["problems"])
+    assert "verified" not in hot(p)["cold"]
+    assert ("audit_finding", wid) in [(a["rel"], a["subject"]) for a in hot_annotations(p, wid)]
+    refused = p.aew("work", "close", epic, "--reason", "done", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert refused.error["code"] == "GATE_UNSATISFIED"
+    record.write_bytes(original)
+    assert audit(p, "--full")["ok"] is True
+    p.lead("work", "close", epic, "--reason", "acceptance gates passed")
+    assert_control_invariants(p)
+
+
+def test_a_loaded_lead_record_keeps_its_verifiers_out_of_packs(tmp_path):
+    """Review P2c-2: a pack shows a loaded record redacted, as `history show` does."""
+    p = sample_project(tmp_path)
+    offer = p.lead("lead", "handoff", "offer")["offer"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+    raw = load_yaml((p.root / ".aew/history/lead/000001.yaml").read_text(encoding="utf-8"))
+    verifiers = [tok["verifier"] for tok in raw["tokens"].values()]
+    assert verifiers and all(verifiers)
+    wid = create_investigation(p, tmp_path, title="Follow-up")
+    p.lead("history", "load", "LEAD-0001", "--into", wid, "--reason", "who held the seat")
+    _, out = dispatch(p, wid)
+    inv = hot(p)["invocations"][out["invocation"]]
+    text = (p.root / ".aew" / inv["pack"]["path"]).read_text(encoding="utf-8")
+    assert "history:LEAD-0001" in text and "<redacted>" in text
+    assert not any(v in text for v in verifiers)
+    assert p.ok("context", "pack", out["invocation"])["matches_recorded"] is True
+    assert_control_invariants(p)
+
+
+def test_an_archived_evidence_record_is_loaded_exactly_with_its_own_trust(tmp_path):
+    """Review P2c-3: what `history show` finds by id can be loaded by id: an evidence record of finished work, pinned
+    by the hash its unit recorded at ingest, labelled with who wrote it."""
+    p = sample_project(tmp_path)
+    survey, inv, rec = finished_ticket(p, tmp_path, title="Earlier survey")
+    wid = create_investigation(p, tmp_path, title="Follow-up")
+    loaded = p.lead("history", "load", rec, "--into", wid, "--reason", "its findings")["loaded"]
+    assert (loaded["kind"], loaded["held_by"], loaded["source"]) == ("evidence", survey, "model")
+    assert loaded["sha256"] == hot_sha(evidence_file(p, survey, rec))
+    _, out = dispatch(p, wid)
+    pinned = hot(p)["invocations"][out["invocation"]]
+    source = next(s for s in pinned["pack"]["sources"] if s["name"] == f"history:{rec}")
+    assert source == {"name": f"history:{rec}", "path": None, "sha256": loaded["sha256"], "trust": "model",
+                      "reference": True}
+    text = (p.root / ".aew" / pinned["pack"]["path"]).read_text(encoding="utf-8")
+    assert f"history:{rec}@{loaded['sha256'][:12]} (evidence; source: model)" in text and "Findings." in text
+    assert p.ok("context", "pack", out["invocation"])["matches_recorded"] is True
+    rev = str(p.rev())
+    for record, word in ((inv, "invocation"), (hot_credential(p, survey), "credential")):
+        res = p.aew("history", "load", record, "--into", wid, "--reason", "x", "--token", p.token, "--expect-rev", rev)
+        assert res.error["code"] == "USAGE" and word in res.error["message"], res.stderr
+    assert_control_invariants(p)
+
+
+def hot_sha(path: Path) -> str:
+    from aew.util import sha256_file
+
+    return sha256_file(path)
+
+
+def hot_credential(p, wid: str) -> str:
+    bundle = load_yaml((p.root / ".aew/work" / wid / "archive.yaml").read_text(encoding="utf-8"))
+    return sorted(bundle["tokens"])[0]
+
+
+def test_status_and_resume_never_read_the_history_for_audit_dates(tmp_path, monkeypatch):
+    """Review P2c-4: the dates audit status needs are kept in the hot state at each append; losing the derived index
+    does not put a history walk back on `resume` or `status`."""
+    from aew.engine.api import Engine
+    from aew.history.store import History
+
+    p = sample_project(tmp_path)
+    first, _, _ = finished_ticket(p, tmp_path, title="First")
+    cold = hot(p)["cold"]
+    assert cold["first_at"] == cold["unverified_since"]
+    audit(p)
+    assert "unverified_since" not in hot(p)["cold"]  # the verified root covers everything
+    finished_ticket(p, tmp_path, title="Second")
+    cold = hot(p)["cold"]
+    assert cold["unverified_since"] >= cold["first_at"] and cold["root"]["count"] - cold["verified"]["count"] == 1
+    os.remove(p.root / ".aew/local/history.sqlite")
+
+    def walked(*args, **kwargs):
+        raise AssertionError("resume/status read the history")
+
+    monkeypatch.setattr(History, "walk", walked)
+    eng = Engine.discover(p.root)
+    eng.resume()
+    block = eng.status()["history_audit"]
+    assert block["unverified"]["entries"] == 1 and block["unverified"]["oldest_at"] == cold["unverified_since"]
+    monkeypatch.undo()
+    assert_control_invariants(p)
+
+
+def test_reindex_while_another_process_holds_the_index_is_a_json_error(tmp_path):
+    """Review P2c-5: Windows refuses to remove an open database; that is a supported error, never a traceback."""
+    import sqlite3
+
+    p = sample_project(tmp_path)
+    finished_ticket(p, tmp_path)
+    p.ok("history", "list")  # the index exists
+    held = sqlite3.connect(p.root / ".aew/local/history.sqlite")
+    try:
+        held.execute("BEGIN IMMEDIATE")
+        res = p.aew("history", "reindex")
+        if res.returncode != 0:  # Windows; elsewhere the file can be replaced while it is open
+            assert res.error["code"] == "LOCK_TIMEOUT" and "in use" in res.error["message"], res.stderr
+    finally:
+        held.rollback()
+        held.close()
+    assert p.ok("history", "reindex")["mode"] == "rebuilt"
+
+
+def test_the_history_surface_shows_no_storage_paths(tmp_path):
+    """Review P2c-6: records are reached by stable id and hash; where they are stored stays internal."""
+    p = sample_project(tmp_path)
+    survey, _, _ = finished_ticket(p, tmp_path)
+    shown = p.ok("history", "show", survey)
+    assert "path" not in shown["entry"] and "completion" not in shown["entry"].get("links", {})
+    links = p.ok("history", "links", survey, "--depth", "2")
+    assert all(e["rel"] != "completion" for e in links["edges"])
+    assert all("/" not in node for node in links["nodes"])
+    assert "path" not in p.ok("history", "reindex")

@@ -403,6 +403,13 @@ Each PR keeps the M1–M3 tests passing.
 - **Epic closeout** is refused with `GATE_UNSATISFIED` while entries are unverified, and the Epic's next action names the audit.
   - The test helper `close_parent` records an audit before it closes an Epic. That is the one edit to shared test code: invariant 8's deliberately changed path. AT-8/AT-13 and the archival tests close Epics through it.
 - **The walks.** Both seeded walks now inject `history.after_bundle` and `history.after_tail`, which fire on the commits that archive (§8). P2b had left them out.
+- **Independent review fixes** (2026-10-02, in PR #20).
+  - **An audit covers every record reachable from the root**, not only each entry's own record. An archived unit's bundle pins records by path and hash: its record, its plans, its ingested evidence, its completion record and its invocations' packs (`archive_ops.pinned_records`). Incremental and full verification check each against its pin (`History.verify(..., pinned=)`), outside the lock, and attribute damage to the unit, which gets the `audit_finding`. Before this, a full audit passed with an archived unit's evidence changed, and so released an Epic closeout.
+  - **A pack shows a loaded record redacted**, as `history show` does: a loaded Lead record's credential verifiers no longer reach the pack.
+  - **`history load` takes an archived evidence record by its id**, as `history show` finds it: pinned by the hash its unit recorded at ingest (`history_refs` kind `evidence`, `held_by` its unit), labelled with who wrote it (`model`, or `engine` for a check result), and shown in the pack as the exact record. An archived invocation or credential is refused with what to load instead. The pack's fence is longer than any run of backticks in the record.
+  - **Audit status never reads the history.** `cold.first_at` and `cold.unverified_since` are kept at each append, in the same transaction (`archive_ops.advance_cold`), so `status` and `resume` take the dates from the hot state. A v2 state from before the fix, which lacks them, reads them from the index until an audit makes them unnecessary: its next audit for `unverified_since`, its first full one for `first_at`.
+  - **`history reindex`** turns an index another process holds open into `LOCK_TIMEOUT`, not a traceback.
+  - **No storage paths on the surface:** `history show` drops the entries' `path` and the `completion` relation (its values are paths), `history links` skips it, and `history reindex` no longer prints the index's location.
 
 **P2d: migration and the oracle.**
 - **`aew migrate`** (R8): it refuses while any run is live, and it is idempotent. It is crash-tested at every new fault point on a project built by the M3 code (the perf tool's template).

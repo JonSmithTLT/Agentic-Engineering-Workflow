@@ -30,7 +30,7 @@ from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
 from aew.knowledge.records import format_id
-from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_file, utc_now
+from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git, worktrees
 
 if TYPE_CHECKING:
@@ -47,6 +47,80 @@ ACC_MOD = 2 ** 256
 
 def is_v2(state: dict[str, Any]) -> bool:
     return state.get("schema") == V2
+
+
+def redact(value: Any) -> Any:
+    """A record for display or for a pack: credential verifiers are hashes of secrets and never shown."""
+    if isinstance(value, dict):
+        return {k: "<redacted>" if k == "verifier" else redact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact(v) for v in value]
+    return value
+
+
+def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
+    """The records an archived unit's bundle pins by path and hash, which a verification checks with the bundle
+    (ADR-0011: a full verification covers every record reachable from the root): the unit's own record, its plans,
+    its ingested evidence, its completion record, and its invocations' context packs. Records that change by design
+    are not pinned here (a pack's sources are project files, pinned only as they were at dispatch)."""
+    if entry["kind"] != "unit":
+        return []
+    try:
+        doc = load_yaml(raw.decode("utf-8"), source=entry["path"])
+    except UnicodeDecodeError as exc:
+        raise IntegrityError(f"{entry['path']} is not UTF-8 text") from exc
+    unit = doc["unit"]
+    pins = []
+    if unit.get("record") and unit.get("record_sha256"):
+        pins.append((unit["record"], unit["record_sha256"]))
+    pins += [(p["path"], p["sha256"]) for p in unit.get("plans") or [] if p.get("path") and p.get("sha256")]
+    pins += [(e["path"], e["sha256"]) for e in unit.get("evidence") or [] if e.get("path") and e.get("sha256")]
+    if unit.get("completion_record") and unit.get("completion_sha256"):
+        pins.append((unit["completion_record"], unit["completion_sha256"]))
+    for inv in (doc.get("invocations") or {}).values():
+        pack = inv.get("pack") or {}
+        if pack.get("path") and pack.get("sha256"):
+            pins.append((pack["path"], pack["sha256"]))
+    return sorted(set(pins))
+
+
+def held_evidence(aew_root: Path, bundle: dict[str, Any], evidence_id: str) -> tuple[dict[str, Any], dict[str, Any],
+                                                                                        str]:
+    """An archived unit's ingested evidence record (its reference in the unit, its metadata and body), verified
+    against the hash its unit recorded at ingest."""
+    ref = next((r for r in bundle["unit"].get("evidence", []) if r["id"] == evidence_id), None)
+    if ref is None:
+        raise IntegrityError(f"{bundle['id']}'s bundle does not record evidence {evidence_id}")
+    path = aew_root / ref["path"]
+    found = sha256_file(path)
+    if found is None or found != ref.get("sha256", found):
+        raise IntegrityError(f"evidence record {evidence_id} is "
+                             + ("missing" if found is None else "not the content its unit recorded"),
+                             held_by=bundle["id"])
+    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"), source=ref["path"])
+    return ref, meta, body
+
+
+def evidence_source(meta: dict[str, Any]) -> str:
+    """Who wrote an evidence record: the engine (a check result) or a model (everything an agent submitted)."""
+    return "engine" if meta.get("kind") == "check_result" else "model"
+
+
+def advance_cold(cold: dict[str, Any], root: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """``cold`` with its root advanced over ``entries`` (in order), keeping the two dates audit status needs, so that
+    ``status`` and ``resume`` never read the history for them (invariant 11): ``first_at``, the first entry's time,
+    and ``unverified_since``, the time of the oldest entry the verified root does not cover (absent when it covers
+    everything). ``cold["verified"]`` is the verified root this commit makes current."""
+    old = cold["root"]["count"]
+    out = dict(cold, root=root)
+    if old == 0 and entries:
+        out["first_at"] = entries[0]["at"]
+    verified = (cold.get("verified") or {}).get("count", 0)
+    if verified >= root["count"]:
+        out.pop("unverified_since", None)
+    elif verified >= old:  # the first unverified entry is one of these
+        out["unverified_since"] = entries[verified - old]["at"]
+    return out
 
 
 def child_leaf(work_id: str, state: str, completion_sha256: str | None) -> int:
@@ -151,7 +225,7 @@ class Archive:
         projected["tokens"] = {t: v for t, v in state["tokens"].items() if t not in gone_tokens}
         counts = Counter({"done": 0, "cancelled": 0, **(state["cold"].get("archived") or {})})
         counts.update(work[w]["state"].lower() for w in order)
-        projected["cold"] = dict(state["cold"], root=root, archived=dict(sorted(counts.items())))
+        projected["cold"] = dict(advance_cold(state["cold"], root, entries), archived=dict(sorted(counts.items())))
         projected["recent"] = (list(state.get("recent", [])) + recent)[-RECENT:]
         projected["archived_refs"] = self._archived_refs(state, hot, facts)
         projected["retained_workspaces"] = retained
@@ -190,7 +264,7 @@ class Archive:
         entry = self._lead_entry(session, state, ended)
         for t in ended:
             del state["tokens"][t]
-        state["cold"] = dict(state["cold"], root=self.cold.append(session, state["cold"]["root"], [entry]))
+        state["cold"] = advance_cold(state["cold"], self.cold.append(session, state["cold"]["root"], [entry]), [entry])
 
     # ------------------------------------------------------------------ annotations (moves of archived units, R3)
 
@@ -571,7 +645,7 @@ def reference_summary(entry: dict[str, Any], doc: dict[str, Any]) -> str:
     unit, its outcome and provenance (not its whole bundle); any other record as it was written. Deterministic, so a
     regenerated pack matches the one recorded at dispatch."""
     if entry["kind"] != "unit":
-        return dump_yaml({k: v for k, v in doc.items() if k != "schema"})
+        return dump_yaml(redact({k: v for k, v in doc.items() if k != "schema"}))
     unit = doc["unit"]
     summary: dict[str, Any] = {
         "id": entry["id"], "kind": unit["kind"], "title": unit["title"], "state": unit["state"],
@@ -585,3 +659,9 @@ def reference_summary(entry: dict[str, Any], doc: dict[str, Any]) -> str:
                         for i, inv in sorted((doc.get("invocations") or {}).items())],
     }
     return dump_yaml(summary)
+
+
+def evidence_reference(meta: dict[str, Any], body: str) -> str:
+    """An archived evidence record as a pack shows it when loaded as reference: the exact record, its metadata and
+    its body as written (deterministic, so a regenerated pack matches the recorded one)."""
+    return dump_yaml({**redact({k: v for k, v in meta.items() if k != "schema"}), "body": body})

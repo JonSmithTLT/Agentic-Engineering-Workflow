@@ -14,6 +14,7 @@ declared deviations) are included, and the verifier pack labels them as claims.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -374,8 +375,11 @@ def _history(p: PackInputs) -> list[str]:
              "on versions, sources, the environment or current state through normal AEW evidence before relying on "
              "it."]
     for h in p.history:
+        content = h["content"].rstrip()
+        # A record written by a model may hold backticks: the fence is longer than any run of them in it.
+        fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
         lines += ["", f"### history:{h['id']}@{h['sha256'][:12]} ({h['kind']}; source: {h['source']})", "",
-                  f"Loaded because: {h['reason']}", "", "```yaml", h["content"].rstrip(), "```"]
+                  f"Loaded because: {h['reason']}", "", f"{fence}yaml", content, fence]
     return lines
 
 

@@ -14,7 +14,7 @@ not UTF-8, a file that cannot be read) is an ``IntegrityError`` too, so verifica
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -49,9 +49,10 @@ class Verification:
     start: dict[str, Any]
     through: dict[str, Any] | None = None  # the chain state reached; None when the chain itself is broken
     entries: int = 0
-    records: int = 0
+    records: int = 0  # every record checked: the entries' own and the ones they pin (``pinned``)
     problems: list[str] = field(default_factory=list)
-    damaged: list[dict[str, Any]] = field(default_factory=list)  # entries whose record is missing or changed
+    damaged: list[dict[str, Any]] = field(default_factory=list)  # entries whose record, or a record it pins, is
+    #                                                              missing or changed
 
     @property
     def ok(self) -> bool:
@@ -59,6 +60,10 @@ class Verification:
 
 
 _READ: Any = object()  # read the tail from disk (rather than from a snapshot of its bytes)
+# The records an entry's own record pins by path and hash (an archived unit's evidence, plans, completion record and
+# packs): given the entry and its record's bytes, already verified. The history store knows no record format; the
+# engine passes this so that a verification covers every record reachable from the root (ADR-0011).
+Pinned = Callable[[dict[str, Any], bytes], list[tuple[str, str]]]
 
 
 class History:
@@ -247,32 +252,50 @@ class History:
 
     # ------------------------------------------------------------------ verification
 
+    def _check(self, report: Verification, entry: dict[str, Any], rel: str, expected: str,
+               what: str) -> bytes | None:
+        """One record against the hash that pins it; its bytes when they match. A problem is attributed to
+        ``entry``, whose record (``what``) it is or pins."""
+        report.records += 1
+        try:
+            raw = (self.root / rel).read_bytes()
+        except FileNotFoundError:
+            raw, problem = None, "is missing"
+        except OSError as exc:
+            raw, problem = None, f"cannot be read: {exc.strerror or exc}"
+        else:
+            problem = None if sha256_bytes(raw) == expected else f"does not hold the content {what} pins"
+        if problem is None:
+            return raw
+        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {rel} {problem}")
+        if not any(d["seq"] == entry["seq"] for d in report.damaged):
+            report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
+        return None
+
     def verify(self, root: dict[str, Any], since: dict[str, Any] | None = None, *,
-               records: bool = True, tail_raw: Any = _READ) -> Verification:
+               records: bool = True, tail_raw: Any = _READ, pinned: Pinned | None = None) -> Verification:
         """Verify the history from ``since`` (an earlier verified root's {count, h}; default everything) through
-        ``root``: the chain, and with ``records`` each record's content against its entry. Never raises for what it
-        finds; every problem is reported."""
+        ``root``: the chain, and with ``records`` each record's content against its entry, and (``pinned``) every
+        record that record pins against the hash it pins. Never raises for what it finds; every problem is reported,
+        attributed to its entry."""
         start = dict(since) if since else {"count": 0, "h": M.GENESIS_H}
         report = Verification(start=start)
         try:
             for entry in self.walk(root, since, tail_raw=tail_raw):
                 report.entries += 1
-                if records:
-                    report.records += 1
-                    try:
-                        found = sha256_file(self.root / entry["path"])
-                    except OSError as exc:
-                        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} cannot be "
-                                               f"read: {exc.strerror or exc}")
-                        report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
-                        continue
-                    if found is None:
-                        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} is missing")
-                    elif found != entry["sha256"]:
-                        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} does not hold "
-                                               "the content its entry pins")
-                    if found != entry["sha256"]:
-                        report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
+                if not records:
+                    continue
+                raw = self._check(report, entry, entry["path"], entry["sha256"], "its entry")
+                if raw is None or pinned is None:
+                    continue
+                try:
+                    pins = pinned(entry, raw)
+                except (IntegrityError, ValidationFailed) as exc:
+                    report.problems.append(f"entry {entry['seq']} ({entry['id']}): {exc.message}")
+                    report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
+                    continue
+                for rel, expected in pins:
+                    self._check(report, entry, rel, expected, f"{entry['id']}'s record")
             report.through = {"count": root["count"], "h": root["head_h"]}
         except (IntegrityError, ValidationFailed) as exc:
             report.problems.append(f"chain: {exc.message}")

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from aew import roles
-from aew.engine.archive_ops import reference_summary
+from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
 from aew.errors import IntegrityError, NotFound
 from aew.knowledge import context as ctxmod
@@ -118,6 +118,17 @@ class ContextPacks:
         invocation), each read and verified against its pinned hash (ADR-0011 invariant 14)."""
         out = []
         for ref in inv.get("history_refs") or []:
+            if ref.get("held_by"):  # an evidence record inside an archived unit's bundle, pinned by its own hash
+                entries = [e for e in self.archive.index(state).by_id(ref["held_by"]) if e["seq"] == ref["entry_seq"]]
+                if not entries:
+                    raise IntegrityError(f"loaded historical record {ref['id']}: its holder {ref['held_by']} is not "
+                                         "in the history")
+                ev_ref, meta, body = held_evidence(self.k.aew_root, self.archive.record(entries[-1]), ref["id"])
+                if ev_ref["sha256"] != ref["sha256"]:
+                    raise IntegrityError(f"loaded historical record {ref['id']}@{ref['sha256'][:12]} is not the one "
+                                         f"{ref['held_by']} holds")
+                out.append({**ref, "content": evidence_reference(meta, body)})
+                continue
             entries = [e for e in self.archive.index(state).by_id(ref["id"]) if e["sha256"] == ref["sha256"]]
             if not entries:
                 raise IntegrityError(f"loaded historical record {ref['id']}@{ref['sha256'][:12]} is not in the history")

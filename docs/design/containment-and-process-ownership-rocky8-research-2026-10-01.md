@@ -1,13 +1,13 @@
 # Research: filesystem containment and process ownership on Rocky Linux 8
 
-- **Status:** research input for the designer, not governing. Nothing here is decided or implemented.
+- **Status:** research input for the designer, not governing. §8 records the designer's decisions on Q3 and E13 (2026-10-01) and §9 the probe results on WSL; nothing here is implemented.
 - **Date:** 2026-10-01, after M3's acceptance.
 - **Feeds:**
   - `future-work.md` F2 (real filesystem containment) and its gate, "before real-repository dogfood";
   - Q3 (is containment required for personal real-project dogfood?);
   - E13 (POSIX process ownership) and its gate, "before Linux runs rely on stop";
   - the isolation design's §6.4, §6.6, §12 and §16 (`execution-workspace-and-isolation-design-v0.1.md`).
-- **Verified against:** published documentation (sources at the end). **Not yet run on the Q7 Rocky 8.10 distro.** §6 lists the probes that would confirm it.
+- **Verified against:** published documentation (sources at the end), and the §6 probes run on the Q7 distro's Rocky 8.10 userspace under WSL's kernel (§9); a real Rocky 8 kernel regression follows.
 
 ## 1. Summary
 
@@ -137,6 +137,38 @@ Every row needs to be **run** on Rocky 8.10 before any claim. The table is the e
 3. Option 3 in §3.3 (a private object store per run): acceptable, or should agents never run git write commands at all?
 4. Should reviewers and verifiers get read-only workspaces by default under containment (§3.3, last paragraph)?
 5. Network containment: out of scope for F2, or a sibling entry?
+
+## 8. Designer's decisions (2026-10-01)
+
+Recorded as given:
+
+> **Q3 / F2:** Strong OS/runtime filesystem containment is required before any personal real-repository dogfood as well as internal alpha. The proposed unprivileged bubblewrap boundary is sufficient for personal dogfood once the Rocky 8 containment, OpenCode/bridge, Git-layout, fingerprint/prepare, fail-closed launch, and process-ownership probes pass. Internal alpha additionally requires representative isolation performance/operability acceptance.
+>
+> **E13:** Close POSIX process ownership through the same bubblewrap PID-namespace boundary. Do not implement a separate subreaper unless a pre-F2 Linux evaluation has a demonstrated need for reliable stop. Until the PID-namespace test passes, Linux process-group mode must not be represented as complete process ownership.
+
+These answer §7's questions 1 and 2. The probes the decision names map to §6: containment (§6 items 1, 2 and 6), OpenCode and the bridge (item 4), the Git layout and fingerprint/`prepare` (item 5), fail-closed launch (§5), and process ownership (items 2 and 3). Questions 3 to 5 (agents' git write commands, read-only reviewer and verifier workspaces, network containment) are still open.
+
+Follow-up decisions, recorded as given:
+
+> **Q7 classification:** Real-project provenance does not by itself trigger F2. A sanitized/disposable SPT-derived fixture counts as scratch only when the execution environment also has no writable non-disposable project state or secrets within the run's host-level reach. A disposable clone on the normal development host does not count as scratch. F19 follows the same rule.
+>
+> **F2 scheduling:** Move F2 from an unscheduled gate to early M4 / before first normal-host Q7 or real-repository dogfood. Run the Rocky 8 bubblewrap feasibility probes immediately, in parallel with other pre-M4 work. Implement F2 and E13 together if those probes succeed.
+
+## 9. Probe results (2026-10-01, WSL)
+
+Run on the Q7 distro: Rocky Linux 8.10 userspace on **WSL's kernel (6.18), not RHEL 8's 4.18**. The operator accepted WSL for now; a regression on a real Rocky 8 kernel follows. Scripts and raw results are in the private repository. Kernel-dependent rows (2, 3, 6) are indicative until that regression.
+
+| §6 probe | Result |
+|---|---|
+| 1. Packages | `bubblewrap-0.4.0-2.el8_10` from Rocky's baseos. Unprivileged (not setuid); `user.max_user_namespaces` 62153. |
+| 2. PID-namespace teardown | **Pass.** A `setsid` child, a subshell orphan and a Python double fork with `setsid` (all two namespace levels deep) are gone after SIGTERM to bwrap, after SIGKILL to bwrap, and after SIGKILL to bwrap's parent (the supervisor's stand-in), which takes bwrap with it (`--die-with-parent`). |
+| 3. E13's live test | **Closed under bwrap.** Plain, the E13 scenario fails as before. Under bwrap, a copy of it that maps the recorded PIDs to host PIDs through `/proc/<pid>/status` `NSpid` passes. The stock scenario cannot judge a sandboxed run: it watches namespace-local PIDs on the host (39 and 40 here, which were unrelated host processes), so it needs that translation, or PIDs reported from outside the namespace, before it can gate F2. |
+| 4. OpenCode and the bridge | **Pass.** The whole live OpenCode 2.0.18 lane runs with `opencode-cli serve` inside bwrap: 16 of 16 other tests pass (one skipped, as without bwrap), including bridge-mediated operations, rotation, curated environment, no credential left in files, and revived-session authority. The custody bridge's AF_UNIX socket works from a read-only bind. Layout: the §3.2 sketch, coarsened so the test's base directory (workspaces, run directories, OpenCode's private state) is writable. |
+| 5. Git layout (§3.3 option 3) | **Works, with one engine change.** Reads, `add`, `restore` and `diff --cached` work; `commit`, `branch`, `update-ref` and `stash` fail on the read-only refs, as intended (`stash` writes `refs/stash`). The main `.git` outside the worktree's own directory is byte-identical afterwards. **Finding:** when an agent stages content and then changes the working file, the staged blob exists only in the run's private store, so the engine's `index_tree_id` and `index_only_paths` fail (`git write-tree`), and `git fsck` of the main repository reports the worktree index's missing blob. The fingerprint, which reads working content, is unaffected. With the run's private store added as an alternate (`GIT_ALTERNATE_OBJECT_DIRECTORIES`) when the engine inspects that workspace, every function succeeds and the staged-only file is detected. F2 must also decide the private store's lifetime: import the objects the index refers to at run end, or reset the index. |
+| 6. Isolation §12 | **Pass.** Outside the writable roots, every write is refused: absolute path, `..` traversal, symlink escape, rename out (EXDEV, then EROFS), `mkdir`, `/var/tmp`, Python `open()`, another worktree, `chmod`, a home dotfile (EROFS); a hard link of a protected file into the workspace (EXDEV). `/tmp` is a private tmpfs, discarded with the run. A tmpfs-hidden directory reads empty and its host copy is intact. The sandbox sees only its own processes. Reading outside files is allowed, as designed (the host is bound read-only, not hidden). |
+| §5 launch self-test | **Discriminates.** Writing one known outside path and requiring failure passes in the contained layout and fails in a misconfigured one (`/` writable). A missing `bwrap` is detected. User namespaces disabled could not be simulated without changing the kernel-wide limit, which would affect every WSL distro; the self-test fails closed whenever the sandbox cannot start, whatever the cause. |
+| 7. Rootless overlay | Not run (copy-on-write is not part of F2). |
+| 8. Startup cost | About 2.5 ms per sandbox (3.5 ms against 1.0 ms for a plain shell). |
 
 ## Sources
 

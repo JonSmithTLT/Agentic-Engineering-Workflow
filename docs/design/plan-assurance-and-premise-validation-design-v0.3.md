@@ -1,11 +1,22 @@
-# AEW Plan Assurance and Premise Validation Design v0.3
+# AEW Plan Assurance and Premise Validation Design v0.4 (draft)
 
-**Status:** Proposed companion design for designer review  
+**Status:** v0.4 DRAFT for designer review (implementer, 2026-10-01). It applies the operator's and designer's decisions of 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md`) to v0.3. Adopted as the post-M3 direction (Q9).  
 **Date:** 2026-09-29  
 **Scope:** Pre-execution validation of intent, acceptance, assumptions, and implementation plans before mutating work is dispatched  
 **Primary motivation:** M3 paid dogfood demonstrated a simple Ticket where an incorrect planning premise was accepted, the Implementer faithfully executed the wrong intervention, and downstream review/verification accepted the resulting false success  
 **Authority:** The Engineering Lead remains the sole authority for accepted plan revisions and workflow state. Assurance roles produce evidence and findings; they do not create a second planning authority.  
 **Implementation timing:** This design changes the conditions under which a mutating plan may become dispatchable and therefore requires explicit Workflow Contract adoption. Selected pieces can be dogfooded before contract amendment.
+
+## v0.4 change summary (draft)
+
+v0.4 applies the decisions of 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md`); it adds no new mechanism.
+
+- **One classification system.** The Tier A–E naming is removed. AEW has risk classes 0–4 only (Workflow Contract §7.4, as amended). Class 0 is defined by an engine-checked eligibility predicate (the former Tier A); assurance adds gates and triggers to classes (§22).
+- **Former Tier B survives as hard triggers**, including two new ones: a mutable acceptance resource nearby, and an unexpected baseline result (§22).
+- **`DispatchDecision`** is the evaluation-period form of the shared dispatch predicate; `ASSURED` becomes one of its inputs later (§17).
+- **An acceptance revision is a Ticket revision** under the Ticket-revision design (F4), not a third lineage (§19, §31).
+- **Failure classes and invariants reconciled** with the registry and the invariant index (§26, §27).
+- **§33 decided.**
 
 ## v0.3 change summary
 
@@ -902,6 +913,25 @@ All dispatch paths must use the same predicate.
 
 CLI, MCP, harness adapter, recovery, and resume paths must not create alternate bypasses.
 
+## 17.1 Evaluation-period form: `DispatchDecision` (decided 2026-10-01)
+
+Until evaluation supports the full predicate, the shared predicate is not called `ASSURED`. It returns a typed decision with durable reason codes:
+
+```text
+DispatchDecision {
+    allowed
+    effective_obligations
+    blocking_conditions
+    reason_codes
+    dependency_digests
+}
+```
+
+- It is permissive at first, except for the existing gates, hard protected-condition failures, and Class 0 eligibility where Class 0 is requested (§22).
+- A conformance test proves that every dispatch route calls it: the CLI, the harness adapter, stage commands, M4's integration queue and the future scheduler.
+- A component may cache "candidate runnable", but actual dispatch recomputes the decision against the current revision and generation. An old ALLOW is never cached.
+- Later, the full assurance package becomes one more input to the same predicate, without rewiring dispatch.
+
 ---
 
 # 18. Deterministic plan lint
@@ -962,7 +992,7 @@ The Lead cannot silently downgrade a hard blocker because the cheaper path is co
 
 Hard acceptance-integrity controls cannot be waived by majority vote.
 
-If the requirement legitimately changes, create a new attributable acceptance revision.
+If the requirement legitimately changes, create a new attributable acceptance revision. That is a new Ticket revision under the Ticket-revision design (F4; `ticket-revision-amendment-2026-09-30.md`), not a separate lineage: when acceptance-related field digests change, earlier assurance is invalidated or revalidated, the plan may need revision or reconfirmation, and new assurance binds the new revision's digests. If the change no longer overlaps the Ticket's goal, or crosses the approved parent envelope, F4's replacement and parent-revision rules apply instead.
 
 ---
 
@@ -1038,29 +1068,37 @@ Late results, restarts, cancellation, and supersession must not reactivate stale
 
 ---
 
-# 22. Proportional assurance policy
+# 22. Proportional assurance: classes and triggers
 
-Use a hybrid of deterministic triggers and semantic risk findings.
+AEW has **one** classification system: risk classes 0–4 (Workflow Contract §7.4, as amended). Assurance does not add a second taxonomy. It adds gates and triggers to classes. *(v0.4: the former Tier A–E naming is removed; decided 2026-10-01.)*
 
-The engine owns the minimum required level.
+The engine owns the minimum required obligations.
 
-A model may propose raising assurance.
+A model may propose raising them.
 
 A model may not silently self-classify downward when a hard trigger requires a stronger path.
 
-## Tier A — Mechanical bounded work
+## Class 0 eligibility (formerly Tier A)
 
-Criteria should be mechanically checkable:
+Class 0 is defined by one engine-side predicate, shared with the Workflow Contract, the guide, the evaluation rubric and the Lead:
 
-- exact transformation;
-- narrow known subject;
-- no adopted diagnosis;
-- current supporting evidence;
-- no consequential protected-boundary change;
-- deterministic acceptance;
-- no inherited elevated obligations.
+```text
+class0_eligible(work) =
+    bounded known subject
+    AND clear intended transformation/behavior
+    AND no unresolved diagnosis/premise ambiguity
+    AND current supporting inputs
+    AND deterministic acceptance
+    AND no protected-acceptance mutation
+    AND no consequential security/trust/persistence/compatibility boundary
+    AND no inherited elevated obligation
+```
 
-Required:
+The engine checks what it can deterministically (for example: no adopted diagnosis recorded, acceptance is a deterministic check, no protected paths in scope, no inherited obligation, a bounded scope). The Lead attests the rest, and sampled independent audit during dogfood checks those attestations.
+
+A Class 0 request that fails the predicate is **refused with reasons**, never silently reclassified. The Lead chooses the stronger class.
+
+Required for Class 0:
 
 ```text
 deterministic lint
@@ -1069,17 +1107,17 @@ protected-condition validation
 sampled independent audit during dogfood
 ```
 
-## Tier B — Simple but premise-sensitive work
+## Baseline assurance by class (DRAFT: mapping from the former tiers, for the designer to confirm)
 
-Examples:
+| Class | Baseline assurance obligations (former tier) |
+|---|---|
+| 1 — routine engineering | observable behavior + preservation obligations; baseline absence/current behavior; current architecture/source evidence; one strong challenge; normal downstream review/verification *(former Tier C)* |
+| 2 — substantial brownfield | Class 1, plus parent acceptance/invariants where a parent exists; shared-assumption analysis; integration obligations; child delta assurance; additional probe/search where ambiguity remains; integration verification *(former Tier D)* |
+| 3 — architectural/high-risk, 4 — frontier | may require: strongest approved reasoning profile; specialist evidence; independent alternative plan; bounded candidate search / dry-run; formal/runtime checks where available; stakeholder decision for consequential policy/tradeoff; independent adjudication for unresolved technical dispute *(former Tier E)* |
 
-- plausible but unproven diagnosis;
-- several plausible causes;
-- mutable acceptance resource nearby;
-- stale code/map understanding;
-- unexpected baseline result.
+## Hard assurance triggers
 
-Required:
+Regardless of class or file count. A trigger adds the **premise-sensitive obligations** (formerly Tier B) on top of the class baseline, and a triggered Class 0 request fails eligibility:
 
 ```text
 independent acceptance-first pass
@@ -1090,54 +1128,15 @@ one strong fresh-context Plan Challenge
 counterexample where practical
 ```
 
-## Tier C — Normal feature work
-
-Required:
-
-```text
-observable behavior + preservation obligations
-baseline absence/current behavior
-current architecture/source evidence
-one strong challenge
-normal downstream review/verification
-```
-
-## Tier D — Complex Story / cross-component work
-
-Required:
-
-```text
-parent acceptance/invariants
-shared-assumption analysis
-integration obligations
-child delta assurance
-strong challenge
-additional probe/search where ambiguity remains
-integration verification
-```
-
-## Tier E — Architecture / security / high-consequence work
-
-May require:
-
-```text
-strongest approved reasoning profile
-specialist evidence
-independent alternative plan
-bounded candidate search / dry-run
-formal/runtime checks where available
-stakeholder decision for consequential policy/tradeoff
-independent adjudication for unresolved technical dispute
-```
-
-## Hard assurance triggers
-
-Regardless of Ticket class/file count:
+Triggers:
 
 - stakeholder-provided suspected cause;
+- plausible but unproven adopted diagnosis;
 - acceptance/oracle/fixture mutation proposed;
-- stale supporting evidence;
+- **mutable acceptance resource near the mutation scope** *(v0.4, from former Tier B)*;
+- stale supporting evidence, or stale code/map understanding;
 - multiple plausible root causes;
+- **unexpected baseline result** *(v0.4, from former Tier B)*;
 - ambiguous success condition;
 - security/trust/persistence/reliability semantics;
 - external behavior or compatibility change;
@@ -1306,19 +1305,19 @@ currently admissible evidence
 
 # 26. Candidate failure classes
 
-These names must be reconciled with the canonical failure-class registry before implementation.
+**Reconciled 2026-10-01** (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1). Twelve are canonical in `failure-class-registry.md` §5. Three merge into existing or canonical classes, as marked below. Engine refusal codes are not failure-class names: a deterministic check emits its own code (for example `PROTECTED_CONDITION_OVERLAP`) associated with a canonical class (`PROTECTED_ACCEPTANCE_OVERLAP`). Classes such as `PLAN_CHALLENGE_FALSE_CLEAR` can only be established by evaluation against gold evidence.
 
 ## `POISONED_PLAN_PREMISE`
 
 A false or unsupported premise becomes load-bearing in an accepted plan.
 
-## `STAKEHOLDER_DIAGNOSIS_PROMOTION`
+## `STAKEHOLDER_DIAGNOSIS_PROMOTION` → `POISONED_PLAN_PREMISE {premise_origin: stakeholder_diagnosis}`
 
-A suspected stakeholder cause becomes accepted engineering fact without sufficient evidence.
+A suspected stakeholder cause becomes accepted engineering fact without sufficient evidence. *(Merged.)*
 
-## `INTENT_SUBSTITUTION`
+## `INTENT_SUBSTITUTION` → existing `SILENT_INTENT_REWRITE`
 
-Derived plan language changes the actual stakeholder objective.
+Derived plan language changes the actual stakeholder objective. *(Merged.)*
 
 ## `ACCEPTANCE_UNDERSPECIFICATION`
 
@@ -1340,9 +1339,9 @@ The baseline does not exercise the intended proposition or is operationally inva
 
 Mutation begins without policy-required assurance.
 
-## `PLAN_REVIEW_STALE`
+## `PLAN_REVIEW_STALE` → `ASSURANCE_DEPENDENCY_STALE {dependency_kind: plan_review}`
 
-A plan review/evidence package is reused after a relevant dependency changed.
+A plan review/evidence package is reused after a relevant dependency changed. *(Merged.)*
 
 ## `PLAN_CHALLENGE_FALSE_CLEAR`
 
@@ -1415,6 +1414,8 @@ Stakeholder attention is used for stakeholder-owned choices, not as a substitute
 
 Implementation review and final verification remain necessary after plan assurance.
 ```
+
+**Indexed 2026-10-01** (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1). The genuinely new cross-document invariants are in `invariant-index.md` §6 (`AEW-INV-ASSURE-001` to `-010`). The rest are this design's own or restate existing authority, stakeholder, hierarchy and evidence invariants, which the index references rather than duplicates.
 
 ---
 
@@ -1707,7 +1708,7 @@ Ablate separately:
 
 Only after evidence should AEW freeze:
 
-- mechanical exemption;
+- the thresholds of the Class 0 eligibility criteria (the predicate itself exists from the start: it refuses with reasons, and dogfood samples it);
 - model-routing thresholds;
 - second-challenger conditions;
 - probe budgets;
@@ -1744,7 +1745,7 @@ baseline ImportError → not accepted as EXPECTED_FAILURE
 
 protected fixture inside mutable scope → reject
 
-legitimate requirement changes fixture → new acceptance revision permits change
+legitimate requirement changes fixture → new Ticket revision (F4) permits change
 
 stakeholder diagnosis unsupported → remains hypothesis
 
@@ -1770,7 +1771,7 @@ all CLI/MCP/harness dispatch paths enforce same predicate
 3. What finding standard minimizes false blocking without weakening real challenge?
 4. Which acceptance resources can AEW reliably protect across shell, CLI, MCP, local services, and remote systems?
 5. What is the right relevance boundary for assurance invalidation after base/integration changes?
-6. Which mechanical exemptions remain safe under misleading stakeholder descriptions?
+6. Which Class 0 eligibility criteria remain safe under misleading stakeholder descriptions?
 7. Does a second model add distinct defect detection after controlling for additional tool access and computation?
 8. When does candidate-plan search outperform one focused investigation?
 9. Which intent ambiguities consistently require stakeholder input?
@@ -1794,6 +1795,8 @@ The designer should explicitly decide:
 5. whether hard protected-condition violations are non-waivable without a new attributable requirement/acceptance revision;
 6. whether strong-model routing is mandatory for Lead + acceptance/challenge during the initial evaluation period;
 7. what evidence threshold is required before freezing assurance tiers.
+
+**Decided 2026-10-01** (`plan-assurance-and-classification-decisions-2026-10-01.md`): adopted as the post-M3 direction; `ASSURED` is a derived predicate (with `DispatchDecision` during evaluation, §17.1); the first implementation reuses Reviewer/Verifier infrastructure; Class 0 eligibility (the former mechanical exemption) exists from the start, engine-checked and sampled; hard protected-condition violations are non-waivable without a new Ticket revision; strong approved models are mandatory for the Lead and acceptance/challenge during initial evaluation, pinned as execution profiles at preregistration; classes' assurance obligations and routing/probe thresholds stay provisional until controlled dogfood shows acceptable false-success and false-blocking rates.
 
 ---
 

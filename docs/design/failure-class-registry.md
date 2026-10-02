@@ -1,6 +1,6 @@
-# AEW Failure-Class Registry v0.1
+# AEW Failure-Class Registry v0.2 (draft)
 
-**Status:** Cross-document index  
+**Status:** Cross-document index. v0.2 DRAFT for designer review (implementer, 2026-10-01): adds the plan assurance classes (§5) as reconciled by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
 **Authority:** Non-authoritative index. Definitions point to owning design/contract text; this file must not become a second source of workflow authority.  
 **Purpose:** Prevent naming/definition drift across AEW design, dogfood, and evaluation documents.
 
@@ -9,6 +9,8 @@
 Each named class has one canonical name, one primary owning document/domain, a concise definition, and an expected detection/evaluation path.
 
 Owning documents define semantics. Other documents reference the name.
+
+A class names a failure, not an error code. Engine refusal codes are separate: a deterministic check emits its own code (for example `PROTECTED_CONDITION_OVERLAP`) and associates it with a canonical class (`PROTECTED_ACCEPTANCE_OVERLAP`). Some classes can only be established by evaluation against gold evidence (for example `PLAN_CHALLENGE_FALSE_CLEAR`).
 
 ## 2. Operator / orchestration / resource classes
 
@@ -51,7 +53,28 @@ Owning documents define semantics. Other documents reference the name.
 | `LOST_SUPERSESSION_LINEAGE` | Hierarchy Revision | Replacement work lacks durable connection/disposition to superseded work. | Parent closeout + replacement tests. |
 | `STALE_PARENT_INTENT` | Hierarchy Revision | Descendants continue against superseded Epic/Story framing. | Ancestor-plan/revision tests. |
 
-## 5. Maintenance
+Plan assurance's candidate `INTENT_SUBSTITUTION` (derived plan language changes the actual stakeholder objective) is `SILENT_INTENT_REWRITE`.
+
+## 5. Plan assurance classes
+
+Owner: `plan-assurance-and-premise-validation-design-v0.3.md` (§26 for definitions, §28 for the adversarial evaluation suite, §31 for the conformance tests).
+
+| Class | Primary owner | Definition | Detection / standing evaluation |
+|---|---|---|---|
+| `POISONED_PLAN_PREMISE` | Plan Assurance | A false or unsupported premise becomes load-bearing in an accepted plan. Detail `premise_origin` (for example `stakeholder_diagnosis`, the former candidate `STAKEHOLDER_DIAGNOSIS_PROMOTION`). | T4 replay fixture; diagnosis contrast pairs (§28). |
+| `ACCEPTANCE_UNDERSPECIFICATION` | Plan Assurance | Acceptance checks fail to represent important objective or preservation obligations. | Acceptance discrimination and counterexample cases (§12, §28). |
+| `ACCEPTANCE_CONDITION_MUTATION` | Plan Assurance | The candidate appears successful because conditions that define success changed without requirement authority. The M3 dogfood's T4 (O3). | Oracle-weakening cases (§28); protected-condition enforcement through final verification. |
+| `PROTECTED_ACCEPTANCE_OVERLAP` | Plan Assurance | The mutation grant overlaps protected acceptance resources without explicit authorization. | Deterministic check at plan acceptance and dispatch (refusal code `PROTECTED_CONDITION_OVERLAP`); conformance test (§31). |
+| `ACCEPTANCE_BASELINE_INVALID` | Plan Assurance | The baseline does not exercise the intended proposition, or is operationally invalid. | Typed-baseline cases, for example an ImportError not accepted as `EXPECTED_FAILURE` (§11, §31). |
+| `PLAN_ASSURANCE_BYPASS` | Plan Assurance | Mutation begins without policy-required assurance. | The dispatch-route conformance test: every route calls the shared predicate (§17). |
+| `ASSURANCE_DEPENDENCY_STALE` | Plan Assurance | A contract, fixture, base, parent invariant, plan review or other relevant dependency invalidates current assurance. Detail `dependency_kind` (for example `plan_review`, the former candidate `PLAN_REVIEW_STALE`). | Dependency-digest binding tests (§16, §31). |
+| `PLAN_CHALLENGE_FALSE_CLEAR` | Plan Assurance | The challenge passes despite an identifiable blocking defect. | Evaluation only, against gold evidence (§28, §29). |
+| `PLAN_CHALLENGE_FALSE_BLOCK` | Plan Assurance | The challenge blocks a valid plan without adequate evidence. | Evaluation only (§28, §29); bounded adjudication (§19). |
+| `EVALUATOR_INTEGRITY_FAILURE` | Plan Assurance | The candidate changes or interferes with the evaluator in an unauthorized way. | Protected-evaluator enforcement (§9, §10); vacuous-red and oracle cases (§28). |
+| `EXECUTION_PREMISE_CONTRADICTION` | Plan Assurance | Execution produces evidence that contradicts an assured load-bearing assumption. | Mid-run contradicted-premise test: affected mutation held (§20, §31). |
+| `HIERARCHICAL_ASSURANCE_LOSS` | Plan Assurance | Child work silently drops inherited parent acceptance, security or compatibility obligations. | Child-drops-parent-obligation test (§21, §31). |
+
+## 6. Maintenance
 
 Adding a class requires: owning document, concise definition, reason an existing class is insufficient, and detection/evaluation path.
 

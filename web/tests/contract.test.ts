@@ -32,8 +32,8 @@ describe('C0 provisional contract conformance', () => {
     expect(createHash('sha256').update(raw).digest('hex')).toBe(
       version.sha256,
     );
-    expect(version.approval).toBe('PENDING');
-    expect(approval.status).toBe('PENDING');
+    expect(version.approval).toBe('ACCEPTED');
+    expect(approval.status).toBe('ACCEPTED');
     expect(approval.contract_version).toBe(version.version);
     expect(approval.sha256).toBe(version.sha256);
     expect(approval.previous_reviews[0].disposition).toBe('AMEND');
@@ -415,7 +415,7 @@ it('R2-5 preserves distinct verified/full audit metadata and backend oldest-unve
     }).success,
   ).toBe(true);
 });
-it('records the 0.1.1 conditional review without granting 0.1.2 acceptance', () => {
+it('retains the conditional review alongside the exact accepted 0.1.2 record', () => {
   const previous = approval.previous_reviews.at(-1)!;
   expect(previous.reviewed_commit).toBe(
     '7b0177b76a919e019d2051adff8f7616ae6c2fda',
@@ -428,6 +428,9 @@ it('records the 0.1.1 conditional review without granting 0.1.2 acceptance', () 
     'R2-5',
     'R2-6',
   ]);
-  expect(approval.reviewed_commit).toBeNull();
-  expect(approval.disposition).toBeNull();
+  expect(approval.reviewed_commit).toBe(
+    '322301d1200dce54d31a54348dd15ba7a71c9376',
+  );
+  expect(approval.disposition).toBe('ACCEPT');
+  expect(approval.document).toBe('web/docs/c0-review-main-line-0.1.2.md');
 });

@@ -1,10 +1,10 @@
 # C0 final mechanical resubmission: dashboard API 0.1.2
 
-Status: **PENDING main-line diff verification and acceptance record**. D1–D4 remain gated.
+Status: **ACCEPTED** by Claude, 2026-10-02, at commit `322301d1200dce54d31a54348dd15ba7a71c9376`. See `c0-review-main-line-0.1.2.md` and the signed record in `c0-approval.json`. D1–D4 may begin.
 
 Canonical artifact: `docs/design/dashboard-api-v1-provisional.yaml`.
 SHA-256: `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`.
-The candidate review target is the commit containing this packet and contract. Return that full commit with the exact version/digest when recording acceptance.
+The frozen accepted target is `322301d1200dce54d31a54348dd15ba7a71c9376`. The YAML remains byte-identical to that target, including its historical provisional/review labels; the external acceptance record governs implementation eligibility.
 
 Claude's retained review, `c0-review-main-line-0.1.1.md`, conditionally accepts a 0.1.2 that applies exactly R2-1–R2-6. It confirms C0-1–C0-9 are resolved in substance and accepts child-list truncation, subtree rollup, annotation paging, null normalization and curated path-free bindings. No new design decision or domain page is introduced in this resubmission.
 
@@ -25,6 +25,6 @@ Only those corrections, the 0.1.2 version/digest pins, generated types, fixtures
 
 Companions: generated `web/src/api/types.ts`, strict `schema.ts`, `vocabulary.ts`, `contract-version.json`, fixtures F0–F11 and the focused contract/content tests. Current evidence: `web/docs/validation-c0-012.md`.
 
-`c0-approval.json` retains both previous AMEND reviews, including the conditional 0.1.1 review of `7b0177b76a919e019d2051adff8f7616ae6c2fda`. The candidate remains PENDING, with no accepted reviewer/commit/disposition populated. Main line verifies this diff, then records the 0.1.2 candidate commit, SHA-256, reviewer, date and disposition. Conditional acceptance is not converted into an acceptance record by the frontend agent.
+`c0-approval.json` retains both previous AMEND reviews, including the conditional 0.1.1 review of `7b0177b76a919e019d2051adff8f7616ae6c2fda`. Main line verified the diff and recorded ACCEPT with the exact commit/digest, reviewer and date. The frontend acceptance pins and tests now identify that record. The main-line review did not rerun frontend checks; those remain separately recorded frontend evidence.
 
-After that recorded gate, D1–D4 may begin under the approved core plan. Independent frontend review at core freeze and integrated-system acceptance remain separate gates.
+The recorded gate permits D1–D4 to begin under the approved core plan. Independent frontend review at core freeze and integrated-system acceptance remain separate gates.

@@ -40,6 +40,7 @@ TICK_S = 0.25
 STATE_POLL_S = 2.0
 HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
+ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
 
 
 def log(msg: str) -> None:
@@ -178,14 +179,21 @@ class Supervisor:
     def _starting_beats(self) -> None:
         """Beat while the harness starts (a server start plus health checks can take a while); the watchdog loop
         takes over once it runs, so a stalled watchdog shows as a stale heartbeat."""
-        self._watching = threading.Event()
+        self._watching = self._background_beats("aew-starting-heartbeat")
+
+    def _background_beats(self, name: str, *, limit_s: float | None = None) -> threading.Event:
+        """Beat from a thread until the returned event is set (or for at most ``limit_s``), while the supervisor
+        works outside its watch loop."""
+        done = threading.Event()
+        until = time.monotonic() + limit_s if limit_s is not None else None
 
         def beat() -> None:
-            while not self._watching.wait(runlog.HEARTBEAT_S):
+            while not done.wait(runlog.HEARTBEAT_S) and (until is None or time.monotonic() < until):
                 runlog.beat(self.run_dir)
 
         runlog.beat(self.run_dir)
-        threading.Thread(target=beat, name="aew-starting-heartbeat", daemon=True).start()
+        threading.Thread(target=beat, name=name, daemon=True).start()
+        return done
 
     def _refuse(self, reason: str) -> bool:
         self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", ended_at=utc_now())
@@ -304,28 +312,39 @@ class Supervisor:
                 return
             if getattr(self, "_watching", None) is not None:
                 self._watching.set()
-            if self.bridge is not None:
-                self.bridge.close()
+            # Ending takes time outside the watch loop (the adapter alone may take TERMINATE_S): keep beating, or
+            # `harness wait` reports a healthy run `lost` (found by CI). Bounded, so a supervisor stuck here still
+            # goes stale.
+            ending = self._background_beats("aew-ending-heartbeat", limit_s=TERMINATE_S + ENDING_EXTRA_S)
             try:
-                if self.adapter is not None:
-                    self._terminate_adapter()
-            finally:  # the tree is killed whatever the adapter managed
-                self.tree.kill()
-            try:
-                self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
-            except Exception as exc:
-                self.record["result"] = {"error": f"{type(exc).__name__}: {exc}"}
-            self._compare_effective()
-            self.record["evidence"] = self._evidence()
-            self.record.update(status=status, reason=reason, ended_at=utc_now())
-            if self.bridge is not None:
-                self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
-                                             outcomes=self.bridge.outcomes)
-            self._event("ended", status=status, reason=reason)
-            self._drop_credential()
-            leaks = runlog.scan_for_credentials(self.run_dir)
-            self.record["credential_scan"] = {"clean": not leaks, "files": leaks}
-            self._save()
+                faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
+                self._end(status, reason)
+            finally:
+                ending.set()
+
+    def _end(self, status: str, reason: str) -> None:
+        if self.bridge is not None:
+            self.bridge.close()
+        try:
+            if self.adapter is not None:
+                self._terminate_adapter()
+        finally:  # the tree is killed whatever the adapter managed
+            self.tree.kill()
+        try:
+            self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
+        except Exception as exc:
+            self.record["result"] = {"error": f"{type(exc).__name__}: {exc}"}
+        self._compare_effective()
+        self.record["evidence"] = self._evidence()
+        self.record.update(status=status, reason=reason, ended_at=utc_now())
+        if self.bridge is not None:
+            self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
+                                         outcomes=self.bridge.outcomes)
+        self._event("ended", status=status, reason=reason)
+        self._drop_credential()
+        leaks = runlog.scan_for_credentials(self.run_dir)
+        self.record["credential_scan"] = {"clean": not leaks, "files": leaks}
+        self._save()
 
     def _terminate_adapter(self) -> None:
         """The adapter's own shutdown, bounded: a stuck adapter must not stop the supervisor from ending the run."""

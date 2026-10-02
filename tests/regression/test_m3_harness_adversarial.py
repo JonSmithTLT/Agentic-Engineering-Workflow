@@ -180,6 +180,22 @@ def test_harness_wait_keeps_waiting_while_a_just_launched_run_may_still_start(la
     assert_control_invariants(lab.project)
 
 
+def test_a_run_that_takes_long_to_end_is_not_reported_lost(lab, tmp_path):
+    """Found by CI on main after PR #7 (Windows): `aew harness wait` reported a healthy run `lost`. Ending a run
+    (stopping the harness, for up to 20 s; collecting; scanning its evidence and its directory) happened outside
+    the watch loop, where nothing beat, so on a loaded machine the heartbeat went stale before the final record."""
+    held = hold(tmp_path / "ending")
+    assigned(lab, tmp_path, IMPLEMENT, env=pause_env(("harness.supervisor.finishing", held)))
+    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor ending the run")
+    stale = {**lab.env, "AEW_RUN_STALE_S": "2"}
+    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "4", env=stale, timeout=120)
+    assert early.returncode == 0 and early.json["timed_out"], early.json  # still ending, and visibly alive
+    held.unlink()
+    done = lab.wait(R1)
+    assert done["status"] == "ended_with_evidence" and len(done["evidence"]) == 2
+    assert_control_invariants(lab.project)
+
+
 def test_supervisor_crash_takes_the_whole_harness_tree_with_it(lab, tmp_path, sync):
     wid, out = assigned(lab, tmp_path, [{"do": "spawn_orphan", "pidfile": str(sync / "orphan")},
                                         {"do": "pid", "path": str(sync / "agent")}, touch(sync / "ready"),

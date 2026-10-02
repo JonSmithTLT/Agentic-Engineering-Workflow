@@ -139,6 +139,12 @@ An Epic closes only once the history is audited through the current root: run `a
 
 ## Finished work and its history
 
+A project created before ADR-0011 has control state v1, where finished work stays in the active state. Its Lead migrates it once, with no harness run live; until then the Lead's other changes are refused with `MIGRATION_REQUIRED`:
+
+```bash
+aew migrate --expect-rev N    # finished work moves to the history in one transaction; running it again does nothing
+```
+
 Finished work leaves the active state when it finishes (ADR-0011). Views show counts and the most recent finished units; the history commands reach the rest by stable id, without knowing where anything is stored:
 
 ```bash

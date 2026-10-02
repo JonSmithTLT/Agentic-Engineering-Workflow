@@ -13,7 +13,14 @@ from typing import Any
 from aew.engine.authority import require_lead
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
-from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
+from aew.errors import (
+    AEWError,
+    IntegrityError,
+    MigrationRequired,
+    ProjectNotFound,
+    StaleRevision,
+    WorkspaceNotAuthority,
+)
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -23,6 +30,11 @@ from aew.util import read_yaml, sha256_file, utc_now
 from aew.workspace import git
 
 WORKSPACE_MARKER = "aew-workspace.yaml"  # stored in a linked worktree's private git dir
+V2 = "aew/control/v2"
+# What a Lead may still do on a v1 project (ADR-0011; implementation plan §3): change the seat, end work in flight (a
+# live run blocks the migration), and adopt a changed manifest (the migration checks the pin). Everything else waits
+# for `aew migrate`, so a v1 project is never refused before the command that clears the refusal exists.
+V1_OPS = frozenset({"lead.handoff.offer", "lead.handoff.cancel", "lead.release", "invoke.cancel", "manifest.adopt"})
 
 
 @dataclass
@@ -47,6 +59,9 @@ class TxnContext:
     # Other history entries this transition adds (an audit record, already staged), appended by the archival
     # finalizer first and in one append with everything else: a transaction appends to the history exactly once.
     entries: list[dict[str, Any]] = field(default_factory=list)
+    # History records are written before the commit and referenced by hash (``Session.prewritten``), never staged in
+    # the redo record: a migration archives the whole history in one transaction (implementation plan R8).
+    prewrite: bool = False
 
     @property
     def state(self) -> dict[str, Any]:
@@ -64,6 +79,9 @@ class Kernel:
         self.finalizers = TxnFinalizers()  # run inside every Lead transaction before it commits
         # Credentials archived with finished work (ADR-0011 R7), set by the composition root; None before archival.
         self.archived_credential: Any = None
+        # Lead mutations on a v1 project are refused until `aew migrate`. Only the perf tool sets this, in process, to
+        # build the M3 (v1) layout its baselines were measured on (tools/perf/control_plane.py).
+        self.legacy_v1_writes = False
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -207,6 +225,11 @@ class Kernel:
                     f"expected control revision {expect_rev}, current is {s.revision}",
                     expected=expect_rev, current=s.revision,
                 )
+            if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                raise MigrationRequired(
+                    "this project's control state is v1: migrate it first (`aew migrate --expect-rev N`, Lead); "
+                    "until then the Lead can change the seat, cancel invocations and adopt the manifest",
+                    schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
             if not _adopting_manifest:
                 self.check_manifest_pin(s.state)
             ctx = TxnContext(session=s, actor=actor)

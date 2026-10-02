@@ -66,6 +66,19 @@ class Hierarchy:
         return H.children_digest(state, work_id, {c: self.units.completion_sha(state, c)
                                                   for c in H.children(state, work_id)})
 
+    @staticmethod
+    def same_children(unit: dict[str, Any], bound: str | None, digest: str) -> bool:
+        """Whether a children digest a record is bound to (``bound``) names the parent's current child set
+        (``digest``). After a migration, a v1 digest still does while the v2 digest is the one recorded then (R3)."""
+        legacy = unit.get("legacy_digest") or {}
+        return bound == digest or (bool(legacy) and bound == legacy["v1"] and digest == legacy["v2_at_migration"])
+
+    @staticmethod
+    def bound_children(fingerprint: str) -> str | None:
+        """The children digest a parent snapshot's fingerprint is bound to (``...+children:<digest>``)."""
+        _, sep, digest = fingerprint.rpartition("+children:")
+        return digest if sep else None
+
     def _parent_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         unit = self.units.unit(state, work_id)
         gates_policy = self.k.policy("gates")
@@ -90,7 +103,7 @@ class Hierarchy:
         def is_current(e: dict[str, Any]) -> bool:
             snap = e["evaluated_snapshot"]
             dispatched_with = (state["invocations"].get(e["producer"]["invocation"]) or {}).get("dependencies")
-            return snap["relevant_inputs_fingerprint"].endswith(f"+children:{digest}") \
+            return self.same_children(unit, self.bound_children(snap["relevant_inputs_fingerprint"]), digest) \
                 and self.inputs.same_source(snap.get("base_revision"), commit) and dispatched_with == edges
 
         results = G.evaluate_evidence_unit(state, work_id, evidence, obligations=obligations, special=special,
@@ -174,7 +187,8 @@ class Hierarchy:
                 raise IllegalTransition(f"{evidence_id} is not a parent {kind} of {work_id}")
             gc = self._parent_gate_context(state, work_id)
             snap = ev["evaluated_snapshot"]
-            if not (snap["relevant_inputs_fingerprint"].endswith(f"+children:{gc['snapshot']['children_digest']}")
+            if not (self.same_children(unit, self.bound_children(snap["relevant_inputs_fingerprint"]),
+                                       gc["snapshot"]["children_digest"])
                     and self.inputs.same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
                 raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
                                       "parent snapshot (stale)", evaluated=snap, current=gc["snapshot"])
@@ -234,7 +248,7 @@ class Hierarchy:
         if pv.get("awaiting_classification"):
             return "a failed parent verification awaits the Lead's classification"
         cls = pv.get("classification")
-        if cls == "LOCAL_IMPLEMENTATION_DEFECT" and digest == pv.get("children_digest"):
+        if cls == "LOCAL_IMPLEMENTATION_DEFECT" and self.same_children(unit, pv.get("children_digest"), digest):
             return "classified LOCAL_IMPLEMENTATION_DEFECT: a remediation child must change the child set first"
         if cls in {"PLAN_OR_DESIGN_DEFECT", "CONTRACT_VIOLATION"} \
                 and (unit.get("plan") or {}).get("accepted") == pv.get("plan_revision"):

@@ -32,7 +32,7 @@ from aew.engine.seams import (
 ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
                       "_nm", "_hierarchy", "_evidence", "_integration", "_harness", "_lead", "_views", "_resume",
-                      "_project", "_archive", "_history")
+                      "_project", "_archive", "_history", "_migration")
 
 
 @pytest.fixture

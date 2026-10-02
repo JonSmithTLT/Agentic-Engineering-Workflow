@@ -130,6 +130,9 @@ class Template:
             "ticket_scope_enforcement": True, "review_triggers": [], "dependency_rules": []}),
             encoding="utf-8", newline="\n")
         self.eng = Engine.discover(root)
+        # ADR-0011 refuses the Lead's mutations on v1 until `aew migrate`; this in-process engine builds the M3 layout
+        # anyway (every measurement then runs on the migrated project, through the CLI).
+        self.eng._k.legacy_v1_writes = True
         self.token = self.eng.lead_acquire(expect_rev=0, session_label="perf")["token"]
 
     def rev(self) -> int:
@@ -311,10 +314,19 @@ def add_units(root: Path, *, done: int, planned: int) -> None:
 
 
 def build(root: Path, units: int) -> Template:
+    """The M3 (v1) layout at ``units``: the template grown by clones. ``migrate`` turns it into v2."""
     t = make_template(root)
     grow(root, units)
     validate(root)
     return t
+
+
+def migrate(t: Template) -> dict[str, Any]:
+    """``aew migrate`` (ADR-0011) on a built project, timed: the series measure the migrated project."""
+    t0 = time.perf_counter()
+    out = Engine.discover(t.root).migrate(token=t.token, expect_rev=t.rev())
+    return {"migrate_s": round(time.perf_counter() - t0, 2), "archived": out["archived"], "hot": out["hot"],
+            "history_entries": out["history"]["entries"]}
 
 
 def validate(root: Path) -> dict[str, Any]:
@@ -335,6 +347,9 @@ def validate(root: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------- footprint
 
 TERMINAL_UNITS = frozenset({"DONE", "CANCELLED"})
+# ADR-0011 (control state v2): what the hot state keeps about archived work. Constant-size aggregates and bounded
+# lists, never a record per finished unit (H1).
+HOT_HISTORY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations")
 
 
 def _bytes(section: str, key: str, value: Any) -> int:
@@ -378,6 +393,10 @@ def footprint(state: dict[str, Any], control_bytes: int) -> dict[str, Any]:
         else:
             live["revoked_credentials" if tok.get("revoked_at") else "active_credentials"] += size
     open_total, history_total = sum(live.values()), sum(history.values())
+    # v2: what stays hot about archived work is counted with the history (it is history, kept as aggregates).
+    aggregates = sum(len(dump_yaml({k: state[k]}).encode("utf-8")) for k in HOT_HISTORY_KEYS if k in state)
+    history["archived_aggregates"] = aggregates
+    history_total += aggregates
     terminal = history_total + live["ended_invocations"] + live["revoked_credentials"]
     n_open, n_done = len(open_units), len(work) - len(open_units)
     return {"units": {"open": n_open, "completed": n_done},
@@ -392,10 +411,15 @@ def footprint(state: dict[str, Any], control_bytes: int) -> dict[str, Any]:
 
 
 def project_footprint(root: Path) -> dict[str, Any]:
+    """The hot footprint, plus (v2) the cold store on disk: the history records and the manifest."""
     path = root / ".aew/state/control.yaml"
     raw = path.read_bytes()
     from aew.engine.store import deserialize_control
-    return footprint(deserialize_control(raw, source="control.yaml"), len(raw))
+    from aew.history.store import RECORD_GLOBS
+    aew_root = root / ".aew"
+    cold = [p for pattern in (*RECORD_GLOBS, "history/seg-*.yaml", "history/tail.yaml") for p in aew_root.glob(pattern)]
+    return {**footprint(deserialize_control(raw, source="control.yaml"), len(raw)),
+            "cold_bytes": sum(p.stat().st_size for p in cold if p.is_file())}
 
 
 # ---------------------------------------------------------------------------------------------- measuring
@@ -734,30 +758,28 @@ def table(results: list[dict[str, Any]]) -> str:
 
 
 def sweep_points(spec: str) -> list[tuple[int, int]]:
-    """``open:completed,...``, measured in order on as few projects as possible: a point that has at least the
-    previous point's open and completed units grows that project; any other starts a new one."""
+    """``open:completed,...``, measured in order, each on a project of its own (built, then migrated)."""
     return [(int(a), int(b)) for a, b in (p.split(":") for p in spec.split(","))]
 
 
 def sweep(points: list[tuple[int, int]], work: Path, reps: int, *, hierarchy: bool = False) -> list[dict[str, Any]]:
     """With ``hierarchy``, ``open`` counts the open Tickets below the Story; the Story and Epic are open as well."""
     results: list[dict[str, Any]] = []
-    t: Template | None = None
-    have = (0, 0)
     for n, (want_open, want_done) in enumerate(points):
-        if t is None or want_open < have[0] or want_done < have[1]:
-            # 3 open Tickets (T-0002..T-0004) and 1 completed (T-0001); in a hierarchy, all below one Story and Epic
-            t = make_template(work / f"sweep-{n}" / "repo", hierarchy=hierarchy)
-            have = (3, 1)
+        # Each point is built in the M3 (v1) layout and migrated (ADR-0011), so it is a project of its own: 3 open
+        # Tickets (T-0002..T-0004) and 1 completed (T-0001) to start; in a hierarchy, all below one Story and Epic.
+        t = make_template(work / f"sweep-{n}" / "repo", hierarchy=hierarchy)
         t0 = time.perf_counter()
-        add_units(t.root, done=max(want_done - have[1], 0), planned=max(want_open - have[0], 0))
-        have = (max(want_open, have[0]), max(want_done, have[1]))
+        add_units(t.root, done=max(want_done - 1, 0), planned=max(want_open - 3, 0))
         info = {**validate(t.root), "build_s": round(time.perf_counter() - t0, 1)}
-        fp = project_footprint(t.root)
-        print(f"point open={fp['units']['open']} completed={fp['units']['completed']} {info}", flush=True)
-        results.append({"point": {"open": fp["units"]["open"], "completed": fp["units"]["completed"]},
+        fp_v1 = project_footprint(t.root)
+        migration = migrate(t)
+        print(f"point open={fp_v1['units']['open']} completed={fp_v1['units']['completed']} {info} {migration}",
+              flush=True)
+        results.append({"point": {"open": fp_v1["units"]["open"], "completed": fp_v1["units"]["completed"]},
                         "shape": "hierarchy" if hierarchy else "flat",
-                        "project": info, "footprint": fp, "micro": micro(t.root),
+                        "project": info, "footprint_v1": fp_v1, "migration": migration,
+                        "footprint": project_footprint(t.root), "micro": micro(t.root),
                         "ops": measure(t, reps if want_done + want_open < 3000 else 1)})
     return results
 
@@ -769,7 +791,8 @@ def sweep_table(results: list[dict[str, Any]]) -> str:
              "| control.yaml | " + " | ".join(f"{r['footprint']['control_bytes'] / 1e6:.2f} MB" for r in results)
              + " |",
              "| live part (ADR-0011) | " + " | ".join(f"{r['footprint']['live_bytes'] / 1e3:.0f} KB" for r in results)
-             + " |"]
+             + " |",
+             "| aew migrate | " + " | ".join(f"{r['migration']['migrate_s']:.2f} s" for r in results) + " |"]
     for i, row in enumerate(results[0]["ops"]):
         lines.append(f"| {row['op']} | " + " | ".join(f"{r['ops'][i]['wall_s']:.2f} s" for r in results) + " |")
     return "\n".join(lines)
@@ -826,8 +849,11 @@ def main() -> int:
         t0 = time.perf_counter()
         t = build(root, n)
         info = {**validate(root), "build_s": round(time.perf_counter() - t0, 1)}
-        print(f"built {info}", flush=True)
-        results.append({"project": info, "footprint": project_footprint(root), "micro": micro(root),
+        fp_v1 = project_footprint(root)
+        migration = migrate(t)
+        print(f"built {info} {migration}", flush=True)
+        results.append({"project": info, "footprint_v1": fp_v1, "migration": migration,
+                        "footprint": project_footprint(root), "micro": micro(root),
                         "ops": measure(t, args.reps if n < 3000 else 1)})
         print(json.dumps(results[-1]["micro"]), flush=True)
     print(table(results))

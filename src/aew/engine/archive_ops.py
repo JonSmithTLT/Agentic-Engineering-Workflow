@@ -61,8 +61,8 @@ def redact(value: Any) -> Any:
 def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
     """The records an archived unit's bundle pins by path and hash, which a verification checks with the bundle
     (ADR-0011: a full verification covers every record reachable from the root): the unit's own record, its plans,
-    its ingested evidence, its completion record, and its invocations' context packs. Records that change by design
-    are not pinned here (a pack's sources are project files, pinned only as they were at dispatch)."""
+    its ingested evidence and its completion record. Not the invocations' context packs: they live in ``local/``,
+    which is derived and disposable, and are checked by regenerating them (``context pack``), never by an audit."""
     if entry["kind"] != "unit":
         return []
     try:
@@ -77,10 +77,6 @@ def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
     pins += [(e["path"], e["sha256"]) for e in unit.get("evidence") or [] if e.get("path") and e.get("sha256")]
     if unit.get("completion_record") and unit.get("completion_sha256"):
         pins.append((unit["completion_record"], unit["completion_sha256"]))
-    for inv in (doc.get("invocations") or {}).values():
-        pack = inv.get("pack") or {}
-        if pack.get("path") and pack.get("sha256"):
-            pins.append((pack["path"], pack["sha256"]))
     return sorted(set(pins))
 
 

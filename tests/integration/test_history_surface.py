@@ -487,3 +487,17 @@ def test_the_history_surface_shows_no_storage_paths(tmp_path):
     assert all(e["rel"] != "completion" for e in links["edges"])
     assert all("/" not in node for node in links["nodes"])
     assert "path" not in p.ok("history", "reindex")
+
+
+def test_losing_the_derived_local_directory_is_not_damage(tmp_path):
+    """`.aew/local/` (context packs, the history index) is derived and disposable: an audit checks the records the
+    history pins, never a pack, so removing it all leaves a full audit passing (packs are checked by regeneration)."""
+    import shutil
+
+    p = sample_project(tmp_path)
+    finished_ticket(p, tmp_path)
+    shutil.rmtree(p.root / ".aew/local/packs")
+    os.remove(p.root / ".aew/local/history.sqlite")
+    assert p.ok("history", "audit", "--full")["ok"] is True
+    assert audit(p, "--full")["ok"] is True
+    assert_control_invariants(p)

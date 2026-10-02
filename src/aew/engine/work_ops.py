@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew.engine import dependencies as deps
 from aew.engine import hierarchy as H
 from aew.engine import transitions
-from aew.engine.base import EngineBase, TxnContext
+from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
-from aew.errors import GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
+from aew.engine.seams import GuardRegistration
+from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
-from aew.util import glob_any, sha256_text, utc_now
+from aew.util import glob_any, sha256_file, sha256_text, utc_now
 from aew.workspace import git
+
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
+    from aew.engine.ports import InvocationsPort, RolesPort, WorkUnitsPort
+    from aew.engine.seams import GuardTable, StateHooks
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
 PARENT_KINDS = H.PARENT_KINDS
@@ -20,26 +26,27 @@ PARENT_KINDS = H.PARENT_KINDS
 PLAN_ACCEPT_TICKET_STATES = {"BLOCKED", "READY", "REPLAN_REQUIRED"}
 
 
-class WorkOps(EngineBase):
-    # ------------------------------------------------------------------ helpers
+class WorkUnits:
+    """The work graph's core: unit lookup, the single state-change point (its hooks are explicit), guard resolution by
+    unit kind, plan and dispatch bindings, and the readiness/derivation pass every Lead commit runs."""
 
-    def authoritative_commit(self) -> str | None:
-        return git.rev_parse(f"refs/heads/{self.authoritative_branch}", cwd=self.repo_root)
+    def __init__(self, k: Kernel, *, hooks: StateHooks, guards: GuardTable) -> None:
+        self.k = k
+        self.hooks = hooks
+        self.guards = guards
 
     def before_commit(self, ctx: TxnContext) -> None:
         """Keep BLOCKED/READY and the derived Story/Epic state consistent with the durable graph inside every
         Lead commit (WC §8: parent state is derived, never hand-maintained)."""
         at = utc_now()
         derived = H.recompute_parents(ctx.state, at=at)
-        changed = recompute_readiness(ctx.state, repo_root=self.repo_root, base_commit=self.authoritative_commit(),
+        changed = recompute_readiness(ctx.state, repo_root=self.k.repo_root, base_commit=self.k.authoritative_commit(),
                                       plan_problem=self.plan_binding_problem)
         derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
         if changed:
             ctx.refs.extend(f"readiness:{wid}" for wid in changed)
         if derived:
             ctx.refs.extend(f"derived:{wid}" for wid in derived)
-
-    # ------------------------------------------------------------------ plan bindings (ADR-0007)
 
     @staticmethod
     def accepted_plan_ref(unit: dict[str, Any]) -> dict[str, Any] | None:
@@ -73,7 +80,7 @@ class WorkOps(EngineBase):
 
     def dispatch_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """Why a started Ticket's attempt no longer matches its effective dependencies (M2 review B2), or None."""
-        return deps.dispatch_binding_problem(state, work_id, repo_root=self.repo_root)
+        return deps.dispatch_binding_problem(state, work_id, repo_root=self.k.repo_root)
 
     @staticmethod
     def unit(state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -82,37 +89,31 @@ class WorkOps(EngineBase):
             raise NotFound(f"no work unit {work_id}")
         return unit
 
-    def _set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
-                   state: dict[str, Any]) -> dict[str, str]:
+    def set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
+                  state: dict[str, Any]) -> dict[str, str]:
         """The single place a work unit's state changes (so cross-state effects cannot be skipped).
 
         ``state`` is the transaction's control state: cross-state effects may revoke credentials.
         """
         change = {"from": unit["state"], "to": to}
-        self._before_state_change(unit, change)
+        self.hooks.run_before(unit, change)
         unit["state"] = to
         unit["state_reason"] = reason
         unit.setdefault("history", []).append({**change, "at": utc_now(), "reason": reason})
-        self._after_state_change(state, unit, change, reason)
+        self.hooks.run_after(state, unit, change, reason)
         return change
 
-    # Refined by the integration mixin (a pending publish, candidates bound to COMMIT_READY).
-    def _before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
-        return None
-
-    def _after_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
-                            reason: str | None) -> None:
-        return None
-
-    def _guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
+    def check_guard(self, name: str | None, ctx: TxnContext, work_id: str, unit: dict[str, Any], to: str) -> None:
         if not name:
             return
-        guard = getattr(self, f"_guard_{name}", None)
-        if guard is None:
-            raise GateUnsatisfied(f"guard {name} is not available")
-        guard(ctx, work_id, unit, to)
+        self.guards.resolve(name, unit)(ctx, work_id, unit, to)
 
-    # ------------------------------------------------------------------ guards not based on evidence gates
+    def guard_registrations(self) -> list[GuardRegistration]:
+        """The Lead-transition guards that do not depend on evidence gates, for every unit kind."""
+        return [GuardRegistration("implementer_active", self._guard_implementer_active),
+                GuardRegistration("findings_recorded", self._guard_findings_recorded),
+                GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation),
+                GuardRegistration("not_beyond_interrupted_phase", self._guard_not_beyond_interrupted_phase)]
 
     def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
         inv = ctx.state["invocations"].get(unit.get("implementer_invocation") or "")
@@ -139,7 +140,116 @@ class WorkOps(EngineBase):
                 "(success is never inferred from a prior invocation)"
             )
 
-    # ------------------------------------------------------------------ create
+    def check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
+        parent_unit = self.unit(state, parent)
+        if parent_unit["kind"] not in PARENT_KINDS[kind]:
+            raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
+        if parent_unit["state"] in H.TERMINAL:
+            raise IllegalTransition(f"{parent} is {parent_unit['state']}; a closed or cancelled parent takes no new "
+                                    "children (create a new unit instead)")
+
+    def parse_edges(self, state: dict[str, Any], specs: list[str]) -> list[dict[str, str]]:
+        """Edges may point at Tickets (M1 kinds) or at Stories/Epics (satisfied when the parent is DONE)."""
+        edges: list[dict[str, str]] = []
+        for spec in specs:
+            dep_id, _, dep_kind = spec.partition(":")
+            up = self.unit(state, dep_id)
+            if H.is_parent(up):
+                dep_kind = dep_kind or "mutating"  # conservative: descendants' integrated outputs must be in the base
+            else:
+                dep_kind = dep_kind or ("mutating" if up["mutating"] else "evidence")
+            if dep_kind not in {"mutating", "evidence"}:
+                raise UsageError(f"dependency kind must be mutating or evidence, got {dep_kind}")
+            if dep_kind == "mutating" and not H.is_parent(up) and not up["mutating"]:
+                raise UsageError(f"{dep_id} is not mutating; use an evidence dependency")
+            if any(e["id"] == dep_id for e in edges):
+                raise UsageError(f"duplicate dependency on {dep_id}")
+            edges.append({"id": dep_id, "kind": dep_kind})
+        return edges
+
+    @staticmethod
+    def refuse_cycles(state: dict[str, Any]) -> None:
+        cycle = H.find_cycle(state)
+        if cycle:
+            raise UsageError("this change would create a dependency cycle (including inherited edges and parents "
+                             "waiting on their children): " + " -> ".join(cycle), cycle=cycle)
+
+    def propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
+                affected_paths: list[str] | None, assurance: dict[str, list[str]],
+                author: dict[str, Any] | None = None,
+                source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
+        """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
+        revision = len(unit["plans"]) + 1
+        supersedes = (unit.get("plan") or {}).get("accepted")
+        if supersedes and not reason:
+            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
+        record = plan_record(
+            work_unit=work_id, revision=revision, created_at=utc_now(),
+            author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
+                              "generation": ctx.actor["generation"]},
+            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
+            source_evidence=source_evidence, assurance=assurance,
+        )
+        text = record.render()
+        path = f"work/{work_id}/plan-v{revision}.md"
+        ctx.session.write(path, text)
+        ctx.refs.append(path)
+        unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
+                              "supersedes": supersedes, "status": "proposed", "assurance": assurance})
+        return path, revision
+
+    @staticmethod
+    def rollup(state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """Derived Story/Epic state from child work (WC §8: never hand-maintained)."""
+        counts: dict[str, int] = {}
+        stack = [work_id]
+        while stack:
+            current = stack.pop()
+            for cid, child in state["work"].items():
+                if child.get("parent") == current:
+                    if child["kind"] == "ticket":
+                        counts[child["state"]] = counts.get(child["state"], 0) + 1
+                    else:
+                        stack.append(cid)
+        total = sum(counts.values())
+        done = counts.get("DONE", 0) + counts.get("CANCELLED", 0)
+        derived = "EMPTY" if total == 0 else ("CHILDREN_COMPLETE" if done == total else "IN_PROGRESS")
+        return {"derived_state": derived, "children_by_state": counts,
+                "note": "children complete does not prove parent acceptance (WC §8)"}
+
+    def completion_sha(self, state: dict[str, Any], work_id: str) -> str | None:
+        unit = state["work"][work_id]
+        if unit.get("completion_sha256"):
+            return unit["completion_sha256"]
+        rec = unit.get("completion_record")
+        return sha256_file(self.k.aew_root / rec) if rec else None
+
+    def require_plan_binding(self, state: dict[str, Any], work_id: str) -> None:
+        """No executor starts under an accepted plan whose ancestor plans changed since (ADR-0007, fail closed)."""
+        problem = self.plan_binding_problem(state, work_id)
+        if problem:
+            raise GateUnsatisfied(f"{work_id}'s accepted plan is stale under its ancestors' current plans; "
+                                  f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision first",
+                                  binding=problem)
+
+    def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
+        """No executor joins an attempt dispatched for other dependencies than the Ticket now has (M2 review B2)."""
+        problem = self.dispatch_binding_problem(state, work_id)
+        if problem:
+            raise DependencyUnsatisfied(f"{work_id}'s attempt was dispatched with other dependencies than it now has; "
+                                        "a new dispatch is required (REPLAN_REQUIRED and a plan revision, or "
+                                        "`aew work redispatch` for a non-mutating Ticket)", dispatch_binding=problem)
+
+
+
+class WorkCommands:
+    """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
+
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort) -> None:
+        self.k = k
+        self.units = units
+        self.roles = roles
+        self.invocations = invocations
 
     def work_create(
         self,
@@ -174,11 +284,11 @@ class WorkOps(EngineBase):
             raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
                              "globs: give one glob per --scope and repeat --scope for each",
                              scope=joined)
-        with self.lead_txn(token, expect_rev, "work.create") as ctx:
+        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
             state = ctx.state
             if parent is not None:
-                self._check_parent(state, kind, parent)
-            edges = self._parse_edges(state, depends_on or [])
+                self.units.check_parent(state, kind, parent)
+            edges = self.units.parse_edges(state, depends_on or [])
             counter = kind
             state["counters"][counter] = state["counters"].get(counter, 0) + 1
             work_id = format_id(KIND_PREFIX[kind], state["counters"][counter])
@@ -211,15 +321,15 @@ class WorkOps(EngineBase):
             if promoted_from:
                 unit["promoted_from"] = promoted_from
             state["work"][work_id] = unit
-            self._refuse_cycles(state)
+            self.units.refuse_cycles(state)
             if card:
-                chosen = self.role_catalog().get(card)  # type: ignore[attr-defined]  (RoleOps)
-                self._slot_ok(unit, "execute", chosen)  # type: ignore[attr-defined]
+                chosen = self.roles.role_catalog().get(card)
+                self.roles.slot_ok(unit, "execute", chosen)
                 unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
                                                   "selected_by": "lead", "pinned": False}],
                                      "review": [], "verify": [], "forbidden": []}
             ctx.summary = f"created {kind} {work_id}: {title}"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
         unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and is_mutating else []
         if unmatched:
@@ -232,50 +342,14 @@ class WorkOps(EngineBase):
         could not look at the project guessed seven globs, none of them the code's directory, and nothing said so).
         A Ticket's scope is fixed once it exists, so this is said at creation; it is a warning, not a refusal, since
         a Ticket may create new directories."""
-        commit = self.authoritative_commit()
+        commit = self.k.authoritative_commit()
         if not scope_paths or not commit:
             return []
         try:
-            files = git.out("ls-tree", "-r", "--name-only", commit, cwd=self.repo_root).splitlines()
+            files = git.out("ls-tree", "-r", "--name-only", commit, cwd=self.k.repo_root).splitlines()
         except GitError:
             return []
         return [g for g in scope_paths if not any(glob_any(f, [g]) for f in files)]
-
-    def _check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
-        parent_unit = self.unit(state, parent)
-        if parent_unit["kind"] not in PARENT_KINDS[kind]:
-            raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
-        if parent_unit["state"] in H.TERMINAL:
-            raise IllegalTransition(f"{parent} is {parent_unit['state']}; a closed or cancelled parent takes no new "
-                                    "children (create a new unit instead)")
-
-    def _parse_edges(self, state: dict[str, Any], specs: list[str]) -> list[dict[str, str]]:
-        """Edges may point at Tickets (M1 kinds) or at Stories/Epics (satisfied when the parent is DONE)."""
-        edges: list[dict[str, str]] = []
-        for spec in specs:
-            dep_id, _, dep_kind = spec.partition(":")
-            up = self.unit(state, dep_id)
-            if H.is_parent(up):
-                dep_kind = dep_kind or "mutating"  # conservative: descendants' integrated outputs must be in the base
-            else:
-                dep_kind = dep_kind or ("mutating" if up["mutating"] else "evidence")
-            if dep_kind not in {"mutating", "evidence"}:
-                raise UsageError(f"dependency kind must be mutating or evidence, got {dep_kind}")
-            if dep_kind == "mutating" and not H.is_parent(up) and not up["mutating"]:
-                raise UsageError(f"{dep_id} is not mutating; use an evidence dependency")
-            if any(e["id"] == dep_id for e in edges):
-                raise UsageError(f"duplicate dependency on {dep_id}")
-            edges.append({"id": dep_id, "kind": dep_kind})
-        return edges
-
-    @staticmethod
-    def _refuse_cycles(state: dict[str, Any]) -> None:
-        cycle = H.find_cycle(state)
-        if cycle:
-            raise UsageError("this change would create a dependency cycle (including inherited edges and parents "
-                             "waiting on their children): " + " -> ".join(cycle), cycle=cycle)
-
-    # ------------------------------------------------------------------ plans
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
                      reason: str | None = None, affected_paths: list[str] | None = None,
@@ -283,46 +357,22 @@ class WorkOps(EngineBase):
                      no_assurance: bool = False) -> dict[str, Any]:
         if not body.strip():
             raise UsageError("plan body is empty")
-        with self.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
-            unit = self.unit(ctx.state, work_id)
+        with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
+            unit = self.units.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
-            assurance = self.resolve_plan_assurance(  # type: ignore[attr-defined]  (RoleOps)
+            assurance = self.roles.resolve_plan_assurance(
                 unit, review=review, verify=verify, none=no_assurance)
-            path, revision = self._propose(ctx, work_id, unit, body=body, reason=reason,
+            path, revision = self.units.propose(ctx, work_id, unit, body=body, reason=reason,
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
-    def _propose(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
-                 affected_paths: list[str] | None, assurance: dict[str, list[str]],
-                 author: dict[str, Any] | None = None,
-                 source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
-        """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
-        revision = len(unit["plans"]) + 1
-        supersedes = (unit.get("plan") or {}).get("accepted")
-        if supersedes and not reason:
-            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
-        record = plan_record(
-            work_unit=work_id, revision=revision, created_at=utc_now(),
-            author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
-                              "generation": ctx.actor["generation"]},
-            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            source_evidence=source_evidence, assurance=assurance,
-        )
-        text = record.render()
-        path = f"work/{work_id}/plan-v{revision}.md"
-        ctx.session.write(path, text)
-        ctx.refs.append(path)
-        unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
-                              "supersedes": supersedes, "status": "proposed", "assurance": assurance})
-        return path, revision
-
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
-        with self.lead_txn(token, expect_rev, "plan.accept") as ctx:
-            unit = self.unit(ctx.state, work_id)
+        with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:
+            unit = self.units.unit(ctx.state, work_id)
             if H.is_parent(unit):
                 allowed = (set(H.PARENT_STATES) - H.TERMINAL) | {"OPEN"}
             else:
@@ -348,34 +398,32 @@ class WorkOps(EngineBase):
                     p["status"] = "superseded"
             entry["status"] = "accepted"
             unit["plan"] = {"accepted": revision, "path": entry["path"], "sha256": entry["sha256"],
-                            "ancestor_plans": self.ancestor_plan_snapshot(ctx.state, work_id)}
+                            "ancestor_plans": self.units.ancestor_plan_snapshot(ctx.state, work_id)}
             # The plan's declared review and verification become required gates (UAT 2026-09-30).
-            self.bind_plan_assurance(unit, revision, entry.get("assurance"))  # type: ignore[attr-defined]
+            self.roles.bind_plan_assurance(unit, revision, entry.get("assurance"))
             if H.is_parent(unit) and not unit.get("baseline_commit"):
-                unit["baseline_commit"] = self.authoritative_commit()
-            decision = self.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
+                unit["baseline_commit"] = self.k.authoritative_commit()
+            decision = self.k.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
                                          work_unit=work_id, evidence_refs=[entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
                 # Work done under the superseded plan never continues implicitly: the old attempt's workspace
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).
-                self._release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
-                blockers = readiness_blockers(ctx.state, unit, repo_root=self.repo_root,
-                                              base_commit=self.authoritative_commit(), work_id=work_id,
-                                              plan_problem=self.plan_binding_problem)
+                self.invocations.release_workspace(ctx, unit, f"replanned: plan v{revision} accepted")
+                blockers = readiness_blockers(ctx.state, unit, repo_root=self.k.repo_root,
+                                              base_commit=self.k.authoritative_commit(), work_id=work_id,
+                                              plan_problem=self.units.plan_binding_problem)
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
-                self._set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
+                self.units.set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
             ctx.summary = f"{work_id} plan v{revision} accepted ({decision})"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "accepted": revision, "decision": decision,
                 "revision": ctx.session.committed_revision}
 
-    # ------------------------------------------------------------------ generic Lead transitions
-
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
                         reason: str | None = None) -> dict[str, Any]:
-        with self.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
-            unit = self.unit(ctx.state, work_id)
+        with self.k.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
+            unit = self.units.unit(ctx.state, work_id)
             if unit["kind"] != "ticket":
                 raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
                                         "with `aew work close` and cancels one with `aew work cancel`")
@@ -383,74 +431,60 @@ class WorkOps(EngineBase):
             rule = transitions.check(frm, to, "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{frm} -> {to} requires --reason")
-            self._guard(rule.guard, ctx, work_id, unit, to)
+            self.units.check_guard(rule.guard, ctx, work_id, unit, to)
             if to == "ESCALATED":
                 unit["escalated_from"] = frm
             if frm == "ESCALATED":
                 unit.pop("escalated_from", None)
-            change = self._set_state(unit, to, reason, state=ctx.state)
+            change = self.units.set_state(unit, to, reason, state=ctx.state)
             decision = None
             if to == "CANCELLED":
-                decision = self.new_decision(ctx, "cancellation", f"{work_id} cancelled", work_unit=work_id,
+                decision = self.k.new_decision(ctx, "cancellation", f"{work_id} cancelled", work_unit=work_id,
                                              resulting_transition=change, reason=reason)
-                self._release_workspace(ctx, unit, "cancelled")
+                self.invocations.release_workspace(ctx, unit, "cancelled")
             elif to == "RUNNING" and transitions.PHASE_ORDER.get(frm, 0) > transitions.PHASE_ORDER["RUNNING"]:
-                decision = self.new_decision(ctx, "state_regression", f"{work_id} returned to RUNNING from {frm}",
+                decision = self.k.new_decision(ctx, "state_regression", f"{work_id} returned to RUNNING from {frm}",
                                              work_unit=work_id, resulting_transition=change, reason=reason)
-            self.after_transition(ctx, work_id, unit, change)
             ctx.summary = f"{work_id} {frm} -> {to}"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "from": frm, "to": to, "decision": decision,
                 "revision": ctx.session.committed_revision}
 
     def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
         """INTERRUPTED -> an earlier-or-equal phase, after the Lead inspected workspace and artifacts."""
-        with self.lead_txn(token, expect_rev, "work.reconcile", reason=reason) as ctx:
-            unit = self.unit(ctx.state, work_id)
+        with self.k.lead_txn(token, expect_rev, "work.reconcile", reason=reason) as ctx:
+            unit = self.units.unit(ctx.state, work_id)
             frm = unit["state"]
             rule = transitions.check(frm, to, "reconcile")
             if not (reason and reason.strip()):
                 raise UsageError("reconciliation requires --reason describing what was inspected")
-            self._guard(rule.guard, ctx, work_id, unit, to)
-            inspection = inspection or self.inspect_workspace(unit)
-            change = self._set_state(unit, to, reason, state=ctx.state)
+            self.units.check_guard(rule.guard, ctx, work_id, unit, to)
+            inspection = inspection or self.invocations.inspect_workspace(unit)
+            change = self.units.set_state(unit, to, reason, state=ctx.state)
             unit.pop("interrupted_from", None)
-            decision = self.new_decision(
+            decision = self.k.new_decision(
                 ctx, "reconciliation", f"{work_id} reconciled from INTERRUPTED to {to}", work_unit=work_id,
                 resulting_transition=change, reason=reason,
                 body="Inspection at reconciliation:\n\n" + "\n".join(f"- {k}: {v}" for k, v in inspection.items()),
             )
             ctx.summary = f"{work_id} reconciled -> {to}"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "to": to, "decision": decision, "inspection": inspection,
                 "revision": ctx.session.committed_revision}
 
-    # Hooks refined by later mixins (workspaces, evidence).
-    def inspect_workspace(self, unit: dict[str, Any]) -> dict[str, Any]:
-        return {"workspace": (unit.get("workspace") or {}).get("id", "none")}
-
-    def _release_workspace(self, ctx: TxnContext, unit: dict[str, Any], why: str) -> None:
-        if unit.get("workspace"):
-            unit["workspace"]["status"] = f"released ({why})"
-
-    def after_transition(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], change: dict[str, str]) -> None:
-        return None
-
-    # ------------------------------------------------------------------ queries
-
     def work_show(self, work_id: str) -> dict[str, Any]:
-        state = self.store.read()
-        unit = self.unit(state, work_id)
-        record_path = self.aew_root / unit["record"]
+        state = self.k.store.read()
+        unit = self.units.unit(state, work_id)
+        record_path = self.k.aew_root / unit["record"]
         return {"id": work_id, "revision": state["revision"], "control": unit,
                 "record": record_path.read_text(encoding="utf-8") if record_path.exists() else None,
                 "allowed_transitions": transitions.allowed_from(unit["state"]),
                 "children": sorted(k for k, v in state["work"].items() if v.get("parent") == work_id),
-                "rollup": self.rollup(state, work_id) if unit["kind"] != "ticket" else None}
+                "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" else None}
 
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
-        state = self.store.read()
+        state = self.k.store.read()
         items = [
             {"id": wid, "kind": u["kind"], "state": u["state"], "title": u["title"], "parent": u.get("parent"),
              "risk_class": u["risk_class"], "blocked_by": u.get("blocked_by", [])}
@@ -458,22 +492,3 @@ class WorkOps(EngineBase):
             if state_filter is None or u["state"] == state_filter
         ]
         return {"revision": state["revision"], "items": items}
-
-    @staticmethod
-    def rollup(state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        """Derived Story/Epic state from child work (WC §8: never hand-maintained)."""
-        counts: dict[str, int] = {}
-        stack = [work_id]
-        while stack:
-            current = stack.pop()
-            for cid, child in state["work"].items():
-                if child.get("parent") == current:
-                    if child["kind"] == "ticket":
-                        counts[child["state"]] = counts.get(child["state"], 0) + 1
-                    else:
-                        stack.append(cid)
-        total = sum(counts.values())
-        done = counts.get("DONE", 0) + counts.get("CANCELLED", 0)
-        derived = "EMPTY" if total == 0 else ("CHILDREN_COMPLETE" if done == total else "IN_PROGRESS")
-        return {"derived_state": derived, "children_by_state": counts,
-                "note": "children complete does not prove parent acceptance (WC §8)"}

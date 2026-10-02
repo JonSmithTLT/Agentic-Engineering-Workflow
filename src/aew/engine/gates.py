@@ -26,7 +26,7 @@ Which evidence may satisfy a gate (review 2026-09-26 M4; KC §7.2/§16):
   own ingestion checks;
 * ``local_checks`` and ``self_review`` count the implementer's submissions: their
   acceptance *is* the Lead's RUNNING -> REVIEW/VERIFY transition, which pins the
-  evidence it relied on (``_record_relied_on``).
+  evidence it relied on (``Gates.record_relied_on``).
 """
 
 from __future__ import annotations

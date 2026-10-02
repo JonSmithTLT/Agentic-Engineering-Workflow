@@ -1,4 +1,6 @@
-"""Engine core: project discovery, policy loading, and Lead-guarded transactions."""
+"""The Engine's kernel: project discovery, the manifest and policies, and Lead-guarded transactions.
+
+Every collaborator of the Engine (register E5) receives the ``Kernel`` explicitly; nothing reaches the Engine facade."""
 
 from __future__ import annotations
 
@@ -9,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.authority import require_lead
+from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import IntegrityError, ProjectNotFound, StaleRevision, WorkspaceNotAuthority
 from aew.knowledge import render
@@ -40,7 +43,7 @@ class TxnContext:
         return self.session.state
 
 
-class EngineBase:
+class Kernel:
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         self.repo_root = repo_root.resolve()
         self.aew_root = aew_root.resolve()
@@ -48,6 +51,7 @@ class EngineBase:
         self._manifest_error: Exception | None = None
         self._manifest_seen: tuple[Any, ...] | None = None  # file identities the cached manifest reflects
         self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
+        self.finalizers = TxnFinalizers()  # run inside every Lead transaction before it commits
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -92,8 +96,8 @@ class EngineBase:
 
     # ------------------------------------------------------------------ discovery
 
-    @classmethod
-    def discover(cls, start: Path) -> "EngineBase":
+    @staticmethod
+    def locate(start: Path) -> tuple[Path, Path]:
         """Locate the authoritative project for ``start``.
 
         A linked worktree (Ticket workspace) resolves to the authoritative root
@@ -107,7 +111,7 @@ class EngineBase:
             marker = git.git_dir(top) / WORKSPACE_MARKER
             if marker.exists():
                 data = read_yaml(marker)
-                return cls(Path(data["authoritative_repo_root"]), Path(data["authoritative_aew_root"]))
+                return Path(data["authoritative_repo_root"]), Path(data["authoritative_aew_root"])
             if (top / AEW_DIR / MANIFEST).exists():
                 raise WorkspaceNotAuthority(
                     f"{top / AEW_DIR} is a worktree copy of AEW state, not the authoritative project; "
@@ -116,7 +120,7 @@ class EngineBase:
                 )
         for directory in (start, *start.parents):
             if (directory / AEW_DIR / MANIFEST).exists():
-                return cls(directory, directory / AEW_DIR)
+                return directory, directory / AEW_DIR
             if top is not None and directory == top:
                 break
         raise ProjectNotFound(f"no AEW project ({AEW_DIR}/{MANIFEST}) found at or above {start}")
@@ -130,6 +134,9 @@ class EngineBase:
     @property
     def authoritative_branch(self) -> str:
         return self.manifest["repository"]["authoritative_branch"]
+
+    def authoritative_commit(self) -> str | None:
+        return git.rev_parse(f"refs/heads/{self.authoritative_branch}", cwd=self.repo_root)
 
     def _render(self, state: dict[str, Any]) -> dict[str, str]:
         # Runs inside the lock during recovery: never re-enter the manifest property from here.
@@ -192,6 +199,7 @@ class EngineBase:
                 self.check_manifest_pin(s.state)
             ctx = TxnContext(session=s, actor=actor)
             yield ctx
+            self.finalizers.run(ctx)
             s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
                      expect_rev=expect_rev)
 

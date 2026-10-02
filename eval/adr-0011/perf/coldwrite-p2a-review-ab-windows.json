@@ -1,0 +1,149 @@
+{
+ "what": "The cold-write series at 3,000 and 10,000 requested records, run back to back on the same machine state: A is the code before the independent review (64c5a22), B the code after it (e25e9c7). Order A, B, A, B.",
+ "runs": [
+  {
+   "code": "A",
+   "round": 1,
+   "results": [
+    {
+     "records": 3585,
+     "segments": 14,
+     "build_s": 24.3,
+     "tail_bytes_at_254": 149071,
+     "append_tail_254_s": 0.1169,
+     "append_seal_s": 0.1354,
+     "append_tail_0_s": 0.0598,
+     "verify_incremental_s": 0.0678,
+     "index_catch_up_s": 0.1252,
+     "lookup_by_id_s": 0.00118,
+     "entry_by_seq_s": 0.03343,
+     "verify_full_s": 1.87,
+     "index_rebuild_s": 0.64
+    },
+    {
+     "records": 10753,
+     "segments": 42,
+     "build_s": 77.5,
+     "tail_bytes_at_254": 149326,
+     "append_tail_254_s": 0.1084,
+     "append_seal_s": 0.125,
+     "append_tail_0_s": 0.0504,
+     "verify_incremental_s": 0.0732,
+     "index_catch_up_s": 0.1384,
+     "lookup_by_id_s": 0.00109,
+     "entry_by_seq_s": 0.03366,
+     "verify_full_s": 5.6,
+     "index_rebuild_s": 2.02
+    }
+   ]
+  },
+  {
+   "code": "B",
+   "round": 1,
+   "results": [
+    {
+     "records": 3585,
+     "segments": 14,
+     "build_s": 23.7,
+     "tail_bytes_at_254": 149071,
+     "append_tail_254_s": 0.1046,
+     "append_seal_s": 0.1347,
+     "append_tail_0_s": 0.0595,
+     "verify_incremental_s": 0.0791,
+     "index_catch_up_s": 0.1095,
+     "lookup_by_id_s": 0.00094,
+     "entry_by_seq_s": 0.04277,
+     "verify_full_s": 1.91,
+     "index_rebuild_s": 0.67
+    },
+    {
+     "records": 10753,
+     "segments": 42,
+     "build_s": 76.2,
+     "tail_bytes_at_254": 149326,
+     "append_tail_254_s": 0.1025,
+     "append_seal_s": 0.1269,
+     "append_tail_0_s": 0.0519,
+     "verify_incremental_s": 0.0772,
+     "index_catch_up_s": 0.1106,
+     "lookup_by_id_s": 0.00117,
+     "entry_by_seq_s": 0.04286,
+     "verify_full_s": 5.51,
+     "index_rebuild_s": 2.0
+    }
+   ]
+  },
+  {
+   "code": "A",
+   "round": 2,
+   "results": [
+    {
+     "records": 3585,
+     "segments": 14,
+     "build_s": 23.7,
+     "tail_bytes_at_254": 149071,
+     "append_tail_254_s": 0.1047,
+     "append_seal_s": 0.1439,
+     "append_tail_0_s": 0.0632,
+     "verify_incremental_s": 0.0744,
+     "index_catch_up_s": 0.1315,
+     "lookup_by_id_s": 0.00108,
+     "entry_by_seq_s": 0.03452,
+     "verify_full_s": 1.94,
+     "index_rebuild_s": 0.64
+    },
+    {
+     "records": 10753,
+     "segments": 42,
+     "build_s": 76.0,
+     "tail_bytes_at_254": 149326,
+     "append_tail_254_s": 0.1129,
+     "append_seal_s": 0.122,
+     "append_tail_0_s": 0.0499,
+     "verify_incremental_s": 0.0735,
+     "index_catch_up_s": 0.1372,
+     "lookup_by_id_s": 0.00086,
+     "entry_by_seq_s": 0.03325,
+     "verify_full_s": 5.69,
+     "index_rebuild_s": 2.15
+    }
+   ]
+  },
+  {
+   "code": "B",
+   "round": 2,
+   "results": [
+    {
+     "records": 3585,
+     "segments": 14,
+     "build_s": 23.7,
+     "tail_bytes_at_254": 149071,
+     "append_tail_254_s": 0.1016,
+     "append_seal_s": 0.1338,
+     "append_tail_0_s": 0.06,
+     "verify_incremental_s": 0.0732,
+     "index_catch_up_s": 0.1135,
+     "lookup_by_id_s": 0.0012,
+     "entry_by_seq_s": 0.03849,
+     "verify_full_s": 1.84,
+     "index_rebuild_s": 0.64
+    },
+    {
+     "records": 10753,
+     "segments": 42,
+     "build_s": 76.2,
+     "tail_bytes_at_254": 149326,
+     "append_tail_254_s": 0.1032,
+     "append_seal_s": 0.1223,
+     "append_tail_0_s": 0.0523,
+     "verify_incremental_s": 0.0855,
+     "index_catch_up_s": 0.1207,
+     "lookup_by_id_s": 0.0012,
+     "entry_by_seq_s": 0.04327,
+     "verify_full_s": 5.61,
+     "index_rebuild_s": 2.08
+    }
+   ]
+  }
+ ]
+}

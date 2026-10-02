@@ -86,7 +86,11 @@ Its gates in this project: Class 0: the executor's record (discovery, research o
 
 ## Stories and Epics
 
-A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev N`, then ingest), then `aew work close <S> --reason ... --expect-rev N`. A parent's mandatory gates and minimum descendant class bind its children.
+A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev N`, then ingest), then `aew work close <S> --reason ... --expect-rev N`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev N` first.
+
+## Finished work
+
+Finished units leave the active state; `aew status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason ... --expect-rev N` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
 
 ## Every command
 

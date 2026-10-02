@@ -3,6 +3,7 @@
 - **What this is:** the operator's and designer's decisions on Q9 (plan assurance) and Q10 (risk-class calibration), recorded as given. They answer the implementer's questions raised after M3's acceptance.
 - **Authority:** the decisions are the operator's and designer's. The texts they govern change separately, by their owners (§5). Until those changes land, this record and `future-work.md` point to it.
 - **Sources:** `plan-assurance-and-premise-validation-design-v0.3.md` (§22, §26, §27, §33); `ticket-revision-amendment-2026-09-30.md` (F4); `failure-class-registry.md`; `invariant-index.md`; ADR-0010.
+- **Outcome:** the designer accepted the owner edits of §5 in review on 2026-10-01: `workflow-contract-amendment-class0-2026-10-01.md`; `plan-assurance-and-premise-validation-design-v0.4.md`, which supersedes v0.3; `failure-class-registry.md` v0.2 (§5); `invariant-index.md` v0.2 (§6). The ADR-0010 and M4 rows of §5 remain with the evaluation and with M4's planning.
 
 ## 1. Q9: plan assurance (operator, 2026-10-01)
 

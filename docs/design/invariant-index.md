@@ -1,6 +1,6 @@
-# AEW Cross-Document Invariant Index v0.1
+# AEW Cross-Document Invariant Index v0.2
 
-**Status:** Cross-document index  
+**Status:** Cross-document index. v0.2 (2026-10-01, accepted by the designer in review): adds the plan assurance invariants (§6) selected by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
 **Authority:** Non-authoritative index. Referenced contracts/designs remain governing.  
 **Purpose:** Give implementation/review agents one place to enumerate AEW invariants without copying them into a second authority layer.
 
@@ -61,7 +61,26 @@
 | `AEW-INV-COORD-004` | Contradictory findings remain separately attributable until explicitly resolved. | Live Coordination §12, §22 |
 | `AEW-INV-COORD-005` | Coordination history cannot satisfy evidence/review/verification gates merely because it was routed or summarized. | Live Coordination §3, §22 |
 
-## 6. Maintenance
+## 6. Plan assurance
+
+Governing source: `plan-assurance-and-premise-validation-design-v0.4.md` ("Plan Assurance" below), adopted with this index revision. Only the genuinely new cross-document invariants. Plan assurance §27 also restates authority, stakeholder, hierarchy and evidence invariants indexed above (for example `AEW-INV-LEAD-001`, `AEW-INV-HIER-001`, `AEW-INV-EVID-001`); those are referenced, not duplicated.
+
+| ID | Invariant | Governing source |
+|---|---|---|
+| `AEW-INV-ASSURE-001` | When independent assurance is required, acceptance is independently reconstructed before the proposed plan is revealed to the assurance role. | Plan Assurance §7 |
+| `AEW-INV-ASSURE-002` | Acceptance resources and protected conditions are distinct from the mutation subject. | Plan Assurance §9, §10 |
+| `AEW-INV-ASSURE-003` | A baseline counts only if it exercised the intended proposition. | Plan Assurance §11 |
+| `AEW-INV-ASSURE-004` | Assurance binds the versioned dependency set, not plan text alone. | Plan Assurance §16 |
+| `AEW-INV-ASSURE-005` | Review metadata cannot change the payload it reviews. | Plan Assurance §16 |
+| `AEW-INV-ASSURE-006` | Clearing a blocker is a separate attributable artifact; the blocking finding is never rewritten. | Plan Assurance §19 |
+| `AEW-INV-ASSURE-007` | Every dispatch path uses one computed predicate. | Plan Assurance §17, §17.1 |
+| `AEW-INV-ASSURE-008` | A contradicted load-bearing premise holds the affected mutation until reassessed. | Plan Assurance §20 |
+| `AEW-INV-ASSURE-009` | Inherited parent obligations cannot disappear at a child. | Plan Assurance §21 |
+| `AEW-INV-ASSURE-010` | Passing child work does not prove composed parent behavior. | Plan Assurance §21 |
+
+Plan assurance does not satisfy or replace downstream review or verification gates required by the effective class and policy (Plan Assurance §27). That is a scope note, not a separate invariant: the gates themselves are the Workflow Contract's (§7.5).
+
+## 7. Maintenance
 
 When a governing invariant changes:
 

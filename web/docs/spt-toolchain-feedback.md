@@ -106,3 +106,41 @@ D0 prerequisite observations, 2026-10-02. This log retains resolved findings so 
   `web/artifacts/c0-amend-offline-gate.log` and `c0-amend-browser.log`. The final
   candidate's generator/typecheck/lint/test/build/browser retests are PASS;
   main-line C0 approval remains pending independently of these tool results.
+
+## SPT-UI-008 — Type generation does not prove OpenAPI operation validity
+
+- Date/category/classification: 2026-10-02 / documentation and script /
+  demonstrated validation gap, not a dependency-cache or image failure.
+- Identity: unchanged final immutable carrier
+  `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`,
+  Linux/amd64, Node 22.22.2/npm 10.9.7, openapi-typescript 7.13.0. Lock/cache
+  identities are retained in `builder-provenance.json`.
+- Expected/observed: generation produces types from the proposal; comprehensive
+  API-document validity needs a separate check. Version 0.1.1 had duplicated
+  operation parameters yet generated successfully. Main-line R2-1 identified
+  the invalid GET/HEAD lists. Existing response-schema tests did not check them.
+- Reproduction/evidence: generate types from contract at `7b0177b` in the carrier;
+  count `(name,in)` pairs for each operation on `/work`, `/evidence`, `/history`
+  and `/history/{id}`. Retained review: `c0-review-main-line-0.1.1.md`.
+- Impact/stage/workaround: blocked C0 acceptance, not SPT install/build. R2-1
+  deduplicates both methods; focused conformance now tests uniqueness and a
+  failing duplicate-parameter control. The amended offline gate passes.
+- Proposed improvement/ticket acceptance: SPT guidance separates generator
+  success from complete OpenAPI 3.1 validation; evaluate a cached specification
+  validator with known-invalid duplicate-operation fixtures and a valid control.
+  Preserve offline reproducibility and report the validator's exact scope.
+- Status/fix/retest: FRONTEND BLOCKER RESOLVED by R2-1 in the 0.1.2 candidate;
+  SPT documentation/validator improvement remains OPEN and non-blocking. No
+  new package or SPT script change accompanies this narrowly scoped correction.
+
+## C0 0.1.2 retest — 2026-10-02
+
+Same immutable image, dependency/cache/lock and separately staged browser
+identities; no repair or refresh needed. The offline consumer gate installed
+395 packages from absent modules, regenerated types, typechecked, linted,
+passed 45 tests and built production/demo with networking disabled. Native
+storage installation reported 4 seconds in this run, not a controlled benchmark.
+Resolved entries remain retained; Docker access used the validated native CLI
+without a workspace restart. Full-carrier checksum/import acceptance remains
+original prerequisite evidence and was not relabeled as a new full-toolchain
+run. Browser and local evidence are recorded in `validation-c0-012.md`.

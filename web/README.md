@@ -1,6 +1,6 @@
 # AEW read-only workbench
 
-D0 foundation on an isolated branch from AEW `main`. The canonical API proposal is `../docs/design/dashboard-api-v1-provisional.yaml`. Contract 0.1.0 received **AMEND** from the main AEW reviewer; the aligned 0.1.1 candidate is **pending renewed C0 review**. Domain pages D1–D4 and integrated-system acceptance are not claimed.
+D0 foundation on an isolated branch from AEW `main`. The canonical API proposal is `../docs/design/dashboard-api-v1-provisional.yaml`. Contract 0.1.0 received **AMEND** from the main AEW reviewer; 0.1.1 received **conditional acceptance pending six mechanical corrections**; the corrected 0.1.2 candidate is **pending main-line diff verification**. Domain pages D1–D4 and integrated-system acceptance are not claimed.
 
 The supplied v0.2 documents are preserved under `docs/`, with their outdated v0.1 reference and F0–F10 typo corrected. The user's approved implementation plan and main-line contract review govern where those documents differ, including cookie-compatible requests, four-state capabilities, generated OpenAPI types, a separate immutable SPT prerequisite, and the 30-second mixed-revision warning.
 
@@ -41,4 +41,4 @@ This downloads Chromium matched to pinned Playwright 1.59.1 and records the brow
 
 ## Boundaries and handoff
 
-See `docs/c0-review-packet.md`, `docs/spt-toolchain-feedback.md`, and `docs/validation-c0-amend.md` (current) and `docs/validation-d0.md` (historical). No mutation APIs, secret persistence, `.aew` parsing, or frontend decisions about workflow legality are present. Local storage contains appearance preference only. Authentication/bootstrap, host/origin checks, HTTP security headers in the actual server, projection caching, Python packaging, and live-state integration remain main-line work.
+See `docs/c0-review-packet.md`, `docs/spt-toolchain-feedback.md`, and `docs/validation-c0-012.md` (current), with earlier validation retained as historical evidence. No mutation APIs, secret persistence, `.aew` parsing, or frontend decisions about workflow legality are present. Local storage contains appearance preference only. Authentication/bootstrap, host/origin checks, HTTP security headers in the actual server, projection caching, Python packaging, and live-state integration remain main-line work.

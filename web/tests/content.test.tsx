@@ -75,3 +75,11 @@ it('shows unknown capability names and states without losing available projectio
     entityLink({ kind: 'harness_run', id: 'R-INV-0001-1' }),
   ).toBeUndefined();
 });
+it('R2-6 presents lost as a known observed harness status', async () => {
+  const { harnessStatuses } = await import('../src/api/vocabulary');
+  const { container, getByText } = render(
+    <SemanticValue value="lost" known={harnessStatuses} />,
+  );
+  expect(getByText('lost')).toBeTruthy();
+  expect(container.textContent).not.toContain('Unknown value');
+});

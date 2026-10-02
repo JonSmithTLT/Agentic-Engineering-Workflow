@@ -51,6 +51,7 @@ export const harnessStatuses = [
   'crashed',
   'terminated',
   'unconfirmed',
+  'lost',
 ] as const;
 export const evidenceKinds = [
   'implementation_report',

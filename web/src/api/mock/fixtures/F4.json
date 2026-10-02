@@ -1,11 +1,11 @@
 {
   "fixture": "F4",
   "name": "Provisional future P2c integrity data",
-  "contract_version": "0.1.1",
-  "contract_sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
   "responses": {
     "/project": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -16,7 +16,7 @@
       }
     },
     "/capabilities": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -74,7 +74,7 @@
       }
     },
     "/overview": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -110,8 +110,8 @@
             ],
             "children_truncated": false,
             "rollup": {
-              "open": 1,
-              "done": 0,
+              "open": 3,
+              "done": 1,
               "cancelled": 0
             },
             "integration": null,
@@ -433,7 +433,7 @@
       }
     },
     "/work": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -455,8 +455,8 @@
             ],
             "children_truncated": false,
             "rollup": {
-              "open": 1,
-              "done": 0,
+              "open": 3,
+              "done": 1,
               "cancelled": 0
             },
             "integration": null,
@@ -644,7 +644,7 @@
       }
     },
     "/work/E-0001": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -664,8 +664,8 @@
         ],
         "children_truncated": false,
         "rollup": {
-          "open": 1,
-          "done": 0,
+          "open": 3,
+          "done": 1,
           "cancelled": 0
         },
         "integration": null,
@@ -686,7 +686,7 @@
       }
     },
     "/work/S-0001": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -731,7 +731,7 @@
       }
     },
     "/work/T-0001": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -767,7 +767,7 @@
       }
     },
     "/work/T-0002": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -803,7 +803,7 @@
       }
     },
     "/work/T-0003": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -844,7 +844,7 @@
       }
     },
     "/work/T-0004": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -880,7 +880,7 @@
       }
     },
     "/runs": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -942,7 +942,7 @@
       }
     },
     "/runs/INV-0001": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -981,7 +981,7 @@
       }
     },
     "/runs/INV-0002": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1005,7 +1005,7 @@
       }
     },
     "/evidence": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1035,9 +1035,9 @@
             "bindings": {
               "evaluated_snapshot": {
                 "base_revision": "91c0d98",
-                "relevant_inputs_fingerprint": "32381523e63197c929b67f793a8098bed0ae3a6fa902634fdbcc6fa4567f3346",
+                "relevant_inputs_fingerprint": "git-tree:32381523e63197c929b67f793a8098bed0ae3a6f",
                 "artifact_digests": [
-                  "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
+                  "opaque-artifact:c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
                 ]
               },
               "plan_revision": {
@@ -1066,7 +1066,7 @@
       }
     },
     "/evidence/INV-0001-verification-1": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1094,9 +1094,9 @@
         "bindings": {
           "evaluated_snapshot": {
             "base_revision": "91c0d98",
-            "relevant_inputs_fingerprint": "32381523e63197c929b67f793a8098bed0ae3a6fa902634fdbcc6fa4567f3346",
+            "relevant_inputs_fingerprint": "git-tree:32381523e63197c929b67f793a8098bed0ae3a6f",
             "artifact_digests": [
-              "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
+              "opaque-artifact:c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
             ]
           },
           "plan_revision": {
@@ -1122,7 +1122,7 @@
       }
     },
     "/knowledge": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1152,7 +1152,7 @@
       }
     },
     "/knowledge/D-0001": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1177,7 +1177,7 @@
       }
     },
     "/history": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1200,6 +1200,9 @@
               ],
               "lineage": [
                 "T-0002"
+              ],
+              "integration_commit": [
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               ]
             },
             "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",
@@ -1210,7 +1213,7 @@
       }
     },
     "/history/T-0004": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1231,6 +1234,9 @@
           ],
           "lineage": [
             "T-0002"
+          ],
+          "integration_commit": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           ]
         },
         "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",
@@ -1259,7 +1265,7 @@
       }
     },
     "/attention": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1292,7 +1298,7 @@
       }
     },
     "/activity": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1342,7 +1348,7 @@
   "scenarios": [],
   "provisional_responses": {
     "/history/integrity": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -1358,7 +1364,9 @@
         },
         "verified": {
           "count": 40,
-          "h": "8053f852c236567d7613d1ea1972237f1a3da228206ef63e1e836c79eb50df82"
+          "h": "8053f852c236567d7613d1ea1972237f1a3da228206ef63e1e836c79eb50df82",
+          "at": "2026-10-02T11:00:00Z",
+          "audit": "AU-0001"
         },
         "backlog": 2,
         "last_audit": {
@@ -1371,7 +1379,14 @@
             "code": "FUTURE_AUDIT_REASON",
             "message": "Hypothetical P2c backend finding; this route is unsupported today."
           }
-        ]
+        ],
+        "last_full": {
+          "count": 30,
+          "h": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "at": "2026-10-01T12:00:00Z",
+          "audit": "AU-0000"
+        },
+        "oldest_unverified_at": "2026-10-02T11:30:00Z"
       }
     }
   },

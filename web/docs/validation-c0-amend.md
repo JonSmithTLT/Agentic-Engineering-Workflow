@@ -1,6 +1,8 @@
-# C0 amendment validation — 2026-10-02
+# Historical C0 0.1.1 validation at 7b0177b — 2026-10-02
 
-**Amended frontend foundation validated; renewed C0 approval PENDING.** Domain implementation, independent frontend review and integrated-system acceptance are not claimed.
+**Historical validation for version 0.1.1 at `7b0177b76a919e019d2051adff8f7616ae6c2fda`. The later main-line review required six mechanical corrections.**
+
+Current candidate and evidence: [0.1.2 review packet](c0-review-packet.md) and [0.1.2 validation](validation-c0-012.md). Counts and shapes below describe the prior candidate; they do not establish current acceptance.
 
 ## Frozen contract and baseline
 

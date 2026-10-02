@@ -100,8 +100,8 @@ export const invocation = z.strictObject({
 });
 export const evaluatedSnapshot = z.strictObject({
   base_revision: z.string().nullable(),
-  relevant_inputs_fingerprint: sha256,
-  artifact_digests: z.array(sha256).max(250),
+  relevant_inputs_fingerprint: z.string(),
+  artifact_digests: z.array(z.string()).max(250),
 });
 export const evidencePlanRevision = z.strictObject({
   revision: z.number().int().min(1),
@@ -182,11 +182,15 @@ export const historyRoot = z.strictObject({
 export const verifiedRoot = z.strictObject({
   count: z.number().int().min(0),
   h: sha256,
+  at: timestamp,
+  audit: id,
 });
 export const integrity = z.strictObject({
   status: z.string(),
   current_root: historyRoot,
   verified: verifiedRoot.nullable(),
+  last_full: verifiedRoot.nullable(),
+  oldest_unverified_at: timestamp.nullable(),
   backlog: z.number().int().min(0),
   last_audit: entityRef.nullable(),
   reasons: z.array(reason).max(250),
@@ -226,7 +230,7 @@ export const overview = z.strictObject({
 });
 export const envelope = <T extends z.ZodType>(data: T) =>
   z.strictObject({
-    schema_version: z.literal('0.1.1'),
+    schema_version: z.literal('0.1.2'),
     project_id: id,
     control_revision: controlRevision,
     generated_at: timestamp,

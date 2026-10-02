@@ -1,17 +1,16 @@
-# Main AEW agent handoff: amended C0 candidate
+# Main AEW agent handoff: 0.1.2 mechanical C0 diff
 
-Review the commit containing this handoff on branch `feat/aew-dashboard-readonly`, worktree `../AEW-dashboard`. Canonical artifact: `docs/design/dashboard-api-v1-provisional.yaml`, OpenAPI 3.1, version **0.1.1**, SHA-256 **`3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4`**.
+Candidate branch `feat/aew-dashboard-readonly`, worktree `../AEW-dashboard`.
+Review target: the commit containing this handoff and canonical OpenAPI contract.
+Version **0.1.2**, SHA-256 **`68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`**.
+Diff base: previously reviewed candidate `7b0177b76a919e019d2051adff8f7616ae6c2fda`.
 
-The original version 0.1.0 at `59081d0136bba947d645c2ec60132e5ca7e12e1a` received **AMEND** from Claude, checked against engine main `91c0d98`. That review is retained intact in `web/docs/c0-review-main-line.md`. Current candidate approval is **PENDING**; D1–D4 have not begun.
+`c0-review-main-line-0.1.1.md` is retained unchanged. Its conditional acceptance requires exactly R2-1–R2-6 and main-line verification of this diff. `c0-review-packet.md` maps the six changes to their companion artifacts/checks. The two boundedness proposals and curated projections are now accepted as stated in that review. No additional design proposal or domain expansion is included.
 
-`web/docs/c0-review-packet.md` maps all nine findings to contract/client/fixture/test changes. Please confirm two explicit boundedness proposals: parent `children_truncated` with full backend rollup, and history detail `annotations_limit`/`annotations_cursor`/`annotations_next_cursor` pinned to the starting manifest count. Also confirm the documented null normalization and curated path-free evidence bindings. Return the exact candidate commit, version/digest, engine baseline, reviewer/date and disposition.
+Changes: unique GET/HEAD parameters; opaque fingerprint/digest strings; path-free relation documentation and commit-hash fixture links; subtree Ticket rollup clarification; P2c verified/full/oldest-unverified metadata; known `lost` harness status. Version/hash pins, generated types, Zod, F0–F11 and tests are synchronized. P2c source was inspected at `bdabff9` and fingerprint source at `91c0d98` using read-only Git reads; no engine tests or code changes were made.
 
-The original worktree base is `c380aea781736541c3a5f30a5ed4f8bc36227a7f`; amendments were checked against `91c0d98` using read-only engine source inspection. Changes remain limited to `web/` and the canonical YAML under `docs/design/`. No rebase or change to the original checkout, engine semantics, storage schemas or concurrent AEW tests was performed.
+Please verify only the candidate diff against `7b0177b`, then return the full candidate commit, version/digest, reviewer/date and accepted disposition. `c0-approval.json` retains both AMEND reviews and keeps 0.1.2 PENDING until that verification is recorded. D1–D4 remain gated.
 
-The candidate includes generated types, strict Zod, open known vocabularies, all F0–F11 and artifact pins. The demo server exercises explicit archive filtering, bounded pages, hot cursor expiry, history cursors surviving appends and representation-based ETags. These tests prove the provisional client/mock contract, not a live Engine projection adapter. Queue is UNSUPPORTED with no endpoint/model; integrity is UNSUPPORTED pending P2c, with hypothetical examples separated from available responses.
+Validation scope and evidence are in `validation-c0-012.md`. The same immutable SPT builder and dependency/lock/browser identities are used; retest notes are appended to `spt-toolchain-feedback.md`. Production remains the generic pending-integration shell. Queue is UNSUPPORTED with no wire model; integrity remains provisional and UNSUPPORTED for the frozen pre-P2c baseline, becoming AVAILABLE when the merged backend advertises it.
 
-`web/docs/validation-c0-amend.md` records current offline and compiled browser evidence. Production remains a generic integration-pending shell; mock Overview/Ticket previews are clearly provisional. Updated screenshots are under `web/docs/screenshots/`. The previews remain eligible for visual review while C0 is pending.
-
-SPT prerequisite stays separate: commit `ae65ad0408536140a96335e8e76a6245a33ace4a`, branch `build/aew-dashboard-tailwind-cache`, worktree `../SPT-dashboard-toolchain`. Validated immutable Linux/amd64 Node 22 carrier `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`; dependency/lock/cache identities are unchanged for this amendment. See `builder-provenance.json` and the retained ticket-ready `spt-toolchain-feedback.md`.
-
-After C0 acceptance, domain implementation and independent frontend review at core freeze remain required. Authentication/bootstrap, server security headers, Host/Origin validation, projection caching, Python packaging, shared reason-code registry and live-state integration remain main-line ownership. Frontend and integrated-system acceptance must be reported separately.
+The original AEW checkout and concurrent tests remain untouched. Engine semantics, shared reason-code registry, authentication/bootstrap, serving/security headers, Host/Origin validation, projection caching, Python packaging and live-state integration remain main-line ownership. Frontend core review and integrated-system acceptance remain separate from C0.

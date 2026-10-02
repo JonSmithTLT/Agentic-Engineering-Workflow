@@ -1,11 +1,11 @@
 {
   "fixture": "F0",
   "name": "Empty project",
-  "contract_version": "0.1.1",
-  "contract_sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
   "responses": {
     "/project": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -16,7 +16,7 @@
       }
     },
     "/capabilities": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -74,7 +74,7 @@
       }
     },
     "/overview": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -162,7 +162,7 @@
       }
     },
     "/work": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -172,7 +172,7 @@
       }
     },
     "/runs": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -182,7 +182,7 @@
       }
     },
     "/evidence": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -192,7 +192,7 @@
       }
     },
     "/knowledge": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -202,7 +202,7 @@
       }
     },
     "/history": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -212,7 +212,7 @@
       }
     },
     "/attention": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",
@@ -222,7 +222,7 @@
       }
     },
     "/activity": {
-      "schema_version": "0.1.1",
+      "schema_version": "0.1.2",
       "project_id": "aew-demo",
       "control_revision": "42",
       "generated_at": "2026-10-02T12:00:00Z",

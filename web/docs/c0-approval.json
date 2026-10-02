@@ -1,7 +1,7 @@
 {
   "status": "PENDING",
-  "contract_version": "0.1.1",
-  "sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
+  "contract_version": "0.1.2",
+  "sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
   "reviewed_commit": null,
   "reviewer": null,
   "reviewed_at": null,
@@ -28,6 +28,26 @@
         "C0-8",
         "C0-9"
       ]
+    },
+    {
+      "disposition": "AMEND (minor), with conditional acceptance",
+      "contract_version": "0.1.1",
+      "sha256": "3da20f18768d34bef9ccf15fcb65c24cefd2ca73cfc77e6cada8a586f88a0dc4",
+      "reviewed_commit": "7b0177b76a919e019d2051adff8f7616ae6c2fda",
+      "reviewer": "Claude, main AEW agent",
+      "reviewed_at": "2026-10-02",
+      "engine_commit": "91c0d98",
+      "p2c_commit": "bdabff9",
+      "document": "web/docs/c0-review-main-line-0.1.1.md",
+      "findings": [
+        "R2-1",
+        "R2-2",
+        "R2-3",
+        "R2-4",
+        "R2-5",
+        "R2-6"
+      ],
+      "condition": "0.1.2 applies exactly R2-1 to R2-6; main line verifies the diff before acceptance is recorded."
     }
   ]
 }

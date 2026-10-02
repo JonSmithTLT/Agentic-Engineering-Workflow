@@ -59,13 +59,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description UNSUPPORTED until P2c audit exists. The future projection remains provisional; clients suppress the request while capability is not AVAILABLE. */
+        /** @description UNSUPPORTED until P2c PR #20 merges, AVAILABLE after the integrated backend advertises it. Retain x-provisional: P2c until then. Clients suppress requests while capability is not AVAILABLE. */
         get: operations["integrityResponse"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        /** @description UNSUPPORTED until P2c audit exists. The future projection remains provisional; clients suppress the request while capability is not AVAILABLE. */
+        /** @description UNSUPPORTED until P2c PR #20 merges, AVAILABLE after the integrated backend advertises it. Retain x-provisional: P2c until then. Clients suppress requests while capability is not AVAILABLE. */
         head: operations["headIntegrityResponse"];
         patch?: never;
         trace?: never;
@@ -307,9 +307,9 @@ export interface components {
             evidence?: components["schemas"]["Capability"];
             knowledge?: components["schemas"]["Capability"];
             history?: components["schemas"]["Capability"];
-            /** @description UNSUPPORTED on the reviewed engine baseline until P2c audit ships. */
+            /** @description UNSUPPORTED until P2c PR #20 merges; AVAILABLE once the integrated backend advertises the merged audit. */
             integrity?: components["schemas"]["Capability"];
-            /** @description UNSUPPORTED on the reviewed engine baseline. No queue API is declared in 0.1.1; M4/M5 owns its future semantics. */
+            /** @description UNSUPPORTED on the reviewed engine baseline. No queue API is declared in 0.1.2; M4/M5 owns its future semantics. */
             queue?: components["schemas"]["Capability"];
             action_projection?: components["schemas"]["Capability"];
             activity?: components["schemas"]["Capability"];
@@ -391,6 +391,7 @@ export interface components {
             parent: components["schemas"]["OpaqueId"] | null;
             subject: components["schemas"]["OpaqueId"] | null;
             rel: string | null;
+            /** @description Backend omits the completion relation: its values are storage paths. The completion record is reachable through the unit itself. All projected relation values are AEW IDs or git commit hashes (integration_commit), never paths. */
             links: {
                 [key: string]: components["schemas"]["OpaqueId"][];
             };
@@ -398,14 +399,17 @@ export interface components {
             /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
             source: string;
         };
-        /** @description Future P2c audit projection. Capability remains UNSUPPORTED at reviewed baseline. Backlog/status are computed by backend, never by frontend arithmetic or age. */
+        /** @description P2c audit projection matched to PR #20 at bdabff9. Capability stays UNSUPPORTED until PR #20 merges and is AVAILABLE after integration advertises it. Retain x-provisional: P2c until merge. verified and last_full distinguish incremental verification from the last full verification; backlog and oldest_unverified_at are backend-computed. */
         Integrity: {
             status: string;
             current_root: components["schemas"]["HistoryRoot"];
             verified: components["schemas"]["VerifiedRoot"] | null;
             backlog: number;
             last_audit: components["schemas"]["EntityRef"] | null;
+            /** @description Backend-provided over-policy findings. Threshold conclusions are never computed in the frontend. */
             reasons: components["schemas"]["Reason"][];
+            last_full: components["schemas"]["VerifiedRoot"] | null;
+            oldest_unverified_at: components["schemas"]["Timestamp"] | null;
         };
         Attention: {
             id: components["schemas"]["OpaqueId"];
@@ -449,7 +453,7 @@ export interface components {
         };
         ProjectResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -457,7 +461,7 @@ export interface components {
         };
         CapabilitiesResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -465,7 +469,7 @@ export interface components {
         };
         OverviewResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -473,7 +477,7 @@ export interface components {
         };
         IntegrityResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -481,7 +485,7 @@ export interface components {
         };
         WorkResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -489,7 +493,7 @@ export interface components {
         };
         EvidenceResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -497,7 +501,7 @@ export interface components {
         };
         KnowledgeResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -505,7 +509,7 @@ export interface components {
         };
         HistoryResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -513,7 +517,7 @@ export interface components {
         };
         WorkListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -524,7 +528,7 @@ export interface components {
         };
         EvidenceListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -535,7 +539,7 @@ export interface components {
         };
         KnowledgeListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -546,7 +550,7 @@ export interface components {
         };
         HistoryListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -557,7 +561,7 @@ export interface components {
         };
         AttentionListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -568,7 +572,7 @@ export interface components {
         };
         ActivityListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -596,7 +600,7 @@ export interface components {
         HarnessStatus: string;
         /** @description Open backend semantic value. Unknown values display their raw string with a warning; no client conclusion is inferred. */
         DecisionType: string;
-        /** @description Backend-computed counts. Overview done/cancelled are archived counts; parent rollup covers child counts, not just the bounded child-ID preview. */
+        /** @description Backend-computed counts. For Work.rollup, open counts Tickets in the entire parent subtree that are not DONE or CANCELLED; done and cancelled count subtree Tickets in those states, including archived Tickets through the parent summary. children contains direct children, and its bounded preview never determines rollup. For Overview.counts.work, open counts hot open units; done and cancelled are archived counts by state. */
         WorkCounts: {
             open: number;
             done: number;
@@ -632,8 +636,9 @@ export interface components {
         /** @description Explicit path-free snapshot projection. workspace_id and storage/workspace/observation paths are excluded. */
         EvaluatedSnapshot: {
             base_revision: string | null;
-            relevant_inputs_fingerprint: components["schemas"]["Sha256"];
-            artifact_digests: components["schemas"]["Sha256"][];
+            /** @description Opaque engine fingerprint, including git-tree:<hex>. Do not interpret as a bare SHA-256. */
+            relevant_inputs_fingerprint: string;
+            artifact_digests: string[];
         };
         EvidencePlanRevision: {
             revision: number;
@@ -677,6 +682,7 @@ export interface components {
             parent: components["schemas"]["OpaqueId"] | null;
             subject: components["schemas"]["OpaqueId"] | null;
             rel: string | null;
+            /** @description Backend omits the completion relation: its values are storage paths. The completion record is reachable through the unit itself. All projected relation values are AEW IDs or git commit hashes (integration_commit), never paths. */
             links: {
                 [key: string]: components["schemas"]["OpaqueId"][];
             };
@@ -697,10 +703,12 @@ export interface components {
         VerifiedRoot: {
             count: number;
             h: components["schemas"]["Sha256"];
+            at: components["schemas"]["Timestamp"];
+            audit: components["schemas"]["OpaqueId"];
         };
         InvocationResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];
@@ -708,7 +716,7 @@ export interface components {
         };
         InvocationListResponse: {
             /** @constant */
-            schema_version: "0.1.1";
+            schema_version: "0.1.2";
             project_id: components["schemas"]["OpaqueId"];
             control_revision: components["schemas"]["ControlRevision"];
             generated_at: components["schemas"]["Timestamp"];

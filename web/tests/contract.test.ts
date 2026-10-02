@@ -23,7 +23,7 @@ const raw = fs.readFileSync(
 const contract = yaml.parse(raw);
 const ajv = new Ajv({ allErrors: true, schemaId: 'auto' });
 // This contract uses the common draft-07/2020-12 subset only. Ajv 6 validates
-// those keywords; OpenAPI generation independently checks document structure.
+// those keywords; operation parameter uniqueness is checked separately below.
 ajv.addSchema(contract, 'contract');
 describe('C0 provisional contract conformance', () => {
   it('matches the exact artifact version and SHA-256', () => {
@@ -284,4 +284,150 @@ it('keeps known vocabularies aligned while wire semantic strings remain open', (
   ];
   for (const [shape, values] of inline)
     expect(shape['x-known-values']).toEqual([...values]);
+});
+
+it('R2-1 requires unique parameter names and locations in every GET and HEAD operation', () => {
+  const unique = (params: { name: string; in: string }[]) => {
+    const identities = params.map((p) => `${p.in}:${p.name}`);
+    return new Set(identities).size === identities.length;
+  };
+  for (const operations of Object.values(contract.paths))
+    for (const operation of Object.values(
+      operations as Record<
+        string,
+        { parameters: { name: string; in: string }[] }
+      >,
+    ))
+      expect(unique(operation.parameters)).toBe(true);
+  expect(
+    unique([
+      { name: 'state', in: 'query' },
+      { name: 'state', in: 'query' },
+    ]),
+  ).toBe(false);
+  expect(
+    unique([
+      { name: 'state', in: 'query' },
+      { name: 'state', in: 'header' },
+    ]),
+  ).toBe(true);
+});
+it('R2-2 accepts real git-tree fingerprints and opaque artifact digest values in both validators', () => {
+  const response = structuredClone(normal.responses['/evidence']);
+  const snapshot = response.data.items[0].bindings.evaluated_snapshot;
+  snapshot.relevant_inputs_fingerprint = 'git-tree:' + 'a'.repeat(40);
+  snapshot.artifact_digests = [
+    'opaque-artifact-identity',
+    'sha256:future-format',
+  ];
+  expect(
+    responseSchemas.EvidenceListResponse.safeParse(response).success,
+  ).toBe(true);
+  expect(
+    ajv.validate(
+      { $ref: 'contract#/components/schemas/EvidenceListResponse' },
+      response,
+    ),
+    JSON.stringify(ajv.errors),
+  ).toBe(true);
+  snapshot.relevant_inputs_fingerprint = 42;
+  expect(
+    responseSchemas.EvidenceListResponse.safeParse(response).success,
+  ).toBe(false);
+  expect(
+    ajv.validate(
+      { $ref: 'contract#/components/schemas/EvidenceListResponse' },
+      response,
+    ),
+  ).toBe(false);
+});
+it('R2-3 accepts integration commit links but rejects completion storage paths', () => {
+  const response = structuredClone(normal.responses['/history/T-0004']);
+  response.data.links.integration_commit = ['a'.repeat(40)];
+  expect(responseSchemas.HistoryResponse.safeParse(response).success).toBe(
+    true,
+  );
+  expect(
+    ajv.validate(
+      { $ref: 'contract#/components/schemas/HistoryResponse' },
+      response,
+    ),
+    JSON.stringify(ajv.errors),
+  ).toBe(true);
+  response.data.links.completion = ['work/T-0042/completion.md'];
+  expect(responseSchemas.HistoryResponse.safeParse(response).success).toBe(
+    false,
+  );
+  expect(
+    ajv.validate(
+      { $ref: 'contract#/components/schemas/HistoryResponse' },
+      response,
+    ),
+  ).toBe(false);
+  expect(
+    contract.components.schemas.History.properties.links.description,
+  ).toContain('Backend omits the completion relation');
+});
+it('R2-4 fixtures distinguish direct children from subtree Ticket rollup', () => {
+  const epic = normal.responses['/work/E-0001'].data;
+  expect(epic.children).toEqual(['S-0001']);
+  expect(epic.rollup).toEqual({ open: 3, done: 1, cancelled: 0 });
+  expect(contract.components.schemas.WorkCounts.description).toContain(
+    'entire parent subtree',
+  );
+});
+it('R2-5 preserves distinct verified/full audit metadata and backend oldest-unverified time', () => {
+  const response = JSON.parse(
+    fs.readFileSync('src/api/mock/fixtures/F4.json', 'utf8'),
+  ).provisional_responses['/history/integrity'];
+  const data = response.data;
+  expect(data.verified).toEqual(
+    expect.objectContaining({
+      count: 40,
+      at: '2026-10-02T11:00:00Z',
+      audit: 'AU-0001',
+    }),
+  );
+  expect(data.last_full.count).toBe(30);
+  expect(data.oldest_unverified_at).toBe('2026-10-02T11:30:00Z');
+  for (const field of ['at', 'audit']) {
+    const malformed = structuredClone(response);
+    delete malformed.data.verified[field];
+    expect(
+      responseSchemas.IntegrityResponse.safeParse(malformed).success,
+    ).toBe(false);
+    expect(
+      ajv.validate(
+        { $ref: 'contract#/components/schemas/IntegrityResponse' },
+        malformed,
+      ),
+    ).toBe(false);
+  }
+  expect(
+    responseSchemas.IntegrityResponse.safeParse({
+      ...response,
+      data: {
+        ...data,
+        verified: null,
+        last_full: null,
+        oldest_unverified_at: null,
+      },
+    }).success,
+  ).toBe(true);
+});
+it('records the 0.1.1 conditional review without granting 0.1.2 acceptance', () => {
+  const previous = approval.previous_reviews.at(-1)!;
+  expect(previous.reviewed_commit).toBe(
+    '7b0177b76a919e019d2051adff8f7616ae6c2fda',
+  );
+  expect(previous.findings).toEqual([
+    'R2-1',
+    'R2-2',
+    'R2-3',
+    'R2-4',
+    'R2-5',
+    'R2-6',
+  ]);
+  expect(approval.reviewed_commit).toBeNull();
+  expect(approval.disposition).toBeNull();
 });

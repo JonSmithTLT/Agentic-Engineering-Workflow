@@ -148,6 +148,12 @@ Recorded as given:
 
 These answer §7's questions 1 and 2. The probes the decision names map to §6: containment (§6 items 1, 2 and 6), OpenCode and the bridge (item 4), the Git layout and fingerprint/`prepare` (item 5), fail-closed launch (§5), and process ownership (items 2 and 3). Questions 3 to 5 (agents' git write commands, read-only reviewer and verifier workspaces, network containment) are still open.
 
+Follow-up decisions, recorded as given:
+
+> **Q7 classification:** Real-project provenance does not by itself trigger F2. A sanitized/disposable SPT-derived fixture counts as scratch only when the execution environment also has no writable non-disposable project state or secrets within the run's host-level reach. A disposable clone on the normal development host does not count as scratch. F19 follows the same rule.
+>
+> **F2 scheduling:** Move F2 from an unscheduled gate to early M4 / before first normal-host Q7 or real-repository dogfood. Run the Rocky 8 bubblewrap feasibility probes immediately, in parallel with other pre-M4 work. Implement F2 and E13 together if those probes succeed.
+
 ## Sources
 
 Retrieved 2026-10-01.

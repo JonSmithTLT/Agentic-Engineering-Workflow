@@ -2,8 +2,8 @@
 
 - **Status:** investigation for the operator and designer. Not governing. It is the first half of ADR-0011's "Implementation prerequisite: choose the storage mechanism deliberately". The second half is measurement (§8).
 - **Date:** 2026-10-01. Revised the same day for the operator's decisions (§9) and ADR-0011's final pre-implementation text.
-- **Brief:** ADR-0011, final pre-implementation text (2026-10-01). It is awaiting a corrected file from the designer (two stale duplicate passages) before it lands on PR #8; nothing below depends on the duplicates. Also ADR-0001 (one commit point, redo staging, advisory lock).
-- **Method so far:** reading the code at `main` (`5d4fa62`) and a real project's `.aew/`, plus a standalone spike (`storage_spike.py`, §8) that has only been smoke-tested. **No measured results yet.**
+- **Brief:** ADR-0011, final pre-implementation text (2026-10-01), and ADR-0001 (one commit point, redo staging, advisory lock).
+- **Method:** reading the code at `main` (`5d4fa62`) and a real project's `.aew/`, plus a standalone spike on the Windows reference machine (§8.1). The spike supports the recommendation; migration timing and the Rocky runs come with the implementation.
 
 ## 1. Recommendation
 
@@ -143,7 +143,7 @@ With terminal descendants archived, `derive_parent` over the hot state sees only
 - **30,000 cold records.** About 120 sealed segments. Only the full audit and a full index rebuild grow with history, and both are explicit.
 - **A large active frontier.** ADR-0011 now measures up to 1,000 open or planned units. At about 1–1.3 KB each, that is about 1.0–1.3 MB of hot state, which libyaml parses at about 4–5 MB/s. So expect roughly 0.2–0.3 s per command, and per supervisor re-parse, from the frontier alone. That is within the absolute bounds but close to H3's 0.25 s heartbeat budget, which is stated for 20 open units. It is the first place a "deferred residency tier" for not-yet-active work could become necessary. The spike's active series will show where the knee is.
 
-## 8. The spike that decides it (next step)
+## 8. The spike
 
 `storage_spike.py` is standalone, with no product code. Run it on the Windows reference machine and on Rocky 8.10:
 
@@ -157,7 +157,40 @@ With terminal descendants archived, `derive_parent` over the hot state sees only
 
 Pass condition for P: items 1 and 6 are flat within H2; 3 and 4 take seconds at 30,000; 5 shows no regression beyond the envelope; 7 completes in minutes.
 
-Smoke run, under load and not representative: about 20 ms per archival for P and about 4 ms for B, at 300 and 600 records. Both are small next to command latency.
+### 8.1 Results (Windows reference machine, 2026-10-01; idle apart from an editor)
+
+**Cold-write series (items 1–4)**, per point: median of 100 timed archivals; files are fsynced.
+
+| Archived records | P: archive one unit (median / p95) | B: SQLite append (median / p95) | Index rebuild from the chain | Full audit (hash every segment and bundle) |
+|---|---|---|---|---|
+| 1,000 | 15.3 / 25.5 ms | 3.2 / 6.3 ms | 0.04 s | 3.8 s |
+| 3,000 | 14.9 / 26.2 ms | 3.1 / 6.9 ms | 0.04 s | 7.4 s |
+| 10,000 | 17.3 / 28.9 ms | 3.4 / 6.9 ms | 0.06 s | 28.3 s |
+| 30,000 | 14.9 / 22.8 ms | 2.9 / 4.9 ms | 0.14 s | 91.0 s |
+
+- **Archival is flat from 1,000 to 30,000** (invariant 10, H2).
+- B is about 12 ms faster per append, which is negligible next to command latency. It does not change §4's verdict, which rests on git history and repairability.
+- The index rebuilds in well under a second at 30,000, because it reads only the manifest.
+- **The full audit is linear**, at about 3 ms per record, mostly reading and hashing 20 KB bundles. That is why ADR-0011 makes it explicit and incremental. An incremental audit costs about 3 ms per new record.
+
+**Git and filesystem (item 5)**, measured at 3,000 units:
+- **P's tree** (3,000 bundles plus segments): the first `git add -A` took 16.3 s (one-time hashing and compression of about 60 MB), and `git status` took 0.06 s.
+- **Transition log**, 60,000 one-per-revision files: first `git add -A` 440 s unsharded and 470 s sharded (a one-time cost dominated by per-file overhead on Windows); `git status` 0.33 s unsharded and 0.10 s sharded.
+- **Conclusion:** sharding cuts `status` but not `add`. At 0.33 s it is within the envelope, so per the decision it is **not needed now**.
+- **One related item to measure in the implementation:** the snapshot fingerprint runs `git add -A` over the whole workspace in a temporary index before removing `.aew/` (`snapshot/fingerprint.py`). Where `.aew/` holds many uncommitted files, such as the authoritative checkout, that hashes them on every fingerprint. A pathspec exclusion (`:(exclude).aew`) would avoid it.
+
+**Hierarchy (item 6)**: the engine's own `recompute_parents` and the per-session state copy, on one open Epic with a Story layer, 5 open Tickets and N completed descendants. Median of 5.
+
+| Completed descendants | Today (hot): `recompute_parents` | Today: session copy | Archived (counter): `recompute_parents` | Archived: session copy |
+|---|---|---|---|---|
+| 250 | 5.5 ms | 0.8 ms | 0.02 ms | 0.02 ms |
+| 1,000 | 72 ms | 2.9 ms | 0.02 ms | 0.02 ms |
+| 3,000 | 628 ms | 9.6 ms | 0.02 ms | 0.02 ms |
+
+- **Today's parent recomputation is quadratic** in completed descendants (×13 from 250 to 1,000, ×9 from 1,000 to 3,000), and it runs on every Lead commit. It is an existing pathology for long-lived Epics, invisible to the top-level fixture, and exactly what the hierarchy-history series is for.
+- With archived children and the counter (§3.4), it is constant.
+
+**Not yet run:** item 7 (migration timing) needs the implementation's archival code; the Rocky 8.10 runs (ADR-0011 coverage) come with the implementation's sweep. The spike scripts, `storage_spike.py` and `hierarchy_spike.py`, are kept with the investigation's working files, not in the repo.
 
 ## 9. Operator decisions (2026-10-01)
 

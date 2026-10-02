@@ -1,4 +1,4 @@
-# Dashboard visual direction (D0)
+# Dashboard visual direction (D1)
 
 The subject is AEW execution and evidence, for an operator keeping a browser beside the workflow. The first screen leads with the backend's short explanation and its reported health, followed by an asymmetric work/attention layout. Counts support those sections rather than forming a wall of statistic cards.
 
@@ -16,8 +16,8 @@ navigation | project identity                          transport mode
            | projection revision / generation / last check
 ```
 
-Review against the brief: the header persists, navigation collapses below 1024px, tables scroll within their own panels, details stack on phones, and system appearance is the default. There are no remote assets or decorative animations. Domain-specific visual previews stay in the mock module until C0; production currently contains the generic shell and pending-integration view.
+Review against the brief: the header persists, navigation collapses below 1024px, tables scroll within their own panels, details stack on phones, and system appearance is the default. There are no remote assets or decorative animations. C0 is accepted. Overview and Work now share real API-driven components in production and demo; fixtures and demo controls remain excluded from production. Later domain pages await the specified visual gate.
 
-D0 review compares the compiled mock Overview and a realistic Ticket detail, in both themes and at phone size. Domain expansion follows main-line C0 approval and visual preview feedback.
+D1 review compares the compiled mock Overview and a realistic Ticket detail, in both themes and at phone size. Domain expansion follows main-line C0 approval and visual preview feedback.
 
-Compiled screenshot critique: the operator summary leads the Overview; work and attention have distinct widths and clear section boundaries. Dark and light palettes match the brief, and the 390px view keeps horizontal scrolling inside the work panel. The Ticket preview gives intent/evidence the main column and backend fields a narrow inspection column. No visual changes are required before the external preview review; domain expansion remains gated.
+Compiled screenshot critique: the operator summary leads the Overview; work and attention have distinct widths and clear section boundaries. Dark and light palettes match the brief, and the 390px view keeps horizontal scrolling inside the work panel. The Ticket detail gives intent/reasons the main column and backend fields a narrow inspection column. No visual changes are required before the external preview review; domain expansion remains gated.

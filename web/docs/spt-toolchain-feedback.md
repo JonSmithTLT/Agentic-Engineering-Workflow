@@ -144,3 +144,7 @@ Resolved entries remain retained; Docker access used the validated native CLI
 without a workspace restart. Full-carrier checksum/import acceptance remains
 original prerequisite evidence and was not relabeled as a new full-toolchain
 run. Browser and local evidence are recorded in `validation-c0-012.md`.
+
+## D1 consumer retest — 2026-10-02
+
+Same immutable carrier, cache, lockfile and separate browser artifacts; no new SPT repair or frontend dependency. Empty-module offline install, generated types, typecheck, lint, 51 tests and both builds passed. Compiled browser checks passed with the matched staged Chromium (18 checks). Docker access again worked using the native temporary CLI without restarting the workspace; the earlier PATH-stub observation is retained as environment friction rather than a present build blocker. Browser OS libraries remain a separate environment prerequisite. Full carrier acceptance is the prerequisite evidence, not a newly repeated full-toolchain run. See `validation-d1.md` for commands and scope. The frontend bundle-size advisory is documented there as a frontend optimization candidate, not a demonstrated SPT failure. Resolved findings and ticket-ready non-blocking entries remain retained.

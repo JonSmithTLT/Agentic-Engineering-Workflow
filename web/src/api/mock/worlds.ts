@@ -1,5 +1,3 @@
-import type { components } from '../types';
-type Envelope = components['schemas']['OverviewResponse'];
 import type { World } from './types';
 export type { World } from './types';
 const files = import.meta.glob<World>('./fixtures/F*.json', {
@@ -16,7 +14,4 @@ export function selectedWorld() {
         w.fixture === new URLSearchParams(location.search).get('fixture'),
     ) ?? worlds.find((w) => w.fixture === 'F1')!
   );
-}
-export function overviewOf(world: World) {
-  return world.responses['/overview'] as Envelope;
 }

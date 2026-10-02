@@ -51,7 +51,21 @@ export class DemoProjector {
       capabilities.data[projection]?.state !== 'AVAILABLE'
     )
       return { status: 403 };
-    const original = this.world.responses[path];
+    let original = this.world.responses[path];
+    if (!original && path.startsWith('/work/')) {
+      const wanted = path.slice('/work/'.length);
+      const first = this.world.responses['/work'] as Envelope;
+      for (const page of [
+        first,
+        ...Object.values(this.world.pages),
+      ] as Envelope[]) {
+        const item = page.data.items.find((x) => x.id === wanted);
+        if (item) {
+          original = { ...first, data: item };
+          break;
+        }
+      }
+    }
     const isList = [
       'work',
       'runs',

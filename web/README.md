@@ -1,6 +1,6 @@
 # AEW read-only workbench
 
-D0 foundation on an isolated branch from AEW `main`. The canonical API proposal is `../docs/design/dashboard-api-v1-provisional.yaml`. Contract 0.1.0 received **AMEND** from the main AEW reviewer; 0.1.1 received **conditional acceptance pending six mechanical corrections**; **0.1.2 is ACCEPTED** at `322301d1200dce54d31a54348dd15ba7a71c9376` after main-line diff verification. D1 implementation now begins. Domain pages D1–D4 and integrated-system acceptance are not claimed.
+Read-only dashboard on an isolated branch from AEW `main`. The canonical API proposal is `../docs/design/dashboard-api-v1-provisional.yaml`. Contract 0.1.0 received **AMEND** from the main AEW reviewer; 0.1.1 received **conditional acceptance pending six mechanical corrections**; **0.1.2 is ACCEPTED** at `322301d1200dce54d31a54348dd15ba7a71c9376` after main-line diff verification. D1 Overview and Work are implemented and tested; the required visual review precedes D2–D4. Integrated-system acceptance is not claimed.
 
 The supplied v0.2 documents are preserved under `docs/`, with their outdated v0.1 reference and F0–F10 typo corrected. The user's approved implementation plan and main-line contract review govern where those documents differ, including cookie-compatible requests, four-state capabilities, generated OpenAPI types, a separate immutable SPT prerequisite, and the 30-second mixed-revision warning.
 
@@ -18,16 +18,16 @@ The gate copies only frontend/contract sources into an ephemeral container, veri
 After installing from that cache, development commands are:
 
 ```bash
-npm run dev:demo           # provisional previews, F1 by default
+npm run dev:demo           # Overview/Work demo, F1 by default
 npm run build:demo
 npm run preview:demo       # compiled demo with proposed CSP
-npm run build             # generic production shell; mocks excluded
+npm run build             # API-driven Overview/Work; mocks excluded
 npm run preview           # compiled production with proposed CSP
 ```
 
-Select fixture worlds with `?fixture=F0` through `F11`. F10 supports `fault=404`, `fault=offline`, or `fault=malformed`; its default is a server failure. Mock previews are deliberately limited to Overview and work detail pending C0. Other routes render the generic pending view.
+Select fixture worlds with `?fixture=F0` through `F11`. F10 supports `fault=404`, `fault=offline`, or `fault=malformed`; its default is a server failure. Overview, Work lists/tree and work details share production components. Later supported routes explain their pending stage; unavailable capabilities explain backend reasons and suppress requests.
 
-Browser checks: start both compiled preview servers, then run `DASHBOARD_PRODUCTION_URL=http://127.0.0.1:4174 node scripts/browser-d0.mjs` from `web/` (demo defaults to port 4173). Screenshots and the check report are under `output/playwright/`.
+Browser checks: start compiled demo on 4173 and run `node scripts/projection-server.mjs` from web/ to serve compiled production with a test-only fixture API on 4175. Then run `DASHBOARD_PRODUCTION_URL=http://127.0.0.1:4175 node scripts/browser-d1.mjs`. Screenshots/report are under `output/playwright-d1/`, with retained evidence in `docs/`. The fixture adapter is a test harness, not Engine integration. `browser-d0.mjs` is historical evidence for the earlier D0 shell.
 
 The `src/api/mock` subtree owns all provisional preview assumptions. `types.ts` is generated; `schema.ts` validates wire input at runtime. Tests check fixtures against both the canonical contract and Zod. Semantic strings are open for future values, which render raw warnings. Absent or non-AVAILABLE capabilities suppress queries.
 
@@ -41,4 +41,4 @@ This downloads Chromium matched to pinned Playwright 1.59.1 and records the brow
 
 ## Boundaries and handoff
 
-See `docs/c0-review-packet.md`, `docs/spt-toolchain-feedback.md`, and `docs/validation-c0-012.md` (current), with earlier validation retained as historical evidence. No mutation APIs, secret persistence, `.aew` parsing, or frontend decisions about workflow legality are present. Local storage contains appearance preference only. Authentication/bootstrap, host/origin checks, HTTP security headers in the actual server, projection caching, Python packaging, and live-state integration remain main-line work.
+See `docs/c0-review-packet.md`, `docs/spt-toolchain-feedback.md`, and `docs/validation-d1.md` (current), `docs/d1-visual-review.md`, with earlier validation retained as historical evidence. No mutation APIs, secret persistence, `.aew` parsing, or frontend decisions about workflow legality are present. Local storage contains appearance preference only. Authentication/bootstrap, host/origin checks, HTTP security headers in the actual server, projection caching, Python packaging, and live-state integration remain main-line work.

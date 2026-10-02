@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { useDashboard } from '../client/dashboard';
+import { SemanticValue, CapabilityWarnings } from './States';
 import { NavLink, Outlet } from 'react-router-dom';
 const navigation = [
   ['/', 'Overview'],
@@ -10,7 +12,8 @@ const navigation = [
   ['/history', 'History / integrity'],
   ['/queue', 'Queue'],
 ];
-export function Shell() {
+export function Shell({ demoTools }: { demoTools?: ReactNode }) {
+  const { project, overview, caps } = useDashboard();
   const demo = import.meta.env.MODE === 'demo';
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState(
@@ -77,23 +80,32 @@ export function Shell() {
             ☰
           </button>
           <div>
-            <strong>Agentic Engineering Workflow</strong>
-            <small>Local dashboard</small>
+            <strong>
+              {project.data?.value.data.name ?? 'AEW dashboard'}
+            </strong>
+            <small>
+              {project.data?.value.project_id ?? 'Waiting for project'}
+            </small>
           </div>
-          <span className="header-status">
-            {demo ? 'Demo data' : 'Awaiting integration'}
-          </span>
+          <div className="header-tools">
+            {overview.data && caps?.overview?.state === 'AVAILABLE' && (
+              <SemanticValue
+                value={overview.data.value.data.health.status}
+                known={['HEALTHY', 'DEGRADED', 'UNHEALTHY', 'UNKNOWN']}
+              />
+            )}
+            {demoTools}
+            <span className="header-status">
+              {demo ? 'Demo data' : 'Read-only'}
+            </span>
+          </div>
         </header>
         <main id="content" tabIndex={-1}>
+          {caps && <CapabilityWarnings values={caps} />}
           <Outlet />
         </main>
         <footer>
-          AEW workbench{' '}
-          <span>
-            {demo
-              ? 'Provisional design preview • C0 review pending'
-              : 'Frontend foundation • C0 review pending'}
-          </span>
+          AEW workbench <span>Accepted API 0.1.2 · Overview and Work</span>
         </footer>
       </div>
     </div>

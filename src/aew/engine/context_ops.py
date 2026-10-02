@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew import roles
 from aew.engine.base import TxnContext
-from aew.engine.evidence_ops import EvidenceOps
 from aew.errors import NotFound
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
@@ -14,10 +13,20 @@ from aew.knowledge.records import read_record
 from aew.util import atomic_write, parse_frontmatter, sha256_file, sha256_text
 from aew.workspace import git
 
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
+    from aew.engine.work_ops import WorkUnits
+
 AEW_EXCLUDE = ":(exclude).aew"
 
 
-class ContextOps(EvidenceOps):
+class ContextPacks:
+    """Context packs for invocations (WC §15.4; KC §15). Packs are rebuildable local data."""
+
+    def __init__(self, k: Kernel, *, units: WorkUnits) -> None:
+        self.k = k
+        self.units = units
+
     def _hierarchy_context(self, state: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         from aew.engine import gates as G
         from aew.engine import hierarchy as H
@@ -25,7 +34,7 @@ class ContextOps(EvidenceOps):
         chain = []
         for anc in reversed(H.ancestors(state, wid)):
             a = state["work"][anc]
-            meta = read_record(self.aew_root / a["record"], "work-unit").meta
+            meta = read_record(self.k.aew_root / a["record"], "work-unit").meta
             chain.append({"id": anc, "kind": a["kind"], "title": a["title"], "risk_class": a["risk_class"],
                           "plan": (a.get("plan") or {}).get("accepted"),
                           "goal_backwards": (meta.get("acceptance") or {}).get("goal_backwards", [])})
@@ -35,7 +44,7 @@ class ContextOps(EvidenceOps):
     def _input_summaries(self, inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out = []
         for i in inputs:
-            ev = next((e for e in E.scan(self.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
+            ev = next((e for e in E.scan(self.k.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
             summary: list[str] = []
             if ev:
                 d, r, pr = ev.get("discovery") or {}, ev.get("research") or {}, ev.get("proposal") or {}
@@ -64,12 +73,13 @@ class ContextOps(EvidenceOps):
             extras["attempt"] = inv.get("attempt")
         if inv.get("subject"):
             s = inv["subject"]
-            ev = next((e for e in E.scan(self.aew_root, wid)[0] if e["id"] == s["id"]), None)
+            ev = next((e for e in E.scan(self.k.aew_root, wid)[0] if e["id"] == s["id"]), None)
             if ev:
                 content = {k: ev[k] for k in ("claim", "result", "discovery", "research", "proposal") if k in ev}
-                _, body = parse_frontmatter((self.aew_root / ev["_path"]).read_text(encoding="utf-8"))
+                _, body = parse_frontmatter((self.k.aew_root / ev["_path"]).read_text(encoding="utf-8"))
                 from aew.util import dump_yaml
-                extras["subject"] = {"id": s["id"], "sha256": s["sha256"], "kind": ev["kind"], "content": dump_yaml(content),
+                extras["subject"] = {"id": s["id"], "sha256": s["sha256"], "kind": ev["kind"],
+                                     "content": dump_yaml(content),
                                      "body": body, "observed_commit": ev["evaluated_snapshot"]["base_revision"]}
         if inv.get("scope") == "parent":
             baseline = unit.get("baseline_commit")
@@ -79,23 +89,24 @@ class ContextOps(EvidenceOps):
                 c = state["work"][cid]
                 entry = {"id": cid, "kind": c["kind"], "title": c["title"], "state": c["state"],
                          "completion_record": c.get("completion_record"),
-                         "completion_sha256": self.completion_sha(state, cid)}  # type: ignore[attr-defined]
+                         "completion_sha256": self.units.completion_sha(state, cid)}
                 rec = (c.get("execution") or {}).get("record")
                 if rec and c["state"] == "DONE":
                     entry["record"] = rec["id"]
                 integrated = (c.get("integration") or {}).get("commit") if c["state"] == "DONE" else None
                 if integrated:
                     entry["integrated_commit"] = integrated
-                    args = ("diff", "--no-color", "--no-renames") if inv["role"] == "reviewer" else ("diff", "--stat", "--no-renames")
+                    args = ("diff", "--no-color", "--no-renames") if inv["role"] == "reviewer" \
+                        else ("diff", "--stat", "--no-renames")
                     entry["diff"] = git.git(*args, f"{integrated}^1", integrated, "--", ".", AEW_EXCLUDE,
-                                            cwd=self.repo_root).stdout.decode("utf-8", "replace")
-                    if baseline and git.is_ancestor(integrated, baseline, cwd=self.repo_root):
+                                            cwd=self.k.repo_root).stdout.decode("utf-8", "replace")
+                    if baseline and git.is_ancestor(integrated, baseline, cwd=self.k.repo_root):
                         entry["before_baseline"] = True  # already in the baseline: absent from baseline..A
                 children.append(entry)
             extras["children"] = children
             if baseline and commit:  # rendered even when empty: that is when it would hide a child's change
                 extras["aggregate_diffstat"] = git.out("diff", "--stat", "--no-renames", baseline, commit, "--", ".",
-                                                       AEW_EXCLUDE, cwd=self.repo_root)
+                                                       AEW_EXCLUDE, cwd=self.k.repo_root)
         return extras
 
     def _pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
@@ -106,16 +117,16 @@ class ContextOps(EvidenceOps):
         unit = state["work"][wid]
         role_def = roles.archetype(role)
         card = inv.get("card") or None
-        record = read_record(self.aew_root / unit["record"], "work-unit")
+        record = read_record(self.k.aew_root / unit["record"], "work-unit")
         plan = unit.get("plan")
         plan_text = ""
         if plan:
-            _, plan_text = parse_frontmatter((self.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_path = self.aew_root / self.manifest["policy"]["guardrails"]
-        checks_path = self.aew_root / self.manifest["policy"]["checks"]
+            _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
+        guard_path = self.k.aew_root / self.k.manifest["policy"]["guardrails"]
+        checks_path = self.k.aew_root / self.k.manifest["policy"]["checks"]
         snapshot = inv["snapshot"]
         cutoff = inv.get("evidence_seq_cutoff", 0)
-        evidence = [e for e in E.scan(self.aew_root, wid)[0] if e.get("seq", 0) <= cutoff]
+        evidence = [e for e in E.scan(self.k.aew_root, wid)[0] if e.get("seq", 0) <= cutoff]
         fp = snapshot["relevant_inputs_fingerprint"]
         tree = fp.split(":", 1)[1]
         base = (unit.get("integration") or {}).get("base") if inv.get("scope") == "integration" \
@@ -136,15 +147,16 @@ class ContextOps(EvidenceOps):
         diff = diffstat = ""
         if base and role == "reviewer":
             diff = git.git("diff", "--no-color", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
-                           cwd=self.repo_root).stdout.decode("utf-8", "replace")
+                           cwd=self.k.repo_root).stdout.decode("utf-8", "replace")
         if base and role == "verifier":
-            diffstat = git.out("diff", "--stat", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE, cwd=self.repo_root)
+            diffstat = git.out("diff", "--stat", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
+                               cwd=self.k.repo_root)
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope", "ticket"), specialty=inv.get("specialty"), workspace=inv["workspace"],
             snapshot=snapshot, record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.policy("checks")["checks"],
-            authority=self.manifest["authority"]["accepted"], diff=diff, diffstat=diffstat,
+            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.k.policy("checks")["checks"],
+            authority=self.k.manifest["authority"]["accepted"], diff=diff, diffstat=diffstat,
             check_results=[{"id": e["id"], "check_id": e["check"]["check_id"], "result": e["result"],
                             "exit_code": e["check"]["exit_code"], "log": (e.get("evidence") or [{}])[0].get("path")}
                            for e in on_snapshot if e["kind"] == "check_result"],
@@ -160,9 +172,10 @@ class ContextOps(EvidenceOps):
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
              "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
             {"name": "current_ticket", "path": unit["record"], "sha256": unit["record_sha256"]},
-            {"name": "accepted_plan", "path": plan["path"] if plan else None, "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
-            {"name": "checks", "path": self.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
+            {"name": "accepted_plan", "path": plan["path"] if plan else None,
+             "sha256": plan["sha256"] if plan else None},
+            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
+            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
             {"name": "snapshot", "path": None, "sha256": None, "base": base, "tree": fp},
             *[{"name": f"evidence:{e['id']}", "path": e["_path"], "sha256": e["_sha256"]} for e in on_snapshot],
         ]
@@ -175,20 +188,20 @@ class ContextOps(EvidenceOps):
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]
         card = inv.get("card") or None
-        record = read_record(self.aew_root / unit["record"], "work-unit")
+        record = read_record(self.k.aew_root / unit["record"], "work-unit")
         plan = unit.get("plan")
         plan_text = ""
         if plan:
-            _, plan_text = parse_frontmatter((self.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_path = self.aew_root / self.manifest["policy"]["guardrails"]
-        checks_path = self.aew_root / self.manifest["policy"]["checks"]
+            _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
+        guard_path = self.k.aew_root / self.k.manifest["policy"]["guardrails"]
+        checks_path = self.k.aew_root / self.k.manifest["policy"]["checks"]
         extras = self._m2_pack_extras(state, inv, unit)
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=roles.archetype(role), work_id=wid, title=unit["title"],
             scope=inv.get("scope"), specialty=inv.get("specialty"), workspace=inv["workspace"],
             snapshot=inv["snapshot"], record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.policy("checks")["checks"],
-            authority=self.manifest["authority"]["accepted"],
+            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.k.policy("checks")["checks"],
+            authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             card=(card or {}).get("content"), **extras)
         sources = [
@@ -196,11 +209,13 @@ class ContextOps(EvidenceOps):
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
              "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
             {"name": "current_work", "path": unit["record"], "sha256": unit["record_sha256"]},
-            {"name": "accepted_plan", "path": plan["path"] if plan else None, "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
-            {"name": "checks", "path": self.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
+            {"name": "accepted_plan", "path": plan["path"] if plan else None,
+             "sha256": plan["sha256"] if plan else None},
+            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
+            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
             {"name": "observation", "path": None, "sha256": None,
-             "commit": (inv.get("observation") or {}).get("commit"), "tree": inv["snapshot"]["relevant_inputs_fingerprint"]},
+             "commit": (inv.get("observation") or {}).get("commit"),
+             "tree": inv["snapshot"]["relevant_inputs_fingerprint"]},
             *[{"name": f"ancestor:{a['id']}", "path": state["work"][a["id"]]["record"],
                "sha256": state["work"][a["id"]]["record_sha256"]} for a in extras["hierarchy"]],
             *[{"name": f"input:{i['id']}", "path": None, "sha256": i["sha256"], "freshness": i["freshness"]}
@@ -217,29 +232,29 @@ class ContextOps(EvidenceOps):
 
     def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
         inv = ctx.state["invocations"][inv_id]
-        inv["evidence_seq_cutoff"] = E.next_seq(self.aew_root, inv["work_unit"]) - 1
+        inv["evidence_seq_cutoff"] = E.next_seq(self.k.aew_root, inv["work_unit"]) - 1
         inputs, sources = self._pack_inputs(ctx.state, inv_id)
         text = ctxmod.render(inputs)
         rel = self._pack_rel(inv_id)
-        atomic_write(self.aew_root / rel, text)  # rebuildable local data, not control state
+        atomic_write(self.k.aew_root / rel, text)  # rebuildable local data, not control state
         inv["pack"] = {"path": rel, "sha256": sha256_text(text), "sources": sources}
 
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
-        state = self.store.read()
+        state = self.k.store.read()
         inv = state["invocations"].get(inv_id)
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")
         inputs, _ = self._pack_inputs(state, inv_id)
         text = ctxmod.render(inputs)
         rel = self._pack_rel(inv_id)
-        atomic_write(self.aew_root / rel, text)
+        atomic_write(self.k.aew_root / rel, text)
         recorded = (inv.get("pack") or {}).get("sha256")
-        return {"ok": True, "invocation": inv_id, "path": str(self.aew_root / rel), "sha256": sha256_text(text),
+        return {"ok": True, "invocation": inv_id, "path": str(self.k.aew_root / rel), "sha256": sha256_text(text),
                 "matches_recorded": recorded == sha256_text(text)}
 
     def context_show(self, inv_id: str) -> str:
-        path = self.aew_root / self._pack_rel(inv_id)
+        path = self.k.aew_root / self._pack_rel(inv_id)
         if not path.exists():
             self.context_pack(inv_id)
         return path.read_text(encoding="utf-8")

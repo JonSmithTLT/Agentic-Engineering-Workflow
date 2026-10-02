@@ -3,27 +3,32 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from aew.engine.base import EngineBase
-from aew.errors import NotFound
-from aew.knowledge.render import work_graph_lines
 from aew.util import sha256_file
 
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
 
-class StatusOps(EngineBase):
+
+class StatusViews:
+    """Contradictions and the text rendering of `aew status`."""
+
+    def __init__(self, k: Kernel) -> None:
+        self.k = k
+
     def contradictions(self, state: dict[str, Any]) -> list[str]:
         """Detected inconsistencies the Lead must resolve rather than silently pick a side (KC §15.1)."""
         found = []
-        if not self.manifest_pin_ok(state):
+        if not self.k.manifest_pin_ok(state):
             found.append("project.yaml does not match its pinned hash (modified outside AEW)")
         for wid, unit in sorted(state["work"].items()):
-            record = self.aew_root / unit["record"]
+            record = self.k.aew_root / unit["record"]
             if sha256_file(record) != unit["record_sha256"]:
                 found.append(f"{wid}: record {unit['record']} was modified or removed outside AEW")
             plan = unit.get("plan") or {}
             if plan.get("accepted"):
-                if sha256_file(self.aew_root / plan["path"]) != plan["sha256"]:
+                if sha256_file(self.k.aew_root / plan["path"]) != plan["sha256"]:
                     found.append(f"{wid}: accepted plan v{plan['accepted']} was modified outside AEW")
             ws = unit.get("workspace")
             if ws and unit["state"] not in {"DONE", "CANCELLED"} and ws.get("status") == "active":
@@ -47,36 +52,6 @@ class StatusOps(EngineBase):
                 if derived != unit["state"]:
                     found.append(f"{wid}: stored state {unit['state']} disagrees with its derivation {derived}")
         return found
-
-    def status(self, work_id: str | None = None) -> dict[str, Any]:
-        state = self.store.read()
-        if work_id:
-            unit = state["work"].get(work_id)
-            if unit is None:
-                raise NotFound(f"no work unit {work_id}")
-            return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}
-        lead = state["lead"]
-        return {
-            "project": {"id": self.project_id, "name": self.manifest["project"]["name"]},
-            "revision": state["revision"],
-            "lead": {"status": lead["status"], "generation": lead["generation"],
-                     "session_label": lead.get("session_label")},
-            "work_graph": work_graph_lines(state),
-            "hierarchy": self.work_tree()["lines"] if any(u["kind"] != "ticket" for u in state["work"].values())
-            else [],
-            "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
-                           "blocked_by": u.get("blocked_by", [])}
-                     for wid, u in sorted(state["work"].items())},
-            "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
-            "next_actions": self.next_actions(state),
-            "contradictions": self.contradictions(state),
-        }
-
-    def next_actions(self, state: dict[str, Any]) -> list[str]:
-        return []
-
-    def work_tree(self, root: str | None = None) -> dict[str, Any]:  # provided by the hierarchy mixin
-        return {"lines": []}
 
     def render_status(self, report: dict[str, Any]) -> str:
         if "work_unit" in report:

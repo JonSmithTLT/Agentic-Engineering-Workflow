@@ -14,28 +14,36 @@ Operator attribution recorded through the Lead is attribution, not proof (ADR-00
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew import roles
 from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.base import TxnContext
-from aew.engine.work_ops import WorkOps
-from aew.errors import IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
+from aew.policy import consistency
+from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
 from aew.util import load_yaml, sha256_bytes
+
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
+    from aew.engine.work_ops import WorkUnits
 
 SLOTS = ("execute", "review", "verify")
 
 
-class RoleOps(WorkOps):
-    # ------------------------------------------------------------------ catalog
+class Roles:
+    """The role catalog, role plans (staffing), plan assurance and dispatch-time card resolution (ADR-0006)."""
+
+    def __init__(self, k: Kernel, *, units: WorkUnits) -> None:
+        self.k = k
+        self.units = units
 
     def _catalog_rel(self) -> str:
-        return (self.manifest.get("roles") or {}).get("catalog", "roles/")
+        return (self.k.manifest.get("roles") or {}).get("catalog", "roles/")
 
     def role_catalog(self) -> roles.Catalog:
         rel = self._catalog_rel()
-        return roles.load_catalog(self.aew_root / rel, rel_prefix=rel.rstrip("/"))
+        return roles.load_catalog(self.k.aew_root / rel, rel_prefix=rel.rstrip("/"))
 
     def role_list(self) -> dict[str, Any]:
         catalog = self.role_catalog()
@@ -69,8 +77,6 @@ class RoleOps(WorkOps):
                                                f"catalog ({existing.path})"]}
         return {"ok": True, "card": meta["role"], "extends": meta["extends"]}
 
-    # ------------------------------------------------------------------ role plan
-
     @staticmethod
     def _plan(unit: dict[str, Any]) -> dict[str, Any]:
         return unit.setdefault("role_plan", {"execute": [], "review": [], "verify": [], "forbidden": []})
@@ -86,8 +92,6 @@ class RoleOps(WorkOps):
                        else f"role plan ({entry['selected_by']})")
                 out[f"{prefix}{entry['card']}"] = why
         return out
-
-    # ------------------------------------------------------------------ plan assurance
 
     def resolve_plan_assurance(self, unit: dict[str, Any], *, review: list[str] | None, verify: list[str] | None,
                                none: bool) -> dict[str, list[str]]:
@@ -167,8 +171,8 @@ class RoleOps(WorkOps):
     ) -> dict[str, Any]:
         if selected_by not in {"lead", "operator"}:
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
-        with self.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
-            unit = self.unit(ctx.state, work_id)
+        with self.k.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
+            unit = self.units.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} cannot be staffed in state {unit['state']}")
             if unit["kind"] != "ticket" and execute:
@@ -229,20 +233,20 @@ class RoleOps(WorkOps):
                     # A Lead re-selecting an operator-pinned card leaves the operator's constraint intact.
             decision = None
             if overrides or selected_by == "operator":
-                decision = self.new_decision(
+                decision = self.k.new_decision(
                     ctx, "role_plan_change",
                     f"{work_id} role plan changed" + (f"; overrode operator pins {overrides}" if overrides else ""),
                     work_unit=work_id, reason=reason,
                     decided_by=dict(ctx.actor, kind="operator" if selected_by == "operator" else "lead",
                                     recorded_by_lead=True))
             ctx.summary = f"{work_id} staffed"
-            self.before_commit(ctx)
+            self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "role_plan": unit["role_plan"], "decision": decision,
                 "revision": ctx.session.committed_revision}
 
     def effective_role_plan(self, state: dict[str, Any], work_id: str,
                             gc: dict[str, Any] | None = None) -> dict[str, Any]:
-        unit = self.unit(state, work_id)
+        unit = self.units.unit(state, work_id)
         stored = unit.get("role_plan") or {"execute": [], "review": [], "verify": [], "forbidden": []}
         eff = {slot: [dict(e) for e in stored.get(slot, [])] for slot in SLOTS}
         requirements: list[dict[str, Any]] = []
@@ -283,18 +287,9 @@ class RoleOps(WorkOps):
         return {"gate": f"review_{specialty}", "selected_by": "policy", "reason": why,
                 "satisfied_by": f"any reviewer card with specialty {specialty}", "candidates": cards}
 
-    def work_roles(self, work_id: str) -> dict[str, Any]:
-        state = self.store.read()
-        gc = self.gate_context(state, work_id)  # type: ignore[attr-defined]  (EvidenceOps)
-        out = self.effective_role_plan(state, work_id, gc)
-        out["plan_gates"] = self.plan_gates(self.unit(state, work_id))
-        return out
-
-    # ------------------------------------------------------------------ dispatch
-
     def resolve_card(self, state: dict[str, Any], work_id: str, slot: str, *, card_id: str | None,
                      role: str | None, gc: dict[str, Any] | None = None) -> roles.Card:
-        unit = self.unit(state, work_id)
+        unit = self.units.unit(state, work_id)
         catalog = self.role_catalog()
         if card_id is None:
             eff = self.effective_role_plan(state, work_id, gc)["effective"][slot]
@@ -352,3 +347,14 @@ class RoleOps(WorkOps):
         restrict = card.meta.get("restrict") or {}
         inv["allowed_operations"] = restrict.get("operations")
         inv["allowed_checks"] = restrict.get("checks")
+
+    def policy_problems(self) -> list[str]:
+        """Contradictions between the policy files and what the engine can evaluate (``policy.consistency``).
+
+        Empty when a policy file is itself invalid: that is reported on its own, and nothing can be compared."""
+        try:
+            gates, checks = self.k.policy("gates"), self.k.policy("checks")
+            specialties = {c.meta["specialty"] for c in self.role_catalog().cards.values() if c.meta.get("specialty")}
+        except AEWError:
+            return []
+        return consistency.problems(gates, checks, specialties)

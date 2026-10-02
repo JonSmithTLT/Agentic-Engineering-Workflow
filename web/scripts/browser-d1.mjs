@@ -81,7 +81,7 @@ try {
   checks.push('dark theme');
   await page
     .getByRole('link', {
-      name: 'Validate projection consistency',
+      name: 'T-0001 Validate projection consistency',
       exact: true,
     })
     .click();
@@ -307,7 +307,7 @@ try {
   await pp.getByRole('status').filter({ hasText: 'CURRENT' }).waitFor();
   await pp
     .getByRole('link', {
-      name: 'Validate projection consistency',
+      name: 'T-0001 Validate projection consistency',
       exact: true,
     })
     .click();
@@ -368,7 +368,7 @@ try {
         remote,
         writes,
         scope:
-          'D1 Overview/Work only; test adapter is fixture-backed, no live Engine integration; D2-D4 pending visual review',
+          'D1 Overview/Work regression in core candidate; test adapter is fixture-backed, no live Engine integration',
       },
       null,
       2,

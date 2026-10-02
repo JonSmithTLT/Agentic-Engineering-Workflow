@@ -24,5 +24,6 @@ npm run lint
 npm test
 npm run build
 npm run build:demo
+rm -rf /evidence/dist /evidence/dist-demo
 cp -r dist dist-demo /evidence/
 SCRIPT

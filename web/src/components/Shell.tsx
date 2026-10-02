@@ -24,7 +24,15 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
     document.documentElement.dataset.theme = value;
     localStorage.setItem('aew-theme', value);
   }
-  const search = demo ? window.location.search : '';
+  const context = new URLSearchParams();
+  if (demo) {
+    const params = new URLSearchParams(window.location.search);
+    for (const key of ['fixture', 'fault']) {
+      const value = params.get(key);
+      if (value) context.set(key, value);
+    }
+  }
+  const search = context.size ? '?' + context.toString() : '';
   return (
     <div className="workbench">
       <a className="skip-link" href="#content">
@@ -80,9 +88,7 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
             ☰
           </button>
           <div>
-            <strong>
-              {project.data?.value.data.name ?? 'AEW dashboard'}
-            </strong>
+            <strong>{project.data?.value.data.name ?? 'AEW dashboard'}</strong>
             <small>
               {project.data?.value.project_id ?? 'Waiting for project'}
             </small>
@@ -105,7 +111,7 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
           <Outlet />
         </main>
         <footer>
-          AEW workbench <span>Accepted API 0.1.2 · Overview and Work</span>
+          AEW workbench <span>Accepted API 0.1.2 · Read-only projections</span>
         </footer>
       </div>
     </div>

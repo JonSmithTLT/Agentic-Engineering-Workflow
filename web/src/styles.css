@@ -709,3 +709,127 @@ section.panel > .muted {
   color: var(--muted);
   font-size: 12px;
 }
+
+.collection-panel {
+  margin-bottom: 18px;
+}
+.collection-panel table td {
+  vertical-align: top;
+}
+.collection-panel table td > div + div {
+  margin-top: 5px;
+}
+.reference-list,
+.reason-list {
+  padding-left: 18px;
+}
+.reference-list li,
+.reason-list li {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.reference-list code {
+  margin-right: 6px;
+}
+.detail-main > h2,
+.facts > h2 {
+  margin-top: 24px;
+}
+.detail-main > h2:first-child,
+.facts > h2:first-child {
+  margin-top: 0;
+}
+.knowledge-group > h3 {
+  margin: 12px 16px;
+}
+.knowledge-group + .knowledge-group {
+  border-top: 1px solid var(--border);
+}
+.integrity-panel {
+  padding: 16px;
+  margin-top: 18px;
+}
+.integrity-facts {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 8px;
+}
+.integrity-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.audit-roots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.audit-roots pre,
+.facts pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.annotation-item {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+.annotation-item h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.attention-record {
+  padding: 18px;
+  border-top: 1px solid var(--border);
+}
+.attention-record:first-child {
+  border-top: 0;
+}
+.attention-record-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.attention-record-heading h3 {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+.attention-record .prose {
+  max-width: 75ch;
+}
+details {
+  margin: 12px 0;
+}
+summary {
+  cursor: pointer;
+}
+@media (max-width: 800px) {
+  .audit-roots {
+    grid-template-columns: 1fr;
+  }
+  .integrity-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.record-main {
+  padding: 16px;
+}
+.record-main .prose,
+.record-main > p {
+  padding: 0;
+}
+.record-main > .table-scroll {
+  margin: 12px 0;
+}
+.page-heading h1 {
+  overflow-wrap: anywhere;
+}
+.history-reference {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.history-reference a {
+  font-size: 12px;
+}

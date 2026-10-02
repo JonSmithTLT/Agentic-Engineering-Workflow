@@ -4,35 +4,20 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import type { ComponentType } from 'react';
 import { Shell } from './components/Shell';
 import { queryClient, installVisibility } from './client/queries';
-import {
-  DashboardProvider,
-  PageSnapshot,
-  useCapability,
-} from './client/dashboard';
+import { DashboardProvider } from './client/dashboard';
 import { OverviewPage } from './pages/Overview';
 import { WorkPage, WorkDetailPage } from './pages/Work';
-import { Unavailable } from './components/States';
+import {
+  RunsPage,
+  RunDetailPage,
+  EvidencePage,
+  EvidenceDetailPage,
+  KnowledgePage,
+  KnowledgeDetailPage,
+} from './pages/Records';
+import { HistoryPage, HistoryDetailPage } from './pages/History';
+import { AttentionPage, QueuePage } from './pages/Attention';
 import './styles.css';
-function NextStage({ name }: { name: string }) {
-  const value = useCapability(name);
-  return (
-    <>
-      <PageSnapshot />
-      {!value.available ? (
-        <Unavailable explanation={value.explanation} />
-      ) : (
-        <div className="empty">
-          <h1>View in preparation</h1>
-          <p>
-            This view is scheduled after the Overview and Work visual
-            review.
-          </p>
-          <Link to="/">Return to Overview</Link>
-        </div>
-      )}
-    </>
-  );
-}
 async function start() {
   const saved = localStorage.getItem('aew-theme');
   if (saved && ['system', 'light', 'dark'].includes(saved))
@@ -61,37 +46,16 @@ async function start() {
               <Route path="overview" element={<OverviewPage />} />
               <Route path="work" element={<WorkPage />} />
               <Route path="work/:id" element={<WorkDetailPage />} />
-              {[
-                'runs',
-                'evidence',
-                'knowledge',
-                'history',
-                'attention',
-                'queue',
-              ].flatMap((path) => [
-                <Route
-                  key={path}
-                  path={path}
-                  element={
-                    <NextStage
-                      name={
-                        path === 'attention' ? 'action_projection' : path
-                      }
-                    />
-                  }
-                />,
-                <Route
-                  key={path + '-detail'}
-                  path={path + '/:id'}
-                  element={
-                    <NextStage
-                      name={
-                        path === 'attention' ? 'action_projection' : path
-                      }
-                    />
-                  }
-                />,
-              ])}
+              <Route path="runs" element={<RunsPage />} />
+              <Route path="runs/:id" element={<RunDetailPage />} />
+              <Route path="evidence" element={<EvidencePage />} />
+              <Route path="evidence/:id" element={<EvidenceDetailPage />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
+              <Route path="knowledge/:id" element={<KnowledgeDetailPage />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="history/:id" element={<HistoryDetailPage />} />
+              <Route path="attention" element={<AttentionPage />} />
+              <Route path="queue" element={<QueuePage />} />
               <Route
                 path="*"
                 element={

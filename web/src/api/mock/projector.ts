@@ -66,6 +66,27 @@ export class DemoProjector {
         }
       }
     }
+    if (
+      !original &&
+      path.startsWith('/history/') &&
+      this.world.fixture === 'F7'
+    ) {
+      const match = /^\/history\/T-H([0-9]{6})$/.exec(path);
+      const seq = match ? Number(match[1]) : 0;
+      if (seq > 0 && seq <= 50000 + this.appends) {
+        const first = this.world.responses['/history'] as Envelope;
+        original = {
+          ...first,
+          data: {
+            ...first.data.items[0],
+            id: path.slice('/history/'.length),
+            seq,
+            annotations: [],
+            annotations_next_cursor: null,
+          },
+        };
+      }
+    }
     const isList = [
       'work',
       'runs',
@@ -75,21 +96,23 @@ export class DemoProjector {
       'attention',
       'activity',
     ].some((x) => path === `/${x}`);
-    if (!isList && path.startsWith('/history/') && original) {
+    if (
+      !isList &&
+      path !== '/history/integrity' &&
+      path.startsWith('/history/') &&
+      original
+    ) {
       const detail = original as {
         control_revision: string;
         data: { annotations: Item[]; [key: string]: unknown };
       };
-      const limit = Number(
-        url.searchParams.get('annotations_limit') ?? 100,
-      );
+      const limit = Number(url.searchParams.get('annotations_limit') ?? 100);
       if (!Number.isInteger(limit) || limit < 1 || limit > 250)
         return { status: 400 };
       const scope = JSON.stringify([path, limit]);
       const token = url.searchParams.get('annotations_cursor');
       const prior = token ? this.cursors.get(token) : undefined;
-      if (token && (!prior || prior.scope !== scope))
-        return { status: 400 };
+      if (token && (!prior || prior.scope !== scope)) return { status: 400 };
       const count = prior?.count ?? detail.data.annotations.length;
       const offset = prior?.offset ?? 0;
       const annotations = detail.data.annotations.slice(
@@ -119,8 +142,7 @@ export class DemoProjector {
     const first = original as Envelope;
     for (const key of ['since', 'until']) {
       const value = url.searchParams.get(key);
-      if (value && !Number.isFinite(Date.parse(value)))
-        return { status: 400 };
+      if (value && !Number.isFinite(Date.parse(value))) return { status: 400 };
     }
     const limit = Number(url.searchParams.get('limit') ?? 100);
     if (!Number.isInteger(limit) || limit < 1 || limit > 250)
@@ -171,8 +193,7 @@ export class DemoProjector {
     }
     if (path === '/evidence') {
       const work = url.searchParams.get('work');
-      if (work)
-        items = items.filter((x) => (x.subject as Item).id === work);
+      if (work) items = items.filter((x) => (x.subject as Item).id === work);
     }
     const history = path === '/history';
     const generated = history && this.world.fixture === 'F7';

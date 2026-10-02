@@ -1,6 +1,6 @@
 # D1 Overview and Ticket visual review
 
-Status: **PENDING designer/user review**. C0 0.1.2 is accepted; D1 implementation and focused validation pass. This packet satisfies the concrete review prerequisite in the approved plan: “Review a running mock Overview and realistic Ticket detail before expanding the remaining pages.”
+Status: **APPROVED by user, 2026-10-02**. C0 0.1.2 is accepted; D1 implementation and focused validation pass. This packet satisfies the concrete review prerequisite in the approved plan: “Review a running mock Overview and realistic Ticket detail before expanding the remaining pages.”
 
 ## Running compiled previews
 
@@ -21,4 +21,4 @@ Review the operator summary and attention hierarchy, Ticket intent/reasons versu
 
 Validation: 51 offline tests and 18 compiled browser checks pass; see `validation-d1.md`. Production uses the same domain components without fixture code. Live integration, D2–D4 and independent core frontend review are not yet accepted.
 
-Decision to record here after actual review: accepted visual direction, or specific changes required before expanding the remaining pages. No visual approval is inferred from passing tests.
+User feedback: “i like teh visuals it looks good so far!” Visual direction accepted; carry it into D2–D4. The earlier ticket-ID feedback was addressed in `68e7b66`. Approval covers visuals, not independent core review or live integration.

@@ -1,4 +1,4 @@
-# Main AEW agent handoff: accepted C0 / D1 visual review
+# Main AEW agent handoff: accepted C0 / core review candidate
 
 Candidate branch `feat/aew-dashboard-readonly`, worktree `../AEW-dashboard`.
 Accepted review target: `322301d1200dce54d31a54348dd15ba7a71c9376`.
@@ -11,14 +11,18 @@ Changes: unique GET/HEAD parameters; opaque fingerprint/digest strings; path-fre
 
 Claude verified the mechanical diff and recorded ACCEPT in `c0-review-main-line-0.1.2.md` and `c0-approval.json`, dated 2026-10-02. D1–D4 may begin. The exact YAML is unchanged; frontend acceptance pins and tests now match the signed record. Independent frontend review and live integration remain separate.
 
-Validation scope and evidence are in `validation-c0-012.md`. The same immutable SPT builder and dependency/lock/browser identities are used; retest notes are appended to `spt-toolchain-feedback.md`. Production now contains API-driven Overview and Work, validated through a test-only same-origin fixture adapter. Queue is UNSUPPORTED with no wire model; integrity remains provisional and UNSUPPORTED for the frozen pre-P2c baseline, becoming AVAILABLE when the merged backend advertises it.
+Validation scope and evidence are in `validation-c0-012.md`. The same immutable SPT builder and dependency/lock/browser identities are used; retest notes are appended to `spt-toolchain-feedback.md`. Production contains the core read-only pages, validated through a test-only same-origin fixture adapter. Queue is UNSUPPORTED with no wire model; integrity remains provisional and UNSUPPORTED for the frozen pre-P2c baseline, becoming AVAILABLE when the merged backend advertises it.
 
 The original AEW checkout and concurrent tests remain untouched. Engine semantics, shared reason-code registry, authentication/bootstrap, serving/security headers, Host/Origin validation, projection caching, Python packaging and live-state integration remain main-line ownership. Frontend core review and integrated-system acceptance remain separate from C0.
 
 ## D1 handoff
 
-Overview, filtered bounded Work table/tree, virtualization, cursor pagination and opaque-ID details are implemented without new dependencies. Backend owns all domain conclusions. `validation-d1.md` records the immutable offline gate (51 tests) and 18 compiled browser checks; `d1-visual-review.md` supplies running previews and screenshots. D2–D4 await the user/designer visual review explicitly required by the approved plan. Independent frontend review at core freeze remains a separate main-agent gate. Test-adapter success does not establish live-state/authentication integration.
+Overview, filtered bounded Work table/tree, virtualization, cursor pagination and opaque-ID details are implemented without new dependencies. Backend owns all domain conclusions. `validation-d1.md` records the immutable offline gate (51 tests) and 18 compiled browser checks; `d1-visual-review.md` supplies running previews and screenshots. The user approved this visual direction on 2026-10-02, and D2–D4 are now implemented. Independent frontend review at core freeze remains a separate main-agent gate. Test-adapter success does not establish live-state/authentication integration.
 
 ## Optional Work graph request
 
 The user identified large-project epic/story/ticket hierarchy and linkage as a useful graph use case. `work-graph-follow-up.md` records a proposed Work Graph view alongside Table/Tree, with focused bounded exploration and an explicit backend contract prerequisite. It remains separate work after core freeze; no graph implementation or date is claimed.
+
+## Core review handoff
+
+`frontend-core-review-packet.md` supplies the frozen implementation target, exact scope, retained evidence and review protocol. `validation-core.md` records 61 tests and 18+12 compiled browser checks. `integration-checklist.md` distinguishes frontend review from live-system acceptance. Queue remains unavailable without an accepted wire model; integrity rendering is capability-gated, with AVAILABLE exercised only by a clearly synthetic test projection. The accepted contract, lock and fixture bytes did not change. No Engine tests or source edits occurred. Required next gate: actual main AEW agent independent frontend review and finding disposition before core freeze.

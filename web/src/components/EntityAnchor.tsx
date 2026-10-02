@@ -14,6 +14,7 @@ const capabilities: Record<string, string> = {
   assumption: 'knowledge',
   knowledge: 'knowledge',
   history: 'history',
+  audit: 'history',
 };
 export function EntityAnchor({
   entity,
@@ -26,8 +27,16 @@ export function EntityAnchor({
   );
   const href = entityLink(entity);
   const label = entity.title ?? entity.id;
+  const params = new URLSearchParams(location.search);
+  const context = new URLSearchParams();
+  if (import.meta.env.MODE === 'demo')
+    for (const key of ['fixture', 'fault']) {
+      const value = params.get(key);
+      if (value) context.set(key, value);
+    }
+  const search = context.size ? '?' + context.toString() : '';
   return href && capability.available ? (
-    <Link to={href + location.search}>{label}</Link>
+    <Link to={href + search}>{label}</Link>
   ) : (
     <span title={capability.explanation}>
       {label}

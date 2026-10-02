@@ -10,6 +10,7 @@ const routes: Record<string, string> = {
   fact: 'knowledge',
   assumption: 'knowledge',
   history: 'history',
+  audit: 'history',
 };
 export function entityLink(entity: {
   kind: string;

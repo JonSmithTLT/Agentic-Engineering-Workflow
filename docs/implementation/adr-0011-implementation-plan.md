@@ -417,6 +417,8 @@ Each PR keeps the M1–M3 tests passing.
 - **Two test edits**, the only ones to existing test files; invariant 8 allows them because they inspect the raw layout:
   - the AT-15 `tokens()` helper reads hot, then cold;
   - the footprint test splits hot and cold.
+
+  *Amended by the operator, 2026-10-02 (see "P2d as built"):* the edits P2d actually needs are two others, and this constraint now names those instead.
 - **A timing-free H1 regression** joins the scale tests.
 - **The fingerprint** gets `:(exclude).aew` (`snapshot/fingerprint.py:73`), as its own measured commit (investigation §8.1).
 - **Optional:** dedupe role-card content into `cards/<sha256>.yaml`, if A1 needs it.
@@ -434,7 +436,11 @@ Each PR keeps the M1–M3 tests passing.
   - New: `tests/integration/test_migration.py`: the refusal; what migration archives and keeps, against the full state, with a full audit of the migrated history (every pinned record included); a crash at each of the 11 fault points of a migration (the seal on a project of 256 finished units), each leaving v1 or the whole v2 with the same history root every time; live runs; parent evidence through the migration, including a classified failure.
   - The H1 regression is `test_after_migration_the_hot_state_holds_history_only_as_aggregates` in the scale tests: at 250 and 1,000 completed (four times the history), the hot state grows at most 1.25x and history is at most 20% of it. H1's own points, 250 and 3,000, are P3's measurement; a 3,000-unit migration takes minutes.
 - **The fingerprint** skips `.aew/` in its `git add` (`:(exclude).aew`) instead of hashing it and then removing it from the index: the tree is identical, and `.aew/` holding thousands of uncommitted records (the authoritative checkout once history is archived) is no longer read. Measured on Windows with 3,000 uncommitted 20 KB records under `.aew/` and 200 tracked files: 1.74 s to 0.066 s per fingerprint (median of 10), the same tree. `working_tree_id` still reads `.aew/`, which its callers compare.
-- **Measured once, for P3:** migrating the template grown to 20 open and 3,000 completed Tickets took 102 s on the Windows development machine (not idle; P3 measures it properly). Most of it is serializing the 3,000 bundles (about 60 MB of YAML). The plan's fallback, batched quiescent compaction, is the designer's if P3 judges one transaction impractical.
+- **Measured once, for P3:** migrating the template grown to 20 open and 3,000 completed Tickets took 102 s on the Windows development machine (not idle; P3 measures it properly). Most of it is likely serializing the 3,000 bundles (about 60 MB of YAML); P3's profile will show.
+- **Operator decisions on P2d** (2026-10-02):
+  - **Migration time:** continue to P3. P3 profiles the migration (§7.2); batching is not adopted now.
+  - **The existing-test edits:** approved, and the constraint above is amended. The plan named two edits (AT-15's `tokens()` helper, the footprint test) as the only ones to existing test files. P2d instead edits two others, each because the v1 refusal changes what they test: P2b's v1 test (P2b's interim behaviour, "a v1 project keeps working", was always meant to end in P2d) and the scale regression (its mutations now run on migrated projects). The AT-15 edit was not needed, and the footprint test stays as it was; its hot and cold split is a new test beside it.
+  - **The H1 regression** at 250 and 1,000 completed is approved as the CI regression. H1's acceptance gate stays at 250 and 3,000 completed, measured in P3 (§7.2).
   - Edits to existing tests: the scale regression measures migrated projects (two builds, since a migrated project cannot grow by cloning), with the resume scan allowance now per open unit (H4); P2b's v1 test now checks the refusal and the migration. The plan's AT-15 `tokens()` edit was not needed: AT-15 reads only the credentials of invocations still running, which stay hot.
 
 ## 7. P3: the acceptance gate
@@ -453,8 +459,8 @@ Each PR keeps the M1–M3 tests passing.
 ### 7.2 The gate
 
 - **Linux (here):**
-  - all four series and the migration timing, against the baseline;
-  - H1–H4 and A1, each marked pass or fail in a results section of this document.
+  - all four series and the migration timing, against the baseline, with a profile of the migration (operator, 2026-10-02: batching only if the profile shows one transaction is impractical);
+  - H1–H4 and A1, each marked pass or fail in a results section of this document. H1 is judged at 250 and 3,000 completed; the CI regression's smaller points do not replace it.
 - **Windows reference (operator):** the full sweep (ADR-0011 coverage).
 - **Rocky 8.10 on aew-q7 (operator):** the hierarchy-history series, the H3 changed-hot-state re-parse, archival-write scaling and the absolute heartbeat bound. P2a adds the exact script.
 - **Review.** A review brief states what changed in ADR-0001's model, followed by the independent review. The register then moves F1 and E5 to §9 *Closed*.

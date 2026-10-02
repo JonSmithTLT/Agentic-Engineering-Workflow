@@ -3,6 +3,7 @@ and crashes at each history fault point (in-process; ``test_store_processes`` ki
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from history_model import ROOT_REL, archive, bundle, check, fields, init, read_r
 
 from aew.engine.faults import InjectedFault  # noqa: E402
 from aew.engine.store import Transition  # noqa: E402
-from aew.errors import IntegrityError  # noqa: E402
+from aew.errors import IntegrityError, LockTimeout  # noqa: E402
 from aew.history import manifest as M  # noqa: E402
 from aew.history.index import INDEX_REL, HistoryIndex  # noqa: E402
 from aew.history.store import History, annotation_rel, bundle_rel, prewrite  # noqa: E402
@@ -60,6 +61,69 @@ def test_one_archival_writes_only_its_records_and_the_tail(store):
     assert [w["path"] for w in txn["writes"]] == [bundle_rel("T-0257"), M.TAIL_REL, ROOT_REL]
 
 
+def rechain(entries: list[dict], start: dict) -> list[dict]:
+    """``entries`` with their hashes recomputed from ``start``: an edit that keeps one file's own chain consistent."""
+    h, out = start["h"], []
+    for e in entries:
+        e = {k: v for k, v in e.items() if k != "h"}
+        h = M.chain_hash(h, e)
+        out.append({**e, "h": h})
+    return out
+
+
+def rewrite_segment(path: Path, doc: dict) -> str:
+    text = M.render_file(sealed=True, seq=doc["seq"], start=doc["start"], prev=doc["prev"], entries=doc["entries"])
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return sha256_file(path)
+
+
+@pytest.mark.parametrize("damage", ["entry_edited", "segment_rechained", "newest_sealed_edited",
+                                    "segment_and_link_rewritten", "every_later_link_rewritten"])
+def test_a_sealed_lookup_refuses_a_segment_that_is_not_the_pinned_one(store, damage):
+    archive(store, 800)  # segments 1, 2 and 3 sealed
+    root = read_root(store.root)
+    history = History(store.root)
+    seq = 600 if damage == "newest_sealed_edited" else 7
+    assert history.entry(root, seq)["id"] == f"T-{seq:04d}"
+    path = store.root / M.segment_rel(M.segment_of(seq))
+    doc = load_yaml(path.read_text(encoding="utf-8"))
+    doc["entries"][(seq - 1) % M.SEGMENT_SIZE]["id"] = "T-7777"
+    if damage != "entry_edited":
+        doc["entries"] = rechain(doc["entries"], doc["start"])
+    digest = rewrite_segment(path, doc)
+    if damage in ("segment_and_link_rewritten", "every_later_link_rewritten"):
+        # A coordinated rewrite: the next segment links to the forged one and starts where it ends, so every check
+        # of one file and its neighbour passes. Only following the links to the root finds it.
+        nxt_path = store.root / M.segment_rel(2)
+        nxt = load_yaml(nxt_path.read_text(encoding="utf-8"))
+        nxt["prev"], nxt["start"] = {"seq": 1, "sha256": digest}, {"count": 256, "h": doc["entries"][-1]["h"]}
+        nxt["entries"] = rechain(nxt["entries"], nxt["start"])
+        digest = rewrite_segment(nxt_path, nxt)
+        if damage == "every_later_link_rewritten":  # and the one after that too: only the root itself still differs
+            last_path = store.root / M.segment_rel(3)
+            last = load_yaml(last_path.read_text(encoding="utf-8"))
+            last["prev"], last["start"] = {"seq": 2, "sha256": digest}, {"count": 512, "h": nxt["entries"][-1]["h"]}
+            last["entries"] = rechain(last["entries"], last["start"])
+            rewrite_segment(last_path, last)
+    with pytest.raises(IntegrityError):
+        history.entry(root, seq)  # corruption is a contradiction when it is accessed, not only at the next audit
+    assert not history.verify(root).ok
+
+
+def test_a_segment_header_is_read_without_its_entries_or_whole_when_laid_out_otherwise(store):
+    archive(store, 600)
+    history = History(store.root)
+    path = store.root / M.segment_rel(2)
+    doc = load_yaml(path.read_text(encoding="utf-8"))
+    want = {k: doc[k] for k in ("schema", "seq", "start", "prev")}
+    assert history.segment_header(2) == (want, sha256_file(path))
+    path.write_text(dump_yaml({"entries": doc["entries"], **want}), encoding="utf-8", newline="\n")  # entries first
+    assert history.segment_header(2) == (want, sha256_file(path))
+    (store.root / M.segment_rel(1)).write_bytes(path.read_bytes())  # segment 2's bytes where segment 1 belongs
+    with pytest.raises(IntegrityError, match="is not sealed segment 1"):
+        history.segment_header(1)
+
+
 def test_an_entry_is_found_by_its_sequence_number(store):
     archive(store, 260)
     root = read_root(store.root)
@@ -87,6 +151,24 @@ def test_an_append_refuses_a_tail_that_does_not_end_at_the_root(store, change, m
     with store.session() as s:
         with pytest.raises(IntegrityError, match=message):
             History(store.root).append(s, root, [fields(4, "b" * 64)])
+
+
+@pytest.mark.parametrize("sealed", [False, True], ids=["first_tail", "after_a_seal"])
+def test_an_append_refuses_a_tail_that_drops_its_committed_prefix(store, sealed):
+    archive(store, 259 if sealed else 3)  # after a seal the tail holds entries 257-259, else entries 1-3
+    root = read_root(store.root)
+    with store.session() as s:  # a later transaction: recovery no longer re-checks the tail it does not touch
+        s.commit(Transition(op="x", actor={"kind": "test"}))
+    revision = store.read()["revision"]
+    tail = store.root / M.TAIL_REL
+    doc = load_yaml(tail.read_text(encoding="utf-8"))
+    doc["start"], doc["entries"] = {"count": root["count"], "h": root["head_h"]}, []  # still ends at the root
+    tail.write_text(dump_yaml(doc), encoding="utf-8")
+    with pytest.raises(IntegrityError, match="does not start where the newest sealed segment ends"):
+        History(store.root).tail(root)
+    with pytest.raises(IntegrityError, match="does not start where the newest sealed segment ends"):
+        archive(store, 1)
+    assert store.read()["revision"] == revision and read_root(store.root) == root  # nothing was committed
 
 
 def test_a_record_is_immutable(store):
@@ -117,8 +199,8 @@ def test_an_earlier_root_that_is_not_on_the_chain_is_reported(store):
     assert not report.ok and "not on the current history" in report.problems[0]
 
 
-@pytest.mark.parametrize("damage", ["record", "record_missing", "segment_entry", "segment_missing", "tail_missing",
-                                    "root"])
+@pytest.mark.parametrize("damage", ["record", "record_missing", "record_unreadable", "segment_entry",
+                                    "segment_missing", "segment_bytes", "tail_missing", "tail_bytes", "root"])
 def test_damage_is_reported_not_raised(store, damage):
     archive(store, 300)
     root = read_root(store.root)
@@ -127,6 +209,13 @@ def test_damage_is_reported_not_raised(store, damage):
         (store.root / bundle_rel("T-0007")).write_text("changed\n", encoding="utf-8")
     elif damage == "record_missing":
         (store.root / bundle_rel("T-0007")).unlink()
+    elif damage == "record_unreadable":  # a directory where the record should be: reading it fails
+        (store.root / bundle_rel("T-0007")).unlink()
+        (store.root / bundle_rel("T-0007")).mkdir()
+    elif damage == "segment_bytes":
+        seg.write_bytes(bytes.fromhex("fffe80"))
+    elif damage == "tail_bytes":
+        (store.root / M.TAIL_REL).write_bytes(bytes.fromhex("fffe80"))
     elif damage == "segment_entry":
         seg.write_text(seg.read_text(encoding="utf-8").replace("id: T-0007\n", "id: T-7777\n"), encoding="utf-8")
     elif damage == "segment_missing":
@@ -168,7 +257,8 @@ def test_the_index_rebuilds_catches_up_and_answers_lookups(store):
     assert len(index.paths()) == 305
 
 
-@pytest.mark.parametrize("loss", ["deleted", "damaged", "foreign_root"])
+@pytest.mark.parametrize("loss", ["deleted", "damaged", "foreign_root", "meta_h_missing", "meta_count_malformed",
+                                  "meta_h_malformed"])
 def test_a_lost_damaged_or_foreign_index_is_rebuilt(store, loss):
     archive(store, 4)
     index = HistoryIndex(store.root)
@@ -178,6 +268,14 @@ def test_a_lost_damaged_or_foreign_index_is_rebuilt(store, loss):
         path.unlink()
     elif loss == "damaged":
         path.write_bytes(b"not a database" * 100)
+    elif loss.startswith("meta"):  # a healthy database whose recorded root is unusable
+        conn = sqlite3.connect(path)
+        with conn:
+            if loss == "meta_h_missing":
+                conn.execute("DELETE FROM meta WHERE key = 'h'")
+            else:
+                conn.execute("UPDATE meta SET value = 'broken' WHERE key = ?", (loss.split("_")[1],))
+        conn.close()
     else:  # an index built against a history this root does not extend: other entries, so another chain
         other = init(store.root.parent / "other")
         history = History(other.root)
@@ -233,6 +331,22 @@ def test_every_query_of_an_index_ahead_of_the_root_stops_at_that_root(store):
     assert index.moves() == {"T-0001": "S-0009"}
     assert index.links("T-0001") == [{"from": "T-0002", "rel": "depends_on", "to": "T-0001"}]
     assert len(index.paths()) == 3
+
+
+def test_a_busy_index_is_reported_and_kept_not_rebuilt(store):
+    archive(store, 4)
+    index = HistoryIndex(store.root, timeout=0.2)
+    index.sync(read_root(store.root))
+    archive(store, 1)
+    holder = sqlite3.connect(index.path, isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")  # another writer holds the index past the timeout
+        with pytest.raises(LockTimeout, match="busy"):
+            index.sync(read_root(store.root))
+        assert index.path.exists()
+    finally:
+        holder.close()
+    assert index.sync(read_root(store.root)) == {"mode": "caught_up", "added": 1}  # it was healthy all along
 
 
 def test_annotations_are_entries_about_a_subject(store):

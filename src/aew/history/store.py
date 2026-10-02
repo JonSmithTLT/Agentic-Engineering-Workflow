@@ -6,9 +6,10 @@ those writes carries a fault point that crash-safety tests use (``history.after_
 ``history.after_tail``).
 
 Reads take a root (``manifest.empty_root()`` shape) and never hold the control lock: sealed segments and records are
-immutable, and the tail is checked against the root it is read for. A tail that does not end at that root (it was
-replaced since) is reported as an ``IntegrityError``; callers that read outside the lock copy the root and tail
-together (ADR-0011 audit, plan R2).
+immutable, and the tail is checked against the root it is read for. A tail that does not start at the newest sealed
+segment's end or does not end at that root (it was replaced since) is reported as an ``IntegrityError``; callers that
+read outside the lock copy the root and tail together (ADR-0011 audit, plan R2). Damage a read meets (bytes that are
+not UTF-8, a file that cannot be read) is an ``IntegrityError`` too, so verification reports it rather than raising.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from aew.engine import faults
 from aew.errors import IntegrityError, ValidationFailed
 from aew.history import manifest as M
 from aew.schemas import validate_def
-from aew.util import create_exclusive, sha256_bytes, sha256_file, sha256_text
+from aew.util import create_exclusive, load_yaml, sha256_bytes, sha256_file, sha256_text
 
 if TYPE_CHECKING:
     from aew.engine.store import Session
@@ -69,6 +70,15 @@ class History:
             return (self.root / rel).read_bytes()
         except FileNotFoundError:
             return None
+        except OSError as exc:
+            raise IntegrityError(f"history file {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+
+    @staticmethod
+    def _text(raw: bytes, rel: str) -> str:
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise IntegrityError(f"{rel} is not UTF-8 text", path=rel) from exc
 
     def segment(self, seq: int) -> tuple[dict[str, Any], str]:
         """Sealed segment ``seq`` and its file hash."""
@@ -76,10 +86,56 @@ class History:
         raw = self._read(rel)
         if raw is None:
             raise IntegrityError(f"history segment {rel} is missing", path=rel)
-        doc = M.parse_file(raw.decode("utf-8"), source=rel, sealed=True)
+        doc = M.parse_file(self._text(raw, rel), source=rel, sealed=True)
         if doc["seq"] != seq:
             raise IntegrityError(f"{rel} declares itself segment {doc['seq']}", path=rel)
         return doc, sha256_bytes(raw)
+
+    def segment_header(self, seq: int) -> tuple[dict[str, Any], str]:
+        """Sealed segment ``seq``'s header (``schema``, ``seq``, ``start``, ``prev``) and its file hash, without
+        parsing its entries. The header is rendered before the entries; a file laid out otherwise is parsed whole,
+        which is slower but gives the same answer."""
+        rel = M.segment_rel(seq)
+        raw = self._read(rel)
+        if raw is None:
+            raise IntegrityError(f"history segment {rel} is missing", path=rel)
+        text = self._text(raw, rel)
+        cut = text.find("\nentries:")
+        try:
+            head = load_yaml(text[:cut], source=rel) if cut > 0 else None
+        except ValidationFailed:
+            head = None
+        if not isinstance(head, dict) or not {"schema", "seq", "start", "prev"} <= head.keys():
+            head = M.parse_file(text, source=rel, sealed=True)
+        if head["schema"] != M.SEGMENT_SCHEMA or head["seq"] != seq:
+            raise IntegrityError(f"{rel} is not sealed segment {seq}", path=rel)
+        return {k: head[k] for k in ("schema", "seq", "start", "prev")}, sha256_bytes(raw)
+
+    def pinned_segment(self, root: dict[str, Any], seq: int) -> dict[str, Any]:
+        """Sealed segment ``seq``, proven to be the one ``root`` pins before it is read from. It starts at its position
+        and its entries continue the hash chain, and its file hash is linked to the root through every later sealed
+        segment: each one's ``prev`` holds the file hash of the one before, and the newest is the root's
+        ``sealed_head``. So any change to any of those files is a contradiction when it is accessed. The later
+        segments are only hashed and their headers read, which costs a fraction of a millisecond each."""
+        sealed = root["sealed_head"]
+        if not sealed or not 1 <= seq <= sealed["seq"]:
+            raise IntegrityError(f"history segment {seq} is not sealed under this root")
+        rel = M.segment_rel(seq)
+        doc, digest = self.segment(seq)
+        if doc["start"]["count"] != (seq - 1) * M.SEGMENT_SIZE or (seq == 1 and doc["start"]["h"] != M.GENESIS_H):
+            raise IntegrityError(f"{rel} does not start at its position in the history", start=doc["start"])
+        end = M.fold(doc["start"], doc["entries"], source=rel)
+        pin = {"seq": seq, "sha256": digest}
+        for later in range(seq + 1, sealed["seq"] + 1):
+            head, later_digest = self.segment_header(later)
+            if head["prev"] != pin or (later == seq + 1 and head["start"] != end):
+                raise IntegrityError(f"{M.segment_rel(later)} does not link to the segment before it",
+                                     found=head["prev"], expected=pin)
+            pin = {"seq": later, "sha256": later_digest}
+        if pin != sealed:
+            raise IntegrityError("the sealed segments do not lead to the one the hot root pins", found=pin,
+                                 sealed_head=sealed)
+        return doc
 
     def tail(self, root: dict[str, Any]) -> dict[str, Any]:
         """The tail for ``root``, checked against it: it follows the root's newest sealed segment and its entries end
@@ -91,10 +147,17 @@ class History:
             if root["count"] or sealed:
                 raise IntegrityError(f"history tail {M.TAIL_REL} is missing", path=M.TAIL_REL)
             return {"seq": 1, "start": {"count": 0, "h": M.GENESIS_H}, "prev": None, "entries": []}
-        doc = M.parse_file(raw.decode("utf-8"), source=M.TAIL_REL, sealed=False)
+        doc = M.parse_file(self._text(raw, M.TAIL_REL), source=M.TAIL_REL, sealed=False)
         if doc["prev"] != sealed or doc["seq"] != (sealed["seq"] if sealed else 0) + 1:
             raise IntegrityError(f"{M.TAIL_REL} does not follow the root's newest sealed segment",
                                  tail_prev=doc["prev"], sealed_head=sealed)
+        # The tail starts where the newest sealed segment ends (the genesis for the first tail), so its entries are
+        # exactly those after that boundary. With the count fixed, ending at the root pins the starting hash too: a
+        # different one would need a SHA-256 preimage of ``head_h``.
+        boundary = (sealed["seq"] if sealed else 0) * M.SEGMENT_SIZE
+        if doc["start"]["count"] != boundary or (not sealed and doc["start"]["h"] != M.GENESIS_H):
+            raise IntegrityError(f"{M.TAIL_REL} does not start where the newest sealed segment ends",
+                                 tail_start=doc["start"], expected_count=boundary)
         end = M.fold(doc["start"], doc["entries"], source=M.TAIL_REL)
         if end != {"count": root["count"], "h": root["head_h"]}:
             raise IntegrityError(f"{M.TAIL_REL} does not end at the hot root", tail_end=end,
@@ -109,7 +172,7 @@ class History:
             raise IntegrityError(f"history has no entry {seq} (it has {root['count']})")
         sealed = root["sealed_head"]
         if sealed and seq <= sealed["seq"] * M.SEGMENT_SIZE:
-            doc, _ = self.segment(M.segment_of(seq))
+            doc = self.pinned_segment(root, M.segment_of(seq))
         else:
             doc = self.tail(root)
         entry = doc["entries"][seq - doc["start"]["count"] - 1]
@@ -182,7 +245,12 @@ class History:
                 report.entries += 1
                 if records:
                     report.records += 1
-                    found = sha256_file(self.root / entry["path"])
+                    try:
+                        found = sha256_file(self.root / entry["path"])
+                    except OSError as exc:
+                        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} cannot be "
+                                               f"read: {exc.strerror or exc}")
+                        continue
                     if found is None:
                         report.problems.append(f"entry {entry['seq']} ({entry['id']}): {entry['path']} is missing")
                     elif found != entry["sha256"]:

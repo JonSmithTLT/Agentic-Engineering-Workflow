@@ -674,6 +674,7 @@ def coldwrite(records: list[int], work: Path, reps: int) -> list[dict[str, Any]]
             cs.fill_tail(M.SEGMENT_SIZE - 2)
             tail_bytes = (cs.root / M.TAIL_REL).stat().st_size  # the tail the measured appends rewrite
             before = cs.current()
+            cs.index.sync(before)  # the setup records are not part of the timed catch-up
             for key in ("append_tail_254", "append_seal", "append_tail_0"):
                 samples[key].append(timed(lambda: cs.archive(1, realistic=True))[0])
             after = cs.current()
@@ -681,7 +682,9 @@ def coldwrite(records: list[int], work: Path, reps: int) -> list[dict[str, Any]]
             samples["verify_incremental"].append(timed(
                 lambda: cs.history.verify(after, {"count": before["count"], "h": before["head_h"]}))[0])
             assert report.ok and report.entries == 3, report.problems
-            samples["index_catch_up"].append(timed(lambda: cs.index.sync(after))[0])
+            catch_up_s, caught = timed(lambda: cs.index.sync(after))
+            assert caught == {"mode": "caught_up", "added": 3}, caught  # exactly the three measured archivals
+            samples["index_catch_up"].append(catch_up_s)
         root = cs.current()
         rng = random.Random(n)
         ids = [f"T-{rng.randint(1, root['count']):05d}" for _ in range(50)]

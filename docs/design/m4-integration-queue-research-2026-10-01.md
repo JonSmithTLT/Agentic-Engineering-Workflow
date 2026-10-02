@@ -121,7 +121,7 @@ Two changes to Option A as written in §4:
 
 The implementer asked about five details the disposition left open. Recorded as given:
 
-> **Lease:** owned durably by the integration attempt/candidate, with an active invocation as custodian. A dead custodian is reconciled before transfer/release. No timeout alone releases a load-bearing lease. Publishing ambiguity always goes through ADR-0004 reconcile.
+> **Lease:** owned durably by the queue entry, with an active invocation as custodian. A dead custodian is reconciled before transfer/release. No timeout alone releases a load-bearing lease. Publishing ambiguity always goes through ADR-0004 reconcile.
 >
 > **Head movement:** one automatic rebuild + revalidation on the new authoritative H is allowed while retaining the lease, only after proving no publication occurred and recomputing current dispatch legality. A second movement, conflict, failed validation, or changed legality returns to Lead disposition.
 >
@@ -130,6 +130,8 @@ The implementer asked about five details the disposition left open. Recorded as 
 > **Conflict evidence:** actual conflict resolution creates a new implementation attempt / fingerprint. Snapshot-bound checks, review and verification do not carry forward automatically; rerun the effective gates for the Ticket's class/policy. Plan/assurance is recomputed from its bindings. Every new integration candidate receives new integration validation. A simple authoritative-head move does not by itself invalidate unchanged Ticket-scope evidence.
 >
 > **Batching:** out of scope for M4, not forbidden by contract.
+
+**Revised in the designer's review of this record (2026-10-01):** the durable lease owner is the queue entry, not the replaceable integration candidate or attempt, as first given. A rebuild or a new attempt replaces the candidate under the same lease.
 
 M4's ambiguity report turns these into records, transitions and tests.
 

@@ -13,6 +13,7 @@ import { useDashboard } from '../client/dashboard';
 import { capabilityView } from '../api/capabilities';
 import { EntityAnchor } from './EntityAnchor';
 import { SourceStrip } from './Investigation';
+import { JsonContent } from './Content';
 type Node = {
   key: string;
   kind: string;
@@ -363,7 +364,12 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
                   <strong>
                     <code>{node.id}</code>
                   </strong>
-                  <span>{node.kind}</span>
+                  <span>
+                    {node.kind}
+                    {node.loaded
+                      ? ` · loaded revision ${node.loaded.source.value.control_revision}`
+                      : ' · unresolved reference'}
+                  </span>
                   <EntityAnchor entity={{ id: node.id, kind: node.kind }} />
                   {node.depth < limits.depth &&
                   (node.loaded || allowed(node)) ? (
@@ -453,6 +459,15 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
             <code>{selected.relation.target.id}</code>
           </p>
           <SourceStrip source={selected.source.source} />
+          {selected.source.kind === 'history' &&
+            /^annotations\.[0-9]+\./.test(selected.relation.field) && (
+              <JsonContent
+                value={
+                  (selected.source.record as { annotations: unknown[] })
+                    .annotations[Number(selected.relation.field.split('.')[1])]
+                }
+              />
+            )}
           <p>
             No edge-specific explanation or receipt supplied. Highlight shows
             browser connectivity among loaded links only.

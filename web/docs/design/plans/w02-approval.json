@@ -6,5 +6,7 @@
   "base_commit": "ab6ab9814bee2f270ef61f69246aa19aca2431a9",
   "implementation": "AUTHORIZED",
   "frontend_acceptance": "PENDING_INDEPENDENT_REVIEW",
-  "integration": "NOT_CLAIMED"
+  "integration": "NOT_CLAIMED",
+  "integration_base_commit": "2e0bf40cfeb49e0ef02a7a16d47ee2b2cb393ac5",
+  "integration_base_reference": "Operator relayed F20-1 / PR26 merge and instructed existing W02 branch to consume main; local main untouched, fetched main merged"
 }

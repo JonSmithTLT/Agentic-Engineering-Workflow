@@ -1,3 +1,13 @@
+import {
+  ticketStates,
+  parentStates,
+  invocationStatuses,
+  harnessStatuses,
+  evidenceResults,
+  evidenceCurrentness,
+  trustSources,
+  workStates,
+} from '../api/vocabulary';
 import type { z } from 'zod';
 import { responseSchemas } from '../api/schema';
 import type { Projection } from '../api/transport';
@@ -145,15 +155,7 @@ export function investigate(
         refs(`annotations.${index}.object`, [
           {
             id: a.object,
-            kind: [
-              'moved_to',
-              'superseded_by',
-              'promoted_to',
-              'lineage',
-              'audit_finding',
-            ].includes(a.rel)
-              ? 'history'
-              : 'reference',
+            kind: 'reference', // Annotation.object has no target-kind field in 0.1.2.
           },
         ]);
       if (a.decision)
@@ -215,4 +217,32 @@ export function inspectionFieldValid(field: string | null) {
     ].includes(field) ||
     /^runs\.(0|[1-9][0-9]{0,2})\.status$/.test(field)
   );
+}
+
+/** Vocabulary recognition is display metadata, never a workflow conclusion. */
+export function knownExplanationValues(
+  kind: EntityKind,
+  field: string,
+  record: unknown,
+): readonly string[] {
+  if (kind === 'work') {
+    if (field === 'state')
+      return (record as Work).kind === 'ticket' ? ticketStates : parentStates;
+    if (field === 'has_attention') return ['true', 'false'];
+    if (field === 'integration.status')
+      return ['prepared', 'publishing', 'conflict', 'superseded'];
+  }
+  if (kind === 'invocation')
+    return field === 'status' ? invocationStatuses : harnessStatuses;
+  if (kind === 'evidence')
+    return field === 'result'
+      ? evidenceResults
+      : field === 'currentness'
+        ? evidenceCurrentness
+        : ['true', 'false'];
+  if (kind === 'history') return field === 'source' ? trustSources : workStates;
+  if (kind === 'health') return ['HEALTHY', 'DEGRADED', 'UNHEALTHY', 'UNKNOWN'];
+  if (kind === 'capability')
+    return ['AVAILABLE', 'UNAVAILABLE', 'UNSUPPORTED', 'UNKNOWN'];
+  return [];
 }

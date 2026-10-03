@@ -1525,3 +1525,24 @@ summary {
     font-size: 20px;
   }
 }
+.work-table .tree-cell .entity-with-cli {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.work-table .tree-cell .entity-with-cli > a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-table .tree-cell .copy-cli {
+  flex-shrink: 0;
+}
+.work-table .tree-cell .work-record-id {
+  flex-shrink: 0;
+}
+.record-inspection .source-strip dt,
+.inspector-panel .source-strip dt,
+.inspector-dialog .source-strip dt {
+  margin-top: 5px;
+}

@@ -1,3 +1,4 @@
+import { SemanticValue } from './States';
 import {
   createContext,
   useContext,
@@ -9,6 +10,7 @@ import {
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   investigate,
+  knownExplanationValues,
   inspectionFieldValid,
   type EntityKind,
   type Investigation,
@@ -169,119 +171,126 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
   const explanation =
     target?.explanations.find((e) => e.field === field) ??
     (field ? undefined : target?.explanations[0]);
-  const content =
-    target ? (
-      <>
-        <div className="inspector-heading">
-          <h2 tabIndex={-1} ref={heading}>
-            Inspect {target.id}
-          </h2>
-          <button onClick={close} aria-label="Close inspector">
-            Close
-          </button>
-        </div>
-        <div
-          role="tablist"
-          aria-label="Investigation inspector"
-          onKeyDown={(e) => {
-            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-              e.preventDefault();
-              const next = panel === 'why' ? 'relations' : 'why';
+  const content = target ? (
+    <>
+      <div className="inspector-heading">
+        <h2 tabIndex={-1} ref={heading}>
+          Inspect {target.id}
+        </h2>
+        <button onClick={close} aria-label="Close inspector">
+          Close
+        </button>
+      </div>
+      <div
+        role="tablist"
+        aria-label="Investigation inspector"
+        onKeyDown={(e) => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+            e.preventDefault();
+            const next = panel === 'why' ? 'relations' : 'why';
+            setParams((old) => {
+              const p = new URLSearchParams(old);
+              p.set('inspector', next);
+              return p;
+            });
+            e.currentTarget
+              .querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
+              ?.focus();
+          }
+        }}
+      >
+        {['why', 'relations'].map((tab) => (
+          <button
+            key={tab}
+            data-tab={tab}
+            role="tab"
+            aria-selected={panel === tab}
+            tabIndex={panel === tab ? 0 : -1}
+            onClick={() =>
               setParams((old) => {
                 const p = new URLSearchParams(old);
-                p.set('inspector', next);
+                p.set('inspector', tab);
                 return p;
-              });
-              e.currentTarget
-                .querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
-                ?.focus();
+              })
             }
-          }}
-        >
-          {['why', 'relations'].map((tab) => (
-            <button
-              key={tab}
-              data-tab={tab}
-              role="tab"
-              aria-selected={panel === tab}
-              tabIndex={panel === tab ? 0 : -1}
-              onClick={() =>
-                setParams((old) => {
-                  const p = new URLSearchParams(old);
-                  p.set('inspector', tab);
-                  return p;
-                })
-              }
-            >
-              {tab === 'why' ? 'Why' : 'Relations'}
-            </button>
-          ))}
-        </div>
-        <SourceStrip source={target.source} failed={target.failed} />
-        <div role="tabpanel" aria-label="Why" hidden={panel !== 'why'}>
-          {explanation ? (
-            <>
-              <h3>
-                <code>{explanation.field}</code>: {explanation.value}
-              </h3>
-              <p>
-                {explanation.bound
-                  ? 'Reasons supplied for this field.'
-                  : 'Reasons supplied for this record; no explicit binding to this status.'}
-              </p>
-              <Reasons values={explanation.reasons} />
-              {!explanation.reasons.length && (
-                <p>No explanation supplied for this status.</p>
+          >
+            {tab === 'why' ? 'Why' : 'Relations'}
+          </button>
+        ))}
+      </div>
+      <SourceStrip source={target.source} failed={target.failed} />
+      <div role="tabpanel" aria-label="Why" hidden={panel !== 'why'}>
+        {explanation ? (
+          <>
+            <h3>
+              <code>{explanation.field}</code>: {explanation.value}
+            </h3>
+            <p>
+              {explanation.bound
+                ? 'Reasons supplied for this field.'
+                : 'Reasons supplied for this record; no explicit binding to this status.'}
+            </p>
+            {explanation.value !== 'Not supplied' &&
+              !knownExplanationValues(
+                target.kind,
+                explanation.field,
+                target.record,
+              ).includes(explanation.value) && (
+                <SemanticValue value={explanation.value} known={[]} />
               )}
-              {explanation.sections.map((s) => (
-                <section key={s.name}>
-                  <h4>Supplied {s.name}</h4>
-                  <Reasons values={s.reasons} />
-                </section>
-              ))}
-              <p className="muted">
-                Reason codes are opaque. Associated references do not establish
-                an explanation.
-              </p>
-            </>
-          ) : (
-            <p>No explanation supplied.</p>
-          )}
-        </div>
-        <div
-          role="tabpanel"
-          aria-label="Relations"
-          hidden={panel !== 'relations'}
-        >
-          <RelationsExplorer key={target.key} root={target} />
-        </div>
-        {target.kind === 'history' && (
-          <section>
-            <h3>Supplied manifest identity</h3>
-            <JsonContent
-              value={{
-                seq: (target.record as { seq: number }).seq,
-                sha256: (target.record as { sha256: string }).sha256,
-              }}
-            />
-          </section>
+            <Reasons values={explanation.reasons} />
+            {!explanation.reasons.length && (
+              <p>No explanation supplied for this status.</p>
+            )}
+            {explanation.sections.map((s) => (
+              <section key={s.name}>
+                <h4>Supplied {s.name}</h4>
+                <Reasons values={s.reasons} />
+              </section>
+            ))}
+            <p className="muted">
+              Reason codes are opaque. Associated references do not establish an
+              explanation.
+            </p>
+          </>
+        ) : (
+          <p>No explanation supplied.</p>
         )}
-        {target.kind === 'integrity' && (
-          <section>
-            <h3>Supplied integrity roots</h3>
-            <JsonContent
-              value={{
-                current_root: (target.record as { current_root: unknown })
-                  .current_root,
-                verified: (target.record as { verified: unknown }).verified,
-                last_full: (target.record as { last_full: unknown }).last_full,
-              }}
-            />
-          </section>
-        )}
-        <CopyDashboardLink />
-      </>
-    ) : null;
+      </div>
+      <div
+        role="tabpanel"
+        aria-label="Relations"
+        hidden={panel !== 'relations'}
+      >
+        <RelationsExplorer key={target.key} root={target} />
+      </div>
+      {target.kind === 'history' && (
+        <section>
+          <h3>Supplied manifest identity</h3>
+          <JsonContent
+            value={{
+              seq: (target.record as { seq: number }).seq,
+              sha256: (target.record as { sha256: string }).sha256,
+            }}
+          />
+        </section>
+      )}
+      {target.kind === 'integrity' && (
+        <section>
+          <h3>Supplied integrity roots</h3>
+          <JsonContent
+            value={{
+              current_root: (target.record as { current_root: unknown })
+                .current_root,
+              verified: (target.record as { verified: unknown }).verified,
+              last_full: (target.record as { last_full: unknown }).last_full,
+            }}
+          />
+        </section>
+      )}
+      <CopyDashboardLink />
+    </>
+  ) : null;
   return (
     <InspectorContext.Provider value={controls}>
       <div

@@ -237,7 +237,9 @@ describe('W02 investigation composed behavior', () => {
       f3 as World,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Expand T-0004' }));
-    await screen.findByRole('button',{name:'T-0004 · links.tokens · TOKEN-0001'});
+    await screen.findByRole('button', {
+      name: 'T-0004 · links.tokens · TOKEN-0001',
+    });
     expect(
       screen.getByText(/Overall relationship completeness is unknown/),
     ).toBeTruthy();
@@ -301,6 +303,7 @@ describe('W02 investigation composed behavior', () => {
     await screen.findByRole('heading', { name: /state: FUTURE_STATE/ });
     expect(screen.getByText('No explanation supplied')).toBeTruthy();
     expect(screen.getByText('future.reason')).toBeTruthy();
+    expect(screen.getByText('Unknown value:', { exact: false })).toBeTruthy();
   });
 });
 it('safe dashboard links retain only allowlisted presentation and use accepted opaque ID syntax', () => {
@@ -342,4 +345,80 @@ it('401/403 evicts validators so next request cannot reuse a refused payload', a
   expect(
     new Headers(request.mock.calls[2][1].headers).has('If-None-Match'),
   ).toBe(false);
+});
+
+it('explicit read-session reset remounts graph and drops an old expansion even when fetch ignores abort', async () => {
+  const { useReadSession, resetReadSession } =
+    await import('../src/client/queries');
+  function Resettable() {
+    const session = useReadSession();
+    return (
+      <>
+        <button onClick={() => void resetReadSession()}>
+          Reset read session
+        </button>
+        <InspectorProvider key={session.generation}>
+          <WorkPage />
+        </InspectorProvider>
+      </>
+    );
+  }
+  const { request } = mount(
+    <Resettable />,
+    '/work?selected=T-0001&inspector=relations',
+  );
+  await screen.findByRole('button', { name: 'Expand T-0001' });
+  fireEvent.click(screen.getByRole('button', { name: 'Expand T-0001' }));
+  await screen.findByRole('button', { name: 'Expand S-0001' });
+  const original = request.getMockImplementation()!;
+  let release: (value: Response) => void = () => {};
+  request.mockImplementation((input, init) =>
+    String(input).endsWith('/work/S-0001')
+      ? new Promise<Response>((resolve) => {
+          release = resolve;
+        })
+      : original(input, init),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Expand S-0001' }));
+  await waitFor(() =>
+    expect(
+      request.mock.calls.some(([input]) =>
+        String(input).endsWith('/work/S-0001'),
+      ),
+    ).toBe(true),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Reset read session' }));
+  await waitFor(() =>
+    expect(document.querySelectorAll('.provenance-node').length).toBe(1),
+  );
+  release(
+    new Response(
+      JSON.stringify({
+        ...work,
+        data: { ...work.data, id: 'S-0001', children: ['FOREIGN-OLD-CHILD'] },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    ),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(document.querySelectorAll('.provenance-node').length).toBe(1);
+  expect(screen.queryByText('FOREIGN-OLD-CHILD')).toBeNull();
+});
+
+it('annotation objects remain untyped references; recognized relation vocabulary does not imply a target type', () => {
+  const record = responseSchemas.HistoryResponse.parse(
+    f3.responses['/history/T-0004'],
+  );
+  const root = investigate('history', record.data, {
+    value: record,
+    last_checked_at: source.last_checked_at,
+  });
+  expect(
+    root.relations
+      .filter((r) => r.field.endsWith('.object'))
+      .every((r) => r.target.kind === 'reference'),
+  ).toBe(true);
+  expect(
+    dashboardEntityLink({ kind: '__proto__', id: 'T-0001' }),
+  ).toBeUndefined();
 });

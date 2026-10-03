@@ -19,6 +19,8 @@ npm ci --offline --ignore-scripts
 cp src/api/types.ts /tmp/types-before.ts
 npm run generate:types
 cmp src/api/types.ts /tmp/types-before.ts
+node scripts/check-contract.mjs
+npm run check:scenario
 npm run typecheck
 npm run lint
 npm test

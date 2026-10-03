@@ -1,0 +1,6 @@
+{
+  "kind": "developer-harness-configuration",
+  "version": "1.0.0",
+  "artifact": "scenario-config.schema.json",
+  "sha256": "e4e0336bf6ef812d0cfc9cc23613d3fd42ddf59fd7e043584dedcaccfb7e6902"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "catalog": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "recipe": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "fixture": {
+      "type": "string",
+      "pattern": "^F(?:[0-9]|1[01])$"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    }
+  },
+  "required": [
+    "catalog",
+    "recipe",
+    "fixture",
+    "seed"
+  ],
+  "additionalProperties": false
+}

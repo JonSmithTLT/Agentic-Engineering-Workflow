@@ -16,7 +16,9 @@
     "build": "vite build && node scripts/check-production.mjs",
     "build:demo": "vite build --mode demo",
     "preview": "vite preview",
-    "preview:demo": "vite preview --mode demo"
+    "preview:demo": "vite preview --mode demo",
+    "check:scenario": "node --experimental-strip-types scripts/scenario-artifact.mjs",
+    "generate:scenario": "node --experimental-strip-types scripts/scenario-artifact.mjs --write"
   },
   "dependencies": {
     "react": "19.2.5",

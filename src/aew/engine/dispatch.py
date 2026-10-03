@@ -102,6 +102,12 @@ for _e in ENTRYPOINTS.values():
 INVOKE_ENTRYPOINT = {"mutating": "invoke.create.mutating", "non_mutating": "invoke.create.non_mutating",
                      "parent": "invoke.create.parent"}
 
+# The scope of the invocation each creating entrypoint makes; None: the scope its decision checked (a mutating
+# Ticket's role chooses the Ticket or its integration candidate). Admission requires it (PR #32 review, P2).
+CREATES_SCOPE: dict[str, str | None] = {
+    "work.assign": "ticket", "work.dispatch": "observation", "work.redispatch": "observation",
+    "invoke.create.mutating": None, "invoke.create.non_mutating": "observation", "invoke.create.parent": "parent"}
+
 
 # --------------------------------------------------------------------------------------------- the decision
 
@@ -230,6 +236,11 @@ class Dispatch:
         entry = ENTRYPOINTS.get(entrypoint)
         if entry is None:
             raise UsageError(f"unknown dispatch entrypoint {entrypoint}", known=sorted(ENTRYPOINTS))
+        if entry.covered_by:
+            # A wrapper carries another entrypoint's dispatch; it has no guards of its own, so a decision through it
+            # would admit what nothing checked (PR #32 review P2). The entrypoint it covers is decided instead.
+            raise UsageError(f"{entrypoint} is covered by the entrypoint it carries ({entry.covered_by}); decide that "
+                             "entrypoint instead")
         if work_id not in state["work"]:
             raise NotFound(f"no work unit {work_id}")
         decision = DispatchDecision(entrypoint=entrypoint, work_id=work_id, revision=state["revision"],
@@ -278,15 +289,18 @@ class Dispatch:
             if d.revision != ctx.session.revision:  # never an old ALLOW
                 raise DispatchUndecided(f"a dispatch decision for {d.work_id} was computed at revision {d.revision}, "
                                         f"not this transaction's {ctx.session.revision}")
+        used: set[int] = set()  # a decision admits one new invocation: the one it checked
         for inv_id, inv in ctx.state.get("invocations", {}).items():
             old = before.get(inv_id)
             if old is None:
-                d = self._admitting(allowed, inv["work_unit"], invocation=None)
+                d = self._admitting_invocation(allowed, inv, used)
                 if d is None:
                     raise DispatchUndecided(
-                        f"{inv_id} was created for {inv['work_unit']} without a dispatch decision: every dispatch "
-                        "route must decide through a registered entrypoint (aew.engine.dispatch)",
-                        invocation=inv_id, work_unit=inv["work_unit"])
+                        f"{inv_id} ({inv['role']}) was created for {inv['work_unit']} without a dispatch decision "
+                        "that checked it: every dispatch route must decide through a registered entrypoint, for the "
+                        "role and card it creates (aew.engine.dispatch)",
+                        invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"])
+                used.add(id(d))
                 inv["dispatch"] = d.provenance()
             new_runs = (inv.get("runs") or [])[len((old or {}).get("runs") or []):]
             for run in new_runs:
@@ -294,20 +308,30 @@ class Dispatch:
                     run["dispatch"] = {**inv["dispatch"], "entrypoint": "dispatch.launch",
                                        "covered_by": inv["dispatch"]["entrypoint"]}
                     continue
-                d = self._admitting(allowed, inv["work_unit"], invocation=inv_id)
+                d = next((d for d in allowed if id(d) not in used and d.work_id == inv["work_unit"]
+                          and d.entrypoint == "harness.launch" and d.facts.get("invocation") == inv_id), None)
                 if d is None:
                     raise DispatchUndecided(
                         f"run {run.get('run')} of {inv_id} was started without a dispatch decision",
                         invocation=inv_id, run=run.get("run"))
+                used.add(id(d))
                 run["dispatch"] = d.provenance()
 
     @staticmethod
-    def _admitting(allowed: list[DispatchDecision], work_id: str, *, invocation: str | None) -> DispatchDecision | None:
+    def _admitting_invocation(allowed: list[DispatchDecision], inv: dict[str, Any],
+                              used: set[int]) -> DispatchDecision | None:
+        """The unused decision that checked this new invocation: same unit, an entrypoint that creates invocations
+        (not a launch, not a wrapper), and the role, card and scope the decision's guards resolved."""
         for d in allowed:
-            if d.work_id != work_id:
+            if id(d) in used or d.work_id != inv["work_unit"] or d.entrypoint not in CREATES_SCOPE:
                 continue
-            if invocation is None and d.entrypoint != "harness.launch":
-                return d
-            if invocation is not None and d.entrypoint == "harness.launch" and d.facts.get("invocation") == invocation:
-                return d
+            card = d.facts.get("card")
+            pinned = inv.get("card") or {}
+            if card is None or pinned.get("id") != card.id or pinned.get("sha256") != card.sha256:
+                continue
+            if inv["role"] != (d.facts.get("role") or card.archetype):
+                continue
+            if inv.get("scope") != (CREATES_SCOPE[d.entrypoint] or d.facts.get("scope")):
+                continue
+            return d
         return None

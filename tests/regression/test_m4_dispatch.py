@@ -142,6 +142,42 @@ def test_class0_under_a_parent_with_an_elevated_obligation_is_refused(tmp_path):
     assert "review_security" in p.ok("gate", "show", wid)["obligations"]["non_waivable"]
 
 
+def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
+    """PR #32 review P1: a check the Ticket declares (``--acceptance-check``) and the policy's path lists do not name
+    is a non-waivable gate. Missing or failing, the Ticket cannot become COMMIT_READY; passing on the current
+    definition, it can."""
+    p = sample_project(tmp_path)
+    set_policy(p, "checks", lambda c: c["checks"].update(acceptance={
+        **c["checks"]["unit"], "command": ["{python}", "-c", "raise SystemExit(1)"]}))
+    gates = load_yaml((p.root / ".aew/policy/gates.yaml").read_text(encoding="utf-8"))
+    assert "acceptance" not in gates["local_checks"] + gates["post_integration"]["checks"]
+    wid = ticket(p, tmp_path, cls=0, scope=("calc/core.py", "tests/test_subtract.py"),
+                 extra=("--acceptance-check", "acceptance", *ALL_ASSERTIONS))
+    impl = assign(p, wid)
+    implement(impl, SUBTRACT_PATCH)  # passes `unit`, the policy's local check
+
+    def commit_ready_refusal():
+        res = p.aew("work", "transition", wid, "--to", "COMMIT_READY", "--token", p.token, "--expect-rev", str(p.rev()))
+        assert res.returncode != 0, res.stdout
+        return res.error
+
+    missing = commit_ready_refusal()
+    assert missing["code"] == "GATE_UNSATISFIED" and missing["details"]["unmet"] == {"acceptance_checks": "MISSING"}
+    assert impl.check("acceptance")["result"] == "fail"
+    assert commit_ready_refusal()["details"]["unmet"] == {"acceptance_checks": "FAILED"}
+    waiver = p.aew("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x", "--token", p.token,
+                   "--expect-rev", str(p.rev()))
+    assert waiver.returncode != 0 and "non-waivable" in waiver.error["message"]
+
+    set_policy(p, "checks", lambda c: c["checks"]["acceptance"].update(command=c["checks"]["unit"]["command"]))
+    assert impl.check("acceptance")["result"] == "pass"
+    shown = p.ok("gate", "show", wid)
+    assert shown["gates"]["acceptance_checks"]["checks"]["acceptance"]["status"] == "CURRENT"
+    assert "acceptance_checks" in shown["obligations"]["non_waivable"]
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    assert_control_invariants(p)
+
+
 def test_reclassify_needs_a_reason_a_valid_class_and_an_unfinished_unit(tmp_path):
     p = sample_project(tmp_path)
     wid = ticket(p, tmp_path)
@@ -200,6 +236,40 @@ def test_a_transaction_that_creates_an_invocation_without_a_decision_cannot_comm
         with engine._k.lead_txn(p.token, rev, "test.bypass") as ctx:
             engine._invocations.new_invocation(ctx, "reviewer", wid)
     assert p.rev() == rev
+
+
+def test_a_decision_admits_only_the_invocation_it_checked(tmp_path):
+    """PR #32 review P2: admission is bound to what the decision checked. A wrapper entrypoint cannot be decided
+    on its own; a decision admits only the role and card its guards resolved; one decision admits one invocation."""
+    p = sample_project(tmp_path)
+    blocked = ticket(p, tmp_path, scope=("calc/**", "vendor/**"))  # assignment is refused: protected path
+    assert refused(p, "work", "assign", blocked)["code"] == "DISPATCH_REFUSED"
+    engine = Engine.discover(p.root)
+    for wrapper in ("lead_broker.relay", "dispatch.launch"):
+        rev = p.rev()
+        with pytest.raises(UsageError, match="covered by"):
+            with engine._k.lead_txn(p.token, rev, "test.wrapper") as ctx:
+                engine._dispatch.decide_in(ctx, wrapper, blocked)
+        assert p.rev() == rev
+
+    wid = ticket(p, tmp_path)
+    rev = p.rev()
+    with pytest.raises(DispatchUndecided, match=r"\(reviewer\)"):  # an implementer's decision, a reviewer created
+        with engine._k.lead_txn(p.token, rev, "test.other_role") as ctx:
+            engine._dispatch.decide_in(ctx, "work.assign", wid)
+            engine._invocations.new_invocation(ctx, "reviewer", wid)
+    rev = p.rev()
+    with pytest.raises(DispatchUndecided, match=r"\(implementer\)"):  # an assignment's decision, integration scope
+        with engine._k.lead_txn(p.token, rev, "test.other_scope") as ctx:
+            card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
+            engine._invocations.new_invocation(ctx, "implementer", wid, scope="integration", card=card)
+    rev = p.rev()
+    with pytest.raises(DispatchUndecided, match="INV-0002"):  # the same decision used for a second invocation
+        with engine._k.lead_txn(p.token, rev, "test.twice") as ctx:
+            card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
+            engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
+            engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
+    assert p.rev() == rev and p.ok("work", "show", wid)["control"]["invocations"] == []
 
 
 def test_a_decision_from_another_revision_admits_nothing(tmp_path):

@@ -157,12 +157,15 @@ class Gates:
         unit = self.units.unit(state, work_id)
         gates_policy = self.k.policy("gates")
         guard = {"violations": [], "triggered_gates": [], "changed_paths": []}
+        meta = self.record_meta(unit)
+        acceptance = meta.get("acceptance") or {}
         if changed is not None:
-            meta = self.record_meta(unit)
             guard = GR.evaluate(changed, self.k.policy("guardrails"), (meta.get("scope") or {}).get("paths", []),
-                                (meta.get("acceptance") or {}).get("inputs"))
-        obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
-                                              self.roles.plan_gates(unit))
+                                acceptance.get("inputs"))
+        declared = list(acceptance.get("checks") or [])
+        obligations = G.with_acceptance_checks(
+            G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"], self.roles.plan_gates(unit)),
+            declared)
         evidence, problems = E.scan(self.k.aew_root, work_id)
         plan = unit.get("plan") or {}
         plan_ok = bool(plan) and sha256_file(self.k.aew_root / plan["path"]) == plan["sha256"]
@@ -170,7 +173,8 @@ class Gates:
         results = G.evaluate(state, work_id, evidence, obligations=obligations, gates_policy=gates_policy,
                              fingerprint=fingerprint, plan_ok=plan_ok,
                              check_definitions=C.current_definitions(self.k.policy("checks"),
-                                                                     self.k.policy("guardrails")))
+                                                                     self.k.policy("guardrails")),
+                             acceptance_checks=declared)
         binding = self.units.plan_binding_problem(state, work_id)
         if binding and results.get("accepted_plan", {}).get("status") == G.CURRENT:
             # An ancestor's accepted plan changed after this plan was accepted (ADR-0007, fail closed).
@@ -233,7 +237,7 @@ class Gates:
                          "fingerprint": ev["evaluated_snapshot"]["relevant_inputs_fingerprint"],
                          "findings": [f["id"] for f in (ev.get("review") or {}).get("findings", [])]})
 
-    PRE_REVIEW = ["accepted_plan", "local_checks", "self_review"]
+    PRE_REVIEW = ["accepted_plan", "local_checks", G.ACCEPTANCE_CHECKS, "self_review"]
 
     def review_gates(self, gc: dict[str, Any]) -> list[str]:
         return [g for g in gc["obligations"]["gates"] if g.startswith(G.REVIEW_GATES_PREFIX)]

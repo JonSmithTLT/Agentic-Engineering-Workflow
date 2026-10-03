@@ -135,7 +135,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope that "
         "matches tracked files; a goal (`--goal`) and an acceptance check that is a configured project check "
-        "(`--acceptance-check`); no acceptance input inside the scope; no protected path in the scope; no review "
+        "(`--acceptance-check`; on any class, a declared acceptance check is a gate the Ticket must pass before "
+        "COMMIT_READY, and it cannot be waived); no acceptance input inside the scope; no protected path in the scope; no review "
         "trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated "
         "obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint`; and your three "
         "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "

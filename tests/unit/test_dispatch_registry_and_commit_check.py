@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from aew.engine.dispatch import ENTRYPOINTS, Dispatch, DispatchDecision, GuardRegistration
+from aew.engine.dispatch import CREATES_SCOPE, ENTRYPOINTS, Dispatch, DispatchDecision, GuardRegistration
 from aew.errors import DispatchUndecided, NotFound, UsageError
 
 
@@ -44,6 +44,21 @@ def test_an_entrypoint_guard_without_an_implementation_is_a_composition_error():
         d.require_complete()
     d.register_all([GuardRegistration(g, _pass) for g in sorted({g for e in ENTRYPOINTS.values() for g in e.guards})])
     d.require_complete()
+
+
+def test_every_entrypoint_that_creates_an_invocation_declares_the_scope_it_creates():
+    """Admission binds the new invocation's scope (PR #32 review, P2): a new creating entrypoint must say which."""
+    creating = {n for n, e in ENTRYPOINTS.items() if not e.covered_by and n != "harness.launch"}
+    assert set(CREATES_SCOPE) == creating
+    assert {s for s in CREATES_SCOPE.values() if s} <= {"ticket", "observation", "parent"}
+
+
+def test_a_wrapper_entrypoint_cannot_be_decided_on_its_own():
+    state = {"revision": 3, "work": {"T-0001": {}}}
+    for name, entry in ENTRYPOINTS.items():
+        if entry.covered_by:
+            with pytest.raises(UsageError, match="covered by"):
+                _dispatch().decide(state, name, "T-0001")
 
 
 def test_an_unknown_entrypoint_or_unit_is_refused_before_any_guard_runs():

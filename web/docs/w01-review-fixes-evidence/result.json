@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-03",
+  "fix_commit": "ad9ed216238f7e3265a4ffb225b4eaef921a6702",
+  "reviewed_base": "c1022e8",
+  "findings": {
+    "W01-1": "FIXED_READY_FOR_MAIN_LINE_VERIFICATION",
+    "W01-2": "FIXED_READY_FOR_MAIN_LINE_VERIFICATION",
+    "OT-1": "FIXED_READY_FOR_MAIN_LINE_VERIFICATION"
+  },
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "lock_sha256": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+  "image_id": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "node_offline": "22.22.2",
+  "npm_offline": "10.9.7",
+  "browser": "Playwright 1.59.1 / Chromium 1217 / 147.0.7727.15",
+  "host_detector_probes": "Node 24.21.0 / Git 2.34.1; 6 PASS",
+  "frozen_ci_negative_control": "c1022e8 workflow: 4 expected failures and 2 passes",
+  "offline_gate": "PASS: 101 tests, typecheck, lint, generated artifacts, production guard and both builds",
+  "compiled_browser": "PASS: 16 groups; synthetic pagehide/pageshow in demo and production; canceled departure in production only",
+  "github_execution": "NOT_RUN",
+  "engine_suite": "NOT_RUN",
+  "main_line_fix_verification": "PENDING",
+  "integrated_system_acceptance": "NOT_CLAIMED",
+  "evidence": {
+    "browser-report.json": "5e867698fd1cf121ea36806501b02e5dbd04da9e4fb36de9610411d765031e37",
+    "browser.log": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c",
+    "ci-negative-control.log": "8c77d7d3efc1e2d1c49af66fcf4938507dd917c507c88f1fcc4a8ccd945d017f",
+    "ci-paths.log": "14b1c1c051deaf647c207bd70684e77ce6b8e1a878ce6db0da4efdee2990ed8d",
+    "git-prerequisite.log": "f9a100799e4f200c5be855a693247333ffc5c6748a919f4590e1bc41a8f15e8f",
+    "offline-gate.log": "65ea1512ace3c49d9f6e0b6b56563e02de09f2bc1fe4acc7c5d42c4875c00215",
+    "static-manifest.json": "ef3bd38dddd3ed661bc9624f42eeb94c4156eb97b92c6d88aaad6b38485327ba",
+    "git-command.log": "f5babff387810350d86ee24e8a2e05f79246c9c861fd00729b0810cf26745ed8"
+  }
+}

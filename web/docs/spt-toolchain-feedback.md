@@ -207,3 +207,23 @@ The standard-runner web.yml draft is separate from local offline reproducibility
 No GitHub execution or real API acceptance is claimed. The existing bundle-size
 advisory remains frontend optimization feedback. Resolved entries are retained;
 nonblocking SPT improvements stay ticket-ready and do not delay independent review.
+
+## SPT-UI-010 — Repository CI probes require Git outside the Node carrier
+
+- Stable ID/date/category/classification: SPT-UI-010 / 2026-10-03 / documentation / demonstrated environment prerequisite; documentation improvement.
+- Identity/platform: unchanged Linux/amd64 carrier `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`, Node 22.22.2/npm 10.9.7. Frontend lock `3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2`; cache manifest/checksum identities remain in builder-provenance.json.
+- Expected/observed: repository change-detection regression probes need Git to create scratch history. Git is absent from the Node carrier; placing the probes in the offline application suite failed with `spawnSync git ENOENT`. This does not contradict the carrier's frontend install/build scope.
+- Reproduction/evidence: `docker run --rm --network none <immutable-image> sh -c 'command -v git'` returns no executable; initial probe setup stack/log retained in `w01-review-fixes-evidence/git-prerequisite.log`. No package/cache resolution failure occurred.
+- Impact/stage/workaround: initial review-fix test setup blocker, resolved without an image change. Repository CI probes run separately on the host and standard GitHub runner; application unit tests/offline consumption do not depend on Git.
+- Proposed improvement/ticket acceptance: document the carrier's executable prerequisites and distinguish application build/test consumption from repository/CI verification. Consumers needing Git receive an actionable prerequisite check or explicit separate lane; do not add Git to every carrier without a stated scope need.
+- Status/linked fix/retest: downstream blocker RESOLVED in `ad9ed21` by separating `scripts/ci-paths.test.mjs`; six host probes PASS and offline 101-test gate PASS. SPT documentation improvement OPEN and nonblocking; no SPT source fix or rebuild.
+
+## W01 review-fix consumer retest — 2026-10-03
+
+Same carrier/cache/lock/browser identities; absent modules and network-disabled
+application gate pass generated artifacts, typecheck/lint, 101 tests and both
+builds. Six separate Git-based CI probes pass; frozen pre-fix detector yields
+four expected failures. Compiled-browser lane passes 16 groups. Exact cached
+formatter invocation from SPT-UI-009 still works. No new image/cache failure or
+full-carrier acceptance claim. Main-line fix verification and live integration
+remain pending; resolved entries are retained.

@@ -1,6 +1,8 @@
 # W01 frozen frontend review packet
 
-Date: 2026-10-03. Disposition: **implementation complete; independent frontend review pending**.
+Date: 2026-10-03. Historical implementation packet. Main-line returned **AMEND (minor)**;
+all findings are addressed in the [fixing-diff response](w01-review-fix-response.md),
+with main-line fix verification pending.
 Authenticated/live AEW integration and future backend contracts are not accepted by this packet.
 
 Review source commit **`f6c87d3548d110a2f9052f4b1062673fbd99548a`** on

@@ -6,6 +6,7 @@
   "approval_reference": "Explicit PLEASE IMPLEMENT THIS PLAN message for W01, including both main-line refinements",
   "date": "2026-10-03",
   "baseline_commit": "7e13f3469e085f346b8bd889a5adf66b06532458",
-  "independent_review": "PENDING",
-  "integration_acceptance": "NOT_CLAIMED"
+  "independent_review": "AMEND_MINOR_FIXES_READY_FOR_VERIFICATION",
+  "integration_acceptance": "NOT_CLAIMED",
+  "review_document": "../../w01-review-main-line.md"
 }

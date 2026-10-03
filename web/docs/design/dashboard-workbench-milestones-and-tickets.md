@@ -37,7 +37,7 @@ Use W identifiers to distinguish these dashboard milestones from AEW Engine mile
 
 | Milestone / story | Operator outcome | Prerequisites | Initial plan state |
 |---|---|---|---|
-| W01 — Reliable preview and verification foundation | Reproduce faults and trust scope/refresh labels | Current optional frontend baseline | Implemented; independent review pending |
+| W01 — Reliable preview and verification foundation | Reproduce faults and trust scope/refresh labels | Current optional frontend baseline | Review amendments fixed; verification pending |
 | W02 — Shared investigation workspace | Inspect a record, its supplied reasons and links without losing place | W01 | Not proposed |
 | W03 — Knowledge Journal flagship | Follow one discovery/failure/lesson story with exact provenance | W01, W02; reviewed journal preview schema | Not proposed |
 | W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | Not proposed |
@@ -354,7 +354,7 @@ Approval records are factual: leave them pending until the operator actually app
 
 | Milestone | Plan artifact | Operator approval | Frontend / fixture acceptance | Independent review | Live integration |
 |---|---|---|---|---|---|
-| W01 | [Plan 1.1](plans/w01-foundation.md) | Operator approved | Implemented; frozen review packet ready | Pending | Not claimed |
+| W01 | [Plan 1.1](plans/w01-foundation.md) | Operator approved | Review amendments fixed at ad9ed21 | Fix verification pending | Not claimed |
 | W02 | Not written | Pending | Not started | Pending | Not claimed |
 | W03 | Not written | Pending | Not started | Pending | Blocked on accepted journal projection |
 | W04 | Not written | Pending | Not started | Pending | Accepted fields only; new projections pending |

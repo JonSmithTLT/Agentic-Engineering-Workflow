@@ -1,0 +1,116 @@
+▶ actual workflow change detector
+  ✖ detects web, canonical contract and workflow changes without ripgrep (6.562574ms)
+  ✖ uses merge-base changes for behind-main PRs and merge groups (6.278505ms)
+  ✖ keeps direct push comparisons and detects old web paths on a rename (11.529327ms)
+  ✖ fails closed on matcher errors or a missing matcher (5.803532ms)
+  ✔ fails closed on diff errors (3.969549ms)
+  ✔ runs checks for dispatch and absent initial push bases (6.514633ms)
+✖ actual workflow change detector (41.644213ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 2
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 194.95771
+
+✖ failing tests:
+
+test at scripts/ci-paths.test.mjs:87:3
+✖ detects web, canonical contract and workflow changes without ripgrep (6.562574ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'web=false\n'
+  - 'web=true\n'
+         ^
+  
+      at TestContext.<anonymous> (file:///mnt/c/Users/Jon%20Smith/Documents/GitHub/AEW-dashboard-w01/web/scripts/ci-paths.test.mjs:91:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'web=false\n',
+    expected: 'web=true\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/ci-paths.test.mjs:94:3
+✖ uses merge-base changes for behind-main PRs and merge groups (6.278505ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'web=true\n'
+  - 'web=false\n'
+         ^
+  
+      at TestContext.<anonymous> (file:///mnt/c/Users/Jon%20Smith/Documents/GitHub/AEW-dashboard-w01/web/scripts/ci-paths.test.mjs:98:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1905:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'web=true\n',
+    expected: 'web=false\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/ci-paths.test.mjs:101:3
+✖ keeps direct push comparisons and detects old web paths on a rename (11.529327ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'web=false\n'
+  - 'web=true\n'
+         ^
+  
+      at TestContext.<anonymous> (file:///mnt/c/Users/Jon%20Smith/Documents/GitHub/AEW-dashboard-w01/web/scripts/ci-paths.test.mjs:105:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'web=false\n',
+    expected: 'web=true\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/ci-paths.test.mjs:108:3
+✖ fails closed on matcher errors or a missing matcher (5.803532ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 2
+  
+      at TestContext.<anonymous> (file:///mnt/c/Users/Jon%20Smith/Documents/GitHub/AEW-dashboard-w01/web/scripts/ci-paths.test.mjs:111:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

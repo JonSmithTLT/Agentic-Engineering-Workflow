@@ -11,7 +11,9 @@ in the workflow.
 
 The workflow runs informationally on PRs, main/frontend pushes, merge groups and
 manual dispatch. It is also callable as a reusable workflow. Its internal changes
-job checks `web/**`, the shared contract, and its own workflow. Python-only changes
+job checks `web/**`, the shared contract, and its own workflow. Its grep matcher
+fails closed on errors; PR/merge-group diffs use the merge base and push diffs use
+before/head. Rename collapsing is disabled so old web paths remain visible. Python-only changes
 skip web checks successfully; failed change detection, failed checks and canceled
 checks fail the result. It uses Linux, Node 22.22.2/npm 10.9.7, locked installation,
 contract digest/type/schema consistency, typecheck/lint/tests, production exclusion,
@@ -45,3 +47,8 @@ GitHub execution is unverified until the operator publishes a branch/PR.
 Primary references checked for the draft: [setup-node](https://github.com/actions/setup-node),
 [Playwright CI](https://playwright.dev/docs/ci),
 [upload-artifact](https://github.com/actions/upload-artifact).
+
+Review amendments W01-1/W01-2 and OT-1 are fixed in `ad9ed21`; six actual detector
+probes pass, and the compiled-browser retest passes 16 groups. See
+[fixing-diff response](../w01-review-fix-response.md). Main-line fix verification
+is pending; this does not record GitHub or live integration acceptance.

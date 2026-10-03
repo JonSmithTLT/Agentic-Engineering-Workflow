@@ -27,7 +27,7 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 150  # Windows took ~76 min before M3; the suite has grown ~1.5x since
     steps:
       - uses: actions/checkout@v7
         with:

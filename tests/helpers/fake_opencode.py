@@ -12,7 +12,8 @@ server's provider secret, and the conformance scenarios would catch it.
 
 Behaviour comes from the same script files as the fake harness (``<scripts>/<run>.json`` |
 ``<invocation>.json`` | ``default.json``): a list of steps, or ``{"steps", "effective", "health", "server"}``.
-``server`` knobs: ``catalog_delay_s``, ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
+``server`` knobs: ``catalog_delay_s`` (counted from the first catalog request, not from server start, so a
+slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
 ``ignore_config`` (load no configured agent), ``agent_override`` (fields that differ from the projection),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
 ``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
@@ -81,7 +82,7 @@ class Session:
 
 class FakeOpenCode:
     def __init__(self, scripts: Path) -> None:
-        self.started = time.monotonic()
+        self.catalog_asked: float | None = None
         self.data_home = Path(os.environ["XDG_DATA_HOME"])
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
@@ -314,7 +315,10 @@ class FakeOpenCode:
         return out
 
     def models(self) -> list[dict[str, Any]]:
-        if time.monotonic() - self.started < float(self.knobs.get("catalog_delay_s") or 0):
+        now = time.monotonic()
+        if self.catalog_asked is None:
+            self.catalog_asked = now
+        if now - self.catalog_asked < float(self.knobs.get("catalog_delay_s") or 0):
             return []
         return self.knobs.get("models") or DEFAULT_MODELS
 

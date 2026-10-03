@@ -88,7 +88,10 @@ Found by reading the code at the baseline, so that the plan builds on what exist
 - **Query equals execution.** `--explain` and dry runs call the same function that the execution path calls inside its transaction, against the current revision and Lead generation.
 - **Never cached.** "Candidate runnable" may be cached for display. Every dispatch recomputes, and an old ALLOW is never reused (invariant #7: every dispatch path uses one computed predicate).
 - **It starts permissive,** apart from what is enforced today (transition legality, readiness, dependencies, plan binding, inputs, the cap), hard protected-condition failures, and Class 0 eligibility when Class 0 is requested. F14's assurance package becomes another input later; it is not called `ASSURED` during evaluation.
-- **All eight routes** call it, and a conformance test enumerates the routes from the CLI's command table. A new dispatching command without the predicate fails that test.
+- **All eight routes** call it, through a **declared dispatch-entrypoint registry**. Every way to dispatch, whether a CLI command or an internal, harness or Lead-broker entrypoint (harness launch and relaunch, `--launch`, the broker's relay), must register itself.
+  - The conformance test drives every registered entrypoint and proves each one reaches `DispatchDecision`.
+  - A second check enumerates the CLI command table and proves no CLI dispatch command bypasses the registry.
+  - The invariant is: a new way to dispatch must register itself, and the conformance test then proves it reaches the predicate. A new CLI command is not assumed to be the only new path.
 - **Durable reason codes:** one registry, refusal codes kept apart from failure-class names (decisions §3.1). Refusals, `status`, `resume`, next actions and the future `ActionProjection` all print the same codes.
 - **The cap becomes a guard** inside the predicate, read from `gates.yaml` `mutating_concurrency` (and `non_mutating_concurrency`).
 
@@ -132,7 +135,11 @@ queue:
 ```
 - **Names.** Entry states are `QUEUED`, `LEASED`, `DEFERRED`, `AWAITING_DISPOSITION` and `RETIRED`. They match the vocabulary the dashboard design already assumes, so a later contract can project them unchanged.
 - **The lease is owned by the queue entry,** not by the candidate or attempt. A rebuild or a new attempt replaces the candidate under the same lease.
-- **The custodian** is the live integration invocation: the integration-scope verifier, or D4's deterministic validator. A dead custodian is reconciled before the lease is transferred or released, no timeout alone releases a load-bearing lease, and an ambiguous publish goes through ADR-0004 `reconcile`. Custodian death revokes the custodian's authority immediately and marks reconciliation required (idea note §16).
+- **The custodian** is an active, attributable invocation for every load-bearing part of the lease's life: acquire, prepare, validation, conditional publish or park, and release.
+  - The proposal is the live integration invocation: the integration-scope verifier, or D4's deterministic validator.
+  - The verifier does not exist until after `prepare` and may end before publication. So M4-D must prove that the chosen custodian covers prepare through release.
+  - If the verifier's or validator's lifetime does not cover it, M4-D uses a dedicated integration-attempt invocation instead. A load-bearing lease is never left without a live custodian.
+- A dead custodian is reconciled before the lease is transferred or released, no timeout alone releases a load-bearing lease, and an ambiguous publish goes through ADR-0004 `reconcile`. Custodian death revokes the custodian's authority immediately and marks reconciliation required (idea note §16).
 - **Order.** Runnable entries are served FIFO by `seq`. The work graph decides dependency legality, and the Lead may explicitly reorder or defer. There is no head-of-line blocking: a DEFERRED or AWAITING_DISPOSITION entry never holds up an independent runnable one.
 - **Queue state is scheduling, never eligibility.** The Ticket may remain COMMIT_READY while its entry is DEFERRED. Every grant computes `DispatchDecision` and binds the attempt to the current authoritative head.
 - **One automatic rebuild.** When the head moves while the lease is held, the engine first proves nothing was published, then recomputes legality, rebuilds the candidate on the new H, and reruns integration validation. A second head move, a conflict, failed validation or changed legality moves the entry to AWAITING_DISPOSITION, after reconciliation releases the lease.
@@ -176,7 +183,7 @@ Stages refuse with `STALE_POLICY` on policy drift. A replacement Lead explicitly
 **A parallel workflow track that cannot change engineering state, not a read-only implementation** (clarification 3).
 - **F20.2:** the contract's GET/HEAD projections on stdlib `http.server`, validated against contract 0.1.2 with `jsonschema`. History needs new seq-pinned cursors. There are no new runtime dependencies, to keep the offline Rocky 8 wheelhouse.
 - **F20.3:** a new operator-session credential kind in `engine/authority.py`, the first real use of `expires_at`. It reuses `operator.authorize`'s typed-back code. The one-time URL is exchanged for an `HttpOnly`, `SameSite=Strict` cookie, and nothing is written to control state. **This has its own security acceptance:** bootstrap, cookie handling, expiry, invalidation when the server stops, and replay of the one-time URL, each with a negative test, and its own review. It does not inherit "it's only reads".
-- **F20.4:** ETags over the whole envelope; a 304 never keeps an old revision.
+- **F20.4:** ETags cover the whole response envelope. A valid 304 keeps the cached payload, its `control_revision` and `generated_at`, and advances only the client's successful-check time (`last_checked_at`), as W01 behaves. Any change to the envelope or the revision changes the validator, so it gets a fresh 200, never a 304.
 - **F20.5:** static assets in a new `aew.dashboard` package, CSP and security headers, Host and Origin checks, request bounds, `127.0.0.1` only.
 - **F20.6:** integrated acceptance against authenticated live state, recorded separately.
 - **Before F20.2:** the contract YAML's header still reads `PENDING_REVIEW` although its approval is ACCEPTED. The web agent corrects it. The web agent's backend question ledger (Q01 to Q06) is answered in F20.2 and F20.3.
@@ -195,7 +202,7 @@ Stages refuse with `STALE_POLICY` on policy drift. A replacement Lead explicitly
 | M4-B7 | Queue schema | Decided by downgrade safety. Proposal: additive v2 (older engines fail closed), proven by a test (§2.6) | Proposal |
 | M4-B8 | F20.3 | Its own security acceptance and review | Operator/designer, 2026-10-03 |
 | M4-B9 | Spikes before containment | Engine-only synthetic, or a genuinely disposable environment. Never a throwaway worktree on the development host | Operator, 2026-10-03 |
-| M4-B10 | Lease custodian | The live integration invocation (integration verifier or D4 validator) | Proposal |
+| M4-B10 | Lease custodian | An active attributable invocation for the whole lease: acquire, prepare, validation, publish or park, release. The proposal is the integration verifier or D4 validator. M4-D proves it covers prepare through release, or uses a dedicated integration-attempt invocation | Proposal, with the reviewer's condition (2026-10-03) |
 | M4-B11 | Queue state names | `QUEUED`, `LEASED`, `DEFERRED`, `AWAITING_DISPOSITION`, `RETIRED`, matching the dashboard design's vocabulary | Proposal |
 
 ## 4. Compatibility with M1 to M3 and ADR-0011
@@ -250,10 +257,10 @@ One PR per phase, each with its own tests, the local lanes green on Windows and 
 
 | Phase | Work | Exit criteria |
 |---|---|---|
-| **M4-A** Foundation | §2.1 to §2.3, E2 | Eight routes on `DispatchDecision` (the conformance test enumerates them from the CLI); query equals execution, per migrated route; no cached ALLOW (a seeded revision change between query and execute refuses); reason-code registry; `PrimitiveSpec` for the integration primitives; protected-condition, Class 0 and plan-lint regressions from v0.4 §31; the cap as a guard reading policy, default 1; full suite unchanged |
+| **M4-A** Foundation | §2.1 to §2.3, E2 | Every entrypoint in the declared dispatch-entrypoint registry, CLI and internal (harness launch and relaunch, `--launch`, the Lead broker), reaches `DispatchDecision`, proven by the conformance test. The CLI enumeration proves no CLI dispatch command bypasses the registry; query equals execution, per migrated route; no cached ALLOW (a seeded revision change between query and execute refuses); reason-code registry; `PrimitiveSpec` for the integration primitives; protected-condition, Class 0 and plan-lint regressions from v0.4 §31; the cap as a guard reading policy, default 1; full suite unchanged |
 | **M4-B** Containment (Linux) | §2.4 | Isolation §12 list fails at the OS level; E13 passes with `NSpid` translation; fingerprint and `prepare` hold with the private store; the launch self-test fails closed; the research §6 probes pass on a **real Rocky 8 kernel** (needs a Rocky 8 host, see "Remaining open items"); guarantee labels truthful on both platforms, network `NOT PROVIDED` |
 | **M4-C** Workspaces N > 1 | §2.5 | Two and four concurrent mutating Tickets on the scripted drivers; the oracle with the new rule 1; ISO-004 lock tests (stale owner reconciled; the lock without an ALLOW moves nothing); worktree setup and cleanup costs recorded |
-| **M4-D** Queue engine | §2.6 to §2.9 | Records, transitions and oracle rules for the queue and lease; every §7.1 disposition as a regression (lease owner, dead custodian, no timeout release, one rebuild, second move to disposition, conflict to the Lead, no head-of-line blocking, retirement with archival); fault points inside the lease transitions killed by real processes; downgrade test (the baseline engine refuses an M4 control file); D4 path; wait-any |
+| **M4-D** Queue engine | §2.6 to §2.9 | Records, transitions and oracle rules for the queue and lease; every §7.1 disposition as a regression (lease owner, a live custodian across acquire to release (M4-B10), dead custodian, no timeout release, one rebuild, second move to disposition, conflict to the Lead, no head-of-line blocking, retirement with archival); fault points inside the lease transitions killed by real processes; downgrade test (the baseline engine refuses an M4 control file); D4 path; wait-any |
 | *(gate)* | The designer promotes F15 v0.4 | Governing text merged |
 | **M4-E** Stages | §2.10 | Stage and primitive equivalence; mixed-mode walks; seeded policy drift; `PUBLISH_IF_CLEAN` across exactly one head-move rebuild; `VALIDATE_ONLY`; takeover with an active stage |
 | **M4-F** Queue UX | §2.11 | `integrate next`; the queue in `status`, `resume` and the guide; `lead-guide.md` regenerated |
@@ -265,8 +272,10 @@ One PR per phase, each with its own tests, the local lanes green on Windows and 
 
 | Property | Where |
 |---|---|
-| Every dispatch route calls `DispatchDecision` | `tests/unit/test_dispatch_decision.py` (route enumeration), `tests/integration/test_engine_dispatch.py` |
+| Every registered dispatch entrypoint (CLI, harness, Lead broker) reaches `DispatchDecision`; no CLI dispatch command is missing from the registry | `tests/unit/test_dispatch_decision.py` (the registry and the CLI enumeration), `tests/integration/test_engine_dispatch.py`, `tests/integration/test_lead_session.py` (the broker path) |
 | Query equals execution; no cached ALLOW | `tests/regression/test_m4_dispatch.py` |
+| The lease has a live custodian from acquire to release | `tests/integration/test_queue.py` |
+| A valid 304 keeps the cached envelope; any envelope or revision change returns 200 | `tests/integration/test_dashboard_api.py` |
 | Live mutating workspaces ≤ policy cap (rule 1, revised) | `tests/helpers/invariants.py` |
 | At most one lease; its owner is a live entry; its custodian is an active invocation or reconciliation is pending (new rule) | `invariants.py`, `tests/integration/test_queue.py` |
 | No publication without the lease, a current ALLOW and validation bound to the current head (new rule) | `invariants.py`, `tests/regression/test_m4_queue_walk.py` (seeded adversarial walk, like the M1 to M3 walks) |

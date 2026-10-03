@@ -28,3 +28,9 @@ The independent re-check confirms findings1–4 are fixed and raises one minor r
 The HTTP suite now begins each desktop/phone task with keyboard results selection and checks the two focus policies before repeating relation navigation. A fourth group checks a middle entry on a50-entry page in both stream and table: selection retains link focus, Shift+Tab reaches the preceding entry, and Tab returns to the selected one. Latest source/evidence and actual validation results are in `web/docs/w03-focus-fix-evidence/result.json`. Finding5 confirmation remains pending; the task investigation need not be repeated.
 
 Finding5 implementer validation: the pinned Node22 offline gate passes127 tests/15 files, typecheck/lint, artifacts, production exclusion and both builds. All42 compiled-browser groups pass (16 W01,10 W02,12 W03,4 HTTP-mode groups with service workers blocked). The static premium audit has zero findings. Accepted API, preview schema/digest, generated types and dependency lock remain unchanged.
+
+## Final independent disposition — 2026-10-03
+
+The reviewer re-checked source `7433ddd` through the HTTP demo and returned **ACCEPT**: findings1–5 are fixed with nothing new. Desktop mouse/Enter selection retains list focus and neighbouring Tab navigation; relations after list selection retain heading focus below the sticky header; phone selection focuses the replacing detail. The reviewer also checked that JournalDetail is keyed by entry ID, so the captured navigation origin remounts rather than becoming stale. The supplied append-only review is committed unchanged in `web/docs/w03-review-main-line.md`.
+
+Earlier pending statements above describe the fixing-diff stages and are superseded by this final disposition. This is frontend task-review acceptance only; preview backend schema adoption and live integration remain pending. Merge still requires PR CI and operator action.

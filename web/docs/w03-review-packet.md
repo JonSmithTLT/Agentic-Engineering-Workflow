@@ -2,11 +2,11 @@
 
 ## Disposition
 
-Operator approved plan1.1 and implementation on2026-10-03. This is a demo-only Journal preview0.1.0 PROVISIONAL, independent of accepted API0.1.2. Original implementer evidence is in `web/docs/w03-evidence/`. The independent reviewer completed all desktop/phone task steps and required four minor fixes, recorded unchanged in `web/docs/w03-review-main-line.md`. See `web/docs/w03-review-fix-response.md` and `web/docs/w03-followup-evidence/` for the fixing diff and operator additions. Independent fixing-diff confirmation and backend/live integration remain pending; no Engine suite was invoked.
+Operator approved plan1.1 and implementation on2026-10-03. This is a demo-only Journal preview0.1.0 PROVISIONAL, independent of accepted API0.1.2. Original implementer evidence is in `web/docs/w03-evidence/`. The independent reviewer completed all desktop/phone task steps and subsequently confirmed findings1–5 fixed, with no new concern: **ACCEPT, frontend task review only**, against source `7433ddd3b47bdd8abb25d109cf2ed2107c3f2a7f`. The supplied review and re-checks are preserved in `web/docs/w03-review-main-line.md`. See `web/docs/w03-review-fix-response.md`, `web/docs/w03-followup-evidence/` and `web/docs/w03-focus-fix-evidence/` for the fixing diffs and frozen implementer evidence. Backend adoption and live integration remain pending; no Engine suite was invoked locally. PR CI and operator merge remain separate from this review disposition.
 
 The source freeze is recorded in `web/docs/w03-evidence/result.json`. Review the diff from mergedW02 `43c5a8f961ff18f9249d62c0ad7f8790f2b33eaf` through that source commit. Evidence additions after the source freeze do not change the reviewed implementation.
 
-Latest re-check: findings1–4 are confirmed fixed; finding5 requires preserving desktop results focus. See the preserved review, updated fix response and `web/docs/w03-focus-fix-evidence/result.json` for this focused fixing diff. Frontend acceptance remains pending finding5 confirmation.
+Latest re-check: findings1–5 are confirmed fixed. The reviewer verified desktop mouse/keyboard list selection and neighbouring Tab navigation, relation navigation after list selection, phone selection and the entry-ID remount boundary. Acceptance does not adopt the preview backend schema or claim live integration. The current acceptance record is `web/docs/w03-frontend-acceptance.json`; frozen evidence retains the historical disposition at the time it was generated.
 
 ## Implementation boundaries
 

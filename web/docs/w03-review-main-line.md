@@ -109,3 +109,20 @@ The reviewer did not use developer tools or fixture-source inspection in place o
 The operator additions (the type legend, the wrapping source controls, the HTTP demo mode) raised no concern. The demo-only fetch headers sit behind `import.meta.env.MODE === 'demo'`, and `check-production.mjs` now also rejects their names. The legend's symbols are `aria-hidden` and the type name stays in text, so they add no screen-reader noise.
 
 **Disposition of the re-check: changes required (minor), finding 5 only.** Findings 1–4 are fixed. The task review itself does not need repeating.
+
+## Re-check of finding 5 (2026-10-03)
+
+- **Reviewed:** fixing source `7433ddd` (head `ac928bd` adds evidence). The diff makes two changes:
+  - the detail captures, at mount, whether focus was on a results link, and skips the heading focus for a list selection at desktop width (`min-width: 1024px`);
+  - the "Selected" line becomes a `status` live region for the Journal.
+- **Remount check:** `JournalDetail` is keyed by entry id, so the origin is captured fresh on every selection rather than going stale.
+- **Served by:** the HTTP demo at `127.0.0.1:4249`, in the built-in browser. Focus and positions were measured in the page as before.
+
+| Check | Result |
+|---|---|
+| Desktop, a list selection by mouse (J-04) | Focus stays on the J-04 link after the entry loads; Shift+Tab reaches J-06 (the previous entry) and Tab reaches J-03 (the next). The list keeps its keyboard position. |
+| Desktop, a list selection by keyboard (Enter on J-03) | Focus stays on the J-03 link. The "Selected: J-03" line is a `status` region, so the change is announced. |
+| Desktop, a relation followed after a list selection (J-03 → `J-04 · followed_by`) | Focus moves to the "J-04 · The compilation database was stale" heading, at 102 px below the 87 px header. Finding 3's fix still holds. |
+| Phone 390×844, a list selection (J-02) | Focus moves to the "J-02 · The function might be dead code" heading, at 289 px below the 108 px header (the detail replaces the results). |
+
+**Disposition: ACCEPT.** Findings 1–5 are fixed and no new concern was found. This is frontend task-review acceptance only. It does not adopt the preview backend schema or claim live integration.

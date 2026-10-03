@@ -17,6 +17,8 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import blocker_from, checked
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
     GATE_CONTEXT,
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
     from aew.engine.ports import (
         ArchivePort,
         ContextPacksPort,
+        DispatchPort,
         GatesPort,
         InputsPort,
         InvocationsPort,
@@ -154,11 +157,15 @@ class Gates:
         unit = self.units.unit(state, work_id)
         gates_policy = self.k.policy("gates")
         guard = {"violations": [], "triggered_gates": [], "changed_paths": []}
+        meta = self.record_meta(unit)
+        acceptance = meta.get("acceptance") or {}
         if changed is not None:
-            guard = GR.evaluate(changed, self.k.policy("guardrails"),
-                                (self.record_meta(unit).get("scope") or {}).get("paths", []))
-        obligations = G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
-                                              self.roles.plan_gates(unit))
+            guard = GR.evaluate(changed, self.k.policy("guardrails"), (meta.get("scope") or {}).get("paths", []),
+                                acceptance.get("inputs"))
+        declared = list(acceptance.get("checks") or [])
+        obligations = G.with_acceptance_checks(
+            G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"], self.roles.plan_gates(unit)),
+            declared)
         evidence, problems = E.scan(self.k.aew_root, work_id)
         plan = unit.get("plan") or {}
         plan_ok = bool(plan) and sha256_file(self.k.aew_root / plan["path"]) == plan["sha256"]
@@ -166,7 +173,8 @@ class Gates:
         results = G.evaluate(state, work_id, evidence, obligations=obligations, gates_policy=gates_policy,
                              fingerprint=fingerprint, plan_ok=plan_ok,
                              check_definitions=C.current_definitions(self.k.policy("checks"),
-                                                                     self.k.policy("guardrails")))
+                                                                     self.k.policy("guardrails")),
+                             acceptance_checks=declared)
         binding = self.units.plan_binding_problem(state, work_id)
         if binding and results.get("accepted_plan", {}).get("status") == G.CURRENT:
             # An ancestor's accepted plan changed after this plan was accepted (ADR-0007, fail closed).
@@ -229,7 +237,7 @@ class Gates:
                          "fingerprint": ev["evaluated_snapshot"]["relevant_inputs_fingerprint"],
                          "findings": [f["id"] for f in (ev.get("review") or {}).get("findings", [])]})
 
-    PRE_REVIEW = ["accepted_plan", "local_checks", "self_review"]
+    PRE_REVIEW = ["accepted_plan", "local_checks", G.ACCEPTANCE_CHECKS, "self_review"]
 
     def review_gates(self, gc: dict[str, Any]) -> list[str]:
         return [g for g in gc["obligations"]["gates"] if g.startswith(G.REVIEW_GATES_PREFIX)]
@@ -417,8 +425,9 @@ class EvidenceCommands:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, nm: NonMutatingPort,
-                 kinds: KindRegistry, archive: ArchivePort) -> None:
+                 kinds: KindRegistry, archive: ArchivePort, dispatch: DispatchPort) -> None:
         self.k = k
+        self.dispatch = dispatch
         self.units = units
         self.roles = roles
         self.invocations = invocations
@@ -458,17 +467,18 @@ class EvidenceCommands:
                                               card=card, scope=scope, execution_profile=execution_profile,
                                               launch=launch)
 
-    def _invoke_ticket(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
-                       card: str | None = None, scope: str = "ticket",
-                       execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
-        """Dispatch a bounded invocation for a mutating Ticket. The Role card (explicit, planned, or workflow
-        default) determines the archetype; authority comes from the archetype only (ADR-0006)."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
-            ctx.execution_request, ctx.launch_request = execution_profile, launch
-            state = ctx.state
-            unit = self.units.unit(state, work_id)
+    # ---- the dispatch guards of ``invoke create`` for a mutating Ticket (M4-A), in the order the route checked
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("invoke.slot", self._g_slot),
+                DispatchGuard("card.slot", self._g_card),
+                DispatchGuard("workspace.live", self._g_workspace)]
+
+    def _g_slot(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def check() -> None:
+            unit = state["work"][work_id]
             st = unit["state"]
-            if scope == "integration":
+            if facts.get("scope", "ticket") == "integration":
                 slot = "verify"
                 if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
                     raise IllegalTransition("post-integration verification needs a prepared integration candidate")
@@ -486,21 +496,53 @@ class EvidenceCommands:
                 slot = "verify"
             else:
                 raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
-            gc = self.gates.gate_context(state, work_id) if slot in {"review", "verify"} and scope == "ticket" else None
+            facts["slot"] = slot
+            # A fresh implementer consumes the Ticket's inputs again: stale source-bound ones block (ADR-0008).
+            facts["inputs_at"] = (unit.get("workspace") or {}).get("base_commit")
+            facts["inputs_skip"] = slot != "execute"
+        return checked(check)
+
+    def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def check() -> None:
+            unit = state["work"][work_id]
+            slot = facts["slot"]
+            gc = self.gates.gate_context(state, work_id) if slot in {"review", "verify"} \
+                and facts.get("scope", "ticket") == "ticket" else None
             if gc is not None and unit.get("mutating"):
                 self.gates.require_reported_workspace(work_id, unit, gc)
-            chosen = self.roles.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
-            # A fresh implementer consumes the Ticket's inputs again: stale source-bound ones block (ADR-0008).
-            inputs = self.inputs.dispatch_inputs(state, work_id, (unit.get("workspace") or {}).get("base_commit")) \
-                if slot == "execute" else []
-            if scope == "integration":
-                integ = unit["integration"]
-                workspace, ws_id = integ["workspace"], integ["workspace_id"]
-            else:
-                ws = unit.get("workspace") or {}
-                if ws.get("status") != "active":
-                    raise IllegalTransition(f"{work_id} has no active workspace")
-                workspace, ws_id = ws["path"], ws["id"]
+            chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
+                                             role=facts.get("role"), gc=gc)
+            facts.update(card=chosen, archetype=chosen.archetype)
+        return checked(check)
+
+    @staticmethod
+    def _g_workspace(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        unit = state["work"][work_id]
+        if facts.get("scope", "ticket") == "integration":
+            integ = unit["integration"]
+            facts["workspace"], facts["workspace_id"] = integ["workspace"], integ["workspace_id"]
+            return None
+        ws = unit.get("workspace") or {}
+        if ws.get("status") != "active":
+            return blocker_from(IllegalTransition(f"{work_id} has no active workspace"))
+        facts["workspace"], facts["workspace_id"] = ws["path"], ws["id"]
+        return None
+
+    def _invoke_ticket(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
+                       card: str | None = None, scope: str = "ticket",
+                       execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+        """Dispatch a bounded invocation for a mutating Ticket. The Role card (explicit, planned, or workflow
+        default) determines the archetype; authority comes from the archetype only (ADR-0006). Its legality is the
+        ``invoke.create.mutating`` dispatch entrypoint's guards (M4-A)."""
+        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
+            state = ctx.state
+            unit = self.units.unit(state, work_id)
+            decision = self.dispatch.decide_in(ctx, "invoke.create.mutating", work_id, role=role, card_id=card,
+                                               scope=scope)
+            facts = decision.facts
+            chosen, inputs = facts["card"], facts["inputs"]
+            workspace, ws_id = facts["workspace"], facts["workspace_id"]
             snapshot = self.invocations.snapshot_of(workspace, ws_id)
             archetype = chosen.archetype
             inv_id, inv_token = self.invocations.new_invocation(ctx, archetype, work_id, scope=scope,
@@ -517,7 +559,7 @@ class EvidenceCommands:
         pack = ctx.state["invocations"][inv_id].get("pack") or {}
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": archetype,
                 "role_card": chosen.id, "scope": scope, "evaluated_snapshot": snapshot,
-                "pack": pack or None, "revision": ctx.session.committed_revision}
+                "pack": pack or None, "dispatch": decision.to_dict(), "revision": ctx.session.committed_revision}
 
     def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "invoke.cancel", reason=reason) as ctx:
@@ -553,7 +595,9 @@ class EvidenceCommands:
             cfg = C.resolve(self.k.policy("checks"), check_id)
             definition = C.definition_digest(cfg,
                                              guardrails=self.k.policy("guardrails") if cfg.get("builtin") else None)
-            scope_paths = (self.gates.record_meta(unit).get("scope") or {}).get("paths", [])
+            meta = self.gates.record_meta(unit)
+            scope_paths = (meta.get("scope") or {}).get("paths", [])
+            acceptance_inputs = (meta.get("acceptance") or {}).get("inputs")
             plan = unit.get("plan") or {}
         if not workspace.exists():
             raise NotFound(f"workspace {workspace} is missing")
@@ -561,7 +605,8 @@ class EvidenceCommands:
             self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited workspace
         before = self.invocations.snapshot_of(workspace, ws_id)
         if cfg.get("builtin"):
-            verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths)
+            verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
+                                  acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
         else:

@@ -142,7 +142,9 @@ class Integration:
             else:
                 candidate = merged["commit"]
                 changed = I.changed_between(self.k.repo_root, base, candidate)
-                verdict = GR.evaluate(changed, self.k.policy("guardrails"), [])
+                meta = self.gates.record_meta(unit)
+                verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
+                    "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
                 protected = [v for v in verdict["violations"] if v["rule"] != "outside_ticket_scope"]
                 if protected:
                     worktrees.remove(self.k.repo_root, int_ws["path"])

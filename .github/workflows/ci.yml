@@ -46,9 +46,16 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
+      - name: Coverage for this Linux job (E2; strategy §3, Coverage)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "${{ runner.temp }}/coverage"
+          echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --lane fast
+          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
+          -q -p no:cacheprovider -p no:xdist --lane fast
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
@@ -61,6 +68,14 @@ jobs:
           name: lane-report-${{ runner.os }}-core
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always() && runner.os == 'Linux'
+        with:
+          name: coverage-core-${{ runner.os }}
+          path: ${{ runner.temp }}/coverage/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
   lanes:
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
@@ -90,9 +105,16 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
+      - name: Coverage for this Linux job (E2; strategy §3, Coverage)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "${{ runner.temp }}/coverage"
+          echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
-          python -m pytest -q -p no:cacheprovider --durations=15
+          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
+          -q -p no:cacheprovider --durations=15
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -101,6 +123,14 @@ jobs:
           name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always() && runner.os == 'Linux'
+        with:
+          name: coverage-${{ matrix.lane }}-${{ matrix.shard }}-${{ runner.os }}
+          path: ${{ runner.temp }}/coverage/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
   web:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
@@ -117,15 +147,23 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - run: python -m pip install "PyYAML>=6.0"
+      - run: python -m pip install "PyYAML>=6.0" "coverage[toml]>=7.10"
       - uses: actions/download-artifact@v8
         with:
           pattern: lane-report-*
           path: lane-reports
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: coverage-data
       - name: Every collected test ran exactly once and passed (pinned platform skips excepted)
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
           --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
+      - name: Coverage holds its baseline (line and branch, Linux lanes; E2)
+        run: >-
+          python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
+          --summary "$GITHUB_STEP_SUMMARY"
       - name: Every test job succeeded
         if: always()
         run: |

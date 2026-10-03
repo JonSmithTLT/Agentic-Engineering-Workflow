@@ -23,7 +23,10 @@ def test_the_workflow_contracts_classes_are_explained_with_their_examples():
     for c, (name, meaning, example) in guide.CLASS_TEXT.items():
         assert f"**Class {c}, {name}:** {meaning}. For example: {example}." in text
     assert "not its size" in text and "lowering it needs a recorded decision" in text
-    assert "not defined yet (designer, Q10)" in text  # no invented eligibility criteria (X4c stays open)
+    # Class 0 eligibility is the amendment's predicate, enforced at dispatch since M4-A (Q10 decided 2026-10-03).
+    assert "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0)" in text
+    assert "never reclassified" in text and "aew work reclassify <T> --class N --reason" in text
+    assert "not defined yet" not in text
 
 
 def test_each_class_lists_exactly_the_gates_this_projects_policy_requires():

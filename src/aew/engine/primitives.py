@@ -1,0 +1,67 @@
+"""Primitive declarations (M4-A; the two-interaction-surfaces direction v0.4 §3-§4).
+
+A ``PrimitiveSpec`` states, for one engine primitive, what kind of operation it is, which judgments and policy it
+needs, what it changes and which guard decides its legality. Stage commands (M4-E) expand into primitives and refuse
+any that is unclassified or whose judgment input is missing; the integration queue (M4-D) drives the integration
+primitives through these declarations. M4-A declares the dispatch entrypoints and the integration primitives; other
+primitives are declared as stages come to use them (§12-§13: one primitive at a time).
+
+An undeclared primitive is ``JUDGMENT_BEARING`` (fail closed, §3).
+"""
+
+from __future__ import annotations
+
+from typing import NamedTuple
+
+MECHANICAL = "MECHANICAL"  # fully determined by durable state and engine rules
+POLICY_RESOLVED = "POLICY_RESOLVED"  # fully determined by recorded policy; a caller override is attributable
+JUDGMENT_BEARING = "JUDGMENT_BEARING"  # needs interpretation, preference, consequence acceptance or disposition
+OPERATION_CLASSES = (MECHANICAL, POLICY_RESOLVED, JUDGMENT_BEARING)
+
+POLICY = ("gates", "guardrails", "checks", "roles", "execution")
+
+
+class PrimitiveSpec(NamedTuple):
+    primitive_id: str
+    operation_class: str
+    required_judgments: tuple[str, ...]
+    required_policy_inputs: tuple[str, ...]
+    required_evidence: tuple[str, ...]
+    side_effect_class: str  # what it changes: control_state, credential, workspace, harness_process, authoritative_ref
+    idempotency_scope: str  # what makes a repeat a no-op or a refusal: the expected revision, the run, the candidate
+    guard_id: str | None  # the dispatch entrypoint (or, later, the queryable guard) that decides its legality
+    declared: bool = True
+
+
+SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
+    # Dispatch: legality is the DispatchDecision of the entrypoint of the same name; the card and execution profile
+    # are resolved from policy (a Lead's --card, --profile or --model is an attributable override).
+    PrimitiveSpec("work.assign", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
+                  "expected_revision", "work.assign"),
+    PrimitiveSpec("work.dispatch", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
+                  "expected_revision", "work.dispatch"),
+    PrimitiveSpec("work.redispatch", JUDGMENT_BEARING, ("supersession_reason",), POLICY, (),
+                  "control_state+workspace+credential", "expected_revision", "work.redispatch"),
+    PrimitiveSpec("invoke.create.mutating", POLICY_RESOLVED, (), POLICY, (), "control_state+credential",
+                  "expected_revision", "invoke.create.mutating"),
+    PrimitiveSpec("invoke.create.non_mutating", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
+                  "expected_revision", "invoke.create.non_mutating"),
+    PrimitiveSpec("invoke.create.parent", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
+                  "expected_revision", "invoke.create.parent"),
+    PrimitiveSpec("harness.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
+                  "expected_revision", "harness.launch"),
+    # Integration (ADR-0004), driven by the M4-D queue. Their legality checks migrate into queryable guards there.
+    PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
+                  "control_state+workspace", "expected_revision", None),
+    PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
+                  ("integration_verification",), "control_state", "expected_revision", None),
+    PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),
+                  ("integration_validation",), "authoritative_ref+control_state", "candidate", None),
+    PrimitiveSpec("integrate.reconcile", MECHANICAL, (), (), (), "authoritative_ref+control_state", "candidate", None),
+)}
+
+
+def spec_for(primitive_id: str) -> PrimitiveSpec:
+    """The declaration of a primitive, or the fail-closed default for one nobody declared."""
+    return SPECS.get(primitive_id) or PrimitiveSpec(primitive_id, JUDGMENT_BEARING, ("undeclared",), (), (),
+                                                    "unknown", "unknown", None, declared=False)

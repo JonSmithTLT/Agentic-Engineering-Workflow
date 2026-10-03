@@ -40,7 +40,8 @@
         "dependency_change",
         "plan_reconfirmation",
         "input_acknowledgement",
-        "attempt_supersession"
+        "attempt_supersession",
+        "reclassification"
       ]
     },
     "work_unit": {
@@ -95,6 +96,21 @@
         "string",
         "null"
       ]
+    },
+    "reclassification": {
+      "description": "A reclassification decision's change (M4-A): the classes before and after, and the inherited minimum class when it was decided",
+      "type": "object",
+      "required": [
+        "from_class",
+        "to_class",
+        "effective_minimum_at_decision"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from_class": {"type": "integer", "minimum": 0, "maximum": 4},
+        "to_class": {"type": "integer", "minimum": 0, "maximum": 4},
+        "effective_minimum_at_decision": {"type": ["integer", "null"], "minimum": 0, "maximum": 4}
+      }
     }
   }
 }

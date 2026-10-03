@@ -69,7 +69,12 @@ def test_story_lifecycle_to_closeout(tmp_path):
 
 @pytest.mark.acceptance("AT-9")
 def test_parent_risk_policy_propagation(tmp_path):
-    """KC §26: a Class-3 Story with a locally Class-0 Ticket and a Story-level mandatory security review."""
+    """KC §26 "Parent risk policy propagation", as amended for Class 0 eligibility (operator/designer, 2026-10-03;
+    workflow-contract-amendment-class0-2026-10-01.md §9): a mechanically bounded Ticket proposed as Class 0 beneath a
+    security-sensitive Story with an elevated security obligation. Class 0 eligibility is refused with an
+    inherited-elevated-obligation reason; the parent obligation stays in force; the Lead selects a stronger class that
+    satisfies any inherited minimum class; after the reclassification the inherited gate is still required. An
+    explicit parent minimum descendant class raises the effective minimum only when recorded with a rationale."""
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Session handling", cls=3, extra=("--mandatory-gate", "review_security"))
     plan_unit(p, tmp_path, story)
@@ -77,15 +82,29 @@ def test_parent_risk_policy_propagation(tmp_path):
     ob = p.ok("gate", "show", tiny)["obligations"]
     assert ob["local_class"] == 0 and ob["effective_class"] == 0 and show(p, tiny)["risk_class"] == 0
     assert "review_security" in ob["gates"] and "review_security" in ob["non_waivable"]
+    refused = err(p, "work", "assign", tiny)
+    assert refused["code"] == "DISPATCH_REFUSED"
+    assert refused["details"]["reason_codes"] == ["CLASS0_INHERITED_ELEVATED_OBLIGATION",
+                                                  "INHERITED_ELEVATED_OBLIGATION"]
+    assert show(p, tiny)["risk_class"] == 0 and show(p, tiny)["state"] == "READY"  # refused, never reclassified
+    lowering = err(p, "work", "reclassify", tiny, "--class", "0", "--reason", "x")
+    assert lowering["code"] == "USAGE"
+    decision = p.lead("work", "reclassify", tiny, "--class", "1", "--reason",
+                      "Class 0 is not eligible beneath the Story's security obligation")["decision"]
+    assert decision.startswith("D-") and show(p, tiny)["risk_class"] == 1
+    assert "review_security" in p.ok("gate", "show", tiny)["obligations"]["non_waivable"]
     implement(assign(p, tiny))
     assert err(p, "work", "transition", tiny, "--to", "COMMIT_READY")["code"] == "GATE_UNSATISFIED"
     waiver = err(p, "gate", "waive", tiny, "--gate", "review_security", "--reason", "small")
     assert waiver["code"] == "GATE_UNSATISFIED" and "non-waivable" in waiver["message"]
     p.lead("work", "transition", tiny, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", tiny, "--evidence", review(p, tiny))
     p.lead("review", "ingest", tiny, "--evidence", review(p, tiny, specialty="security"))
+    p.lead("work", "transition", tiny, "--to", "VERIFY_PENDING")
+    p.lead("verify", "ingest", tiny, "--evidence", verify(p, tiny))
     p.lead("work", "transition", tiny, "--to", "COMMIT_READY")
     integrate(p, tiny)
-    assert show(p, tiny)["risk_class"] == 0  # the local classification is kept to the end
+    assert show(p, tiny)["risk_class"] == 1  # the reclassification is kept to the end
     assert_control_invariants(p)
 
     # An explicit minimum descendant class raises the effective minimum only with a recorded rationale.
@@ -100,6 +119,16 @@ def test_parent_risk_policy_propagation(tmp_path):
     assert ob["local_class"] == 0 and ob["floor"] == 2 and ob["effective_class"] == 2
     assert {"review_r1", "verification_goal_backwards"} <= set(ob["gates"])
     assert "money moves" in p.ok("work", "show", floored)["record"]  # the rationale is recorded with the floor
+    # The floor is an inherited elevated obligation, too: Class 0 is refused, and the stronger class meets the floor.
+    assert "CLASS0_INHERITED_ELEVATED_OBLIGATION" in err(p, "work", "assign", t)["details"]["reason_codes"]
+    assert err(p, "work", "reclassify", t, "--class", "1", "--reason", "x")["details"]["floor"] == 2
+    out = p.lead("work", "reclassify", t, "--class", "2", "--reason", "the Billing Story requires class 2")
+    assert (out["from_class"], out["to_class"], out["effective_minimum_at_decision"]) == (0, 2, 2)
+    record = parse_frontmatter((p.root / ".aew" / f"decisions/{out['decision']}.md").read_text(encoding="utf-8"))[0]
+    assert record["type"] == "reclassification" and record["reason"] == "the Billing Story requires class 2"
+    assert record["reclassification"] == {"from_class": 0, "to_class": 2, "effective_minimum_at_decision": 2}
+    assert record["decided_by"]["kind"] == "lead" and record["decided_by"]["generation"] >= 1
+    assert p.lead("work", "assign", t)["dispatch"]["allowed"]
     unfloored = create_planned_ticket(p, tmp_path, title="Elsewhere", cls=0)
     assert p.ok("gate", "show", unfloored)["obligations"]["effective_class"] == 0
     assert_control_invariants(p)

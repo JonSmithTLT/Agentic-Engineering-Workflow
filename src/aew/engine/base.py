@@ -62,6 +62,9 @@ class TxnContext:
     # History records are written before the commit and referenced by hash (``Session.prewritten``), never staged in
     # the redo record: a migration archives the whole history in one transaction (implementation plan R8).
     prewrite: bool = False
+    # The dispatch decisions this transaction computed (M4-A): the dispatch finalizer admits a new invocation or run
+    # only with one of them.
+    dispatch_decisions: list[Any] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -256,6 +259,7 @@ class Kernel:
         reason: str | None = None,
         decided_by: dict[str, Any] | None = None,
         body: str = "",
+        reclassification: dict[str, Any] | None = None,
     ) -> str:
         state = ctx.state
         state["counters"]["decision"] = state["counters"].get("decision", 0) + 1
@@ -272,6 +276,7 @@ class Kernel:
             resulting_transition=resulting_transition,
             reason=reason,
             body=body,
+            reclassification=reclassification,
         )
         path = f"decisions/{decision_id}.md"
         ctx.session.write(path, record.render())

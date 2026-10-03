@@ -9,6 +9,8 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import blocker_from, checked
 from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition, NotFound, PermissionDenied
 from aew.harness import contract as K
@@ -22,10 +24,11 @@ from aew.workspace import worktrees
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ContextPacksPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
+    from aew.engine.ports import (ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort,
+                                  WorkUnitsPort)
 
-# Isolation + controlled integration for concurrency > 1 are not implemented yet (M5),
-# so the effective mutating concurrency is 1 regardless of policy (WC §8.1, §21.1).
+# Isolated workspaces and the integration queue for concurrency > 1 arrive in M4-C and M4-D, so the policy's
+# ``mutating_concurrency`` is read but clamped to 1 until then (WC §8.1, §21.1; m4-ambiguity-report.md §2.5).
 EFFECTIVE_MUTATING_CAP = 1
 
 
@@ -202,16 +205,18 @@ class Invocations:
 
 
 class Assignment:
-    """Assigning a mutating Ticket: its mutation workspace and implementer (WC §8, §8.1)."""
+    """Assigning a mutating Ticket: its mutation workspace and implementer (WC §8, §8.1). Its legality is the
+    ``work.assign`` dispatch entrypoint's guards (M4-A), evaluated in the order the checks always ran."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 inputs: InputsPort, packs: ContextPacksPort) -> None:
+                 inputs: InputsPort, packs: ContextPacksPort, dispatch: DispatchPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
         self.invocations = invocations
         self.inputs = inputs
         self.packs = packs
+        self.dispatch = dispatch
 
     @staticmethod
     def _mutating_slots_in_use(state: dict[str, Any]) -> list[str]:
@@ -221,43 +226,103 @@ class Assignment:
             if u["kind"] == "ticket" and u["mutating"] and (u.get("workspace") or {}).get("status") == "active"
         )
 
+    def mutating_cap(self) -> int:
+        """The policy's mutating concurrency, clamped to what this milestone supports (M4-A: 1)."""
+        configured = self.k.policy("gates").get("mutating_concurrency") or 1
+        return max(1, min(int(configured), EFFECTIVE_MUTATING_CAP))
+
+    # ---- the work.assign guards (the shared ones serve the non-mutating entrypoints too)
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("assign.kind", self._g_kind),
+                DispatchGuard("transition.assign", self._g_transition),
+                DispatchGuard("source.commit", self._g_source),
+                DispatchGuard("readiness", self._g_readiness),
+                DispatchGuard("workspace.free", self._g_workspace_free),
+                DispatchGuard("cap.mutating", self._g_cap),
+                DispatchGuard("card.implementer", self._g_card),
+                DispatchGuard("inputs.current", self._g_inputs)]
+
+    @staticmethod
+    def _g_kind(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        unit = state["work"][work_id]
+        if unit["kind"] != "ticket":
+            return blocker_from(IllegalTransition("only Tickets are assigned"))
+        if not unit["mutating"]:
+            # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
+            # never receive either (it would bypass the serial mutation cap). It is dispatched instead:
+            # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
+            return blocker_from(IllegalTransition(
+                f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
+                f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating path)"))
+        facts["archetype"] = "implementer"
+        return None
+
+    @staticmethod
+    def _g_transition(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        return checked(lambda: transitions.check(state["work"][work_id]["state"], "ASSIGNED", "assign"))
+
+    def _g_source(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        base = self.k.authoritative_commit()
+        if base is None:
+            return blocker_from(IllegalTransition(f"authoritative branch {self.k.authoritative_branch} has no commits"))
+        facts["base"] = facts["inputs_at"] = base
+        facts["digests"]["source"] = base
+        return None
+
+    def _g_readiness(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        base = facts["base"]
+        blockers = readiness_blockers(state, state["work"][work_id], repo_root=self.k.repo_root, base_commit=base,
+                                      work_id=work_id, plan_problem=self.units.plan_binding_problem)
+        if not blockers:
+            return None
+        if facts["entrypoint"] == "work.assign":
+            return blocker_from(DependencyUnsatisfied(
+                f"{work_id} cannot be assigned: its recorded source snapshot would not contain every "
+                "satisfied dependency", blockers=blockers, base_commit=base))
+        return blocker_from(DependencyUnsatisfied(f"{work_id} cannot be dispatched", blockers=blockers))
+
+    def _g_workspace_free(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        unit = state["work"][work_id]
+        if work_id in self._mutating_slots_in_use(state):
+            return blocker_from(IllegalTransition(
+                f"{work_id} still holds live workspace {unit['workspace']['id']}; release it before a new assignment"))
+        return None
+
+    def _g_cap(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        busy = self._mutating_slots_in_use(state)
+        cap = self.mutating_cap()
+        if len(busy) >= cap:
+            return blocker_from(ConcurrencyLimit(
+                f"mutating concurrency is {cap} until isolated concurrent integration exists (WC §8.1); "
+                f"{busy} still hold unintegrated workspaces", holding=busy))
+        return None
+
+    def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def resolve() -> None:
+            facts["card"] = self.roles.resolve_card(state, work_id, "execute", card_id=None, role="implementer")
+        return checked(resolve)
+
+    def _g_inputs(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """Consumed non-mutating records must still describe the source the dispatch uses (ADR-0008)."""
+        if facts.get("inputs_skip"):
+            facts["inputs"] = []
+            return None
+
+        def current() -> None:
+            facts["inputs"] = self.inputs.dispatch_inputs(state, work_id, facts.get("inputs_at"))
+        return checked(current)
+
+    # ---- the route
+
     def work_assign(self, *, token: str, expect_rev: int, work_id: str,
                     execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "work.assign") as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            if unit["kind"] != "ticket":
-                raise IllegalTransition("only Tickets are assigned")
-            if not unit["mutating"]:
-                # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
-                # never receive either (it would bypass the serial mutation cap). It is dispatched instead:
-                # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
-                raise IllegalTransition(
-                    f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
-                    f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating path)")
-            transitions.check(unit["state"], "ASSIGNED", "assign")
-            base = self.k.authoritative_commit()
-            if base is None:
-                raise IllegalTransition(f"authoritative branch {self.k.authoritative_branch} has no commits")
-            blockers = readiness_blockers(state, unit, repo_root=self.k.repo_root, base_commit=base, work_id=work_id,
-                                          plan_problem=self.units.plan_binding_problem)
-            if blockers:
-                raise DependencyUnsatisfied(
-                    f"{work_id} cannot be assigned: its recorded source snapshot would not contain every "
-                    "satisfied dependency", blockers=blockers, base_commit=base)
-            if unit["mutating"]:
-                busy = self._mutating_slots_in_use(state)
-                if work_id in busy:
-                    raise IllegalTransition(f"{work_id} still holds live workspace {unit['workspace']['id']}; "
-                                            "release it before a new assignment")
-                if len(busy) >= EFFECTIVE_MUTATING_CAP:
-                    raise ConcurrencyLimit(
-                        "mutating concurrency is 1 until isolated concurrent integration exists (WC §8.1); "
-                        f"{busy} still hold unintegrated workspaces", holding=busy)
-            card = self.roles.resolve_card(state, work_id, "execute", card_id=None, role="implementer")
-            # Consumed non-mutating records must still describe the source this assignment is based on (ADR-0008).
-            inputs = self.inputs.dispatch_inputs(state, work_id, base)
+            decision = self.dispatch.decide_in(ctx, "work.assign", work_id)
+            base, card, inputs = decision.facts["base"], decision.facts["card"], decision.facts["inputs"]
             unit["attempts"] = unit.get("attempts", 0) + 1
             referenced = {u["workspace"]["path"] for u in state["work"].values()
                           if (u.get("workspace") or {}).get("status") == "active"}
@@ -284,4 +349,4 @@ class Assignment:
                 raise
         return {"ok": True, "work_id": work_id, "workspace": ws, "invocation": inv_id,
                 "invocation_token": inv_token, "role_card": card.id, "transition": change,
-                "revision": ctx.session.committed_revision}
+                "dispatch": decision.to_dict(), "revision": ctx.session.committed_revision}

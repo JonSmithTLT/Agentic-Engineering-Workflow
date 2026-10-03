@@ -239,7 +239,7 @@ def read_submission(path: str) -> str:
 
 def private_address() -> tuple[str, str, str | None]:
     """(address, family, private directory to remove) for a new bridge endpoint."""
-    if IS_WINDOWS:
+    if IS_WINDOWS:  # pragma: windows-only
         return r"\\.\pipe\aew-bridge-" + secrets.token_hex(16), "AF_PIPE", None
     directory = tempfile.mkdtemp(prefix="aew-bridge-")
     os.chmod(directory, 0o700)

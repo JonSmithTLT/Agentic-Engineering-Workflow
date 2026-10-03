@@ -18,6 +18,7 @@ import { SemanticValue, LoadError } from '../components/States';
 import { SafeContent } from '../components/Content';
 import { EntityAnchor } from '../components/EntityAnchor';
 import { WorkTable } from '../components/WorkTable';
+import { WorkGraph } from '../components/WorkGraph';
 import { workRoute } from './work-model';
 export function WorkPage() {
   const [params, setParams] = useSearchParams();
@@ -125,6 +126,7 @@ export function WorkPage() {
             >
               <option value="table">Table</option>
               <option value="tree">Hierarchy on this page</option>
+              <option value="graph">Graph on this page</option>
             </select>
           </label>
         </div>
@@ -155,11 +157,18 @@ export function WorkPage() {
                   {query.data.value.data.items.length} records on this page
                 </span>
               </div>
-              <WorkTable
-                key={workRoute(params)}
-                items={query.data.value.data.items}
-                tree={view === 'tree'}
-              />
+              {view === 'graph' ? (
+                <WorkGraph
+                  key={workRoute(params)}
+                  items={query.data.value.data.items}
+                />
+              ) : (
+                <WorkTable
+                  key={workRoute(params)}
+                  items={query.data.value.data.items}
+                  tree={view === 'tree'}
+                />
+              )}
               <div className="pagination">
                 <button
                   disabled={!params.get('cursor')}

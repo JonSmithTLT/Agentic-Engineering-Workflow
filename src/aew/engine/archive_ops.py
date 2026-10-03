@@ -223,6 +223,9 @@ class Archive:
         counts = Counter({"done": 0, "cancelled": 0, **(state["cold"].get("archived") or {})})
         counts.update(work[w]["state"].lower() for w in order)
         projected["cold"] = dict(advance_cold(state["cold"], root, entries), archived=dict(sorted(counts.items())))
+        # Most recently finished last: a commit that archives several units (a cascade, a migration) writes them
+        # deepest first, which says nothing about when each finished (the sort is stable for equal times).
+        recent.sort(key=lambda r: r["at"])
         projected["recent"] = (list(state.get("recent", [])) + recent)[-RECENT:]
         projected["archived_refs"] = self._archived_refs(state, hot, facts)
         projected["retained_workspaces"] = retained

@@ -162,6 +162,57 @@ def test_a_crash_while_a_migration_seals_a_segment(tmp_path):
     assert root["count"] == 256 and root["sealed_head"]["seq"] == 1
 
 
+def handoff(t: CP.Template) -> None:
+    """A cooperative handoff, allowed on v1: the seat's credentials end, so a Lead record has new content."""
+    offer = aew(t, "lead", "handoff", "offer", "--expect-rev", str(t.rev()))
+    assert offer.returncode == 0, offer.stderr
+    accepted = run_aew("-C", str(t.root), "lead", "handoff", "accept", "--offer", offer.json["offer"],
+                       "--expect-rev", str(t.rev()))
+    assert accepted.returncode == 0, accepted.stderr
+    t.token = accepted.json["token"]
+
+
+def test_a_retry_after_an_interrupted_migration_survives_a_change_of_seat(tmp_path):
+    """Review P2d-1: the seat may change hands between a crash after the pre-writes and the retry, so the Lead record
+    at the same path has other content. On v1 no history record is reachable; the retry discards the leftovers."""
+    t = v1_project(tmp_path)
+    handoff(t)
+    crashed = migrate(t, fault="txn.before_stage")  # every record pre-written, the commit never made
+    assert crashed.returncode == CRASH_EXIT_CODE
+    assert read(t)["schema"] == V1
+    lead_record = t.root / ".aew/history/lead/000001.yaml"
+    left = lead_record.read_bytes()
+    handoff(t)  # allowed on v1; it ends another credential
+    out = migrate(t)
+    assert out.returncode == 0, out.stderr
+    assert "history/lead/000001.yaml" in out.json["discarded"]
+    assert lead_record.read_bytes() != left  # the record this migration wrote, with every ended credential
+    assert aew(t, "history", "audit", "--full").json["ok"] is True
+    assert_control_invariants(t)
+
+
+def test_the_recent_ring_after_a_migration_is_the_most_recently_finished(tmp_path):
+    """Review P2d-2: migration archives deepest first and by id, which is not completion order: the ring is chosen by
+    when each unit finished, as archiving them one by one would have."""
+    t = v1_project(tmp_path, done=0, planned=0)
+    control = t.root / ".aew/state/control.yaml"
+    state = load_control(t.root)
+    done = next(w for w, u in state["work"].items() if u["state"] == "DONE")
+    # Clones of the DONE Ticket, finished in the reverse of their id order (the highest id first).
+    CP.add_units(t.root, done=24, planned=0)
+    state = load_control(t.root)
+    clones = sorted(w for w, u in state["work"].items() if u["state"] == "DONE" and w != done)
+    for n, wid in enumerate(reversed(clones)):
+        state["work"][wid]["history"][-1]["at"] = f"2026-09-01T00:{n:02d}:00Z"
+    state["work"][done]["history"][-1]["at"] = "2026-08-01T00:00:00Z"  # the oldest
+    control.write_bytes(serialize_control(state))
+    assert migrate(t).returncode == 0
+    recent = [r["id"] for r in load_control(t.root)["recent"]]
+    assert recent == list(reversed(clones))[-20:]  # the 20 most recently finished, oldest of them first
+    assert clones[0] in recent and done not in recent
+    assert_control_invariants(t)
+
+
 def test_a_migration_waits_for_live_runs(tmp_path):
     t = v1_project(tmp_path)
     control = t.root / ".aew/state/control.yaml"

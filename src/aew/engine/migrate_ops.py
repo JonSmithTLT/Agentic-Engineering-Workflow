@@ -15,6 +15,12 @@ What makes one transaction practical (R8):
 keeps ``legacy_digest: {v1, v2_at_migration}``, and evidence bound to its v1 digest counts as current while its
 v2 digest is still the one recorded at migration (``hierarchy_ops``).
 
+**A retry after an interrupted migration.** A v1 project has no history root, so no history record on disk is
+reachable: any there was pre-written by a migration whose commit never happened. They are removed, under the lock,
+before this one writes. The retry is then correct even when the state changed in between (the seat changes hands on
+v1, which changes the ended Lead credentials and so the content of a Lead record at the same path). A record a v2
+history references is never touched: on v2 the migration does nothing.
+
 The migration refuses while any harness run may be live (invariant 7): a run's supervisor holds custody of its
 invocation, which the migration would archive or rewrite under it. It is idempotent: on a v2 project it does nothing.
 """
@@ -30,6 +36,7 @@ from aew.engine.store import Transition
 from aew.errors import AEWError, IllegalTransition, StaleRevision
 from aew.harness import runlog
 from aew.history import manifest as M
+from aew.history.store import History
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
@@ -54,6 +61,17 @@ class Migration:
                 out.append(runs[-1]["run"])
         return sorted(out)
 
+    def discard_unreachable(self) -> list[str]:
+        """Remove the history files of an interrupted migration (call only under the lock, on a v1 state): records,
+        and any manifest file (a v1 project has none that is referenced). Their paths."""
+        root = self.k.aew_root
+        found = History(root).unreferenced(set())
+        found += sorted(p.relative_to(root).as_posix() for pattern in (M.TAIL_REL, f"{M.HISTORY_DIR}/seg-*.yaml")
+                        for p in root.glob(pattern) if p.is_file())
+        for rel in found:
+            (root / rel).unlink()
+        return found
+
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.k.archived_credential)
@@ -69,6 +87,7 @@ class Migration:
             if live:
                 raise IllegalTransition("a harness run may still be live; stop it or wait for it to end "
                                         "(`aew harness stop|wait`) before migrating", runs=live)
+            discarded = self.discard_unreachable()
             # The v1 digest of each open parent, before the state changes form (R3).
             legacy = {wid: self.hierarchy.children_digest(state, wid) for wid, u in sorted(state["work"].items())
                       if H.is_parent(u) and u["state"] not in H.TERMINAL}
@@ -95,6 +114,7 @@ class Migration:
             except (AEWError, OSError):
                 pass
         return {"ok": True, "migrated": True, "schema": V2, "revision": revision, "summary": summary,
+                "discarded": discarded,
                 "archived": {"units": before["units"] - len(committed["work"]),
                              "invocations": before["invocations"] - len(committed["invocations"]),
                              "credentials": before["tokens"] - len(committed["tokens"])},

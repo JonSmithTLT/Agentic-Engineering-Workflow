@@ -17,6 +17,8 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
 from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, IllegalTransition, NotFound, UsageError
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import (
         ArchivePort,
+        DispatchPort,
         GatesPort,
         HistoryCommandsPort,
         InputsPort,
@@ -45,8 +48,9 @@ class Hierarchy:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort, archive: ArchivePort,
-                 history: HistoryCommandsPort) -> None:
+                 history: HistoryCommandsPort, dispatch: DispatchPort) -> None:
         self.k = k
+        self.dispatch = dispatch
         self.units = units
         self.roles = roles
         self.invocations = invocations
@@ -124,14 +128,17 @@ class Hierarchy:
         """The gate context of a Story or Epic (its ``KindRegistry`` handler)."""
         return self._parent_gate_context(state, work_id)
 
-    def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
-                             card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
-        """Review/verify invocations for a Story or Epic's acceptance, bound to the parent snapshot."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
-            ctx.execution_request, ctx.launch_request = execution_profile, launch
-            state = ctx.state
-            unit = self.units.unit(state, work_id)
+    # ---- the dispatch guards of ``invoke create`` for a Story or Epic (M4-A), in the order the route checked
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("parent.acceptance", self._g_acceptance),
+                DispatchGuard("card.parent", self._g_card),
+                DispatchGuard("dependencies.parent", self._g_dependencies)]
+
+    def _g_acceptance(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def check() -> None:
+            unit = state["work"][work_id]
+            card, role = facts.get("card_id"), facts.get("role")
             if unit["state"] != "ACCEPTANCE_PENDING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; parent review and verification run once every "
                                         "child is DONE or CANCELLED (ACCEPTANCE_PENDING)")
@@ -147,18 +154,42 @@ class Hierarchy:
             if slot == "verify" and (unit.get("parent_verification") or {}).get("awaiting_classification"):
                 raise IllegalTransition(f"{work_id}'s last parent verification failed; classify it first "
                                         f"(`aew verify classify {work_id}`)")
+            facts["slot"] = slot
+        return checked(check)
+
+    def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def check() -> None:
             gc = self._parent_gate_context(state, work_id)
-            chosen = self.roles.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
-            commit = self.k.authoritative_commit()
-            # Parent acceptance is a downstream assignment (WC §8: a dependency is satisfied only when the upstream
-            # output is in the downstream assignment's recorded input/source snapshot; operator decision after the
-            # M2 re-review). Its reviewer and verifier start only once the parent's own and inherited dependencies
-            # are satisfied, and they consume the prerequisite records under the ADR-0008 input rule.
-            blockers = dependency_blockers(state, unit, repo_root=self.k.repo_root, base_commit=commit, work_id=work_id)
-            if blockers:
-                raise DependencyUnsatisfied(f"{work_id}'s acceptance review and verification wait for its "
-                                            "dependencies", blockers=blockers)
-            inputs = self.inputs.dispatch_inputs(state, work_id, commit)
+            chosen = self.roles.resolve_card(state, work_id, facts["slot"], card_id=facts.get("card_id"),
+                                             role=facts.get("role"), gc=gc)
+            facts.update(gc=gc, card=chosen, archetype=chosen.archetype)
+        return checked(check)
+
+    def _g_dependencies(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """Parent acceptance is a downstream assignment (WC §8: a dependency is satisfied only when the upstream
+        output is in the downstream assignment's recorded input/source snapshot; operator decision after the M2
+        re-review). Its reviewer and verifier start only once the parent's own and inherited dependencies are
+        satisfied, and they consume the prerequisite records under the ADR-0008 input rule."""
+        commit = self.k.authoritative_commit()
+        facts["base"] = facts["inputs_at"] = commit
+        blockers = dependency_blockers(state, state["work"][work_id], repo_root=self.k.repo_root, base_commit=commit,
+                                       work_id=work_id)
+        if blockers:
+            return blocker_from(DependencyUnsatisfied(f"{work_id}'s acceptance review and verification wait for its "
+                                                      "dependencies", blockers=blockers))
+        return None
+
+    def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
+                             card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
+                             launch: bool = False) -> dict[str, Any]:
+        """Review/verify invocations for a Story or Epic's acceptance, bound to the parent snapshot."""
+        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
+            state = ctx.state
+            decision = self.dispatch.decide_in(ctx, "invoke.create.parent", work_id, role=role, card_id=card,
+                                               scope=scope)
+            facts = decision.facts
+            chosen, gc, commit, inputs = facts["card"], facts["gc"], facts["base"], facts["inputs"]
             inv_id, inv_token, snapshot = self.nm.dispatch_observer(
                 ctx, work_id, card=chosen, scope="parent", commit=commit, inputs=inputs,
                 children_digest=gc["snapshot"]["children_digest"])
@@ -169,7 +200,8 @@ class Hierarchy:
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
                 "role_card": chosen.id, "scope": "parent", "evaluated_snapshot": snapshot,
-                "observation": inv["observation"], "pack": inv.get("pack"), "revision": ctx.session.committed_revision}
+                "observation": inv["observation"], "pack": inv.get("pack"), "dispatch": decision.to_dict(),
+                "revision": ctx.session.committed_revision}
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:

@@ -62,7 +62,10 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
         if lead_broker.routes(args):
             reply = lead_broker.forward(argv, args)
             return reply["result"], reply["json"]
-    return handler(args), getattr(args, "json", False)
+    from aew.engine import dispatch
+
+    with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
+        return handler(args), getattr(args, "json", False)
 
 
 def main(argv: list[str] | None = None) -> int:

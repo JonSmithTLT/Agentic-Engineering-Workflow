@@ -40,6 +40,19 @@ REVIEW_GATES_PREFIX = "review_"
 REVIEW_CARD_PREFIX = "review_card:"
 VERIFY_CARD_PREFIX = "verify_card:"
 VERIFICATION_GATES = ("verification_goal_backwards", "verification_contract")
+# A Ticket's own acceptance checks (``--acceptance-check``) are required whatever the class's path lists, and are
+# non-waivable: they are the Ticket's definition of acceptance, and Class 0 eligibility rests on them (PR #32 P1).
+ACCEPTANCE_CHECKS = "acceptance_checks"
+
+
+def with_acceptance_checks(obligations: dict[str, Any], declared: list[str]) -> dict[str, Any]:
+    if not declared:
+        return obligations
+    gates = list(obligations["gates"])
+    if ACCEPTANCE_CHECKS not in gates:
+        gates.insert(gates.index("local_checks") + 1 if "local_checks" in gates else 0, ACCEPTANCE_CHECKS)
+    return {**obligations, "gates": gates,
+            "non_waivable": sorted(set(obligations["non_waivable"]) | {ACCEPTANCE_CHECKS})}
 
 
 def _card(e: dict[str, Any]) -> str | None:
@@ -135,7 +148,10 @@ def evaluate(
     fingerprint: str | None,
     plan_ok: bool,
     check_definitions: dict[str, str],
+    acceptance_checks: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """``acceptance_checks``: the checks the Ticket itself declares decide its acceptance (``--acceptance-check``);
+    they are the ``acceptance_checks`` gate, evaluated like ``local_checks`` (M4-A review, PR #32 P1)."""
     unit = state["work"][work_id]
     plan_rev = (unit.get("plan") or {}).get("accepted")
     invocations = state["invocations"]
@@ -149,6 +165,30 @@ def evaluate(
     waived = {w["gate"] for w in unit.get("waivers", []) if w.get("gate")}
     results: dict[str, dict[str, Any]] = {}
 
+    def check_gate(check_ids: list[str]) -> dict[str, Any]:
+        checks = {}
+        for check_id in check_ids:
+            if check_id not in check_definitions:
+                # Say why it can never pass, rather than a bare MISSING (UAT 2026-09-30, policy consistency).
+                checks[check_id] = {"status": MISSING, "evidence": None,
+                                    "reason": f"check `{check_id}` is not defined and configured in "
+                                              "policy/checks.yaml, so no result can satisfy it"}
+                continue
+            cands = [e for e in by_role("implementer")
+                     if e["kind"] == "check_result" and e["check"]["check_id"] == check_id]
+            # A result proves the check as it was defined when it ran; only the current definition counts
+            # (decision (a), independent audit I1).
+            defined = [e for e in cands if C.proves_current_definition(e, check_definitions)]
+            status, eid = _latest_status(defined, lambda e: e["result"] == "pass", fingerprint, plan_rev)
+            checks[check_id] = {"status": status, "evidence": eid}
+            earlier = [e for e in cands if e["result"] == "pass" and e not in defined]
+            if status == MISSING and earlier:
+                checks[check_id] = {"status": STALE, "evidence": earlier[-1]["id"],
+                                    "reason": "the check's definition in policy/checks.yaml changed after it "
+                                              "passed; run it again"}
+        worst = _worst([c["status"] for c in checks.values()]) if checks else CURRENT
+        return {"status": worst, "checks": checks}
+
     for gate in obligations["gates"]:
         if gate in waived and gate not in obligations["non_waivable"]:
             results[gate] = {"status": WAIVED}
@@ -156,28 +196,9 @@ def evaluate(
         if gate == "accepted_plan":
             results[gate] = {"status": CURRENT if plan_rev and plan_ok else (FAILED if plan_rev else MISSING)}
         elif gate == "local_checks":
-            checks = {}
-            for check_id in gates_policy.get("local_checks", []):
-                if check_id not in check_definitions:
-                    # Say why it can never pass, rather than a bare MISSING (UAT 2026-09-30, policy consistency).
-                    checks[check_id] = {"status": MISSING, "evidence": None,
-                                        "reason": f"check `{check_id}` is not defined and configured in "
-                                                  "policy/checks.yaml, so no result can satisfy it"}
-                    continue
-                cands = [e for e in by_role("implementer")
-                         if e["kind"] == "check_result" and e["check"]["check_id"] == check_id]
-                # A result proves the check as it was defined when it ran; only the current definition counts
-                # (decision (a), independent audit I1).
-                defined = [e for e in cands if C.proves_current_definition(e, check_definitions)]
-                status, eid = _latest_status(defined, lambda e: e["result"] == "pass", fingerprint, plan_rev)
-                checks[check_id] = {"status": status, "evidence": eid}
-                earlier = [e for e in cands if e["result"] == "pass" and e not in defined]
-                if status == MISSING and earlier:
-                    checks[check_id] = {"status": STALE, "evidence": earlier[-1]["id"],
-                                        "reason": "the check's definition in policy/checks.yaml changed after it "
-                                                  "passed; run it again"}
-            worst = _worst([c["status"] for c in checks.values()]) if checks else CURRENT
-            results[gate] = {"status": worst, "checks": checks}
+            results[gate] = check_gate(gates_policy.get("local_checks", []))
+        elif gate == ACCEPTANCE_CHECKS:
+            results[gate] = check_gate(list(acceptance_checks or []))
         elif gate == "self_review":
             cands = [e for e in by_role("implementer") if e["kind"] == "implementation_report"]
             status, eid = _latest_status(

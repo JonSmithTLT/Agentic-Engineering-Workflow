@@ -100,6 +100,13 @@ class InputStale(IllegalTransition):
     code = "INPUT_STALE"
 
 
+class DispatchRefused(IllegalTransition):
+    """The dispatch predicate refused (M4-A): a protected-condition conflict, or Class 0 requested for work that is not
+    eligible. ``details`` carries every blocking condition and reason code (``aew dispatch explain`` shows the same)."""
+
+    code = "DISPATCH_REFUSED"
+
+
 class MigrationRequired(IllegalTransition):
     """The project's control state is v1: the Lead migrates it (`aew migrate`) before changing work (ADR-0011)."""
 
@@ -124,6 +131,12 @@ class IntegrityError(AEWError):
 
     code = "INTEGRITY_ERROR"
     exit_code = 6
+
+
+class DispatchUndecided(IntegrityError):
+    """An engine defect: a transaction created an invocation or a harness run without a dispatch decision (M4-A)."""
+
+    code = "DISPATCH_UNDECIDED"
 
 
 class WorkspaceNotAuthority(AEWError):

@@ -187,8 +187,11 @@ def test_a_run_that_takes_long_to_end_is_not_reported_lost(lab, tmp_path):
     held = hold(tmp_path / "ending")
     assigned(lab, tmp_path, IMPLEMENT, env=pause_env(("harness.supervisor.finishing", held)))
     lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor ending the run")
-    stale = {**lab.env, "AEW_RUN_STALE_S": "2"}
-    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "4", env=stale, timeout=120)
+    # The wait outlasts the stale window, so a heartbeat that stopped while ending would be reported `lost`. The
+    # window leaves 3 s of slack over the 1 s beat for a loaded machine (register E3: under coverage on 16 workers, a
+    # 2 s window once saw a beat arrive late; raise test-side timeouts, never the product's).
+    stale = {**lab.env, "AEW_RUN_STALE_S": "4"}
+    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "8", env=stale, timeout=120)
     assert early.returncode == 0 and early.json["timed_out"], early.json  # still ending, and visibly alive
     held.unlink()
     done = lab.wait(R1)

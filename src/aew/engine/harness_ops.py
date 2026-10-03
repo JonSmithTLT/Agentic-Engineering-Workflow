@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.store import Transition
 from aew.errors import AEWError, HarnessLaunchFailed, IllegalTransition, NotFound, RunLive, UsageError
@@ -43,7 +45,7 @@ from aew.util import sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, ContextPacksPort, GatesPort, InvocationsPort
+    from aew.engine.ports import ArchivePort, ContextPacksPort, DispatchPort, GatesPort, InvocationsPort
 
 # Never handed to a supervisor (and therefore never to a harness or an agent).
 SCRUBBED_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
@@ -64,31 +66,60 @@ class Harness:
     """Harness runs of invocations (ADR-0009) and the next action each run implies."""
 
     def __init__(self, k: Kernel, *, invocations: InvocationsPort, packs: ContextPacksPort, gates: GatesPort,
-                 archive: ArchivePort) -> None:
+                 archive: ArchivePort, dispatch: DispatchPort) -> None:
         self.k = k
+        self.dispatch = dispatch
         self.invocations = invocations
         self.packs = packs
         self.gates = gates
         self.archive = archive
 
+    # ---- the dispatch guards of ``harness launch`` (M4-A): a run receives the invocation's (rotated) authority
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("launch.launchable", self._g_launchable),
+                DispatchGuard("launch.pack", self._g_pack),
+                DispatchGuard("launch.not_live", self._g_not_live)]
+
+    def _g_launchable(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def check() -> None:
+            inv = self.invocations.require_launchable(state, facts["invocation"])
+            facts.update(inv=inv, archetype=inv["role"])
+        return checked(check)
+
+    def _g_pack(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        inv, invocation = facts["inv"], facts["invocation"]
+        pack = self._regenerated_pack(state, invocation)
+        if pack["sha256"] != (inv.get("pack") or {}).get("sha256"):
+            return blocker_from(IllegalTransition(
+                f"{invocation}'s context pack no longer matches the pack pinned at dispatch (its inputs changed); "
+                "dispatch a new invocation rather than relaunching this one", pinned=(inv.get("pack") or {}).get(
+                    "sha256"), now=pack["sha256"]))
+        return None
+
+    def _g_not_live(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        runs = facts["inv"].get("runs") or []
+        previous = runs[-1] if runs else None
+        if previous and not facts.get("replace") and runlog.may_be_live(
+                runlog.run_dir(self.k.aew_root, previous["run"]), previous["launched_at"]):
+            return blocker_from(RunLive(
+                f"{previous['run']} may still be running; stop it (`aew harness stop {previous['run']}`) "
+                "or relaunch with --replace (its credential is revoked either way)", run=previous["run"]))
+        return None
+
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
-        """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over."""
+        """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
+        is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
         with self.k.lead_txn(token, expect_rev, "harness.launch") as ctx:
             state = ctx.state
-            inv = self.invocations.require_launchable(state, invocation)
-            pack = self._regenerated_pack(state, invocation)
-            if pack["sha256"] != (inv.get("pack") or {}).get("sha256"):
-                raise IllegalTransition(
-                    f"{invocation}'s context pack no longer matches the pack pinned at dispatch (its inputs changed); "
-                    "dispatch a new invocation rather than relaunching this one", pinned=(inv.get("pack") or {}).get(
-                        "sha256"), now=pack["sha256"])
+            target = state["invocations"].get(invocation)
+            if target is None:
+                raise NotFound(f"no invocation {invocation}")
+            self.dispatch.decide_in(ctx, "harness.launch", target["work_unit"], invocation=invocation,
+                                    replace=replace)
+            inv = state["invocations"][invocation]
             runs = inv.setdefault("runs", [])
             previous = runs[-1] if runs else None
-            if previous and not replace and runlog.may_be_live(runlog.run_dir(self.k.aew_root, previous["run"]),
-                                                               previous["launched_at"]):
-                raise RunLive(f"{previous['run']} may still be running; stop it (`aew harness stop {previous['run']}`) "
-                              "or relaunch with --replace (its credential is revoked either way)",
-                              run=previous["run"])
             run = K.run_id(invocation, len(runs) + 1)
             stop_old = self._record_request(previous, "stop", {"reason": f"superseded by {run}"}) if previous else None
             credential = rotate_invocation_token(state, invocation, f"rotated: {run}")

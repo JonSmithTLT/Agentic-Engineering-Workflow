@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
+from aew.engine import dispatch
 from aew.engine.authority import require_lead
 from aew.harness import bridge
 from aew.util import read_text_input
@@ -163,7 +164,8 @@ class LeadBroker:
         try:  # requests are serialized by the bridge, so the process-wide cwd/stdin swap is safe here
             os.chdir(target)
             sys.stdin = io.StringIO(stdin)
-            result = ns.handler(ns)
+            with dispatch.channel("lead_broker"):  # its dispatches record that the broker relayed them (M4-A)
+                result = ns.handler(ns)
         finally:
             sys.stdin = stdin_before
             os.chdir(previous)

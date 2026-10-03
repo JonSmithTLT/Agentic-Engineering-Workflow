@@ -14,8 +14,13 @@ from aew.util import glob_any
 ALWAYS_PROTECTED = [".aew/**"]
 
 
-def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str]) -> dict[str, Any]:
+def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str],
+             acceptance_inputs: list[str] | None = None) -> dict[str, Any]:
+    """``acceptance_inputs``: the paths the Ticket's acceptance checks read (M4-A). Outside its scope they are
+    protected for that Ticket: changing them would change the conditions that define its success (plan assurance
+    v0.4 §10; ACCEPTANCE_CONDITION_MUTATION). Inside its scope they are a hard trigger instead, raised at dispatch."""
     violations: list[dict[str, str]] = []
+    inputs = list(acceptance_inputs or [])
     protected = ALWAYS_PROTECTED + list(policy.get("protected_paths", []))
     generated = list(policy.get("generated_paths", []))
     enforce_scope = policy.get("ticket_scope_enforcement", True) and bool(scope_paths)
@@ -23,6 +28,9 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str])
         if glob_any(path, protected):
             violations.append({"path": path, "rule": "protected_path",
                                "detail": "this path may not be modified by a Ticket"})
+        elif inputs and glob_any(path, inputs) and not (scope_paths and glob_any(path, scope_paths)):
+            violations.append({"path": path, "rule": "acceptance_input",
+                               "detail": "an acceptance input of this Ticket: its acceptance checks read it"})
         elif glob_any(path, generated):
             violations.append({"path": path, "rule": "generated_path",
                                "detail": "generated file; change its source/generator instead"})
@@ -40,6 +48,7 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str])
 
 
 _RULE_TEXT = {"outside_ticket_scope": "is outside the Ticket's scope", "protected_path": "is a protected path",
+              "acceptance_input": "is an acceptance input of this Ticket",
               "generated_path": "is a generated file (change its source instead)"}
 
 

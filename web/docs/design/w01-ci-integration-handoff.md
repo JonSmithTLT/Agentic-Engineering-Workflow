@@ -38,7 +38,8 @@ Main owner integration responsibilities:
 
 The pinned SPT, empty-modules, network-disabled gate remains separate local offline
 reproducibility evidence. Standard-runner npm installation and browser provisioning
-are not claimed to be airgap validation. This draft has local parser/script checks;
+are not claimed to be airgap validation. This draft has local parser/script checks and a passing 15-group compiled-browser
+run through its owned-server launcher;
 GitHub execution is unverified until the operator publishes a branch/PR.
 
 Primary references checked for the draft: [setup-node](https://github.com/actions/setup-node),

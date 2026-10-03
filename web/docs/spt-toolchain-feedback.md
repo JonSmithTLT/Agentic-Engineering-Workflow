@@ -181,3 +181,29 @@ Unchanged immutable image, cache, lock and staged browser identities. Offline ga
 ## Header/sidebar polish consumer retest — 2026-10-02
 
 Same immutable carrier/cache/lock and separately staged Chromium; no toolchain fix required. Offline gate and 85 tests pass; four focused compiled layout checks pass. Evidence and exact scope are recorded in `optional-developer-tools.md`. Cached tools remain sufficient for this CSS change; no new SPT blocker or full-carrier acceptance claim.
+
+## W01 consumer retest — 2026-10-03
+
+Same immutable carrier, cache, frontend lock and separately staged Playwright
+1.59.1/Chromium 1217; no dependencies or image repair. Empty-modules offline gate
+passes installation, API/lab generated-artifact checks, typecheck, lint, 101 tests
+and separate normal/demo builds. Fifteen compiled-browser groups and the local CI
+launcher pass. See [frozen W01 packet](w01-review-packet.md) and its retained logs.
+These are downstream frontend checks; full-carrier acceptance remains the original
+prerequisite evidence.
+
+SPT-UI-003/004 environment retest: native Docker access works using the temporary
+CLI with the required sandbox socket permission, without a workspace restart.
+The user-local Node launcher sets LD_LIBRARY_PATH for separately staged libnspr4,
+libnss3 and libasound2. Direct archive-Node invocation without that environment
+failed to launch Chromium (missing libnspr4); using the launcher passes. This is
+a separate browser-runtime prerequisite, not an image/cache defect or present
+build blocker. Keep the existing browser-artifact/preflight documentation proposal
+open: its acceptance should show the pinned executable plus required library
+resolution before browser verification, with actionable missing-library output.
+No source fix or SPT rebuild is linked to this retest.
+
+The standard-runner web.yml draft is separate from local offline reproducibility.
+No GitHub execution or real API acceptance is claimed. The existing bundle-size
+advisory remains frontend optimization feedback. Resolved entries are retained;
+nonblocking SPT improvements stay ticket-ready and do not delay independent review.

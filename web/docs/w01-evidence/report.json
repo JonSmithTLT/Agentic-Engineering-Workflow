@@ -1,0 +1,124 @@
+{
+  "status": "PASS",
+  "browser_revision": "1217",
+  "checks": [
+    {
+      "name": "Demo tabs, keyboard focus, bounded contract diagnostics and safe input",
+      "result": "PASS"
+    },
+    {
+      "name": "Conditional recheck preserves generation and exposes 304",
+      "result": "PASS"
+    },
+    {
+      "name": "Failed/malformed refresh retains content and recovers",
+      "result": "PASS"
+    },
+    {
+      "name": "Initial 304, HTTP and network errors have no stale data",
+      "result": "PASS"
+    },
+    {
+      "name": "Mismatched ETag is an observation",
+      "result": "PASS"
+    },
+    {
+      "name": "Persistent divergence pauses hidden and clears on convergence",
+      "result": "PASS"
+    },
+    {
+      "name": "Transient revisions converge without persistent warning",
+      "result": "PASS"
+    },
+    {
+      "name": "Capability downgrade suppresses subsequent Work reads",
+      "result": "PASS"
+    },
+    {
+      "name": "Retired held response cannot reappear in a new project",
+      "result": "PASS"
+    },
+    {
+      "name": "Unknown strings remain raw warnings",
+      "result": "PASS"
+    },
+    {
+      "name": "Graph navigation and reload retain replay context",
+      "result": "PASS"
+    },
+    {
+      "name": "Hostile display and phone panel are safe under CSP",
+      "result": "PASS"
+    },
+    {
+      "name": "Normal production excludes lab and works with storage blocked",
+      "result": "PASS"
+    },
+    {
+      "name": "Ordinary polling pauses hidden and immediately revalidates on visibility restoration",
+      "result": "PASS"
+    },
+    {
+      "name": "Large worlds stay bounded; baseline comparison recorded",
+      "result": "PASS"
+    }
+  ],
+  "errors": [],
+  "failures": [
+    {
+      "url": "http://127.0.0.1:4191/api/v1/project",
+      "status": 500,
+      "expected": true
+    },
+    {
+      "url": "http://127.0.0.1:4191/api/v1/capabilities",
+      "status": 500,
+      "expected": true
+    },
+    {
+      "url": "http://127.0.0.1:4191/api/v1/overview",
+      "status": 500,
+      "expected": true
+    },
+    {
+      "url": "http://127.0.0.1:4191/api/v1/work?limit=100",
+      "status": 500,
+      "expected": true
+    },
+    {
+      "url": "http://127.0.0.1:4191/api/v1/project",
+      "status": 500,
+      "expected": true
+    }
+  ],
+  "measurements": [
+    {
+      "label": "candidate",
+      "fixture": "F6",
+      "load_ms": 394,
+      "dom_rows": 21,
+      "api_requests": 4
+    },
+    {
+      "label": "baseline",
+      "fixture": "F6",
+      "load_ms": 356,
+      "dom_rows": 21,
+      "api_requests": 4
+    },
+    {
+      "label": "candidate",
+      "fixture": "F7",
+      "load_ms": 401,
+      "dom_rows": 100,
+      "api_requests": 4
+    },
+    {
+      "label": "baseline",
+      "fixture": "F7",
+      "load_ms": 292,
+      "dom_rows": 100,
+      "api_requests": 4
+    }
+  ]
+}

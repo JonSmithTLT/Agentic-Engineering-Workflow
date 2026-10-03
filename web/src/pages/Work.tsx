@@ -1,10 +1,7 @@
+import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
+import { DetailView, Reasons } from '../components/ProjectionViews';
 import { useState } from 'react';
-import {
-  useSearchParams,
-  useParams,
-  Link,
-  useLocation,
-} from 'react-router-dom';
+import { useSearchParams, Link, useLocation } from 'react-router-dom';
 import { useProjection, comparisonScope } from '../client/queries';
 import {
   useCapability,
@@ -23,6 +20,17 @@ import { CopyCli } from '../components/CopyCli';
 import { WorkGraph } from '../components/WorkGraph';
 import { workRoute } from './work-model';
 export function WorkPage() {
+  return (
+    <InvestigationWorkspace
+      collection="work"
+      results={<WorkResultsPage />}
+      detail={(id, visible) => (
+        <WorkDetailPage recordId={id} displayed={visible} />
+      )}
+    />
+  );
+}
+function WorkResultsPage() {
   const [params, setParams] = useSearchParams();
   const available = useCapability('work').available;
   const parent = params.get('parent') ?? '';
@@ -233,199 +241,163 @@ export function WorkPage() {
     </>
   );
 }
-export function WorkDetailPage() {
-  const { id = '' } = useParams();
+export function WorkDetailPage({
+  recordId,
+  displayed = true,
+}: { recordId?: string; displayed?: boolean } = {}) {
   const location = useLocation();
-  const available = useCapability('work').available;
-  const valid = identity.safeParse(id).success;
-  const query = useProjection(
-    `/work/${encodeURIComponent(id)}`,
-    responseSchemas.WorkResponse,
-    'detail',
-    available && valid,
-  );
-  const work = query.data?.value.data;
   return (
-    <>
-      <div className="breadcrumb">
-        <Link to={'/work' + location.search}>Work</Link>
-        <span>/</span>
-        <code>{id}</code>
-      </div>
-      <PageSnapshot queries={[query]} />
-      <CapabilityGate name="work">
-        {!valid ? (
-          <p role="alert">Invalid work ID.</p>
-        ) : !work ? (
-          query.isError ? (
-            <LoadError
-              message={query.error.message}
-              retry={() => {
-                void query.refetch();
-              }}
-            />
-          ) : (
-            <p role="status">Loading work detail…</p>
-          )
-        ) : (
-          <>
-            <div className="page-heading">
-              <div>
-                <SemanticValue
-                  value={work.kind}
-                  known={['epic', 'story', 'ticket']}
-                />
-                <h1>{work.title}</h1>
-                <CopyCli kind="work" id={work.id} />
-              </div>
+    <DetailView
+      name="work"
+      title="Work"
+      path="/work"
+      schema={responseSchemas.WorkResponse}
+      recordId={recordId}
+      displayed={displayed}
+    >
+      {(work) => (
+        <>
+          <div className="page-heading">
+            <div>
               <SemanticValue
-                value={work.state}
-                known={work.kind === 'ticket' ? ticketStates : parentStates}
+                value={work.kind}
+                known={['epic', 'story', 'ticket']}
               />
+              <h1>{work.title}</h1>
+              <CopyCli kind="work" id={work.id} />
             </div>
-            {work.archived && (
-              <p className="preview-note" role="note">
-                Archived work. Historical reference; never current evidence.
-              </p>
-            )}
-            <div className="detail-grid">
-              <section className="panel detail-main">
-                <div className="panel-heading">
-                  <h2>Intent and context</h2>
-                </div>
-                <SafeContent {...work.summary} />
-                <div className="panel-heading">
-                  <h2>Backend blockers and reasons</h2>
-                </div>
-                {[...work.blocked_by, ...work.reasons].length ? (
-                  [...work.blocked_by, ...work.reasons].map((r, i) => (
-                    <p key={i}>
-                      {r.message ?? r.code}
-                      <br />
-                      <small>{r.code}</small>
+            <SemanticValue
+              value={work.state}
+              known={work.kind === 'ticket' ? ticketStates : parentStates}
+            />
+          </div>
+          {work.archived && (
+            <p className="preview-note" role="note">
+              Archived work. Historical reference; never current evidence.
+            </p>
+          )}
+          <div className="detail-grid">
+            <section className="panel detail-main">
+              <div className="panel-heading">
+                <h2>Intent and context</h2>
+              </div>
+              <SafeContent {...work.summary} />
+              <div className="panel-heading">
+                <h2>Backend blockers and reasons</h2>
+              </div>
+              <h3>blocked_by</h3>
+              <Reasons values={work.blocked_by} />
+              <h3>reasons (record-level)</h3>
+              <Reasons values={work.reasons} />
+              <div className="panel-heading">
+                <h2>Related records</h2>
+              </div>
+              {work.related.length ? (
+                work.related.map((r, i) => (
+                  <p key={i}>
+                    <EntityAnchor entity={r} />
+                  </p>
+                ))
+              ) : (
+                <p className="muted">No related records supplied.</p>
+              )}
+              {!!work.children.length && (
+                <>
+                  <div className="panel-heading">
+                    <h2>Direct children</h2>
+                    <Link
+                      to={(() => {
+                        const params = new URLSearchParams(location.search);
+                        for (const key of ['cursor', 'state', 'kind', 'view'])
+                          params.delete(key);
+                        params.set('parent', work.id);
+                        return '/work?' + params.toString();
+                      })()}
+                    >
+                      Inspect children
+                    </Link>
+                  </div>
+                  {work.children.map((child) => (
+                    <p key={child}>
+                      <EntityAnchor entity={{ id: child, kind: 'work' }} />
                     </p>
-                  ))
-                ) : (
-                  <p className="muted">No additional reasons supplied.</p>
-                )}
-                <div className="panel-heading">
-                  <h2>Related records</h2>
-                </div>
-                {work.related.length ? (
-                  work.related.map((r, i) => (
-                    <p key={i}>
-                      <EntityAnchor entity={r} />
+                  ))}
+                  {work.children_truncated && (
+                    <p className="preview-note">
+                      Child preview truncated. Use the parent filter, with
+                      DONE/CANCELLED for older archived children.
                     </p>
-                  ))
-                ) : (
-                  <p className="muted">No related records supplied.</p>
-                )}
-                {!!work.children.length && (
-                  <>
-                    <div className="panel-heading">
-                      <h2>Direct children</h2>
-                      <Link
-                        to={(() => {
-                          const params = new URLSearchParams(location.search);
-                          for (const key of ['cursor', 'state', 'kind', 'view'])
-                            params.delete(key);
-                          params.set('parent', work.id);
-                          return '/work?' + params.toString();
-                        })()}
-                      >
-                        Inspect children
-                      </Link>
-                    </div>
-                    {work.children.map((child) => (
-                      <p key={child}>
-                        <EntityAnchor entity={{ id: child, kind: 'work' }} />
-                      </p>
-                    ))}
-                    {work.children_truncated && (
-                      <p className="preview-note">
-                        Child preview truncated. Use the parent filter, with
-                        DONE/CANCELLED for older archived children.
-                      </p>
-                    )}
-                  </>
-                )}
-              </section>
-              <aside className="panel facts">
-                <h2>Backend projection</h2>
-                <dl>
-                  <dt>Risk class</dt>
-                  <dd>{work.risk_class ?? 'Not supplied'}</dd>
-                  <dt>Plan revision</dt>
-                  <dd>{work.plan_revision ?? 'Not supplied'}</dd>
-                  <dt>Mutating</dt>
-                  <dd>
-                    {work.mutating === null
-                      ? 'Not applicable'
-                      : work.mutating
-                        ? 'Yes'
-                        : 'No'}
-                  </dd>
-                  <dt>Archived</dt>
-                  <dd>{work.archived ? 'Yes' : 'No'}</dd>
-                  <dt>Parent</dt>
-                  <dd>
-                    {work.parent_id ? (
-                      <EntityAnchor
-                        entity={{ id: work.parent_id, kind: 'work' }}
-                      />
-                    ) : (
-                      'None supplied'
-                    )}
-                  </dd>
-                  <dt>Attention</dt>
-                  <dd>{work.has_attention ? 'Reported' : 'None reported'}</dd>
-                  <dt>Integration status</dt>
-                  <dd>
-                    <SemanticValue
-                      value={work.integration?.status ?? null}
-                      known={[
-                        'prepared',
-                        'publishing',
-                        'conflict',
-                        'superseded',
-                      ]}
+                  )}
+                </>
+              )}
+            </section>
+            <aside className="panel facts">
+              <h2>Backend projection</h2>
+              <dl>
+                <dt>Risk class</dt>
+                <dd>{work.risk_class ?? 'Not supplied'}</dd>
+                <dt>Plan revision</dt>
+                <dd>{work.plan_revision ?? 'Not supplied'}</dd>
+                <dt>Mutating</dt>
+                <dd>
+                  {work.mutating === null
+                    ? 'Not applicable'
+                    : work.mutating
+                      ? 'Yes'
+                      : 'No'}
+                </dd>
+                <dt>Archived</dt>
+                <dd>{work.archived ? 'Yes' : 'No'}</dd>
+                <dt>Parent</dt>
+                <dd>
+                  {work.parent_id ? (
+                    <EntityAnchor
+                      entity={{ id: work.parent_id, kind: 'work' }}
                     />
-                  </dd>
-                  <dt>Integrated commit</dt>
-                  <dd>
-                    <code>{work.integration?.commit ?? 'Not supplied'}</code>
-                  </dd>
-                  <dt>Commit-ready sequence</dt>
-                  <dd>
-                    {work.integration?.commit_ready_seq ?? 'Not supplied'}
-                  </dd>
-                  <dt>Updated</dt>
-                  <dd>
-                    <time>{work.updated_at}</time>
-                  </dd>
-                </dl>
-                {work.rollup && (
-                  <>
-                    <h2>Subtree Tickets</h2>
-                    <dl>
-                      <dt>Open</dt>
-                      <dd>{work.rollup.open}</dd>
-                      <dt>Done</dt>
-                      <dd>{work.rollup.done}</dd>
-                      <dt>Cancelled</dt>
-                      <dd>{work.rollup.cancelled}</dd>
-                    </dl>
-                  </>
-                )}
-                <p className="muted">
-                  All counts and conclusions are supplied by AEW.
-                </p>
-              </aside>
-            </div>
-            <ProjectionMetadata record={query.data!} />
-          </>
-        )}
-      </CapabilityGate>
-    </>
+                  ) : (
+                    'None supplied'
+                  )}
+                </dd>
+                <dt>Attention</dt>
+                <dd>{work.has_attention ? 'Reported' : 'None reported'}</dd>
+                <dt>Integration status</dt>
+                <dd>
+                  <SemanticValue
+                    value={work.integration?.status ?? null}
+                    known={['prepared', 'publishing', 'conflict', 'superseded']}
+                  />
+                </dd>
+                <dt>Integrated commit</dt>
+                <dd>
+                  <code>{work.integration?.commit ?? 'Not supplied'}</code>
+                </dd>
+                <dt>Commit-ready sequence</dt>
+                <dd>{work.integration?.commit_ready_seq ?? 'Not supplied'}</dd>
+                <dt>Updated</dt>
+                <dd>
+                  <time>{work.updated_at}</time>
+                </dd>
+              </dl>
+              {work.rollup && (
+                <>
+                  <h2>Subtree Tickets</h2>
+                  <dl>
+                    <dt>Open</dt>
+                    <dd>{work.rollup.open}</dd>
+                    <dt>Done</dt>
+                    <dd>{work.rollup.done}</dd>
+                    <dt>Cancelled</dt>
+                    <dd>{work.rollup.cancelled}</dd>
+                  </dl>
+                </>
+              )}
+              <p className="muted">
+                All counts and conclusions are supplied by AEW.
+              </p>
+            </aside>
+          </div>
+        </>
+      )}
+    </DetailView>
   );
 }

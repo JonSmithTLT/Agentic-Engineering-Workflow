@@ -1,0 +1,10 @@
+{
+  "revision": "1.1",
+  "plan": "w02-workspace.md",
+  "sha256": "64a89abbc9ea4ecd753d81c6cff9f403ef2e13f61cd013af310db6e7efe1ec4d",
+  "approval_reference": "Operator: got it then implement the plan; two source/browser and opaque-ID tightenings accepted",
+  "base_commit": "ab6ab9814bee2f270ef61f69246aa19aca2431a9",
+  "implementation": "AUTHORIZED",
+  "frontend_acceptance": "PENDING_INDEPENDENT_REVIEW",
+  "integration": "NOT_CLAIMED"
+}

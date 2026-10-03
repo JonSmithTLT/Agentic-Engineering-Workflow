@@ -1,3 +1,4 @@
+import { RecordInspection } from '../components/Investigation';
 import { createContext, useContext, type ReactNode } from 'react';
 import { useProjection } from './queries';
 import { responseSchemas } from '../api/schema';
@@ -115,7 +116,20 @@ export function CapabilityGate({
     ) : (
       <p role="status">Loading project capabilities…</p>
     );
-  if (!value.available) return <Unavailable explanation={value.explanation} />;
+  if (!value.available)
+    return (
+      <>
+        <Unavailable explanation={value.explanation} />
+        {capabilities.data && caps[name] && (
+          <RecordInspection
+            kind="capability"
+            record={caps[name]}
+            source={capabilities.data}
+            fallbackId={name}
+          />
+        )}
+      </>
+    );
   return <>{children}</>;
 }
 export function ProjectionMetadata({

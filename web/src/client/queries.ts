@@ -1,8 +1,8 @@
 import { readClock } from './clock';
-import { QueryClient, useQuery } from '@tanstack/react-query';
+import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { z } from 'zod';
-import { transport } from '../api/transport';
+import { accessRefused, transport } from '../api/transport';
 import { installRevisionReconciliation } from './revisions';
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,18 +68,29 @@ export function useProjection<T>(
   schema: z.ZodType<T>,
   kind: keyof typeof pollIntervals,
   available = true,
+  displayed = true,
 ) {
   useReadSession();
+  const localClient = useQueryClient();
   const [visible, setVisible] = useState(readClock.visible());
   useEffect(() => {
     const change = () => setVisible(readClock.visible());
     return readClock.subscribe(change);
   }, []);
-  return useQuery({
+  const query = useQuery({
     queryKey: projectionKey(route),
     queryFn: ({ signal }) => transport.get(route, schema, signal),
-    enabled: available,
-    refetchInterval: visible && !readClock.manual ? pollIntervals[kind] : false,
+    enabled: available && displayed,
+    refetchInterval:
+      visible && displayed && !readClock.manual ? pollIntervals[kind] : false,
     refetchIntervalInBackground: false,
   });
+  useEffect(() => {
+    if (accessRefused(query.error))
+      localClient
+        .getQueryCache()
+        .find({ queryKey: projectionKey(route), exact: true })
+        ?.setState({ data: undefined });
+  }, [query.error, route, localClient]);
+  return accessRefused(query.error) ? { ...query, data: undefined } : query;
 }

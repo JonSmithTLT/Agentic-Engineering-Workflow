@@ -1,3 +1,4 @@
+import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
 import { useSearchParams } from 'react-router-dom';
 import {
   CollectionView,
@@ -20,6 +21,17 @@ import {
 } from '../api/vocabulary';
 const knowledgeKinds = ['decision', 'fact', 'assumption'];
 export function RunsPage() {
+  return (
+    <InvestigationWorkspace
+      collection="runs"
+      results={<RunsResultsPage />}
+      detail={(id, visible) => (
+        <RunDetailPage recordId={id} displayed={visible} />
+      )}
+    />
+  );
+}
+function RunsResultsPage() {
   return (
     <CollectionView
       name="runs"
@@ -76,13 +88,18 @@ export function RunsPage() {
     </CollectionView>
   );
 }
-export function RunDetailPage() {
+export function RunDetailPage({
+  recordId,
+  displayed = true,
+}: { recordId?: string; displayed?: boolean } = {}) {
   return (
     <DetailView
       name="runs"
       title="Runs"
       path="/runs"
       schema={responseSchemas.InvocationResponse}
+      recordId={recordId}
+      displayed={displayed}
     >
       {(r) => (
         <>

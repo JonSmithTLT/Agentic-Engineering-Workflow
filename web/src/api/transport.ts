@@ -7,6 +7,25 @@ export type Projection<T> = {
   etag?: string;
   last_checked_at: string;
 };
+export class ProjectionHttpError extends Error {
+  constructor(public status: number) {
+    super(
+      status === 404
+        ? 'Not found (404)'
+        : status === 401
+          ? 'Session required (401)'
+          : status === 403
+            ? 'Access unavailable (403)'
+            : `Projection request failed (${status})`,
+    );
+    this.name = 'ProjectionHttpError';
+  }
+}
+export function accessRefused(error: unknown) {
+  return (
+    error instanceof ProjectionHttpError && [401, 403].includes(error.status)
+  );
+}
 export class ReadTransport {
   private cache = new Map<string, Projection<unknown>>();
   context = new ReadContext();
@@ -87,8 +106,11 @@ export class ReadTransport {
         if (!prior) throw new Error('304 without a cached representation');
         next = { ...prior, last_checked_at: this.now().toISOString() };
       } else {
-        if (!response.ok)
-          throw new Error(`Projection request failed (${response.status})`);
+        if (!response.ok) {
+          if ([401, 403].includes(response.status) && !context.retired)
+            this.cache.delete(key);
+          throw new ProjectionHttpError(response.status);
+        }
         if (!response.headers.get('Content-Type')?.includes('application/json'))
           throw new Error('Expected a JSON projection');
         const value = schema.parse(await response.json());

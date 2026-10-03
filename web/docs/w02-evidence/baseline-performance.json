@@ -1,0 +1,87 @@
+{
+  "source": "ab6ab9814bee2f270ef61f69246aa19aca2431a9",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "samples": [
+    {
+      "fixture": "F6",
+      "repeat": 0,
+      "render_ms": 854,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F6",
+      "repeat": 1,
+      "render_ms": 528,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F6",
+      "repeat": 2,
+      "render_ms": 542,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 0,
+      "render_ms": 538,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 1,
+      "render_ms": 519,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 2,
+      "render_ms": 556,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    }
+  ]
+}

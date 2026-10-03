@@ -1,0 +1,136 @@
+{
+  "source_commit": "7a18fa3a17b0d9d8d28732663e9e1df9b140c4cc",
+  "review_diff_base": "b9c233aef0860aa80c67248c9cd313f8a916cff7",
+  "finding": "W02-1",
+  "date": "2026-10-03",
+  "disposition": "Fixed locally; Lead diff review and green PR CI pending",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "lock_sha256": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+  "image_id": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "platform": "linux/amd64",
+  "node": "22.22.2",
+  "npm": "10.9.7",
+  "cache_manifest_sha256": "d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f",
+  "cache_checksums_sha256": "9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246",
+  "playwright": "1.59.1",
+  "chromium_revision": "1217",
+  "offline_gate": {
+    "result": "PASS",
+    "tests": 117,
+    "files": 14,
+    "network": "none",
+    "initial_modules": "empty"
+  },
+  "browser": {
+    "w01": {
+      "result": "PASS",
+      "groups": 16
+    },
+    "w02": {
+      "result": "PASS",
+      "groups": 10
+    }
+  },
+  "scope": {
+    "engine_suite": false,
+    "live_integration": false,
+    "github_ci": false
+  },
+  "artifacts": {
+    "first-attempt-failure-trace.zip": {
+      "sha256": "01eb6eefc7b518e749638c34ceb370da0a208015103d5f42185de41e8864f890",
+      "bytes": 3596988
+    },
+    "first-attempt-result.json": {
+      "sha256": "bc118f63d31c46bd8200faffec8960b9fe5445f9f89510aeae843cb4402e46fe",
+      "bytes": 41528
+    },
+    "history-hot-parent-workspace.png": {
+      "sha256": "7e4e26b7a1aad1cfbe5bc6895e72415c0fa304d81a00347b1740e859c08d41f3",
+      "bytes": 286765
+    },
+    "offline-command.log": {
+      "sha256": "6193a7b35dd87ff544921f0c8e620395f17ccdb9cd937b65b3991e73bce41c72",
+      "bytes": 6357
+    },
+    "w01-browser-report.json": {
+      "sha256": "87aeef47480689070a1f8f5ecc6bb51c887694e93aa09a10a378cacdff016be7",
+      "bytes": 2742
+    },
+    "w02-browser-command.log": {
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe",
+      "bytes": 705
+    },
+    "w02-browser-report.json": {
+      "sha256": "76fd68e939bbee6aabf50ffb7b262cd042aa0ef40fa4e8ce60ff041ce88cd9d8",
+      "bytes": 46724
+    }
+  },
+  "static_build_manifest": {
+    "dist/assets/index-7OuZDEnj.css": {
+      "sha256": "5ba05a98cebbc6d812b8159d3add71f27eff1e6b3365974c8a81f40471d4b5f3",
+      "bytes": 31487
+    },
+    "dist/assets/index-95_Q8EP5.js": {
+      "sha256": "6792e309debb6f1304672528b932c74c489508ccb4e2e57707edb1af4fe47fb5",
+      "bytes": 592848
+    },
+    "dist/favicon.svg": {
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08",
+      "bytes": 220
+    },
+    "dist/index.html": {
+      "sha256": "12662f3b6a84919b65cfcfd5ec0c229dc05ebfd9be5bd8a88a9a5f6303655972",
+      "bytes": 496
+    },
+    "dist-demo/assets/DemoTools-B3Wk4owS.js": {
+      "sha256": "3c88c19039ff25d2e86ea047d76c6db37859f020a4b34df5e8738654b5cca328",
+      "bytes": 550
+    },
+    "dist-demo/assets/Lab-CwNvgJM6.js": {
+      "sha256": "bacab099ab8d1a684fe8d03398a4ad00df84f6c5be5e783c7a607987c680163d",
+      "bytes": 6477
+    },
+    "dist-demo/assets/browser-C6BkynxV.js": {
+      "sha256": "e7118c168fe6359fbc11676d8e8dda96148d7aaf897820d050c28a67a19289c4",
+      "bytes": 273851
+    },
+    "dist-demo/assets/index-7OuZDEnj.css": {
+      "sha256": "5ba05a98cebbc6d812b8159d3add71f27eff1e6b3365974c8a81f40471d4b5f3",
+      "bytes": 31487
+    },
+    "dist-demo/assets/index-C3Bkiig0.js": {
+      "sha256": "0238b0ce75b8ff3f54a13ecc6058f88c99b2dc4aa6f1e7c1e5088192c6bd5719",
+      "bytes": 579812
+    },
+    "dist-demo/assets/jsx-runtime-Cu7Iu-c-.js": {
+      "sha256": "fa3a563edb347926a5fb1d1f7c12fd71bbb83bd002ba483aac3c53e989a57156",
+      "bytes": 435
+    },
+    "dist-demo/assets/rolldown-runtime-S-ySWqyJ.js": {
+      "sha256": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "bytes": 694
+    },
+    "dist-demo/assets/transport-D-nkCDK-.js": {
+      "sha256": "a8eac2db24382720113482d2e9cbb7b83a9b07a1924d45c5580f7078d5a6304d",
+      "bytes": 14235
+    },
+    "dist-demo/assets/worlds-Cfp5AcLf.js": {
+      "sha256": "99f620e70241981d9b83bd83119a034474f24bd1ffdba1709403b27b26ff8a76",
+      "bytes": 1125325
+    },
+    "dist-demo/favicon.svg": {
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08",
+      "bytes": 220
+    },
+    "dist-demo/index.html": {
+      "sha256": "fc81eb91b1274f822f8ec187e300513a28b1e54051d5e0868c6250886c7be57c",
+      "bytes": 745
+    },
+    "dist-demo/mockServiceWorker.js": {
+      "sha256": "d6a8df5a5d63077dab8054438b249494bc89d77fb174276212b6950a946b11e1",
+      "bytes": 9120
+    }
+  }
+}

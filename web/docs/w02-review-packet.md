@@ -68,3 +68,7 @@ Main PR #26 completed the frontend merge/assurance wiring. W02 consumes it. The 
 Remaining integration dependencies link the existing [backend question ledger](design/w01-backend-question-ledger.md) and main registry F20: authoritative session resets, authorization before delivery, supported scopes/snapshots, full-envelope validators, server CSP/security/static serving and live acceptance. W02 does not duplicate their tickets or resolve them using fixtures. No Journal/context/Why preview schema was introduced.
 
 The main AEW reviewer should inspect the frozen code diff independently and distinguish implementer execution evidence from any tests they rerun. Record the review next to this packet, disposition findings, then explicitly accept W02 frontend behavior. Test success alone does not grant acceptance.
+
+## Main-line review amendment — 2026-10-03
+
+Main-line review: AMEND, W02-1. The inherited History relation lookup finding is fixed in `7a18fa3`; see [fixing diff and retest](w02-review-fix-response.md). This addendum supersedes the original pending-review disposition: Lead fixing-diff confirmation and green PR CI remain required. The original source freeze and evidence above remain historical records of the reviewed implementation.

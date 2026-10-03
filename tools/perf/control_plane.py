@@ -251,20 +251,6 @@ class Cloner:
                 return {remap(k): remap(v) for k, v in value.items()}
             return value
 
-        written: dict[str, str] = {}  # new relative path -> new text
-        sources = [p for d in (f"work/{wid}", f"evidence/{wid}") for p in (self.aew / d).rglob("*") if p.is_file()]
-        sources += [self.aew / "decisions" / f"{d}.md" for d in groups["decision"]]
-        for src in sources:
-            rel = remap(src.relative_to(self.aew).as_posix())
-            text = remap(src.read_text(encoding="utf-8"))
-            if rel.startswith("evidence/") and rel.endswith(".md"):  # a new seal over the renamed content
-                meta, body = parse_frontmatter(text, source=rel)
-                text = E.seal(meta, body)
-            target = self.aew / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(text.encode("utf-8"))
-            written[rel] = text
-
         def rehash(node: Any) -> None:
             if isinstance(node, dict):
                 if isinstance(node.get("path"), str) and node["path"] in written and "sha256" in node:
@@ -276,6 +262,27 @@ class Cloner:
             elif isinstance(node, list):
                 for v in node:
                     rehash(v)
+
+        written: dict[str, str] = {}  # new relative path -> new text
+
+        def evidence_record(path: Path) -> bool:
+            rel = path.relative_to(self.aew).as_posix()
+            return rel.startswith("evidence/") and rel.endswith(".md")
+
+        sources = [p for d in (f"work/{wid}", f"evidence/{wid}") for p in (self.aew / d).rglob("*") if p.is_file()]
+        sources += [self.aew / "decisions" / f"{d}.md" for d in groups["decision"]]
+        # Evidence records last: each pins files (a check's log) whose renamed text changes their hash.
+        for src in sorted(sources, key=evidence_record):
+            rel = remap(src.relative_to(self.aew).as_posix())
+            text = remap(src.read_text(encoding="utf-8"))
+            if evidence_record(src):  # its pins rehashed, and a new seal over the renamed content
+                meta, body = parse_frontmatter(text, source=rel)
+                rehash(meta)
+                text = E.seal(meta, body)
+            target = self.aew / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(text.encode("utf-8"))
+            written[rel] = text
 
         unit = remap(copy.deepcopy(self.state["work"][wid]))
         rehash(unit)

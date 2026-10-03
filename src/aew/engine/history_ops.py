@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 import sqlite3
 
 from aew.engine import faults
-from aew.engine.archive_ops import evidence_source, held_evidence, pinned_records, redact
+from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
 from aew.engine.authority import require_lead
 from aew.errors import AEWError, IntegrityError, LockTimeout, NotFound, StaleRevision, UsageError
 from aew.history import manifest as M
@@ -264,12 +264,14 @@ class HistoryCommands:
         start = None if full else self._verified_point(state["cold"])
         target = dict(state["cold"]["root"])
         # 2. Verification outside the lock: sealed segments and records are immutable, and the tail is the copy.
-        report = self.cold.verify(target, start, tail_raw=tail, pinned=pinned_records)
+        report = self.cold.verify(target, start, tail_raw=tail, pinned=pinned_records, nested=evidence_pins)
         checked = {"entries": report.entries, "records": report.records}
         problems, damaged = list(report.problems), list(report.damaged)
         result = {"mode": "full" if full else "incremental", "from": start or {"count": 0, "h": M.GENESIS_H},
                   "through": {"count": target["count"], "h": target["head_h"]}, **checked,
                   "ok": not problems, "problems": problems}
+        if full and not problems:
+            result["index"] = self._check_index(target)
         faults.pause("history.audit_after_verify")  # tests hold here to land a commit in the R2 window
         if token is None:
             if problems:
@@ -289,7 +291,7 @@ class HistoryCommands:
             except _RootMoved as moved:
                 moved_root, moved_tail = moved.args
                 more = self.cold.verify(moved_root, {"count": target["count"], "h": target["head_h"]},
-                                        tail_raw=moved_tail, pinned=pinned_records)
+                                        tail_raw=moved_tail, pinned=pinned_records, nested=evidence_pins)
                 checked = {"entries": checked["entries"] + more.entries,
                            "records": checked["records"] + more.records}
                 problems, damaged, target = list(more.problems), list(more.damaged), moved_root
@@ -302,6 +304,17 @@ class HistoryCommands:
             return result
         raise LockTimeout(f"the history kept advancing during {AUDIT_ATTEMPTS} attempts to record the audit; "
                           "run it again")
+
+    def _check_index(self, root: dict[str, Any]) -> str:
+        """A full audit also compares the derived index with the history, row by row (queries authenticate what they
+        return, but cannot see a row altered so that it no longer matches): ``consistent``, or ``rebuilt`` when it
+        differed. The index is derived, so a busy index, or a root that moved meanwhile, only defers the check."""
+        try:
+            index = HistoryIndex(self.k.aew_root)
+            index.sync(root)
+            return "consistent" if index.check() else "rebuilt"
+        except (IntegrityError, LockTimeout, OSError, sqlite3.Error):
+            return "not checked"
 
     def _record_audit(self, ctx: TxnContext, *, full: bool, start: dict[str, Any], target: dict[str, Any],
                       checked: dict[str, int], problems: list[str], damaged: list[dict[str, Any]]) -> str:

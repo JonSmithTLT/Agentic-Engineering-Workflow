@@ -518,7 +518,35 @@ Unprofiled after the fix: 87 s on Windows (102 s before), 83 to 86 s on Linux. T
 
 **Not run, and why.** Nightly-strength crash and walk runs are CI's nightly job (§8). Live models are not part of this gate.
 
-**Next:** the independent review, from [`adr-0011-reviewer-brief.md`](adr-0011-reviewer-brief.md). After it, the register moves F1 and E5 to §9 *Closed*.
+**Independent review fixes** (2026-10-03, in PR #24). The review of the whole (frozen at `c6caa4c`) requested changes for two findings in the merged P2 code:
+
+- **P3-1: the index locates entries; it never vouches for them.**
+  - **The defect.** `local/history.sqlite` is derived and covered by no hash. A row whose entry named another record (another path, hash or content) was believed. `history show` then returned that record as engine history, `history load` pinned it into a pack, and a new dependency committed facts from it while naming the real bundle's hash.
+  - **What every query returns now.** Each query returns the history's own entries: each row is checked against the entry the root pins at its position (`History.authenticate`), and the authentic entry must satisfy the query itself (its id, kind, state, parent, subject, links). A mismatch rebuilds the index and asks again; a second one is an `IntegrityError`.
+  - **Missing rows** are caught at sync: the rows must be exactly the root's positions.
+  - **Links** are read from the authenticated entries, not from link rows.
+  - **Facts** take the bundle hash from the authenticated entry they were read with.
+  - **What remains, and how it is covered.** A row altered so that no query matches it omits a record rather than inventing one. The explicit full audit compares every row, column and link with the history, rebuilds the index if any differ, and reports `index: consistent | rebuilt`.
+  - **Cost.** Each history file is read and proven once per query, and once per command through two per-process caches:
+    - parses keyed by the file's hash;
+    - sealed segments proven to lead to the root's sealed head.
+
+    A command that reads several archived units syncs the index once, while its root and file are unchanged. `harness status` at 3,000 completed, which rehydrates the 20-unit recent ring: 0.50 s, against 0.59 s before.
+- **P3-2: the full audit covers the evidence closure.**
+  - **What is pinned now.** Archival pins the check results an ingested verification cites but the unit did not ingest (`cited_evidence` in the bundle, with hashes taken then, after the report is checked against its ingest hash). Their ids join the entry's `evidence` links, so `history show` finds them by id (`history load` uses the same lookup). A cited check that is missing, or a report that changed since ingest, refuses the archival (and the migration).
+  - **What the audit follows.** A verification follows what each pinned record pins in turn (`verify(..., nested=evidence_pins)`: a check's log), each file once per entry. Recorded audits and the Epic closeout gate use the same verification.
+- **Found by the new audit:** the perf tool's cloner rewrote each cloned check's log (its ids change) without rehashing the log pin inside the check record. Cloned evidence records are now written after their logs, with their pins rehashed. Measurements are unaffected: the cloner's files were never audited before.
+- **Tests:** `tests/integration/test_history_integrity.py`, six tests on a real finished mutating Ticket (the perf template), migrated:
+  - a forged index entry (show, then facts);
+  - a lost row and an invented link;
+  - a row that hides its entry, until the full audit;
+  - a cited check found by id;
+  - a changed cited check, and a changed or deleted log, ingested or cited, under advisory and recorded full audits;
+  - a verification changed after ingest refusing migration.
+
+  All six fail on `c6caa4c` and pass now.
+
+**Next:** the independent review re-checks the fixes at a newly frozen head. After it, the register moves F1 and E5 to §9 *Closed*.
 
 ## 8. Verification for every PR
 

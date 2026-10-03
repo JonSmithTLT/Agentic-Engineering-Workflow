@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from aew.engine import hierarchy as H
 from aew.errors import IntegrityError
 from aew.history import manifest as M
-from aew.history.index import HistoryIndex
+from aew.history.index import INDEX_REL, HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
 from aew.history.store import prewrite as prewrite_record
 from aew.knowledge.records import format_id
@@ -62,7 +62,8 @@ def redact(value: Any) -> Any:
 def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
     """The records an archived unit's bundle pins by path and hash, which a verification checks with the bundle
     (ADR-0011: a full verification covers every record reachable from the root): the unit's own record, its plans,
-    its ingested evidence and its completion record. Not the invocations' context packs: they live in ``local/``,
+    its ingested evidence, the check results its verification cites, and its completion record; ``evidence_pins``
+    adds what each of those pins in turn (a check's log). Not the invocations' context packs: they live in ``local/``,
     which is derived and disposable, and are checked by regenerating them (``context pack``), never by an audit."""
     if entry["kind"] != "unit":
         return []
@@ -76,16 +77,31 @@ def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
         pins.append((unit["record"], unit["record_sha256"]))
     pins += [(p["path"], p["sha256"]) for p in unit.get("plans") or [] if p.get("path") and p.get("sha256")]
     pins += [(e["path"], e["sha256"]) for e in unit.get("evidence") or [] if e.get("path") and e.get("sha256")]
+    pins += [(e["path"], e["sha256"]) for e in doc.get("cited_evidence") or []]
     if unit.get("completion_record") and unit.get("completion_sha256"):
         pins.append((unit["completion_record"], unit["completion_sha256"]))
     return sorted(set(pins))
 
 
+def evidence_pins(rel: str, raw: bytes) -> list[tuple[str, str]]:
+    """What an evidence record itself pins by path and hash (its frontmatter ``evidence``: a check's log, a report's
+    attachments). Other records pin nothing further."""
+    if not (rel.startswith("evidence/") and rel.endswith(".md")):
+        return []
+    try:
+        meta, _ = parse_frontmatter(raw.decode("utf-8"), source=rel)
+    except UnicodeDecodeError as exc:
+        raise IntegrityError(f"{rel} is not UTF-8 text") from exc
+    return [(p["path"], p["sha256"]) for p in meta.get("evidence") or []
+            if isinstance(p, dict) and isinstance(p.get("path"), str) and isinstance(p.get("sha256"), str)]
+
+
 def held_evidence(aew_root: Path, bundle: dict[str, Any], evidence_id: str) -> tuple[dict[str, Any], dict[str, Any],
                                                                                         str]:
-    """An archived unit's ingested evidence record (its reference in the unit, its metadata and body), verified
-    against the hash its unit recorded at ingest."""
-    ref = next((r for r in bundle["unit"].get("evidence", []) if r["id"] == evidence_id), None)
+    """An archived unit's evidence record (its reference in the bundle, its metadata and body): one it ingested, or
+    a check result its verification cites, verified against the hash recorded at ingest or at archival."""
+    ref = next((r for r in [*bundle["unit"].get("evidence", []), *bundle.get("cited_evidence", [])]
+                if r["id"] == evidence_id), None)
     if ref is None:
         raise IntegrityError(f"{bundle['id']}'s bundle does not record evidence {evidence_id}")
     path = aew_root / ref["path"]
@@ -164,6 +180,7 @@ class Archive:
     def __init__(self, k: Kernel) -> None:
         self.k = k
         self.cold = History(k.aew_root)
+        self._synced: tuple[tuple[int, str], tuple[int, int] | None, HistoryIndex] | None = None
 
     # ------------------------------------------------------------------ the finalizer (R6)
 
@@ -196,13 +213,15 @@ class Archive:
             tokens = self._tokens_of(state, invocations, issued)
             if unit.get("completion_record") and not unit.get("completion_sha256"):
                 unit["completion_sha256"] = sha256_file(self.k.aew_root / unit["completion_record"])
+            cited = self._cited_checks(wid, unit)
             bundle = dump_yaml({
                 "schema": ARCHIVE_SCHEMA, "id": wid, "unit": unit,
                 "invocations": {i: state["invocations"][i] for i in invocations},
-                "tokens": {t: state["tokens"][t] for t in tokens}})
+                "tokens": {t: state["tokens"][t] for t in tokens},
+                **({"cited_evidence": cited} if cited else {})})
             sha = self._write_record(ctx.session, bundle_rel(wid), bundle, prewrite=ctx.prewrite)
             at = ((unit.get("history") or [{}])[-1].get("at")) or utc_now()
-            entries.append(self._entry(wid, unit, sha, at, invocations, tokens))
+            entries.append(self._entry(wid, unit, sha, at, invocations, tokens, cited))
             facts[wid] = self._facts(unit, sha)
             recent.append({"id": wid, "kind": unit["kind"], "state": unit["state"], "title": unit["title"], "at": at,
                            "parent": unit.get("parent")})
@@ -349,12 +368,44 @@ class Archive:
         out.update(t for i in invocations for t in issued.get(i, []))
         return sorted(t for t in out if t in state["tokens"])
 
+    def _cited_checks(self, wid: str, unit: dict[str, Any]) -> list[dict[str, Any]]:
+        """The check results the unit's ingested verification reports cite and the unit did not ingest itself, each
+        pinned by its hash now (independent P3 review, P3-2): they are part of the evidence its completion rests on, so
+        the history keeps them reachable and a full audit covers them. The reports are checked against the hashes
+        recorded at ingest first; a cited check that is gone, or a report that changed, is refused."""
+        ingested = {r["id"] for r in unit.get("evidence") or []}
+        out: dict[str, dict[str, Any]] = {}
+        for ref in unit.get("evidence") or []:
+            if ref.get("kind") != "verification":
+                continue
+            path = self.k.aew_root / ref["path"]
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                raw = None
+            if raw is None or sha256_bytes(raw) != ref["sha256"]:
+                raise IntegrityError(f"{wid}'s verification {ref['id']} is missing or not the record it ingested; "
+                                     "the unit cannot be archived", path=ref["path"])
+            meta, _ = parse_frontmatter(raw.decode("utf-8"), source=ref["path"])
+            for claim in (meta.get("verification") or {}).get("claims") or []:
+                for cid in claim.get("checks") or []:
+                    if cid in ingested or cid in out:
+                        continue
+                    rel = f"evidence/{wid}/{cid}.md"
+                    digest = sha256_file(self.k.aew_root / rel)
+                    if digest is None:
+                        raise IntegrityError(f"{wid}'s verification {ref['id']} cites {cid}, which is missing; the "
+                                             "unit cannot be archived", path=rel)
+                    out[cid] = {"id": cid, "kind": "check_result", "path": rel, "sha256": digest,
+                                "cited_by": ref["id"]}
+        return [out[c] for c in sorted(out)]
+
     @staticmethod
     def _entry(wid: str, unit: dict[str, Any], sha: str, at: str, invocations: list[str],
-               tokens: list[str]) -> dict[str, Any]:
+               tokens: list[str], cited: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         links = {"depends_on": sorted({e["id"] for e in unit.get("depends_on", [])}),
                  "invocations": invocations, "tokens": tokens,
-                 "evidence": sorted({e["id"] for e in unit.get("evidence", [])}),
+                 "evidence": sorted({e["id"] for e in [*unit.get("evidence", []), *(cited or [])]}),
                  "integration_commit": [c] if (c := (unit.get("integration") or {}).get("commit")) else [],
                  "completion": [unit["completion_record"]] if unit.get("completion_record") else []}
         return {"kind": "unit", "id": wid, "path": bundle_rel(wid), "sha256": sha, "at": at, "state": unit["state"],
@@ -505,15 +556,29 @@ class Archive:
         """The index synced to the cold root of ``state``. Inside a transaction that root is the committed one; a
         reader outside the lock re-reads the state if a later commit replaced the tail meanwhile."""
         for attempt in range(3):
+            root = state["cold"]["root"]
+            key = (root["count"], root["head_h"])
+            # A command that reads several archived units syncs once: the index is reused while its root and its file
+            # are unchanged (any write to the file changes its size or time, and every result is still authenticated).
+            if self._synced and self._synced[0] == key and self._synced[1] == self._index_stat():
+                return self._synced[2]
             index = HistoryIndex(self.k.aew_root)
             try:
-                index.sync(state["cold"]["root"])
+                index.sync(root)
+                self._synced = (key, self._index_stat(), index)
                 return index
             except IntegrityError:
                 if self.k.store.held or attempt == 2:
                     raise
                 state = self.k.store.read()
         raise AssertionError("unreachable")
+
+    def _index_stat(self) -> tuple[int, int] | None:
+        try:
+            st = (self.k.aew_root / INDEX_REL).stat()
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
 
     def index(self, state: dict[str, Any]) -> HistoryIndex:
         """The derived history index, synced to the cold root of ``state`` (queries stop at that root)."""
@@ -543,8 +608,15 @@ class Archive:
         """An archived unit's bundle (verified against its manifest entry), or None if it was never archived."""
         if not is_v2(state):
             return None
+        found = self._bundle_entry(state, work_id)
+        return found[1] if found else None
+
+    def _bundle_entry(self, state: dict[str, Any], work_id: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """An archived unit's manifest entry (authenticated against the root) and its bundle (verified against it)."""
+        if not is_v2(state):
+            return None
         entries = [e for e in self._index(state).by_id(work_id) if e["kind"] == "unit"]
-        return self._load(entries[-1]) if entries else None
+        return (entries[-1], self._load(entries[-1])) if entries else None
 
     def bundle_holding(self, state: dict[str, Any], rel: str, target: str) -> dict[str, Any] | None:
         """The bundle of the archived unit whose entry links ``rel`` to ``target`` (an invocation or a credential)."""
@@ -560,10 +632,11 @@ class Archive:
         return doc
 
     def facts_from_cold(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
-        doc = self.bundle(state, work_id)
-        if doc is None:
+        found = self._bundle_entry(state, work_id)
+        if found is None:
             return None
-        return self._facts(doc["unit"], sha256_bytes((self.k.aew_root / bundle_rel(work_id)).read_bytes()))
+        entry, doc = found
+        return self._facts(doc["unit"], entry["sha256"])  # the hash of the very bundle the facts were read from
 
     def archived_credential(self, state: dict[str, Any], token_id: str) -> dict[str, Any] | None:
         """The credential record of an archived invocation (R7: a presented archived credential is stale authority,

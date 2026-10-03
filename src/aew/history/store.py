@@ -14,6 +14,8 @@ not UTF-8, a file that cannot be read) is an ``IntegrityError`` too, so verifica
 
 from __future__ import annotations
 
+import copy
+from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +29,22 @@ from aew.util import create_exclusive, load_yaml, sha256_bytes, sha256_file, sha
 
 if TYPE_CHECKING:
     from aew.engine.store import Session
+
+class EntryMismatch(IntegrityError):
+    """An entry offered as one of the history's (by the derived index) is not the entry the root pins at its position."""
+
+
+# Parsed history files by the hash of their bytes, with the chain state after their entries: the same bytes always
+# parse to the same entries, so a reader that proves several entries of one file parses it once (bounded; per process).
+_PARSED: OrderedDict[tuple[str, bool], tuple[dict[str, Any], dict[str, Any]]] = OrderedDict()
+_PARSED_MAX = 16
+# Sealed segment hashes proven to lead to a root's ``sealed_head`` through every later segment, per AEW root and
+# sealed head: a later proof stops at the first segment already proven. Sealed segments are never rewritten; the
+# segment an entry is read from is hashed again on every read.
+_PROVEN: dict[tuple[str, int, str], dict[int, str]] = {}
+# Tails (by the hash of their bytes) proven to lead to a root (count, head hash).
+_TAIL_PROVEN: set[tuple[str, int, str]] = set()
+
 
 # Where history records live (relative to the AEW root): a terminal unit's bundle and annotations beside its other
 # records (investigation §3.1), the Lead's generations and audit records under history/.
@@ -64,6 +82,7 @@ _READ: Any = object()  # read the tail from disk (rather than from a snapshot of
 # packs): given the entry and its record's bytes, already verified. The history store knows no record format; the
 # engine passes this so that a verification covers every record reachable from the root (ADR-0011).
 Pinned = Callable[[dict[str, Any], bytes], list[tuple[str, str]]]
+Nested = Callable[[str, bytes], list[tuple[str, str]]]
 
 
 class History:
@@ -184,6 +203,100 @@ class History:
 
     # ------------------------------------------------------------------ lookup
 
+    def _parsed(self, raw: bytes, rel: str, *, sealed: bool) -> tuple[dict[str, Any], dict[str, Any], str]:
+        """File ``rel``'s bytes parsed, its entries folded from its start (``fold`` checks the chain within it), and
+        its hash."""
+        digest = sha256_bytes(raw)
+        hit = _PARSED.get((digest, sealed))
+        if hit is None:
+            doc = M.parse_file(self._text(raw, rel), source=rel, sealed=sealed)
+            hit = (doc, M.fold(doc["start"], doc["entries"], source=rel))
+            _PARSED[(digest, sealed)] = hit
+            while len(_PARSED) > _PARSED_MAX:
+                _PARSED.popitem(last=False)
+        else:
+            _PARSED.move_to_end((digest, sealed))
+        return hit[0], hit[1], digest
+
+    def _proven_segment(self, root: dict[str, Any], seq: int) -> dict[str, Any]:
+        """``pinned_segment``, for repeated reads: the same proof, with the parse and the later segments' links
+        remembered."""
+        sealed = root["sealed_head"]
+        rel = M.segment_rel(seq)
+        raw = self._read(rel)
+        if raw is None:
+            raise IntegrityError(f"history segment {rel} is missing", path=rel)
+        doc, end, digest = self._parsed(raw, rel, sealed=True)
+        if doc["seq"] != seq or doc["start"]["count"] != (seq - 1) * M.SEGMENT_SIZE \
+                or (seq == 1 and doc["start"]["h"] != M.GENESIS_H):
+            raise IntegrityError(f"{rel} does not start at its position in the history", start=doc["start"])
+        proven = _PROVEN.setdefault((str(self.root.resolve()), sealed["seq"], sealed["sha256"]), {})
+        if proven.get(seq) == digest:
+            return doc
+        pin, chain = {"seq": seq, "sha256": digest}, {seq: digest}
+        for later in range(seq + 1, sealed["seq"] + 1):
+            head, later_digest = self.segment_header(later)
+            if head["prev"] != pin or (later == seq + 1 and head["start"] != end):
+                raise IntegrityError(f"{M.segment_rel(later)} does not link to the segment before it",
+                                     found=head["prev"], expected=pin)
+            pin = {"seq": later, "sha256": later_digest}
+            if proven.get(later) == later_digest:
+                break
+            chain[later] = later_digest
+        else:
+            if pin != sealed:
+                raise IntegrityError("the sealed segments do not lead to the one the hot root pins", found=pin,
+                                     sealed_head=sealed)
+        proven.update(chain)
+        return doc
+
+    def _tail_through(self, root: dict[str, Any]) -> dict[str, Any]:
+        """The tail, proven to hold the root's entries after its newest sealed segment: it may hold more (a later
+        commit appended to it), but its first entries end exactly at the root."""
+        sealed = root["sealed_head"]
+        raw = self._read(M.TAIL_REL)
+        if raw is None:
+            raise IntegrityError(f"history tail {M.TAIL_REL} is missing", path=M.TAIL_REL)
+        doc, _, digest = self._parsed(raw, M.TAIL_REL, sealed=False)
+        if (digest, root["count"], root["head_h"]) in _TAIL_PROVEN:
+            return doc
+        boundary = (sealed["seq"] if sealed else 0) * M.SEGMENT_SIZE
+        if doc["prev"] != sealed or doc["seq"] != (sealed["seq"] if sealed else 0) + 1 \
+                or doc["start"]["count"] != boundary or (not sealed and doc["start"]["h"] != M.GENESIS_H):
+            raise IntegrityError(f"{M.TAIL_REL} does not follow the root's newest sealed segment",
+                                 tail_prev=doc["prev"], sealed_head=sealed)
+        through = doc["entries"][:root["count"] - boundary]
+        if M.fold(doc["start"], through, source=M.TAIL_REL) != {"count": root["count"], "h": root["head_h"]}:
+            raise IntegrityError(f"{M.TAIL_REL} does not lead to the root", root={"count": root["count"],
+                                                                                 "h": root["head_h"]})
+        if len(_TAIL_PROVEN) > 64:
+            _TAIL_PROVEN.clear()
+        _TAIL_PROVEN.add((digest, root["count"], root["head_h"]))
+        return doc
+
+    def authenticate(self, root: dict[str, Any], entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The history's own copies of ``entries`` (from the derived index), each proven to be the entry ``root`` pins
+        at its sequence number (ADR-0011: the index locates entries, it never vouches for them). An entry that is not
+        is an ``EntryMismatch``; history files that do not prove what the root pins are an ``IntegrityError``. Each
+        file is read and proven once per call, however many entries it holds."""
+        docs: dict[int, dict[str, Any]] = {}
+        sealed = root["sealed_head"]
+        out = []
+        for e in entries:
+            seq = e.get("seq") if isinstance(e, dict) else None
+            if not isinstance(seq, int) or isinstance(seq, bool) or not 1 <= seq <= root["count"]:
+                raise EntryMismatch(f"an index entry names position {seq!r}, which the history root does not hold")
+            seg = M.segment_of(seq)
+            if seg not in docs:
+                docs[seg] = (self._proven_segment(root, seg) if sealed and seg <= sealed["seq"]
+                             else self._tail_through(root))
+            doc = docs[seg]
+            entry = doc["entries"][seq - doc["start"]["count"] - 1]
+            if entry != e:
+                raise EntryMismatch(f"the index entry at position {seq} is not the history's", seq=seq)
+            out.append(copy.deepcopy(entry))
+        return out
+
     def entry(self, root: dict[str, Any], seq: int, *, tail_raw: Any = _READ) -> dict[str, Any]:
         """Entry ``seq`` of the history ``root`` pins (1-based)."""
         if not 1 <= seq <= root["count"]:
@@ -273,11 +386,13 @@ class History:
         return None
 
     def verify(self, root: dict[str, Any], since: dict[str, Any] | None = None, *,
-               records: bool = True, tail_raw: Any = _READ, pinned: Pinned | None = None) -> Verification:
+               records: bool = True, tail_raw: Any = _READ, pinned: Pinned | None = None,
+               nested: Nested | None = None) -> Verification:
         """Verify the history from ``since`` (an earlier verified root's {count, h}; default everything) through
         ``root``: the chain, and with ``records`` each record's content against its entry, and (``pinned``) every
-        record that record pins against the hash it pins. Never raises for what it finds; every problem is reported,
-        attributed to its entry."""
+        record that record pins against the hash it pins, and (``nested``) every file a pinned file itself pins, to
+        any depth (each file once per entry). Never raises for what it finds; every problem is reported, attributed
+        to its entry."""
         start = dict(since) if since else {"count": 0, "h": M.GENESIS_H}
         report = Verification(start=start)
         try:
@@ -294,8 +409,21 @@ class History:
                     report.problems.append(f"entry {entry['seq']} ({entry['id']}): {exc.message}")
                     report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
                     continue
-                for rel, expected in pins:
-                    self._check(report, entry, rel, expected, f"{entry['id']}'s record")
+                queue, seen = list(pins), set()
+                while queue:
+                    rel, expected = queue.pop(0)
+                    if (rel, expected) in seen:
+                        continue
+                    seen.add((rel, expected))
+                    got = self._check(report, entry, rel, expected, f"{entry['id']}'s record")
+                    if got is None or nested is None:
+                        continue
+                    try:
+                        queue += nested(rel, got)
+                    except (IntegrityError, ValidationFailed) as exc:
+                        report.problems.append(f"entry {entry['seq']} ({entry['id']}): {rel}: {exc.message}")
+                        if not any(d["seq"] == entry["seq"] for d in report.damaged):
+                            report.damaged.append({"seq": entry["seq"], "kind": entry["kind"], "id": entry["id"]})
             report.through = {"count": root["count"], "h": root["head_h"]}
         except (IntegrityError, ValidationFailed) as exc:
             report.problems.append(f"chain: {exc.message}")

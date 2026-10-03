@@ -2,6 +2,7 @@ import { QueryClient, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
 import { transport } from '../api/transport';
+import { installRevisionReconciliation } from './revisions';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -27,12 +28,14 @@ export function installVisibility(
       void client.refetchQueries({ type: 'active' });
   };
   doc.addEventListener('visibilitychange', onVisible);
+  const disposeReconciliation = installRevisionReconciliation(client, doc);
   const onFocus = () => {
     if (doc.visibilityState === 'visible')
       void client.refetchQueries({ type: 'active' });
   };
   window.addEventListener('focus', onFocus);
   return () => {
+    disposeReconciliation();
     doc.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onFocus);
   };

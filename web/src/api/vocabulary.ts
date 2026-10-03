@@ -109,3 +109,13 @@ export const annotationRelations = [
   'lineage',
   'audit_finding',
 ] as const;
+/** History.links x-known-relations; distinct from Annotation.rel. */
+export const historyLinkRelations = [
+  'depends_on',
+  'invocations',
+  'tokens',
+  'evidence',
+  'integration_commit',
+  'moved_to',
+  'audit_finding',
+] as const;

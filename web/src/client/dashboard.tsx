@@ -59,6 +59,7 @@ export function useCapability(name: string) {
   return capabilityView(useDashboard().caps?.[name]);
 }
 export type ProjectionQuery = {
+  isEnabled?: boolean;
   data?: Projection<{ control_revision: string; generated_at: string }>;
   isError: boolean;
   error: Error | null;
@@ -68,11 +69,14 @@ export function PageSnapshot({
 }: {
   queries?: ProjectionQuery[];
 }) {
-  const all = [...useDashboard().common, ...queries];
+  const visibleQueries = queries.filter((q) => q.isEnabled !== false);
+  const all = [...useDashboard().common, ...visibleQueries].filter(
+    (q) => q.isEnabled !== false,
+  );
   return (
     <SnapshotBanner
       checks={
-        queries.some((q) => q.isError && !q.data)
+        visibleQueries.some((q) => q.isError && !q.data)
           ? []
           : all.flatMap((q) =>
               q.data

@@ -3019,14 +3019,26 @@
             "subject": null,
             "rel": null,
             "links": {
-              "moved_to": [
-                "S-0001"
-              ],
-              "lineage": [
+              "depends_on": [
                 "T-0002"
+              ],
+              "invocations": [
+                "INV-0001"
+              ],
+              "tokens": [
+                "TOKEN-0001"
+              ],
+              "evidence": [
+                "INV-0001-verification-1"
               ],
               "integration_commit": [
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ],
+              "moved_to": [
+                "S-0001"
+              ],
+              "audit_finding": [
+                "T-0003"
               ]
             },
             "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",
@@ -3053,14 +3065,26 @@
         "subject": null,
         "rel": null,
         "links": {
-          "moved_to": [
-            "S-0001"
-          ],
-          "lineage": [
+          "depends_on": [
             "T-0002"
+          ],
+          "invocations": [
+            "INV-0001"
+          ],
+          "tokens": [
+            "TOKEN-0001"
+          ],
+          "evidence": [
+            "INV-0001-verification-1"
           ],
           "integration_commit": [
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "moved_to": [
+            "S-0001"
+          ],
+          "audit_finding": [
+            "T-0003"
           ]
         },
         "sha256": "b04ce61a153372541b159de1ec706efb475cb99f45e120da398c7d59d7b09547",

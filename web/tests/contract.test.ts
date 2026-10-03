@@ -434,3 +434,13 @@ it('retains the conditional review alongside the exact accepted 0.1.2 record', (
   expect(approval.disposition).toBe('ACCEPT');
   expect(approval.document).toBe('web/docs/c0-review-main-line-0.1.2.md');
 });
+
+it('FR-1 History link vocabulary matches both canonical x-known-relations lists', () => {
+  for (const name of ['History', 'HistoryDetail'])
+    expect(
+      contract.components.schemas[name].properties.links['x-known-relations'],
+    ).toEqual([...vocabulary.historyLinkRelations]);
+  expect(vocabulary.historyLinkRelations).not.toEqual(
+    vocabulary.annotationRelations,
+  );
+});

@@ -20,6 +20,7 @@ import {
   historyKinds,
   trustSources,
   annotationRelations,
+  historyLinkRelations,
   workStates,
 } from '../api/vocabulary';
 function HistoricalTarget({ target }: { target: string }) {
@@ -34,6 +35,22 @@ function HistoricalTarget({ target }: { target: string }) {
       />
     </span>
   );
+}
+function HistoryLinkTarget({
+  relation,
+  target,
+}: {
+  relation: string;
+  target: string;
+}) {
+  if (relation === 'invocations')
+    return <EntityAnchor entity={{ id: target, kind: 'invocation' }} />;
+  if (relation === 'evidence')
+    return <EntityAnchor entity={{ id: target, kind: 'evidence' }} />;
+  if (['depends_on', 'moved_to', 'audit_finding'].includes(relation))
+    return <HistoricalTarget target={target} />;
+  // Tokens have no credential page; commits and unknown target types stay text.
+  return <code>{target}</code>;
 }
 function HistoricalWarning() {
   return (
@@ -282,8 +299,8 @@ export function HistoryDetailPage() {
             <section className="panel detail-main record-main">
               <h2>Lineage and links</h2>
               <p className="scope-note">
-                References carry opaque IDs. Work and History lookups inspect
-                the chosen projection; a target may be absent there.
+                References carry opaque IDs. Links follow their backend relation
+                type. A target may be absent from the chosen projection.
               </p>
               {Object.entries(h.links).length ? (
                 <dl>
@@ -292,18 +309,17 @@ export function HistoryDetailPage() {
                       <dt>
                         <SemanticValue
                           value={rel}
-                          known={[...annotationRelations, 'integration_commit']}
+                          known={historyLinkRelations}
                         />
                       </dt>
                       <dd>
                         {targets.length
                           ? targets.map((target) => (
                               <p key={target}>
-                                {rel === 'integration_commit' ? (
-                                  <code>{target}</code>
-                                ) : (
-                                  <HistoricalTarget target={target} />
-                                )}
+                                <HistoryLinkTarget
+                                  relation={rel}
+                                  target={target}
+                                />
                               </p>
                             ))
                           : 'No targets supplied'}

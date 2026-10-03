@@ -269,3 +269,48 @@ it('Attention reads backend decisions and Queue never invents a read endpoint', 
   ).toBe(false);
   queue.client.clear();
 });
+
+it('FR-1 recognized History link relations route to their actual projections without false warnings', async () => {
+  const { client } = mount(
+    <HistoryDetailPage />,
+    '/history/T-0004',
+    f3 as World,
+  );
+  await screen.findByRole('heading', { name: 'Lineage and links' });
+  expect(document.querySelector('.unknown')).toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'INV-0001' }).getAttribute('href'),
+  ).toBe('/runs/INV-0001');
+  expect(
+    screen
+      .getByRole('link', { name: 'INV-0001-verification-1' })
+      .getAttribute('href'),
+  ).toBe('/evidence/INV-0001-verification-1');
+  const work = screen
+    .getAllByRole('link', { name: 'Work lookup' })
+    .map((a) => a.getAttribute('href'));
+  const history = screen
+    .getAllByRole('link', { name: 'History lookup' })
+    .map((a) => a.getAttribute('href'));
+  for (const id of ['T-0002', 'S-0001', 'T-0003']) {
+    expect(work).toContain('/work/' + id);
+    expect(history).toContain('/history/' + id);
+  }
+  expect(screen.getByText('TOKEN-0001').closest('a')).toBeNull();
+  expect(screen.getByText('a'.repeat(40)).closest('a')).toBeNull();
+  client.clear();
+});
+it('FR-1 unknown History link types retain raw warnings and plain target IDs', async () => {
+  const world = structuredClone(f3) as World;
+  const entry = responseSchemas.HistoryResponse.parse(
+    world.responses['/history/T-0004'],
+  );
+  entry.data.links.future_relation = ['FUTURE-TARGET'];
+  world.responses['/history/T-0004'] = entry;
+  const { client } = mount(<HistoryDetailPage />, '/history/T-0004', world);
+  await screen.findByText('future_relation');
+  expect(screen.getByText('future_relation').closest('.unknown')).toBeTruthy();
+  expect(screen.getByText('FUTURE-TARGET').closest('a')).toBeNull();
+  expect([...document.querySelectorAll('a')].some(a => a.getAttribute('href')?.includes('FUTURE-TARGET'))).toBe(false);
+  client.clear();
+});

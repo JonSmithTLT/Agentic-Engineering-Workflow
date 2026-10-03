@@ -25,6 +25,7 @@ from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.history_ops import HistoryCommands
 from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
+from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import RolesPort
 from aew.engine.resume_ops import Resume
@@ -241,6 +242,7 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._project = ProjectAdmin(k, roles=roles)
+        self._migration = Migration(k, hierarchy=hierarchy)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -736,6 +738,9 @@ class Engine:
 
     def history_reindex(self) -> dict[str, Any]:
         return self._history.history_reindex()
+
+    def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
+        return self._migration.migrate(token=token, expect_rev=expect_rev)
 
     def archived_credential(self, state: dict[str, Any], token_id: str) -> dict[str, Any] | None:
         """A credential archived with finished work (ADR-0011 R7), for checks outside the engine (the Lead broker, a

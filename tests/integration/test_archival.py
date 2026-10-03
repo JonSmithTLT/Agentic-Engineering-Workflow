@@ -167,18 +167,24 @@ def test_an_edge_to_an_archived_parent_reads_its_integration_frontier(tmp_path):
     assert_control_invariants(p)
 
 
-def test_a_v1_project_keeps_its_finished_work_hot(tmp_path):
+def test_a_v1_project_changes_no_work_until_it_is_migrated(tmp_path):
+    """P2b kept a v1 project working without archival; P2d refuses its Lead mutations until `aew migrate`, which
+    arrives in the same PR (plan §6), and archives from then on."""
     p = sample_project(tmp_path)
     control = p.root / ".aew/state/control.yaml"
     state = load_control(p.root)
     state["schema"] = "aew/control/v1"
     state.pop("cold")
     control.write_bytes(serialize_control(state))
+    refused = p.aew("work", "create", "ticket", "--title", "Investigate", "--class", "1", "--non-mutating",
+                    "--token", p.token, "--expect-rev", str(p.rev()))
+    assert refused.error["code"] == "MIGRATION_REQUIRED"
+    assert p.lead("migrate")["migrated"] is True
     wid = create_investigation(p, tmp_path)
     complete_investigation(p, wid)
     state = hot(p)
-    assert state["schema"] == "aew/control/v1" and state["work"][wid]["state"] == "DONE" and "cold" not in state
-    assert not (p.root / ".aew/work" / wid / "archive.yaml").exists()
+    assert state["schema"] == "aew/control/v2" and wid not in state["work"]
+    assert (p.root / ".aew/work" / wid / "archive.yaml").exists()
     assert_control_invariants(p)
 
 

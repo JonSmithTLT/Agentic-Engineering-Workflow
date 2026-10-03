@@ -59,8 +59,10 @@ READ_ALL_CONTENT = {
 
 
 @contextmanager
-def _working_index(workspace: Path) -> Iterator[dict[str, str]]:
-    """A throwaway index holding the complete working state (tracked + untracked-not-ignored)."""
+def _working_index(workspace: Path, *, skip_aew: bool = False) -> Iterator[dict[str, str]]:
+    """A throwaway index holding the complete working state (tracked + untracked-not-ignored). With ``skip_aew``,
+    ``.aew/``'s working files are not read at all (the caller removes ``.aew/`` from the tree anyway): in the
+    authoritative checkout it can hold thousands of uncommitted records (ADR-0011 investigation §8.1)."""
     real_index = Path(git.out("rev-parse", "--path-format=absolute", "--git-path", "index", cwd=workspace))
     tmpdir = Path(tempfile.mkdtemp(prefix="aew-idx-"))
     try:
@@ -70,7 +72,8 @@ def _working_index(workspace: Path) -> Iterator[dict[str, str]]:
         env = {"GIT_INDEX_FILE": str(tmp_index), **READ_ALL_CONTENT}
         _neutralize_index_flags(workspace, env)
         try:
-            git.git("add", "-A", "--", ".", cwd=workspace, env=env)
+            git.git("add", "-A", "--", ".", *([f":(exclude){AEW_ROOT_REL}"] if skip_aew else []), cwd=workspace,
+                    env=env)
         except GitError:
             _refuse_reserved_names(workspace, env)
             raise
@@ -127,7 +130,7 @@ def relevant_inputs_fingerprint(
     include_ignored: list[str] | None = None,
 ) -> str:
     workspace = workspace.resolve()
-    with _working_index(workspace) as env:
+    with _working_index(workspace, skip_aew=True) as env:
         for path in [AEW_ROOT_REL, *(exclude or [])]:
             git.git("rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", path, cwd=workspace, env=env)
         for path in include_ignored or []:

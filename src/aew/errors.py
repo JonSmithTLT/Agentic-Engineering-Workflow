@@ -100,6 +100,12 @@ class InputStale(IllegalTransition):
     code = "INPUT_STALE"
 
 
+class MigrationRequired(IllegalTransition):
+    """The project's control state is v1: the Lead migrates it (`aew migrate`) before changing work (ADR-0011)."""
+
+    code = "MIGRATION_REQUIRED"
+
+
 class ObservationMutated(PermissionDenied):
     """A read-only (non-mutating) invocation changed its observation workspace (ADR-0008)."""
 

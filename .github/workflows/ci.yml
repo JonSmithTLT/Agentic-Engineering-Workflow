@@ -5,7 +5,8 @@ name: ci
 #
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job
-#   assurance            every collected test ran exactly once and passed on every OS (the merge gate)
+#   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
+#   assurance            every collected test ran exactly once and passed on every OS, and web passed (the merge gate)
 
 on:
   pull_request:
@@ -101,9 +102,13 @@ jobs:
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
 
+  web:
+    # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
+    uses: ./.github/workflows/web.yml
+
   assurance:
     # The merge gate: mark this check as required on `main`.
-    needs: [core, lanes]
+    needs: [core, lanes, web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -124,5 +129,6 @@ jobs:
       - name: Every test job succeeded
         if: always()
         run: |
-          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }}"
-          test "${{ needs.core.result }}" = success && test "${{ needs.lanes.result }}" = success
+          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }} web=${{ needs.web.result }}"
+          test "${{ needs.core.result }}" = success && test "${{ needs.lanes.result }}" = success \
+            && test "${{ needs.web.result }}" = success

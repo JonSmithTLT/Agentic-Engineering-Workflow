@@ -1,0 +1,252 @@
+{
+  "fixture": "F0",
+  "name": "Empty project",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "responses": {
+    "/project": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "id": "aew-demo",
+        "name": "Agentic Engineering Workflow",
+        "aew_version": "main-91c0d98"
+      }
+    },
+    "/capabilities": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "overview": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "work": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "runs": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "evidence": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "knowledge": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "history": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "action_projection": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "activity": {
+          "state": "AVAILABLE",
+          "reasons": []
+        },
+        "queue": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Queue is future M4/M5 work."
+            }
+          ]
+        },
+        "integrity": {
+          "state": "UNSUPPORTED",
+          "reasons": [
+            {
+              "code": "NOT_IMPLEMENTED",
+              "message": "Integrity audit is future P2c work."
+            }
+          ]
+        }
+      }
+    },
+    "/overview": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "project": {
+          "id": "aew-demo",
+          "name": "Agentic Engineering Workflow",
+          "aew_version": "main-91c0d98"
+        },
+        "health": {
+          "status": "HEALTHY",
+          "reasons": [],
+          "observed_at": "2026-10-02T12:00:00Z"
+        },
+        "summary": {
+          "format": "markdown",
+          "text": "No active work is reported."
+        },
+        "work": [],
+        "recent": [],
+        "runs": [],
+        "attention": [],
+        "activity": [],
+        "counts": {
+          "work": {
+            "open": 0,
+            "done": 0,
+            "cancelled": 0
+          },
+          "runs": 0,
+          "attention": 0
+        },
+        "capabilities": {
+          "overview": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "work": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "runs": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "evidence": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "knowledge": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "history": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "action_projection": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "activity": {
+            "state": "AVAILABLE",
+            "reasons": []
+          },
+          "queue": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Queue is future M4/M5 work."
+              }
+            ]
+          },
+          "integrity": {
+            "state": "UNSUPPORTED",
+            "reasons": [
+              {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Integrity audit is future P2c work."
+              }
+            ]
+          }
+        }
+      }
+    },
+    "/work": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/runs": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/evidence": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/knowledge": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/history": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/attention": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    },
+    "/activity": {
+      "schema_version": "0.1.2",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-02T12:00:00Z",
+      "data": {
+        "items": [],
+        "next_cursor": null
+      }
+    }
+  },
+  "models": {
+    "/project": "ProjectResponse",
+    "/capabilities": "CapabilitiesResponse",
+    "/overview": "OverviewResponse",
+    "/work": "WorkListResponse",
+    "/runs": "InvocationListResponse",
+    "/evidence": "EvidenceListResponse",
+    "/knowledge": "KnowledgeListResponse",
+    "/history": "HistoryListResponse",
+    "/attention": "AttentionListResponse",
+    "/activity": "ActivityListResponse"
+  },
+  "pages": {},
+  "page_models": {},
+  "scenarios": [],
+  "provisional_responses": {},
+  "provisional_models": {}
+}

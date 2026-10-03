@@ -1,0 +1,67 @@
+{
+  "status": "FRONTEND_CORE_ACCEPTED_FROZEN",
+  "implementation_commit": "7c120b4c39a059508e3b095a9bfd5498c1d7be09",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "contract_review": "ACCEPTED",
+  "visual_review": {
+    "status": "APPROVED",
+    "reviewer": "user",
+    "date": "2026-10-02",
+    "feedback": "i like teh visuals it looks good so far!"
+  },
+  "offline_tests_passed": 73,
+  "browser_checks_passed": {
+    "d1_regression": 18,
+    "core": 12,
+    "review_fixes": 4
+  },
+  "independent_frontend_review": {
+    "status": "ACCEPTED",
+    "reviewer": "Claude, main AEW agent",
+    "date": "2026-10-02",
+    "reviewed_commit": "e632cc83135ed98f70804df166d1c88f37a0b674",
+    "scope": "Frozen static core review and fixing code/test diff verification; implementer tests, browser checks and negative control were not independently rerun",
+    "document": "web/docs/frontend-core-review-main-line.md",
+    "findings": [
+      {
+        "id": "FR-1",
+        "severity": "Medium",
+        "status": "RESOLVED_ACCEPTED",
+        "fixing_commit": "7c120b4c39a059508e3b095a9bfd5498c1d7be09"
+      },
+      {
+        "id": "FR-2",
+        "severity": "Low",
+        "status": "RESOLVED_ACCEPTED",
+        "fixing_commit": "7c120b4c39a059508e3b095a9bfd5498c1d7be09"
+      }
+    ],
+    "fixing_diff_verification": "ACCEPTED",
+    "fix_response": "web/docs/frontend-core-review-fix-response.md",
+    "initial_disposition": "AMEND_MINOR",
+    "verified_fix_commit": "7c120b4c39a059508e3b095a9bfd5498c1d7be09",
+    "acceptance_date": "2026-10-02",
+    "acceptance_section": "Fix verification: ACCEPT (2026-10-02)",
+    "non_blocking_notes": [
+      {
+        "id": "FR-1-audit-target-follow-up",
+        "status": "DEFERRED_NON_BLOCKING",
+        "description": "audit_finding targets are audit IDs found through History only; the accepted implementation also offers a Work lookup. A later focused polish can remove that redundant lookup without blocking core freeze.",
+        "acceptance_criteria": "An audit_finding target offers only History lookup; invocation/evidence/unit destinations and unknown-relation warnings remain correct."
+      }
+    ]
+  },
+  "core_freeze": "FROZEN",
+  "integrated_system_acceptance": "NOT_RUN",
+  "queue": "UNSUPPORTED_NO_ACCEPTED_WIRE_MODEL",
+  "integrity": "CAPABILITY_GATED_SYNTHETIC_AVAILABLE_RENDERER_CHECK_ONLY",
+  "regression_negative_control": {
+    "source_commit": "e632cc83135ed98f70804df166d1c88f37a0b674",
+    "expected_failures_observed": 5,
+    "tests_skipped": 12,
+    "scope": "Frozen runtime with focused new tests and all-seven F3 fixture"
+  },
+  "core_freeze_commit": "7c120b4c39a059508e3b095a9bfd5498c1d7be09",
+  "core_freeze_date": "2026-10-02"
+}

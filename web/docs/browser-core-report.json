@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "playwright": "1.59.1",
+  "chromium_revision": "1217",
+  "browser_version": "147.0.7727.15",
+  "checks": [
+    "Runs includes no-harness invocations, nested harness inspection and detail reload",
+    "Evidence backend work filter, provenance/bindings, safe JSON and deep-link reload",
+    "Knowledge page grouping, decision details, provenance and deep-link reload",
+    "Manifest/trust/hash details, lineage, annotation list and bounded annotation request after reload",
+    "50000-record History fixture stays bounded; cursor page and generated deep detail reload",
+    "Attention displays backend decision/reasons and subject links without action controls",
+    "Downgraded History/Attention and Queue suppress requests and explain unavailable capabilities",
+    "All core collection pages and expanded Evidence bindings fit phone viewport with panel-only table overflow",
+    "Keyboard skip link and theme control remain functional on expanded core routes",
+    "Normal production serves every core route through fixture-backed same-origin API with no demo controls or workers",
+    "Synthetic AVAILABLE integrity: structured current/verified/full roots, backend backlog/reasons, no inferred audit status",
+    "No console/page errors, CSP errors, remote subresources or API mutations"
+  ],
+  "errors": [],
+  "remote": [],
+  "writes": [],
+  "scope": "D2-D4 focused compiled checks; fixture-backed adapter and explicit synthetic integrity response, not live Engine acceptance",
+  "date": "2026-10-02",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691"
+}

@@ -3,21 +3,18 @@ import { useProjection } from './queries';
 import { responseSchemas } from '../api/schema';
 import { capabilityView } from '../api/capabilities';
 import type { Projection } from '../api/transport';
-import {
-  SnapshotBanner,
-  LoadError,
-  Unavailable,
-} from '../components/States';
+import { SnapshotBanner, LoadError, Unavailable } from '../components/States';
 function useDashboardState() {
-  const capabilities = useProjection(
-    '/capabilities',
-    responseSchemas.CapabilitiesResponse,
-    'list',
-  );
   const project = useProjection(
     '/project',
     responseSchemas.ProjectResponse,
     'detail',
+  );
+  const capabilities = useProjection(
+    '/capabilities',
+    responseSchemas.CapabilitiesResponse,
+    'list',
+    !!project.data,
   );
   const caps = capabilities.data?.value.data;
   const overviewAvailable = capabilityView(caps?.overview).available;
@@ -32,11 +29,7 @@ function useDashboardState() {
     project,
     overview,
     caps,
-    common: [
-      capabilities,
-      project,
-      ...(overviewAvailable ? [overview] : []),
-    ],
+    common: [capabilities, project, ...(overviewAvailable ? [overview] : [])],
   };
 }
 const DashboardContext = createContext<ReturnType<
@@ -100,8 +93,17 @@ export function CapabilityGate({
   name: string;
   children: ReactNode;
 }) {
-  const { capabilities, caps } = useDashboard();
+  const { capabilities, caps, project } = useDashboard();
   const value = useCapability(name);
+  if (!project.data && project.isError)
+    return (
+      <LoadError
+        message={project.error.message}
+        retry={() => {
+          void project.refetch();
+        }}
+      />
+    );
   if (!caps)
     return capabilities.isError ? (
       <LoadError
@@ -113,8 +115,7 @@ export function CapabilityGate({
     ) : (
       <p role="status">Loading project capabilities…</p>
     );
-  if (!value.available)
-    return <Unavailable explanation={value.explanation} />;
+  if (!value.available) return <Unavailable explanation={value.explanation} />;
   return <>{children}</>;
 }
 export function ProjectionMetadata({

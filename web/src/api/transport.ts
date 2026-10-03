@@ -1,3 +1,5 @@
+import { ReadContext, liveIdentity, type ReadIdentity } from './read-context';
+import { readClock } from '../client/clock';
 import { z } from 'zod';
 import { requestLog, type RequestLog, type RequestTrace } from './diagnostics';
 export type Projection<T> = {
@@ -7,10 +9,34 @@ export type Projection<T> = {
 };
 export class ReadTransport {
   private cache = new Map<string, Projection<unknown>>();
+  context = new ReadContext();
+  private listeners = new Set<() => void>();
+  private revision = 0;
+  snapshot = () => this.revision;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+  private changed() {
+    this.revision++;
+    for (const listener of this.listeners) listener();
+  }
+  reset(identity: ReadIdentity = liveIdentity, notify = true) {
+    this.context.retire();
+    this.cache.clear();
+    this.log.clear();
+    this.context = new ReadContext({ ...identity });
+    if (notify) this.changed();
+  }
+  notify() {
+    this.changed();
+  }
   constructor(
     private request: typeof fetch = (input, init) =>
       globalThis.fetch(input, init),
-    private now = () => new Date(),
+    private now = () => readClock.now(),
     private log: RequestLog = requestLog,
   ) {}
   async get<T>(
@@ -28,12 +54,15 @@ export class ReadTransport {
         `/api/v1${route.split('?')[0]}`
     )
       throw new Error('Invalid API route');
-    const prior = this.cache.get(route) as Projection<T> | undefined;
+    const context = this.context;
+    const key = JSON.stringify([context.key(route), route]);
+    const prior = this.cache.get(key) as Projection<T> | undefined;
     const headers = new Headers({ Accept: 'application/json' });
     if (prior?.etag) headers.set('If-None-Match', prior.etag);
-    const started = performance.now();
+    const started = readClock.monotonic();
     const trace: Omit<RequestTrace, 'id'> = {
       path: `/api/v1${route}`.slice(0, 2048),
+      context: context.key(route).slice(0, 1024),
       started_at: this.now().toISOString(),
       duration_ms: 0,
       status: null,
@@ -67,7 +96,7 @@ export class ReadTransport {
           last_checked_at: this.now().toISOString(),
         };
       }
-      if (signal?.aborted)
+      if (context.retired || this.context !== context || signal?.aborted)
         throw new DOMException('Request aborted', 'AbortError');
       const envelope = next.value as {
         project_id?: unknown;
@@ -94,7 +123,17 @@ export class ReadTransport {
       )
         trace.diagnostic =
           'Browser observation: 304 returned an ETag different from the requested validator.';
-      this.cache.set(route, next);
+      if (route === '/project' && typeof envelope.project_id === 'string') {
+        const wasBound = context.projectId !== undefined;
+        context.bind(envelope.project_id);
+        if (!wasBound) this.changed();
+      } else if (
+        context.projectId !== undefined &&
+        envelope.project_id !== context.projectId
+      ) {
+        throw new Error('Projection belongs to a different project');
+      }
+      this.cache.set(key, next);
       return next;
     } catch (error) {
       trace.error =
@@ -107,14 +146,17 @@ export class ReadTransport {
               : 'Request failed';
       if (error instanceof z.ZodError)
         trace.validation = error.issues.slice(0, 100).map((issue) => ({
-          field: issue.path.length ? issue.path.map(String).join('.') : '$',
+          field: issue.path.length
+            ? issue.path.map(String).join('.').slice(0, 2048)
+            : '$',
           code: issue.code,
           message: issue.message.slice(0, 512),
         }));
       throw error;
     } finally {
-      trace.duration_ms = Math.round((performance.now() - started) * 10) / 10;
-      this.log.record(trace);
+      trace.duration_ms =
+        Math.round((readClock.monotonic() - started) * 10) / 10;
+      if (!context.retired && this.context === context) this.log.record(trace);
     }
   }
 }

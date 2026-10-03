@@ -7,7 +7,7 @@ import {
 } from 'react-router-dom';
 import type { z } from 'zod';
 import type { Projection } from '../api/transport';
-import { useProjection } from '../client/queries';
+import { useProjection, comparisonScope } from '../client/queries';
 import {
   CapabilityGate,
   PageSnapshot,
@@ -21,10 +21,7 @@ import { CopyCli } from './CopyCli';
 import { EntityAnchor } from './EntityAnchor';
 
 function locationScope() {
-  return import.meta.env.MODE === 'demo'
-    ? ':demo:' +
-        (new URLSearchParams(window.location.search).get('fixture') ?? 'F1')
-    : ':live';
+  return comparisonScope();
 }
 type Envelope<T> = {
   schema_version: '0.1.2';

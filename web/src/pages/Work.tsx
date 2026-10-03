@@ -5,7 +5,7 @@ import {
   Link,
   useLocation,
 } from 'react-router-dom';
-import { useProjection } from '../client/queries';
+import { useProjection, comparisonScope } from '../client/queries';
 import {
   useCapability,
   CapabilityGate,
@@ -155,18 +155,10 @@ export function WorkPage() {
               key={
                 query.data.value.project_id +
                 workRoute(params) +
-                (import.meta.env.MODE === 'demo'
-                  ? (params.get('fixture') ?? 'F1')
-                  : 'live')
+                comparisonScope()
               }
               project={query.data.value.project_id}
-              scope={
-                'work:' +
-                workRoute(params) +
-                (import.meta.env.MODE === 'demo'
-                  ? ':demo:' + (params.get('fixture') ?? 'F1')
-                  : ':live')
-              }
+              scope={'work:' + workRoute(params) + comparisonScope()}
               revision={query.data.value.control_revision}
               items={query.data.value.data.items}
             />

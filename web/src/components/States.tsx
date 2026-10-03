@@ -1,3 +1,4 @@
+import { readClock } from '../client/clock';
 import { capabilityNames } from '../api/schema';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -19,18 +20,14 @@ export function SnapshotBanner({
   useEffect(() => {
     const tick = () =>
       setPersistent(
-        clock.current.sample(
-          mixed,
-          document.visibilityState === 'visible',
-          performance.now(),
-        ),
+        clock.current.sample(mixed, readClock.visible(), readClock.monotonic()),
       );
     tick();
-    const timer = window.setInterval(tick, 1000);
-    document.addEventListener('visibilitychange', tick);
+    const timer = readClock.manual ? undefined : window.setInterval(tick, 1000);
+    const dispose = readClock.subscribe(tick);
     return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', tick);
+      if (timer !== undefined) window.clearInterval(timer);
+      dispose();
     };
   }, [mixed]);
   return (

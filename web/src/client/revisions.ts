@@ -1,3 +1,5 @@
+import { reconciliationGroup } from '../api/read-context';
+import { readClock } from './clock';
 import type { QueryClient } from '@tanstack/react-query';
 import type { Projection } from '../api/transport';
 type RevisionEnvelope = { project_id: string; control_revision: string };
@@ -20,7 +22,8 @@ export function installRevisionReconciliation(
   const attempted = new WeakMap<object, bigint>();
   let disposed = false;
   function reconcile() {
-    if (disposed || doc.visibilityState !== 'visible') return;
+    if (disposed || readClock.manual || doc.visibilityState !== 'visible')
+      return;
     const active = client
       .getQueryCache()
       .findAll({ type: 'active', queryKey: ['projection'] });
@@ -30,12 +33,19 @@ export function installRevisionReconciliation(
     });
     const highest = new Map<string, bigint>();
     for (const record of records) {
-      const prior = highest.get(record.project);
+      const prior = highest.get(
+        reconciliationGroup(record.query.queryKey[1], record.project),
+      );
       if (prior === undefined || record.number > prior)
-        highest.set(record.project, record.number);
+        highest.set(
+          reconciliationGroup(record.query.queryKey[1], record.project),
+          record.number,
+        );
     }
     for (const { query, project, number } of records) {
-      const target = highest.get(project)!;
+      const target = highest.get(
+        reconciliationGroup(query.queryKey[1], project),
+      )!;
       if (
         number >= target ||
         query.state.fetchStatus !== 'idle' ||

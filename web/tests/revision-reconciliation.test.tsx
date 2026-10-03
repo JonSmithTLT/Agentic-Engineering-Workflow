@@ -3,7 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { DashboardProvider, PageSnapshot } from '../src/client/dashboard';
-import { installVisibility, useProjection } from '../src/client/queries';
+import {
+  installVisibility,
+  useProjection,
+  projectionKey,
+} from '../src/client/queries';
 import { ReadTransport, transport } from '../src/api/transport';
 import { responseSchemas } from '../src/api/schema';
 import { DemoProjector } from '../src/api/mock/projector';
@@ -161,7 +165,7 @@ it('an unchanged high revision causes one immediate catch-up attempt, not a self
     probe.setRevision(43n);
     await act(async () => {
       await probe.client.refetchQueries({
-        queryKey: ['projection', '/overview'],
+        queryKey: projectionKey('/overview'),
         exact: true,
       });
     });
@@ -184,7 +188,7 @@ it('decimal revisions beyond Number precision are compared numerically and catch
     probe.setRevision(9007199254740992n);
     await act(async () => {
       await probe.client.refetchQueries({
-        queryKey: ['projection', '/overview'],
+        queryKey: projectionKey('/overview'),
         exact: true,
       });
     });
@@ -192,7 +196,7 @@ it('decimal revisions beyond Number precision are compared numerically and catch
     probe.setRevision(9007199254740993n);
     await act(async () => {
       await probe.client.refetchQueries({
-        queryKey: ['projection', '/overview'],
+        queryKey: projectionKey('/overview'),
         exact: true,
       });
     });
@@ -213,8 +217,8 @@ it('hidden, disabled and inactive projections cannot trigger or receive automati
       last_checked_at: '2026-10-02T12:00:00Z',
     };
     act(() => {
-      probe.client.setQueryData(['projection', '/knowledge?limit=100'], high);
-      probe.client.setQueryData(['projection', '/work/T-inactive'], high);
+      probe.client.setQueryData(projectionKey('/knowledge?limit=100'), high);
+      probe.client.setQueryData(projectionKey('/work/T-inactive'), high);
     });
     await tick(50);
     expect(screen.getByText('CURRENT')).toBeTruthy();
@@ -228,7 +232,7 @@ it('hidden, disabled and inactive projections cannot trigger or receive automati
     act(() => visibility('hidden'));
     const count = probe.request.mock.calls.length;
     act(() =>
-      probe.client.setQueryData(['projection', '/overview'], {
+      probe.client.setQueryData(projectionKey('/overview'), {
         value: { ...f1.responses['/overview'], control_revision: '43' },
         last_checked_at: '2026-10-02T12:00:00Z',
       }),

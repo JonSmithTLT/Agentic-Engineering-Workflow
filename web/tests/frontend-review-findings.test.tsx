@@ -8,7 +8,11 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { DashboardProvider, PageSnapshot } from '../src/client/dashboard';
 import { HistoryDetailPage } from '../src/pages/History';
-import { useProjection, installVisibility } from '../src/client/queries';
+import {
+  useProjection,
+  installVisibility,
+  projectionKey,
+} from '../src/client/queries';
 import { installRevisionReconciliation } from '../src/client/revisions';
 import { responseSchemas } from '../src/api/schema';
 import { historyLinkRelations } from '../src/api/vocabulary';
@@ -227,7 +231,7 @@ it('FR-2 excludes hidden, disabled and other-project projections and compares la
     ['/foreign', value('other', '0'), other, true],
   ] as const;
   const observers = specs.map(([route, data, fn, enabled]) => {
-    const key = ['projection', route];
+    const key = projectionKey(route);
     client.setQueryData(key, data);
     const observer = new QueryObserver(client, {
       queryKey: key,

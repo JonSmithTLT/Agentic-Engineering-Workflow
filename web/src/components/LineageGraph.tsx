@@ -1,3 +1,4 @@
+import { projectionKey } from '../client/queries';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -65,7 +66,7 @@ export function LineageGraph({
       const loaded = node.record
         ? undefined
         : await client.fetchQuery({
-            queryKey: ['projection', route],
+            queryKey: projectionKey(route),
             queryFn: () =>
               transport.get(
                 route,

@@ -1,6 +1,7 @@
 export type RequestTrace = {
   id: number;
   path: string;
+  context?: string;
   started_at: string;
   duration_ms: number;
   status: number | null;

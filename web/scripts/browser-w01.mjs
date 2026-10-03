@@ -15,6 +15,7 @@ const revision = JSON.parse(
 ).browsers.find((b) => b.name === 'chromium').revision;
 const browser = await chromium.launch({
   executablePath:
+    process.env.CHROMIUM_PATH ??
     process.env.PLAYWRIGHT_BROWSER_EXECUTABLE ??
     path.resolve(
       `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,

@@ -43,6 +43,8 @@ const checks = [],
 async function check(name, fn) {
   current = name;
   await fn();
+  assert.equal(errors.length, 0, JSON.stringify(errors));
+  assert(!responses.some((r) => !r.expected), JSON.stringify(responses));
   checks.push({ name, result: 'PASS' });
   console.log('PASS ' + name);
 }
@@ -68,9 +70,11 @@ try {
   );
   await Promise.all([ready(base, demo), ready(production, prod)]);
   browser = await chromium.launch({
-    executablePath: path.resolve(
-      'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome',
-    ),
+    executablePath:
+      process.env.CHROMIUM_PATH ??
+      path.resolve(
+        'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome',
+      ),
   });
   context = await browser.newContext({
     viewport: { width: 1600, height: 1000 },
@@ -120,6 +124,16 @@ try {
   );
   const shot = async (name) =>
     page.screenshot({ path: out + '/' + name + '.png', fullPage: true });
+  async function guardedDemo(url) {
+    await page.goto(url);
+    // Presentation guards render before the shared Overview read completes.
+    // Let this document finish bootstrap before the next deep-link case
+    // unloads it and MSW deactivates its client.
+    await page
+      .locator('.header-tools')
+      .getByText('HEALTHY', { exact: true })
+      .waitFor();
+  }
   await check(
     'Work workspace preserves results while Why uses no extra reads',
     async () => {
@@ -292,9 +306,9 @@ try {
     'Malformed IDs and unsupported history do not fall back to current reads',
     async () => {
       await page.setViewportSize({ width: 1600, height: 1000 });
-      await page.goto(base + '/work?fixture=F1&selected=%3Cbad%3E');
+      await guardedDemo(base + '/work?fixture=F1&selected=%3Cbad%3E');
       await page.getByText(/Locally malformed identifier/).waitFor();
-      await page.goto(base + '/work?fixture=F1&selected=T-0001&rev=41');
+      await guardedDemo(base + '/work?fixture=F1&selected=T-0001&rev=41');
       await page.getByText(/Historical snapshot reads/).waitFor();
       assert(
         !requests
@@ -306,7 +320,7 @@ try {
         url: base + '/api/v1/work/FutureNamespace-009',
         status: 404,
       });
-      await page.goto(base + '/work?fixture=F1&selected=FutureNamespace-009');
+      await guardedDemo(base + '/work?fixture=F1&selected=FutureNamespace-009');
       await page.getByText('Not found (404)', { exact: true }).waitFor();
       assert(
         requests.some(

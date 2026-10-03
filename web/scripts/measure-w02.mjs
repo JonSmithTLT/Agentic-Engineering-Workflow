@@ -38,9 +38,11 @@ try {
     await new Promise((r) => globalThis.setTimeout(r, 100));
   }
   browser = await chromium.launch({
-    executablePath: path.resolve(
-      'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome',
-    ),
+    executablePath:
+      process.env.CHROMIUM_PATH ??
+      path.resolve(
+        'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome',
+      ),
   });
   const results = [];
   for (const [fixture, route] of [

@@ -275,3 +275,12 @@ launcher already provides browser libraries. Use Ubuntu WSL for Linux worktree
 metadata and `/snap/bin/docker` to avoid the PATH-selected Desktop shim. No
 carrier rebuild, dependency installation or SPT source repair. Sandbox credential
 and engine-pipe access failures do not establish invalid authentication.
+
+Follow-up: main-line merges retained the W01 repair, but the next CI run exposed
+W02 guarded deep links replacing the document before common Overview bootstrap
+completed. Waiting for F1's supplied header health prevents premature demo-worker
+deactivation between those cases; strict errors remain failures. The operator also
+requested `CHROMIUM_PATH` now, implemented in all ten browser/measurement scripts
+with existing defaults retained. A wrapper path containing spaces was used by
+both W01/W02; all 26 groups and affected-script lint pass. The latest offline
+117-test gate passes. The live-server/session interface stays deferred to F20.3/6.

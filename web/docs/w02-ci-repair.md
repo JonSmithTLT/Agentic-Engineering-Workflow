@@ -64,6 +64,21 @@ integration is not claimed, and merging remains the operator's action.
 
 ## Shared execution setup
 
+All browser scripts and `measure-w02.mjs` now accept `CHROMIUM_PATH`. It takes
+precedence over the existing staged Linux executable default. W01 also retains
+`PLAYWRIGHT_BROWSER_EXECUTABLE` below `CHROMIUM_PATH` in precedence. An invalid
+explicit path fails normally; there is no silent fallback to another browser.
+
+For example, from PowerShell with a separate Windows Node/npm installation:
+
+```powershell
+$env:CHROMIUM_PATH = 'C:\path\to\chrome.exe'
+node scripts/browser-w02.mjs
+```
+
+This changes executable selection only. A configurable live-server/session
+target remains deferred to F20.6 after F20.3 establishes the cookie interface.
+
 Use Ubuntu WSL for this checkout's Linux Git pointer, dependency links and
 Chromium. Windows Git cannot interpret its `/mnt/c/...` worktree pointer.
 
@@ -84,5 +99,33 @@ PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f46697860
 
 This produces `web/artifacts/offline-gate/dist` and `dist-demo`. It does not
 establish live-server acceptance. Native Windows Node22/npm and Windows Chromium
-would be a separate installation; the W02 harness's Linux executable path and
-its fixture-server launcher must also be adapted for native/live execution.
+would be a separate installation; `CHROMIUM_PATH` now supports its executable
+selection. The fixture-server launcher still needs a separate live-server mode.
+
+## Follow-up CI failure on the merged head
+
+The web lane passed on repair commit `1075f58`, including all 26 browser groups.
+Subsequent main-line merges superseded that run before assurance finished.
+Run [37138201933](https://github.com/JonSmithTLT/Agentic-Engineering-Workflow/actions/runs/37138201933)
+on `927e941` again passed all W01 groups, then caught an unexpected Overview 404
+in W02's malformed-ID check. The trace shows consecutive deep-link loads only
+about 220 ms apart; the presentation guard appeared before the shared Overview
+bootstrap completed. The next navigation deactivated the demo worker while
+that unrelated common read was still outstanding.
+
+The guarded deep-link cases now wait for F1's supplied `HEALTHY` header value,
+which appears only after the common Overview read completes, before replacing
+the document. The malformed/historical guards still issue no Work reads; the
+valid opaque ID still requests its accepted Work lookup and returns the one
+explicitly allowed 404. No sleep, retry, timeout increase or error suppression
+is added. W02 also checks unexpected errors/responses before declaring each
+group passed. The new failure artifact remains in
+`web/output/ci-failure-37138201933`.
+
+Final local validation is recorded in
+[the follow-up result](w02-ci-repair-evidence/final-result.json): all 16 W01 and
+10 W02 groups pass with exact Node22 and a `CHROMIUM_PATH` wrapper containing
+spaces. Both launches record use of the wrapper, and W01 overrides a deliberately
+invalid legacy path. An invalid explicit `CHROMIUM_PATH` fails without fallback.
+All affected browser scripts pass lint; the offline gate again passes 117 tests
+and both builds. The latest pushed head's CI remains the merge prerequisite.

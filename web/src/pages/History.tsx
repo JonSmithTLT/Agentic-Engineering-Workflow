@@ -1,3 +1,4 @@
+import { LineageGraph } from '../components/LineageGraph';
 import { useSearchParams } from 'react-router-dom';
 import {
   CollectionView,
@@ -283,7 +284,7 @@ export function HistoryDetailPage() {
       historical
       suffix={'?' + query.toString()}
     >
-      {(h) => (
+      {(h, projection) => (
         <>
           <div className="page-heading">
             <div>
@@ -295,6 +296,11 @@ export function HistoryDetailPage() {
             <SemanticValue value={h.kind} known={historyKinds} />
           </div>
           <HistoricalWarning />
+          <LineageGraph
+            key={h.id + params.toString()}
+            record={h}
+            projection={projection}
+          />
           <div className="detail-grid">
             <section className="panel detail-main record-main">
               <h2>Lineage and links</h2>

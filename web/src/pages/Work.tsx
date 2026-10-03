@@ -18,6 +18,8 @@ import { SemanticValue, LoadError } from '../components/States';
 import { SafeContent } from '../components/Content';
 import { EntityAnchor } from '../components/EntityAnchor';
 import { WorkTable } from '../components/WorkTable';
+import { SinceViewed } from '../components/SinceViewed';
+import { CopyCli } from '../components/CopyCli';
 import { WorkGraph } from '../components/WorkGraph';
 import { workRoute } from './work-model';
 export function WorkPage() {
@@ -73,10 +75,9 @@ export function WorkPage() {
               onChange={(e) => change('state', e.target.value)}
             >
               <option value="">Active + recent finished</option>
-              {state &&
-                !values.includes(state as (typeof values)[number]) && (
-                  <option value={state}>{state}</option>
-                )}
+              {state && !values.includes(state as (typeof values)[number]) && (
+                <option value={state}>{state}</option>
+              )}
               {values.map((v) => (
                 <option key={v} value={v}>
                   {v.replaceAll('_', ' ')}
@@ -150,6 +151,25 @@ export function WorkPage() {
           )
         ) : (
           <>
+            <SinceViewed
+              key={
+                query.data.value.project_id +
+                workRoute(params) +
+                (import.meta.env.MODE === 'demo'
+                  ? (params.get('fixture') ?? 'F1')
+                  : 'live')
+              }
+              project={query.data.value.project_id}
+              scope={
+                'work:' +
+                workRoute(params) +
+                (import.meta.env.MODE === 'demo'
+                  ? ':demo:' + (params.get('fixture') ?? 'F1')
+                  : ':live')
+              }
+              revision={query.data.value.control_revision}
+              items={query.data.value.data.items}
+            />
             <section className="panel">
               <div className="panel-heading">
                 <h2>Work records</h2>
@@ -192,10 +212,7 @@ export function WorkPage() {
                 <button
                   disabled={!query.data.value.data.next_cursor}
                   onClick={() => {
-                    setPrevious((old) => [
-                      ...old,
-                      params.get('cursor') ?? '',
-                    ]);
+                    setPrevious((old) => [...old, params.get('cursor') ?? '']);
                     page(query.data!.value.data.next_cursor!);
                   }}
                 >
@@ -267,6 +284,7 @@ export function WorkDetailPage() {
                   known={['epic', 'story', 'ticket']}
                 />
                 <h1>{work.title}</h1>
+                <CopyCli kind="work" id={work.id} />
               </div>
               <SemanticValue
                 value={work.state}
@@ -316,15 +334,8 @@ export function WorkDetailPage() {
                       <h2>Direct children</h2>
                       <Link
                         to={(() => {
-                          const params = new URLSearchParams(
-                            location.search,
-                          );
-                          for (const key of [
-                            'cursor',
-                            'state',
-                            'kind',
-                            'view',
-                          ])
+                          const params = new URLSearchParams(location.search);
+                          for (const key of ['cursor', 'state', 'kind', 'view'])
                             params.delete(key);
                           params.set('parent', work.id);
                           return '/work?' + params.toString();
@@ -335,9 +346,7 @@ export function WorkDetailPage() {
                     </div>
                     {work.children.map((child) => (
                       <p key={child}>
-                        <EntityAnchor
-                          entity={{ id: child, kind: 'work' }}
-                        />
+                        <EntityAnchor entity={{ id: child, kind: 'work' }} />
                       </p>
                     ))}
                     {work.children_truncated && (
@@ -377,9 +386,7 @@ export function WorkDetailPage() {
                     )}
                   </dd>
                   <dt>Attention</dt>
-                  <dd>
-                    {work.has_attention ? 'Reported' : 'None reported'}
-                  </dd>
+                  <dd>{work.has_attention ? 'Reported' : 'None reported'}</dd>
                   <dt>Integration status</dt>
                   <dd>
                     <SemanticValue
@@ -394,9 +401,7 @@ export function WorkDetailPage() {
                   </dd>
                   <dt>Integrated commit</dt>
                   <dd>
-                    <code>
-                      {work.integration?.commit ?? 'Not supplied'}
-                    </code>
+                    <code>{work.integration?.commit ?? 'Not supplied'}</code>
                   </dd>
                   <dt>Commit-ready sequence</dt>
                   <dd>

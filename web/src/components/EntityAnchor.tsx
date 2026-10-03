@@ -1,3 +1,4 @@
+import { CopyCli } from './CopyCli';
 import { Link, useLocation } from 'react-router-dom';
 import { entityLink } from '../api/links';
 import { SemanticValue } from './States';
@@ -36,7 +37,10 @@ export function EntityAnchor({
     }
   const search = context.size ? '?' + context.toString() : '';
   return href && capability.available ? (
-    <Link to={href + search}>{label}</Link>
+    <span className="entity-with-cli">
+      <Link to={href + search}>{label}</Link>
+      <CopyCli kind={entity.kind} id={entity.id} />
+    </span>
   ) : (
     <span title={capability.explanation}>
       {label}

@@ -6,6 +6,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import type { z } from 'zod';
+import type { Projection } from '../api/transport';
 import { useProjection } from '../client/queries';
 import {
   CapabilityGate,
@@ -15,8 +16,16 @@ import {
 } from '../client/dashboard';
 import { id as identity } from '../api/schema';
 import { LoadError } from './States';
+import { SinceViewed } from './SinceViewed';
+import { CopyCli } from './CopyCli';
 import { EntityAnchor } from './EntityAnchor';
 
+function locationScope() {
+  return import.meta.env.MODE === 'demo'
+    ? ':demo:' +
+        (new URLSearchParams(window.location.search).get('fixture') ?? 'F1')
+    : ':live';
+}
 type Envelope<T> = {
   schema_version: '0.1.2';
   project_id: string;
@@ -145,6 +154,20 @@ export function CollectionView<T>({
           )
         ) : (
           <>
+            {name === 'runs' && (
+              <SinceViewed
+                key={query.data.value.project_id + route + locationScope()}
+                project={query.data.value.project_id}
+                scope={'runs:' + route + locationScope()}
+                revision={query.data.value.control_revision}
+                items={(
+                  query.data.value.data.items as {
+                    id: string;
+                    status?: string | null;
+                  }[]
+                ).map((item) => ({ id: item.id, state: item.status ?? null }))}
+              />
+            )}
             <section className="panel collection-panel">
               <div className="panel-heading">
                 <h2>{title} records</h2>
@@ -201,7 +224,7 @@ export function DetailView<T>({
   schema: z.ZodType<Envelope<T>>;
   historical?: boolean;
   suffix?: string;
-  children: (data: T) => ReactNode;
+  children: (data: T, projection: Projection<Envelope<T>>) => ReactNode;
 }) {
   const { id = '' } = useParams();
   const location = useLocation();
@@ -237,7 +260,15 @@ export function DetailView<T>({
           )
         ) : (
           <>
-            {children(query.data.value.data)}
+            <div className="entity-actions">
+              <CopyCli kind={name === 'runs' ? 'invocation' : name} id={id} />
+              {name === 'evidence' && (
+                <p className="scope-note">
+                  This AEW CLI has no read-only evidence show command.
+                </p>
+              )}
+            </div>
+            {children(query.data.value.data, query.data)}
             {historical && (
               <button
                 onClick={() => {

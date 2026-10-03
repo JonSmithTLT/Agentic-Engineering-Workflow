@@ -1041,3 +1041,189 @@ summary {
     height: 430px;
   }
 }
+
+/* Optional integration tools use the existing compact workbench tokens. */
+.entity-with-cli {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.copy-cli {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.copy-cli button {
+  padding: 2px 6px;
+  font-size: 11px;
+  min-height: 24px;
+}
+.copy-cli [role='status'] {
+  color: var(--muted);
+}
+.copy-cli code {
+  display: block;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.entity-actions {
+  margin-bottom: 12px;
+}
+.developer-panel {
+  position: fixed;
+  bottom: 0;
+  left: 224px;
+  right: 0;
+  z-index: 50;
+  height: min(460px, 65vh);
+  background: var(--surface);
+  border-top: 2px solid var(--accent);
+  padding: 12px 20px;
+  overflow: auto;
+  box-shadow: 0 -8px 30px #0002;
+}
+.developer-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.developer-panel .panel-heading {
+  padding: 0 0 10px;
+  gap: 12px;
+}
+.developer-panel .panel-heading p {
+  font-size: 12px;
+  margin: 4px 0;
+}
+.developer-panel .scope-note {
+  margin: 0 0 8px;
+}
+.developer-requests details {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.developer-requests summary {
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.developer-requests summary code {
+  flex: 1;
+  min-width: 200px;
+  overflow-wrap: anywhere;
+}
+.developer-requests dl {
+  font-size: 12px;
+}
+.developer-requests dd {
+  overflow-wrap: anywhere;
+}
+.request-issue {
+  border-left: 3px solid var(--accent);
+}
+.jump-dialog {
+  width: min(480px, calc(100vw - 32px));
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+.jump-dialog::backdrop {
+  background: #0006;
+}
+.jump-dialog h2 {
+  margin-top: 0;
+}
+.jump-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0;
+}
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+@media (max-width: 1023px) {
+  .developer-panel {
+    left: 0;
+  }
+}
+.since-viewed {
+  margin: 14px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+}
+.since-viewed summary {
+  cursor: pointer;
+}
+.lineage-panel {
+  margin-bottom: 20px;
+}
+.lineage-panel > .scope-note,
+.lineage-panel > .preview-note {
+  margin: 14px 16px;
+}
+.lineage-canvas {
+  max-height: 490px;
+  overflow: auto;
+  background: var(--canvas);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.lineage-surface {
+  position: relative;
+}
+.lineage-card {
+  position: absolute;
+  width: 236px;
+  min-height: 114px;
+  max-height: 138px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 10px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.lineage-card.reference-card {
+  border-style: dashed;
+}
+.lineage-card .entity-with-cli {
+  gap: 4px;
+}
+.lineage-card > code,
+.lineage-card small {
+  color: var(--muted);
+}
+.lineage-card button {
+  font-size: 11px;
+  padding: 2px 6px;
+  align-self: flex-start;
+}
+.lineage-relations {
+  padding: 14px 16px;
+}
+.lineage-error {
+  font-size: 11px;
+}
+.lineage-reset {
+  margin: 0 16px;
+}
+.developer-requests summary::before {
+  content: '▸';
+  color: var(--muted);
+}
+.developer-requests details[open] summary::before {
+  content: '▾';
+}

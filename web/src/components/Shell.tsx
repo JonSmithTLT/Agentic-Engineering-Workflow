@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useDashboard } from '../client/dashboard';
 import { SemanticValue, CapabilityWarnings } from './States';
 import { NavLink, Outlet } from 'react-router-dom';
+import { DeveloperPanel } from './DeveloperPanel';
+import { JumpToId } from './JumpToId';
 const navigation = [
   ['/', 'Overview'],
   ['/attention', 'Attention'],
@@ -15,14 +17,24 @@ const navigation = [
 export function Shell({ demoTools }: { demoTools?: ReactNode }) {
   const { project, overview, caps } = useDashboard();
   const demo = import.meta.env.MODE === 'demo';
+  const [developer, setDeveloper] = useState(false);
+  const developerTrigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem('aew-theme') ?? 'system',
-  );
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('aew-theme') ?? 'system';
+    } catch {
+      return 'system';
+    }
+  });
   function changeTheme(value: string) {
     setTheme(value);
     document.documentElement.dataset.theme = value;
-    localStorage.setItem('aew-theme', value);
+    try {
+      localStorage.setItem('aew-theme', value);
+    } catch {
+      /* Theme still works for this session. */
+    }
   }
   const context = new URLSearchParams();
   if (demo) {
@@ -100,6 +112,14 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
                 known={['HEALTHY', 'DEGRADED', 'UNHEALTHY', 'UNKNOWN']}
               />
             )}
+            <JumpToId />
+            <button
+              ref={developerTrigger}
+              aria-expanded={developer}
+              onClick={() => setDeveloper(!developer)}
+            >
+              API panel
+            </button>
             {demoTools}
             <span className="header-status">
               {demo ? 'Demo data' : 'Read-only'}
@@ -110,6 +130,14 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
           {caps && <CapabilityWarnings values={caps} />}
           <Outlet />
         </main>
+        {developer && (
+          <DeveloperPanel
+            close={() => {
+              setDeveloper(false);
+              developerTrigger.current?.focus();
+            }}
+          />
+        )}
         <footer>
           AEW workbench <span>Accepted API 0.1.2 · Read-only projections</span>
         </footer>

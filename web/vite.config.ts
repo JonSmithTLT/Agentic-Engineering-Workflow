@@ -34,6 +34,7 @@ export default defineConfig(({ mode }) => ({
     headers: {
       'Content-Security-Policy': csp,
       'Referrer-Policy': 'no-referrer',
+      'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Cross-Origin-Resource-Policy': 'same-origin',
     },

@@ -19,7 +19,12 @@ import { HistoryPage, HistoryDetailPage } from './pages/History';
 import { AttentionPage, QueuePage } from './pages/Attention';
 import './styles.css';
 async function start() {
-  const saved = localStorage.getItem('aew-theme');
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem('aew-theme');
+  } catch {
+    /* Storage is optional. */
+  }
   if (saved && ['system', 'light', 'dark'].includes(saved))
     document.documentElement.dataset.theme = saved;
   let DemoTools: ComponentType | undefined;
@@ -27,11 +32,30 @@ async function start() {
     const { worker } = await import('./api/mock/browser');
     await worker.start({
       onUnhandledRequest: 'bypass',
-      serviceWorker: { url: '/mockServiceWorker.js' },
+      serviceWorker: {
+        url: '/mockServiceWorker.js',
+        options: { updateViaCache: 'none' },
+      },
     });
     DemoTools = (await import('./api/mock/DemoTools')).default;
   }
-  installVisibility(queryClient);
+  let detachVisibility = installVisibility(queryClient);
+  // Stop old-document reads before the demo worker deactivates on navigation.
+  // Resume focus/revision handling when restored from the browser back cache.
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      detachVisibility();
+      void queryClient.cancelQueries();
+    },
+    { capture: true },
+  );
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      detachVisibility = installVisibility(queryClient);
+      void queryClient.refetchQueries({ type: 'active' });
+    }
+  });
   createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useReadSession, useProjection } from '../../../client/queries';
 import { CopyDashboardLink } from '../../../components/CopyDashboardLink';
@@ -30,7 +30,7 @@ function SourceChooser({ name, side }: { name: string; side: 'a' | 'b' }) {
     {!valid && <p role="alert">Malformed work ID; no collection request sent.</p>}
     <button onClick={() => update({ choose: null })}>Close source chooser</button>
     {query.error && <ErrorState error={query.error} retry={() => void query.refetch()} />}
-    {query.data ? <><div className="table-scroll"><table><thead><tr><th>Source</th><th>Invocation</th><th>Work</th><th>Status</th><th>Snapshot / captured UTC</th></tr></thead><tbody>{query.data.value.data.items.map(s => <tr key={s.id}><td><button onClick={() => update({ [side + '_source']: s.id, [side + '_run']: null, choose: null })}>Select {s.id} for {side.toUpperCase()}</button></td><td><code>{s.invocation_id}</code></td><td><code>{s.work.id}</code></td><td><SemanticValue value={s.status} known={invocationStatuses} /></td><td>{s.snapshot_id ?? 'Current source'}<br /><time>{s.captured_at ?? 'Capture time not supplied'}</time></td></tr>)}</tbody></table></div>
+    {query.data ? <><div className="table-scroll"><table role="table"><thead role="rowgroup"><tr role="row"><th>Source / supplied summary</th><th>Invocation</th><th>Work</th><th>Status</th><th>Snapshot / captured UTC</th></tr></thead><tbody role="rowgroup">{query.data.value.data.items.map(s => <tr role="row" key={s.id}><td role="cell"><button onClick={() => update({ [side + '_source']: s.id, [side + '_run']: null, choose: null })}>Select {s.id} for {side.toUpperCase()}</button><p className="source-choice-summary">{s.summary ?? 'No summary supplied.'}{s.summary_truncated && '… (supplied summary excerpt)'}</p></td><td role="cell"><span className="chooser-field-label">Invocation: </span><code>{s.invocation_id}</code></td><td role="cell"><span className="chooser-field-label">Work: </span><code>{s.work.id}</code></td><td role="cell"><span className="chooser-field-label">Status: </span><SemanticValue value={s.status} known={invocationStatuses} /></td><td role="cell"><span className="chooser-field-label">Snapshot / captured UTC: </span>{s.snapshot_id ?? 'Current source'}<br /><time>{s.captured_at ?? 'Capture time not supplied'}</time></td></tr>)}</tbody></table></div>
       {!query.data.value.data.items.length && <p className="empty">No comparison sources supplied for this filter.</p>}
       <Pager next={query.data.value.data.next_cursor} cursorKey="source_cursor" resetKey={`${name}:${work}`} /><details><summary>Collection response metadata</summary><SourceStrip source={query.data} failed={!!query.error} /></details></> : !query.error && <p role="status">Loading source choices…</p>}
   </section>;
@@ -85,10 +85,13 @@ function Workspace({ name }: { name: string }) {
     if (!choose && (prior === 'a' || prior === 'b')) focusBelowHeader(document.querySelector(`[data-change-side="${prior}"]`));
   }, [choose]);
   const back = () => { restoring.current = true; update({ packet: null, packet_side: null, packet_cursor: null, packet_section: null, packet_disposition: null, packet_tab: null }); };
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (inspector || !restoring.current) return;
-    const frame = requestAnimationFrame(() => { window.scrollTo({ top: restore.current?.scroll ?? 0, behavior: 'instant' }); const target = Array.from(document.querySelectorAll<HTMLElement>('[data-packet-link]')).find(el => el.dataset.packetLink === restore.current?.key); if (target) target.focus({ preventScroll: true }); else focusBelowHeader(document.querySelector('.comparison-workspace h1')); restoring.current = false; });
-    return () => cancelAnimationFrame(frame);
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-packet-link]')).find(el => el.dataset.packetLink === restore.current?.key);
+    if (restore.current && !target) return;
+    window.scrollTo({ top: restore.current?.scroll ?? 0, behavior: 'instant' });
+    focusBelowHeader(target ?? document.querySelector('.comparison-workspace h1'));
+    restoring.current = false;
   }, [inspector, a.data, b.data]);
   return <div className="comparison-workspace"><h1 tabIndex={-1}>Invocation comparison</h1><p className="preview-note">Investigation preview · 0.1.0 PROVISIONAL · Fictional fixtures. Frontend acceptance is not backend adoption.</p>
     <p role="status">A: {params.get('a_source') ?? 'Not selected'} · B: {params.get('b_source') ?? 'Not selected'}</p><CopyDashboardLink />

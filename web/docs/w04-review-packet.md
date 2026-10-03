@@ -2,7 +2,7 @@
 
 ## Disposition and source
 
-W04-01–03 is implemented as a demo-only Investigation preview 0.1.0 PROVISIONAL. Operator approval is factual and bound to plan1.0 in `web/docs/design/plans/w04-approval.json`. Independent frontend fixture acceptance is **PENDING**; the implementer checks below do not substitute for a reviewer performing the product task. Backend schema adoption and live integration remain separately pending. No Engine work records were created and no Engine suites were invoked locally.
+W04-01–03 is implemented as a demo-only Investigation preview 0.1.0 PROVISIONAL. Operator approval is factual and bound to plan1.0 in `web/docs/design/plans/w04-approval.json`. The independent reviewer required three minor changes against2f271c0; fixes are documented in `web/docs/w04-review-fix-response.md` and frozen in `web/docs/w04-review-fixes-evidence/result.json`. Re-check and independent frontend fixture acceptance are **PENDING**; the implementer checks below do not substitute for a reviewer performing the product task. Backend schema adoption and live integration remain separately pending. No Engine work records were created and no Engine suites were invoked locally.
 
 Implementation starts at merged W03 `86d301b5dc848de095028470b6efcc3b515c420c`. The exact source freeze, preview digest, commands, screenshot hashes and measurements are in `web/docs/w04-evidence/result.json` and `SHA256SUMS`. Review the commit named there. Evidence commits do not change runtime code.
 

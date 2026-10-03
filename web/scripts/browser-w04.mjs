@@ -37,7 +37,21 @@ async function check(name, mode, run, options = {}) {
 }
 const sourceA = page => page.getByRole('region', { name: 'Source A', exact: true });
 const sourceB = page => page.getByRole('region', { name: 'Source B', exact: true });
-async function choose(page, side, source) { await page.getByRole('button', { name: `Change ${side}` }).click(); await page.getByRole('button', { name: `Select ${source} for ${side}`, exact: true }).click(); await (side === 'A' ? sourceA(page) : sourceB(page)).getByText(source, { exact: true }).waitFor(); }
+async function choose(page, side, source) {
+  await page.getByRole('button', { name: `Change ${side}` }).click();
+  const button = page.getByRole('button', { name: `Select ${source} for ${side}`, exact: true });
+  await button.waitFor();
+  const row = page.getByRole('row').filter({ has: button });
+  assert((await row.locator('.source-choice-summary').textContent()).length > 0);
+  const phone = page.viewportSize().width < 1024;
+  if (phone) {
+    assert(await page.locator('.source-chooser .table-scroll').evaluate(el => el.scrollWidth <= el.clientWidth));
+    assert(await row.evaluate(el => { const cells = Array.from(el.querySelectorAll('td')); return cells.every((cell, index) => !index || cell.getBoundingClientRect().top >= cells[index - 1].getBoundingClientRect().bottom); }));
+  }
+  if (side === 'A') { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `${out}/chooser-${new URL(page.url()).port === httpPort ? 'http' : 'worker'}-${phone ? 'phone' : 'desktop'}.png`, fullPage: true }); }
+  await button.click();
+  await (side === 'A' ? sourceA(page) : sourceB(page)).getByText(source, { exact: true }).waitFor();
+}
 const storyLink = '/compare?fixture=F1&a_source=SRC-Removal&b_source=SRC-Retry';
 try {
   await Promise.all([ready(httpPort, http), ready(workerPort, worker)]);
@@ -54,8 +68,12 @@ try {
     await page.getByRole('button', { name: 'Inspect PKT-Removal', exact: true }).click();
     await page.getByRole('heading', { name: 'Context packet PKT-Removal' }).waitFor(); await page.getByText('Mistaken hypothesis: missing index references suggest dead code.', { exact: true }).waitFor();
     await page.getByRole('tab', { name: 'Receipts', exact: true }).click(); await page.getByText('No delivery receipt supplied.', { exact: true }).waitFor();
+    await page.getByText('Missing receipts mean the event is unknown in this projection; they do not establish that it did not occur.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Back to comparison', exact: true }).click();
     await page.waitForFunction(() => document.activeElement?.textContent === 'Inspect PKT-Removal');
+    await page.waitForTimeout(3000);
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Inspect PKT-Removal');
+    assert(await page.evaluate(() => document.activeElement.getBoundingClientRect().top >= document.querySelector('.project-header').getBoundingClientRect().bottom));
     await page.getByRole('button', { name: 'Inspect PKT-Retry', exact: true }).click();
     await page.getByText('Refreshed compile_commands reveals generated callers.', { exact: true }).waitFor();
     assert.equal(await page.getByText('J-05', { exact: true }).count(), 0);
@@ -66,7 +84,7 @@ try {
     await page.reload(); await page.getByText('CLANGD-D42', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Copy dashboard link', exact: true }).click(); const copied = await page.evaluate(() => navigator.clipboard.readText()); assert.equal(new URL(copied).searchParams.get('packet_tab'), 'provenance');
     await page.getByRole('button', { name: 'Back to comparison', exact: true }).click(); await choose(page, 'B', 'SRC-Later');
-    await page.getByRole('tab', { name: 'References', exact: true }).click(); await page.getByRole('button', { name: 'Inspect PKT-Later', exact: true }).click(); await page.getByRole('link', { name: 'J-05', exact: true }).click(); await page.getByRole('heading', { name: /^J-05 · Refresh/ }).waitFor(); await page.goBack(); await page.getByRole('link', { name: 'J-05', exact: true }).waitFor();
+    await page.getByRole('tab', { name: 'References', exact: true }).click(); await page.getByRole('button', { name: 'Inspect PKT-Later', exact: true }).click(); await page.getByRole('link', { name: 'J-05', exact: true }).click(); await page.getByRole('heading', { name: /^J-05 · Refresh/ }).waitFor(); await page.goBack(); await page.getByRole('link', { name: 'J-05', exact: true }).waitFor(); await page.waitForFunction(() => document.activeElement?.textContent === 'J-05'); assert(await page.evaluate(() => window.scrollY > 0));
     await page.getByRole('tab', { name: 'Receipts', exact: true }).click(); await page.getByText('RECEIPT-Later-DELIVERY', { exact: true }).waitFor(); await page.getByText('No output citation receipt supplied.', { exact: true }).waitFor(); await page.getByText('No benefit evaluation supplied.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     measurements.push({ mode, viewport: phone ? 'phone' : 'desktop', requests: requests.filter(r => r.url.includes('/api/preview/investigation/')).length, dom_nodes: await page.locator('*').count() });
@@ -114,7 +132,7 @@ try {
   await check('hostile excerpts, dark theme, 200 percent text zoom and keyboard tabs', 'http', async (page, base, requests) => {
     await page.goto(base + storyLink + '&investigation_case=hostile&compare_tab=references'); await page.getByRole('button', { name: 'Inspect PKT-Retry', exact: true }).click(); await page.getByText('Safe supplied excerpt', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.w04Attack), undefined); assert(!requests.some(r => r.url.includes('attacker.invalid')));
-    await page.getByRole('tab', { name: 'Contents', exact: true }).focus(); await page.keyboard.press('End'); assert.equal(await page.getByRole('tab', { name: 'Provenance', exact: true }).getAttribute('aria-selected'), 'true');
+    await page.getByRole('tab', { name: 'Contents', exact: true }).focus(); await page.keyboard.press('End'); await page.waitForURL(/packet_tab=provenance/); assert.equal(await page.getByRole('tab', { name: 'Provenance', exact: true }).getAttribute('aria-selected'), 'true');
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false); await page.screenshot({ path: `${out}/dark-zoom.png`, fullPage: true });
   }, { dark: true, phone: true });
   await check('304 metadata and hidden current-source polling', 'http', async (page, base, requests) => {

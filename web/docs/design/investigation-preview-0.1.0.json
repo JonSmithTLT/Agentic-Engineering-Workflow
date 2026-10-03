@@ -23,6 +23,7 @@
     ]
   },
   "bounds": {
+    "source_summary_characters": 512,
     "section_summaries": 32,
     "receipts": 100,
     "page": 50,
@@ -32,7 +33,7 @@
   "rules": [
     "Packet, source and receipt bindings must match exact supplied identity and snapshot.",
     "Raw prompt content, credentials and unauthorized candidate identities are excluded.",
-    "Source collection exposes summaries only; detail access is independent.",
+    "Source collection exposes metadata and supplied summary excerpts of at most512characters with explicit truncation; denied summaries are null and detail access is independent.",
     "Fixed snapshots never advance silently.",
     "Missing explanations and receipts are not inferred from adjacent content.",
     "Structural comparison never establishes causation.",
@@ -563,6 +564,20 @@
                     ],
                     "additionalProperties": false
                   },
+                  "summary": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "summary_truncated": {
+                    "type": "boolean"
+                  },
                   "status": {
                     "type": "string",
                     "maxLength": 64
@@ -608,6 +623,8 @@
                   "id",
                   "invocation_id",
                   "work",
+                  "summary",
+                  "summary_truncated",
                   "status",
                   "mode",
                   "snapshot_id",

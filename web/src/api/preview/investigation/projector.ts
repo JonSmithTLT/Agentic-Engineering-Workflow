@@ -38,7 +38,7 @@ export class InvestigationProjector {
     if (offset > sorted.length) return { status: 400 };
     if (offset + limit < sorted.length) next = encodeURIComponent(JSON.stringify([scope, offset + limit]));
     const page = sorted.slice(offset, offset + limit);
-    const items = match ? page : page.map(value => { const s = value as typeof data.sources[number]; return { id: s.id, invocation_id: s.invocation.id, work: s.invocation.work, status: s.invocation.status, mode: s.mode, snapshot_id: s.snapshot_id, captured_at: s.captured_at, visibility_scope: s.visibility_scope }; });
+    const items = match ? page : page.map(value => { const s = value as typeof data.sources[number]; const text = name === 'denied' && s.id !== 'SRC-Removal' ? null : s.invocation.summary?.text ?? null; return { id: s.id, invocation_id: s.invocation.id, work: s.invocation.work, summary: text?.slice(0, 512) ?? null, summary_truncated: text !== null && text.length > 512, status: s.invocation.status, mode: s.mode, snapshot_id: s.snapshot_id, captured_at: s.captured_at, visibility_scope: s.visibility_scope }; });
     return { status: 200, body: investigationEnvelope({ items, next_cursor: next }, project, revision) };
   }
 }

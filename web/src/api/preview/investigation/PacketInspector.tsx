@@ -1,4 +1,6 @@
 import { ReceiptCard } from './ReceiptCard';
+import { useLocation } from 'react-router-dom';
+import { returnPosition } from './return-focus';
 import { useEffect, useRef, useMemo } from 'react';
 import { useProjection } from '../../../client/queries';
 import { SourceStrip } from '../../../components/Investigation';
@@ -28,6 +30,7 @@ function PacketItems({ packet, reader, name, selection }: { packet: Packet; read
   </>;
 }
 export function PacketInspector({ query, packetId, name, back }: { query: SourceQuery; packetId: string; name: string; back: () => void }) {
+  const location = useLocation(), returningReference = useRef(returnPosition(location.state));
   const { params, update } = useControls(), source = query.data?.value.data, tab = params.get('packet_tab') ?? 'contents';
   const association = source?.packets.find(p => p.id === packetId);
   const route = `/packets/${encodeURIComponent(packetId)}?` + new URLSearchParams({ case: name, source_id: source?.id ?? '' });
@@ -35,7 +38,7 @@ export function PacketInspector({ query, packetId, name, back }: { query: Source
   const packetQuery = useProjection(route, schema, 'history', !!association, true, query.reader, false);
   const packet = packetQuery.data?.value.data, issue = packet && source ? packetBindingIssue(packet, source) : undefined;
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { if (packet && !issue) focusBelowHeader(heading.current); }, [packetId, !!packet, issue]);
+  useEffect(() => { if (packet && !issue && !returningReference.current) focusBelowHeader(heading.current); }, [packetId, !!packet, issue]);
   return <section className="packet-inspector"><button onClick={back}>Back to comparison</button><h2 ref={heading} tabIndex={-1}>Context packet {packetId}</h2>
     {query.error && <ErrorState error={query.error} retry={() => void query.refetch()} />}
     {source && !association && <p role="alert">Packet is not supplied for this source. No packet request sent.</p>}
@@ -46,7 +49,7 @@ export function PacketInspector({ query, packetId, name, back }: { query: Source
       <InvestigationTabs prefix="packet" label="Packet sections" tabs={packetTabs} active={tab} select={id => update({ packet_tab: id })} />
       <div role="tabpanel" id={`packet-panel-${tab}`} aria-labelledby={`packet-tab-${tab}`}>
         {(tab === 'contents' || tab === 'selection') && <>{tab === 'selection' && <section className="panel"><h3>Supplied accounting</h3>{packet.accounting.length ? <div className="table-scroll"><table><thead><tr><th>Unit</th><th>Amount / limit</th><th>Estimator</th><th>Tokenizer</th></tr></thead><tbody>{packet.accounting.map((a, i) => <tr key={i}><td><SemanticValue value={a.unit} known={['TOKENS', 'BYTES']} /></td><td>{a.amount ?? 'Not supplied'} / {a.limit ?? 'Not supplied'}</td><td>{a.estimator_id ?? 'Not supplied'}</td><td>{a.tokenizer_id ?? 'Not supplied'}</td></tr>)}</tbody></table></div> : <p>No accounting supplied.</p>}<p>Policy: {packet.policy_id ?? 'Not supplied'} · Trigger: {packet.trigger ?? 'Not supplied'}</p></section>}<PacketItems packet={packet} reader={query.reader} name={name} selection={tab === 'selection'} /></>}
-        {tab === 'receipts' && <>{!packet.receipts_complete && <p className="preview-note">Receipt projection is incomplete; no stage can be treated as an exhaustive history.</p>}{[['PREPARATION', 'Preparation', 'No preparation receipt supplied.'], ['DELIVERY', 'Delivery acknowledgment', 'No delivery receipt supplied.'], ['CITATION', 'Output citations', 'No output citation receipt supplied.'], ['BENEFIT', 'Benefit evaluations', 'No benefit evaluation supplied.']].map(([type, title, absent]) => <section className="panel" key={type}><h3>{title}</h3>{packet.receipts.filter(r => r.type === type).length ? packet.receipts.filter(r => r.type === type).map(r => <ReceiptCard key={r.id} receipt={r} />) : <p>{absent}</p>}</section>)}{packet.receipts.filter(r => !knownReceiptTypes.includes(r.type)).map(r => <ReceiptCard key={r.id} receipt={r} />)}</>}
+        {tab === 'receipts' && <><p className="scope-note">Missing receipts mean the event is unknown in this projection; they do not establish that it did not occur.</p>{!packet.receipts_complete && <p className="preview-note">Receipt projection is incomplete; no stage can be treated as an exhaustive history.</p>}{[['PREPARATION', 'Preparation', 'No preparation receipt supplied.'], ['DELIVERY', 'Delivery acknowledgment', 'No delivery receipt supplied.'], ['CITATION', 'Output citations', 'No output citation receipt supplied.'], ['BENEFIT', 'Benefit evaluations', 'No benefit evaluation supplied.']].map(([type, title, absent]) => <section className="panel" key={type}><h3>{title}</h3>{packet.receipts.filter(r => r.type === type).length ? packet.receipts.filter(r => r.type === type).map(r => <ReceiptCard key={r.id} receipt={r} />) : <p>{absent}</p>}</section>)}{packet.receipts.filter(r => !knownReceiptTypes.includes(r.type)).map(r => <ReceiptCard key={r.id} receipt={r} />)}</>}
         {tab === 'provenance' && <section className="panel"><dl><dt>Prepared UTC</dt><dd>{packet.prepared_at ?? 'Not supplied'}</dd><dt>Supplied fingerprint</dt><dd><code>{packet.fingerprint ?? 'Not supplied'}</code></dd><dt>Producer</dt><dd>{packet.producer ? `${packet.producer.id} · ${packet.producer.role ?? 'Role not supplied'}` : 'Not supplied'}</dd><dt>Source revision</dt><dd>{packet.source_revision ?? 'Not supplied'}</dd><dt>Environment</dt><dd>{packet.environment.join(' · ') || 'Not supplied'}</dd></dl><h3>Canonical references</h3><References values={packet.canonical_references} /><p>Canonical decisions remain references to their authoritative records. “Included in context” references do not establish delivery, use, or benefit.</p><details><summary>Packet response metadata</summary><SourceStrip source={packetQuery.data!} failed={!!packetQuery.error} readSnapshot={query.reader.context.identity.snapshot} /></details></section>}
       </div></>}
     {!packet && !packetQuery.error && !query.error && association && <p role="status">Loading packet…</p>}

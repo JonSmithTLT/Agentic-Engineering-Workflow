@@ -62,8 +62,19 @@ describe('W04 supplied context domain', () => {
     const server = new InvestigationProjector();
     const list = investigationSchemas.ComparisonSourceListResponse.parse(server.read(url('/sources?case=denied')).body);
     expect(list.data.items.find(s => s.id === 'SRC-Retry')).not.toHaveProperty('model_id');
+    expect(list.data.items.find(s => s.id === 'SRC-Retry')?.summary).toBeNull();
     expect(server.read(url('/sources/SRC-Retry?case=denied')).status).toBe(403);
     expect(server.read(url('/packets/PKT-Retry?case=denied&source_id=SRC-Retry')).status).toBe(403);
+  });
+  it('supplies bounded chooser summaries with explicit truncation instead of prose inference', () => {
+    const invocation = structuredClone(investigationFixture().sources[0].invocation);
+    invocation.summary.text = 'x'.repeat(600);
+    const server = new InvestigationProjector('F1', [invocation]);
+    const list = investigationSchemas.ComparisonSourceListResponse.parse(server.read(url('/sources')).body);
+    const row = list.data.items.find(s => s.id === `CURRENT-${invocation.id}`)!;
+    expect(row.summary).toHaveLength(512); expect(row.summary_truncated).toBe(true);
+    const detail = investigationSchemas.ComparisonSourceResponse.parse(server.read(url(`/sources/${row.id}`)).body);
+    expect(detail.data.invocation.summary.text).toHaveLength(600);
   });
   it('compares only complete supplied values, with reference order ignored', () => {
     expect(structuralState(null, null)).toBe('Unavailable');

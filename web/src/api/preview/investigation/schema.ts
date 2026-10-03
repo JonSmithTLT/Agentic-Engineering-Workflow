@@ -6,7 +6,7 @@ const identityMeta = z.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9._:
 const refs = z.array(entityRef).max(250);
 export const investigationCases = ['story', 'later-ticket', 'parallel', 'large', 'missing', 'partial', 'contradictory', 'unknown', 'denied', 'not-found', 'historical-unavailable', 'malformed', 'stale', 'refresh-error', 'hostile', 'empty'] as const;
 const packetAssociation = z.strictObject({ id, source_id: id, invocation_id: id, run_id: id.nullable() });
-export const sourceSummary = z.strictObject({ id, invocation_id: id, work: entityRef, status: z.string().max(64), mode: z.enum(['CURRENT', 'FIXED']), snapshot_id: id.nullable(), captured_at: timestamp.nullable(), visibility_scope: id });
+export const sourceSummary = z.strictObject({ id, invocation_id: id, work: entityRef, summary: z.string().max(512).nullable(), summary_truncated: z.boolean(), status: z.string().max(64), mode: z.enum(['CURRENT', 'FIXED']), snapshot_id: id.nullable(), captured_at: timestamp.nullable(), visibility_scope: id });
 export const comparisonSource = z.strictObject({
   id, invocation, mode: z.enum(['CURRENT', 'FIXED']), snapshot_id: id.nullable(), captured_at: timestamp.nullable(), visibility_scope: id,
   work_revision: meta, source_revision: meta, environment: z.array(z.string().max(512)).max(30),

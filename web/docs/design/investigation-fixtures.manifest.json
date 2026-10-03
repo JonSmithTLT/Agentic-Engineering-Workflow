@@ -1,7 +1,7 @@
 {
   "contract": "investigation-preview",
   "version": "0.1.0",
-  "sha256": "67371cb732a8adf3b2ec3c9fce31bc50d5742d88b137c33ae8ac43511021fc8a",
+  "sha256": "79a1ac8460a8c4e39260c37c85197c16041f71e998023f039e292a2249bd436d",
   "cases": {
     "story": {
       "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"

@@ -13,12 +13,17 @@ export function WorkGraph({ items }: { items: Work[] }) {
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [selection, setSelection] = useState('');
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     x: number;
     y: number;
     left: number;
     top: number;
+    panX: number;
+    panY: number;
+    fitsX: boolean;
+    fitsY: boolean;
   } | null>(null);
   const graph = workGraph(items, collapsed, focus);
   const selected = graph.choices.find((node) => node.id === selection);
@@ -27,6 +32,7 @@ export function WorkGraph({ items }: { items: Work[] }) {
   function center(id: string) {
     const node = graph.nodes.find((node) => node.id === id);
     if (node && viewport.current) {
+      setPan({ x: 0, y: 0 });
       viewport.current.scrollLeft =
         (node.x + graphCard.width / 2) * zoom -
         viewport.current.clientWidth / 2;
@@ -50,6 +56,7 @@ export function WorkGraph({ items }: { items: Work[] }) {
                 else next.delete('focus');
                 return next;
               });
+              setPan({ x: 0, y: 0 });
               if (viewport.current) {
                 viewport.current.scrollTop = 0;
                 viewport.current.scrollLeft = 0;
@@ -84,9 +91,17 @@ export function WorkGraph({ items }: { items: Work[] }) {
           >
             +
           </button>
-          <button onClick={() => setZoom(1)}>Reset zoom</button>
           <button
             onClick={() => {
+              setZoom(1);
+              setPan({ x: 0, y: 0 });
+            }}
+          >
+            Reset zoom
+          </button>
+          <button
+            onClick={() => {
+              setPan({ x: 0, y: 0 });
               setZoom(
                 Math.min(
                   1,
@@ -96,7 +111,10 @@ export function WorkGraph({ items }: { items: Work[] }) {
                   ),
                 ),
               );
-              if (viewport.current) viewport.current.scrollLeft = 0;
+              if (viewport.current) {
+                viewport.current.scrollLeft = 0;
+                viewport.current.scrollTop = 0;
+              }
             }}
           >
             Fit width
@@ -132,16 +150,27 @@ export function WorkGraph({ items }: { items: Work[] }) {
               y: e.clientY,
               left: e.currentTarget.scrollLeft,
               top: e.currentTarget.scrollTop,
+              panX: pan.x,
+              panY: pan.y,
+              fitsX: graph.width * zoom <= e.currentTarget.clientWidth,
+              fitsY: graph.height * zoom <= e.currentTarget.clientHeight,
             };
             e.currentTarget.setPointerCapture(e.pointerId);
             e.currentTarget.classList.add('panning');
           }}
           onPointerMove={(e) => {
             if (drag.current) {
-              e.currentTarget.scrollLeft =
-                drag.current.left - e.clientX + drag.current.x;
-              e.currentTarget.scrollTop =
-                drag.current.top - e.clientY + drag.current.y;
+              const motion = drag.current;
+              const dx = e.clientX - motion.x,
+                dy = e.clientY - motion.y;
+              if (!drag.current.fitsX)
+                e.currentTarget.scrollLeft = drag.current.left - dx;
+              if (!drag.current.fitsY)
+                e.currentTarget.scrollTop = drag.current.top - dy;
+              setPan((old) => ({
+                x: motion.fitsX ? motion.panX + dx : old.x,
+                y: motion.fitsY ? motion.panY + dy : old.y,
+              }));
             }
           }}
           onPointerUp={(e) => {
@@ -164,8 +193,15 @@ export function WorkGraph({ items }: { items: Work[] }) {
             };
             if (e.key in steps) {
               e.preventDefault();
-              e.currentTarget.scrollLeft += steps[e.key][0];
-              e.currentTarget.scrollTop += steps[e.key][1];
+              const [dx, dy] = steps[e.key];
+              const fitsX = graph.width * zoom <= e.currentTarget.clientWidth;
+              const fitsY = graph.height * zoom <= e.currentTarget.clientHeight;
+              if (!fitsX) e.currentTarget.scrollLeft += dx;
+              if (!fitsY) e.currentTarget.scrollTop += dy;
+              setPan((old) => ({
+                x: fitsX ? old.x - dx : old.x,
+                y: fitsY ? old.y - dy : old.y,
+              }));
             }
           }}
         >
@@ -192,7 +228,7 @@ export function WorkGraph({ items }: { items: Work[] }) {
                   if (el) {
                     el.style.width = `${graph.width}px`;
                     el.style.height = `${graph.height}px`;
-                    el.style.transform = `scale(${zoom})`;
+                    el.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
                   }
                 }}
               >

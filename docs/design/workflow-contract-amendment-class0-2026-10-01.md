@@ -1,6 +1,6 @@
 # Workflow Contract amendment: one classification system, and Class 0 eligibility
 
-**Status:** Adopted 2026-10-01, accepted by the designer in review. It is the Workflow Contract change that the decisions of 2026-10-01 require (`plan-assurance-and-classification-decisions-2026-10-01.md` §2, §3.2; Q10). The frozen Workflow Contract (`agent-engineering-workflow-design-v0.7.md`, pinned by `docs/spec-pin.yaml`) is not edited; like the Ticket-revision amendment, this text amends it. The engine does not enforce the predicate until M4's first step (§7); until then, `aew guide` and `lead-guide.md` state the policy the engine enforces today.
+**Status:** Adopted 2026-10-01, accepted by the designer in review. It is the Workflow Contract change that the decisions of 2026-10-01 require (`plan-assurance-and-classification-decisions-2026-10-01.md` §2, §3.2; Q10). The frozen Workflow Contract (`agent-engineering-workflow-design-v0.7.md`, pinned by `docs/spec-pin.yaml`) is not edited; like the Ticket-revision amendment, this text amends it. **Enforced since M4-A (2026-10-03)** for mutating Tickets dispatched at Class 0, as §9 records; `aew guide` and `lead-guide.md` state the rule.
 
 **Amends:** Workflow Contract v0.7 §7.4 (risk/complexity classes) and §7.5 (minimum paths).
 
@@ -75,3 +75,27 @@ with:
 
 1. **The semantic assertions stay** during evaluation, as stated in §2. Narrowing Class 0 until everything is machine-checkable would make it unusable again. The sampled audit shows whether the assertions need stronger machinery.
 2. **The audit sample rate** is an experimental knob. It is set in the shared evaluation preregistration (F19), not in this contract, which only requires a sampled audit during evaluation.
+
+## 9. Decided while implementing the predicate (operator and designer, 2026-10-03)
+
+M4-A centralized Class 0 eligibility in the dispatch predicate (`m4-ambiguity-report.md` §2.3). That surfaced a contradiction between this amendment and the frozen Knowledge Contract's acceptance case "Parent risk policy propagation" (KC v0.4 §26): there, a locally Class 0 Ticket beneath a Class 3 Story with a mandatory security review keeps Class 0, inherits the gate, and runs. Under §2 it is not eligible. The amendment stands; "no inherited elevated obligation" is not weakened. Decided:
+
+1. **The Class 0 path (§5), tightened.** Replace:
+
+   > **Ticket / Class 0:** Class 0 eligibility verified → Implement → focused check → complete, plus any inherited mandatory gates.
+
+   with:
+
+   > **Ticket / Class 0:** Class 0 eligibility verified → Implement → focused check → complete, plus inherited mandatory gates compatible with Class 0 eligibility. An inherited elevated obligation makes Class 0 ineligible and requires a stronger class.
+
+   An inherited elevated obligation is an ancestor's non-waivable gate or its minimum descendant class. A mechanical local change is not automatically Class 0; parent obligations never disappear; Class 0 means "mechanical and no elevated inherited obligation".
+
+2. **KC §26 "Parent risk policy propagation", amended acceptance case.** The frozen text is not edited; this replaces the case it describes:
+
+   > **Inherited elevated risk.** A mechanically bounded Ticket is proposed as Class 0 beneath a security-sensitive Story carrying an elevated security obligation. Expected: Class 0 eligibility is refused with an inherited-elevated-obligation reason. The parent obligation remains effective. The Lead must select a stronger class satisfying any inherited minimum-class floor. After reclassification, the inherited gate is still required.
+
+   The rest of the case stands: an explicit parent minimum descendant class raises the effective minimum only when recorded with the Lead's rationale. A local Class 0 Ticket beneath such a floor is refused the same way.
+
+3. **Reclassification is a recorded decision.** Raising a class (WC §7.4: "classification may increase whenever evidence exposes additional risk") records the previous and new class, the reason, the actor with its Lead generation, and the effective minimum at the time of the decision, so that "why did this seemingly tiny Ticket become Class 2?" stays answerable. The engine refuses a class below an inherited floor. Lowering a class (demotion) is a separate decision and is not part of this.
+
+4. **Scope of enforcement.** The predicate is enforced when a mutating Ticket is dispatched at Class 0. The amended path is a mutation path (implement, focused check, controlled integration), and its conditions (deterministic acceptance, mutation scope, protected paths) are defined for code changes. Non-mutating Tickets and Stories keep their Class 0 paths until those conditions are given non-mutating definitions.

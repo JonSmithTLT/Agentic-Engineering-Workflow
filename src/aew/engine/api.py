@@ -17,8 +17,10 @@ from typing import Any
 
 from aew import SPEC_SET, roles
 from aew.engine.archive_ops import Archive
+from aew.engine.assurance_ops import Assurance
 from aew.engine.base import Kernel, TxnContext
 from aew.engine.context_ops import ContextPacks
+from aew.engine.dispatch import Dispatch
 from aew.engine.evidence_ops import EvidenceCommands, Gates
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
@@ -225,18 +227,22 @@ class Engine:
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
         self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, archive=archive)
+        self._dispatch = dispatch = Dispatch(k)
+        self._assurance = assurance = Assurance(k, gates=gates)
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive)
-        self._assignment = Assignment(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
-                                      packs=packs)
+        self._assignment = assignment = Assignment(k, units=units, roles=roles, invocations=invocations,
+                                                   inputs=inputs, packs=packs, dispatch=dispatch)
         self._nm = nm = NonMutating(k, units=units, roles=roles, invocations=invocations, inputs=inputs, packs=packs,
-                                    gates=gates, work=work, archive=archive)
+                                    gates=gates, work=work, archive=archive, dispatch=dispatch)
         self._hierarchy = hierarchy = Hierarchy(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
-                                                gates=gates, nm=nm, archive=archive, history=history)
+                                                gates=gates, nm=nm, archive=archive, history=history,
+                                                dispatch=dispatch)
         self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
                                                      inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds,
-                                                     archive=archive)
+                                                     archive=archive, dispatch=dispatch)
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates)
-        self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive)
+        self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
+                                          dispatch=dispatch)
         self._lead = lead = Lead(k, archive=archive)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
@@ -252,7 +258,13 @@ class Engine:
         for owner in (gates, evidence, nm, hierarchy, resume):
             kinds.register_all(owner.kind_registrations())
         kinds.require_complete()
-        k.finalizers.steps.append(archive.finalize)  # ADR-0011: finished work leaves the hot state (plan R6)
+        # M4-A: every dispatch entrypoint's guards, by the collaborator that owns each check.
+        for owner in (assignment, nm, evidence, hierarchy, harness, assurance):
+            dispatch.register_all(owner.dispatch_guards())
+        dispatch.require_complete()
+        # The dispatch check first (a new invocation or run needs an allowed decision), then archival (ADR-0011:
+        # finished work leaves the hot state, plan R6).
+        k.finalizers.steps.extend([dispatch.finalize, archive.finalize])
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
@@ -463,6 +475,54 @@ class Engine:
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
+
+    def dispatch_explain(self, work_id: str, *, entrypoint: str | None = None, role: str | None = None,
+                         card: str | None = None, scope: str = "ticket",
+                         invocation: str | None = None) -> dict[str, Any]:
+        """The dispatch decision the named (or the unit's next) dispatch would get now: the same predicate the
+        dispatch evaluates in its own transaction (M4-A)."""
+        state = self._k.store.read()
+        if invocation is None and not work_id:
+            raise UsageError("name a work unit, or --invocation for a harness launch")
+        if invocation is not None:
+            inv = state["invocations"].get(invocation)
+            if inv is None:
+                raise NotFound(f"no invocation {invocation}")
+            return self._dispatch.explain("harness.launch", inv["work_unit"], invocation=invocation)
+        unit = self._units.unit(state, work_id)
+        name = entrypoint or self._next_entrypoint(unit)
+        return self._dispatch.explain(name, work_id, role=role, card_id=card, scope=scope)
+
+    @staticmethod
+    def _next_entrypoint(unit: dict[str, Any]) -> str:
+        if unit["kind"] != "ticket":
+            return "invoke.create.parent"
+        if not unit.get("mutating"):
+            return "work.dispatch" if unit["state"] in {"READY", "BLOCKED"} else (
+                "work.redispatch" if unit["state"] in {"ASSIGNED", "RUNNING"} else "invoke.create.non_mutating")
+        return "work.assign" if unit["state"] in {"READY", "BLOCKED"} else "invoke.create.mutating"
+
+    def plan_lint(self, work_id: str, *, revision: int | None = None) -> dict[str, Any]:
+        """Deterministic plan lint (v0.4 §18) of a Ticket's accepted plan, or of the named revision."""
+        state = self._k.store.read()
+        unit = self._units.unit(state, work_id)
+        if unit["kind"] != "ticket":
+            raise UsageError("plan lint applies to Tickets (their scope and acceptance)")
+        plans = {p["revision"]: p for p in unit.get("plans") or []}
+        chosen = plans.get(revision) if revision is not None else plans.get((unit.get("plan") or {}).get("accepted"))
+        if revision is not None and chosen is None:
+            raise NotFound(f"{work_id} has no plan revision {revision}")
+        from aew.engine import assurance as A
+        from aew.knowledge.records import read_record
+
+        affected = list(read_record(self._k.aew_root / chosen["path"], "plan").meta.get("affected_paths") or []) \
+            if chosen else []
+        findings = A.plan_lint(meta=self._gates.record_meta(unit), affected=affected,
+                               guardrails=self._k.policy("guardrails"), checks=self._k.policy("checks"),
+                               mutating=bool(unit.get("mutating")))
+        return {"ok": True, "work_id": work_id, "revision": chosen["revision"] if chosen else None,
+                "clean": not findings, "errors": [f for f in findings if f["severity"] == "error"],
+                "warnings": [f for f in findings if f["severity"] == "warning"]}
 
     def gate_show(self, work_id: str) -> dict[str, Any]:
         return self._gates.gate_show(work_id)
@@ -789,12 +849,16 @@ class Engine:
                     contract: list[str] | None = None, mandatory_gates: list[str] | None = None,
                     min_descendant_class: int | None = None, rationale: str | None = None,
                     external_refs: list[str] | None = None, body: str = "", card: str | None = None,
-                    promoted_from: str | None = None) -> dict[str, Any]:
+                    promoted_from: str | None = None, acceptance_checks: list[str] | None = None,
+                    acceptance_inputs: list[str] | None = None,
+                    class0_assertions: list[str] | None = None) -> dict[str, Any]:
         return self._work.work_create(token=token, expect_rev=expect_rev, kind=kind, title=title, risk_class=risk_class,
                                       mutating=mutating, parent=parent, depends_on=depends_on, scope_paths=scope_paths,
                                       goal_backwards=goal_backwards, contract=contract, mandatory_gates=mandatory_gates,
                                       min_descendant_class=min_descendant_class, rationale=rationale,
-                                      external_refs=external_refs, body=body, card=card, promoted_from=promoted_from)
+                                      external_refs=external_refs, body=body, card=card, promoted_from=promoted_from,
+                                      acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
+                                      class0_assertions=class0_assertions)
 
     def work_depend(self, *, token: str, expect_rev: int, work_id: str, add: list[str] | None = None,
                     remove: list[str] | None = None, reason: str) -> dict[str, Any]:
@@ -818,6 +882,11 @@ class Engine:
                      risk_class: int | None = None) -> dict[str, Any]:
         return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
                                             reason=reason, risk_class=risk_class)
+
+    def work_reclassify(self, *, token: str, expect_rev: int, work_id: str, risk_class: int,
+                        reason: str) -> dict[str, Any]:
+        return self._work.work_reclassify(token=token, expect_rev=expect_rev, work_id=work_id, risk_class=risk_class,
+                                          reason=reason)
 
     def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:

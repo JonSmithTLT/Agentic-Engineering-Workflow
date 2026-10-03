@@ -26,8 +26,17 @@
       "type": "object",
       "properties": {
         "goal_backwards": {"type": "array", "items": {"type": "string"}},
-        "contract": {"type": "array", "items": {"type": "string"}}
+        "contract": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "array", "items": {"type": "string"},
+                   "description": "Project checks (policy/checks.yaml ids, or the builtin guardrails) that decide acceptance (M4-A)"},
+        "inputs": {"type": "array", "items": {"type": "string"},
+                   "description": "Paths or globs the acceptance checks read: fixtures, expected outputs, data (M4-A; plan assurance v0.4 §10)"}
       }
+    },
+    "class0_assertions": {
+      "type": "array", "uniqueItems": true,
+      "items": {"enum": ["transformation_clear", "inputs_complete", "no_consequential_boundary"]},
+      "description": "The Lead's recorded semantic assertions for Class 0 eligibility (WC amendment 2026-10-01)"
     },
     "policy": {
       "type": "object",

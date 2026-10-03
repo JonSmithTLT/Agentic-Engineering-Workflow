@@ -52,7 +52,7 @@ def _no_terminal(detail: str) -> OperatorAuthorizationRequired:
     )
 
 
-def _ask_posix(prompt: str, timeout: float) -> str:
+def _ask_posix(prompt: str, timeout: float) -> str:  # pragma: posix-only
     import select
 
     try:
@@ -80,7 +80,7 @@ def _ask_posix(prompt: str, timeout: float) -> str:
         os.close(fd)
 
 
-def _ask_windows(prompt: str, timeout: float) -> str:
+def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
     import ctypes
     import msvcrt
 

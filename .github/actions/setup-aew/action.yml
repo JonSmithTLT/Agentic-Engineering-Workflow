@@ -22,4 +22,4 @@ runs:
         git config --global user.email "aew-ci@invalid"
     - name: Install AEW with test extras
       shell: bash
-      run: python -m pip install -e ".[dev,parallel]"
+      run: python -m pip install -e ".[dev,parallel,coverage]"

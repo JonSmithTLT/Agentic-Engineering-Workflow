@@ -80,13 +80,23 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--external-ref", action="append", default=[])
     q.add_argument("--body-file", help="Markdown objective/body (file or - for stdin)")
     q.add_argument("--card", help="role card that executes this Ticket (recorded in its role plan)")
+    q.add_argument("--acceptance-check", action="append", default=[], metavar="CHECK",
+                   help="a project check (policy/checks.yaml, or guardrails) that decides this Ticket's acceptance; "
+                        "repeat for each")
+    q.add_argument("--acceptance-input", action="append", default=[], metavar="GLOB",
+                   help="a path the acceptance checks read (fixture, expected output, data); repeat for each")
+    q.add_argument("--class0-assert", action="append", default=[], dest="class0_assert",
+                   choices=["transformation_clear", "inputs_complete", "no_consequential_boundary"],
+                   help="Class 0 only: a semantic assertion the engine cannot check (all three are needed for Class 0 "
+                        "eligibility)")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_create(
         token=_lead_token(a), expect_rev=a.expect_rev, kind=a.kind, title=a.title, risk_class=a.risk_class,
         mutating=not a.non_mutating, parent=a.parent, depends_on=a.depends_on, scope_paths=a.scope,
         goal_backwards=a.goal, contract=a.contract, mandatory_gates=a.mandatory_gate,
         min_descendant_class=a.min_descendant_class, rationale=a.rationale, external_refs=a.external_ref,
-        body=_read_text_arg(a.body_file), card=a.card))
+        body=_read_text_arg(a.body_file), card=a.card, acceptance_checks=a.acceptance_check,
+        acceptance_inputs=a.acceptance_input, class0_assertions=a.class0_assert))
 
     q = wsub.add_parser("show")
     q.add_argument("work_id")
@@ -187,6 +197,13 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).work_promote(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, title=a.title,
         reason=a.reason, risk_class=a.risk_class))
+    q = wsub.add_parser("reclassify", help="raise a unit's risk class; recorded decision (Lead)")
+    q.add_argument("work_id")
+    q.add_argument("--class", dest="risk_class", type=int, required=True, choices=range(0, 5))
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).work_reclassify(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, risk_class=a.risk_class, reason=a.reason))
     q = wsub.add_parser("depend", help="add/remove dependency edges; recorded decision (Lead)")
     q.add_argument("work_id")
     q.add_argument("--add", action="append", default=[], metavar="ID[:mutating|evidence]")
@@ -216,6 +233,19 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_reconcile(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
+
+    p = sub.add_parser("dispatch", help="the dispatch predicate (M4-A): what a dispatch would be decided now")
+    dsub = p.add_subparsers(dest="dispatch_cmd", required=True)
+    q = dsub.add_parser("explain", help="the DispatchDecision a dispatch of this unit would get now (read-only)")
+    q.add_argument("work_id", nargs="?")
+    q.add_argument("--entrypoint", help="a dispatch entrypoint (default: the unit's next dispatch)")
+    q.add_argument("--role", choices=["implementer", "reviewer", "verifier"])
+    q.add_argument("--card")
+    q.add_argument("--scope", choices=["ticket", "integration"], default="ticket")
+    q.add_argument("--invocation", help="explain a harness launch of this invocation instead")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).dispatch_explain(
+        a.work_id, entrypoint=a.entrypoint, role=a.role, card=a.card, scope=a.scope, invocation=a.invocation))
 
     p = sub.add_parser("role", help="role archetypes and the role-card catalog (deck)")
     rsub = p.add_subparsers(dest="role_cmd", required=True)
@@ -254,6 +284,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).plan_propose(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, body=_read_text_arg(a.file),
         reason=a.reason, affected_paths=a.affected, **_assurance(a)))
+    q = psub.add_parser("lint", help="deterministic plan lint of a Ticket's accepted (or named) plan (read-only)")
+    q.add_argument("work_id")
+    q.add_argument("--revision", type=int)
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).plan_lint(a.work_id, revision=a.revision))
     q = psub.add_parser("accept")
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)

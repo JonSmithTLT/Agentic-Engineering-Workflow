@@ -148,7 +148,7 @@ def render_frontmatter(meta: dict[str, Any], body: str) -> str:
 
 def fsync_dir(path: Path) -> None:
     """Persist a directory entry change (rename/create). No-op on Windows."""
-    if IS_WINDOWS:
+    if IS_WINDOWS:  # pragma: windows-only
         return
     fd = os.open(path, os.O_RDONLY)
     try:
@@ -202,9 +202,9 @@ def create_exclusive(path: Path, data: bytes | str) -> None:
     raw = data.encode("utf-8") if isinstance(data, str) else data
     tmp = write_temp(path.parent, raw, prefix=f".{path.name}.")
     try:
-        if IS_WINDOWS:
+        if IS_WINDOWS:  # pragma: windows-only
             os.rename(tmp, path)  # never overwrites on Windows
-        else:
+        else:  # pragma: posix-only
             os.link(tmp, path)  # atomic "publish if absent"
             tmp.unlink()
     except FileExistsError:

@@ -304,6 +304,9 @@ class WorkCommands:
         body: str = "",
         card: str | None = None,
         promoted_from: str | None = None,
+        acceptance_checks: list[str] | None = None,
+        acceptance_inputs: list[str] | None = None,
+        class0_assertions: list[str] | None = None,
     ) -> dict[str, Any]:
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
@@ -311,6 +314,12 @@ class WorkCommands:
             raise UsageError("risk class must be 0..4")
         if min_descendant_class is not None and not rationale:
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
+        if (acceptance_checks or acceptance_inputs) and kind != "ticket":
+            raise UsageError("acceptance checks and inputs belong to a Ticket; a Story's or Epic's acceptance is its "
+                             "children and its own gates")
+        if class0_assertions and risk_class != 0:
+            raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
+                             "with --class 0")
         joined = [s for s in scope_paths or [] if "," in s]
         if joined:  # M3-D9: several globs given as one value would match nothing, and every change would be out of scope
             raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
@@ -335,6 +344,8 @@ class WorkCommands:
                 risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=scope_paths,
                 goal_backwards=goal_backwards, contract=contract, policy=policy,
                 external_refs=external_refs, body=body, promoted_from=promoted_from,
+                acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
+                class0_assertions=class0_assertions,
             )
             text = record.render()
             path = f"work/{work_id}/{RECORD_NAME[kind]}"
@@ -382,6 +393,46 @@ class WorkCommands:
         except GitError:
             return []
         return [g for g in scope_paths if not any(glob_any(f, [g]) for f in files)]
+
+    def work_reclassify(self, *, token: str, expect_rev: int, work_id: str, risk_class: int,
+                        reason: str) -> dict[str, Any]:
+        """Raise a unit's risk class (WC §7.4: classification may increase whenever evidence exposes more risk),
+        as a recorded decision. Never below an inherited minimum class; lowering a class is not offered here. The
+        gates follow the new class at once, and inherited gates stay required."""
+        if not (reason and reason.strip()):
+            raise UsageError("a reclassification needs the reason the class goes up")
+        if not 0 <= risk_class <= 4:
+            raise UsageError("risk class must be 0..4")
+        with self.k.lead_txn(token, expect_rev, "work.reclassify", reason=reason) as ctx:
+            state = ctx.state
+            unit = self.units.unit(state, work_id)
+            if unit["state"] in transitions.TERMINAL:
+                raise IllegalTransition(f"{work_id} is {unit['state']}; a finished unit keeps its class")
+            old = unit["risk_class"]
+            if risk_class <= old:
+                raise UsageError(f"{work_id} is class {old}: reclassification raises the class (lowering it is a "
+                                 "demotion, which needs its own recorded decision and is not offered here)",
+                                 current=old)
+            floors = [(state["work"][a].get("policy") or {}).get("min_descendant_class")
+                      for a in H.ancestors(state, work_id)]
+            floor = max([f for f in floors if f is not None], default=None)
+            if floor is not None and risk_class < floor:
+                raise UsageError(f"an ancestor requires at least class {floor} for {work_id}: choose class {floor} or "
+                                 "above", floor=floor)
+            # Why a seemingly tiny Ticket became Class 2 stays answerable: both classes, the inherited minimum at the
+            # time, the reason, and the actor (with the Lead generation) are on the record (designer, 2026-10-03).
+            change = {"from_class": old, "to_class": risk_class, "effective_minimum_at_decision": floor}
+            decision = self.k.new_decision(ctx, "reclassification", f"{work_id} class {old} -> {risk_class}",
+                                           work_unit=work_id, reason=reason, reclassification=change)
+            unit["risk_class"] = risk_class
+            unit.setdefault("history", []).append(
+                {"from": unit["state"], "to": unit["state"], "at": utc_now(), "event": "reclassified",
+                 "reason": f"class {old} -> {risk_class} ({decision}): {reason}", **change,
+                 "decided_by": {k: ctx.actor.get(k) for k in ("kind", "session_label", "generation")}})
+            ctx.summary = f"{work_id} reclassified: class {old} -> {risk_class}"
+            self.units.before_commit(ctx)
+        return {"ok": True, "work_id": work_id, **change, "decision": decision,
+                "revision": ctx.session.committed_revision}
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
                      reason: str | None = None, affected_paths: list[str] | None = None,

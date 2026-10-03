@@ -25,6 +25,8 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import blocker_from, checked
 from aew.engine.dependencies import dependency_blockers, effective_edge_set, readiness_blockers
 from aew.engine.seams import GATE_CONTEXT, INGEST, INVOKE, NON_MUTATING, GuardRegistration, KindRegistration
 from aew.errors import (
@@ -50,6 +52,7 @@ if TYPE_CHECKING:
     from aew.engine.ports import (
         ArchivePort,
         ContextPacksPort,
+        DispatchPort,
         GatesPort,
         InputsPort,
         InvocationsPort,
@@ -178,8 +181,9 @@ class NonMutating:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, work: WorkCommandsPort,
-                 archive: ArchivePort) -> None:
+                 archive: ArchivePort, dispatch: DispatchPort) -> None:
         self.k = k
+        self.dispatch = dispatch
         self.units = units
         self.roles = roles
         self.invocations = invocations
@@ -349,33 +353,98 @@ class NonMutating:
             selected_by = "workflow-default"
         return chosen, selected_by
 
-    def _check_nm_concurrency(self, state: dict[str, Any]) -> None:
+    # ---- the dispatch guards of the non-mutating entrypoints (M4-A): the checks these routes always made, in order
+
+    _WHAT = {"work.dispatch": "`aew work dispatch`", "work.redispatch": "`aew work redispatch`"}
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("nm.kind", self._g_kind),
+                DispatchGuard("redispatch.state", self._g_redispatch_state),
+                DispatchGuard("plan.binding", self._g_plan_binding),
+                DispatchGuard("dependencies", self._g_dependencies),
+                DispatchGuard("card.executor", self._g_card),
+                DispatchGuard("cap.non_mutating", self._g_cap),
+                DispatchGuard("nm.invoke", self._g_invoke)]
+
+    def _g_kind(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        return checked(lambda: self._require_nm_ticket(state["work"][work_id], work_id,
+                                                       self._WHAT[facts["entrypoint"]]))
+
+    @staticmethod
+    def _g_redispatch_state(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        unit = state["work"][work_id]
+        if unit["state"] not in EXECUTE_STATES:
+            return blocker_from(IllegalTransition(
+                f"{work_id} is {unit['state']}; a new attempt starts from ASSIGNED or RUNNING "
+                "(reconcile an INTERRUPTED Ticket first)"))
+        return None
+
+    def _g_plan_binding(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        return checked(lambda: self.units.require_plan_binding(state, work_id))
+
+    def _g_dependencies(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """A redispatch starts a new attempt, too: its dependencies must be in the source it will observe (B2)."""
+        commit = facts["base"]
+        blockers = dependency_blockers(state, state["work"][work_id], repo_root=self.k.repo_root,
+                                       base_commit=commit, work_id=work_id)
+        if blockers:
+            return blocker_from(DependencyUnsatisfied(
+                f"{work_id} cannot start a new attempt: a dependency is not satisfied in {str(commit)[:12]}",
+                blockers=blockers))
+        return None
+
+    def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        def resolve() -> None:
+            facts["card"], facts["selected_by"] = self._executor_card(state, work_id, facts.get("card_id"))
+            facts["archetype"] = facts["card"].archetype
+        return checked(resolve)
+
+    def _g_cap(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """Every attempt start (dispatch or redispatch) takes a slot under the policy cap. The unit's own current
+        attempt does not count: it is retired before the new one starts, so a redispatch may replace its own active
+        executor but never adds one beyond the cap (M2 re-review)."""
         limit = self.k.policy("gates").get("non_mutating_concurrency")
         if not limit:
-            return
-        busy = sorted(wid for wid, u in state["work"].items() if is_nm_ticket(u)
+            return None
+        busy = sorted(wid for wid, u in state["work"].items() if wid != work_id and is_nm_ticket(u)
                       and state["invocations"].get((u.get("execution") or {}).get("invocation") or "", {}).get(
                           "status") == "active")
         if len(busy) >= limit:
-            raise ConcurrencyLimit(f"non-mutating concurrency is capped at {limit} by policy", holding=busy)
+            return blocker_from(ConcurrencyLimit(f"non-mutating concurrency is capped at {limit} by policy",
+                                                 holding=busy))
+        return None
 
-    def _start_attempt(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], card: str | None,
+    def _g_invoke(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """``invoke create`` for a non-mutating Ticket: a reviewer or verifier of its current record."""
+        def check() -> None:
+            unit = state["work"][work_id]
+            self._require_nm_ticket(unit, work_id, "this dispatch")
+            if facts.get("scope", "ticket") != "ticket":
+                raise UsageError("--scope integration applies to mutating Tickets only")
+            st = unit["state"]
+            if st in EXECUTE_STATES:
+                raise IllegalTransition(f"{work_id}'s executor is dispatched per attempt (one active executor per "
+                                        f"attempt): use `aew work redispatch {work_id} --reason ...`")
+            slot = {"REVIEW_PENDING": "review", "VERIFY_PENDING": "verify"}.get(st)
+            if slot is None:
+                raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
+            gc = self.gates.gate_context(state, work_id)
+            chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
+                                             role=facts.get("role"), gc=gc)
+            record = (unit.get("execution") or {}).get("record")
+            if not record:
+                raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
+            facts.update(card=chosen, archetype=chosen.archetype, record=record,
+                         evidence=self.inputs.find_unit_evidence(work_id, record["id"]))
+        return checked(check)
+
+    def _start_attempt(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], facts: dict[str, Any],
                        commit: str) -> tuple[str, str]:
+        """The mechanics of a new attempt, once its dispatch decision allowed it."""
         state = ctx.state
-        self.units.require_plan_binding(state, work_id)
-        # A redispatch starts a new attempt, too: its dependencies must be in the source it will observe (B2).
-        blockers = dependency_blockers(state, unit, repo_root=self.k.repo_root, base_commit=commit, work_id=work_id)
-        if blockers:
-            raise DependencyUnsatisfied(f"{work_id} cannot start a new attempt: a dependency is not satisfied in "
-                                        f"{str(commit)[:12]}", blockers=blockers)
-        inputs = self.inputs.dispatch_inputs(state, work_id, commit)
-        chosen, selected_by = self._executor_card(state, work_id, card)
+        inputs, chosen, selected_by = facts["inputs"], facts["card"], facts["selected_by"]
         # A previous attempt (ingested, cancelled by a replan, or interrupted) is retired to history first.
         self._end_attempt(state, unit, "a new attempt starts", "superseded")
-        # Every attempt start (dispatch or redispatch) takes a slot under the policy cap. It is counted after the
-        # previous attempt is retired in this same transaction, so a redispatch may replace its own active
-        # executor but never adds one beyond the cap (M2 re-review).
-        self._check_nm_concurrency(state)
         attempt = unit.get("attempts", 0) + 1
         unit["attempts"] = attempt
         inv_id, inv_token, _ = self.dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=commit,
@@ -417,16 +486,9 @@ class NonMutating:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            self._require_nm_ticket(unit, work_id, "`aew work dispatch`")
-            transitions.check(unit["state"], "ASSIGNED", "assign")
-            commit = self.k.authoritative_commit()
-            if commit is None:
-                raise IllegalTransition(f"authoritative branch {self.k.authoritative_branch} has no commits")
-            blockers = readiness_blockers(state, unit, repo_root=self.k.repo_root, base_commit=commit, work_id=work_id,
-                                          plan_problem=self.units.plan_binding_problem)
-            if blockers:
-                raise DependencyUnsatisfied(f"{work_id} cannot be dispatched", blockers=blockers)
-            inv_id, inv_token = self._start_attempt(ctx, work_id, unit, card, commit)
+            decision = self.dispatch.decide_in(ctx, "work.dispatch", work_id, card_id=card)
+            commit = decision.facts["base"]
+            inv_id, inv_token = self._start_attempt(ctx, work_id, unit, decision.facts, commit)
             execution = unit["execution"]
             change = self.units.set_state(unit, "ASSIGNED", f"dispatched {inv_id} ({execution['card']['id']}, attempt "
                                      f"{execution['attempt']}, expects {execution['expected_kind']}, "
@@ -436,7 +498,7 @@ class NonMutating:
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "work_id": work_id, "invocation": inv_id, "invocation_token": inv_token,
                 "execution": execution, "observation": inv["observation"], "pack": inv.get("pack"),
-                "transition": change, "revision": ctx.session.committed_revision}
+                "transition": change, "dispatch": decision.to_dict(), "revision": ctx.session.committed_revision}
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
                         card: str | None = None, execution_profile: dict[str, Any] | None = None,
@@ -448,28 +510,25 @@ class NonMutating:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            self._require_nm_ticket(unit, work_id, "`aew work redispatch`")
-            if unit["state"] not in EXECUTE_STATES:
-                raise IllegalTransition(f"{work_id} is {unit['state']}; a new attempt starts from ASSIGNED or RUNNING "
-                                        "(reconcile an INTERRUPTED Ticket first)")
+            decision = self.dispatch.decide_in(ctx, "work.redispatch", work_id, card_id=card)
             previous = dict(unit.get("execution") or {})
-            commit = self.k.authoritative_commit()
-            decision = self.k.new_decision(
+            commit = decision.facts["base"]
+            record = self.k.new_decision(
                 ctx, "attempt_supersession",
                 f"{work_id} attempt {previous.get('attempt')} superseded; attempt {unit.get('attempts', 0) + 1} starts",
                 work_unit=work_id, reason=reason,
                 body=f"Superseded execution: {previous}\n\nNothing produced by the superseded attempt can be ingested "
                      "or satisfy a gate of the new one.\n")
-            self._end_attempt(state, unit, f"superseded ({decision}): {reason}", "superseded")
-            inv_id, inv_token = self._start_attempt(ctx, work_id, unit, card, commit)
+            self._end_attempt(state, unit, f"superseded ({record}): {reason}", "superseded")
+            inv_id, inv_token = self._start_attempt(ctx, work_id, unit, decision.facts, commit)
             unit.setdefault("history", []).append(
                 {"from": unit["state"], "to": unit["state"], "at": utc_now(), "event": "attempt_superseded",
-                 "reason": f"{reason} ({decision}); attempt {unit['execution']['attempt']} = {inv_id}"})
+                 "reason": f"{reason} ({record}); attempt {unit['execution']['attempt']} = {inv_id}"})
             ctx.summary = f"{work_id} redispatched: attempt {unit['execution']['attempt']} ({inv_id})"
             self.units.before_commit(ctx)
         self.prune_observations()
         inv = ctx.state["invocations"][inv_id]
-        return {"ok": True, "work_id": work_id, "decision": decision, "superseded": previous,
+        return {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
                 "invocation": inv_id, "invocation_token": inv_token, "execution": unit["execution"],
                 "observation": inv["observation"], "revision": ctx.session.committed_revision}
 
@@ -718,23 +777,9 @@ class NonMutating:
         with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
-            unit = self.units.unit(state, work_id)
-            self._require_nm_ticket(unit, work_id, "this dispatch")
-            if scope != "ticket":
-                raise UsageError("--scope integration applies to mutating Tickets only")
-            st = unit["state"]
-            if st in EXECUTE_STATES:
-                raise IllegalTransition(f"{work_id}'s executor is dispatched per attempt (one active executor per "
-                                        f"attempt): use `aew work redispatch {work_id} --reason ...`")
-            slot = {"REVIEW_PENDING": "review", "VERIFY_PENDING": "verify"}.get(st)
-            if slot is None:
-                raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
-            gc = self.gates.gate_context(state, work_id)
-            chosen = self.roles.resolve_card(state, work_id, slot, card_id=card, role=role, gc=gc)
-            record = (unit.get("execution") or {}).get("record")
-            if not record:
-                raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
-            ev = self.inputs.find_unit_evidence(work_id, record["id"])
+            decision = self.dispatch.decide_in(ctx, "invoke.create.non_mutating", work_id, role=role, card_id=card,
+                                               scope=scope)
+            chosen, record, ev = decision.facts["card"], decision.facts["record"], decision.facts["evidence"]
             # The reviewer/verifier observes exactly the source the executor observed.
             inv_id, inv_token, snapshot = self.dispatch_observer(
                 ctx, work_id, card=chosen, scope="observation", commit=ev["evaluated_snapshot"]["base_revision"],

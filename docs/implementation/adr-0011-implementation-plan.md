@@ -372,6 +372,45 @@ Each PR keeps the M1–M3 tests passing.
 - `history load` references in packs.
 - The Epic-closeout audit check.
 
+**P2c as built** (2026-10-02). Everything above, with these implementation choices:
+- **Where it lives.** `engine/history_ops.py` holds a new collaborator, `HistoryCommands`. `Hierarchy` uses it for the Epic closeout check, and `Resume` for audit status. The composition test lists it as `_history`. Archive's own `History` store attribute is renamed `cold`, so that the port generator does not mistake it for the collaborator.
+- **`history show <id>`.**
+  - It reads the exact record a manifest entry pins, verified against its hash when read (`Archive.record`).
+  - It also finds a record held inside an archived unit's bundle, through the link the unit recorded: an invocation, a credential, or an evidence record (the evidence is verified against the hash its unit recorded at ingest). Lead records hold credentials as well.
+  - Every answer carries the trust label: its source, and that it is reference only. Evidence written by a model is labelled `model`; a check result, `engine`.
+  - Credential verifiers are redacted.
+  - An archived unit also shows its current parent (moves applied) and its annotations.
+- **`history list`:** by kind (`unit`, `annotation`, `audit`, `lead`) and a UTC date range, newest first. The default limit is 50 and the maximum 1,000, and the answer says whether it was truncated.
+- **`history links <id> --depth 1..3`:** the recorded links, both directions, at most 500 edges. Each node is marked `history`, `hot` or `other` (a commit, a completion path).
+- **`history load <id> --into <unit>`** (Lead) records a reference on the hot unit (`history_refs`: id, kind, entry, hash, source, reason, generation).
+  - Each dispatch pins the unit's references onto its invocation. So a later load changes later packs only, and a regenerated pack still matches the one recorded.
+  - The pack gets a "Historical reference context" section, which says the records are not current evidence and carry no instruction authority. An archived unit appears as a summary of its outcome and provenance, not its whole bundle. Each reference is a pack source `history:<id>` with its trust label and `reference: true` (invariant 14).
+- **`history audit [--full]`:**
+  - Without `--expect-rev`, it is advisory: nothing is recorded, and problems exit with `INTEGRITY_ERROR`. CI runs it this way.
+  - With `--expect-rev`, it is a Lead mutation that records the audit.
+  - **R2 as built:**
+    1. Under the lock (a session that is not committed), it copies the root and the tail's bytes, and checks the credential and the revision.
+    2. It verifies outside the lock, against those bytes (`tail_raw` through `History.verify`).
+    3. It re-takes the lock through `lead_txn` at the then-current revision. If the root moved, it verifies the new entries incrementally and tries again, at most five times.
+    4. The audit record (`history/audits/<n>.yaml`, kind `audit`, id `AU-<n>`) is appended through the new `ctx.entries`. The finalizer appends those first, in the transaction's single append, so the verified root is known before the commit, and the audit's link to the audited root is checked locally.
+  - A passing audit sets `cold.verified` (`{count, h, at, audit}`) to the root this commit makes current. A full one also sets `cold.last_full`.
+  - A failing audit records `fail` and never advances the verified root. Each damaged unit record gets an `audit_finding` annotation.
+  - **Fault point:** `history.audit_before_record`. A pause point, `history.audit_after_verify`, lets a test land a commit inside the R2 window.
+- **Audit status.** `status` reports `history_audit`: the current root, the verified root, the unverified entries with the age of the oldest, the last full verification, the policy and what is over it.
+  - The thresholds come from the gates policy's optional `history_audit` block. The built-in defaults are 1,000 entries, 168 hours and 30 days.
+  - A history that was never fully verified is due once its first entry is older than the full-verification threshold, not as soon as it starts.
+  - Anything over policy becomes one next action, never an alarm (invariant 11).
+- **Epic closeout** is refused with `GATE_UNSATISFIED` while entries are unverified, and the Epic's next action names the audit.
+  - The test helper `close_parent` records an audit before it closes an Epic. That is the one edit to shared test code: invariant 8's deliberately changed path. AT-8/AT-13 and the archival tests close Epics through it.
+- **The walks.** Both seeded walks now inject `history.after_bundle` and `history.after_tail`, which fire on the commits that archive (§8). P2b had left them out.
+- **Independent review fixes** (2026-10-02, in PR #20).
+  - **An audit covers every record reachable from the root**, not only each entry's own record. An archived unit's bundle pins records by path and hash: its record, its plans, its ingested evidence and its completion record (`archive_ops.pinned_records`). Context packs are not: they live in the disposable `local/` and are checked by regeneration. Incremental and full verification check each against its pin (`History.verify(..., pinned=)`), outside the lock, and attribute damage to the unit, which gets the `audit_finding`. Before this, a full audit passed with an archived unit's evidence changed, and so released an Epic closeout.
+  - **A pack shows a loaded record redacted**, as `history show` does: a loaded Lead record's credential verifiers no longer reach the pack.
+  - **`history load` takes an archived evidence record by its id**, as `history show` finds it: pinned by the hash its unit recorded at ingest (`history_refs` kind `evidence`, `held_by` its unit), labelled with who wrote it (`model`, or `engine` for a check result), and shown in the pack as the exact record. An archived invocation or credential is refused with what to load instead. The pack's fence is longer than any run of backticks in the record.
+  - **Audit status never reads the history.** `cold.first_at` and `cold.unverified_since` are kept at each append, in the same transaction (`archive_ops.advance_cold`), so `status` and `resume` take the dates from the hot state. A v2 state from before the fix, which lacks them, reads them from the index until an audit makes them unnecessary: its next audit for `unverified_since`, its first full one for `first_at`.
+  - **`history reindex`** turns an index another process holds open into `LOCK_TIMEOUT`, not a traceback.
+  - **No storage paths on the surface:** `history show` drops the entries' `path` and the `completion` relation (its values are paths), `history links` skips it, and `history reindex` no longer prints the index's location.
+
 **P2d: migration and the oracle.**
 - **`aew migrate`** (R8): it refuses while any run is live, and it is idempotent. It is crash-tested at every new fault point on a project built by the M3 code (the perf tool's template).
 - **The oracle** (`tests/helpers/invariants.py`) learns the cold root additively. Rules 4, 5, 17 and 18 read bundles through the history API, in tests only.

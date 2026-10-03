@@ -301,7 +301,10 @@ def parent_verify(p: Project, wid: str, *, result: str = "pass") -> str:
 
 
 def close_parent(p: Project, wid: str) -> str:
-    """Parent review + verification (class >= 1 path), then closeout; returns the closeout decision."""
+    """Parent review + verification (class >= 1 path), then closeout; returns the closeout decision. An Epic closes
+    only once the history is audited through the current root (ADR-0011), so its closeout records that audit first."""
     p.lead("review", "ingest", wid, "--evidence", parent_review(p, wid))
     p.lead("verify", "ingest", wid, "--evidence", parent_verify(p, wid))
+    if p.ok("work", "show", wid)["control"]["kind"] == "epic":
+        p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
     return p.lead("work", "close", wid, "--reason", "acceptance gates passed")["decision"]

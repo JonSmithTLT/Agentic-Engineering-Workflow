@@ -95,9 +95,10 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
                                                               reason=a.reason))
 
-    from aew.cli import work_commands
+    from aew.cli import history_commands, work_commands
 
     work_commands.register(sub)
+    history_commands.register(sub)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:

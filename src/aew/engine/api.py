@@ -22,6 +22,7 @@ from aew.engine.context_ops import ContextPacks
 from aew.engine.evidence_ops import EvidenceCommands, Gates
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
+from aew.engine.history_ops import HistoryCommands
 from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.nonmutating_ops import Inputs, NonMutating
@@ -217,6 +218,7 @@ class Engine:
         hooks, guards, kinds = StateHooks(), GuardTable(), KindRegistry()
         self._archive = archive = Archive(k)
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
+        self._history = history = HistoryCommands(k, units=units, archive=archive)
         self._roles = roles = Roles(k, units=units)
         self._invocations = invocations = Invocations(k, roles=roles)
         self._inputs = inputs = Inputs(k)
@@ -228,7 +230,7 @@ class Engine:
         self._nm = nm = NonMutating(k, units=units, roles=roles, invocations=invocations, inputs=inputs, packs=packs,
                                     gates=gates, work=work, archive=archive)
         self._hierarchy = hierarchy = Hierarchy(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
-                                                gates=gates, nm=nm, archive=archive)
+                                                gates=gates, nm=nm, archive=archive, history=history)
         self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
                                                      inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds,
                                                      archive=archive)
@@ -237,7 +239,7 @@ class Engine:
         self._lead = lead = Lead(k, archive=archive)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
-                                       lead=lead, views=views, harness=harness, kinds=kinds)
+                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._project = ProjectAdmin(k, roles=roles)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
@@ -711,6 +713,29 @@ class Engine:
 
     def tree_lines(self, tree: list[dict[str, Any]]) -> list[str]:
         return self._hierarchy.tree_lines(tree)
+
+    # ---------------------------------------------------------------- history (ADR-0011)
+
+    def history_show(self, record_id: str) -> dict[str, Any]:
+        return self._history.history_show(record_id)
+
+    def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
+                     limit: int = 50) -> dict[str, Any]:
+        return self._history.history_list(kind=kind, since=since, until=until, limit=limit)
+
+    def history_links(self, record_id: str, *, depth: int = 1) -> dict[str, Any]:
+        return self._history.history_links(record_id, depth=depth)
+
+    def history_load(self, *, token: str, expect_rev: int, record_id: str, into: str, reason: str) -> dict[str, Any]:
+        return self._history.history_load(token=token, expect_rev=expect_rev, record_id=record_id, into=into,
+                                          reason=reason)
+
+    def history_audit(self, *, full: bool = False, token: str | None = None,
+                      expect_rev: int | None = None) -> dict[str, Any]:
+        return self._history.history_audit(full=full, token=token, expect_rev=expect_rev)
+
+    def history_reindex(self) -> dict[str, Any]:
+        return self._history.history_reindex()
 
     def archived_credential(self, state: dict[str, Any], token_id: str) -> dict[str, Any] | None:
         """A credential archived with finished work (ADR-0011 R7), for checks outside the engine (the Lead broker, a

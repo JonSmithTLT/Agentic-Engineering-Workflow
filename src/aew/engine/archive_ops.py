@@ -30,7 +30,7 @@ from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
 from aew.knowledge.records import format_id
-from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_file, utc_now
+from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git, worktrees
 
 if TYPE_CHECKING:
@@ -47,6 +47,76 @@ ACC_MOD = 2 ** 256
 
 def is_v2(state: dict[str, Any]) -> bool:
     return state.get("schema") == V2
+
+
+def redact(value: Any) -> Any:
+    """A record for display or for a pack: credential verifiers are hashes of secrets and never shown."""
+    if isinstance(value, dict):
+        return {k: "<redacted>" if k == "verifier" else redact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact(v) for v in value]
+    return value
+
+
+def pinned_records(entry: dict[str, Any], raw: bytes) -> list[tuple[str, str]]:
+    """The records an archived unit's bundle pins by path and hash, which a verification checks with the bundle
+    (ADR-0011: a full verification covers every record reachable from the root): the unit's own record, its plans,
+    its ingested evidence and its completion record. Not the invocations' context packs: they live in ``local/``,
+    which is derived and disposable, and are checked by regenerating them (``context pack``), never by an audit."""
+    if entry["kind"] != "unit":
+        return []
+    try:
+        doc = load_yaml(raw.decode("utf-8"), source=entry["path"])
+    except UnicodeDecodeError as exc:
+        raise IntegrityError(f"{entry['path']} is not UTF-8 text") from exc
+    unit = doc["unit"]
+    pins = []
+    if unit.get("record") and unit.get("record_sha256"):
+        pins.append((unit["record"], unit["record_sha256"]))
+    pins += [(p["path"], p["sha256"]) for p in unit.get("plans") or [] if p.get("path") and p.get("sha256")]
+    pins += [(e["path"], e["sha256"]) for e in unit.get("evidence") or [] if e.get("path") and e.get("sha256")]
+    if unit.get("completion_record") and unit.get("completion_sha256"):
+        pins.append((unit["completion_record"], unit["completion_sha256"]))
+    return sorted(set(pins))
+
+
+def held_evidence(aew_root: Path, bundle: dict[str, Any], evidence_id: str) -> tuple[dict[str, Any], dict[str, Any],
+                                                                                        str]:
+    """An archived unit's ingested evidence record (its reference in the unit, its metadata and body), verified
+    against the hash its unit recorded at ingest."""
+    ref = next((r for r in bundle["unit"].get("evidence", []) if r["id"] == evidence_id), None)
+    if ref is None:
+        raise IntegrityError(f"{bundle['id']}'s bundle does not record evidence {evidence_id}")
+    path = aew_root / ref["path"]
+    found = sha256_file(path)
+    if found is None or found != ref.get("sha256", found):
+        raise IntegrityError(f"evidence record {evidence_id} is "
+                             + ("missing" if found is None else "not the content its unit recorded"),
+                             held_by=bundle["id"])
+    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"), source=ref["path"])
+    return ref, meta, body
+
+
+def evidence_source(meta: dict[str, Any]) -> str:
+    """Who wrote an evidence record: the engine (a check result) or a model (everything an agent submitted)."""
+    return "engine" if meta.get("kind") == "check_result" else "model"
+
+
+def advance_cold(cold: dict[str, Any], root: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """``cold`` with its root advanced over ``entries`` (in order), keeping the two dates audit status needs, so that
+    ``status`` and ``resume`` never read the history for them (invariant 11): ``first_at``, the first entry's time,
+    and ``unverified_since``, the time of the oldest entry the verified root does not cover (absent when it covers
+    everything). ``cold["verified"]`` is the verified root this commit makes current."""
+    old = cold["root"]["count"]
+    out = dict(cold, root=root)
+    if old == 0 and entries:
+        out["first_at"] = entries[0]["at"]
+    verified = (cold.get("verified") or {}).get("count", 0)
+    if verified >= root["count"]:
+        out.pop("unverified_since", None)
+    elif verified >= old:  # the first unverified entry is one of these
+        out["unverified_since"] = entries[verified - old]["at"]
+    return out
 
 
 def child_leaf(work_id: str, state: str, completion_sha256: str | None) -> int:
@@ -92,7 +162,7 @@ class Archive:
 
     def __init__(self, k: Kernel) -> None:
         self.k = k
-        self.history = History(k.aew_root)
+        self.cold = History(k.aew_root)
 
     # ------------------------------------------------------------------ the finalizer (R6)
 
@@ -110,11 +180,14 @@ class Archive:
         # Removing a retired observation is an obligation that outlives its invocation: it stays listed until the
         # directory is gone, and every commit retries it, so a crash or a failed removal never loses it.
         ctx.after_commit.extend(lambda p=o["path"]: self._prune_observation(p) for o in retired)
-        if not order and not ctx.annotations and not lead_ended \
+        if not order and not ctx.annotations and not ctx.entries and not lead_ended \
                 and retained == state.get("retained_workspaces", []) \
                 and retired == state.get("retired_observations", []) and self._refs_unchanged(state, archived):
             return
-        entries, facts, recent, gone_invocations, gone_tokens = [], {}, [], set(), set()
+        # The operation's own entries go first, so the root right after them is known when it is staged (an audit
+        # records that root as verified; anything archived in the same commit follows it).
+        entries: list[dict[str, Any]] = list(ctx.entries)
+        facts, recent, gone_invocations, gone_tokens = {}, [], set(), set()
         for wid in order:
             unit = work[wid]
             invocations = [i for i in unit.get("invocations", []) if i in state["invocations"]]
@@ -125,7 +198,7 @@ class Archive:
                 "schema": ARCHIVE_SCHEMA, "id": wid, "unit": unit,
                 "invocations": {i: state["invocations"][i] for i in invocations},
                 "tokens": {t: state["tokens"][t] for t in tokens}})
-            sha = self.history.write_record(ctx.session, bundle_rel(wid), bundle)
+            sha = self.cold.write_record(ctx.session, bundle_rel(wid), bundle)
             at = ((unit.get("history") or [{}])[-1].get("at")) or utc_now()
             entries.append(self._entry(wid, unit, sha, at, invocations, tokens))
             facts[wid] = self._facts(unit, sha)
@@ -140,7 +213,7 @@ class Archive:
             gone_tokens.update(lead_ended)
         root = state["cold"]["root"]
         if entries:
-            root = self.history.append(ctx.session, root, entries)
+            root = self.cold.append(ctx.session, root, entries)
         hot = {w: u for w, u in work.items() if w not in archived}
         projected = dict(state)
         projected["work"] = hot
@@ -148,7 +221,7 @@ class Archive:
         projected["tokens"] = {t: v for t, v in state["tokens"].items() if t not in gone_tokens}
         counts = Counter({"done": 0, "cancelled": 0, **(state["cold"].get("archived") or {})})
         counts.update(work[w]["state"].lower() for w in order)
-        projected["cold"] = dict(state["cold"], root=root, archived=dict(sorted(counts.items())))
+        projected["cold"] = dict(advance_cold(state["cold"], root, entries), archived=dict(sorted(counts.items())))
         projected["recent"] = (list(state.get("recent", [])) + recent)[-RECENT:]
         projected["archived_refs"] = self._archived_refs(state, hot, facts)
         projected["retained_workspaces"] = retained
@@ -169,7 +242,7 @@ class Archive:
         state["counters"]["lead_archive"] = state["counters"].get("lead_archive", 0) + 1
         n = state["counters"]["lead_archive"]
         rid, rel = f"LEAD-{n:04d}", f"history/lead/{n:06d}.yaml"
-        sha = self.history.write_record(session, rel, dump_yaml({
+        sha = self.cold.write_record(session, rel, dump_yaml({
             "schema": LEAD_SCHEMA, "id": rid, "generation": state["lead"]["generation"],
             "tokens": {t: state["tokens"][t] for t in ended}}))
         return {"kind": "lead", "id": rid, "path": rel, "sha256": sha, "at": utc_now(), "source": "engine",
@@ -187,7 +260,7 @@ class Archive:
         entry = self._lead_entry(session, state, ended)
         for t in ended:
             del state["tokens"][t]
-        state["cold"] = dict(state["cold"], root=self.history.append(session, state["cold"]["root"], [entry]))
+        state["cold"] = advance_cold(state["cold"], self.cold.append(session, state["cold"]["root"], [entry]), [entry])
 
     # ------------------------------------------------------------------ annotations (moves of archived units, R3)
 
@@ -218,7 +291,7 @@ class Archive:
                                 "rel": a["rel"], "object": a["object"], "at": a["at"],
                                 "actor": {"generation": a["generation"]}, "decision": a["decision"],
                                 "source": "engine", "note": a["note"]})
-            sha = self.history.write_record(ctx.session, rel, record)
+            sha = self.cold.write_record(ctx.session, rel, record)
             out.append({"kind": "annotation", "id": a["id"], "path": rel, "sha256": sha, "at": a["at"],
                         "subject": a["subject"], "rel": a["rel"], "source": "engine",
                         "links": {a["rel"]: [a["object"]] if a["object"] else []}})
@@ -418,6 +491,30 @@ class Archive:
                 state = self.k.store.read()
         raise AssertionError("unreachable")
 
+    def index(self, state: dict[str, Any]) -> HistoryIndex:
+        """The derived history index, synced to the cold root of ``state`` (queries stop at that root)."""
+        return self._index(state)
+
+    def record(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """The record a manifest entry pins (a bundle, an annotation, an audit or a Lead record), verified against
+        its hash when it is read: a missing or changed record is a contradiction here, not only at the next audit."""
+        rel = entry["path"]
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except FileNotFoundError:
+            raise IntegrityError(f"history record {rel} is missing", path=rel) from None
+        except OSError as exc:
+            raise IntegrityError(f"history record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+        if sha256_bytes(raw) != entry["sha256"]:
+            raise IntegrityError(f"history record {rel} does not hold the content its entry pins", path=rel)
+        try:
+            doc = load_yaml(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise IntegrityError(f"history record {rel} is not UTF-8 text", path=rel) from exc
+        if not isinstance(doc, dict) or doc.get("id") != entry["id"]:
+            raise IntegrityError(f"{rel} is not the record of {entry['id']}", path=rel)
+        return doc
+
     def bundle(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """An archived unit's bundle (verified against its manifest entry), or None if it was never archived."""
         if not is_v2(state):
@@ -433,12 +530,8 @@ class Archive:
         return self._load(entries[-1]) if entries else None
 
     def _load(self, entry: dict[str, Any]) -> dict[str, Any]:
-        raw = (self.k.aew_root / entry["path"]).read_bytes()
-        if sha256_bytes(raw) != entry["sha256"]:
-            raise IntegrityError(f"archived record {entry['path']} does not hold the content its entry pins",
-                                 path=entry["path"])
-        doc = load_yaml(raw.decode("utf-8"), source=entry["path"])
-        if doc.get("schema") not in {ARCHIVE_SCHEMA, LEAD_SCHEMA} or doc.get("id") != entry["id"]:
+        doc = self.record(entry)
+        if doc.get("schema") not in {ARCHIVE_SCHEMA, LEAD_SCHEMA}:
             raise IntegrityError(f"{entry['path']} is not the archive record of {entry['id']}")
         return doc
 
@@ -541,3 +634,30 @@ class Archive:
             if unit is not None and unit.get("parent") == parent:
                 out.append((wid, unit))
         return out
+
+
+def reference_summary(entry: dict[str, Any], doc: dict[str, Any]) -> str:
+    """What a context pack shows of a historical record loaded as reference (``aew history load``): for an archived
+    unit, its outcome and provenance (not its whole bundle); any other record as it was written. Deterministic, so a
+    regenerated pack matches the one recorded at dispatch."""
+    if entry["kind"] != "unit":
+        return dump_yaml(redact({k: v for k, v in doc.items() if k != "schema"}))
+    unit = doc["unit"]
+    summary: dict[str, Any] = {
+        "id": entry["id"], "kind": unit["kind"], "title": unit["title"], "state": unit["state"],
+        "parent": unit.get("parent"), "risk_class": unit.get("risk_class"), "mutating": unit.get("mutating"),
+        "accepted_record": ((unit.get("execution") or {}).get("record") or {}).get("id"),
+        "integration_commit": (unit.get("integration") or {}).get("commit"),
+        "completion_record": unit.get("completion_record"),
+        "evidence": [{"id": e["id"], "kind": e.get("kind"), "result": e.get("result")}
+                     for e in unit.get("evidence", [])],
+        "invocations": [{"id": i, "role": inv.get("role"), "status": inv.get("status")}
+                        for i, inv in sorted((doc.get("invocations") or {}).items())],
+    }
+    return dump_yaml(summary)
+
+
+def evidence_reference(meta: dict[str, Any], body: str) -> str:
+    """An archived evidence record as a pack shows it when loaded as reference: the exact record, its metadata and
+    its body as written (deterministic, so a regenerated pack matches the recorded one)."""
+    return dump_yaml({**redact({k: v for k, v in meta.items() if k != "schema"}), "body": body})

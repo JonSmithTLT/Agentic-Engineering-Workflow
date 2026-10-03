@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from aew.engine.ports import (
         ArchivePort,
         GatesPort,
+        HistoryCommandsPort,
         InputsPort,
         InvocationsPort,
         NonMutatingPort,
@@ -43,7 +44,8 @@ class Hierarchy:
     """Story/Epic lifecycle: parent gates and closeout, cancellation, moves, promotion, dependency edits."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort, archive: ArchivePort) -> None:
+                 inputs: InputsPort, gates: GatesPort, nm: NonMutatingPort, archive: ArchivePort,
+                 history: HistoryCommandsPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -52,6 +54,7 @@ class Hierarchy:
         self.gates = gates
         self.nm = nm
         self.archive = archive
+        self.history = history
 
     def _completion_of(self, state: dict[str, Any], work_id: str) -> str | None:
         """A unit's completion-record hash, hot or archived (what an edge or a closeout record pins)."""
@@ -267,6 +270,11 @@ class Hierarchy:
             unmet = self._classification_unmet(state, unit, gc["snapshot"]["children_digest"])
             if unmet:
                 raise GateUnsatisfied(f"{work_id}: {unmet}")
+            backlog = self.history.audit_backlog(state) if unit["kind"] == "epic" else None
+            if backlog:  # ADR-0011: Epic closeout requires at least an incremental audit through the current root
+                raise GateUnsatisfied(f"{work_id}: an Epic closes only once the history is audited through the current "
+                                      f"root ({backlog} entries are unverified): run `aew history audit --expect-rev "
+                                      "N`, then close it", unverified=backlog)
             self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
                                          reason=reason)

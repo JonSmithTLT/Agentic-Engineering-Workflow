@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         GatesPort,
         HarnessPort,
         HierarchyPort,
+        HistoryCommandsPort,
         InputsPort,
         LeadPort,
         RolesPort,
@@ -49,7 +50,7 @@ class Resume:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, inputs: InputsPort, gates: GatesPort,
                  hierarchy: HierarchyPort, lead: LeadPort, views: StatusViewsPort, harness: HarnessPort,
-                 kinds: KindRegistry) -> None:
+                 history: HistoryCommandsPort, kinds: KindRegistry) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -59,6 +60,7 @@ class Resume:
         self.lead = lead
         self.views = views
         self.harness = harness
+        self.history = history
         self.kinds = kinds
 
     def kind_registrations(self) -> list[KindRegistration]:
@@ -87,6 +89,11 @@ class Resume:
         for wid, u in sorted(state["work"].items()):
             actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
+        audit = self.history.audit_status(state)
+        if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)
+            actions.append("the history audit is behind policy (" + "; ".join(audit["over_policy"])
+                           + "): `aew history audit --expect-rev N`" + (" --full" if any(
+                               "full" in o for o in audit["over_policy"]) else ""))
         return actions
 
     def _ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -185,6 +192,9 @@ class Resume:
                            f"(`aew invoke create {wid} --role reviewer|verifier`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
+            elif u["kind"] == "epic" and self.history.audit_backlog(state):
+                out.append(f"all parent gates are CURRENT: audit the history through the current root "
+                           f"(`aew history audit --expect-rev N`), then close it (`aew work close {wid}`)")
             else:
                 out.append(f"all parent gates are CURRENT: close it (`aew work close {wid}`)")
             out += [f"waiting on {b['id']} ({b['reason']}) before its acceptance review, verification and closeout"
@@ -487,4 +497,5 @@ class Resume:
             "next_actions": self.next_actions(state),
             "contradictions": self.views.contradictions(state),
             **({"finished": finished} if (finished := finished_summary(state)) else {}),
+            **({"history_audit": audit} if (audit := self.history.audit_status(state)) else {}),
         }

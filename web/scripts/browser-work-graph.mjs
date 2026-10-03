@@ -9,9 +9,11 @@ const revision = JSON.parse(
   fs.readFileSync('node_modules/playwright-core/browsers.json'),
 ).browsers.find((b) => b.name === 'chromium').revision;
 const browser = await chromium.launch({
-  executablePath: path.resolve(
-    `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
-  ),
+  executablePath:
+    process.env.CHROMIUM_PATH ??
+    path.resolve(
+      `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
+    ),
 });
 const errors = [],
   requests = [],

@@ -1,0 +1,59 @@
+{
+  "contract": "journal-preview",
+  "version": "0.1.0",
+  "sha256": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+  "cases": {
+    "story": {
+      "entries": 7,
+      "sha256": "529dcdd04c68a59eb526068f1bceda47ec00ec6c139140242af13dceca094d98"
+    },
+    "large": {
+      "entries": 10000,
+      "sha256": "a9f0ab0bd65bc4bd42e9214507724c236fd9f9489f9687d582ce154c643e204c"
+    },
+    "bounds": {
+      "entries": 7,
+      "sha256": "88529958d418174c06517564539b0cdf441ca81a7517bcc62ef7237f8e2e9153"
+    },
+    "missing": {
+      "entries": 7,
+      "sha256": "7d06cb2aca65bebcf0e65e338bb730c461e067363e70e1400ff9a75255272d27"
+    },
+    "stale": {
+      "entries": 7,
+      "sha256": "55cf239f5a954a8e11069273edcccca7c979df09dfb8a7f5c4c3e3f966c25a38"
+    },
+    "contradictory": {
+      "entries": 7,
+      "sha256": "e3a1a5f21ddeb51526d77334060298b8c5a080f62b573569abc62ca665d53788"
+    },
+    "unknown": {
+      "entries": 7,
+      "sha256": "6101e3c9e50fe456e1a92ba18c7b7f5aaa3c441abcdc2fe653bf292d2167ffa9"
+    },
+    "denied": {
+      "entries": 7,
+      "sha256": "529dcdd04c68a59eb526068f1bceda47ec00ec6c139140242af13dceca094d98"
+    },
+    "not-found": {
+      "entries": 7,
+      "sha256": "529dcdd04c68a59eb526068f1bceda47ec00ec6c139140242af13dceca094d98"
+    },
+    "malformed": {
+      "entries": 7,
+      "sha256": "529dcdd04c68a59eb526068f1bceda47ec00ec6c139140242af13dceca094d98"
+    },
+    "refresh-error": {
+      "entries": 7,
+      "sha256": "529dcdd04c68a59eb526068f1bceda47ec00ec6c139140242af13dceca094d98"
+    },
+    "hostile": {
+      "entries": 7,
+      "sha256": "76ce83d22e8ea373fee4f679cc69f77a2609a223a03fc207987f5fbbf2d0d6d9"
+    },
+    "empty": {
+      "entries": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  }
+}

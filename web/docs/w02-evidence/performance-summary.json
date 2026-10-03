@@ -1,0 +1,87 @@
+{
+  "samples": [
+    {
+      "fixture": "F6",
+      "baseline": {
+        "median_render_ms": 542,
+        "samples_ms": [
+          854,
+          528,
+          542
+        ],
+        "dom_rows": [
+          20,
+          20,
+          20
+        ],
+        "api_requests": [
+          4,
+          4,
+          4
+        ]
+      },
+      "candidate": {
+        "median_render_ms": 594,
+        "samples_ms": [
+          808,
+          594,
+          536
+        ],
+        "dom_rows": [
+          20,
+          20,
+          20
+        ],
+        "api_requests": [
+          4,
+          4,
+          4
+        ]
+      }
+    },
+    {
+      "fixture": "F7",
+      "baseline": {
+        "median_render_ms": 538,
+        "samples_ms": [
+          538,
+          519,
+          556
+        ],
+        "dom_rows": [
+          100,
+          100,
+          100
+        ],
+        "api_requests": [
+          4,
+          4,
+          4
+        ]
+      },
+      "candidate": {
+        "median_render_ms": 548,
+        "samples_ms": [
+          563,
+          546,
+          548
+        ],
+        "dom_rows": [
+          100,
+          100,
+          100
+        ],
+        "api_requests": [
+          4,
+          4,
+          4
+        ]
+      }
+    }
+  ],
+  "note": "Sequential local samples in fresh Chromium contexts, collected at different wall times. Warmup/environment effects prevent claiming a causal speedup. No rendering/request-count regression observed.",
+  "production_bytes": {
+    "production": 624891,
+    "frozen_W01_production": 604244
+  }
+}

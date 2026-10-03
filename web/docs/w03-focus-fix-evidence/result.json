@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "7433ddd3b47bdd8abb25d109cf2ed2107c3f2a7f",
+  "previous_fix_source": "2e29a7124738a19a89116a969c5979982badd8ec",
+  "finding": 5,
+  "preview_digest": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+  "unchanged": [
+    "accepted API0.1.2",
+    "preview schema",
+    "generated accepted types",
+    "dependency lock"
+  ],
+  "runtime": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "playwright": "1.59.1",
+    "chromium": "147.0.7727.15",
+    "carrier": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407"
+  },
+  "validation": {
+    "offline_gate": "PASS",
+    "unit_tests": 127,
+    "test_files": 15,
+    "browser_groups": 42,
+    "w01": 16,
+    "w02": 10,
+    "w03": 12,
+    "http_service_workers_blocked": 4,
+    "premium_static_findings": 0,
+    "production_exclusion": "PASS"
+  },
+  "focus_cases": [
+    "Desktop results selection preserves focused link and sequential Tab position.",
+    "Stream/table middle selection on a50-entry page: Shift+Tab preceding link, Tab selected link.",
+    "Phone results selection focuses replacing detail heading.",
+    "Desktop/phone relations focus the newly selected ID/title heading below sticky header."
+  ],
+  "commands": [
+    "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh",
+    "cd web && node scripts/ci-browser.mjs",
+    "cd web && node scripts/browser-w02.mjs",
+    "cd web && node scripts/browser-w03.mjs",
+    "cd web && node scripts/browser-http-demo.mjs",
+    "python3 <frontend-design-premium-skill>/scripts/audit_project.py web --mode strict"
+  ],
+  "independent_review": "Findings1–4 confirmed fixed. Finding5 confirmation PENDING.",
+  "backend_adoption": "PENDING",
+  "live_integration": "PENDING",
+  "limitations": [
+    "Existing chunk-size advisories remain.",
+    "Phone checks emulate width in desktop Chromium.",
+    "No new performance claim."
+  ],
+  "files": {
+    "desktop.png": {
+      "sha256": "b995e0df64fadf2b0bb18c0b6d7bf0e5bcdc7c98b333ea4cf6c68d86d555a8f5"
+    },
+    "http-browser.json": {
+      "sha256": "6fde5f3546611b04181188ddce0b3f3faa5c30e0a8f4a6c60f5e780efbbdd21b"
+    },
+    "http.log": {
+      "sha256": "4f53063e4149b387464627ff60d93fb1c8fd387718cd78c7aa70dab2e8627be4"
+    },
+    "offline.log": {
+      "sha256": "c13f50f8a8035e61365cf34c7648ed74bf08eb5053591b97c10ce5d7884a0e63"
+    },
+    "phone.png": {
+      "sha256": "516b4ef3437db2d570c29280328d68eca185a3ec504de3de253da0fd5b6acd47"
+    },
+    "premium-audit.json": {
+      "sha256": "59228c627ebe796c49c1900a4dd8c19c97b5e5ceda3209681b508738da1dd1e1"
+    },
+    "w01-browser.json": {
+      "sha256": "a59ffbb5b40688504b29ceb74b42881bd8172b9173bca95d64ecdc498b7ef09e"
+    },
+    "w01.log": {
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w02-browser.json": {
+      "sha256": "4567605d15c87dde3c70a2fb004ba624f516ccf7b390a2b74815075abb3f0e11"
+    },
+    "w02.log": {
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe"
+    },
+    "w03-browser.json": {
+      "sha256": "f83d98581de7a425a75bb3e444586ba12e0ce3e76cebf3f48fd506139100dc75"
+    },
+    "w03.log": {
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b"
+    }
+  }
+}

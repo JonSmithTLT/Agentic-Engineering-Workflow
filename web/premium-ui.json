@@ -1,0 +1,17 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "locale": "en",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Table Selection", "Select/Listbox", "Scrollbar"],
+  "ownership": { "Select/Listbox": "native" },
+  "requiredCommands": ["typecheck", "lint", "unit", "build", "journalArtifacts"],
+  "commands": {
+    "typecheck": "npm run typecheck",
+    "lint": "npm run lint",
+    "unit": "npm test",
+    "build": "npm run build",
+    "journalArtifacts": "node --experimental-strip-types scripts/journal-artifact.mjs"
+  },
+  "evidence": { "failurePaths": "tests/w03-journal.test.tsx", "keyboardAndResponsive": "scripts/browser-w03.mjs" }
+}

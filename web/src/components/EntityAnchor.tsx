@@ -1,6 +1,7 @@
 import { CopyCli } from './CopyCli';
 import { Link, useLocation } from 'react-router-dom';
-import { entityLink } from '../api/links';
+import { dashboardEntityLink, navigationParams } from '../api/navigation';
+import { useWorkspaceCollection } from './InvestigationWorkspace';
 import { SemanticValue } from './States';
 import { useCapability } from '../client/dashboard';
 const capabilities: Record<string, string> = {
@@ -19,26 +20,31 @@ const capabilities: Record<string, string> = {
 };
 export function EntityAnchor({
   entity,
+  workWorkspace = false,
 }: {
   entity: { id: string; kind: string; title?: string | null };
+  workWorkspace?: boolean;
 }) {
   const location = useLocation();
   const capability = useCapability(
     capabilities[entity.kind] ?? '__unknown_entity',
   );
-  const href = entityLink(entity);
+  const collection = useWorkspaceCollection();
+  const workspace =
+    (workWorkspace && entity.kind === 'work') ||
+    (collection === 'work' &&
+      ['work', 'ticket', 'story', 'epic'].includes(entity.kind)) ||
+    (collection === 'runs' && entity.kind === 'invocation');
+  // Cross-collection Work links carry demo identity, not source filters or selection.
+  const search =
+    workWorkspace && entity.kind === 'work' && collection !== 'work'
+      ? navigationParams(new URLSearchParams(location.search)).toString()
+      : location.search;
+  const href = dashboardEntityLink(entity, search, workspace);
   const label = entity.title ?? entity.id;
-  const params = new URLSearchParams(location.search);
-  const context = new URLSearchParams();
-  if (import.meta.env.MODE === 'demo')
-    for (const key of ['fixture', 'fault', 'catalog', 'recipe', 'seed']) {
-      const value = params.get(key);
-      if (value) context.set(key, value);
-    }
-  const search = context.size ? '?' + context.toString() : '';
   return href && capability.available ? (
     <span className="entity-with-cli">
-      <Link to={href + search}>{label}</Link>
+      <Link to={href}>{label}</Link>
       <CopyCli kind={entity.kind} id={entity.id} />
     </span>
   ) : (

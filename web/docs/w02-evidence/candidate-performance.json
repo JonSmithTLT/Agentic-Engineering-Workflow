@@ -1,0 +1,87 @@
+{
+  "source": "candidate",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "samples": [
+    {
+      "fixture": "F6",
+      "repeat": 0,
+      "render_ms": 808,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F6",
+      "repeat": 1,
+      "render_ms": 594,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F6",
+      "repeat": 2,
+      "render_ms": 536,
+      "rows": 20,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/work?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 0,
+      "render_ms": 563,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 1,
+      "render_ms": 546,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    },
+    {
+      "fixture": "F7",
+      "repeat": 2,
+      "render_ms": 548,
+      "rows": 100,
+      "requests": [
+        "/api/v1/project",
+        "/api/v1/capabilities",
+        "/api/v1/history?limit=100",
+        "/api/v1/overview"
+      ],
+      "errors": []
+    }
+  ]
+}

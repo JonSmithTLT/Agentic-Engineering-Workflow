@@ -7,6 +7,25 @@ export type Projection<T> = {
   etag?: string;
   last_checked_at: string;
 };
+export class ProjectionHttpError extends Error {
+  constructor(public status: number) {
+    super(
+      status === 404
+        ? 'Not found (404)'
+        : status === 401
+          ? 'Session required (401)'
+          : status === 403
+            ? 'Access unavailable (403)'
+            : `Projection request failed (${status})`,
+    );
+    this.name = 'ProjectionHttpError';
+  }
+}
+export function accessRefused(error: unknown) {
+  return (
+    error instanceof ProjectionHttpError && [401, 403].includes(error.status)
+  );
+}
 export class ReadTransport {
   private cache = new Map<string, Projection<unknown>>();
   context = new ReadContext();
@@ -34,10 +53,22 @@ export class ReadTransport {
     this.changed();
   }
   constructor(
-    private request: typeof fetch = (input, init) =>
-      globalThis.fetch(input, init),
+    private request: typeof fetch = (input, init) => {
+      if (import.meta.env.MODE === 'demo' && document.querySelector('meta[name="aew-demo-transport"]')?.getAttribute('content') === 'http') {
+        const headers = new Headers(init?.headers);
+        const params = new URLSearchParams(location.search);
+        headers.set('X-AEW-Demo-Fixture', params.get('fixture') ?? 'F1');
+        if (params.get('fault')) headers.set('X-AEW-Demo-Fault', params.get('fault')!);
+        return globalThis.fetch(input, { ...init, headers });
+      }
+      return globalThis.fetch(input, init);
+    },
     private now = () => readClock.now(),
     private log: RequestLog = requestLog,
+    private policy = {
+      base: '/api/v1',
+      routes: /^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/,
+    },
   ) {}
   async get<T>(
     route: string,
@@ -45,13 +76,11 @@ export class ReadTransport {
     signal?: AbortSignal,
   ): Promise<Projection<T>> {
     if (
-      !/^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/.test(
-        route,
-      ) ||
+      !this.policy.routes.test(route) ||
       route.includes('\\') ||
       route.includes('#') ||
-      new URL(`/api/v1${route}`, 'http://aew.invalid').pathname !==
-        `/api/v1${route.split('?')[0]}`
+      new URL(`${this.policy.base}${route}`, 'http://aew.invalid').pathname !==
+        `${this.policy.base}${route.split('?')[0]}`
     )
       throw new Error('Invalid API route');
     const context = this.context;
@@ -63,7 +92,7 @@ export class ReadTransport {
     if (prior?.etag) headers.set('If-None-Match', prior.etag);
     const started = readClock.monotonic();
     const trace: Omit<RequestTrace, 'id'> = {
-      path: `/api/v1${route}`.slice(0, 2048),
+      path: `${this.policy.base}${route}`.slice(0, 2048),
       context: context.key(route).slice(0, 1024),
       started_at: this.now().toISOString(),
       duration_ms: 0,
@@ -72,7 +101,7 @@ export class ReadTransport {
       validation: [],
     };
     try {
-      const response = await this.request(`/api/v1${route}`, {
+      const response = await this.request(`${this.policy.base}${route}`, {
         method: 'GET',
         credentials: 'same-origin',
         headers,
@@ -87,8 +116,11 @@ export class ReadTransport {
         if (!prior) throw new Error('304 without a cached representation');
         next = { ...prior, last_checked_at: this.now().toISOString() };
       } else {
-        if (!response.ok)
-          throw new Error(`Projection request failed (${response.status})`);
+        if (!response.ok) {
+          if ([401, 403].includes(response.status) && !context.retired)
+            this.cache.delete(key);
+          throw new ProjectionHttpError(response.status);
+        }
         if (!response.headers.get('Content-Type')?.includes('application/json'))
           throw new Error('Expected a JSON projection');
         const value = schema.parse(await response.json());

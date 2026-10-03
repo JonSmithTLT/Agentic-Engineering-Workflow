@@ -1,0 +1,106 @@
+{
+  "frozen_commit": "43c5a8f961ff18f9249d62c0ad7f8790f2b33eaf",
+  "results": [
+    {
+      "name": "W02 frozen Work F6",
+      "ordinal": 0,
+      "elapsed_ms": 1699,
+      "rendered_records": 21,
+      "dom_nodes": 536,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 312978
+    },
+    {
+      "name": "W02 frozen Work F6",
+      "ordinal": 1,
+      "elapsed_ms": 494,
+      "rendered_records": 21,
+      "dom_nodes": 536,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 312978
+    },
+    {
+      "name": "W03 candidate Work F6",
+      "ordinal": 0,
+      "elapsed_ms": 1013,
+      "rendered_records": 21,
+      "dom_nodes": 539,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    },
+    {
+      "name": "W03 candidate Work F6",
+      "ordinal": 1,
+      "elapsed_ms": 1035,
+      "rendered_records": 21,
+      "dom_nodes": 539,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    },
+    {
+      "name": "W02 frozen Knowledge F1",
+      "ordinal": 0,
+      "elapsed_ms": 500,
+      "rendered_records": 1,
+      "dom_nodes": 136,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 312978
+    },
+    {
+      "name": "W02 frozen Knowledge F1",
+      "ordinal": 1,
+      "elapsed_ms": 512,
+      "rendered_records": 1,
+      "dom_nodes": 136,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 312978
+    },
+    {
+      "name": "W03 candidate Journal story",
+      "ordinal": 0,
+      "elapsed_ms": 534,
+      "rendered_records": 7,
+      "dom_nodes": 213,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    },
+    {
+      "name": "W03 candidate Journal story",
+      "ordinal": 1,
+      "elapsed_ms": 1032,
+      "rendered_records": 7,
+      "dom_nodes": 213,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    },
+    {
+      "name": "W03 candidate Journal 10000",
+      "ordinal": 0,
+      "elapsed_ms": 1265,
+      "rendered_records": 50,
+      "dom_nodes": 599,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    },
+    {
+      "name": "W03 candidate Journal 10000",
+      "ordinal": 1,
+      "elapsed_ms": 1218,
+      "rendered_records": 50,
+      "dom_nodes": 599,
+      "api_reads": 4,
+      "detail_prefetch": false,
+      "browser_transfer_bytes": 317890
+    }
+  ],
+  "notes": "Local warm-toolchain samples, not a timing SLA. Journal and accepted Knowledge differ in scope; only Work F6 is a like-for-like comparison."
+}

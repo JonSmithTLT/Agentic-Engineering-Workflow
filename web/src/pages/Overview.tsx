@@ -1,3 +1,4 @@
+import { RecordInspection } from '../components/Investigation';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ticketStates,
@@ -43,6 +44,13 @@ export function OverviewPage() {
           )
         ) : (
           <>
+            <RecordInspection
+              kind="health"
+              record={data.health}
+              source={record!}
+              fallbackId="project-health"
+              failed={query.isError}
+            />
             <section className="briefing panel">
               <div>
                 <span className="muted">Backend summary</span>
@@ -67,9 +75,7 @@ export function OverviewPage() {
                   <h2>
                     Active work <span>{data.counts.work.open}</span>
                   </h2>
-                  <Link to={'/work' + routeLocation.search}>
-                    Inspect work
-                  </Link>
+                  <Link to={'/work' + routeLocation.search}>Inspect work</Link>
                 </div>
                 <div className="table-scroll">
                   <table>
@@ -86,8 +92,7 @@ export function OverviewPage() {
                           <td>
                             <Link
                               to={
-                                detailRoute('work', w.id) +
-                                routeLocation.search
+                                detailRoute('work', w.id) + routeLocation.search
                               }
                             >
                               <code className="work-record-id">{w.id}</code>{' '}
@@ -158,10 +163,7 @@ export function OverviewPage() {
                     <div>
                       <h3>{r.work.title}</h3>
                       <p>
-                        <SemanticValue
-                          value={r.role}
-                          known={invocationRoles}
-                        />
+                        <SemanticValue value={r.role} known={invocationRoles} />
                       </p>
                     </div>
                     <SemanticValue
@@ -180,9 +182,7 @@ export function OverviewPage() {
                 </div>
                 {data.activity.map((a) => (
                   <article className="activity-item" key={a.id}>
-                    <time>
-                      {new Date(a.occurred_at).toLocaleTimeString()}
-                    </time>
+                    <time>{new Date(a.occurred_at).toLocaleTimeString()}</time>
                     <div>
                       <h3>{a.title}</h3>
                       <p>{a.subject.title}</p>
@@ -215,19 +215,15 @@ export function OverviewPage() {
                         <td>
                           <Link
                             to={
-                              detailRoute('work', w.id) +
-                              routeLocation.search
+                              detailRoute('work', w.id) + routeLocation.search
                             }
                           >
                             <code className="work-record-id">{w.id}</code>{' '}
-                              {w.title}
+                            {w.title}
                           </Link>
                         </td>
                         <td>
-                          <SemanticValue
-                            value={w.state}
-                            known={workStates}
-                          />
+                          <SemanticValue value={w.state} known={workStates} />
                         </td>
                         <td>{w.archived ? 'Archived' : 'Hot'}</td>
                       </tr>

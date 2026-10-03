@@ -1,0 +1,19 @@
+{
+  "checks": [
+    {
+      "name": "desktop HTTP investigation, selection, legend, focus and graph",
+      "result": "PASS"
+    },
+    {
+      "name": "phone HTTP investigation, selection, legend, focus and graph",
+      "result": "PASS"
+    },
+    {
+      "name": "HTTP fixture switching, accepted Records, large paging and conditional reads",
+      "result": "PASS"
+    }
+  ],
+  "service_workers": "BLOCKED",
+  "browser": "147.0.7727.15",
+  "independent_review": "fixing-diff re-check pending"
+}

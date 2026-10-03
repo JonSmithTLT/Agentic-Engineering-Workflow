@@ -1,3 +1,4 @@
+import { RecordInspection } from '../components/Investigation';
 import { LineageGraph } from '../components/LineageGraph';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -57,6 +58,8 @@ function HistoricalWarning() {
   return (
     <p className="preview-note" role="note">
       Historical references only. Archived records are never current evidence.
+      Work, Runs, Evidence and Knowledge lookups open current projections, not
+      historical snapshots.
     </p>
   );
 }
@@ -89,6 +92,11 @@ export function IntegrityPanel() {
           )
         ) : (
           <>
+            <RecordInspection
+              kind="integrity"
+              record={data}
+              source={query.data!}
+            />
             <p>
               Backend audit status:{' '}
               <SemanticValue value={data.status} known={[]} />

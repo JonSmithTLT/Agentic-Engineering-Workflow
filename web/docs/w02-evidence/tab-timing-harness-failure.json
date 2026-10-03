@@ -1,0 +1,463 @@
+{
+  "result": "FAIL",
+  "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+  "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n'false' !== 'true'\n",
+  "checks": [
+    {
+      "name": "Work workspace preserves results while Why uses no extra reads",
+      "result": "PASS"
+    },
+    {
+      "name": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "result": "PASS"
+    },
+    {
+      "name": "Runs pilot, legacy routes and copied URL reload",
+      "result": "PASS"
+    }
+  ],
+  "errors": [],
+  "responses": [],
+  "requests": [
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/index-B7-lhzKR.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/transport-w8ONkB11.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/index-sbKoyBfn.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/browser-ClPJQFze.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Lab-DlVW9D_t.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs?fixture=F1&selected=INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-B7-lhzKR.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-w8ONkB11.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-sbKoyBfn.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-ClPJQFze.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-DlVW9D_t.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs?fixture=F1&selected=INV-0001&inspector=why&field=status",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-B7-lhzKR.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-w8ONkB11.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-sbKoyBfn.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-ClPJQFze.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-DlVW9D_t.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs/INV-0001?fixture=F1",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-B7-lhzKR.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-w8ONkB11.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-sbKoyBfn.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-ClPJQFze.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-DlVW9D_t.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/index-B7-lhzKR.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/transport-w8ONkB11.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/index-sbKoyBfn.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/browser-ClPJQFze.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Lab-DlVW9D_t.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    }
+  ]
+}

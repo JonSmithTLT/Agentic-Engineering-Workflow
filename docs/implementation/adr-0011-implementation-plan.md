@@ -474,6 +474,52 @@ These are the two findings from the F2 probes.
 1. When the engine inspects a run's workspace, it must add that run's private git object store as an alternate. F2 decides the store's lifetime.
 2. The E13 conformance scenario must translate namespace-local PIDs (`NSpid`) before it can gate F2.
 
+From P3 (A1, §7.4):
+
+3. `resume` grows with open work: about 3 ms per open unit on Windows (3.6 s at 1,000 open), 1.2 to 1.4 ms on Linux, in its compute phase. It is linear and inside the 8 s bound, but M4's concurrency raises the open frontier.
+
+### 7.4 P3 results (2026-10-03)
+
+The data and tables are in [`eval/adr-0011/perf/README.md`](../../eval/adr-0011/perf/README.md) §5–§7. `tools/perf/adr0011_gate.py` judges a flat and a hierarchy sweep against the criteria below and prints the table; on all three platforms every row is pass or report (on Windows with the paired H2 run, `--ab`). Code measured: `16c6757`.
+
+**Who ran what.** With the operator's go-ahead (2026-10-02), Claude ran all three:
+- **WSL2 Ubuntu 22.04** (supplement): flat, hierarchy and cold-write series.
+- **Rocky Linux 8.10 in `aew-q7`**: `tools/perf/rocky8-gate.sh` and the full flat sweep. It is Rocky's userland on WSL2's 6.18 kernel, not Rocky's 4.18; that is enough for this gate, which measures Python, YAML and file I/O, but not for F2's containment.
+- **Windows reference**: the full sweep, flat, hierarchy and cold-write. The operator did light design work during it; nothing else ran.
+
+**Verdicts.**
+
+| Criterion | Windows (reference) | Rocky 8.10 | WSL2 Ubuntu |
+|---|---|---|---|
+| **H1** hot state at 3,000 vs 250 completed (≤ 1.25x) | 1.05x flat, 1.08x hierarchy | 1.05x flat, 1.08x hierarchy | 1.05x, 1.08x |
+| **H1** history's share of hot state at 20 open, 3,000 completed (≤ 20%) | 7.6%; 12.6% hierarchy | 7.7%; 12.8% hierarchy | 7.7%; 12.8% |
+| **H2** largest change of any command, 250 to 3,000 completed (≤ +0.25 s) | +0.024 s paired (flat); +0.036 s hierarchy | +0.027 s | +0.076 s |
+| **H2** cold-write maintenance sublinear | flat, 1.5k to 30.7k records | flat, 1.5k to 30.7k records | flat |
+| **H3** re-parse of a changed hot state, 20 open, 3,000 completed (≤ 0.25 s) | 13.3 ms | 7.0 ms | 6.4 ms |
+| **H4** `resume`: no history-linear sweep (same reads and scans at 250 and 3,000; meets H2) | pass | pass | pass |
+| **Absolute bounds** at 3,000 (reads ≤ 2 s, commits ≤ 4 s, `resume` ≤ 8 s, heartbeat ≤ 2.5 s) | pass; slowest `resume`, 0.93 s (0.57 s paired) | pass, every command ≤ 0.28 s | pass |
+| **A1** (reported): hot bytes and `resume` per open unit, 20 to 1,000 open | 1.03 KB; 3.1 ms, linear, no knee | 1.03 KB; 1.35 ms, linear, no knee | 1.03 KB; 1.24 ms, linear |
+
+**Windows H2 is judged paired.** The sweep measured the 3,000 point once, in a slow moment: `aew --version`, which never reads the project, took 1.7x longer than at 250, and every phase of every command was about 1.6x slower. `status` (+0.255 s) and `resume` (+0.37 s) then exceeded +0.25 s with identical read and scan counters. `control_plane.py ab` measured both points in turns, six rounds: the largest difference is +0.024 s (perf README §7). The sweep's one-sample cap at 3,000, from M3, is removed.
+
+**H1 is judged at 250 and 3,000 completed**, as the operator decided; the CI regression's 250 and 1,000 do not replace it. The historical-access minimum (show, list, links, load) and the full and incremental audits are P2c's, covered by `tests/integration/test_history_surface.py`.
+
+**A1, read.** With history gone from the hot state, what remains grows with open work: about 1 KB and 0.3 to 0.5 ms per open unit for most commands, as in M3, and for `resume` 1.2 to 1.4 ms on Linux and 3.1 ms on Windows (0.56 s at 20 open, 3.59 s at 1,000; it was about 4.4 ms on Windows before ADR-0011). It is linear to 1,000 open, with no knee, and inside the 8 s bound; M4 takes it up (§7.3). The re-parse grows with it (0.29 to 0.41 s at 1,000 open on Linux), inside the 2.5 s heartbeat bound; H3's 0.25 s is defined at 20 open. Nothing here needs the optional role-card dedupe (§6, P2d).
+
+**Migration, profiled** (operator: profile it, batch only if one transaction is impractical). At 20 open and 3,000 completed on Windows, under cProfile (100 s; 102 s unprofiled at P2d):
+- parsing the 60 MB v1 `control.yaml` once, with its schema validation: about 30%;
+- hashing records on disk: each completion record when its unit is archived, and every pre-written bundle again at the commit (R8): about 27%, mostly opening 12,000 files just written (on Windows, about 2 ms per open);
+- serializing 3,000 bundles and the state: about 16%;
+- one avoidable cost: the finalizer found each unit's credentials by scanning every credential, N units x 15,000 credentials, about 9%. **Fixed** (`b57b681`): one map per commit.
+
+Unprofiled after the fix: 87 s on Windows (102 s before), 83 to 86 s on Linux. The rest is linear work the migration must do once (read everything, write and verify everything), so **one transaction stays**: a project migrates once, the time is linear (about 28 ms per finished Ticket), and splitting it would trade R8's one commit point for resumable batches with no measured need.
+
+**Found and fixed by the gate** (`16c6757`). The derived history index was built by whichever command first looked up finished work after a migration. At 3,000 completed that was `harness status`, measured once at 0.88 s against 0.25 s at 250: an H2 failure, though its steady state is constant (it rehydrates the bounded `recent` ring). `aew migrate` now builds the index after its commit, outside the lock, and reports it (`index`). The results above are from after the fix.
+
+**Not run, and why.** Nightly-strength crash and walk runs are CI's nightly job (§8). Live models are not part of this gate.
+
+**Next:** the independent review, from [`adr-0011-reviewer-brief.md`](adr-0011-reviewer-brief.md). After it, the register moves F1 and E5 to §9 *Closed*.
+
 ## 8. Verification for every PR
 
 - **Lanes.** The fast, serial, integration, regression and adversarial lanes run locally. CI's `assurance` check must be green on Linux and Windows.

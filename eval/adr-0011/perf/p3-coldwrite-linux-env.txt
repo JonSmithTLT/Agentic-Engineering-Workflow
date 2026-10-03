@@ -1,0 +1,12 @@
+date: 2026-10-03T02:51:55Z
+commit: b57b681c6da6673c934439209b1588c7745dbb57
+kernel: Linux 6.18.40.1-microsoft-standard-WSL2
+NAME="Ubuntu"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+cpus: 16
+load: 0.33 0.13 0.04
+python: 3.11.0rc1
+pyyaml: 6.0.3 libyaml
+git: git version 2.34.1
+host: WSL2 on the Windows reference machine; other work (a frontend agent) may run on the host
+load at end: 1.82 1.90 1.31

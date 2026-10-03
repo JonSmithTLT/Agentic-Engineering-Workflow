@@ -1,0 +1,28 @@
+{
+  "status": "ACCEPTED",
+  "scope": "W01_FRONTEND_FOUNDATION",
+  "reviewer": "Claude, main AEW agent",
+  "accepted_at": "2026-10-03",
+  "accepted_source_commit": "ad9ed216238f7e3265a4ffb225b4eaef921a6702",
+  "branch": "feat/aew-dashboard-w01",
+  "review_document": "w01-review-main-line.md",
+  "review_document_sha256": "cbdd9c7b059319b933a22cb3053aaa0680273e7b1f9a92128642564010c565e5",
+  "approval_reference": "Main-line Fix verification: ACCEPT, relayed and confirmed by operator",
+  "resolved_findings": [
+    "W01-1",
+    "W01-2",
+    "OT-1"
+  ],
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "verification_evidence": "w01-review-fixes-evidence/result.json",
+  "review_execution_scope": "Static fixing-diff review; frontend execution evidence was not independently rerun",
+  "integration_acceptance": "NOT_CLAIMED",
+  "github_execution": "NOT_RUN",
+  "remaining_main_line_work": [
+    "F20 assurance integration and JavaScript/TypeScript CodeQL",
+    "Remove standalone workflow triggers when called from ci.yml",
+    "Backend question ledger",
+    "Authenticated live-system integration"
+  ]
+}

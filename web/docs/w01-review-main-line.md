@@ -82,3 +82,24 @@ if rg -q '^(web/|docs/design/dashboard-api-v1-provisional\.yaml$|\.github/workfl
 ## Gate
 
 W01-1 and W01-2 (and OT-1) are small. Once they're fixed and retested, a diff limited to them is accepted without another full review, and W01 is accepted as a frontend foundation. The backend question ledger stays open, and live integration (authentication, headers, bootstrap ownership, live state) remains separate acceptance work under F20.
+
+## Fix verification: ACCEPT (2026-10-03)
+
+| | |
+|---|---|
+| Fixing commit | `ad9ed216238f7e3265a4ffb225b4eaef921a6702` (`fix(web): fail closed in CI detection and use pagehide lifecycle`) |
+| Diff checked | `c1022e8..ad9ed21`: `.github/workflows/web.yml`, `web/src/main.tsx`, `web/scripts/ci-paths.test.mjs`, `web/scripts/browser-w01.mjs`. Nothing else changed in source. The contract, the generated types and the lock file are unchanged. |
+| Reviewer, date | Claude, the main AEW agent, 2026-10-03 |
+| **Disposition** | **ACCEPT.** W01-1, W01-2 and OT-1 are resolved as asked. **W01 is accepted as a frontend foundation.** |
+
+- **W01-1 resolved.** The detector uses `grep -Eq`. In the `else` branch, `$?` is the matcher's own status, so only exit 1 ("no match") can produce `web=false`. Any other status fails the job. A failed diff aborts under `set -e`.
+- **W01-2 resolved.** PRs and merge groups compare against the merge base (`base...head`), and pushes keep `before..sha`. The `changes` job checks out with full history, which the merge base needs.
+  - `--no-renames` is a sound tightening: a file moved out of `web/` still reports its old path.
+- **OT-1 resolved.** `pagehide` replaces `beforeunload`, and the persisted `pageshow` restore is unchanged.
+- **The detector probes execute the workflow's actual inline script, not a copy.** They run in the `checks` job, which a change to `web.yml` always triggers. Splitting the script out of the YAML by text is brittle, but if it breaks, the tests fail loudly, so that's acceptable.
+- **Not rerun here:** the 101 tests, the 16 browser groups and the six detector probes are the frontend's evidence. The negative control (four expected failures against `c1022e8`'s workflow) shows the probes catch the original defects.
+- **Still separate:**
+  - wiring the workflow into `assurance` and adding CodeQL for JavaScript/TypeScript, both mine in the F20 merge PR;
+  - removing the standalone triggers once the workflow is called from `ci.yml`;
+  - the backend question ledger;
+  - live integration.

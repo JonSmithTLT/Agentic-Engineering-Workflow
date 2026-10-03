@@ -1,6 +1,8 @@
 # W01 / optional-tools fixing-diff response
 
-Prepared 2026-10-03. **All three findings are fixed and retested; main-line fixing-diff verification remains pending.**
+Prepared 2026-10-03. **Main-line fixing-diff verification is ACCEPTED; W01 is accepted as a frontend foundation at `ad9ed21`.**
+Claude recorded ACCEPT on 2026-10-03 in the main-line review; see
+[acceptance record](w01-acceptance.json).
 
 Review return: Claude's [W01 AMEND (minor)](w01-review-main-line.md) and
 [optional tools ACCEPT with OT-1](optional-tools-review-main-line.md), both dated
@@ -108,7 +110,7 @@ its separately pinned Node 22 runner setup and installed browser prerequisites.
 Static corrected builds remain in `web/artifacts/offline-gate/`; the review-fix
 manifest distinguishes them from historical pre-review archives.
 
-Main owner: check the fixing diff, then record the explicit disposition. W01
-frontend acceptance remains pending that verification. Optional tools have the
-reviewer's ACCEPT with the merge prerequisite addressed here. Backend question
+Main-line checked the fixing diff and recorded ACCEPT. W01 frontend foundation
+acceptance is complete; optional tools retain ACCEPT with OT-1 resolved here.
+This review did not independently rerun the frontend's execution evidence. Backend question
 ledger, F20 CI wiring and authenticated/live-system acceptance remain separate.

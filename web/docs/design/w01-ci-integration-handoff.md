@@ -50,5 +50,8 @@ Primary references checked for the draft: [setup-node](https://github.com/action
 
 Review amendments W01-1/W01-2 and OT-1 are fixed in `ad9ed21`; six actual detector
 probes pass, and the compiled-browser retest passes 16 groups. See
-[fixing-diff response](../w01-review-fix-response.md). Main-line fix verification
-is pending; this does not record GitHub or live integration acceptance.
+[fixing-diff response](../w01-review-fix-response.md). Main-line verified the fixing diff and recorded ACCEPT on 2026-10-03.
+W01 is accepted as a frontend foundation; GitHub execution and live integration
+acceptance remain separate. When ci.yml calls the workflow, remove standalone
+PR/push/merge-group triggers to avoid duplicate runs, retaining workflow_call
+and workflow_dispatch as coordinated by the main owner.

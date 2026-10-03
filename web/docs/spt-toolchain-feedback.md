@@ -227,3 +227,13 @@ four expected failures. Compiled-browser lane passes 16 groups. Exact cached
 formatter invocation from SPT-UI-009 still works. No new image/cache failure or
 full-carrier acceptance claim. Main-line fix verification and live integration
 remain pending; resolved entries are retained.
+
+## W01 frontend acceptance — 2026-10-03
+
+Claude verified the fixing diff and recorded ACCEPT at `ad9ed21`; W01 is accepted
+as a frontend foundation. This was static independent review, not an independent
+rerun of the 101 tests, six detector probes or 16 browser groups. Historical
+validation records retain their at-run dispositions. Same toolchain identities;
+no new test/build run or SPT change accompanies this acceptance record. Open SPT
+documentation improvements remain nonblocking; F20 CI wiring, backend questions
+and live-system acceptance remain separate. See `w01-acceptance.json`.

@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "6e83b9516b0ef77c0838b88bd29204ed70e59015",
+  "baseline_commit": "43c5a8f961ff18f9249d62c0ad7f8790f2b33eaf",
+  "branch": "feat/aew-dashboard-w03",
+  "preview": {
+    "version": "0.1.0",
+    "status": "PROVISIONAL",
+    "digest": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8"
+  },
+  "accepted_api": {
+    "version": "0.1.2",
+    "digest": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+    "changed": false
+  },
+  "runtime": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "playwright": "1.59.1",
+    "chromium": "147.0.7727.15",
+    "browser_revision": "1217",
+    "carrier": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407"
+  },
+  "dependency_lock_sha256": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+  "validation": {
+    "offline_gate": "PASS",
+    "unit_tests": 127,
+    "test_files": 15,
+    "w01_groups": 16,
+    "w02_groups": 10,
+    "w03_groups": 12,
+    "ci_path_probes": 6,
+    "premium_static_findings": 0,
+    "production_exclusion": "PASS",
+    "chromium_path_with_spaces": "PASS in measurement",
+    "final_harness_lint": "PASS"
+  },
+  "commands": [
+    "SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh",
+    "cd web && node --test scripts/ci-paths.test.mjs",
+    "cd web && node scripts/browser-w01.mjs",
+    "cd web && node scripts/browser-w02.mjs",
+    "cd web && node scripts/browser-w03.mjs",
+    "cd web && CHROMIUM_PATH=<staged-wrapper-path-with-spaces> node scripts/measure-w03.mjs",
+    "cd web && node node_modules/eslint/bin/eslint.js scripts/browser-w03.mjs"
+  ],
+  "limitations": [
+    "Two warm performance samples per scenario; no speed or SLA claim.",
+    "Existing chunk-size advisories remain.",
+    "DESIGN frontmatter/token checks used existing tooling; official DESIGN lint CLI was unavailable.",
+    "Implementation automation is not independent acceptance."
+  ],
+  "independent_review": "PENDING",
+  "backend_schema_adoption": "PENDING",
+  "live_integration": "PENDING",
+  "engine_suite": "NOT_RUN",
+  "backend_questions": "web/docs/design/w03-backend-question-ledger.md",
+  "files": {
+    "ci-paths.log": {
+      "sha256": "b4f2ea18fc286b39db97a6be4e9ab90e53d2f3954b039184f8e23b8f5464e14d"
+    },
+    "dark-reflow.png": {
+      "sha256": "a4887ed1f24193dd39bec5a7cfc0764c1dfbb47b3374ea1c424f0ef7c3c7749f"
+    },
+    "final-harness-lint.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "investigation-desktop.png": {
+      "sha256": "e53024b18ce679a9e482ccade1bbba12eb29ff0ffb833cb974ee394517fcae20"
+    },
+    "investigation-phone.png": {
+      "sha256": "85a82adff163b1ef1ae95160aba2d519a9f9507395a450228b6388e776350411"
+    },
+    "measurements.json": {
+      "sha256": "f2d78df11a7f0d691c7f1e06c1908a686f44d019d84ae3d0bca3b347347a709e"
+    },
+    "measurements.log": {
+      "sha256": "99df873cfbd472d72f27b262d9b66152b18250cf2d4ac882c1af2aa546d40853"
+    },
+    "offline-gate.log": {
+      "sha256": "6a7ae0fbeebd23ed2aa8bfc6463a3e9bfff2027415c2e75aa2a58f4b02fd8212"
+    },
+    "premium-audit.json": {
+      "sha256": "59228c627ebe796c49c1900a4dd8c19c97b5e5ceda3209681b508738da1dd1e1"
+    },
+    "w01-browser.json": {
+      "sha256": "32c06427f35b3cfcf9c0ed6b3590e3c917b399841e4cf00456f23db957d4c9a5"
+    },
+    "w01-browser.log": {
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w02-browser.json": {
+      "sha256": "f1b58f0d40cef8d7b040ccc87e2968d8ff80e76fdcf85a141e083ccb8d4262c8"
+    },
+    "w02-browser.log": {
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe"
+    },
+    "w03-browser.json": {
+      "sha256": "6a0e2589e8352a364be4be54beb6d2acbbb1525dd7b0234564dac81ff972ff71"
+    },
+    "w03-browser.log": {
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b"
+    }
+  }
+}

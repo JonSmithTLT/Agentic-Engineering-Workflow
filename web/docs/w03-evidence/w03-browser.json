@@ -1,0 +1,144 @@
+{
+  "checks": [
+    {
+      "name": "desktop fictional investigation via UI",
+      "result": "PASS"
+    },
+    {
+      "name": "phone fictional investigation via UI",
+      "result": "PASS"
+    },
+    {
+      "name": "selection, filters, table, copy and reload",
+      "result": "PASS"
+    },
+    {
+      "name": "keyboard tabs, graph/list, partiality and close focus",
+      "result": "PASS"
+    },
+    {
+      "name": "missing, stale, contradictory and unknown supplied values",
+      "result": "PASS"
+    },
+    {
+      "name": "malformed, denied and missing initial projections",
+      "result": "PASS"
+    },
+    {
+      "name": "graph caps and omissions stay explicit",
+      "result": "PASS"
+    },
+    {
+      "name": "refresh failure preserves explicitly stale content",
+      "result": "PASS"
+    },
+    {
+      "name": "hostile Markdown, dark theme and zoom/reflow",
+      "result": "PASS"
+    },
+    {
+      "name": "phone concealed detail stops polling and revalidates on reveal",
+      "result": "PASS"
+    },
+    {
+      "name": "large fixture pages and bounded requests",
+      "result": "PASS"
+    },
+    {
+      "name": "accepted Records remains available and historical scope is honest",
+      "result": "PASS"
+    }
+  ],
+  "measurements": [
+    {
+      "name": "journal large 10000 entries",
+      "navigate_and_page_ms": 800,
+      "mounted_entries": 50,
+      "journal_requests": 2,
+      "all_requests": 20,
+      "dom_nodes": 599
+    }
+  ],
+  "taskRuns": [
+    {
+      "layout": "desktop",
+      "performer": "implementer automation, independent review still pending",
+      "steps": [
+        {
+          "entry": "J-02",
+          "established": "mistaken hypothesis"
+        },
+        {
+          "entry": "J-03",
+          "established": "failed removal"
+        },
+        {
+          "entry": "J-04",
+          "established": "discovery"
+        },
+        {
+          "entry": "J-05",
+          "established": "conditional lesson"
+        },
+        {
+          "established": "explicit supporting/opposing roles",
+          "supporting": [
+            "CLANGD-E871",
+            "CLANGD-E875"
+          ],
+          "opposing": [
+            "CLANGD-E880"
+          ]
+        },
+        {
+          "established": "canonical reference, no second authority",
+          "reference": "CLANGD-D42"
+        }
+      ],
+      "developer_tools_used": false,
+      "fixture_source_used": false,
+      "result": "PASS"
+    },
+    {
+      "layout": "phone",
+      "performer": "implementer automation, independent review still pending",
+      "steps": [
+        {
+          "entry": "J-02",
+          "established": "mistaken hypothesis"
+        },
+        {
+          "entry": "J-03",
+          "established": "failed removal"
+        },
+        {
+          "entry": "J-04",
+          "established": "discovery"
+        },
+        {
+          "entry": "J-05",
+          "established": "conditional lesson"
+        },
+        {
+          "established": "explicit supporting/opposing roles",
+          "supporting": [
+            "CLANGD-E871",
+            "CLANGD-E875"
+          ],
+          "opposing": [
+            "CLANGD-E880"
+          ]
+        },
+        {
+          "established": "canonical reference, no second authority",
+          "reference": "CLANGD-D42"
+        }
+      ],
+      "developer_tools_used": false,
+      "fixture_source_used": false,
+      "result": "PASS"
+    }
+  ],
+  "browser": "147.0.7727.15",
+  "independent_review": "PENDING"
+}

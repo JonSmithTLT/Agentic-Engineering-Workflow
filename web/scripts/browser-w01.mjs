@@ -15,6 +15,7 @@ const revision = JSON.parse(
 ).browsers.find((b) => b.name === 'chromium').revision;
 const browser = await chromium.launch({
   executablePath:
+    process.env.CHROMIUM_PATH ??
     process.env.PLAYWRIGHT_BROWSER_EXECUTABLE ??
     path.resolve(
       `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
@@ -26,31 +27,24 @@ const checks = [],
   failures = [],
   measurements = [];
 let expectedFailure = false;
-const context = await browser.newContext({
-  viewport: { width: 1440, height: 1000 },
-  permissions: ['clipboard-read', 'clipboard-write'],
-});
-await context.tracing.start({
-  screenshots: true,
-  snapshots: true,
-  sources: true,
-});
-const page = await context.newPage();
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => {
-  if (m.type() === 'error' && !expectedFailure) errors.push(m.text());
-});
-page.on('request', (r) => {
-  requests.push({ url: r.url(), method: r.method() });
-});
-page.on('response', (r) => {
-  if (r.status() >= 400)
-    failures.push({
-      url: r.url(),
-      status: r.status(),
-      expected: expectedFailure,
-    });
-});
+let context, page;
+function observe(p) {
+  p.on('pageerror', (e) => errors.push(e.message));
+  p.on('console', (m) => {
+    if (m.type() === 'error' && !expectedFailure) errors.push(m.text());
+  });
+  p.on('request', (r) => {
+    requests.push({ url: r.url(), method: r.method() });
+  });
+  p.on('response', (r) => {
+    if (r.status() >= 400)
+      failures.push({
+        url: r.url(),
+        status: r.status(),
+        expected: expectedFailure,
+      });
+  });
+}
 async function panel(tab) {
   const trigger = page.getByRole('button', { name: 'API panel', exact: true });
   if ((await trigger.getAttribute('aria-expanded')) !== 'true')
@@ -75,7 +69,25 @@ async function screenshot(name) {
   await page.screenshot({ path: `${out}/${name}.png`, fullPage: true });
 }
 async function check(name, fn) {
+  // Independent scenarios must not inherit MSW registrations or clients from
+  // previous replays. Navigations/reloads within a scenario still share state.
+  expectedFailure = false;
+  context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+  context.on('page', observe);
+  await context.tracing.start({
+    screenshots: true,
+    snapshots: true,
+    sources: true,
+  });
+  page = await context.newPage();
   await fn();
+  assert.equal(errors.length, 0, JSON.stringify(errors));
+  assert(!failures.some((f) => !f.expected), JSON.stringify(failures));
+  await context.tracing.stop();
+  await context.close();
   checks.push({ name, result: 'PASS' });
   console.log(`PASS ${name}`);
 }
@@ -486,24 +498,53 @@ try {
           ['candidate', base],
           ...(baseline ? [['baseline', baseline]] : []),
         ]) {
-          const p = await context.newPage();
+          // Each measurement needs its own fixture and worker lifecycle.
+          const sampleContext = await browser.newContext({
+            viewport: { width: 1440, height: 1000 },
+          });
+          sampleContext.on('page', observe);
+          await sampleContext.tracing.start({
+            screenshots: true,
+            snapshots: true,
+            sources: true,
+          });
+          const p = await sampleContext.newPage();
           let api = 0;
           p.on('request', (r) => {
             if (new URL(r.url()).pathname.startsWith('/api/v1')) api++;
           });
-          const start = performance.now();
-          await p.goto(`${url}${route}?fixture=${fixture}`);
-          await p.locator('tbody tr').first().waitFor();
-          const rows = await p.locator('tbody tr').count();
-          assert(rows <= 100);
-          measurements.push({
-            label,
-            fixture,
-            load_ms: Math.round(performance.now() - start),
-            dom_rows: rows,
-            api_requests: api,
-          });
-          await p.close();
+          try {
+            const start = performance.now();
+            await p.goto(`${url}${route}?fixture=${fixture}`);
+            await p.locator('tbody tr').first().waitFor();
+            const rows = await p.locator('tbody tr').count();
+            assert(rows > 0 && rows <= 100);
+            assert.equal(errors.length, 0, JSON.stringify(errors));
+            assert(!failures.some((f) => !f.expected), JSON.stringify(failures));
+            measurements.push({
+              label,
+              fixture,
+              load_ms: Math.round(performance.now() - start),
+              dom_rows: rows,
+              api_requests: api,
+            });
+            await sampleContext.tracing.stop();
+          } catch (error) {
+            await p
+              .screenshot({
+                path: `${out}/${label}-${fixture}-failure.png`,
+                fullPage: true,
+              })
+              .catch(() => {});
+            await sampleContext.tracing
+              .stop({
+                path: `${out}/${label}-${fixture}-failure-trace.zip`,
+              })
+              .catch(() => {});
+            throw error;
+          } finally {
+            await sampleContext.close();
+          }
         }
     },
   );
@@ -519,7 +560,6 @@ try {
   assert(
     !requests.some((r) => /attacker\.invalid|untrusted\.invalid/.test(r.url)),
   );
-  await context.tracing.stop();
   fs.writeFileSync(
     `${out}/report.json`,
     JSON.stringify(

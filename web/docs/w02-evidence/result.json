@@ -1,0 +1,283 @@
+{
+  "source_commit": "0e64b31b892a43b05560e13ba0944ad80482269f",
+  "integration_base_commit": "2e0bf40cfeb49e0ef02a7a16d47ee2b2cb393ac5",
+  "branch": "feat/aew-dashboard-w02",
+  "date": "2026-10-03",
+  "plan": {
+    "revision": "1.1",
+    "sha256": "64a89abbc9ea4ecd753d81c6cff9f403ef2e13f61cd013af310db6e7efe1ec4d"
+  },
+  "accepted_contract": {
+    "version": "0.1.2",
+    "sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691"
+  },
+  "frontend_lock_sha256": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+  "builder": {
+    "artifact_version": "1.0.0",
+    "date": "2026-10-02",
+    "image_id": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "registry_digest": null,
+    "platform": "linux/amd64",
+    "base_image": "node@sha256:d415caac2f1f77b98caaf9415c5f807e14bc8d7bdea62561ea2fef4fbd08a73c",
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "tailwindcss": "4.2.4",
+    "@tailwindcss/vite": "4.2.4",
+    "vite": "8.0.10",
+    "source_baseline": "3bf796be69313638d9d0261dfeeba31d0d60e6a9",
+    "lockfile_sha256": "12c896ba7ef48d304c1a919bb67c68b84d7c7c570a2b9ac2f7064bd376946805",
+    "manifest_sha256": "d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f",
+    "checksums_sha256": "9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246",
+    "package_count": 1030,
+    "lock_diff": {
+      "baseline_commit": "3bf796be69313638d9d0261dfeeba31d0d60e6a9",
+      "baseline_package_count": 1005,
+      "unchanged_existing_package_count": 1005,
+      "removed": [],
+      "changed_existing": [],
+      "added": [
+        {
+          "path": "node_modules/@tailwindcss/node",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-android-arm64",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-darwin-arm64",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-darwin-x64",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-freebsd-x64",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-linux-arm-gnueabihf",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-linux-arm64-gnu",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-linux-arm64-musl",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-linux-x64-gnu",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-linux-x64-musl",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/core",
+          "version": "1.8.1"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/runtime",
+          "version": "1.8.1"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/wasi-threads",
+          "version": "1.1.0"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@napi-rs/wasm-runtime",
+          "version": "1.1.1"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@tybys/wasm-util",
+          "version": "0.10.1"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/tslib",
+          "version": "2.8.1"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-win32-arm64-msvc",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/oxide-win32-x64-msvc",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/@tailwindcss/vite",
+          "version": "4.2.4"
+        },
+        {
+          "path": "node_modules/enhanced-resolve",
+          "version": "5.26.0"
+        },
+        {
+          "path": "node_modules/graceful-fs",
+          "version": "4.2.11"
+        },
+        {
+          "path": "node_modules/jiti",
+          "version": "2.7.0"
+        },
+        {
+          "path": "node_modules/tapable",
+          "version": "2.3.3"
+        }
+      ],
+      "lockfile_sha256": "12c896ba7ef48d304c1a919bb67c68b84d7c7c570a2b9ac2f7064bd376946805"
+    },
+    "validation": {
+      "cache_checksums_offline": "PASS",
+      "offline_install_import_tailwind_build_initial_image": "PASS",
+      "offline_install_import_tailwind_build_final_image": "PASS"
+    },
+    "evidence_root": "artifacts/dashboard-prerequisite",
+    "initial_image_id": "sha256:1d330086f23c0795c60abadfd96f9120848f21e22178aa5e59da2541208d7b23",
+    "source_commit": "ae65ad0408536140a96335e8e76a6245a33ace4a",
+    "source_branch": "build/aew-dashboard-tailwind-cache",
+    "consumer_lock_sha256": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+    "browser_package": "playwright@1.59.1",
+    "browser_revision": "1217",
+    "browser_version": "147.0.7727.15",
+    "browser_checksums_sha256": "9ddf0658b2da0ff397ba875357a166646ad66ceae2e00ad6e88b7cc9322595a2"
+  },
+  "browser": {
+    "playwright": "1.59.1",
+    "chromium_revision": "1217",
+    "chromium_version": "147.0.7727.15",
+    "platform": "linux/amd64",
+    "launcher_node": "24.21.0",
+    "build_node": "22.22.2"
+  },
+  "validation": {
+    "offline_gate": "PASS",
+    "unit_component_contract_refresh_tests": 116,
+    "test_files": 14,
+    "ci_detector_probes": 6,
+    "w01_compiled_browser_groups": 16,
+    "w02_compiled_browser_groups": 9,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "generated_artifacts": "PASS",
+    "production_mock_exclusion": "PASS",
+    "demo_build": "PASS",
+    "api_traffic": "GET/HEAD only; no unexpected external requests",
+    "expected_W02_HTTP_failures": [
+      "FutureNamespace-009: 404",
+      "access-refusal refresh: 403"
+    ]
+  },
+  "frontend_acceptance": "PENDING_INDEPENDENT_REVIEW",
+  "operator_visual_review": "PREVIEW_AVAILABLE; NOT_CLAIMED",
+  "github_execution": "NOT_RUN; LOCAL_CHECKS_ONLY",
+  "integration": "NOT_CLAIMED",
+  "scope_notes": [
+    "No Engine suite or live AEW API/authentication checks.",
+    "Offline gate executed immediately before the source freeze with identical frontend source; frozen compiled-browser lanes executed at source_commit.",
+    "Normal polling is independently checked; focus/visibility/PageTransition browser events are authored, not OS/Firefox back-cache acceptance.",
+    "401/403 removes affected cached projection/validator; arbitrary cookie changes still require authoritative integration reset signal.",
+    "No new wire schema, dependency or lock change. Annotation.object target type remains unknown; terminal reference.",
+    "Earlier failing traces diagnose harness coordinate/timing assumptions and are retained as historical failures, not current failures."
+  ],
+  "artifacts": {
+    "baseline-performance.json": {
+      "bytes": 1720,
+      "sha256": "16016ff7819299d7695caededb2e7ad9dccb1534987e152fd9223356f368caf3"
+    },
+    "candidate-performance.json": {
+      "bytes": 1689,
+      "sha256": "c056c31405fa37154a4280fb8b0ccd7142db7ef0cfa7499b67ee7ed230192573"
+    },
+    "ci-detector-command.log": {
+      "bytes": 650,
+      "sha256": "825bee16ac69989810104a0a90e82cfc6988f5119f7c5e93b62a708381296719"
+    },
+    "graph-coordinate-harness-failure.json": {
+      "bytes": 4000,
+      "sha256": "7ce039287fd9c70065c04c1cb85cb3fa27bed3194af690310c3bfd1d1a77e22d"
+    },
+    "offline-command.log": {
+      "bytes": 5271,
+      "sha256": "348bce8fc3c4f7bbcc81c594c48aaaed59fc80222f6b25669ad2ffcb8799e2fe"
+    },
+    "performance-summary.json": {
+      "bytes": 1558,
+      "sha256": "f2243a29caabb6510a13653e5c043cca4be41af6957b0f8623cf2ad23703769d"
+    },
+    "screenshots/history-relations.png": {
+      "bytes": 333108,
+      "sha256": "a11744496ade9a8f4392a3795dfce6b80660215363bf6cd58cfe9d0b92a0e887"
+    },
+    "screenshots/runs-why.png": {
+      "bytes": 231120,
+      "sha256": "4f155b4b722e9ed538492ace62bada59a97c43b8b87d349f467d710a4fc40ed2"
+    },
+    "screenshots/work-phone-inspector.png": {
+      "bytes": 148329,
+      "sha256": "c277faeab196235267260c54d328fc0ad40a7bf1e5166c795901521e3cac1bd4"
+    },
+    "screenshots/work-relations.png": {
+      "bytes": 291963,
+      "sha256": "89c965bfca604295abd5444585ba6f9e34575b8a171de1feddeb1bed5b0c111b"
+    },
+    "screenshots/work-why-dark.png": {
+      "bytes": 317066,
+      "sha256": "58964d872ab688adad76568f875f3c93b8b6dc3ef487ba2f5615448f07624484"
+    },
+    "screenshots/work-why-light.png": {
+      "bytes": 313370,
+      "sha256": "2db425bb2b7224c6b67101941ebadd11d679f23c77fc7a9312970a849de3f2d5"
+    },
+    "static-manifest.json": {
+      "bytes": 4691,
+      "sha256": "4abb81dd9fa9e8d41335145cec9a6a920874a81f82b72571e4da1675eddf39a1"
+    },
+    "tab-timing-harness-failure.json": {
+      "bytes": 15656,
+      "sha256": "bd1baae118c1b13485e028b966eb1d142abb09ee42937644ac331f882e1ee124"
+    },
+    "traces/graph-coordinate-harness.zip": {
+      "bytes": 631518,
+      "sha256": "49b0a931e61a09ca6243e96f09fa5ac737843c28c792e6cb09d57c81fcd025ca"
+    },
+    "traces/tab-timing-harness.zip": {
+      "bytes": 2113434,
+      "sha256": "d4c84569cbf82d774cc4710ee55c36bea4e46f0ad5c3ca7576ec01c8d5ae1ab4"
+    },
+    "w01-browser-command.log": {
+      "bytes": 1016,
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w01-browser-report.json": {
+      "bytes": 2742,
+      "sha256": "c6e9a5e8b7965d3ba2f9c263e10eb2e9e44ddcc6cb642e05e074b127e50bead7"
+    },
+    "w02-browser-command.log": {
+      "bytes": 626,
+      "sha256": "4b548fdabdaa8122a88138c1103a661ead144b4198ea775c49c52b0431a2aa95"
+    },
+    "w02-browser-report.json": {
+      "bytes": 42768,
+      "sha256": "0654d81f16637da2cd3b19e088976bbfff5b6f6c00d18ad071fc512ae1f26904"
+    }
+  },
+  "static_build_handoff": {
+    "path": "web/artifacts/w02-handoff/static-builds.tar.gz",
+    "bytes": 497594,
+    "sha256": "9b1d1f5aa33995dbd015a7459b3367c520d146e8b254f6e37940f4f3285f3ff1",
+    "tracking": "local ignored build artifact; manifest committed"
+  }
+}

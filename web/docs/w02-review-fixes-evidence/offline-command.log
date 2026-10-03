@@ -1,0 +1,107 @@
+v22.22.2
+10.9.7
+3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2  package-lock.json
+d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f  /opt/spt-frontend/frontend-npm-manifest.json
+9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246  /opt/spt-frontend/SHA256SUMS
+
+added 395 packages in 4s
+
+> @aew/read-only-dashboard@0.1.0 generate:types
+> openapi-typescript ../docs/design/dashboard-api-v1-provisional.yaml -o src/api/types.ts
+
+✨ openapi-typescript 7.13.0
+🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [80.4ms]
+Accepted API 0.1.2: 68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691
+
+> @aew/read-only-dashboard@0.1.0 check:scenario
+> node --experimental-strip-types scripts/scenario-artifact.mjs
+
+Scenario configuration artifacts match their runtime schema
+
+> @aew/read-only-dashboard@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @aew/read-only-dashboard@0.1.0 lint
+> eslint .
+
+
+> @aew/read-only-dashboard@0.1.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90m/tmp/aew/web[39m
+
+ [32m✓[39m tests/transport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m tests/refresh.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 119[2mms[22m[39m
+ [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 176[2mms[22m[39m
+ [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 540[2mms[22m[39m
+   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 521[2mms[22m[39m
+ [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 276[2mms[22m[39m
+ [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[32m 251[2mms[22m[39m
+ [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 388[2mms[22m[39m
+   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 379[2mms[22m[39m
+ [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 549[2mms[22m[39m
+ [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 568[2mms[22m[39m
+ [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 802[2mms[22m[39m
+     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 789[2mms[22m[39m
+ [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1225[2mms[22m[39m
+   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 380[2mms[22m[39m
+   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 654[2mms[22m[39m
+ [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 1666[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 620[2mms[22m[39m
+ [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2111[2mms[22m[39m
+   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 322[2mms[22m[39m
+   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 677[2mms[22m[39m
+   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 819[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m14 passed[39m[22m[90m (14)[39m
+[2m      Tests [22m [1m[32m117 passed[39m[22m[90m (117)[39m
+[2m   Start at [22m 07:40:30
+[2m   Duration [22m 3.92s[2m (transform 3.23s, setup 3.06s, import 5.70s, tests 8.73s, environment 12.68s)[22m
+
+
+> @aew/read-only-dashboard@0.1.0 build
+> vite build && node scripts/check-production.mjs
+
+vite v8.0.10 building client environment for production...
+[2Ktransforming...✓ 437 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.49 kB │ gzip:   0.30 kB
+dist/assets/index-7OuZDEnj.css   31.48 kB │ gzip:   7.35 kB
+dist/assets/index-95_Q8EP5.js   592.84 kB │ gzip: 175.58 kB
+
+✓ built in 266ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+Production build excludes fixtures and mock initialization
+
+> @aew/read-only-dashboard@0.1.0 build:demo
+> vite build --mode demo
+
+vite v8.0.10 building client environment for demo...
+[2Ktransforming...✓ 688 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-demo/index.html                               0.74 kB │ gzip:   0.37 kB
+dist-demo/assets/index-7OuZDEnj.css               31.48 kB │ gzip:   7.35 kB
+dist-demo/assets/jsx-runtime-Cu7Iu-c-.js           0.43 kB │ gzip:   0.30 kB
+dist-demo/assets/DemoTools-B3Wk4owS.js             0.55 kB │ gzip:   0.36 kB
+dist-demo/assets/rolldown-runtime-S-ySWqyJ.js      0.69 kB │ gzip:   0.42 kB
+dist-demo/assets/Lab-CwNvgJM6.js                   6.47 kB │ gzip:   2.63 kB
+dist-demo/assets/transport-D-nkCDK-.js            14.23 kB │ gzip:   5.25 kB
+dist-demo/assets/browser-C6BkynxV.js             273.85 kB │ gzip:  92.69 kB
+dist-demo/assets/index-C3Bkiig0.js               579.81 kB │ gzip: 171.66 kB
+dist-demo/assets/worlds-Cfp5AcLf.js            1,125.32 kB │ gzip:  43.48 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 284ms

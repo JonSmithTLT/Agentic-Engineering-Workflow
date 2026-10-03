@@ -1,0 +1,16 @@
+▶ actual workflow change detector
+  ✔ detects web, canonical contract and workflow changes without ripgrep (33.053764ms)
+  ✔ uses merge-base changes for behind-main PRs and merge groups (18.20087ms)
+  ✔ keeps direct push comparisons and detects old web paths on a rename (15.538831ms)
+  ✔ fails closed on matcher errors or a missing matcher (14.837899ms)
+  ✔ fails closed on diff errors (5.545537ms)
+  ✔ runs checks for dispatch and absent initial push bases (9.85175ms)
+✔ actual workflow change detector (99.325208ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 356.817379

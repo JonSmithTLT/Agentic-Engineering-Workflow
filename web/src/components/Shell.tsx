@@ -1,8 +1,9 @@
+import { InspectorProvider, PresentationGuard } from './Investigation';
 import { useReadSession } from '../client/queries';
 import { useRef, useState, type ReactNode, type ComponentType } from 'react';
 import { useDashboard } from '../client/dashboard';
 import { SemanticValue, CapabilityWarnings } from './States';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { DeveloperPanel } from './DeveloperPanel';
 import { JumpToId } from './JumpToId';
 const navigation = [
@@ -23,6 +24,7 @@ export function Shell({
   demoLab?: ComponentType<{ tab: string }>;
 }) {
   const session = useReadSession();
+  const location = useLocation();
   const { project, overview, caps } = useDashboard();
   const demo = import.meta.env.MODE === 'demo';
   const [developer, setDeveloper] = useState(false);
@@ -137,7 +139,11 @@ export function Shell({
         <main id="content" tabIndex={-1}>
           {caps && <CapabilityWarnings values={caps} />}
           <div key={session.generation}>
-            <Outlet />
+            <PresentationGuard>
+              <InspectorProvider key={location.pathname}>
+                <Outlet />
+              </InspectorProvider>
+            </PresentationGuard>
           </div>
         </main>
         {developer && (

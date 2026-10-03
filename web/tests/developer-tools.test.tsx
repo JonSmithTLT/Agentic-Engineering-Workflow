@@ -171,20 +171,28 @@ it('historical graph bounds supplied references and does not automatically crawl
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <DashboardProvider>
-          <LineageGraph record={record} />
+          <LineageGraph
+            record={record}
+            projection={{
+              value: { ...f1.responses['/history/T-0004'], data: record },
+              last_checked_at: '2026-10-03T00:00:00Z',
+            }}
+          />
         </DashboardProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
   const expand = await screen.findByRole('button', {
-    name: 'Expand links',
+    name: 'Expand T-0004',
   });
   await waitFor(() =>
     expect((expand as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(expand);
-  await screen.findByText(/Graph limit reached/);
-  expect(rendered.container.querySelectorAll('.lineage-card')).toHaveLength(24);
+  await screen.findByText(/supplied references omitted/);
+  expect(rendered.container.querySelectorAll('.provenance-node')).toHaveLength(
+    24,
+  );
   expect(
     fetcher.mock.calls.some(([url]) => String(url).includes('/history/')),
   ).toBe(false);

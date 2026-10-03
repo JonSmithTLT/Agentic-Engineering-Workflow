@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { entityLink } from '../api/links';
+import { dashboardEntityLink } from '../api/navigation';
 import { id as identity } from '../api/schema';
 import { useCapability } from '../client/dashboard';
 const kinds = {
@@ -75,21 +75,8 @@ export function JumpToId() {
               setError(capability.explanation);
               return;
             }
-            const context = new URLSearchParams();
-            if (import.meta.env.MODE === 'demo')
-              for (const key of [
-                'fixture',
-                'fault',
-                'catalog',
-                'recipe',
-                'seed',
-              ]) {
-                const value = new URLSearchParams(location.search).get(key);
-                if (value) context.set(key, value);
-              }
             navigate(
-              entityLink({ kind, id: value })! +
-                (context.size ? '?' + context : ''),
+              dashboardEntityLink({ kind, id: value }, location.search)!,
             );
             setError('');
             setOpen(false);

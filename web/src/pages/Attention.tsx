@@ -1,3 +1,4 @@
+import { RecordInspection } from '../components/Investigation';
 import { CollectionView, Reasons } from '../components/ProjectionViews';
 import { responseSchemas } from '../api/schema';
 import { EntityAnchor } from '../components/EntityAnchor';
@@ -13,10 +14,15 @@ export function AttentionPage() {
       path="/attention"
       schema={responseSchemas.AttentionListResponse}
     >
-      {(items) => (
+      {(items, projection) => (
         <div className="attention-records">
           {items.map((a) => (
             <article key={a.id} className="attention-record">
+              <RecordInspection
+                kind="attention"
+                record={a}
+                source={projection}
+              />
               <div className="attention-record-heading">
                 <div>
                   <h3>{a.title}</h3>

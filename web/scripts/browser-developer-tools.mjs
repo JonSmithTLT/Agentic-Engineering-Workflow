@@ -12,9 +12,11 @@ const revision = JSON.parse(
 const production =
   process.env.DASHBOARD_PRODUCTION_URL ?? 'http://127.0.0.1:4188';
 const browser = await chromium.launch({
-  executablePath: path.resolve(
-    `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
-  ),
+  executablePath:
+    process.env.CHROMIUM_PATH ??
+    path.resolve(
+      `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
+    ),
 });
 const failedResponses = [];
 const errors = [],

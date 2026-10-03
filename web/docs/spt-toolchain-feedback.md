@@ -237,3 +237,50 @@ validation records retain their at-run dispositions. Same toolchain identities;
 no new test/build run or SPT change accompanies this acceptance record. Open SPT
 documentation improvements remain nonblocking; F20 CI wiring, backend questions
 and live-system acceptance remain separate. See `w01-acceptance.json`.
+
+## SPT-UI-011 — Local sandbox permissions are distinct from carrier/browser readiness
+
+- Stable ID/date/category/classification: SPT-UI-011 / 2026-10-03 / environment / demonstrated execution-environment friction; documentation suggestion, not an SPT image defect.
+- Identities: Linux/amd64 carrier `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`, Node22.22.2/npm10.9.7; frontend lock `3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2`; cache manifest `d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f`, checksums `9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246`. Browser Playwright1.59.1/Chromium1217, host launcher Node24.21.0 with staged libraries.
+- Expected/observed: existing artifacts are installed, but sandbox Docker socket access reports permission denied; Chromium reports Crashpad `setsockopt: Operation not permitted` and exits SIGTRAP; a host Git probe can fail `spawnSync git EPERM`. The same commands pass under authorized execution permissions. This is distinct from missing browser binaries, missing libraries or an absent image.
+- Reproduce: `docker image inspect <immutable-ID>`; `node scripts/measure-w02.mjs`; `node --test scripts/ci-paths.test.mjs` from web/. Permission profile affects reproduction; initial failures are recorded in session tool output, not a retained standalone failure log. Current successful checks are in `w02-evidence/`.
+- Impact/stage/workaround: initial local validation launch blocker, resolved using the available authorized execution path. Offline container networking remains disabled. No image/cache/package repair, permission broadening of the Docker socket, or browser package upgrade was needed.
+- Proposed improvement/ticket acceptance: document separate checks for artifact existence, OS libraries, daemon/socket access and sandbox process permissions; preserve the exact failure and permission profile; report environment restriction rather than reinstalling tools. A runbook should correctly triage all four and run a permission-authorized retest without weakening socket permissions.
+- Status/fix/retest: RESOLVED for this session; documentation suggestion OPEN, no SPT fix link. Immutable image inspect, empty-module offline gate, six Git detector probes and 25 compiled-browser groups pass. Keep SPT-UI-003/004/009/010 and all resolved observations retained.
+
+## W02 consumer retest — 2026-10-03
+
+Same immutable carrier/cache/lock and separately staged browser; no dependencies or SPT image repair. Offline 395-package install, accepted API and generated-artifact checks, typecheck/lint, **116 tests**, normal/demo builds and production mock exclusion pass. Six host/CI Git probes and 25 compiled-browser groups pass. Source freeze `0e64b31`; packet `w02-review-packet.md`. Exact cached formatter procedure remains effective. Host tests directly on the Windows-mounted dependency tree encountered worker startup timeouts; that failed attempt is not counted as validation. The required Node22 Linux-container gate passes; moving implementation validation into that carrier avoids treating host filesystem timing as an application failure. No new carrier/cache blocker or full-toolchain acceptance claim.
+
+Main PR #26 integration is consumed; W02's web.yml change adds its compiled browser lane while keeping the merged gate/triggers. GitHub execution and live AEW integration are not claimed. The production chunk-size advisory predates W02; measured artifact sizes and bounded F6/F7 samples are retained for later optimization, with no fabricated performance target. Independent frontend review remains pending.
+
+## W02-1 consumer retest — 2026-10-03
+
+Source fix `7a18fa3` consumes the same immutable Node22 carrier, cache, lock and staged Chromium1217. Empty-module network-disabled gate passes 117 tests, artifact checks, typecheck/lint and both builds; compiled browser reports cover 10 W02 and 16 W01 groups. No new SPT repair or dependencies. The first browser regression capture reset the inspector graph before its link click; moving capture after navigation passes, with failed trace retained under W02 review-fix evidence. This is a browser harness observation, not a carrier defect. Lead fixing-diff review and green PR CI remain pending; live integration is not claimed.
+
+## W02 PR CI harness and execution retest — 2026-10-03
+
+PR #28's failed W01 trace records a service-worker update rejection before F6
+bootstrap requests bypass mocking and return 404. Independent scenarios and
+large-world measurements now receive isolated browser contexts, with measurement
+pages included in strict error monitoring and failure capture. The exact upstream
+race remains intermittent; a controlled negative baseline proves the original
+observer omission and the repaired failure path. See [CI repair](w02-ci-repair.md).
+
+Same immutable carrier/cache/lock/browser identities; offline 117-test gate and
+all 16 W01 + 10 W02 browser groups pass, including exact Node22 browser runs.
+The original carrier was found in Ubuntu's Snap Docker store and its existing
+service started; Docker Desktop has a separate image store. The existing Node
+launcher already provides browser libraries. Use Ubuntu WSL for Linux worktree
+metadata and `/snap/bin/docker` to avoid the PATH-selected Desktop shim. No
+carrier rebuild, dependency installation or SPT source repair. Sandbox credential
+and engine-pipe access failures do not establish invalid authentication.
+
+Follow-up: main-line merges retained the W01 repair, but the next CI run exposed
+W02 guarded deep links replacing the document before common Overview bootstrap
+completed. Waiting for F1's supplied header health prevents premature demo-worker
+deactivation between those cases; strict errors remain failures. The operator also
+requested `CHROMIUM_PATH` now, implemented in all ten browser/measurement scripts
+with existing defaults retained. A wrapper path containing spaces was used by
+both W01/W02; all 26 groups and affected-script lint pass. The latest offline
+117-test gate passes. The live-server/session interface stays deferred to F20.3/6.

@@ -1,0 +1,158 @@
+{
+  "date": "2026-10-03",
+  "source_base": "927e941e534d5bc4d5624d87da2d8ca8666c767e",
+  "w01_harness_sha256": "0d00a1dfc3bee28a6bfdfd68be0bbf09c75afd7100c191defcee026d9950f189",
+  "w02_harness_sha256": "2e343961c44ac63c606b3f2a04be52ca8674661bb2fe444155e4007ed45ccf18",
+  "image": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "node": "22.22.2",
+  "npm": "10.9.7",
+  "playwright": "1.59.1",
+  "chromium": "147.0.7727.15",
+  "offline_gate": {
+    "result": "PASS",
+    "test_files": 14,
+    "log_sha256": "7d5ff5f84491869d1aca9b65a38bbdda5ac962861cec9870aa162461dd1b100f",
+    "tests": 117
+  },
+  "browser_script_lint": "PASS",
+  "chromium_override": {
+    "overrides_invalid_legacy_w01_path": true,
+    "result": "PASS",
+    "wrapper_launches": 2,
+    "path_with_spaces": true,
+    "script_count": 10
+  },
+  "w01": {
+    "checks": [
+      {
+        "name": "Demo tabs, keyboard focus, bounded contract diagnostics and safe input",
+        "result": "PASS"
+      },
+      {
+        "name": "Conditional recheck preserves generation and exposes 304",
+        "result": "PASS"
+      },
+      {
+        "name": "Failed/malformed refresh retains content and recovers",
+        "result": "PASS"
+      },
+      {
+        "name": "Initial 304, HTTP and network errors have no stale data",
+        "result": "PASS"
+      },
+      {
+        "name": "Mismatched ETag is an observation",
+        "result": "PASS"
+      },
+      {
+        "name": "Persistent divergence pauses hidden and clears on convergence",
+        "result": "PASS"
+      },
+      {
+        "name": "Transient revisions converge without persistent warning",
+        "result": "PASS"
+      },
+      {
+        "name": "Capability downgrade suppresses subsequent Work reads",
+        "result": "PASS"
+      },
+      {
+        "name": "Retired held response cannot reappear in a new project",
+        "result": "PASS"
+      },
+      {
+        "name": "Unknown strings remain raw warnings",
+        "result": "PASS"
+      },
+      {
+        "name": "Graph navigation and reload retain replay context",
+        "result": "PASS"
+      },
+      {
+        "name": "Hostile display and phone panel are safe under CSP",
+        "result": "PASS"
+      },
+      {
+        "name": "Normal production excludes lab and works with storage blocked",
+        "result": "PASS"
+      },
+      {
+        "name": "Canceled departure preserves focus refresh; pagehide suspends and persisted pageshow restores it",
+        "result": "PASS"
+      },
+      {
+        "name": "Ordinary polling pauses hidden and immediately revalidates on visibility restoration",
+        "result": "PASS"
+      },
+      {
+        "name": "Large worlds stay bounded; baseline comparison recorded",
+        "result": "PASS"
+      }
+    ],
+    "result": "PASS",
+    "errors": [],
+    "measurements": [
+      {
+        "label": "candidate",
+        "fixture": "F6",
+        "load_ms": 426,
+        "dom_rows": 21,
+        "api_requests": 4
+      },
+      {
+        "label": "candidate",
+        "fixture": "F7",
+        "load_ms": 434,
+        "dom_rows": 100,
+        "api_requests": 4
+      }
+    ]
+  },
+  "w02": {
+    "checks": [
+      {
+        "name": "Work workspace preserves results while Why uses no extra reads",
+        "result": "PASS"
+      },
+      {
+        "name": "Bounded supplied graph, edge sources, list switch and fit pan",
+        "result": "PASS"
+      },
+      {
+        "name": "Runs pilot, legacy routes and copied URL reload",
+        "result": "PASS"
+      },
+      {
+        "name": "Modal inspector keyboard focus, Escape and phone overflow",
+        "result": "PASS"
+      },
+      {
+        "name": "Concealed phone detail stops polling; revealing immediately revalidates",
+        "result": "PASS"
+      },
+      {
+        "name": "Malformed IDs and unsupported history do not fall back to current reads",
+        "result": "PASS"
+      },
+      {
+        "name": "History provenance routes and unsupported historical claims stay explicit",
+        "result": "PASS"
+      },
+      {
+        "name": "History moved-to hot parent resolves through Work and opens its workspace",
+        "result": "PASS"
+      },
+      {
+        "name": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+        "result": "PASS"
+      },
+      {
+        "name": "Production access refusal removes cached detail and its inspector",
+        "result": "PASS"
+      }
+    ],
+    "result": "PASS",
+    "errors": []
+  },
+  "scope": "Fixtures only; latest PR head CI required; live-session mode deferred"
+}

@@ -1,3 +1,6 @@
+import { RecordInspection } from './Investigation';
+import type { EntityKind } from '../client/investigation-model';
+import { accessRefused } from '../api/transport';
 import { useState, type ReactNode } from 'react';
 import {
   Link,
@@ -112,7 +115,10 @@ export function CollectionView<T>({
   filters?: readonly string[];
   filterUI?: ReactNode;
   valid?: boolean;
-  children: (items: T[]) => ReactNode;
+  children: (
+    items: T[],
+    projection: Projection<Envelope<List<T>>>,
+  ) => ReactNode;
 }) {
   const [params] = useSearchParams();
   const available = useCapability(name).available;
@@ -138,7 +144,7 @@ export function CollectionView<T>({
         {filterUI}
         {!valid ? (
           <p role="alert">Check the filter values. No request was sent.</p>
-        ) : !query.data ? (
+        ) : !query.data || accessRefused(query.error) ? (
           query.isError ? (
             <LoadError
               message={query.error.message}
@@ -173,7 +179,7 @@ export function CollectionView<T>({
                 </span>
               </div>
               {query.data.value.data.items.length ? (
-                children(query.data.value.data.items)
+                children(query.data.value.data.items, query.data)
               ) : (
                 <p className="empty">No records in this scope.</p>
               )}
@@ -213,6 +219,8 @@ export function DetailView<T>({
   schema,
   historical = false,
   suffix = '',
+  recordId,
+  displayed = true,
   children,
 }: {
   name: string;
@@ -221,9 +229,12 @@ export function DetailView<T>({
   schema: z.ZodType<Envelope<T>>;
   historical?: boolean;
   suffix?: string;
+  recordId?: string;
+  displayed?: boolean;
   children: (data: T, projection: Projection<Envelope<T>>) => ReactNode;
 }) {
-  const { id = '' } = useParams();
+  const { id: routeId = '' } = useParams();
+  const id = recordId ?? routeId;
   const location = useLocation();
   const available = useCapability(name).available;
   const valid = identity.safeParse(id).success;
@@ -232,6 +243,7 @@ export function DetailView<T>({
     schema,
     historical ? 'history' : 'detail',
     available && valid,
+    displayed,
   );
   return (
     <>
@@ -244,7 +256,7 @@ export function DetailView<T>({
       <CapabilityGate name={name}>
         {!valid ? (
           <p role="alert">Invalid record ID.</p>
-        ) : !query.data ? (
+        ) : !query.data || accessRefused(query.error) ? (
           query.isError ? (
             <LoadError
               message={query.error.message}
@@ -265,6 +277,12 @@ export function DetailView<T>({
                 </p>
               )}
             </div>
+            <RecordInspection
+              kind={(name === 'runs' ? 'invocation' : name) as EntityKind}
+              record={query.data.value.data}
+              source={query.data}
+              failed={query.isError}
+            />
             {children(query.data.value.data, query.data)}
             {historical && (
               <button

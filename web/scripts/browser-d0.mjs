@@ -11,9 +11,11 @@ const manifest = JSON.parse(
 const revision = manifest.browsers.find(
   (x) => x.name === 'chromium',
 ).revision;
-const browserPath = path.resolve(
-  `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
-);
+const browserPath =
+  process.env.CHROMIUM_PATH ??
+  path.resolve(
+    `artifacts/playwright/browsers/chromium-${revision}/chrome-linux64/chrome`,
+  );
 const browser = await chromium.launch({
   executablePath: browserPath,
   headless: true,

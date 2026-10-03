@@ -196,3 +196,94 @@ def test_a_unit_whose_verification_changed_after_ingest_is_not_archived(tmp_path
     assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-verify-6" in out.error["message"]
     assert load_control(t.root)["schema"] == "aew/control/v1"
     shutil.rmtree(t.root / ".aew/local", ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------------------------- the re-review
+
+
+CITED = "evidence/T-0001/INV-0003-check-unit-4.md"
+CITED_LOG = "evidence/T-0001/logs/INV-0003-check-unit-4.log"
+INGESTED_CHECK = "evidence/T-0001/INV-0001-check-unit-1.md"
+
+
+def test_cited_checks_that_are_not_what_the_engine_sealed_are_never_pinned(tmp_path):
+    """P3-R1: a cited check changed before archival, replaced by another sealed record, or whose log changed, refuses
+    the migration; control stays v1 and nothing is pinned."""
+    t = CP.make_template(tmp_path / "repo")
+    aew_root = t.root / ".aew"
+    cited, log = aew_root / CITED, aew_root / CITED_LOG
+    saved, saved_log = cited.read_bytes(), log.read_bytes()
+    cases = {
+        "changed after it was sealed": lambda: cited.write_bytes(saved + b"\nedited\n"),
+        "another sealed record under its name": lambda: cited.write_bytes((aew_root / INGESTED_CHECK).read_bytes()),
+        "its log changed": lambda: log.write_bytes(saved_log + b"\nedited\n"),
+    }
+    for what, damage in cases.items():
+        damage()
+        out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+        assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-check-unit-4" in out.error["message"], what
+        assert load_control(t.root)["schema"] == "aew/control/v1", what
+        cited.write_bytes(saved)
+        log.write_bytes(saved_log)
+    out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    assert out.returncode == 0 and out.json["migrated"] is True, out.stderr
+
+
+def legacy_migrated(tmp_path: Path, monkeypatch: Any) -> CP.Template:
+    """A project migrated by the head the re-review found (P3-R2): its bundle is ``aew/archive/v1`` and records no
+    cited checks."""
+    from aew.engine import archive_ops
+
+    t = CP.make_template(tmp_path / "repo")
+    with monkeypatch.context() as m:
+        m.setattr(archive_ops, "ARCHIVE_SCHEMA", archive_ops.LEGACY_ARCHIVE_SCHEMA)
+        m.setattr(archive_ops, "cited_checks", lambda *_: [])
+        Engine.discover(t.root).migrate(token=t.token, expect_rev=t.rev())
+    bundle = load_yaml((t.root / ".aew" / bundle_rel("T-0001")).read_text(encoding="utf-8"))
+    assert bundle["schema"] == archive_ops.LEGACY_ARCHIVE_SCHEMA and not bundle.get("cited_evidence")
+    return t
+
+
+def test_an_older_v2_archive_audits_clean_only_once_its_closure_is_recorded(tmp_path, monkeypatch):
+    t = legacy_migrated(tmp_path, monkeypatch)
+    # Until the closure is recorded, a full audit cannot pass, but it finds no damage either.
+    audit = aew(t, "history", "audit", "--full")
+    assert audit.error["code"] == "INTEGRITY_ERROR"
+    assert any("T-0001" in p and "aew migrate" in p for p in audit.error["details"]["audit"]["problems"])
+    recorded = aew(t, "history", "audit", "--full", "--expect-rev", str(t.rev()))
+    assert recorded.error["code"] == "INTEGRITY_ERROR" and "verified" not in load_control(t.root)["cold"]
+    assert not [a for a in aew(t, "history", "show", "T-0001").json.get("annotations") or []
+                if a["entry"]["rel"] == "audit_finding"]
+    # The upgrade: an append-only annotation pins the cited checks; the bundle is untouched.
+    bundle = (t.root / ".aew" / bundle_rel("T-0001")).read_bytes()
+    up = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    assert up.returncode == 0 and up.json["migrated"] is False, up.stderr
+    assert [c["id"] for c in up.json["closure"]] == ["T-0001"]
+    assert "INV-0003-check-unit-4" in up.json["closure"][0]["cited"]
+    assert (t.root / ".aew" / bundle_rel("T-0001")).read_bytes() == bundle
+    again = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    assert again.json["migrated"] is False and "closure" not in again.json  # idempotent
+    clean = aew(t, "history", "audit", "--full")
+    assert clean.returncode == 0 and clean.json["ok"] is True, clean.stderr
+    shown = aew(t, "history", "show", "INV-0003-check-unit-4")
+    assert shown.returncode == 0 and shown.json["held_by"] == "T-0001", shown.stderr
+    # The cited check and its log are now covered.
+    for rel in (CITED, CITED_LOG):
+        path = t.root / ".aew" / rel
+        saved = path.read_bytes()
+        path.write_bytes(saved + b"\nedited\n")
+        audit = aew(t, "history", "audit", "--full")
+        assert audit.error["code"] == "INTEGRITY_ERROR", rel
+        assert any(rel in p for p in audit.error["details"]["audit"]["problems"]), rel
+        path.write_bytes(saved)
+    assert_control_invariants(t)
+
+
+def test_the_upgrade_refuses_a_cited_check_already_changed(tmp_path, monkeypatch):
+    t = legacy_migrated(tmp_path, monkeypatch)
+    cited = t.root / ".aew" / CITED
+    cited.write_bytes(cited.read_bytes() + b"\nedited\n")
+    rev = t.rev()
+    out = aew(t, "migrate", "--expect-rev", str(rev))
+    assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-check-unit-4" in out.error["message"]
+    assert t.rev() == rev  # nothing recorded

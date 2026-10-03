@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import calendar
 import copy
+import functools
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -91,8 +92,9 @@ class HistoryCommands:
         entries = index.by_id(record_id)
         if entries:
             return entries[-1], None
-        for rel in ("invocations", "tokens", "evidence"):  # a unit's bundle; a Lead record holds tokens too
-            holders = [e for e in index.linked(rel, record_id) if e["kind"] in ("unit", "lead")]
+        for rel in ("invocations", "tokens", "evidence"):  # a unit's bundle; a Lead record holds tokens too, and a
+            #                                                 closure annotation the cited checks of an older bundle
+            holders = [e for e in index.linked(rel, record_id) if e["kind"] in ("unit", "lead", "annotation")]
             if holders:
                 return holders[-1], rel
         hot = record_id in state["work"] or record_id in state["invocations"] or record_id in state["tokens"]
@@ -134,7 +136,8 @@ class HistoryCommands:
             source = "engine"
         return {"id": record_id, "kind": {"invocations": "invocation", "tokens": "credential",
                                           "evidence": "evidence"}[held_as],
-                "held_by": entry["id"], "trust": self._trust(source), "record": redact(record)}
+                "held_by": entry.get("subject") or entry["id"], "trust": self._trust(source),
+                "record": redact(record)}
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT) -> dict[str, Any]:
@@ -264,9 +267,12 @@ class HistoryCommands:
         start = None if full else self._verified_point(state["cold"])
         target = dict(state["cold"]["root"])
         # 2. Verification outside the lock: sealed segments and records are immutable, and the tail is the copy.
-        report = self.cold.verify(target, start, tail_raw=tail, pinned=pinned_records, nested=evidence_pins)
+        closure: dict[str, dict[str, int]] = {"legacy": {}, "closed": {}}
+        report = self.cold.verify(target, start, tail_raw=tail, pinned=functools.partial(pinned_records,
+                                                                                       closure=closure),
+                                  nested=evidence_pins)
         checked = {"entries": report.entries, "records": report.records}
-        problems, damaged = list(report.problems), list(report.damaged)
+        problems, damaged = list(report.problems) + self._unclosed(closure), list(report.damaged)
         result = {"mode": "full" if full else "incremental", "from": start or {"count": 0, "h": M.GENESIS_H},
                   "through": {"count": target["count"], "h": target["head_h"]}, **checked,
                   "ok": not problems, "problems": problems}
@@ -304,6 +310,16 @@ class HistoryCommands:
             return result
         raise LockTimeout(f"the history kept advancing during {AUDIT_ATTEMPTS} attempts to record the audit; "
                           "run it again")
+
+    @staticmethod
+    def _unclosed(closure: dict[str, dict[str, int]]) -> list[str]:
+        """Units the audit walked whose bundle predates ``cited_evidence`` and whose closure annotation it did not
+        see: the checks their verification cites are not covered, so the audit cannot pass (P3-R2). Not damage: the
+        unit gets no finding, and ``aew migrate`` records the closure."""
+        return [f"entry {seq} ({wid}): archived before bundles recorded the checks its verification cites, which no "
+                "annotation pins yet; `aew migrate` records them" for wid, seq in sorted(closure["legacy"].items(),
+                                                                                        key=lambda kv: kv[1])
+                if wid not in closure["closed"]]
 
     def _check_index(self, root: dict[str, Any]) -> str:
         """A full audit also compares the derived index with the history, row by row (queries authenticate what they

@@ -194,7 +194,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
   schema: aew/annotation/v1
   id: AN-0001
   subject: {id: T-0042, entry_seq: 812, bundle_sha256: <hex>}
-  rel: moved_to            # superseded_by | moved_to | promoted_to | lineage | audit_finding
+  rel: moved_to            # superseded_by | moved_to | promoted_to | lineage | audit_finding | cited_evidence
   object: S-0007           # the other end of the relation, or null
   at: <ISO-8601>
   actor: {generation: 3}
@@ -203,7 +203,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
   note: <text>
   ```
 - Each annotation gets a manifest entry of kind `annotation`. The bundle it is about is never rewritten.
-- **Producers in this work:** `audit_finding` (the audit) and `moved_to` (R3). F4 (Ticket revisions) adds `superseded_by` and `lineage` later.
+- **Producers in this work:** `audit_finding` (the audit), `moved_to` (R3) and `cited_evidence` (`aew migrate` on v2: it pins the cited checks of a bundle archived before bundles recorded them, in a `cited_evidence` list; §7.4). F4 (Ticket revisions) adds `superseded_by` and `lineage` later.
 
 ### The history commands
 
@@ -215,7 +215,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
 | `aew history load <id> --into <WORK-ID> --reason …` | Lead | Attach a historical record as reference context. Later packs for that unit carry it as a labelled `history:<id>@<sha>` source, never as current evidence (invariant 14) |
 | `aew history audit [--full] [--token …]` | read, or Lead to record | Incremental or full verification (R2) |
 | `aew history reindex` | read | Rebuild the derived index |
-| `aew migrate` | Lead, quiescent | The one-time v1 → v2 migration |
+| `aew migrate` | Lead, quiescent | The one-time v1 → v2 migration. On v2, it records the cited checks of bundles archived before bundles recorded them (§7.4), and is otherwise a no-op |
 
 ### Schema version
 
@@ -545,6 +545,29 @@ Unprofiled after the fix: 87 s on Windows (102 s before), 83 to 86 s on Linux. T
   - a verification changed after ingest refusing migration.
 
   All six fail on `c6caa4c` and pass now.
+
+**Re-review fixes** (2026-10-03, in PR #24). The re-review (frozen at `1911894`) found P3-1 resolved and P3-2 partly resolved, with two remaining findings:
+
+- **P3-R1: archival pinned a cited check as it was found.**
+  - **The defect.** A cited check changed before archival was hashed as it stood. The audit then verified that hash and reported success.
+  - **The fix.** Archival pins nothing the engine did not record as it is (`cited_checks`). Each cited check must:
+    - be schema-valid and still under its seal;
+    - be a `check_result` of this unit under its own id;
+    - have every file it pins (its log) still match.
+
+    Anything else refuses the archival, so the migration refuses and control stays v1.
+  - **The audit.** It now checks the seal of every evidence record it reaches, as well as its hash.
+- **P3-R2: units archived before the fix kept the gap.**
+  - **The defect.** A bundle archived before bundles recorded `cited_evidence` keeps its cited checks outside the audit. The full audit still passed.
+  - **The policy.** An explicit upgrade, append-only:
+    - New bundles are `aew/archive/v2`, which always records `cited_evidence` (possibly empty). A bundle still at `aew/archive/v1` predates it.
+    - `aew migrate` on a v2 project gives each such unit a `cited_evidence` annotation that pins its cited checks, validated as archival validates them now (the report against its ingest hash from the authenticated bundle). The bundle is never rewritten. A cited check that is not what the engine recorded refuses the whole upgrade. With nothing to upgrade, `migrate` stays a no-op.
+    - Until a unit's annotation exists, a full audit reports it as a problem that names `aew migrate`, so the audit cannot pass. It is not damage: the unit gets no `audit_finding`, and a recorded audit leaves the verified root where it was.
+    - `history show` finds a check pinned this way by id, held by its unit.
+- **Tests:** three more in `tests/integration/test_history_integrity.py`:
+  - a cited check changed after its seal, replaced by another sealed record, or whose log changed, each refusing migration;
+  - an older v2 archive (built by migrating with the previous bundle format) failing the full audit until `aew migrate` records its closure, with no finding, then passing, then covering the cited check and its log;
+  - the upgrade refusing a cited check already changed.
 
 **Next:** the independent review re-checks the fixes at a newly frozen head. After it, the register moves F1 and E5 to §9 *Closed*.
 

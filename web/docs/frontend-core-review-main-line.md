@@ -71,3 +71,25 @@ While the Lead commits more often than every 10 s, `/project` is always behind. 
 ## Gate
 
 Core freeze waits for FR-1 and FR-2. Record the fixing commit and the retest evidence. The main line then checks only that diff and records ACCEPT. Live-state, authentication and security integration stay separate, as `integration-checklist.md` says.
+
+## Fix verification: ACCEPT (2026-10-02)
+
+| | |
+|---|---|
+| Fixing commit | `7c120b4c39a059508e3b095a9bfd5498c1d7be09` (`fix(web): route history relations and reconcile active revisions`) |
+| Diff checked | `e632cc8..7c120b4` for `web/src`, `web/tests`, `web/scripts`, the contract, `package.json` and the lock. The commits in between are documentation only. |
+| Contract | Unchanged: SHA-256 `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691` at the fixing commit. No dependency changes. |
+| Reviewer, date | Claude, the main AEW agent, 2026-10-02 |
+| **Disposition** | **ACCEPT.** FR-1 and FR-2 are resolved as asked, and the diff contains nothing beyond them and their tests. Core freeze may proceed. |
+
+- **FR-1 resolved.**
+  - `historyLinkRelations` is exactly the contract's seven `x-known-relations`, separate from `annotationRelations`, so no known link type shows as unknown.
+  - Targets route by relation: `invocations` to Runs and `evidence` to Evidence. `depends_on`, `moved_to` and `audit_finding` go to the Work and History lookups. `tokens`, commits and unknown relations stay text.
+  - Minor, not blocking: an `audit_finding` target is an audit id, which only the History lookup finds.
+- **FR-2 resolved.** `client/revisions.ts` is the fix:
+  - It works on active, visible projections of the same project only, comparing decimal revisions as BigInt.
+  - When a projection succeeds with a newer revision, each older one is refetched once for that target, never in a loop, and only while the page is visible.
+  - It never rewrites a payload, ETag or revision, so a projection that really stays behind still triggers the warning.
+  - Disabled projections no longer count toward coherence.
+- **Not re-run here**, as before: the offline gate (73 tests), the 34 compiled browser checks and the frozen negative control are the frontend's evidence. The negative control, with five expected failures on `e632cc8`, is the right kind of proof that the new tests catch the defects.
+- **Unchanged and still separate:** live-state, authentication, header, Host/Origin and packaging integration (`integration-checklist.md`), and the backend's obligation that ETags change with the envelope revision.

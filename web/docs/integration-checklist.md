@@ -12,9 +12,9 @@ Candidate uses accepted API 0.1.2; this checklist distinguishes frontend evidenc
 - [x] Backend-owned meanings, unknown values, pagination, currentness and freshness preserved.
 - [x] SPT feedback retains resolved blockers and ticket-ready open improvements.
 - [x] Main AEW agent independently reviews the frozen frontend target and records findings (static review of `e632cc8`, AMEND minor; no reviewer execution claimed).
-- [ ] Required findings are addressed and the reviewer retests/signs off before core freeze.
+- [x] Required findings are addressed and the reviewer verifies the fixing diff/signs off before core freeze (Claude ACCEPT, 2026-10-02; tests were not independently rerun).
 
-FR-1 and FR-2 are implemented and retested at `7c120b4`; main-line fixing-diff verification/ACCEPT remains pending. See `frontend-core-review-fix-response.md`.
+FR-1 and FR-2 are implemented, retested and accepted at `7c120b4`. Frontend core is frozen. Integrated-system acceptance remains NOT_RUN. See `frontend-core-review-fix-response.md`.
 
 ## Main/integration line
 

@@ -1,10 +1,10 @@
 # Frontend core review: FR-1 / FR-2 response
 
-Prepared 2026-10-02. **Both findings implemented and retested; main-line fixing-diff verification is pending.** This response records neither reviewer ACCEPT nor integrated-system acceptance.
+Prepared 2026-10-02. **Main-line fixing-diff verification is ACCEPTED; frontend core is frozen at `7c120b4`.** Claude recorded ACCEPT on 2026-10-02 under "Fix verification: ACCEPT" in `frontend-core-review-main-line.md`. Integrated-system acceptance remains NOT_RUN.
 
 - Frozen reviewed implementation: `e632cc83135ed98f70804df166d1c88f37a0b674`.
 - Fixing commit: **`7c120b4c39a059508e3b095a9bfd5498c1d7be09`**, branch `feat/aew-dashboard-readonly`, isolated `AEW-dashboard` worktree.
-- Actual return: `frontend-core-review-main-line.md`, Claude, 2026-10-02, AMEND (minor). That was static review of a frozen copy with contract verification. Execution results below are frontend implementer evidence, not independently re-observed reviewer results.
+- Actual return: `frontend-core-review-main-line.md`, Claude, 2026-10-02, AMEND (minor). Initial review was static review of a frozen copy with contract verification; the reviewer subsequently verified the fixing code/test diff and recorded ACCEPT. Execution results below remain frontend implementer evidence, not independently re-observed reviewer results.
 - Accepted API 0.1.2, SHA-256 `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`, unchanged. Canonical YAML, generated types and runtime schemas are unchanged. F3 now exercises all seven existing link types; F0–F11 pins/conformance pass.
 - Dependency lock `3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2`, unchanged. No dependency or SPT repair.
 
@@ -53,4 +53,8 @@ node_modules/.bin/vitest run tests/revision-reconciliation.test.tsx tests/core-p
 
 Use the same immutable carrier with `--network none`; expected exit is 1 with the five assertion failures described above. A setup/install error is not a successful negative control.
 
-Main-line checks this fixing diff and records ACCEPT before core freeze. `artifacts/aew-dashboard-core-7c120b4.tar.gz` includes the static build, review material, provenance, screenshots and validation logs with checksums. The historical archive stays retained. Serve only `static/`, never review fixtures. Editable lessons remain in `frontend-verification-lessons.md` and `frontend-verification-skill-handoff.md` for the user's M6 skill work; neither is an installed or evaluated skill.
+Main-line checked the fixing diff and recorded ACCEPT; FR-1 and FR-2 are resolved and frontend core freeze is complete. `artifacts/aew-dashboard-core-7c120b4-accepted.tar.gz` includes the static build, review material, provenance, screenshots and validation logs with checksums. The historical archive stays retained. Serve only `static/`, never review fixtures. Editable lessons remain in `frontend-verification-lessons.md` and `frontend-verification-skill-handoff.md` for the user's M6 skill work; neither is an installed or evaluated skill.
+
+## Non-blocking reviewer note
+
+An `audit_finding` target is an audit ID found by History, so its additional Work lookup can be removed in a later focused polish. This note is retained as a non-blocking follow-up with acceptance criteria in `frontend-core-status.json`; the accepted frozen runtime is unchanged. Sign-in, live-state serving, server security headers, Host/Origin checks and packaging remain main/integration work, with separate acceptance.

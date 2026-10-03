@@ -1,6 +1,6 @@
 # Independent frontend core review packet
 
-Prepared 2026-10-02. Historical frozen packet: main-line review returned **AMEND (minor)** in `frontend-core-review-main-line.md`. Current fixing commit and retests are in `frontend-core-review-fix-response.md`; fixing-diff verification remains pending. The original target description/evidence below is retained. Do not declare core freeze accepted on this packet alone.
+Prepared 2026-10-02. Historical frozen packet: main-line initially returned **AMEND (minor)**, then **ACCEPT** for fixing commit `7c120b4` in `frontend-core-review-main-line.md`. Frontend core is frozen at that commit; fixing details/retests are in `frontend-core-review-fix-response.md`. The original target description/evidence below is retained as historical context. Live integration remains a separate gate.
 
 ## Frozen target
 

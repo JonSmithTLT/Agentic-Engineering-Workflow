@@ -1,6 +1,6 @@
 # W02-1 fixing diff and retest
 
-Disposition: fixed locally; Lead diff check and green PR CI remain required for W02 frontend acceptance. Live integration remains F20.2–F20.6.
+Disposition: Lead fixing-diff review confirms W02-1 is fixed; green PR CI remains required for W02 frontend acceptance. Live integration remains F20.2–F20.6.
 
 Source freeze: `7a18fa3a17b0d9d8d28732663e9e1df9b140c4cc` on `feat/aew-dashboard-w02`. Review only this source fix with `git diff b9c233a 7a18fa3`; the original frozen W02 source was `0e64b31`. The [main-line review](w02-review-main-line.md) is retained unchanged.
 
@@ -31,3 +31,7 @@ W01_BROWSER_OUTPUT=output/playwright-w02-review-fix-w01 W01_DEMO_PORT=4226 W01_P
 ```
 
 Local execution used the existing permission-authorized Docker/browser path. Git worktree metadata was restored to the existing W02 branch after its administrative directory was missing; no main checkout files or running Engine tests were changed. The branch has not been pushed and GitHub CI has not been run by this fix.
+
+## Lead confirmation — 2026-10-03
+
+The main-line reviewer checked `git diff b9c233a 7a18fa3`, confirmed W02-1 fixed, and accepted the frontend behavior conditional on green PR CI. The reviewer did not rerun the local tests. Acceptance remains fixtures-only; live integration remains F20.2–F20.6.

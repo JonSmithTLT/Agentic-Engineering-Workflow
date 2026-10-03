@@ -52,3 +52,16 @@ I read the whole source diff (`web/src`, 2,870 lines) and the contract, and comp
 ## Acceptance
 
 Fix W02-1 with its test in W02, then send the fixing diff. Once it is fixed and the PR's CI is green (web checks included), W02's frontend behaviour is accepted. That acceptance covers fixtures only. Live integration stays with F20.2 to F20.6.
+
+## Fix confirmation (W02-1) — 2026-10-03
+
+Reviewed `git diff b9c233a 7a18fa3` (one commit, five files; read from the shared repository). **W02-1 is fixed.**
+
+- `historyTargetKind` classifies `depends_on` and `moved_to` as `work` and keeps `audit_finding` as `history`. Its one caller, `investigate`, feeds both the explorer's nodes and its edge list, so expansion now reads `/work/{id}`.
+- `EntityAnchor` gets a `workWorkspace` flag, set only by `RelationsExplorer`. A Work node opens `/work?selected={id}`. From outside the Work collection, the link carries only `navigationParams` (demo keys), so History and Runs filters and selections don't leak into Work. Inside the Work collection, behaviour is unchanged. Other anchors are unaffected.
+- **Tests:**
+  - The component test `w02-investigation.test.tsx` expands a hot `depends_on` and a hot `moved_to` target. It asserts that both read through `/api/v1/work/`, that neither reads `/history/`, that there is no 404, that `audit_finding` stays `history`, and that the History filters (`kind`, `cursor`) are dropped from the parent link.
+  - The browser check `browser-w02.mjs` covers the same flow on fixture F3 in demo mode, where `fixture=F3` is kept.
+- No contract, dependency or workflow change.
+
+Not rerun here, for the same reason as above. **W02's frontend behaviour is accepted once the PR's CI is green**, with the fixtures-only scope stated under Acceptance.

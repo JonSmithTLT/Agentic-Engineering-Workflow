@@ -72,3 +72,7 @@ The main AEW reviewer should inspect the frozen code diff independently and dist
 ## Main-line review amendment — 2026-10-03
 
 Main-line review: AMEND, W02-1. The inherited History relation lookup finding is fixed in `7a18fa3`; see [fixing diff and retest](w02-review-fix-response.md). This addendum supersedes the original pending-review disposition: Lead fixing-diff confirmation and green PR CI remain required. The original source freeze and evidence above remain historical records of the reviewed implementation.
+
+## Fix confirmation — 2026-10-03
+
+The [main-line review](w02-review-main-line.md) now confirms W02-1 fixed after reading `git diff b9c233a 7a18fa3`. There are no remaining review findings. Frontend acceptance is conditional on green PR CI; local validation does not satisfy that remaining gate. Scope remains fixtures only, with live integration owned by F20.2–F20.6.

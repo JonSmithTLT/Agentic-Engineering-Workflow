@@ -75,6 +75,9 @@ class Resume:
             actions.append("acquire Lead authority: `aew lead acquire --expect-rev N`")
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
+        if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
+            actions.append("migrate the control state to v2 (finished work leaves the hot state): "
+                           "`aew migrate --expect-rev N`")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates: `aew authority list`, then for each "
                            "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> "

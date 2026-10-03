@@ -162,6 +162,7 @@ class NonMutatingPort(Protocol):
 class HierarchyPort(Protocol):
     """What other collaborators use of ``Hierarchy``."""
 
+    def children_digest(self, state: dict[str, Any], work_id: str) -> str: ...
     def work_tree(self, root: str | None = None) -> dict[str, Any]: ...
 
 

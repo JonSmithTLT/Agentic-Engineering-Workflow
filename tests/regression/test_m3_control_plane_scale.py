@@ -6,6 +6,9 @@ at N units and again after it grew to 4N (``tools/perf/control_plane.py`` builds
 cloned DONE and planned Tickets). They must be equal, except where the growth is the command's own job, listed
 in ``PER_UNIT`` with exactly how much it may grow. A command that spawned git, parsed or scanned per unit would
 multiply them.
+
+ADR-0011: each project is built in the M3 (v1) layout and migrated (``aew migrate``) before it is measured, since the
+Lead's mutations are refused on v1. Finished work is then archived, so the commands see only the open units hot.
 """
 
 from __future__ import annotations
@@ -26,10 +29,11 @@ def open_tickets(root: Path) -> int:
     return sum(1 for u in state["work"].values() if u["kind"] == "ticket" and u["state"] not in {"DONE", "CANCELLED"})
 
 
-def per_unit(added_units: int, added_open: int) -> dict[str, dict[str, int]]:
+def per_unit(added_open: int) -> dict[str, dict[str, int]]:
     """Growth that is the command's own job. resume reports integrity contradictions (KC §15.1) by verifying every
-    unit's sealed evidence, and each open Ticket's unmet gates."""
-    return {"resume": {"scan": added_units + added_open}}
+    hot unit's sealed evidence, and each open Ticket's unmet gates: after the migration only open units are hot, so
+    archived DONE Tickets add nothing (ADR-0011 H4)."""
+    return {"resume": {"scan": 2 * added_open}}
 
 
 def counts(runner: CP.Runner) -> dict[str, dict[str, int]]:
@@ -37,15 +41,16 @@ def counts(runner: CP.Runner) -> dict[str, dict[str, int]]:
             for name, args in CP.READS + CP.MUTATIONS}
 
 
+def measured(root: Path, units: int) -> tuple[dict[str, dict[str, int]], int]:
+    t = CP.build(root, units)
+    CP.migrate(t)
+    return counts(CP.Runner(t)), open_tickets(root)
+
+
 def test_no_command_does_per_unit_work(tmp_path):
-    t = CP.build(tmp_path / "repo", SMALL)
-    runner = CP.Runner(t)
-    small, open_before = counts(runner), open_tickets(t.root)
-    CP.grow(t.root, LARGE)
-    CP.validate(t.root)
-    runner.resnapshot()
-    large = counts(runner)
-    allowed = per_unit(LARGE - SMALL, open_tickets(t.root) - open_before)
+    small, open_small = measured(tmp_path / "small" / "repo", SMALL)
+    large, open_large = measured(tmp_path / "large" / "repo", LARGE)
+    allowed = per_unit(open_large - open_small)
     growth = {}
     for name in small:
         for key in COUNTED:
@@ -74,6 +79,28 @@ def test_the_footprint_attributes_every_byte_to_open_work_or_history(tmp_path):
     active = CP.project_footprint(t.root)
     assert active["history_bytes"] == history["history_bytes"] and active["units"] == {"open": 9, "completed": 9}
     assert active["live_bytes"] > history["live_bytes"]
+
+
+def test_after_migration_the_hot_state_holds_history_only_as_aggregates(tmp_path):
+    """ADR-0011 H1, timing-free, on the scale-regression project: along the history series (20 open Tickets), four
+    times the history leaves the hot state at most 1.25x its size, and history is at most 20% of it; the history is
+    in the cold store. (H1's own points, 250 and 3,000 completed, are measured in P3: the property is the same, and
+    a 3,000-unit migration takes minutes.)"""
+    points = {}
+    for completed in (250, 1000):
+        t = CP.make_template(tmp_path / str(completed) / "repo")  # 3 open, 1 completed
+        CP.add_units(t.root, done=completed - 1, planned=17)
+        v1 = CP.project_footprint(t.root)
+        assert v1["units"] == {"open": 20, "completed": completed} and v1["cold_bytes"] == 0
+        CP.migrate(t)
+        hot = points[completed] = CP.project_footprint(t.root)
+        assert hot["units"] == {"open": 20, "completed": 0}
+        assert hot["open_bytes"] == v1["open_bytes"]  # open work is untouched
+        assert hot["history_bytes"]["units"] == 0 and hot["history_bytes"]["invocations"] == 0
+        assert hot["history_bytes"]["total"] <= 0.20 * hot["control_bytes"], hot["history_bytes"]
+        assert hot["cold_bytes"] >= v1["history_bytes"]["units"]  # every finished record went to the cold store
+    assert points[1000]["control_bytes"] <= 1.25 * points[250]["control_bytes"], \
+        (points[250]["control_bytes"], points[1000]["control_bytes"])
 
 
 def test_no_engine_operation_changes_the_shared_parse(tmp_path, monkeypatch):

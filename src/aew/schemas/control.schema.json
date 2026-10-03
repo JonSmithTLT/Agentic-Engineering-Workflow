@@ -491,6 +491,13 @@
         "depends_on"
       ],
       "properties": {
+        "legacy_digest": {
+          "description": "An open parent's children digest when its project migrated to v2 (ADR-0011 plan R3): evidence bound to the v1 digest stays current while the v2 digest is still v2_at_migration.",
+          "type": "object",
+          "required": ["v1", "v2_at_migration"],
+          "additionalProperties": false,
+          "properties": {"v1": {"$ref": "#/$defs/sha256"}, "v2_at_migration": {"$ref": "#/$defs/sha256"}}
+        },
         "history_refs": {
           "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",
           "type": "array",

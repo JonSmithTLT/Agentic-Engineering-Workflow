@@ -29,6 +29,7 @@ from aew.errors import IntegrityError
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
+from aew.history.store import prewrite as prewrite_record
 from aew.knowledge.records import format_id
 from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git, worktrees
@@ -198,7 +199,7 @@ class Archive:
                 "schema": ARCHIVE_SCHEMA, "id": wid, "unit": unit,
                 "invocations": {i: state["invocations"][i] for i in invocations},
                 "tokens": {t: state["tokens"][t] for t in tokens}})
-            sha = self.cold.write_record(ctx.session, bundle_rel(wid), bundle)
+            sha = self._write_record(ctx.session, bundle_rel(wid), bundle, prewrite=ctx.prewrite)
             at = ((unit.get("history") or [{}])[-1].get("at")) or utc_now()
             entries.append(self._entry(wid, unit, sha, at, invocations, tokens))
             facts[wid] = self._facts(unit, sha)
@@ -209,7 +210,7 @@ class Archive:
             gone_tokens.update(tokens)
         entries += self._annotation_entries(ctx)
         if lead_ended:
-            entries.append(self._lead_entry(ctx.session, state, lead_ended))
+            entries.append(self._lead_entry(ctx.session, state, lead_ended, prewrite=ctx.prewrite))
             gone_tokens.update(lead_ended)
         root = state["cold"]["root"]
         if entries:
@@ -222,6 +223,9 @@ class Archive:
         counts = Counter({"done": 0, "cancelled": 0, **(state["cold"].get("archived") or {})})
         counts.update(work[w]["state"].lower() for w in order)
         projected["cold"] = dict(advance_cold(state["cold"], root, entries), archived=dict(sorted(counts.items())))
+        # Most recently finished last: a commit that archives several units (a cascade, a migration) writes them
+        # deepest first, which says nothing about when each finished (the sort is stable for equal times).
+        recent.sort(key=lambda r: r["at"])
         projected["recent"] = (list(state.get("recent", [])) + recent)[-RECENT:]
         projected["archived_refs"] = self._archived_refs(state, hot, facts)
         projected["retained_workspaces"] = retained
@@ -236,15 +240,25 @@ class Archive:
         return sorted(t for t, rec in state["tokens"].items()
                       if rec["kind"] in LEAD_KINDS and rec.get("revoked_at") and t != current)
 
-    def _lead_entry(self, session: Any, state: dict[str, Any], ended: list[str]) -> dict[str, Any]:
+    def _write_record(self, session: Any, rel: str, content: str, *, prewrite: bool = False) -> str:
+        """An immutable history record for this transition: staged in its redo record, or (``prewrite``: a
+        migration, R8) written now and referenced by hash. Either way its SHA-256."""
+        if prewrite:
+            sha = prewrite_record(self.k.aew_root, rel, content)
+            session.prewritten(rel, sha)
+            return sha
+        return self.cold.write_record(session, rel, content)
+
+    def _lead_entry(self, session: Any, state: dict[str, Any], ended: list[str], *,
+                    prewrite: bool = False) -> dict[str, Any]:
         """Ended Lead and handoff-offer credentials leave the hot state, one record per change of the seat: a superseded
         Lead presenting one again is told so (R7), and the hot state does not grow with the number of generations."""
         state["counters"]["lead_archive"] = state["counters"].get("lead_archive", 0) + 1
         n = state["counters"]["lead_archive"]
         rid, rel = f"LEAD-{n:04d}", f"history/lead/{n:06d}.yaml"
-        sha = self.cold.write_record(session, rel, dump_yaml({
+        sha = self._write_record(session, rel, dump_yaml({
             "schema": LEAD_SCHEMA, "id": rid, "generation": state["lead"]["generation"],
-            "tokens": {t: state["tokens"][t] for t in ended}}))
+            "tokens": {t: state["tokens"][t] for t in ended}}), prewrite=prewrite)
         return {"kind": "lead", "id": rid, "path": rel, "sha256": sha, "at": utc_now(), "source": "engine",
                 "links": {"tokens": ended}}
 

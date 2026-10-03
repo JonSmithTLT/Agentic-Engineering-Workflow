@@ -1,0 +1,55 @@
+{
+  "contract": "investigation-preview",
+  "version": "0.1.0",
+  "sha256": "00efcb22bf0e2005f4910841290c1be54566a5d6e4ac92b9c02bd5ee94502ca1",
+  "cases": {
+    "story": {
+      "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"
+    },
+    "later-ticket": {
+      "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"
+    },
+    "parallel": {
+      "sha256": "ff2d70a7c8a55795934eda50b32e859d14cfd4fa98834fa492d35b19d71b04a0"
+    },
+    "large": {
+      "sha256": "6b5ee01653275c676774fbeddbca7662de33def1c015326f8052c6b03b0c2ed2"
+    },
+    "missing": {
+      "sha256": "5fdc81f47cff8247eb18f04bc180bfbb01cdb9655b6855ab2749bc007565a284"
+    },
+    "partial": {
+      "sha256": "c3a0cbf4117b2a3abbbb15d420e4fc70cf7f0db0a9bd0845751e88465cce32ab"
+    },
+    "contradictory": {
+      "sha256": "e9b1bfa455697d61360a11a8585df3c463b556b405c29926a479a9e9f1aafc2e"
+    },
+    "unknown": {
+      "sha256": "86c9a730878e6f88109666eb3e2f04a03a6e649cc041242a41f9c67a79136149"
+    },
+    "denied": {
+      "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"
+    },
+    "not-found": {
+      "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"
+    },
+    "historical-unavailable": {
+      "sha256": "c2212ffd6cec8e7a4bd7a994458d16c91711fb609116ea4769c69610798181dd"
+    },
+    "malformed": {
+      "sha256": "f5dcd6088c96d31e8a81ba9c159d420f97a3fcc349175de3357ee764f6fd6004"
+    },
+    "stale": {
+      "sha256": "a5819735a372895950348c06d3b38c056d94b6bcab0106383ac9aa910ca624b7"
+    },
+    "refresh-error": {
+      "sha256": "a5819735a372895950348c06d3b38c056d94b6bcab0106383ac9aa910ca624b7"
+    },
+    "hostile": {
+      "sha256": "5b1baef6b071eb12545ff865b96c090f895160c1f3670ec8259d6159fc30cf98"
+    },
+    "empty": {
+      "sha256": "202d78d1185823cac8eb61e0449ec501af79f1e6c04e7579ace6bf45d2820b01"
+    }
+  }
+}

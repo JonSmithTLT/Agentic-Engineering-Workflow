@@ -15,7 +15,7 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Journal interaction/state ledger
 
-Select opens in place and preserves results; close returns focus to entry or heading. Filter/page changes preserve explicit selection with an out-of-results notice; filter change resets cursor. Stream/table toggles keep cursor/selection. Native selects use their supplied option identities. Tabs implement arrow/Home/End navigation. Narrow pane switches stop concealed detail polling and revalidate when revealed. Metadata and graph disclosures are non-modal.
+Select opens in place and preserves results; close returns focus to entry or heading. Selected ID stays visible above both panes; mobile Results/Detail buttons show the current pressed state. Following a Journal reference focuses its ID/title heading below the sticky header. Filter/page changes preserve explicit selection with an out-of-results notice; filter change resets cursor. Stream/table toggles keep cursor/selection. Native selects use their supplied option identities. Tabs implement arrow/Home/End navigation. Narrow pane switches stop concealed detail polling and revalidate when revealed. Metadata, type legend and graph disclosures are non-modal. Loadable graph nodes are marked not expanded until loaded; unavailable references stay terminal.
 
 Initial reads show loading or an inline error/retry. Background failure retains marked valid data. 401/403 clears inaccessible data and validator. Session/case changes retire responses, caches and graph state. Empty/no-results explain recovery. Unknown values retain raw warnings. Missing explanation does not derive meaning from neighboring fields.
 

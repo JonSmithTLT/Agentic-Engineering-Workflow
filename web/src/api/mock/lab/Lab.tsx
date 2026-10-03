@@ -5,7 +5,7 @@ import { journalEnvelope } from '../../preview/journal/projector';
 import { story } from '../../preview/journal/fixtures';
 import { transport } from '../../transport';
 import { worlds, selectedWorld } from '../worlds';
-import { replay } from '../browser';
+import { replay, httpDemo } from '../runtime';
 import { recipes, scenarioLink } from './catalog';
 import { validateInput } from './validation';
 const noSubscribe = () => () => {};
@@ -40,6 +40,7 @@ export default function Lab({ tab }: { tab: string }) {
       {tab === 'Scenarios' ? (
         <>
           <h3>Scenario Lab</h3>
+          {httpDemo && <p role="note">HTTP fixture demo: service-worker replay recipes are unavailable. Normal fixture browsing and the Contract Playground are available.</p>}
           {new URLSearchParams(location.search).has('recipe') && !replay && (
             <p role="alert">
               Replay configuration is invalid or unsupported. Normal demo

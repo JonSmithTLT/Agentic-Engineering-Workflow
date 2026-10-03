@@ -6,9 +6,20 @@
 .journal-results, .journal-detail { padding: 16px; min-width: 0; }
 .journal-stream { list-style: none; margin: 0; padding: 0; }
 .journal-item { border-bottom: 1px solid var(--border); padding: 12px 8px; border-inline-start: 3px solid var(--border); }
-.journal-item[data-kind='discovery'] { border-inline-start-color: var(--accent); }
-.journal-item[data-kind='conditional_lesson'] { border-inline-start-color: var(--muted); }
-.journal-item[data-kind='failed_approach'] { border-inline-start-style: dashed; }
+:is(.journal-item, .journal-kind-sample)[data-kind='discovery'] { border-inline-start-color: var(--accent); }
+:is(.journal-item, .journal-kind-sample)[data-kind='conditional_lesson'] { border-inline-start-color: var(--muted); }
+:is(.journal-item, .journal-kind-sample)[data-kind='failed_approach'] { border-inline-start-style: dashed; }
+:is(.journal-item, .journal-kind-sample)[data-kind='observation'] { border-inline-start-color: var(--muted); border-inline-start-style: dotted; }
+:is(.journal-item, .journal-kind-sample)[data-kind='hypothesis'] { border-inline-start-color: var(--accent); border-inline-start-style: dashed; }
+:is(.journal-item, .journal-kind-sample)[data-kind='conditional_lesson'] { border-inline-start-style: double; border-inline-start-width: 4px; }
+:is(.journal-item, .journal-kind-sample)[data-kind='decision_reference'] { border-inline-start-color: var(--accent); border-inline-start-style: double; border-inline-start-width: 4px; }
+:is(.journal-item, .journal-kind-sample)[data-kind='environment_constraint'] { border-inline-start-color: var(--muted); border-inline-start-width: 5px; }
+.journal-kind-mark { display: inline-block; min-width: 1.5em; font-weight: 700; color: var(--muted); }
+.journal-legend { margin-bottom: 12px; font-size: 13px; }
+.journal-legend ul { list-style: none; padding: 0; }
+.journal-kind-sample { padding: 6px 10px; border-bottom: 1px solid var(--border); border-inline-start: 3px solid var(--border); }
+.workspace-switch [aria-pressed='true'] { border-color: var(--accent); background: var(--soft); font-weight: 600; }
+.workspace-controls .workspace-selection { margin-right: 0; }
 .journal-item h3 { margin: 6px 0; font-size: 15px; }
 .journal-item p { margin: 0; font-size: 12px; color: var(--muted); }
 .journal-type { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; font-size: 12px; }
@@ -1506,13 +1517,19 @@ summary {
 }
 .graph-edge-list,
 .relation-list {
-  padding-left: 18px;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
   overflow-wrap: anywhere;
 }
 .graph-edge-list button,
 .relation-list button {
   text-align: left;
   font-size: 12px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .edge-inspection {
   margin-top: 12px;

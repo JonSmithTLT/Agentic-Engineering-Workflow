@@ -53,8 +53,16 @@ export class ReadTransport {
     this.changed();
   }
   constructor(
-    private request: typeof fetch = (input, init) =>
-      globalThis.fetch(input, init),
+    private request: typeof fetch = (input, init) => {
+      if (import.meta.env.MODE === 'demo' && document.querySelector('meta[name="aew-demo-transport"]')?.getAttribute('content') === 'http') {
+        const headers = new Headers(init?.headers);
+        const params = new URLSearchParams(location.search);
+        headers.set('X-AEW-Demo-Fixture', params.get('fixture') ?? 'F1');
+        if (params.get('fault')) headers.set('X-AEW-Demo-Fault', params.get('fault')!);
+        return globalThis.fetch(input, { ...init, headers });
+      }
+      return globalThis.fetch(input, init);
+    },
     private now = () => readClock.now(),
     private log: RequestLog = requestLog,
     private policy = {

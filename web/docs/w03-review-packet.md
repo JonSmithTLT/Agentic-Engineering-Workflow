@@ -2,7 +2,7 @@
 
 ## Disposition
 
-Operator approved plan1.1 and implementation on2026-10-03. This is a demo-only Journal preview0.1.0 PROVISIONAL, independent of accepted API0.1.2. Implementer evidence is in `web/docs/w03-evidence/`. Independent frontend acceptance and backend/live integration remain pending; no Engine suite was invoked.
+Operator approved plan1.1 and implementation on2026-10-03. This is a demo-only Journal preview0.1.0 PROVISIONAL, independent of accepted API0.1.2. Original implementer evidence is in `web/docs/w03-evidence/`. The independent reviewer completed all desktop/phone task steps and required four minor fixes, recorded unchanged in `web/docs/w03-review-main-line.md`. See `web/docs/w03-review-fix-response.md` and `web/docs/w03-followup-evidence/` for the fixing diff and operator additions. Independent fixing-diff confirmation and backend/live integration remain pending; no Engine suite was invoked.
 
 The source freeze is recorded in `web/docs/w03-evidence/result.json`. Review the diff from mergedW02 `43c5a8f961ff18f9249d62c0ad7f8790f2b33eaf` through that source commit. Evidence additions after the source freeze do not change the reviewed implementation.
 

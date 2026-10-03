@@ -51,6 +51,7 @@ export function InvestigationWorkspace({
       </h1>
       <div className="workspace-controls">
         <p>Inspect a record without losing your results.</p>
+        {selected && <p className="workspace-selection">Selected: <code>{selected}</code></p>}
         <CopyDashboardLink />
         {selected && (
           <button
@@ -85,7 +86,7 @@ export function InvestigationWorkspace({
             aria-pressed={pane === 'detail'}
             onClick={() => setPane('detail')}
           >
-            Detail
+            Detail <span aria-hidden="true">· {selected}</span>
           </button>
         </div>
       )}

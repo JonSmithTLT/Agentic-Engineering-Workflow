@@ -1,4 +1,4 @@
-import { useRef, type ComponentType } from 'react';
+import { useEffect, useRef, type ComponentType } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { InvestigationWorkspace } from '../../../components/InvestigationWorkspace';
 import { RelationsExplorer } from '../../../components/RelationsExplorer';
@@ -50,7 +50,11 @@ function JournalWorkspace({ name }: {
     <label className="journal-case">Journal scenario <select aria-label="Journal scenario" value={name} onChange={(e) => setParams((old) => { const p = new URLSearchParams(old); p.set('journal_case', e.target.value); p.delete('cursor'); p.delete('selected'); return p; })}>
       {journalCases.map((c) => <option key={c}>{c}</option>)}
     </select></label>
-    <InvestigationWorkspace collection="journal" title="Knowledge Journal" resultsLabel="Stream" selectionChanged={() => {
+    <details className="journal-legend"><summary><span aria-hidden="true">?</span> Knowledge type legend</summary>
+      <p>Color, edge pattern and symbol identify the supplied type, not truth or applicability. Unknown types keep their raw warning.</p>
+      <ul>{journalKinds.map((kind) => <li key={kind} className="journal-kind-sample" data-kind={kind}><KindMark kind={kind}/><strong>{kind.replaceAll('_', ' ')}</strong> — {kindDescriptions[kind]}</li>)}</ul>
+    </details>
+    <InvestigationWorkspace collection="journal" title="Knowledge Journal" resultsLabel="Results" selectionChanged={() => {
             // The shared close action commits URL state before this focus restoration.
             globalThis.requestAnimationFrame(() => {
                 const target = [...(results.current?.querySelectorAll<HTMLAnchorElement>('[data-journal-id]') ?? [])].find((el) => el.dataset.journalId === params.get('selected'));
@@ -85,6 +89,11 @@ function EntryLink({ entry }: {
     p.set('panel', 'summary');
     return <Link data-journal-id={entry.id} aria-current={params.get('selected') === entry.id ? 'true' : undefined} to={'/knowledge?' + p}>{entry.title}</Link>;
 }
+const kindSymbols: Record<string, string> = { observation: '○', hypothesis: '?', failed_approach: '×', discovery: '◇', conditional_lesson: '↳', decision_reference: '§', environment_constraint: '▤' };
+const kindDescriptions: Record<string, string> = { observation: 'A supplied observation.', hypothesis: 'An explanation proposed for investigation.', failed_approach: 'An attempted approach recorded as unsuccessful.', discovery: 'A newly recorded finding.', conditional_lesson: 'A lesson with conditions and limitations.', decision_reference: 'A reference to an authoritative decision.', environment_constraint: 'A supplied environment condition or constraint.' };
+function KindMark({ kind }: {
+    kind: string;
+}) { return <span className="journal-kind-mark" aria-hidden="true">{kindSymbols[kind] ?? '!'}</span>; }
 function JournalResults({ name, display }: {
     name: string;
     display: string;
@@ -134,7 +143,7 @@ function JournalResults({ name, display }: {
                     const date = r.published_at?.slice(0, 10) ?? 'Undated', previous = data.items[i - 1]?.published_at?.slice(0, 10) ?? 'Undated';
                     return <li key={r.id} className="journal-item" data-kind={journalKinds.includes(r.kind) ? r.kind : 'unknown'}>
           {(i === 0 || date !== previous) && <h2 className="journal-date">{date}</h2>}
-          <div className="journal-type"><SemanticValue value={r.kind} known={journalKinds}/><time dateTime={r.published_at ?? undefined}>{r.published_at ? r.published_at.slice(11, 19) + ' UTC' : 'Publication not supplied'}</time></div>
+      <div className="journal-type"><span><KindMark kind={r.kind}/><SemanticValue value={r.kind} known={journalKinds}/></span><time dateTime={r.published_at ?? undefined}>{r.published_at ? r.published_at.slice(11, 19) + ' UTC' : 'Publication not supplied'}</time></div>
           <h3><EntryLink entry={r}/></h3>
           <p><code>{r.id}</code> · <SemanticValue value={r.applicability} known={applicabilityValues}/> · {r.origin.work?.id ?? 'Origin not supplied'}</p>
         </li>;
@@ -153,13 +162,29 @@ function JournalDetail({ id, name, shown, panel }: {
     const route = `/entries/${encodeURIComponent(id)}?case=${encodeURIComponent(name)}`;
     const query = useProjection(route, journalSchemas.JournalResponse, 'detail', true, shown, reader);
     const result = query.data, r = result?.value.data;
+    const heading = useRef<HTMLHeadingElement>(null);
+    useEffect(() => {
+        if (!shown || !r)
+            return;
+        const frame = requestAnimationFrame(() => {
+            const target = heading.current;
+            if (!target)
+                return;
+            target.focus({ preventScroll: true });
+            const headerBottom = document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0;
+            const top = target.getBoundingClientRect().top;
+            if (top < headerBottom + 12 || top > window.innerHeight - 80)
+                window.scrollBy({ top: top - headerBottom - 16, behavior: 'instant' });
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [id, shown, !!r]);
     if (!r || !result)
         return query.isError ? <LoadError message={query.error.message} retry={() => void query.refetch()}/> : <p role="status">Loading selected entry…</p>;
     const inspection = inspectJournal(r, result);
     return <article className="panel journal-detail">
     {query.isError && <p role="alert">Last known valid entry retained; refresh failed. <button onClick={() => void query.refetch()}>Retry entry</button></p>}
     <p className="journal-type"><code>{r.id}</code> · <SemanticValue value={r.kind} known={journalKinds}/></p>
-    <h2>{r.title}</h2>
+    <h2 ref={heading} tabIndex={-1}>{r.id} · {r.title}</h2>
     <p>Applicability: <SemanticValue value={r.applicability} known={applicabilityValues}/></p>
     <div className="journal-tabs" role="tablist" aria-label="Entry detail">
       {['summary', 'evidence', 'provenance'].map((tab, index) => <button key={tab} id={`journal-tab-${tab}`} role="tab" aria-selected={panel === tab} aria-controls={`journal-panel-${tab}`} tabIndex={panel === tab ? 0 : -1} onClick={() => setParams((old) => { const p = new URLSearchParams(old); p.set('panel', tab); return p; })} onKeyDown={(e) => {

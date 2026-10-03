@@ -381,7 +381,7 @@ export function RelationsExplorer({ root, reader }: { root: Investigation; reade
                     {node.kind}
                     {node.loaded
                       ? ` · loaded revision ${node.loaded.source.value.control_revision}`
-                      : ' · unresolved reference'}
+                      : allowed(node) ? ' · not expanded' : ' · unavailable reference'}
                   </span>
                   {reader ? reader.anchor({ id: node.id, kind: node.kind }) : <EntityAnchor
                     workWorkspace

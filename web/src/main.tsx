@@ -31,8 +31,10 @@ async function start() {
   let DemoLab: ComponentType<{ tab: string }> | undefined;
   let DemoKnowledge: ComponentType<{ Records: ComponentType }> | undefined;
   if (import.meta.env.MODE === 'demo') {
-    const { worker, initializeDemo } = await import('./api/mock/browser');
+    const { httpDemo, initializeDemo } = await import('./api/mock/runtime');
     await initializeDemo();
+    if (!httpDemo) {
+    const { worker } = await import('./api/mock/browser');
     await worker.start({
       onUnhandledRequest: 'bypass',
       serviceWorker: {
@@ -40,6 +42,7 @@ async function start() {
         options: { updateViaCache: 'none' },
       },
     });
+    }
     DemoTools = (await import('./api/mock/DemoTools')).default;
     DemoLab = (await import('./api/mock/lab/Lab')).default;
     DemoKnowledge = (await import('./api/preview/journal/Journal')).default;

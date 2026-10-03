@@ -78,7 +78,7 @@ async function investigation(page, phone) {
   steps.push({ established: 'canonical reference, no second authority', reference: 'CLANGD-D42' });
   assert(!(await page.locator('.developer-panel').count()), 'No developer tools needed');
   if (phone) {
-    await page.getByRole('button', { name: 'Stream', exact: true }).click();
+    await page.getByRole('button', { name: 'Results', exact: true }).click();
     assert(!(await detail.isVisible()));
     await page.getByRole('button', { name: 'Detail', exact: true }).click();
     assert(await detail.isVisible());
@@ -174,7 +174,7 @@ try {
   }, { dark: true });
   await check('phone concealed detail stops polling and revalidates on reveal', async (page, requests) => {
     await open(page, selected()); await page.locator('.journal-detail').getByRole('tab', { name: 'Summary' }).waitFor();
-    await page.getByRole('button', { name: 'Stream', exact: true }).click();
+    await page.getByRole('button', { name: 'Results', exact: true }).click();
     await page.locator('.journal-detail').waitFor({ state: 'hidden' });
     const reads = () => requests.filter((r) => r.url.includes('/api/preview/journal/v0.1/entries/J-05')).length;
     const before = reads();

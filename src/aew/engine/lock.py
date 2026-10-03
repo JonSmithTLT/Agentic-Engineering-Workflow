@@ -54,7 +54,7 @@ class FileLock:
         finally:
             fh.close()
 
-    if IS_WINDOWS:
+    if IS_WINDOWS:  # pragma: windows-only
 
         @staticmethod
         def _try_lock(fh) -> None:
@@ -70,7 +70,7 @@ class FileLock:
             fh.seek(0)
             msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
-    else:
+    else:  # pragma: posix-only
 
         @staticmethod
         def _try_lock(fh) -> None:

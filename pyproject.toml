@@ -21,6 +21,9 @@ dev = ["pytest>=8"]
 # Optional: parallel test execution for the non-serial lanes (docs/implementation/testing-and-ci-strategy.md).
 # Kept out of `dev` so offline installs from the SPT wheelhouse need nothing new.
 parallel = ["pytest-xdist>=3.6"]
+# Optional: coverage, including the `aew` CLI, supervisor and broker subprocesses the tests start (register E2;
+# docs/implementation/testing-and-ci-strategy.md, "Coverage"). CI measures the Linux lanes with it.
+coverage = ["coverage[toml]>=7.10"]
 
 [project.scripts]
 aew = "aew.cli.main:main"
@@ -42,3 +45,28 @@ markers = [
     "serial: timing or real-process concurrency is the property; never runs under xdist (--lane serial)",
     "exploratory: seeded randomized exploration; default budget is a merge gate, extended budgets run nightly",
 ]
+
+[tool.coverage.run]
+# Line and branch coverage of the product (src/aew), in this process and in every Python subprocess it starts
+# (`aew` CLIs, harness supervisors, the Lead broker, xdist workers). Data files go where COVERAGE_FILE points, outside
+# the checkout (the isolation guard fails a run that writes into it).
+source_pkgs = ["aew"]
+branch = true
+parallel = true
+patch = ["subprocess"]
+sigterm = true
+# Helper Python processes that never import aew (fake agents and servers) record nothing: not a problem.
+disable_warnings = ["module-not-imported", "no-data-collected"]
+
+[tool.coverage.report]
+# Code for the other operating system cannot run here: a block marked `# pragma: windows-only` or `# pragma: posix-only`
+# is excluded when measuring on the other OS. CI measures Linux (the default excludes windows-only); a Windows
+# measurement sets AEW_COVERAGE_OTHER_OS=posix. Both sides still run in their own OS's test lanes.
+exclude_also = ['if TYPE_CHECKING:', 'raise NotImplementedError', '^\s*\.\.\.$',
+                '# pragma: ${AEW_COVERAGE_OTHER_OS-windows}-only']
+precision = 1
+skip_empty = true
+
+[tool.coverage.paths]
+# Combine data recorded from an editable install anywhere (CI runners, WSL clones) as src/aew.
+source = ['src/aew', '*/src/aew', '*\src\aew']

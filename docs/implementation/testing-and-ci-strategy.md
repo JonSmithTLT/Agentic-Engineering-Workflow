@@ -73,6 +73,14 @@ Deterministic fault points are named code locations, not timings. That is why th
   - AEW's behaviour was correct: it refuses a second implementer while one is live, and the Lead recovers with `aew invoke cancel` followed by a fresh dispatch.
   - Per the policy, the failure became a deterministic CLI test, `test_compositions.py::test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and_redispatch`. The walk now models the recovery. The default merge-gate seeds take step-for-step identical paths before and after that change.
 
+### Coverage (register E2, M4-A)
+
+- **What is measured.** Line and branch coverage of `src/aew`, measured with coverage.py (the `coverage` extra) on the Linux jobs: the `fast` lane in `core`, and every shard of the `integration`, `acceptance`, `regression` and `adversarial` lanes. Every Python subprocess the tests start is measured too: `aew` CLIs, harness supervisors, the Lead broker and xdist workers (`patch = ["subprocess"]`, `parallel = true`, `[tool.coverage.run]` in `pyproject.toml`). The `serial` lane runs without coverage, because its property is timing.
+- **Where the data goes.** Each job writes its data files where `COVERAGE_FILE` points, under the runner's temp directory, never into the checkout (the isolation guard, §5, fails a run that writes into it), and uploads them as a `coverage-*` artifact.
+- **The ratchet.** `assurance` combines every job's data and runs `tools/ci/coverage_gate.py`. It writes the total and per-package table to the job summary, and fails when total line or branch coverage falls more than 0.3 percentage points below `tests/coverage-baseline.json`. Coverage may rise freely. Raising the baseline is a deliberate commit (`--update`), never automatic.
+- **The other platform's code.** A block that can only run on one OS is marked `# pragma: windows-only` or `# pragma: posix-only`, and the measurement excludes the other OS's marker (`AEW_COVERAGE_OTHER_OS`, default `windows`, so CI on Linux needs no setting). Both sides still run in their own OS's lanes; only the number ignores code that cannot run where it is measured.
+- **What it is for.** Coverage points to thin tests; it is not a target to game. The ratchet keeps it from silently falling. A new test is written for a behaviour, not for a line.
+
 ### Failure and merge-blocking policy
 
 - **Red `assurance` means no merge.** Re-running a failed job is allowed only to rule out runner infrastructure (network, image). A test that fails and then passes on re-run is a defect to investigate, not a flake to ignore.
@@ -165,6 +173,9 @@ python -m pytest --lane fast -q                         # seconds: unit + frozen
 python -m pytest --lane regression -n auto -q           # one lane in parallel
 python -m pytest -n auto -m "not serial" -q && python -m pytest --lane serial -q   # full, fast
 python -m pytest -m acceptance -q                       # all acceptance scenarios
+COVERAGE_FILE=/tmp/aew-cov/.coverage python -m coverage run -m pytest -n auto -m "not serial" -q   # coverage (".[coverage]")
+python tools/ci/coverage_gate.py /tmp/aew-cov --baseline tests/coverage-baseline.json   # report and check the ratchet
+# On Windows, also set AEW_COVERAGE_OTHER_OS=posix, and keep COVERAGE_FILE outside the checkout.
 AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q     # reproduce a nightly seed
 python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
@@ -204,6 +215,6 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 
 - **CLI subprocesses dominate test time** (about 80 % when measured for M2). Then, a read-only `aew` call cost about 250 ms, including about 65 ms of pure-Python YAML parsing of `control.yaml`. M3 step 7 changed the persistence core: YAML now goes through libyaml where PyYAML has it (`aew doctor` reports which), and identical control-state bytes reuse their parse within a process. The bare CLI floor is now about 0.1 s (`m3-performance.md`). The remaining cost is linear in `control.yaml`'s size, which ADR-0011 addresses before M4.
 - **The M1 walk re-parses `control.yaml` for every harness query** (~40 times per step). The M2 hierarchy walk caches the parsed state by the file's identity, which cut a seed from 150–320 s to ~20 s with step-for-step identical paths; applying the same harness change to `test_composition_walk.py` is a separately reviewed change to an M1 regression file.
-- **The ruleset's code-coverage rule has no report yet.** Subprocess-aware coverage, combined across shards, is a separate decision.
+- **Coverage is measured on Linux only.** Windows-only code (process jobs, the console, file-replace retries) runs in the Windows lanes but is not in the number. Measuring the Windows lanes too, and combining both platforms, is a later decision if Windows-only code grows.
 - **A Rocky Linux 8 container job** (the SPT target) is a candidate for the nightly lane.
 - **Action majors.** The workflows pin `actions/checkout@v4`, `setup-python@v5` and `upload/download-artifact@v4`. GitHub runs these Node 20 actions on Node 24 with a deprecation warning. Bumping to the current majors (checkout v7, setup-python v7, upload-artifact v7, download-artifact v8) is a separate change that needs a check of their changelogs.

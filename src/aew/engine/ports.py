@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from aew import roles
     from aew.engine.base import TxnContext
+    from aew.engine.dispatch import DispatchDecision
     from aew.history.index import HistoryIndex
     from aew.knowledge import context as ctxmod
 
@@ -210,6 +211,12 @@ class ArchivePort(Protocol):
     def record(self, entry: dict[str, Any]) -> dict[str, Any]: ...
     def rehydrate(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None: ...
     def rehydrate_invocation(self, state: dict[str, Any], inv_id: str) -> dict[str, Any] | None: ...
+
+
+class DispatchPort(Protocol):
+    """What other collaborators use of ``Dispatch`` (M4-A): every dispatch route decides through it."""
+
+    def decide_in(self, ctx: TxnContext, entrypoint: str, work_id: str, **args: Any) -> DispatchDecision: ...
 
 
 class HistoryCommandsPort(Protocol):

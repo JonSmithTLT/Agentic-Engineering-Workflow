@@ -5,7 +5,8 @@ lookups, and no Lead ever chose Class 0 (the only example showed Class 1, and Cl
 states AEW's rules, not judgement: the Workflow Contract's risk classes (WC §7.4, §7.5), what each class requires in
 *this* project (its gates policy), what every class still guarantees, the Ticket lifecycle and the command behind
 each step (the engine's transition table). It is generated, so it says what the engine enforces and cannot drift.
-When Class 0 *applies* beyond the Workflow Contract's definitions is the designer's open question (Q10).
+When Class 0 applies is the Class 0 amendment's eligibility predicate, enforced at dispatch since M4-A (Q10, decided
+2026-10-03).
 """
 
 from __future__ import annotations
@@ -15,8 +16,8 @@ from typing import Any
 from aew.engine import transitions as T
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
-    "0": ("trivial/mechanical", "an obvious bounded change with little behavioral ambiguity",
-          "one obvious mechanical edit"),
+    "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
+          "a mechanical edit, or a behaviour fix whose acceptance is a deterministic check"),
     "1": ("routine engineering", "ownership and design are understood; bounded normal work",
           "several straightforward related Tickets in a Story"),
     "2": ("substantial brownfield", "meaningful codebase understanding or cross-component effects are required",
@@ -132,7 +133,16 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "evidence exposes more risk; lowering it needs a recorded decision with its reason. A parent's mandatory gates "
         "and minimum descendant class still apply to its children. Say in the plan why you chose the class.",
         "",
-        "Operational criteria for when Class 0 applies, beyond these definitions, are not defined yet (designer, Q10).",
+        "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope that "
+        "matches tracked files; a goal (`--goal`) and an acceptance check that is a configured project check "
+        "(`--acceptance-check`); no acceptance input inside the scope; no protected path in the scope; no review "
+        "trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated "
+        "obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint`; and your three "
+        "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
+        "inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused "
+        "with every reason (`aew dispatch explain <T>` shows them), never reclassified: raise its class yourself with "
+        "`aew work reclassify <T> --class N --reason ...` (at least any inherited minimum; the inherited gates stay "
+        "required), or make it eligible.",
         "",
         "## What each class requires in this project",
         "",

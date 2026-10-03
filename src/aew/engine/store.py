@@ -134,6 +134,10 @@ class Session:
     def revision(self) -> int:
         return self._committed_state["revision"]
 
+    def committed_view(self) -> dict[str, Any]:
+        """The committed state this session started from, without a copy: read it, never change it."""
+        return self._committed_state
+
     def base_state(self) -> dict[str, Any]:
         return copy.deepcopy(self._committed_state)
 

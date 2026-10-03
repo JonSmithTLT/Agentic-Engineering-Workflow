@@ -13,7 +13,7 @@ from typing import Any
 
 from conftest import Project, make_git_repo, run_aew
 
-from aew.util import dump_yaml
+from aew.util import dump_yaml, glob_any
 
 SAMPLE_FILES = {
     ".gitignore": "__pycache__/\n.pytest_cache/\n*.pyc\n",
@@ -95,17 +95,26 @@ class Role:
             target.write_text(content, encoding="utf-8", newline="\n")
 
 
+# A Class 0 Ticket is created eligible (the Class 0 Workflow Contract amendment, enforced at dispatch since M4-A): a
+# deterministic acceptance check and the Lead's three recorded assertions (the goal and the bounded scope are below).
+CLASS0_ELIGIBLE = ("--acceptance-check", "unit", "--class0-assert", "transformation_clear",
+                   "--class0-assert", "inputs_complete", "--class0-assert", "no_consequential_boundary")
+
+
 def create_planned_ticket(p: Project, tmp_path: Path, *, title: str = "Add subtract()", cls: int = 1,
                           scope: tuple[str, ...] = ("calc/**", "tests/**"), extra: tuple[str, ...] = ()) -> str:
     args = ["work", "create", "ticket", "--title", title, "--class", str(cls),
             "--goal", "calc.core.subtract(5, 3) == 2 through the public module",
-            "--contract", "changes stay within calc/ and tests/; vendored code untouched", *extra]
+            "--contract", "changes stay within calc/ and tests/; vendored code untouched",
+            *(CLASS0_ELIGIBLE if cls == 0 else ()), *extra]
     for s in scope:
         args += ["--scope", s]
     wid = p.lead(*args)["id"]
     plan = tmp_path / f"{wid}-plan.md"
     plan.write_text("1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test.\n", encoding="utf-8")
-    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--affected", "calc/core.py")
+    # The plan names a path inside the Ticket's scope (plan lint, M4-A).
+    affected = "calc/core.py" if not scope or glob_any("calc/core.py", list(scope)) else scope[0]
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--affected", affected)
     p.lead("plan", "accept", wid, "--revision", "1")
     return wid
 

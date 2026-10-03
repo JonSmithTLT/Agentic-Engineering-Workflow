@@ -47,6 +47,9 @@ def work_unit_record(
     external_refs: list[str] | None = None,
     body: str = "",
     promoted_from: str | None = None,
+    acceptance_checks: list[str] | None = None,
+    acceptance_inputs: list[str] | None = None,
+    class0_assertions: list[str] | None = None,
 ) -> Record:
     meta: dict[str, Any] = {
         "schema": "aew/work-unit/v1",
@@ -62,6 +65,12 @@ def work_unit_record(
         "scope": {"paths": list(scope_paths or [])},
         "acceptance": {"goal_backwards": list(goal_backwards or []), "contract": list(contract or [])},
     }
+    if acceptance_checks:
+        meta["acceptance"]["checks"] = list(acceptance_checks)
+    if acceptance_inputs:
+        meta["acceptance"]["inputs"] = list(acceptance_inputs)
+    if class0_assertions:
+        meta["class0_assertions"] = sorted(set(class0_assertions))
     if policy:
         meta["policy"] = policy
     if promoted_from:
@@ -114,6 +123,7 @@ def decision_record(
     resulting_transition: dict[str, Any] | None = None,
     reason: str | None = None,
     body: str = "",
+    reclassification: dict[str, Any] | None = None,
 ) -> Record:
     meta = {
         "schema": "aew/decision/v1",
@@ -128,6 +138,8 @@ def decision_record(
         "resulting_transition": resulting_transition,
         "reason": reason,
     }
+    if reclassification is not None:  # from_class, to_class, effective_minimum_at_decision (M4-A)
+        meta["reclassification"] = reclassification
     validate("decision", meta, source=decision_id)
     return Record(meta, body)
 

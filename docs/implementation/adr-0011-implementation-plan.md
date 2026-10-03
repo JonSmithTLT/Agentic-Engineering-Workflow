@@ -1,6 +1,6 @@
 # ADR-0011 implementation plan (with E5)
 
-- **Status:** approved by the operator (2026-10-02). Nothing is implemented yet.
+- **Status:** approved by the operator (2026-10-02). **Complete** (2026-10-03): every phase is merged, P3 last (PR #24, `42239e1`); the register closed F1, E5 and the before-M4 gate.
 - **Scope:** the gate before M4. That covers [ADR-0011](adr/0011-hot-cold-control-state.md) (register F1) and E5, the Engine collaborator refactor (register E5).
 - **Inputs:**
   - ADR-0011 (final pre-implementation text, 2026-10-01);
@@ -569,7 +569,7 @@ Unprofiled after the fix: 87 s on Windows (102 s before), 83 to 86 s on Linux. T
   - an older v2 archive (built by migrating with the previous bundle format) failing the full audit until `aew migrate` records its closure, with no finding, then passing, then covering the cited check and its log;
   - the upgrade refusing a cited check already changed.
 
-**Next:** the independent review re-checks the fixes at a newly frozen head. After it, the register moves F1 and E5 to §9 *Closed*.
+**Merged** by the operator with these fixes (PR #24, `42239e1`, 2026-10-03). The register moved F1, E5 and the before-M4 gate to §9 *Closed*.
 
 ## 8. Verification for every PR
 

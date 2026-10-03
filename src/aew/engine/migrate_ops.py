@@ -27,6 +27,7 @@ invocation, which the migration would archive or rewrite under it. It is idempot
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import hierarchy as H
@@ -36,6 +37,7 @@ from aew.engine.store import Transition
 from aew.errors import AEWError, IllegalTransition, StaleRevision
 from aew.harness import runlog
 from aew.history import manifest as M
+from aew.history.index import HistoryIndex
 from aew.history.store import History
 
 if TYPE_CHECKING:
@@ -113,8 +115,14 @@ class Migration:
                 effect()
             except (AEWError, OSError):
                 pass
+        # Build the derived index now, outside the lock: it is the one read of the whole history, and otherwise the
+        # first command to look up finished work would pay it. It is derived, so a failure only defers it.
+        try:
+            index = HistoryIndex(self.k.aew_root).sync(committed["cold"]["root"])["mode"]
+        except (AEWError, OSError, sqlite3.Error):
+            index = "deferred"
         return {"ok": True, "migrated": True, "schema": V2, "revision": revision, "summary": summary,
-                "discarded": discarded,
+                "discarded": discarded, "index": index,
                 "archived": {"units": before["units"] - len(committed["work"]),
                              "invocations": before["invocations"] - len(committed["invocations"]),
                              "credentials": before["tokens"] - len(committed["tokens"])},

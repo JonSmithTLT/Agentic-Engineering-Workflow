@@ -97,7 +97,8 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             if nid not in collected:
                 problems.append(f"{platform}: pinned skip no longer exists: {nid}")
             elif outcomes.get(nid) not in (None, "skipped"):
-                problems.append(f"{platform}: pinned skip now {outcomes[nid]}: {nid} (remove it from platform-skips.yaml)")
+                problems.append(f"{platform}: pinned skip now {outcomes[nid]}: {nid} "
+                                "(remove it from platform-skips.yaml)")
         facts[platform] = {"collected": len(collected), "ran": sum(runs.values()),
                            "outcomes": Counter(outcomes.values()), "jobs": group}
     return problems, facts

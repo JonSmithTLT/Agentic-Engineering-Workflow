@@ -10,13 +10,20 @@ from __future__ import annotations
 
 import json
 import sys
-
-import pytest
-
 from pathlib import Path
 
-from aewflow import (Role, complete_investigation, create_investigation, create_planned_ticket, create_unit,
-                     dispatch, plan_unit, sample_project, submit_record)
+import pytest
+from aewflow import (
+    Role,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    create_unit,
+    dispatch,
+    plan_unit,
+    sample_project,
+    submit_record,
+)
 from conftest import run_aew
 from fake_harness import AGENT, HarnessLab
 from invariants import assert_control_invariants

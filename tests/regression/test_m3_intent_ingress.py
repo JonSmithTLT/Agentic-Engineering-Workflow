@@ -16,7 +16,6 @@ import sys
 
 import pytest
 import yaml
-
 from aewflow import sample_project
 from conftest import run_aew
 from fake_harness import AGENT
@@ -113,7 +112,8 @@ def test_reasons_and_notes_through_fields_and_stdin_are_stored_byte_for_byte(tmp
     p = sample_project(tmp_path)
     wid = create(p, "--fields", "-", input=dump(spec())).json["id"]
     plan = "".join(f"- {c}\n" if "\n" not in c else c for c in CORPUS)
-    res = p.aew("plan", "propose", "--assurance", "none", wid, "--file", "-", "--token", p.token, "--expect-rev", str(p.rev()), input=plan)
+    res = p.aew("plan", "propose", "--assurance", "none", wid, "--file", "-", "--token", p.token,
+                "--expect-rev", str(p.rev()), input=plan)
     assert res.returncode == 0, res.stderr
     stored = (p.root / ".aew" / "work" / wid / "plan-v1.md").read_text(encoding="utf-8")
     assert parse_frontmatter(stored, source="plan")[1] == plan

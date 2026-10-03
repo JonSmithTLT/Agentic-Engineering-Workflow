@@ -5,8 +5,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (Role, assign, create_investigation, create_planned_ticket, dispatch, implement, sample_project,
-                     submit_record)
+from aewflow import (
+    Role,
+    assign,
+    create_investigation,
+    create_planned_ticket,
+    dispatch,
+    implement,
+    sample_project,
+    submit_record,
+)
 from invariants import assert_control_invariants
 
 from aew.knowledge import evidence as E

@@ -450,7 +450,7 @@ def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
             try:
                 frame: dict[str, Any] | None = {"id": new_id("evt"), "type": "server.connected", "data": {}}
                 while frame is not None:
-                    self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode("utf-8"))
+                    self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode())
                     self.wfile.flush()
                     sent += 1
                     if every and sent >= every:  # the stream is lost; the client must not depend on it

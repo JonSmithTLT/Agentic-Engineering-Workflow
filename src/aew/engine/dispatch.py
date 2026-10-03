@@ -119,7 +119,7 @@ class Blocker:
     error: AEWError | None = None  # a migrated check's own error, raised unchanged by ``require``
 
     def to_dict(self) -> dict[str, Any]:
-        out = {"code": self.code, "message": self.message}
+        out: dict[str, Any] = {"code": self.code, "message": self.message}
         if self.details:
             out["details"] = self.details
         return out

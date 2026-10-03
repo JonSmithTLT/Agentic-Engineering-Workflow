@@ -13,10 +13,10 @@ import os
 from pathlib import Path
 
 import pytest
+from conftest import IS_WINDOWS, git, make_git_repo
 
 from aew.errors import IntegrityError
 from aew.workspace import integration as I
-from conftest import IS_WINDOWS, git, make_git_repo
 
 POSIX_ONLY = pytest.mark.skipif(IS_WINDOWS, reason="needs POSIX filemode/symlink semantics")
 

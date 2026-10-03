@@ -5,8 +5,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (DISCOVERY, Role, close_parent, complete_investigation, create_investigation, create_unit,
-                     dispatch, parent_review, parent_verify, plan_unit, sample_project, submit_record)
+from aewflow import (
+    Role,
+    close_parent,
+    complete_investigation,
+    create_investigation,
+    create_unit,
+    dispatch,
+    parent_review,
+    parent_verify,
+    plan_unit,
+    sample_project,
+    submit_record,
+)
 from invariants import assert_control_invariants
 
 
@@ -91,7 +102,8 @@ def test_parent_cancellation_cascades_and_ends_every_credential(tmp_path):
     ready = create_unit(p, "ticket", "Not started", parent=story)
     res = p.lead("work", "cancel", story, "--reason", "objective dropped")
     assert sorted(res["cancelled_descendants"]) == sorted([running, ready])
-    assert [show(p, w)["state"] for w in (story, done, running, ready)] == ["CANCELLED", "DONE", "CANCELLED", "CANCELLED"]
+    states = [show(p, w)["state"] for w in (story, done, running, ready)]
+    assert states == ["CANCELLED", "DONE", "CANCELLED", "CANCELLED"]
     assert p.ok("invoke", "show", out["invocation"])["status"] == "cancelled"
     assert not Path(out["observation"]["path"]).exists()  # the observation was retired and removed
     straggler = Role(p, role.token, p.root)  # a straggler agent still holding the credential

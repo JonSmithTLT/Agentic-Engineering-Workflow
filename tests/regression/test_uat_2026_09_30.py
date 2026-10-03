@@ -24,7 +24,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import SUBTRACT_PATCH, Role, create_planned_ticket, create_unit, dispatch, sample_project, submit_record
 from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
@@ -62,7 +61,8 @@ def investigation(p, cls: int = 1) -> str:
                        extra=("--non-mutating", "--goal", "calc.core is assessed", "--scope", "calc/**"))
 
 
-def plan_file(tmp_path: Path, name: str, text: str = "Read calc/core.py; report. Independent review will run.\n") -> str:
+def plan_file(tmp_path: Path, name: str,
+              text: str = "Read calc/core.py; report. Independent review will run.\n") -> str:
     f = tmp_path / name
     f.write_text(text, encoding="utf-8")
     return str(f)
@@ -166,7 +166,8 @@ def test_after_a_verifier_run_the_next_action_never_offers_its_check_results_for
     [review] = lab.wait("R-INV-0002-1")["evidence"]
     lab.lead("review", "ingest", wid, "--evidence", review)
     lab.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
-    lab.script("R-INV-0003-1", [{"do": "check", "id": "unit"}, {"do": "submit", "kind": "verification", "meta": VERIFY}])
+    lab.script("R-INV-0003-1", [{"do": "check", "id": "unit"},
+                                {"do": "submit", "kind": "verification", "meta": VERIFY}])
     lab.lead("invoke", "create", wid, "--role", "verifier", "--launch")
     out = lab.wait("R-INV-0003-1")
     assert out["status"] == "ended_with_evidence", out
@@ -192,7 +193,8 @@ def test_a_gate_naming_an_undefined_check_is_reported_everywhere_the_lead_looks(
     assert doctor["policy:consistency"]["status"] == "FAIL", doctor["policy:consistency"]
     assert "names check `unit`, which policy/checks.yaml does not define" in doctor["policy:consistency"]["detail"]
     actions = p.ok("status", "--json")["next_actions"]
-    assert any(a.startswith("fix the policy: policy/gates.yaml local_checks names check `unit`") for a in actions),         actions
+    assert any(a.startswith("fix the policy: policy/gates.yaml local_checks names check `unit`")
+               for a in actions), actions
     assert any("post_integration.checks names check `unit`" in a for a in p.ok("resume", "--json")["next_actions"])
 
     wid = create_planned_ticket(p, tmp_path, cls=0)  # the gate says why it can never pass

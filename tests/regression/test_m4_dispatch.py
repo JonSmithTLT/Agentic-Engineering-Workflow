@@ -5,7 +5,6 @@ commit-time rule that no invocation or run exists without a dispatch decision (p
 from __future__ import annotations
 
 import pytest
-
 from aewflow import SUBTRACT_PATCH, assign, implement, sample_project
 from invariants import assert_control_invariants
 

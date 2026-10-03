@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from aewflow import create_investigation, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, Project, clean_env, make_git_repo, run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits

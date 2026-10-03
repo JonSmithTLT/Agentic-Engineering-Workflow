@@ -7,10 +7,26 @@ import shutil
 from pathlib import Path
 
 import pytest
-
-from aewflow import (APPLY_PATCH, SUBTRACT_PATCH, Role, assign, close_parent, complete_investigation,
-                     create_investigation, create_planned_ticket, create_unit, dispatch, implement, integrate,
-                     plan_unit, review, sample_project, submit_record, to_commit_ready, verify)
+from aewflow import (
+    APPLY_PATCH,
+    SUBTRACT_PATCH,
+    Role,
+    assign,
+    close_parent,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    create_unit,
+    dispatch,
+    implement,
+    integrate,
+    plan_unit,
+    review,
+    sample_project,
+    submit_record,
+    to_commit_ready,
+    verify,
+)
 from conftest import git
 from invariants import assert_control_invariants
 from test_at1_serial_lifecycle import operator_takeover
@@ -197,7 +213,8 @@ def test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_
     work = {w["id"]: w for w in resume["work"]}
     assert resume["tree"][0].startswith(f"Epic {epic} [IN_PROGRESS]")
     assert work[story]["accepted_plan"]["revision"] == 1 and work[story]["children"] == sorted([survey, build])
-    assert work[survey]["execution"]["attempt"] == 1 and work[survey]["execution"]["expected_kind"] == "discovery_record"
+    execution = work[survey]["execution"]
+    assert execution["attempt"] == 1 and execution["expected_kind"] == "discovery_record"
     assert work[build]["state"] == "BLOCKED" and work[build]["blocked_by"][0]["id"] == survey
     assert work[later]["blocked_by"][0]["inherited_from"] == later_story
     assert f"{survey}: ingest record {rec} (`aew evidence ingest`)" in resume["next_actions"]
@@ -242,7 +259,8 @@ def test_read_only_work_runs_concurrently_and_stays_read_only(tmp_path):
     assert err(p, "work", "assign", create_planned_ticket(p, tmp_path, title="Second"))["code"] == "CONCURRENCY_LIMIT"
 
     investigator, researcher, planner = (roles[w][0] for w in (survey, research, planning))
-    for role, wrong in ((investigator, "research_record"), (researcher, "plan_proposal"), (planner, "discovery_record")):
+    for role, wrong in ((investigator, "research_record"), (researcher, "plan_proposal"),
+                        (planner, "discovery_record")):
         assert submit_record(role, wrong, expect_ok=False).error["code"] == "PERMISSION_DENIED"
     for role in (investigator, researcher, planner):
         denied = role.aew("work", "transition", survey, "--to", "CANCELLED", "--reason", "x", "--token", role.token,
@@ -340,7 +358,8 @@ def test_representative_backlog_is_representable_and_executable(tmp_path):
 
     # Story B: a Planner proposes, the Lead adopts, an implementer delivers.
     proposal = complete_investigation(p, b_plan, kind="plan_proposal")
-    rev = p.lead("plan", "adopt", "--assurance", "none", b_build, "--evidence", proposal, "--from", b_plan)["revision_number"]
+    rev = p.lead("plan", "adopt", "--assurance", "none", b_build, "--evidence", proposal,
+                 "--from", b_plan)["revision_number"]
     p.lead("plan", "accept", b_build, "--revision", str(rev))
     to_commit_ready(p, tmp_path, wid=b_build, files=MULTIPLY)
     integrate(p, b_build)

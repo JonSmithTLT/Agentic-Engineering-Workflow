@@ -311,7 +311,8 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def _on_event(self, frame: dict[str, Any]) -> None:
         kind = str(frame.get("type") or "")
-        data = frame.get("data") if isinstance(frame.get("data"), dict) else {}
+        raw = frame.get("data")
+        data: dict[str, Any] = raw if isinstance(raw, dict) else {}
         sid = data.get("sessionID")
         if kind == "session.created" and sid and sid != self.session and self.session is not None:
             self.foreign_sessions.append(str(sid))  # no subagents exist: any other session is recorded

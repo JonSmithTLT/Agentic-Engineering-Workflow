@@ -6,7 +6,9 @@ name: ci
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
-#   assurance            every collected test ran exactly once and passed on every OS, and web passed (the merge gate)
+#   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
+#   assurance            every collected test ran exactly once and passed on every OS, and web and static passed
+#                        (the merge gate)
 
 on:
   pull_request:
@@ -136,9 +138,38 @@ jobs:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
     uses: ./.github/workflows/web.yml
 
+  static:
+    # Static checks (strategy, "Static checks"): lint with Bandit's security rules, types on both platforms, and
+    # known vulnerabilities in the installed dependencies. Tool versions are pinned in the `lint` extra.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install AEW with the lint tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,parallel,coverage,lint]"
+      - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
+        if: success() || failure()
+        run: ruff check --output-format github .
+      - name: Pyright as Linux
+        if: success() || failure()
+        run: pyright --pythonplatform Linux
+      - name: Pyright as Windows
+        if: success() || failure()
+        run: pyright --pythonplatform Windows
+      - name: pip-audit (every installed distribution except AEW itself)
+        if: success() || failure()
+        run: pip-audit --strict --skip-editable --desc
+
   assurance:
     # The merge gate: mark this check as required on `main`.
-    needs: [core, lanes, web]
+    needs: [core, lanes, web, static]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -167,6 +198,7 @@ jobs:
       - name: Every test job succeeded
         if: always()
         run: |
-          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }} web=${{ needs.web.result }}"
+          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }} web=${{ needs.web.result }}" \
+            "static=${{ needs.static.result }}"
           test "${{ needs.core.result }}" = success && test "${{ needs.lanes.result }}" = success \
-            && test "${{ needs.web.result }}" = success
+            && test "${{ needs.web.result }}" = success && test "${{ needs.static.result }}" = success

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 import time
 
 from aew.errors import OperatorAuthorizationRequired, PermissionDenied
@@ -55,6 +56,8 @@ def _no_terminal(detail: str) -> OperatorAuthorizationRequired:
 def _ask_posix(prompt: str, timeout: float) -> str:  # pragma: posix-only
     import select
 
+    assert sys.platform != "win32"  # narrows the os module for the type checker
+
     try:
         fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
     except OSError as exc:
@@ -83,6 +86,8 @@ def _ask_posix(prompt: str, timeout: float) -> str:  # pragma: posix-only
 def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
     import ctypes
     import msvcrt
+
+    assert sys.platform == "win32"  # narrows ctypes and msvcrt for the type checker
 
     if not ctypes.windll.kernel32.GetConsoleWindow():
         raise _no_terminal("no console attached to this process")

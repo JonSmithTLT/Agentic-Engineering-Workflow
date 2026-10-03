@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from aew.harness import runlog
 from aew.harness import contract as K
+from aew.harness import runlog
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, TERMINAL, LaunchContract
 from aew.util import dump_yaml
@@ -109,7 +109,7 @@ class HarnessLab:
 
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
-               extra_env: dict[str, str] | None = None) -> "HarnessLab":
+               extra_env: dict[str, str] | None = None) -> HarnessLab:
         (project.root / ".aew/policy/execution.yaml").write_text(dump_yaml(policy or POLICY), encoding="utf-8",
                                                                  newline="\n")
         scripts = tmp / "fake-scripts"
@@ -147,7 +147,9 @@ class HarnessLab:
         return self.aew(*self.lead_args(*args), env=env)
 
     def wait(self, run: str, timeout: float = 120) -> dict[str, Any]:
-        from conftest import run_aew  # the CLI's own time limit must outlast the wait (a live model run can take minutes)
+        from conftest import (
+            run_aew,  # the CLI's own time limit must outlast the wait (a live model run can take minutes)
+        )
 
         res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
                       timeout=timeout + 120)

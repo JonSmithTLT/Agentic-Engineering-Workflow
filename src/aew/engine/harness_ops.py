@@ -234,7 +234,8 @@ class Harness:
                     changed = None
             # Evidence evaluated on a workspace state that is no longer the current one satisfies no gate: say so,
             # or a relaunched agent reads "pass" and stops (found live in M3 step 8).
-            now = (self.invocations.current_snapshot(state["work"][inv["work_unit"]]) or {}).get("relevant_inputs_fingerprint")
+            current = self.invocations.current_snapshot(state["work"][inv["work_unit"]]) or {}
+            now = current.get("relevant_inputs_fingerprint")
 
             def entry(e: dict[str, Any]) -> dict[str, Any]:
                 out = {"id": e["id"], "kind": e["kind"], "result": e["result"]}
@@ -248,7 +249,8 @@ class Harness:
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])
-        capabilities |= set(content.get("required_capabilities") or []) | set(content.get("optional_capabilities") or [])
+        capabilities |= set(content.get("required_capabilities") or [])
+        capabilities |= set(content.get("optional_capabilities") or [])
         policy, _ = self.k.execution_policy()
         return K.LaunchContract(
             run=run, invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"],
@@ -302,7 +304,7 @@ class Harness:
         return sorted(e["id"] for e in cache[work_unit] if e["producer"].get("run") == run)
 
     def run_results(self, work_unit: str, run: str, _cache: dict[str, list[dict[str, Any]]] | None = None
-                    ) -> dict[str, str]:
+                    ) -> dict[str, str | None]:
         """Each of a run's evidence items with its result (pass, fail, blocked), from the same store: a Lead must see
         a `blocked` report before it acts on the run (M3 dogfood report §6.6, E8)."""
         cache = {} if _cache is None else _cache
@@ -351,7 +353,7 @@ class Harness:
                 return inv_id, inv
         inv_id = K.invocation_of_run(run)  # a run of archived work (R7): its invocation names it
         inv = self.archive.archived_invocation(state, inv_id) if inv_id else None
-        if inv is not None and any(r["run"] == run for r in inv.get("runs") or []):
+        if inv_id and inv is not None and any(r["run"] == run for r in inv.get("runs") or []):
             return inv_id, inv
         raise NotFound(f"no run {run}")
 
@@ -518,8 +520,8 @@ class Harness:
         unit = state["work"][wid]
         try:
             gc = self.gates.gate_context(state, wid)
-            to = ("REVIEW_PENDING" if self.gates.review_gates(gc) else "VERIFY_PENDING" if self.gates.verification_gates(gc)
-                  else "COMMIT_READY")
+            to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
+                  else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
             step = f"`aew work transition {wid} --to {to}`"
         except AEWError:
             step = f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as its gates require)"

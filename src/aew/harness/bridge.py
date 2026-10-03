@@ -32,8 +32,8 @@ import sys
 import tempfile
 import threading
 from collections.abc import Callable
-from multiprocessing.connection import Client, Listener
 from multiprocessing import AuthenticationError
+from multiprocessing.connection import Client, Listener
 from typing import Any
 
 from aew import errors
@@ -186,7 +186,7 @@ class BridgeServer:
     def _wake(self) -> None:
         try:  # unblock accept() so the serving thread observes the closure
             Client(self.address, family="AF_PIPE" if IS_WINDOWS else "AF_UNIX", authkey=self.key).close()
-        except Exception:
+        except Exception:  # noqa: S110 (best effort: the serving thread may already have stopped)
             pass
         try:
             self._listener.close()

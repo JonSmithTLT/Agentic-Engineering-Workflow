@@ -270,6 +270,7 @@ class Supervisor:
                    "content differs from the recorded request" if sha256_text(text) != want["sha256"] else None)
             req: Any = None
             if why is None:
+                assert want is not None  # `why` is None only for a recorded request
                 try:
                     req = json.loads(text)
                 except ValueError:

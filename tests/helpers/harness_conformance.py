@@ -30,9 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 import fake_opencode
+import pytest
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, CLIResult, clean_env
 from fake_harness import AGENT, IMPL_REPORT, POLICY, SCRIPTS_ENV, HarnessLab, contains_credential, credential_hits
@@ -43,7 +42,8 @@ from aew.knowledge import evidence as E
 
 PROVIDER_SECRET = "sk-provider-secret-must-not-reach-the-agent"
 FREE_MODEL = os.environ.get("AEW_LIVE_OPENCODE_MODEL", "opencode/longcat-2.5-preview-free")
-NO_WINDOW: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
+NO_WINDOW: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
+                             else {"start_new_session": True})
 
 
 def transcript_steps(transcript: Path) -> dict[int, dict[str, Any]]:
@@ -488,7 +488,8 @@ def repeated_runs_start_and_end_cleanly_with_private_state(lab, driver, tmp_path
         lab.until(lambda rec=rec: supervisor_gone(rec), 30, "every supervisor to exit")
         started = calendar.timegm(time.strptime(rec["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
         for pid in rec["harness_pids"]:  # no harness process (a server, an agent) outlives its run
-            lab.until(lambda pid=pid: not procs.same_process(pid, started), 30, f"harness process {pid} to exit")
+            lab.until(lambda pid=pid, started=started: not procs.same_process(pid, started), 30,
+                      f"harness process {pid} to exit")
 
 
 @scenario()

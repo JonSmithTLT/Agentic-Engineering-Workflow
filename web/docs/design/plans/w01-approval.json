@@ -1,0 +1,16 @@
+{
+  "plan_revision": "1.1",
+  "artifact": "w01-foundation.md",
+  "sha256": "799a2cee52e1b8538becd3bf4de3a80618fc3f21290a90891a0439ce4089b825",
+  "approval": "OPERATOR_APPROVED_FOR_IMPLEMENTATION",
+  "approval_reference": "Explicit PLEASE IMPLEMENT THIS PLAN message for W01, including both main-line refinements",
+  "date": "2026-10-03",
+  "baseline_commit": "7e13f3469e085f346b8bd889a5adf66b06532458",
+  "independent_review": "ACCEPTED",
+  "integration_acceptance": "NOT_CLAIMED",
+  "review_document": "../../w01-review-main-line.md",
+  "frontend_acceptance": "ACCEPTED",
+  "accepted_source_commit": "ad9ed216238f7e3265a4ffb225b4eaef921a6702",
+  "accepted_at": "2026-10-03",
+  "acceptance_record": "../../w01-acceptance.json"
+}

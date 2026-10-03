@@ -66,6 +66,7 @@ Deterministic fault points are named code locations, not timings. That is why th
   - no xfail/xpass occurred unless pinned.
 
   It also fails if any test job did not succeed. Mark `assurance` as a **required status check** on `main`.
+- **The dashboard joins the same gate** (F20.1, 2026-10-03). `ci.yml` calls `web.yml`, whose `changes` job decides whether `web/`, the shared contract (`docs/design/dashboard-api-v1-provisional.yaml`) or `web.yml` changed (merge base for pull requests and merge groups; it fails closed). If so, `checks` runs: locked install, the contract's acceptance digest, generated-artifact consistency, typecheck, lint, the frontend tests, the production build with its mock exclusion, the demo build and the compiled browser checks. Its `result` job passes only when the checks passed, or when nothing they cover changed, and `assurance` requires it. The Python lanes never need Node, and the web jobs never need Python.
 - **The gate has already caught one gap.** On its first run it found that the frozen-spec tag `aew-spec-frozen-2026-09-25` had never been pushed to GitHub. So `test_spec_pin.py::test_tagged_revision_carries_pinned_blobs` had skipped silently in every earlier CI run. The tag was pushed on 2026-09-27, and the test now runs on both OSes.
 - **The nightly lane has already found one gap.** On its first run (150 steps, fault rate 0.15), seeds 1014 and 1034 failed on both OSes, and the failure was in the walk harness, not in AEW.
   - A crash after an assignment's commit point left a live implementer invocation whose credential died with the process. The walk had no model for that state.
@@ -197,7 +198,7 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
 | `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11 | Broader environment |
 
-**Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python and GitHub Actions on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
+**Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python, GitHub Actions and JavaScript/TypeScript (the dashboard, since F20.1) on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
 
 ## 12. Known cost drivers and follow-ups
 

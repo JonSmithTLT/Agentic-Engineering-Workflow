@@ -1,0 +1,70 @@
+{
+  "dist": [
+    {
+      "path": "assets/index-D3TuJQ8x.js",
+      "sha256": "cbddccf87144fb99281a88d17be6a7550ce2d236ea1e039cf2a53905a53e702c"
+    },
+    {
+      "path": "assets/index-uJjLlpNy.css",
+      "sha256": "61cada7a4f2a67cae0d4c9ac354d60639e0d3a9da08bb26affa5cb4ebfd7a577"
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08"
+    },
+    {
+      "path": "index.html",
+      "sha256": "0d2bf3aade6fa7ae364125380b5e6b114c26b5647ddcc66d70bdcb27e79dfff7"
+    }
+  ],
+  "dist-demo": [
+    {
+      "path": "assets/DemoTools-B3Wk4owS.js",
+      "sha256": "3c88c19039ff25d2e86ea047d76c6db37859f020a4b34df5e8738654b5cca328"
+    },
+    {
+      "path": "assets/Lab-DE-7WJAm.js",
+      "sha256": "fb2fd9b7ee87fe1ce1bbe32feede262cbf5beae028b40031c0204e7f84a9ee4f"
+    },
+    {
+      "path": "assets/browser-BUHjXWRA.js",
+      "sha256": "d02509743bc20ebc27e17c6890283b41aec87c9999ef97fa5aae90a9f0ae218f"
+    },
+    {
+      "path": "assets/index-Cm517_OC.js",
+      "sha256": "558774821ab9a58233f3454c7d157f0cd540b26657428c8794c1d72e3baccc85"
+    },
+    {
+      "path": "assets/index-uJjLlpNy.css",
+      "sha256": "61cada7a4f2a67cae0d4c9ac354d60639e0d3a9da08bb26affa5cb4ebfd7a577"
+    },
+    {
+      "path": "assets/jsx-runtime-Cu7Iu-c-.js",
+      "sha256": "fa3a563edb347926a5fb1d1f7c12fd71bbb83bd002ba483aac3c53e989a57156"
+    },
+    {
+      "path": "assets/rolldown-runtime-S-ySWqyJ.js",
+      "sha256": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75"
+    },
+    {
+      "path": "assets/transport-CljpnCZ7.js",
+      "sha256": "a414e606d2b4ce90c4acf5d4c389ecbc774ae408b0aed365f2ef81532512454e"
+    },
+    {
+      "path": "assets/worlds-Cfp5AcLf.js",
+      "sha256": "99f620e70241981d9b83bd83119a034474f24bd1ffdba1709403b27b26ff8a76"
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08"
+    },
+    {
+      "path": "index.html",
+      "sha256": "21bfb1bcd960ba9aebd838904fb4e36c974828953157ee882b7c1546f6d1d3fb"
+    },
+    {
+      "path": "mockServiceWorker.js",
+      "sha256": "d6a8df5a5d63077dab8054438b249494bc89d77fb174276212b6950a946b11e1"
+    }
+  ]
+}

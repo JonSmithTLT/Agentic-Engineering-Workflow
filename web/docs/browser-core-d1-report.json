@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "playwright": "1.59.1",
+  "chromium_revision": "1217",
+  "browser_version": "147.0.7727.15",
+  "base": "http://127.0.0.1:4173",
+  "checks": [
+    "compiled Overview, light theme, CSP",
+    "dark theme",
+    "opaque Ticket deep link and reload",
+    "keyboard skip navigation",
+    "phone navigation and panel-confined table overflow",
+    "hostile Markdown escaped, raw HTML and remote images suppressed under CSP",
+    "unknown state and capability-key warnings",
+    "archived work by ID, deep-link reload and historical-reference warning",
+    "failed refresh retains visibly stale data",
+    "initial malformed-response error",
+    "no unexpected console/page errors, remote subresource requests or API writes",
+    "bounded page hierarchy expansion/collapse",
+    "explicit terminal filter reaches older archived work",
+    "CSP-safe measured virtualization, keyboard scroll, accessible row view, opaque cursor pagination",
+    "large-page arbitrary work detail and deep-link reload",
+    "unsupported queue explanation with no invented wire request",
+    "phone work table confines overflow to panel",
+    "production API-driven Overview/detail reload through test-only fixture adapter, no worker/demo/remote/writes"
+  ],
+  "errors": [],
+  "expected_network_errors": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "remote": [],
+  "writes": [],
+  "scope": "D1 Overview/Work regression in core candidate; test adapter is fixture-backed, no live Engine integration",
+  "date": "2026-10-02",
+  "contract_version": "0.1.2",
+  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691"
+}

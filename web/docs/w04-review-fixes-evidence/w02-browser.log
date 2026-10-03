@@ -1,0 +1,10 @@
+PASS Work workspace preserves results while Why uses no extra reads
+PASS Bounded supplied graph, edge sources, list switch and fit pan
+PASS Runs pilot, legacy routes and copied URL reload
+PASS Modal inspector keyboard focus, Escape and phone overflow
+PASS Concealed phone detail stops polling; revealing immediately revalidates
+PASS Malformed IDs and unsupported history do not fall back to current reads
+PASS History provenance routes and unsupported historical claims stay explicit
+PASS History moved-to hot parent resolves through Work and opens its workspace
+PASS CSP hostile content, clipboard failure and dataset-switch cleanup
+PASS Production access refusal removes cached detail and its inspector

@@ -99,14 +99,14 @@
     {
       "label": "candidate",
       "fixture": "F6",
-      "load_ms": 467,
+      "load_ms": 482,
       "dom_rows": 21,
       "api_requests": 4
     },
     {
       "label": "candidate",
       "fixture": "F7",
-      "load_ms": 481,
+      "load_ms": 526,
       "dom_rows": 100,
       "api_requests": 4
     }

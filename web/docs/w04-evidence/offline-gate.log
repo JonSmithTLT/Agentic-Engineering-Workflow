@@ -4,13 +4,13 @@ v22.22.2
 d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f  /opt/spt-frontend/frontend-npm-manifest.json
 9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246  /opt/spt-frontend/SHA256SUMS
 
-added 395 packages in 8s
+added 395 packages in 7s
 
 > @aew/read-only-dashboard@0.1.0 generate:types
 > openapi-typescript ../docs/design/dashboard-api-v1-provisional.yaml -o src/api/types.ts
 
 ✨ openapi-typescript 7.13.0
-🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [106ms]
+🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [90.8ms]
 Accepted API 0.1.2: 68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691
 
 > @aew/read-only-dashboard@0.1.0 check:scenario
@@ -34,44 +34,43 @@ Investigation preview artifacts and fixtures match
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90m/tmp/aew/web[39m
 
- [32m✓[39m tests/transport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 32[2mms[22m[39m
- [32m✓[39m tests/w04-investigation.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 135[2mms[22m[39m
- [32m✓[39m tests/refresh.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 171[2mms[22m[39m
- [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 801[2mms[22m[39m
-   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 777[2mms[22m[39m
- [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 357[2mms[22m[39m
- [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[33m 358[2mms[22m[39m
- [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 540[2mms[22m[39m
-   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 527[2mms[22m[39m
- [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 495[2mms[22m[39m
-   [33m[2m✓[22m[39m bootstraps project before dependent capabilities and Work requests [33m 410[2mms[22m[39m
- [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1140[2mms[22m[39m
-     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 1122[2mms[22m[39m
- [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 146[2mms[22m[39m
- [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 888[2mms[22m[39m
-   [33m[2m✓[22m[39m FR-1: every contract link relation is recognized and navigates by relation; unknown targets stay text [33m 388[2mms[22m[39m
-   [33m[2m✓[22m[39m FR-2: advancing every 3 seconds for 60 seconds catches slower and manual projections up without a persistent warning [33m 330[2mms[22m[39m
- [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 928[2mms[22m[39m
-   [33m[2m✓[22m[39m developer tabs support keyboard selection, only demo mounts its lab, Escape closes [33m 345[2mms[22m[39m
+ [32m✓[39m tests/transport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m tests/w04-investigation.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 184[2mms[22m[39m
+ [32m✓[39m tests/refresh.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 198[2mms[22m[39m
+ [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 240[2mms[22m[39m
+ [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 419[2mms[22m[39m
+ [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 858[2mms[22m[39m
+   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 808[2mms[22m[39m
+ [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 439[2mms[22m[39m
+   [33m[2m✓[22m[39m bootstraps project before dependent capabilities and Work requests [33m 400[2mms[22m[39m
+ [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 726[2mms[22m[39m
+   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 716[2mms[22m[39m
+ [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 917[2mms[22m[39m
+ [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 145[2mms[22m[39m
+ [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1321[2mms[22m[39m
+     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 1304[2mms[22m[39m
+ [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 977[2mms[22m[39m
+   [33m[2m✓[22m[39m FR-1: every contract link relation is recognized and navigates by relation; unknown targets stay text [33m 497[2mms[22m[39m
 Not implemented: Window's scrollBy() method
- [32m✓[39m tests/w03-journal.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 1504[2mms[22m[39m
-     [33m[2m✓[22m[39m validates all authored cases and rejects raw prompts and malformed timestamps [33m 657[2mms[22m[39m
-     [33m[2m✓[22m[39m server pages 10000 entries by 50 and binds cursors to filters [33m 359[2mms[22m[39m
- [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1670[2mms[22m[39m
-   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 572[2mms[22m[39m
-   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 866[2mms[22m[39m
- [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 2128[2mms[22m[39m
-     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 881[2mms[22m[39m
-   [33m[2m✓[22m[39m explicit read-session reset remounts graph and drops an old expansion even when fetch ignores abort [33m 313[2mms[22m[39m
- [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2661[2mms[22m[39m
-   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 487[2mms[22m[39m
-   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 849[2mms[22m[39m
-   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 960[2mms[22m[39m
+ [32m✓[39m tests/w03-journal.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 1745[2mms[22m[39m
+     [33m[2m✓[22m[39m validates all authored cases and rejects raw prompts and malformed timestamps [33m 713[2mms[22m[39m
+     [33m[2m✓[22m[39m server pages 10000 entries by 50 and binds cursors to filters [33m 419[2mms[22m[39m
+     [33m[2m✓[22m[39m has explicit missing explanation and evidence and preserves selection under filters [33m 359[2mms[22m[39m
+ [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1933[2mms[22m[39m
+   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 662[2mms[22m[39m
+   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 976[2mms[22m[39m
+ [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 2422[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 1041[2mms[22m[39m
+   [33m[2m✓[22m[39m explicit read-session reset remounts graph and drops an old expansion even when fetch ignores abort [33m 304[2mms[22m[39m
+ [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2896[2mms[22m[39m
+   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 488[2mms[22m[39m
+   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 985[2mms[22m[39m
+   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 994[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m16 passed[39m[22m[90m (16)[39m
 [2m      Tests [22m [1m[32m136 passed[39m[22m[90m (136)[39m
-[2m   Start at [22m 22:18:48
-[2m   Duration [22m 5.52s[2m (transform 5.66s, setup 4.35s, import 10.38s, tests 13.95s, environment 21.47s)[22m
+[2m   Start at [22m 22:33:14
+[2m   Duration [22m 6.14s[2m (transform 5.71s, setup 5.11s, import 10.35s, tests 15.46s, environment 26.53s)[22m
 
 
 > @aew/read-only-dashboard@0.1.0 build
@@ -83,14 +82,14 @@ rendering chunks...
 computing gzip size...
 dist/index.html                   0.49 kB │ gzip:   0.30 kB
 dist/assets/index-Dp4MGFCg.css   35.58 kB │ gzip:   8.10 kB
-dist/assets/index-BizV7Gqj.js   593.85 kB │ gzip: 175.92 kB
+dist/assets/index-BFHnhHgW.js   593.90 kB │ gzip: 175.95 kB
 
-[plugin builtin:vite-reporter] 
+✓ built in 319ms
+[plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 290ms
 Production build excludes fixtures and mock initialization
 
 > @aew/read-only-dashboard@0.1.0 build:demo
@@ -105,23 +104,23 @@ dist-demo/assets/index-Dp4MGFCg.css               35.58 kB │ gzip:   8.10 kB
 dist-demo/assets/jsx-runtime-Cu7Iu-c-.js           0.43 kB │ gzip:   0.30 kB
 dist-demo/assets/DemoTools-B3Wk4owS.js             0.55 kB │ gzip:   0.36 kB
 dist-demo/assets/rolldown-runtime-S-ySWqyJ.js      0.69 kB │ gzip:   0.42 kB
-dist-demo/assets/registration-DkAHZmuu.js          1.65 kB │ gzip:   0.81 kB
-dist-demo/assets/registration-DKBRDynJ.js          1.82 kB │ gzip:   0.92 kB
-dist-demo/assets/schema-DfVMbNbt.js                1.88 kB │ gzip:   0.92 kB
-dist-demo/assets/schema-C2PIep5K.js                3.56 kB │ gzip:   1.49 kB
-dist-demo/assets/Lab-o9Ox19mB.js                   8.73 kB │ gzip:   3.33 kB
-dist-demo/assets/runtime-ZJALpeWZ.js              13.63 kB │ gzip:   5.28 kB
+dist-demo/assets/registration-NMP76N15.js          1.65 kB │ gzip:   0.81 kB
+dist-demo/assets/registration-CbWJojhj.js          1.82 kB │ gzip:   0.92 kB
+dist-demo/assets/schema-CF2eNKRi.js                1.88 kB │ gzip:   0.92 kB
+dist-demo/assets/schema-SNJ7Q-kV.js                3.56 kB │ gzip:   1.49 kB
+dist-demo/assets/Lab-DAfo7PYW.js                   8.73 kB │ gzip:   3.33 kB
+dist-demo/assets/runtime-kaoQLk68.js              13.63 kB │ gzip:   5.29 kB
 dist-demo/assets/transport-1XKHTVKV.js            14.74 kB │ gzip:   5.46 kB
-dist-demo/assets/projector-B9JQDAdF.js            16.31 kB │ gzip:   5.83 kB
-dist-demo/assets/Journal-BP064o_N.js              17.88 kB │ gzip:   5.64 kB
-dist-demo/assets/Comparison-Bq-uoqhW.js           26.96 kB │ gzip:   8.17 kB
-dist-demo/assets/browser-CO5EhuVR.js             261.81 kB │ gzip:  88.34 kB
-dist-demo/assets/index-bo64QStA.js               582.18 kB │ gzip: 172.57 kB
+dist-demo/assets/projector-Dgmv_JgG.js            16.31 kB │ gzip:   5.84 kB
+dist-demo/assets/Journal-B_3hmDmp.js              17.88 kB │ gzip:   5.64 kB
+dist-demo/assets/Comparison-CC7OvL7j.js           26.96 kB │ gzip:   8.17 kB
+dist-demo/assets/browser-BU1XnZT_.js             261.81 kB │ gzip:  88.34 kB
+dist-demo/assets/index-BQjNXGN9.js               582.23 kB │ gzip: 172.61 kB
 dist-demo/assets/worlds-Cfp5AcLf.js            1,125.32 kB │ gzip:  43.48 kB
 
-✓ built in 391ms
-[plugin builtin:vite-reporter] 
+[plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 403ms

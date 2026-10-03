@@ -52,7 +52,7 @@
   "measurements": [
     {
       "name": "journal large 10000 entries",
-      "navigate_and_page_ms": 957,
+      "navigate_and_page_ms": 878,
       "mounted_entries": 50,
       "journal_requests": 2,
       "all_requests": 25,

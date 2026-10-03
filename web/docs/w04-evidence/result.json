@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "e59e029147bff94da0eb63f305d6bd311ba6e0ff",
+  "baseline_commit": "86d301b5dc848de095028470b6efcc3b515c420c",
+  "preview_digest": "67371cb732a8adf3b2ec3c9fce31bc50d5742d88b137c33ae8ac43511021fc8a",
+  "plan_digest": "74baf7b4a110d5fb0baab9bd6daa6f7eb3d0730f6248e74a050f4070ace649e7",
+  "runtime": {
+    "npm": "10.9.7",
+    "node": "22.22.2",
+    "carrier": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "chromium": "147.0.7727.15",
+    "playwright": "1.59.1"
+  },
+  "unchanged": {
+    "accepted_api": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+    "dependency_lock": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+    "journal": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+    "accepted_generated_types": "No diff from baseline"
+  },
+  "validation": {
+    "ci_change_detector_probes": 6,
+    "http_service_workers_blocked_groups": 4,
+    "offline_gate": "PASS",
+    "w01_groups": 16,
+    "production_exclusion": "PASS",
+    "w02_groups": 10,
+    "typecheck": "PASS",
+    "w03_groups": 12,
+    "lint": "PASS",
+    "test_files": 16,
+    "w04_groups": 22,
+    "premium_static_findings": 0,
+    "unit_tests": 136
+  },
+  "commands": [
+    "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh",
+    "cd web && node --test scripts/ci-paths.test.mjs",
+    "cd web && node scripts/ci-browser.mjs",
+    "cd web && node scripts/browser-w02.mjs",
+    "cd web && node scripts/browser-w03.mjs",
+    "cd web && node scripts/browser-http-demo.mjs",
+    "cd web && node scripts/browser-w04.mjs",
+    "cd web && CHROMIUM_PATH=<staged wrapper path with spaces> node scripts/measure-w04.mjs",
+    "python3 <frontend-design-premium-skill>/scripts/audit_project.py web --mode strict"
+  ],
+  "measurements": "measurements.json: distinct large W03 and W04 workflows, 50 rows before/after paging, four initial API reads; no speed/SLA claim",
+  "independent_review": "PENDING; implementer browser checks do not establish independent frontend acceptance",
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "limitations": [
+    "Desktop Chromium emulates phone width.",
+    "200% is CSS zoom emulation, not browser-toolbar zoom.",
+    "Existing chunk-size advisories remain.",
+    "Official design-lint CLI unavailable; not claimed as executed.",
+    "Two warm samples per distinct workflow do not establish a timing SLA."
+  ],
+  "files": {
+    "ci-paths.log": {
+      "bytes": 1488,
+      "sha256": "6a81b0f24a56981ba868a1979220dbfe1c1de6ebf43e2fb4a2e2d5cf4546bce3"
+    },
+    "dark-zoom.png": {
+      "bytes": 268321,
+      "sha256": "f463c9da46396934bf7391d4a12c317a8b01585db06449c3ffa9ba765b819af1"
+    },
+    "http-browser.json": {
+      "bytes": 634,
+      "sha256": "6fde5f3546611b04181188ddce0b3f3faa5c30e0a8f4a6c60f5e780efbbdd21b"
+    },
+    "http-browser.log": {
+      "bytes": 303,
+      "sha256": "4f53063e4149b387464627ff60d93fb1c8fd387718cd78c7aa70dab2e8627be4"
+    },
+    "http-desktop-comparison.png": {
+      "bytes": 174713,
+      "sha256": "d28a0274625f42103ca314a4000f63380f0a344a7d1500aff47405960a6a2ee3"
+    },
+    "http-desktop-packet.png": {
+      "bytes": 153417,
+      "sha256": "a630bd4cdc930b297d7b240d1ea5daec4a9612ae9a7853669a3ffed147c7718b"
+    },
+    "http-phone-comparison.png": {
+      "bytes": 168721,
+      "sha256": "c7326a3ccdc5b0511e6284f8dc2787f4e4169e4ae702c8a2d4c326c7f9d1a3c7"
+    },
+    "http-phone-packet.png": {
+      "bytes": 122959,
+      "sha256": "a5e31f422bdd4dc3ce09c7edea3a97f9591c33bbcb233b38ab0b819fe9c828c2"
+    },
+    "lint.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "measurements.json": {
+      "bytes": 2012,
+      "sha256": "5df7c7bb84d218dc182a1983f702e4014451d8d75a545e5f2db4a78a211333b9"
+    },
+    "offline-gate.log": {
+      "bytes": 8329,
+      "sha256": "e263b392150b0678cf77e42bc5cf29f4aa71f43b20bf461e559a387d4e8e0439"
+    },
+    "premium-audit.json": {
+      "bytes": 200,
+      "sha256": "59228c627ebe796c49c1900a4dd8c19c97b5e5ceda3209681b508738da1dd1e1"
+    },
+    "w01-browser.json": {
+      "bytes": 2742,
+      "sha256": "9860ca35dad2a66ec88c4be5ec918921f9e36e940ab478b8d164ae2953211563"
+    },
+    "w01-browser.log": {
+      "bytes": 1016,
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w02-browser.json": {
+      "bytes": 66313,
+      "sha256": "3f26680fa03c5ff060146fe4dadffacec79044eb99b49924c89529e7dabe39b3"
+    },
+    "w02-browser.log": {
+      "bytes": 705,
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe"
+    },
+    "w03-browser.json": {
+      "bytes": 3486,
+      "sha256": "d9ab95ab4b2ed9ac0542bc3dc24f614e1d7c1e91d70ecfba6e29a00ccf3b5691"
+    },
+    "w03-browser.log": {
+      "bytes": 646,
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b"
+    },
+    "w04-browser.json": {
+      "bytes": 3787,
+      "sha256": "190681fad6dc12c0c2ace15bc52e9ba115b2e0f12958c8b62c1137d3f428d4da"
+    },
+    "w04-browser.log": {
+      "bytes": 1192,
+      "sha256": "1cdc73323252ded26a3a85f0254e107e6e6fe26132bda605a80f581eb35a1833"
+    },
+    "worker-desktop-comparison.png": {
+      "bytes": 174713,
+      "sha256": "d28a0274625f42103ca314a4000f63380f0a344a7d1500aff47405960a6a2ee3"
+    },
+    "worker-desktop-packet.png": {
+      "bytes": 153417,
+      "sha256": "a630bd4cdc930b297d7b240d1ea5daec4a9612ae9a7853669a3ffed147c7718b"
+    },
+    "worker-phone-comparison.png": {
+      "bytes": 168721,
+      "sha256": "c7326a3ccdc5b0511e6284f8dc2787f4e4169e4ae702c8a2d4c326c7f9d1a3c7"
+    },
+    "worker-phone-packet.png": {
+      "bytes": 122959,
+      "sha256": "a5e31f422bdd4dc3ce09c7edea3a97f9591c33bbcb233b38ab0b819fe9c828c2"
+    }
+  }
+}

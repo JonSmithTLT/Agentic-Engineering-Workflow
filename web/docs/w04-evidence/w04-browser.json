@@ -1,0 +1,163 @@
+{
+  "checks": [
+    {
+      "name": "desktop failed removal/retry and later inclusion",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 2515
+    },
+    {
+      "name": "phone failed removal/retry and later inclusion",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 2278
+    },
+    {
+      "name": "desktop failed removal/retry and later inclusion",
+      "mode": "worker",
+      "result": "PASS",
+      "duration_ms": 2549
+    },
+    {
+      "name": "phone failed removal/retry and later inclusion",
+      "mode": "worker",
+      "result": "PASS",
+      "duration_ms": 2553
+    },
+    {
+      "name": "paging, scope-bound copy/reload, filters, independent selection and swap",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 2107
+    },
+    {
+      "name": "missing states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 511
+    },
+    {
+      "name": "partial states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 556
+    },
+    {
+      "name": "unknown states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 598
+    },
+    {
+      "name": "contradictory states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 534
+    },
+    {
+      "name": "malformed states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 478
+    },
+    {
+      "name": "denied states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 330
+    },
+    {
+      "name": "historical-unavailable states",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 334
+    },
+    {
+      "name": "hostile excerpts, dark theme, 200 percent text zoom and keyboard tabs",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 4087
+    },
+    {
+      "name": "304 metadata and hidden current-source polling",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 11660
+    },
+    {
+      "name": "failed refresh retains marked valid data",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 1108
+    },
+    {
+      "name": "malformed historical link sends no preview reads",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 317
+    },
+    {
+      "name": "late old-source response cannot replace new selection; other side remains stable",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 893
+    },
+    {
+      "name": "changed fixed snapshot is rejected before display",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 434
+    },
+    {
+      "name": "access refusal clears one side while retaining the other",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 400
+    },
+    {
+      "name": "Work and invocation entry points carry explicit identities",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 813
+    },
+    {
+      "name": "two agents retain explicit work and starting-context identities",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 406
+    },
+    {
+      "name": "empty source chooser gives an explicit recoverable result",
+      "mode": "http",
+      "result": "PASS",
+      "duration_ms": 389
+    }
+  ],
+  "measurements": [
+    {
+      "mode": "http",
+      "viewport": "desktop",
+      "requests": 24,
+      "dom_nodes": 172
+    },
+    {
+      "mode": "http",
+      "viewport": "phone",
+      "requests": 24,
+      "dom_nodes": 172
+    },
+    {
+      "mode": "worker",
+      "viewport": "desktop",
+      "requests": 24,
+      "dom_nodes": 172
+    },
+    {
+      "mode": "worker",
+      "viewport": "phone",
+      "requests": 24,
+      "dom_nodes": 172
+    }
+  ],
+  "independent_review": "PENDING; implementer checks do not substitute for reviewer task completion."
+}

@@ -20,7 +20,7 @@ const world = JSON.parse(
   fs.readFileSync('src/api/mock/fixtures/F1.json', 'utf8'),
 );
 const projector = new DemoProjector(world);
-const root = path.resolve('dist');
+const root = path.resolve(process.env.DASHBOARD_STATIC_ROOT ?? 'dist');
 const csp =
   "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const server = http.createServer((req, res) => {
@@ -86,6 +86,7 @@ const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(file));
 });
-server.listen(4175, '127.0.0.1', () =>
-  console.log('D1 test fixture adapter: http://127.0.0.1:4175'),
+const port = Number(process.env.DASHBOARD_PORT ?? 4175);
+server.listen(port, '127.0.0.1', () =>
+  console.log(`Test fixture adapter: http://127.0.0.1:${port}`),
 );

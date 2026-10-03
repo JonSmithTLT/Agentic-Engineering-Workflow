@@ -1,0 +1,111 @@
+name: web
+
+# Informational on frontend branches. F20 integration must call this workflow
+# from ci.yml and incorporate its result in the existing assurance gate.
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/aew-dashboard-*']
+  merge_group:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: web changes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.paths.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: paths
+        name: Detect frontend and shared contract changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == workflow_dispatch || -z "$BASE" || "$BASE" =~ ^0+$ ]]; then
+            echo 'web=true' >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BASE" "$HEAD" > "$RUNNER_TEMP/web-changed-paths.txt"
+            if rg -q '^(web/|docs/design/dashboard-api-v1-provisional\.yaml$|\.github/workflows/web\.yml$)' "$RUNNER_TEMP/web-changed-paths.txt"; then
+              echo 'web=true' >> "$GITHUB_OUTPUT"
+            else
+              echo 'web=false' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  checks:
+    name: web checks
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.2'
+          package-manager-cache: false
+      - name: Exact npm version and locked installation
+        run: |
+          npm install --global npm@10.9.7
+          test "$(npm --version)" = 10.9.7
+          npm ci --ignore-scripts
+      - name: Contract acceptance digest
+        run: node scripts/check-contract.mjs
+      - name: Generated artifact consistency
+        run: |
+          npm run generate:types
+          git diff --exit-code -- src/api/types.ts
+          npm run check:scenario
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Production build and mock exclusion
+        run: npm run build
+      - run: npm run build:demo
+      - name: Pinned Playwright Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: artifacts/playwright/browsers
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Compiled browser and CSP checks
+        run: node scripts/ci-browser.mjs
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: web-failure-evidence
+          path: web/output/playwright-w01/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  result:
+    name: web result
+    needs: [changes, checks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Web result for assurance integration
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          WEB_CHANGED: ${{ needs.changes.outputs.web }}
+          CHECKS_RESULT: ${{ needs.checks.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [ "$WEB_CHANGED" = true ]; then
+            test "$CHECKS_RESULT" = success
+          else
+            test "$WEB_CHANGED" = false
+            test "$CHECKS_RESULT" = skipped
+          fi

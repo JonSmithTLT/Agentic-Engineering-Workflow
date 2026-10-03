@@ -56,3 +56,9 @@ Demo limitation: blocking all browser storage also blocks MSW initialization. No
 Review focus: central transport instrumentation preserving cache/errors, read-only command allowlist, opaque-ID/type selection, bounded explicit lineage reads, locally stored page snapshots, storage failure, accessibility/CSP and compiled production exclusion of mocks. Main-line acceptance of these optional changes remains pending. No Engine/history/control schema edits or ongoing AEW suite were invoked.
 
 Preview: `http://localhost:4187/work?view=graph&fixture=F1`. Header has API panel and Jump to ID. History graph: `http://localhost:4187/history/T-0004?fixture=F3`.
+
+## Header and navigation polish — 2026-10-02
+
+User-reported layout refinements: the labeled scenario dropdown’s control top now aligns with Jump to ID, API panel and the demo/status badges through bottom-aligned groups and common 34px control heights. The sidebar fills the viewport and scrolls its own contents at short window heights rather than extending transparent overflow beyond its surface. Desktop sticky navigation and phone drawer behavior remain.
+
+Offline typecheck/lint, 85 tests, type generation and both builds PASS (`artifacts/chrome-polish-offline.log`). Four compiled CSS-geometry checks cover control alignment, a short Queue placeholder, the bottom of long History, and a short phone drawer with reachable appearance controls. Evidence: `output/playwright-chrome-polish/browser-chrome-polish.json` and screenshots beside it. No new dependency or API change; optional review remains pending.

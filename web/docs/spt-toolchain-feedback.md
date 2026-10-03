@@ -177,3 +177,7 @@ Same immutable carrier, cache, lock and staged browser identities; no SPT repair
 ## Optional developer tools consumer retest — 2026-10-02
 
 Unchanged immutable image, cache, lock and staged browser identities. Offline gate installs 395 packages from absent modules, compares generated types, typechecks, lints, passes 85 tests and builds production/demo with networking disabled. Optional compiled browser checks are recorded in `optional-developer-tools.md`; normal production is separately probed with synthetic same-origin responses. SPT-UI-009’s exact cached formatter invocation remains effective. No SPT rebuild or new dependency, no new full-carrier acceptance claim. MSW’s blocked-storage initialization behavior is demo-library friction documented in the optional packet, not a demonstrated SPT image/cache defect. Existing resolved and ticket-ready entries remain retained.
+
+## Header/sidebar polish consumer retest — 2026-10-02
+
+Same immutable carrier/cache/lock and separately staged Chromium; no toolchain fix required. Offline gate and 85 tests pass; four focused compiled layout checks pass. Evidence and exact scope are recorded in `optional-developer-tools.md`. Cached tools remain sufficient for this CSS change; no new SPT blocker or full-carrier acceptance claim.

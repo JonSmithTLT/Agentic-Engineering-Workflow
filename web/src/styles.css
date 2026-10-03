@@ -137,8 +137,12 @@ pre {
   position: sticky;
   top: 0;
   height: 100dvh;
+  align-self: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .brand {
+  flex-shrink: 0;
   display: flex;
   gap: 12px;
   padding: 26px 20px 28px;
@@ -163,6 +167,7 @@ pre {
   border-radius: 6px;
 }
 nav {
+  flex-shrink: 0;
   display: grid;
   gap: 3px;
   padding: 0 12px;
@@ -180,6 +185,7 @@ nav a.active {
   font-weight: 600;
 }
 .sidebar-foot {
+  flex-shrink: 0;
   margin-top: auto;
   padding: 20px;
   font-size: 12px;
@@ -550,9 +556,21 @@ dd {
 .header-tools {
   display: flex;
   gap: 16px;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.header-tools > button,
+.header-tools .world-picker select,
+.header-tools .header-status,
+.header-tools > .tag {
+  height: 34px;
+  min-height: 34px;
+}
+.header-tools .header-status,
+.header-tools > .tag {
+  display: inline-flex;
+  align-items: center;
 }
 .filter-bar {
   display: flex;

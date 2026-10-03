@@ -132,7 +132,9 @@ try {
   await check('hostile excerpts, dark theme, 200 percent text zoom and keyboard tabs', 'http', async (page, base, requests) => {
     await page.goto(base + storyLink + '&investigation_case=hostile&compare_tab=references'); await page.getByRole('button', { name: 'Inspect PKT-Retry', exact: true }).click(); await page.getByText('Safe supplied excerpt', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.w04Attack), undefined); assert(!requests.some(r => r.url.includes('attacker.invalid')));
-    await page.getByRole('tab', { name: 'Contents', exact: true }).focus(); await page.keyboard.press('End'); await page.waitForURL(/packet_tab=provenance/); assert.equal(await page.getByRole('tab', { name: 'Provenance', exact: true }).getAttribute('aria-selected'), 'true');
+    await page.getByRole('tab', { name: 'Contents', exact: true }).focus(); await page.keyboard.press('End'); await page.waitForURL(/packet_tab=provenance/);
+    await page.waitForFunction(() => document.getElementById('packet-tab-provenance')?.getAttribute('aria-selected') === 'true');
+    assert.equal(await page.getByRole('tab', { name: 'Provenance', exact: true }).getAttribute('aria-selected'), 'true');
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false); await page.screenshot({ path: `${out}/dark-zoom.png`, fullPage: true });
   }, { dark: true, phone: true });
   await check('304 metadata and hidden current-source polling', 'http', async (page, base, requests) => {

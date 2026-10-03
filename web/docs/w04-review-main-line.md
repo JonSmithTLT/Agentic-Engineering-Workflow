@@ -89,3 +89,18 @@ These rest on the implementer's automated evidence.
 **Changes required (minor).** Every investigation task was established through the UI on desktop, and the key steps on phone. The provisional, reference-only, excerpt, supplied-accounting, no-causation and no-benefit boundaries read correctly. Findings 1–3 should be fixed on this branch before merge under the project's fix-in-PR rule. Finding 1 is the substantive one because it concerns how absence is understood. A re-check of the three findings is enough afterwards.
 
 This disposition gates frontend fixture acceptance only. It does not adopt the preview backend schema and does not claim live integration.
+
+## Re-check of findings 1–3 (2026-10-03)
+
+- **Scope:** the same reviewer re-checked the three findings against the fix response (`w04-review-fix-response.md`).
+- **Source:** fix commit `2808149` (`source_commit` in `w04-review-fixes-evidence/result.json`); evidence freeze `f304fcc`; branch head `dc89af1`. The reviewer did not recompute the preview digest.
+- **What was served:** the same worker-free HTTP demo on `127.0.0.1:4249`. Its `dist-demo/index.html` was built at 19:13 −04:00, three minutes before the 19:16 fix commit, so it was built from the working tree just before that commit. The reviewer did not rebuild it.
+- **Method:** as for the original review. Product UI by visible label. In-page JavaScript only for measurement (the focused element, scroll offsets, rects, overflow) and for reading the rendered tab panel's text.
+
+| Finding | Re-check performed | Result |
+|---|---|---|
+| 1. A missing receipt reads as "not supplied", never unknown | Desktop: SRC-Removal / SRC-Retry → References → Inspect PKT-Removal → Receipts | **Fixed.** The tab opens with "Missing receipts mean the event is unknown in this projection; they do not establish that it did not occur." Each empty stage keeps its exact text ("No delivery receipt supplied.", "No output citation receipt supplied.", "No benefit evaluation supplied."). |
+| 2. Desktop: Back to comparison loses focus and scroll | Desktop at 1440×1000: Inspect PKT-Removal → Receipts → Back. At 1440×600, so the page really scrolls: Inspect PKT-Retry with the page scrolled to its maximum (446) → Back. Then the J-04 Journal link at scroll 672 → browser Back. Phone 390×844: Inspect PKT-Retry at scroll 888 → Back | **Fixed.** Measured 3 s after each return: <br>• 1440×1000: focus on "Inspect PKT-Removal", scroll 46 → 46. <br>• 1440×600: focus on "Inspect PKT-Retry", scroll 446 → 446, the button at top 463 px, below the sticky header (bottom 87 px). <br>• Journal round trip: focus on the J-04 link, scroll 672 → 672. <br>• Phone (no regression): focus on "Inspect PKT-Retry", scroll 888 → 888, the button inside the viewport. |
+| 3. The chooser shows no summaries; the phone table scrolls sideways | Desktop and phone: Change A / Change B choosers | **Fixed.** <br>• Every row shows its supplied summary under the source, including both CURRENT-INV rows. The failed removal ("Removal broke generated protocol callers; the change was reverted.") and the corrected retry are identifiable by summary alone. <br>• At 390 px each row stacks into a 324 px card with labelled cells (Invocation, Work, Status, Snapshot / captured UTC) and keeps `row` and cell semantics. <br>• The page has no horizontal overflow; the only overflowing element is the table header, apparently visually hidden in this layout. |
+
+**Disposition: ACCEPT.** Findings 1–3 are resolved, and the earlier investigation answers still hold. This disposition is frontend fixture acceptance only. It does not adopt the preview backend schema and does not claim live integration.

@@ -40,7 +40,7 @@ Use W identifiers to distinguish these dashboard milestones from AEW Engine mile
 | W01 — Reliable preview and verification foundation | Reproduce faults and trust scope/refresh labels | Current optional frontend baseline | Accepted frontend foundation |
 | W02 — Shared investigation workspace | Inspect a record, its supplied reasons and links without losing place | W01 | Implemented; independent review pending |
 | W03 — Knowledge Journal flagship | Follow one discovery/failure/lesson story with exact provenance | W01, W02; reviewed journal preview schema | Frontend task review ACCEPT at 7433ddd; merge and live integration separate |
-| W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | W04-01–03 implemented; local validation recorded in W04 packet; independent review pending |
+| W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | W04-01–03 frontend fixture review ACCEPT at 2808149; CI and operator merge separate |
 | W05 — Evidence and benchmark investigation | Read pinned artifacts and inspect benchmark trials | W01, W02; W04-01 for paired comparisons | Not proposed |
 | W06 — Execution investigation | Follow recorded events, fanout and execution receipts | W01, W02, W05-01; W04 context components where used | Not proposed |
 | W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | Not proposed |

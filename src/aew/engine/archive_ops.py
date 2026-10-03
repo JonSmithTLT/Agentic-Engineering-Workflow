@@ -189,10 +189,11 @@ class Archive:
         # records that root as verified; anything archived in the same commit follows it).
         entries: list[dict[str, Any]] = list(ctx.entries)
         facts, recent, gone_invocations, gone_tokens = {}, [], set(), set()
+        issued = self._issued_to(state) if order else {}
         for wid in order:
             unit = work[wid]
             invocations = [i for i in unit.get("invocations", []) if i in state["invocations"]]
-            tokens = self._tokens_of(state, invocations)
+            tokens = self._tokens_of(state, invocations, issued)
             if unit.get("completion_record") and not unit.get("completion_sha256"):
                 unit["completion_sha256"] = sha256_file(self.k.aew_root / unit["completion_record"])
             bundle = dump_yaml({
@@ -330,13 +331,22 @@ class Archive:
             worktrees.remove(self.k.repo_root, path)
 
     @staticmethod
-    def _tokens_of(state: dict[str, Any], invocations: list[str]) -> list[str]:
+    def _issued_to(state: dict[str, Any]) -> dict[str, list[str]]:
+        """The credentials issued to each invocation, by its id: one pass over the tokens per commit, not per unit
+        (a migration archives every terminal unit in one commit)."""
+        issued: dict[str, list[str]] = {}
+        for t, rec in state["tokens"].items():
+            if rec["scope"].get("invocation_id"):
+                issued.setdefault(rec["scope"]["invocation_id"], []).append(t)
+        return issued
+
+    @staticmethod
+    def _tokens_of(state: dict[str, Any], invocations: list[str], issued: dict[str, list[str]]) -> list[str]:
         """Every credential an invocation ever held: current, rotated (runs) and any other issued to it."""
-        ids = set(invocations)
         out = {state["invocations"][i]["token_id"] for i in invocations}
         out.update(r["token_id"] for i in invocations for r in state["invocations"][i].get("runs") or []
                    if r.get("token_id"))
-        out.update(t for t, rec in state["tokens"].items() if rec["scope"].get("invocation_id") in ids)
+        out.update(t for i in invocations for t in issued.get(i, []))
         return sorted(t for t in out if t in state["tokens"])
 
     @staticmethod

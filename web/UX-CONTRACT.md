@@ -19,4 +19,6 @@ Select opens in place and preserves results; close returns focus to entry or hea
 
 Initial reads show loading or an inline error/retry. Background failure retains marked valid data. 401/403 clears inaccessible data and validator. Session/case changes retire responses, caches and graph state. Empty/no-results explain recovery. Unknown values retain raw warnings. Missing explanation does not derive meaning from neighboring fields.
 
+Desktop selection from a Journal results link preserves focus on that link and its sequential Tab position; the selected-ID status announces selection politely. Phone results selection focuses the replacing detail. Navigation originating inside detail, graph references or initial deep links focuses the available ID/title heading. The origin is captured before the asynchronous read, so refreshes do not move focus.
+
 No edit/create/delete, credential handling, billing, legal workflow or data-entry form is introduced by W03. Toast/dialog/date/form capabilities are not applicable. Future capabilities require explicit ownership rather than screen-local substitutes.

@@ -6,6 +6,8 @@ Operator approved plan1.1 and implementation on2026-10-03. This is a demo-only J
 
 The source freeze is recorded in `web/docs/w03-evidence/result.json`. Review the diff from mergedW02 `43c5a8f961ff18f9249d62c0ad7f8790f2b33eaf` through that source commit. Evidence additions after the source freeze do not change the reviewed implementation.
 
+Latest re-check: findings1–4 are confirmed fixed; finding5 requires preserving desktop results focus. See the preserved review, updated fix response and `web/docs/w03-focus-fix-evidence/result.json` for this focused fixing diff. Frontend acceptance remains pending finding5 confirmation.
+
 ## Implementation boundaries
 
 Journal is the demo Knowledge default, with accepted Records retained. Production Knowledge and accepted detail routes continue unchanged. Two panes, Summary/Evidence/Provenance, 50-entry cursor pages and no automatic detail/graph prefetch. An origin graph/list adapter reuses W02 limits and carries supplied field-level source attribution. Publication/component/evidence roles are explicit; raw prompts are rejected. Prompt digest display establishes identity metadata, not trust/authenticity.

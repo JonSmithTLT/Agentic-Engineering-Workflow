@@ -51,7 +51,7 @@ export function InvestigationWorkspace({
       </h1>
       <div className="workspace-controls">
         <p>Inspect a record without losing your results.</p>
-        {selected && <p className="workspace-selection">Selected: <code>{selected}</code></p>}
+        {selected && <p className="workspace-selection" role={collection === 'journal' ? 'status' : undefined}>Selected: <code>{selected}</code></p>}
         <CopyDashboardLink />
         {selected && (
           <button

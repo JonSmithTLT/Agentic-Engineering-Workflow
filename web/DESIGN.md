@@ -54,3 +54,5 @@ Inherit shared buttons/selects/panels. Native selects own their popup geometry; 
 Preserve provenance authority, visible unknowns and source roles. Avoid repeated metadata or additional controls for unavailable backend capabilities. Journal fixture/provisional modules must never enter production.
 
 Journal type identity combines the existing muted/accent colors with distinct edge patterns and a small symbol. The disclosed type legend explains the same symbols and patterns; none indicates truth or applicability. Mobile pane controls show their pressed state and selected ID. Following a Journal reference focuses the new detail heading below the shared sticky header. Graph source controls form spaced, wrapping rows rather than a stack of touching buttons.
+
+Desktop list selection keeps focus and document position in the results. A polite selected-ID status communicates the selection; heading focus is reserved for replacing phone detail and navigation from within detail or a deep link.

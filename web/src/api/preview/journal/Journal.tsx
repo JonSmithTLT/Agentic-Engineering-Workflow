@@ -163,8 +163,13 @@ function JournalDetail({ id, name, shown, panel }: {
     const query = useProjection(route, journalSchemas.JournalResponse, 'detail', true, shown, reader);
     const result = query.data, r = result?.value.data;
     const heading = useRef<HTMLHeadingElement>(null);
+    // Capture the navigation origin before an asynchronous detail read completes.
+    // Desktop list browsing keeps its sequential keyboard position.
+    const fromResults = useRef(!!document.activeElement?.closest('.journal-results [data-journal-id]'));
     useEffect(() => {
         if (!shown || !r)
+            return;
+        if (fromResults.current && !window.matchMedia('(max-width: 1023px)').matches)
             return;
         const frame = requestAnimationFrame(() => {
             const target = heading.current;

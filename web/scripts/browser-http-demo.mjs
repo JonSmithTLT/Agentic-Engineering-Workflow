@@ -42,10 +42,22 @@ try {
   await ready();
   browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH ?? path.resolve('artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome')});
   for (const phone of [false, true]) await check(`${phone ? 'phone' : 'desktop'} HTTP investigation, selection, legend, focus and graph`, {width: phone ? 390 : 1440, height: phone ? 844 : 1000}, async page => {
-    await page.goto(base + '/knowledge?fixture=F1&selected=J-05');
+    await page.goto(base + '/knowledge?fixture=F1');
     await page.locator('.header-tools').getByText('HEALTHY', {exact: true}).waitFor();
+    const entry = page.locator('.journal-results [data-journal-id="J-05"]');
+    await entry.focus(); await page.keyboard.press('Enter');
     const detail = page.locator('.journal-detail');
     await detail.getByRole('heading', {name: /J-05 · Refresh/}).waitFor();
+    await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))));
+    if (phone) {
+      assert(await detail.locator('h2').evaluate(el => el === document.activeElement), 'Phone results selection focuses the replacing detail');
+    } else {
+      assert(await entry.evaluate(el => el === document.activeElement), 'Desktop list selection retains focus');
+      await page.keyboard.press('Shift+Tab');
+      assert.notEqual(await page.evaluate(() => document.activeElement?.getAttribute('data-journal-id')), 'J-07');
+      await page.keyboard.press('Tab');
+      assert(await entry.evaluate(el => el === document.activeElement), 'Sequential focus returns to selected entry');
+    }
     await page.getByText('Knowledge type legend', {exact: false}).click();
     assert.equal(await page.locator('.journal-legend .journal-kind-mark').count(), 7);
     await page.getByText('Knowledge type legend', {exact: false}).click();
@@ -99,6 +111,25 @@ try {
       return {first: first.status, second: second.status, tag: second.headers.get('ETag'), original: tag};
     });
     assert.equal(conditional.first, 200); assert.equal(conditional.second, 304); assert.equal(conditional.tag, conditional.original);
+  });
+  await check('desktop keyboard position survives stream and table selections on a 50-entry page', {width: 1440, height: 1000}, async page => {
+    await page.goto(base + '/knowledge?fixture=F1&journal_case=large');
+    for (const display of ['stream', 'table']) {
+      await page.getByLabel('Display', {exact: true}).selectOption(display);
+      const links = page.locator('.journal-results [data-journal-id]');
+      await links.nth(25).waitFor();
+      const previous = await links.nth(24).getAttribute('data-journal-id');
+      const entry = links.nth(25), id = await entry.getAttribute('data-journal-id');
+      await entry.focus(); await page.keyboard.press('Enter');
+      await page.locator('.journal-detail h2').filter({hasText: id + ' ·'}).waitFor();
+      await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))));
+      assert(await entry.evaluate(el => el === document.activeElement));
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-journal-id')), previous);
+      await page.keyboard.press('Tab');
+      assert(await entry.evaluate(el => el === document.activeElement));
+      assert.equal(await page.locator('.workspace-selection').getAttribute('role'), 'status');
+    }
   });
   fs.writeFileSync(`${out}/result.json`, JSON.stringify({checks, service_workers: 'BLOCKED', browser: browser.version(), independent_review: 'fixing-diff re-check pending'}, null, 2) + '\n');
 } finally {

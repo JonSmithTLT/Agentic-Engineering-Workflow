@@ -87,3 +87,25 @@ The reviewer did not use developer tools or fixture-source inspection in place o
 ## Disposition
 
 **Changes required (minor).** All nine task steps were established through the UI on both layouts, and the provisional, supplied-reference, partial-graph and authority boundaries read correctly. Findings 1–4 are small UI fixes. Under the project's fix-findings-in-the-PR rule, they should be fixed on this branch before merge rather than deferred. A re-check of those four points is enough after the fixes; the full task review does not need repeating. Frontend acceptance does not adopt the preview backend schema or claim live integration.
+
+## Re-check of findings 1–4 (2026-10-03)
+
+- **Reviewed:** fixing source `2e29a7124738a19a89116a969c5979982badd8ec` (head `d3cd9b6` adds only evidence). The reviewer read the source diff from `190fcd1` to `2e29a71` and re-checked each finding in the UI.
+- **Served by:** the operator's running service-worker-free HTTP demo (`scripts/demo-server.mjs`, `http://127.0.0.1:4249`), in the Claude desktop app's built-in browser, which the worker-free mode now makes usable.
+- **Layouts:** desktop 1440×1000 and phone 390×844 (emulated).
+- **Measurement:** focus and positions were read in the page (`document.activeElement`, bounding boxes) to measure focus and scroll, not to find any task answer.
+
+| # | Finding | Result |
+|---|---|---|
+| 1 | Phone Stream/Detail switch has no active state; "Stream" collides with Display | **Fixed.** The switch reads "Results" / "Detail · J-05", the current one is visibly marked (`aria-pressed` kept), and "Selected: J-05" is shown. |
+| 2 | Phone: the followed record's ID line is under the sticky header | **Fixed.** After J-05 → `J-02 · related_to`, the heading "J-02 · The function might be dead code" is at 553 px, below the 108 px header, and carries the ID. |
+| 3 | No focus or announcement after following a relation | **Fixed.** Desktop and phone: the new detail heading (`tabindex="-1"`) receives focus once the entry loads (about 0.5–1.5 s on the HTTP demo; until then focus is on `body`). On desktop it sits at 102 px, below the 87 px header. |
+| 4 | Graph labels loadable journal records "unresolved reference" | **Fixed.** Unexpanded journal nodes read "journal · not expanded"; work, evidence and decision references read "unavailable reference". |
+
+**New finding 5 (minor, introduced by the fix for 3; desktop keyboard).** The heading-focus effect runs on every selection, not only after a relation is followed. On desktop, where the list and the detail are both visible, choosing an entry from the list moves focus out of the list to the detail heading. Shift+Tab from there goes to the *last* entry in the list ("A lesson with no publication timestamp", J-07), not the entry just chosen. With 50 entries per page, a keyboard user browsing the list loses their place on every selection. The page also scrolls (86 px here).
+
+**Suggested fix:** move focus to the heading when the detail replaces the results (the phone layout) or when the navigation started inside the detail (a relation, the graph, Jump to ID). On a desktop list selection, leave focus on the selected link (`aria-current` already marks it) and announce the change politely if wanted. Re-check: the same three navigations on desktop and phone, plus Shift+Tab after a desktop list selection.
+
+The operator additions (the type legend, the wrapping source controls, the HTTP demo mode) raised no concern. The demo-only fetch headers sit behind `import.meta.env.MODE === 'demo'`, and `check-production.mjs` now also rejects their names. The legend's symbols are `aria-hidden` and the type name stays in text, so they add no screen-reader noise.
+
+**Disposition of the re-check: changes required (minor), finding 5 only.** Findings 1–4 are fixed. The task review itself does not need repeating.

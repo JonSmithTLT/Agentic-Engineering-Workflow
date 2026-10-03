@@ -70,12 +70,17 @@ def seal(meta: dict[str, Any], body: str) -> str:
 
 
 def read(path: Path) -> tuple[dict[str, Any], str]:
-    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"), source=str(path))
-    validate("evidence", meta, source=str(path))
+    return parse_sealed(path.read_text(encoding="utf-8"), str(path), path.name)
+
+
+def parse_sealed(text: str, source: str, name: str | None = None) -> tuple[dict[str, Any], str]:
+    """A sealed evidence record's metadata and body: schema-valid, and its integrity seal still over its content."""
+    meta, body = parse_frontmatter(text, source=source)
+    validate("evidence", meta, source=source)
     claimed = meta.get("integrity")
     unsealed = {k: v for k, v in meta.items() if k != "integrity"}
     if not claimed or sha256_text(render_frontmatter(unsealed, body)) != claimed:
-        raise IntegrityError(f"evidence {path.name} was modified after it was recorded")
+        raise IntegrityError(f"evidence {name or source} was modified after it was recorded")
     return meta, body
 
 

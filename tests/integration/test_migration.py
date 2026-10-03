@@ -26,6 +26,7 @@ from invariants import assert_control_invariants, load_control, with_cold  # noq
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 from aew.engine.store import serialize_control  # noqa: E402
+from aew.history.index import HistoryIndex  # noqa: E402
 from aew.history.store import History  # noqa: E402
 
 V1, V2 = "aew/control/v1", "aew/control/v2"
@@ -97,6 +98,9 @@ def test_migrating_archives_the_finished_work_and_keeps_everything_else(tmp_path
     res = out.json
     assert res["migrated"] is True and res["archived"]["units"] == len(finished) == 7
     after = load_control(t.root)
+    # The derived index is built by the migration, not by the first command that looks up finished work (P3).
+    assert res["index"] == "rebuilt"
+    assert HistoryIndex(t.root / ".aew").sync(after["cold"]["root"])["mode"] == "current"
     assert after["schema"] == V2 and not set(finished) & set(after["work"])
     assert after["cold"]["archived"] == {"cancelled": 0, "done": 7} and after["cold"]["root"]["count"] == 7
     assert [r["id"] for r in after["recent"]] == finished

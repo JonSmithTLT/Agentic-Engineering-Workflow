@@ -1,0 +1,8 @@
+date: 2026-10-03T04:01:29Z
+commit: 16c67577f401e4f40aa55a2af80ac8cda2e8ff39
+dirty (docs only):  M eval/adr-0011/perf/README.md 
+python: 3.13.1
+os: Windows-11-10.0.26200-SP0
+pyyaml: 6.0.3 libyaml
+git version 2.46.0.windows.1
+machine: the Windows reference machine (README section 1); the operator was doing light design work during the run, otherwise idle

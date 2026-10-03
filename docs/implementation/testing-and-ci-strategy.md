@@ -89,7 +89,7 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 |---|---|---|
 | **Ruff** | pycodestyle (`E`, `W`), pyflakes (`F`), bugbear (`B`), Bandit's security rules (`S`), pyupgrade (`UP`) and import order (`I`); lines up to 120 characters | The whole repository except `web/` (it has its own lint) and the dogfood fixture project. Off everywhere: `S603`/`S607` (every subprocess call passes an argv list to tools found on `PATH`; `S602`, `shell=True`, stays on) and `S101` (asserts narrow types and state internal invariants; no authority or input check is an assert). Per-file exceptions, each with its reason: tests (fake credentials, temp paths, seeded randomness), `tools/perf` (closures timed on the spot), the frozen M3 spike probes and the dogfood driver's evaluation texts |
 | **Pyright** (standard mode) | Types, using the hints the code already has | `src/`, checked twice: as Linux and as Windows, so each platform's branches are checked where they run. Platform branches use `sys.platform == "win32"` directly, which Pyright narrows (an alias such as `IS_WINDOWS` it cannot) |
-| **pip-audit** | Known vulnerabilities (PyPI advisories and OSV) in every installed distribution: the runtime dependencies, the test extras and the lint tools | `--strict --skip-editable`: AEW itself is skipped; any distribution that cannot be audited fails the job |
+| **pip-audit** | Known vulnerabilities (PyPI advisories and OSV) in every installed distribution: the runtime dependencies, the test extras and the lint tools | The exact installed set (`pip freeze --exclude-editable`, so AEW itself is left out), audited with `--strict`: any distribution that cannot be audited fails the job |
 
 - **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).
 - **What the first run found and fixed:** the OpenCode client sent the server password to whatever address the server announced, now refused unless it is `http://127.0.0.1:<port>` (S310); several values that could be `None` reaching code that cannot take one (a guardrail check on a workspace without a base commit, a dependency to a unit that vanished, a role slot with no default card, a worktree sync entry with no target); closures binding loop variables late (B023).
@@ -185,7 +185,7 @@ A lane that outgrows its budget gets another shard: add a matrix entry in `ci.ym
 pip install -e ".[dev,parallel]"                       # parallel = pytest-xdist (optional)
 pip install -e ".[lint]" && ruff check .                # static checks, as the `static` job runs them
 pyright --pythonplatform Linux && pyright --pythonplatform Windows
-pip-audit --strict --skip-editable
+pip freeze --exclude-editable > installed.txt && pip-audit --strict --no-deps --disable-pip -r installed.txt
 python -m pytest -q                                     # everything, serially (always valid)
 python -m pytest --lane fast -q                         # seconds: unit + frozen-spec pin
 python -m pytest --lane regression -n auto -q           # one lane in parallel

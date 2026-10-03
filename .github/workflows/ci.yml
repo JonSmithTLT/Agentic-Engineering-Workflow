@@ -165,7 +165,11 @@ jobs:
         run: pyright --pythonplatform Windows
       - name: pip-audit (every installed distribution except AEW itself)
         if: success() || failure()
-        run: pip-audit --strict --skip-editable --desc
+        # The exact installed set, frozen without the editable AEW: --strict then fails only on a vulnerability or on a
+        # distribution that cannot be audited (with an editable install present, --strict refuses to skip it).
+        run: |
+          python -m pip freeze --exclude-editable > "$RUNNER_TEMP/installed.txt"
+          pip-audit --strict --desc --no-deps --disable-pip -r "$RUNNER_TEMP/installed.txt"
 
   assurance:
     # The merge gate: mark this check as required on `main`.

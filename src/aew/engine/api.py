@@ -16,13 +16,16 @@ from pathlib import Path
 from typing import Any
 
 from aew import SPEC_SET, roles
+from aew.engine.archive_ops import Archive
 from aew.engine.base import Kernel, TxnContext
 from aew.engine.context_ops import ContextPacks
 from aew.engine.evidence_ops import EvidenceCommands, Gates
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
+from aew.engine.history_ops import HistoryCommands
 from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
+from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import RolesPort
 from aew.engine.resume_ops import Resume
@@ -34,6 +37,7 @@ from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations
 from aew.errors import IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.harness import contract as K
+from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
 from aew.knowledge.manifest import (
     AEW_DIR,
@@ -213,28 +217,32 @@ class Engine:
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         k = self._k = Kernel(repo_root, aew_root)
         hooks, guards, kinds = StateHooks(), GuardTable(), KindRegistry()
-        self._units = units = WorkUnits(k, hooks=hooks, guards=guards)
+        self._archive = archive = Archive(k)
+        self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
+        self._history = history = HistoryCommands(k, units=units, archive=archive)
         self._roles = roles = Roles(k, units=units)
         self._invocations = invocations = Invocations(k, roles=roles)
         self._inputs = inputs = Inputs(k)
-        self._packs = packs = ContextPacks(k, units=units)
-        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds)
-        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations)
+        self._packs = packs = ContextPacks(k, units=units, archive=archive)
+        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, archive=archive)
+        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive)
         self._assignment = Assignment(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
                                       packs=packs)
         self._nm = nm = NonMutating(k, units=units, roles=roles, invocations=invocations, inputs=inputs, packs=packs,
-                                    gates=gates, work=work)
+                                    gates=gates, work=work, archive=archive)
         self._hierarchy = hierarchy = Hierarchy(k, units=units, roles=roles, invocations=invocations, inputs=inputs,
-                                                gates=gates, nm=nm)
+                                                gates=gates, nm=nm, archive=archive, history=history)
         self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
-                                                     inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds)
+                                                     inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds,
+                                                     archive=archive)
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates)
-        self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates)
-        self._lead = lead = Lead(k)
+        self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive)
+        self._lead = lead = Lead(k, archive=archive)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
-                                       lead=lead, views=views, harness=harness, kinds=kinds)
+                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._project = ProjectAdmin(k, roles=roles)
+        self._migration = Migration(k, hierarchy=hierarchy)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -244,6 +252,8 @@ class Engine:
         for owner in (gates, evidence, nm, hierarchy, resume):
             kinds.register_all(owner.kind_registrations())
         kinds.require_complete()
+        k.finalizers.steps.append(archive.finalize)  # ADR-0011: finished work leaves the hot state (plan R6)
+        k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
     def discover(cls, start: Path) -> "Engine":
@@ -293,7 +303,7 @@ class Engine:
             "roles/README.md": roles_readme(),
         }
         state = {
-            "schema": "aew/control/v1",
+            "schema": "aew/control/v2",
             "project_id": project_id,
             "spec_set": SPEC_SET,
             "revision": 0,
@@ -306,6 +316,7 @@ class Engine:
             "next_action": None,
             "work": {},
             "invocations": {},
+            "cold": {"root": history_manifest.empty_root()},  # ADR-0011: finished work is archived here
             "last_transition": {
                 "revision": 0, "at": utc_now(), "actor": {"kind": "operator", "command": "aew init"},
                 "op": "init", "summary": f"AEW project '{project_id}' initialized", "reason": None,
@@ -704,6 +715,37 @@ class Engine:
 
     def tree_lines(self, tree: list[dict[str, Any]]) -> list[str]:
         return self._hierarchy.tree_lines(tree)
+
+    # ---------------------------------------------------------------- history (ADR-0011)
+
+    def history_show(self, record_id: str) -> dict[str, Any]:
+        return self._history.history_show(record_id)
+
+    def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
+                     limit: int = 50) -> dict[str, Any]:
+        return self._history.history_list(kind=kind, since=since, until=until, limit=limit)
+
+    def history_links(self, record_id: str, *, depth: int = 1) -> dict[str, Any]:
+        return self._history.history_links(record_id, depth=depth)
+
+    def history_load(self, *, token: str, expect_rev: int, record_id: str, into: str, reason: str) -> dict[str, Any]:
+        return self._history.history_load(token=token, expect_rev=expect_rev, record_id=record_id, into=into,
+                                          reason=reason)
+
+    def history_audit(self, *, full: bool = False, token: str | None = None,
+                      expect_rev: int | None = None) -> dict[str, Any]:
+        return self._history.history_audit(full=full, token=token, expect_rev=expect_rev)
+
+    def history_reindex(self) -> dict[str, Any]:
+        return self._history.history_reindex()
+
+    def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
+        return self._migration.migrate(token=token, expect_rev=expect_rev)
+
+    def archived_credential(self, state: dict[str, Any], token_id: str) -> dict[str, Any] | None:
+        """A credential archived with finished work (ADR-0011 R7), for checks outside the engine (the Lead broker, a
+        run's supervisor): presenting it again is stale authority, never an unknown credential."""
+        return self._archive.archived_credential(state, token_id)
 
     def unit(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._units.unit(state, work_id)

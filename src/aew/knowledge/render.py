@@ -86,10 +86,26 @@ def render_current(state: dict[str, Any], project_name: str) -> str:
         for wid, u in parents:
             attention = f" — attention: {'; '.join(u['attention'])}" if u.get("attention") else ""
             lines.append(f"  - {wid} [{u['state']}] {u['kind']}: {u['title']}{attention}")
+    finished = finished_summary(state)
+    if finished:
+        lines.append(f"- Finished work (archived): {finished['done']} done, {finished['cancelled']} cancelled; "
+                     f"the full history: `{finished['history']}`")
+        for r in finished["recent"]:
+            lines.append(f"  - {r['id']} [{r['state']}] {r['kind']}: {r['title']}")
     if state.get("next_action"):
         lines.append(f"- Lead's next action: {state['next_action']}")
     lines += ["", "## Work graph", "", "```text", *work_graph_lines(state), "```", ""]
     return "\n".join(lines)
+
+
+def finished_summary(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Archived work, bounded (ADR-0011; operator 2026-10-01): counts, the most recent units, the history path."""
+    counts = (state.get("cold") or {}).get("archived") or {}
+    if not (counts.get("done") or counts.get("cancelled")):
+        return None
+    recent = [r for r in state.get("recent", []) if r["id"] not in state["work"]]
+    return {"done": counts.get("done", 0), "cancelled": counts.get("cancelled", 0), "recent": recent[::-1],
+            "history": "aew history list"}
 
 
 def views(state: dict[str, Any], project_name: str, aew_root: Path) -> dict[str, str]:

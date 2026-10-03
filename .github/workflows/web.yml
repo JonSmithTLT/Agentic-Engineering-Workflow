@@ -1,14 +1,11 @@
 name: web
 
-# Informational on frontend branches. F20 integration must call this workflow
-# from ci.yml and incorporate its result in the existing assurance gate.
+# The dashboard's checks (web/). ci.yml calls this workflow on every pull request, push to main and merge group,
+# and its `assurance` gate requires the `result` job: the checks ran and passed, or nothing under web/, the shared
+# contract or this file changed. Its own triggers are only the call and a manual run, so it never runs twice.
 on:
-  pull_request:
-  push:
-    branches: [main, 'feat/aew-dashboard-*']
-  merge_group:
-  workflow_dispatch:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read

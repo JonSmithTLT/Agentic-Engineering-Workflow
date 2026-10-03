@@ -1,0 +1,1040 @@
+[
+ {
+  "point": {
+   "open": 5,
+   "completed": 250
+  },
+  "shape": "hierarchy",
+  "project": {
+   "units": 255,
+   "invocations": 1002,
+   "tokens": 1003,
+   "control_bytes": 5291606,
+   "build_s": 17.8
+  },
+  "footprint": {
+   "units": {
+    "open": 5,
+    "completed": 250
+   },
+   "control_bytes": 5291606,
+   "open_bytes": {
+    "units": 7967,
+    "live_invocations": 3061,
+    "ended_invocations": 2767,
+    "active_credentials": 361,
+    "revoked_credentials": 398,
+    "total": 14554
+   },
+   "history_bytes": {
+    "units": 1589750,
+    "invocations": 3290500,
+    "credentials": 395750,
+    "total": 5276000
+   },
+   "other_bytes": 1052,
+   "per_open_unit_bytes": 2911,
+   "per_completed_unit_bytes": 21104,
+   "terminal_record_bytes": 5279165,
+   "live_bytes": 12441
+  },
+  "micro": {
+   "yaml_load_python_s": 6.0933,
+   "yaml_load_libyaml_s": 1.161,
+   "yaml_dump_python_s": 3.1844,
+   "yaml_dump_libyaml_s": 0.7274,
+   "schema_validate_s": 0.0836,
+   "deepcopy_s": 0.0689,
+   "control_reparse_s": 1.1186
+  },
+  "ops": [
+   {
+    "op": "CLI floor (aew --version)",
+    "wall_s": 0.12159959999917191,
+    "wall_min_s": 0.12084719999984372,
+    "in_process_s": 0.034334,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.034334,
+     "derive": 0.0,
+     "git": 0.0,
+     "lock": 0.0,
+     "parse": 0.0,
+     "recover": 0.0,
+     "render": 0.0,
+     "scan": 0.0
+    },
+    "counts": {}
+   },
+   {
+    "op": "lead show",
+    "wall_s": 1.3920539999999164,
+    "wall_min_s": 1.3443712000007508,
+    "in_process_s": 1.281399,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.190161,
+     "derive": 0.0,
+     "git": 0.030503,
+     "lock": 0.000269,
+     "parse": 1.048891,
+     "recover": 0.009,
+     "render": 0.000896,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 1
+    }
+   },
+   {
+    "op": "status",
+    "wall_s": 1.6358566999988398,
+    "wall_min_s": 1.6294625000009546,
+    "in_process_s": 1.518176,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.442586,
+     "derive": 0.0,
+     "git": 0.030492,
+     "lock": 0.00051,
+     "parse": 1.013877,
+     "recover": 0.0119,
+     "render": 0.001747,
+     "scan": 0.020619
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "work tree",
+    "wall_s": 1.3604259000021557,
+    "wall_min_s": 1.3538066000000981,
+    "in_process_s": 1.244551,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.185428,
+     "derive": 0.0,
+     "git": 0.03041,
+     "lock": 0.00025,
+     "parse": 1.01761,
+     "recover": 0.009035,
+     "render": 0.000892,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 1
+    }
+   },
+   {
+    "op": "resume",
+    "wall_s": 3.886492099998577,
+    "wall_min_s": 3.867620299999544,
+    "in_process_s": 3.769882,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.573635,
+     "derive": 0.0,
+     "git": 0.157764,
+     "lock": 0.00051,
+     "parse": 1.024854,
+     "recover": 0.012256,
+     "render": 0.001945,
+     "scan": 2.01942
+    },
+    "counts": {
+     "git": 14,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 7,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 259,
+     "scan_files": 2009
+    }
+   },
+   {
+    "op": "gate show",
+    "wall_s": 1.5104855000026873,
+    "wall_min_s": 1.5057252999977209,
+    "in_process_s": 1.399993,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.210326,
+     "derive": 0.0,
+     "git": 0.142924,
+     "lock": 0.000251,
+     "parse": 1.012939,
+     "recover": 0.00959,
+     "render": 0.000908,
+     "scan": 0.023674
+    },
+    "counts": {
+     "git": 13,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 6,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 1,
+     "scan": 2,
+     "scan_files": 6
+    }
+   },
+   {
+    "op": "context pack",
+    "wall_s": 1.4472817999994732,
+    "wall_min_s": 1.402843899999425,
+    "in_process_s": 1.338801,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.206264,
+     "derive": 0.0,
+     "git": 0.043532,
+     "lock": 0.000254,
+     "parse": 1.056975,
+     "recover": 0.009122,
+     "render": 0.000899,
+     "scan": 0.021096
+    },
+    "counts": {
+     "git": 4,
+     "git:diff": 1,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 1,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "harness status",
+    "wall_s": 1.3836885999990045,
+    "wall_min_s": 1.3559133999988262,
+    "in_process_s": 1.27134,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.196283,
+     "derive": 0.0,
+     "git": 0.03102,
+     "lock": 0.000288,
+     "parse": 1.026954,
+     "recover": 0.009332,
+     "render": 0.000951,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 1
+    }
+   },
+   {
+    "op": "checkpoint (commit path)",
+    "wall_s": 2.2001953999970283,
+    "wall_min_s": 2.1875049999980547,
+    "in_process_s": 2.088081,
+    "phases_s": {
+     "commit": 0.811015,
+     "compute": 0.193986,
+     "derive": 0.0,
+     "git": 0.03164,
+     "lock": 0.000251,
+     "parse": 1.028823,
+     "recover": 0.009074,
+     "render": 0.01165,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 2
+    }
+   },
+   {
+    "op": "dispatch (work dispatch)",
+    "wall_s": 2.4697637999997823,
+    "wall_min_s": 2.4046744000006584,
+    "in_process_s": 2.358854,
+    "phases_s": {
+     "commit": 0.821143,
+     "compute": 0.240856,
+     "derive": 0.011266,
+     "git": 0.172369,
+     "lock": 0.000262,
+     "parse": 1.076617,
+     "recover": 0.009292,
+     "render": 0.005059,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 13,
+     "git:add": 1,
+     "git:ls-files": 1,
+     "git:rev-parse": 8,
+     "git:rm": 1,
+     "git:worktree": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "render": 2
+    }
+   },
+   {
+    "op": "review ingest",
+    "wall_s": 2.614048300001741,
+    "wall_min_s": 2.576229099999182,
+    "in_process_s": 2.500135,
+    "phases_s": {
+     "commit": 0.83236,
+     "compute": 0.280386,
+     "derive": 0.011313,
+     "git": 0.261959,
+     "lock": 0.000545,
+     "parse": 1.064913,
+     "recover": 0.012085,
+     "render": 0.005619,
+     "scan": 0.029772
+    },
+    "counts": {
+     "commit": 1,
+     "git": 24,
+     "git:add": 4,
+     "git:diff": 2,
+     "git:ls-files": 4,
+     "git:rev-parse": 10,
+     "git:rm": 2,
+     "git:write-tree": 2,
+     "parse": 1,
+     "parse_bytes": 5291606,
+     "parse_cached": 1,
+     "render": 3,
+     "scan": 3,
+     "scan_files": 9
+    }
+   }
+  ]
+ },
+ {
+  "point": {
+   "open": 5,
+   "completed": 1000
+  },
+  "shape": "hierarchy",
+  "project": {
+   "units": 1005,
+   "invocations": 4002,
+   "tokens": 4003,
+   "control_bytes": 21119608,
+   "build_s": 72.8
+  },
+  "footprint": {
+   "units": {
+    "open": 5,
+    "completed": 1000
+   },
+   "control_bytes": 21119608,
+   "open_bytes": {
+    "units": 7967,
+    "live_invocations": 3061,
+    "ended_invocations": 2767,
+    "active_credentials": 361,
+    "revoked_credentials": 398,
+    "total": 14554
+   },
+   "history_bytes": {
+    "units": 6359000,
+    "invocations": 13162000,
+    "credentials": 1583000,
+    "total": 21104000
+   },
+   "other_bytes": 1054,
+   "per_open_unit_bytes": 2911,
+   "per_completed_unit_bytes": 21104,
+   "terminal_record_bytes": 21107165,
+   "live_bytes": 12443
+  },
+  "micro": {
+   "yaml_load_python_s": 27.8749,
+   "yaml_load_libyaml_s": 6.1592,
+   "yaml_dump_python_s": 14.0604,
+   "yaml_dump_libyaml_s": 3.9631,
+   "schema_validate_s": 0.3312,
+   "deepcopy_s": 0.3345,
+   "control_reparse_s": 8.2209
+  },
+  "ops": [
+   {
+    "op": "CLI floor (aew --version)",
+    "wall_s": 0.12386049999986426,
+    "wall_min_s": 0.12212590000126511,
+    "in_process_s": 0.035318,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.035318,
+     "derive": 0.0,
+     "git": 0.0,
+     "lock": 0.0,
+     "parse": 0.0,
+     "recover": 0.0,
+     "render": 0.0,
+     "scan": 0.0
+    },
+    "counts": {}
+   },
+   {
+    "op": "lead show",
+    "wall_s": 7.166736499999388,
+    "wall_min_s": 7.097850000001927,
+    "in_process_s": 6.986774,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.505951,
+     "derive": 0.0,
+     "git": 0.031978,
+     "lock": 0.000255,
+     "parse": 6.436511,
+     "recover": 0.013267,
+     "render": 0.002868,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 1
+    }
+   },
+   {
+    "op": "status",
+    "wall_s": 8.74332709999726,
+    "wall_min_s": 8.732710300002509,
+    "in_process_s": 8.537473,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.773763,
+     "derive": 0.0,
+     "git": 0.03244,
+     "lock": 0.000697,
+     "parse": 6.924441,
+     "recover": 0.015671,
+     "render": 0.004838,
+     "scan": 0.029946
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "work tree",
+    "wall_s": 7.499658400000044,
+    "wall_min_s": 6.694744100001117,
+    "in_process_s": 7.290045,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.525646,
+     "derive": 0.0,
+     "git": 0.031073,
+     "lock": 0.000268,
+     "parse": 6.716267,
+     "recover": 0.014225,
+     "render": 0.002961,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 1
+    }
+   },
+   {
+    "op": "resume",
+    "wall_s": 19.784225100000185,
+    "wall_min_s": 19.59532929999841,
+    "in_process_s": 19.573069,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 2.399456,
+     "derive": 0.0,
+     "git": 0.161183,
+     "lock": 0.000558,
+     "parse": 6.694736,
+     "recover": 0.018483,
+     "render": 0.00568,
+     "scan": 10.328057
+    },
+    "counts": {
+     "git": 14,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 7,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 1009,
+     "scan_files": 8009
+    }
+   },
+   {
+    "op": "gate show",
+    "wall_s": 6.70909070000198,
+    "wall_min_s": 6.685848699999042,
+    "in_process_s": 6.553733,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.440969,
+     "derive": 0.0,
+     "git": 0.145398,
+     "lock": 0.000262,
+     "parse": 5.933635,
+     "recover": 0.009678,
+     "render": 0.002115,
+     "scan": 0.023494
+    },
+    "counts": {
+     "git": 13,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 6,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 1,
+     "scan": 2,
+     "scan_files": 6
+    }
+   },
+   {
+    "op": "context pack",
+    "wall_s": 6.502869500000088,
+    "wall_min_s": 6.422452800001338,
+    "in_process_s": 6.335367,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.438524,
+     "derive": 0.0,
+     "git": 0.044197,
+     "lock": 0.00025,
+     "parse": 5.799131,
+     "recover": 0.009876,
+     "render": 0.002135,
+     "scan": 0.020387
+    },
+    "counts": {
+     "git": 4,
+     "git:diff": 1,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 1,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "harness status",
+    "wall_s": 6.453411800001049,
+    "wall_min_s": 6.449704300001031,
+    "in_process_s": 6.284744,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.423987,
+     "derive": 0.0,
+     "git": 0.030875,
+     "lock": 0.000253,
+     "parse": 5.821349,
+     "recover": 0.009787,
+     "render": 0.002295,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 1
+    }
+   },
+   {
+    "op": "checkpoint (commit path)",
+    "wall_s": 12.740532499999972,
+    "wall_min_s": 12.210614999999962,
+    "in_process_s": 12.563895,
+    "phases_s": {
+     "commit": 5.471215,
+     "compute": 0.51576,
+     "derive": 0.0,
+     "git": 0.031499,
+     "lock": 0.000253,
+     "parse": 6.553057,
+     "recover": 0.013223,
+     "render": 0.016138,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 2
+    }
+   },
+   {
+    "op": "dispatch (work dispatch)",
+    "wall_s": 13.686794299999747,
+    "wall_min_s": 13.514120799998636,
+    "in_process_s": 13.513161,
+    "phases_s": {
+     "commit": 5.520637,
+     "compute": 0.612986,
+     "derive": 0.292638,
+     "git": 0.176369,
+     "lock": 0.000256,
+     "parse": 6.878026,
+     "recover": 0.014276,
+     "render": 0.008496,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 13,
+     "git:add": 1,
+     "git:ls-files": 1,
+     "git:rev-parse": 8,
+     "git:rm": 1,
+     "git:worktree": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "render": 2
+    }
+   },
+   {
+    "op": "review ingest",
+    "wall_s": 14.041657500001747,
+    "wall_min_s": 13.882512199998018,
+    "in_process_s": 13.86615,
+    "phases_s": {
+     "commit": 5.331573,
+     "compute": 0.95656,
+     "derive": 0.210956,
+     "git": 0.265189,
+     "lock": 0.000818,
+     "parse": 7.046871,
+     "recover": 0.019478,
+     "render": 0.010829,
+     "scan": 0.045218
+    },
+    "counts": {
+     "commit": 1,
+     "git": 24,
+     "git:add": 4,
+     "git:diff": 2,
+     "git:ls-files": 4,
+     "git:rev-parse": 10,
+     "git:rm": 2,
+     "git:write-tree": 2,
+     "parse": 1,
+     "parse_bytes": 21119608,
+     "parse_cached": 1,
+     "render": 3,
+     "scan": 3,
+     "scan_files": 9
+    }
+   }
+  ]
+ },
+ {
+  "point": {
+   "open": 5,
+   "completed": 3000
+  },
+  "shape": "hierarchy",
+  "project": {
+   "units": 3005,
+   "invocations": 12002,
+   "tokens": 12003,
+   "control_bytes": 63354641,
+   "build_s": 232.1
+  },
+  "footprint": {
+   "units": {
+    "open": 5,
+    "completed": 3000
+   },
+   "control_bytes": 63354641,
+   "open_bytes": {
+    "units": 7967,
+    "live_invocations": 3061,
+    "ended_invocations": 2767,
+    "active_credentials": 361,
+    "revoked_credentials": 398,
+    "total": 14554
+   },
+   "history_bytes": {
+    "units": 19087013,
+    "invocations": 39501016,
+    "credentials": 4751003,
+    "total": 63339032
+   },
+   "other_bytes": 1055,
+   "per_open_unit_bytes": 2911,
+   "per_completed_unit_bytes": 21113,
+   "terminal_record_bytes": 63342197,
+   "live_bytes": 12444
+  },
+  "micro": {
+   "yaml_load_python_s": 78.2188,
+   "yaml_load_libyaml_s": 24.9172,
+   "yaml_dump_python_s": 41.5587,
+   "yaml_dump_libyaml_s": 14.5424,
+   "schema_validate_s": 1.003,
+   "deepcopy_s": 1.0132,
+   "control_reparse_s": 28.7779
+  },
+  "ops": [
+   {
+    "op": "CLI floor (aew --version)",
+    "wall_s": 0.13289760000043316,
+    "wall_min_s": 0.13289760000043316,
+    "in_process_s": 0.036643,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 0.036643,
+     "derive": 0.0,
+     "git": 0.0,
+     "lock": 0.0,
+     "parse": 0.0,
+     "recover": 0.0,
+     "render": 0.0,
+     "scan": 0.0
+    },
+    "counts": {}
+   },
+   {
+    "op": "lead show",
+    "wall_s": 22.655275999997684,
+    "wall_min_s": 22.655275999997684,
+    "in_process_s": 22.348664,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.067491,
+     "derive": 0.0,
+     "git": 0.031453,
+     "lock": 0.000257,
+     "parse": 21.23227,
+     "recover": 0.011299,
+     "render": 0.005894,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 1
+    }
+   },
+   {
+    "op": "status",
+    "wall_s": 26.686406400000124,
+    "wall_min_s": 26.686406400000124,
+    "in_process_s": 26.215732,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 4.991986,
+     "derive": 0.0,
+     "git": 0.030372,
+     "lock": 0.000583,
+     "parse": 21.145299,
+     "recover": 0.015428,
+     "render": 0.011152,
+     "scan": 0.020912
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "work tree",
+    "wall_s": 22.429926900000282,
+    "wall_min_s": 22.429926900000282,
+    "in_process_s": 21.940703,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.0297,
+     "derive": 0.0,
+     "git": 0.032735,
+     "lock": 0.000255,
+     "parse": 20.861042,
+     "recover": 0.011382,
+     "render": 0.005589,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 1
+    }
+   },
+   {
+    "op": "resume",
+    "wall_s": 51.99037690000114,
+    "wall_min_s": 51.99037690000114,
+    "in_process_s": 51.500933,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 6.281248,
+     "derive": 0.0,
+     "git": 0.159535,
+     "lock": 0.000554,
+     "parse": 21.027431,
+     "recover": 0.015698,
+     "render": 0.011632,
+     "scan": 24.004835
+    },
+    "counts": {
+     "git": 14,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 7,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "parse_cached": 1,
+     "render": 2,
+     "scan": 3009,
+     "scan_files": 24009
+    }
+   },
+   {
+    "op": "gate show",
+    "wall_s": 22.80606319999788,
+    "wall_min_s": 22.80606319999788,
+    "in_process_s": 22.496495,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.088176,
+     "derive": 0.0,
+     "git": 0.144659,
+     "lock": 0.000254,
+     "parse": 21.222488,
+     "recover": 0.011271,
+     "render": 0.005899,
+     "scan": 0.023747
+    },
+    "counts": {
+     "git": 13,
+     "git:add": 2,
+     "git:diff": 1,
+     "git:ls-files": 2,
+     "git:rev-parse": 6,
+     "git:rm": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 1,
+     "scan": 2,
+     "scan_files": 6
+    }
+   },
+   {
+    "op": "context pack",
+    "wall_s": 22.560320100001263,
+    "wall_min_s": 22.560320100001263,
+    "in_process_s": 22.252401,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.08655,
+     "derive": 0.0,
+     "git": 0.044105,
+     "lock": 0.00025,
+     "parse": 21.08265,
+     "recover": 0.011406,
+     "render": 0.005852,
+     "scan": 0.021588
+    },
+    "counts": {
+     "git": 4,
+     "git:diff": 1,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 1,
+     "scan": 1,
+     "scan_files": 3
+    }
+   },
+   {
+    "op": "harness status",
+    "wall_s": 22.376780200000212,
+    "wall_min_s": 22.376780200000212,
+    "in_process_s": 22.059176,
+    "phases_s": {
+     "commit": 0.0,
+     "compute": 1.069382,
+     "derive": 0.0,
+     "git": 0.030091,
+     "lock": 0.00025,
+     "parse": 20.941627,
+     "recover": 0.011624,
+     "render": 0.006203,
+     "scan": 0.0
+    },
+    "counts": {
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 1
+    }
+   },
+   {
+    "op": "checkpoint (commit path)",
+    "wall_s": 35.461960000000545,
+    "wall_min_s": 35.461960000000545,
+    "in_process_s": 35.133313,
+    "phases_s": {
+     "commit": 12.506271,
+     "compute": 1.087741,
+     "derive": 0.0,
+     "git": 0.031004,
+     "lock": 0.00026,
+     "parse": 21.475277,
+     "recover": 0.011145,
+     "render": 0.021616,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 3,
+     "git:rev-parse": 3,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 2
+    }
+   },
+   {
+    "op": "dispatch (work dispatch)",
+    "wall_s": 37.36134900000252,
+    "wall_min_s": 37.36134900000252,
+    "in_process_s": 37.057722,
+    "phases_s": {
+     "commit": 12.261819,
+     "compute": 1.160338,
+     "derive": 2.186385,
+     "git": 0.171404,
+     "lock": 0.000241,
+     "parse": 21.252247,
+     "recover": 0.010988,
+     "render": 0.0143,
+     "scan": 0.0
+    },
+    "counts": {
+     "commit": 1,
+     "git": 13,
+     "git:add": 1,
+     "git:ls-files": 1,
+     "git:rev-parse": 8,
+     "git:rm": 1,
+     "git:worktree": 1,
+     "git:write-tree": 1,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "render": 2
+    }
+   },
+   {
+    "op": "review ingest",
+    "wall_s": 39.72261509999953,
+    "wall_min_s": 39.72261509999953,
+    "in_process_s": 39.417298,
+    "phases_s": {
+     "commit": 13.422545,
+     "compute": 2.295181,
+     "derive": 2.253398,
+     "git": 0.256487,
+     "lock": 0.000699,
+     "parse": 21.110712,
+     "recover": 0.016666,
+     "render": 0.020095,
+     "scan": 0.041515
+    },
+    "counts": {
+     "commit": 1,
+     "git": 24,
+     "git:add": 4,
+     "git:diff": 2,
+     "git:ls-files": 4,
+     "git:rev-parse": 10,
+     "git:rm": 2,
+     "git:write-tree": 2,
+     "parse": 1,
+     "parse_bytes": 63354641,
+     "parse_cached": 1,
+     "render": 3,
+     "scan": 3,
+     "scan_files": 9
+    }
+   }
+  ]
+ }
+]

@@ -84,6 +84,11 @@ def register(sub: argparse._SubParsersAction) -> None:
                                                           note=_read_text_arg(a.note_file),
                                                           next_action=a.next_action))
 
+    p = sub.add_parser("migrate", help="move a v1 project's control state to v2: finished work leaves the hot state "
+                                       "(Lead; ADR-0011)")
+    _add_lead(p)
+    p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), expect_rev=a.expect_rev))
+
     _register_lead(sub)
     _register_authority(sub)
 
@@ -95,9 +100,10 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
                                                               reason=a.reason))
 
-    from aew.cli import work_commands
+    from aew.cli import history_commands, work_commands
 
     work_commands.register(sub)
+    history_commands.register(sub)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:

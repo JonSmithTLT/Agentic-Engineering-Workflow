@@ -3,9 +3,12 @@
 These are the control-plane measurements taken before ADR-0011 is implemented. ADR-0011's completion criteria (implementation plan §7) are judged against them:
 
 - `baseline-windows.json` is the **reference**, from the Windows reference machine (§1);
-- `baseline-linux.json` is a **supplement**, from a Linux cloud container (§2).
+- `baseline-linux.json` is a **supplement**, from a Linux cloud container (§2);
+- `baseline-hierarchy-windows.json` is the **hierarchy-history series** on the reference machine (§3);
+- `coldwrite-p2a-windows.json` is the first **cold-write series**, of the P2a cold store (§4). It has no "before": the store is new.
+- `coldwrite-p2a-review-ab-windows.json` compares the code before and after P2a's independent review back to back, on the same machine state (§4).
 
-Both use the same sweep points.
+The first two use the same sweep points.
 
 ## 1. Windows reference
 
@@ -83,3 +86,94 @@ The JSON also holds `work tree`, `gate show`, `context pack`, `harness status`, 
 - **Same shape as the Windows baseline.** Each completed Ticket adds about 20.7 KB to the control file. Each open or planned unit adds about 1.03 KB, and that stays linear up to 1,000 open, with no knee.
 - **This container is about 2.4× slower at YAML parsing** than the Windows reference: a libyaml load of the 20/250 file takes 2.49 s here against 1.04 s there. Command latencies scale accordingly; `lead show` at 20/250 is 2.82 s here and 1.44 s there. Builds run about 1.8× faster here, because git and filesystem calls cost less on Linux. Compare against Windows numbers by slope.
 - **The active series** adds about 1 s of read latency from 20 to 1,000 open units at 250 completed (`lead show` goes from 2.82 s to 3.77 s, mostly parsing about 1 MB of open units). ADR-0011's A1 asks for this slope. Against the Windows absolute bounds it is not a problem, but it matters for H3's 0.25 s heartbeat budget, which investigation §7 also flags.
+
+## 3. Hierarchy-history series (Windows reference)
+
+- **When and where:** 2026-10-02, on the reference machine (§1).
+- **Code:** the baseline commit `0eb8ecf`, run with the P2a perf tool. One measurement-only change was applied to that checkout: P2a's `derive` profile phase, two `with profile.phase("derive")` wrappers around parent recomputation. It changes no behaviour.
+- **Shape:** one open Epic and one open Story. Every Ticket is below the Story: the frontier T-0002 to T-0004, and the completed T-0001 with its clones. "Open" counts the Epic and Story as well.
+- **Command:**
+
+  ```text
+  set PYTHONPATH=<checkout of 0eb8ecf>\src
+  python tools\perf\control_plane.py sweep --hierarchy --points 3:250,3:1000,3:3000 --reps 3 --work <empty dir> --json eval\adr-0011\perf\baseline-hierarchy-windows.json
+  ```
+
+### Hierarchy results
+
+| | 5 open, 250 completed | 5 open, 1,000 completed | 5 open, 3,000 completed |
+|---|---|---|---|
+| `control.yaml` | 5.29 MB | 21.12 MB | 63.35 MB |
+| live part | 12 KB | 12 KB | 12 KB |
+| H3 re-parse (`control_reparse_s`) | 1.12 s | 8.22 s | 28.78 s |
+| `lead show` | 1.39 s | 7.17 s | 22.66 s |
+| `status` | 1.64 s | 8.74 s | 26.69 s |
+| `work tree` | 1.36 s | 7.50 s | 22.43 s |
+| `resume` | 3.89 s | 19.78 s | 51.99 s |
+| `checkpoint` | 2.20 s | 12.74 s | 35.46 s |
+| `work dispatch` | 2.47 s | 13.69 s | 37.36 s |
+| `review ingest` | 2.61 s | 14.04 s | 39.72 s |
+| parent recomputation (`derive`, per commit) | 0.011 s | 0.29 s | 2.19 s |
+
+### Hierarchy reading
+
+- **Parent recomputation grows quadratically with completed descendants.** This is what the series is meant to catch (ADR-0011: "parent derivation or closeout logic that rescans completed descendants"). Going from 250 to 1,000 descendants (4×) costs 26× more; from 1,000 to 3,000 (3×) costs 7.5× more.
+  - **The cause:** `hierarchy.descendants()` calls `children()` once per descendant, and `children()` scans every unit.
+  - **The fix:** archival removes most of the cost, because it bounds the units scanned to the hot ones (R3). Building one children map per recomputation removes the D × N shape itself. P2b records that as part of its reader changes.
+- **Every command also pays the history cost seen in the flat series.** Hierarchy adds a little on top: `status` at 1,000 completed is 8.74 s here, against 7.28 s flat.
+- **H3 baseline.** A supervisor's re-parse of the changed state takes 28.8 s at 3,000 completed. H3 requires ≤ 0.25 s, and the absolute heartbeat bound is ≤ 2.5 s.
+
+## 4. Cold-write series (P2a, Windows reference)
+
+- **When and where:** 2026-10-02, on the reference machine (§1).
+- **Code:** the P2a cold store (`src/aew/history/`), with the independent review's fixes.
+- **Rerun after the review.** The series was measured again after the independent review of P2a. Two things changed:
+  - **Index catch-up** now covers exactly the three measured archivals, and the tool asserts that. The first series also took in the setup records that filled the tail: 25 to 256 entries per sample.
+  - **An entry lookup in a sealed segment** now proves the segment against the root. It folds the segment's entries, then hashes every later sealed segment and reads only its header.
+- **The machine was slower than for the first series.** Operations the review did not touch took 10–25% longer in every run. To separate the code from the machine, `coldwrite-p2a-review-ab-windows.json` runs the code before the review (A, `64c5a22`) and after it (B) back to back, alternating, at 3,000 and 10,000 requested records:
+  - Appends, sealing, lookup by id, full verification and rebuild were level between A and B.
+  - Entry lookup by sequence number took about 9 ms more in B (33 ms to 43 ms): the fold and the trace to the root.
+  - Incremental verification took about 5 ms more in B: its starting point is now in a just-sealed segment, which the lookup folds.
+  - Index catch-up took less in B, because A's figure still included the setup records.
+- **Command:**
+
+  ```text
+  python tools\perf\control_plane.py coldwrite --records 1000,3000,10000,30000 --reps 3 --work <empty dir> --json eval\adr-0011\perf\coldwrite-p2a-windows.json
+  ```
+
+- **How the stores are built.**
+  - Each store is built from small pre-written bundles (plan R8). Each measured archival writes a realistic bundle of about 20 KB through the normal transaction path.
+  - Entries carry realistic links: dependencies, decisions, evidence, the integration commit and the completion record.
+  - The root is kept in a file written in the same transaction, until schema v2 (P2b).
+- **How the appends are measured.** Before each repetition the tail is filled to 254 entries. Three appends are then measured:
+  1. into a nearly full tail;
+  2. the one that seals the segment;
+  3. the first into the new, empty tail.
+
+  That way every size is measured at the same tail occupancy. The record counts are therefore a little above the requested sizes.
+
+### Cold-write results
+
+| | 1,537 records | 3,585 records | 10,753 records | 30,721 records |
+|---|---|---|---|---|
+| one archival, tail at 254 | 95.5 ms | 107.8 ms | 102.6 ms | 97.4 ms |
+| one archival that seals | 122.5 ms | 136.7 ms | 132.0 ms | 133.4 ms |
+| one archival, empty tail | 52.0 ms | 58.4 ms | 49.2 ms | 61.0 ms |
+| incremental verification (3 entries) | 79.0 ms | 73.3 ms | 73.3 ms | 71.6 ms |
+| index catch-up (3 entries) | 117.4 ms | 127.4 ms | 112.7 ms | 132.1 ms |
+| lookup by id (index) | 0.8 ms | 1.2 ms | 1.1 ms | 1.1 ms |
+| entry by sequence number (files) | 37.0 ms | 40.2 ms | 45.2 ms | 53.0 ms |
+| full verification (linear by design) | 0.78 s | 1.86 s | 5.68 s | 16.41 s |
+| index rebuild (linear by design) | 0.27 s | 0.68 s | 2.10 s | 6.04 s |
+
+### Cold-write reading
+
+- **Appends, verification and index lookups do not depend on how much history there is.** From 1.5k to 30.7k records, every per-operation cost is flat within noise, index catch-up included.
+- **An entry lookup by sequence number grows slowly with history, by design.** It proves its segment against the root, so it hashes every later sealed segment and reads its header: 37 ms at 6 segments, 53 ms at 120. That is about 0.14 ms per later segment, and the operator chose this over a one-hop check (plan, P2a review fixes). A lookup in recent history costs the least.
+- **Fixed costs dominate index catch-up.** Catching the index up by three entries costs about 110–130 ms here. That is about what the first series measured for 25 to 256 entries, so reading the tail and checking where the index stands outweigh the inserts.
+- **What an archival costs depends on the tail.**
+  - A full tail is about 150 KB (254 entries), and rewriting it costs about 45 ms more than an empty tail.
+  - Sealing adds about 30 ms.
+  - These costs are bounded by the segment size (256, plan P2a) and do not grow with history. A smaller segment would lower the worst case, if P3 needs that.
+- **Full verification and index rebuild are linear.** That is by design: neither runs on a command's path. A full audit runs off the `resume` path (ADR-0011), and a rebuild runs only when `local/` is lost.
+

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from aew import profile
 from aew.engine import dependencies as deps
 from aew.engine import hierarchy as H
 from aew.engine import transitions
@@ -17,7 +18,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import InvocationsPort, RolesPort, WorkUnitsPort
+    from aew.engine.ports import ArchivePort, InvocationsPort, RolesPort, WorkUnitsPort
     from aew.engine.seams import GuardTable, StateHooks
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
@@ -30,19 +31,22 @@ class WorkUnits:
     """The work graph's core: unit lookup, the single state-change point (its hooks are explicit), guard resolution by
     unit kind, plan and dispatch bindings, and the readiness/derivation pass every Lead commit runs."""
 
-    def __init__(self, k: Kernel, *, hooks: StateHooks, guards: GuardTable) -> None:
+    def __init__(self, k: Kernel, *, hooks: StateHooks, guards: GuardTable, archive: ArchivePort) -> None:
         self.k = k
         self.hooks = hooks
         self.guards = guards
+        self.archive = archive
 
     def before_commit(self, ctx: TxnContext) -> None:
         """Keep BLOCKED/READY and the derived Story/Epic state consistent with the durable graph inside every
         Lead commit (WC §8: parent state is derived, never hand-maintained)."""
         at = utc_now()
-        derived = H.recompute_parents(ctx.state, at=at)
+        with profile.phase("derive"):
+            derived = H.recompute_parents(ctx.state, at=at)
         changed = recompute_readiness(ctx.state, repo_root=self.k.repo_root, base_commit=self.k.authoritative_commit(),
                                       plan_problem=self.plan_binding_problem)
-        derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
+        with profile.phase("derive"):
+            derived += [w for w in H.recompute_parents(ctx.state, at=at) if w not in derived]
         if changed:
             ctx.refs.extend(f"readiness:{wid}" for wid in changed)
         if derived:
@@ -82,12 +86,28 @@ class WorkUnits:
         """Why a started Ticket's attempt no longer matches its effective dependencies (M2 review B2), or None."""
         return deps.dispatch_binding_problem(state, work_id, repo_root=self.k.repo_root)
 
-    @staticmethod
-    def unit(state: dict[str, Any], work_id: str) -> dict[str, Any]:
+    def unit(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """A hot unit, to act on. Finished work is archived (ADR-0011) and never changes: asking to act on it is refused
+        as it was before archival, as an illegal transition of a finished unit."""
         unit = state["work"].get(work_id)
         if unit is None:
-            raise NotFound(f"no work unit {work_id}")
+            archived = self.archive.archived_unit(state, work_id)
+            if archived is None:
+                raise NotFound(f"no work unit {work_id}")
+            raise IllegalTransition(f"{work_id} is {archived['state']}; finished work is archived and does not change "
+                                    f"(`aew history show {work_id}`)", work_id=work_id, state=archived["state"],
+                                    archived=True)
         return unit
+
+    def view(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        """A unit to read: hot, or its archived record as it stands now (moves applied, R3)."""
+        unit = state["work"].get(work_id)
+        if unit is not None:
+            return unit
+        archived = self.archive.archived_unit(state, work_id)
+        if archived is None:
+            raise NotFound(f"no work unit {work_id}")
+        return archived
 
     def set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
                   state: dict[str, Any]) -> dict[str, str]:
@@ -141,7 +161,7 @@ class WorkUnits:
             )
 
     def check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
-        parent_unit = self.unit(state, parent)
+        parent_unit = self.view(state, parent)  # a closed parent is archived: refused below as before
         if parent_unit["kind"] not in PARENT_KINDS[kind]:
             raise UsageError(f"a {kind} cannot have a {parent_unit['kind']} parent")
         if parent_unit["state"] in H.TERMINAL:
@@ -153,7 +173,13 @@ class WorkUnits:
         edges: list[dict[str, str]] = []
         for spec in specs:
             dep_id, _, dep_kind = spec.partition(":")
-            up = self.unit(state, dep_id)
+            up = H.upstream(state, dep_id)
+            if up is None:  # an edge to an archived unit: keep the facts it needs hot from now on (R4)
+                facts = self.archive.facts_from_cold(state, dep_id)
+                if facts is None:
+                    raise NotFound(f"no work unit {dep_id}")
+                state.setdefault("archived_refs", {})[dep_id] = {**facts, "refs": 0}
+                up = H.upstream(state, dep_id)
             if H.is_parent(up):
                 dep_kind = dep_kind or "mutating"  # conservative: descendants' integrated outputs must be in the base
             else:
@@ -211,6 +237,10 @@ class WorkUnits:
                         counts[child["state"]] = counts.get(child["state"], 0) + 1
                     else:
                         stack.append(cid)
+        archived = H.archived_summary(state["work"][work_id])  # every finished Ticket archived below it (R3)
+        for st, n in (("DONE", archived["done_tickets_subtree"]), ("CANCELLED", archived["cancelled_tickets_subtree"])):
+            if n:
+                counts[st] = counts.get(st, 0) + n
         total = sum(counts.values())
         done = counts.get("DONE", 0) + counts.get("CANCELLED", 0)
         derived = "EMPTY" if total == 0 else ("CHILDREN_COMPLETE" if done == total else "IN_PROGRESS")
@@ -245,11 +275,13 @@ class WorkUnits:
 class WorkCommands:
     """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
+                 archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
         self.invocations = invocations
+        self.archive = archive
 
     def work_create(
         self,
@@ -474,16 +506,23 @@ class WorkCommands:
                 "revision": ctx.session.committed_revision}
 
     def work_show(self, work_id: str) -> dict[str, Any]:
+        """One unit, hot or archived (its record as it stands now, R7), with its children: hot ones, and archived ones
+        found through the index."""
         state = self.k.store.read()
-        unit = self.units.unit(state, work_id)
+        unit = self.units.view(state, work_id)
         record_path = self.k.aew_root / unit["record"]
+        children = sorted({k for k, v in state["work"].items() if v.get("parent") == work_id}
+                          | set(self.archive.archived_child_ids(state, work_id)))
         return {"id": work_id, "revision": state["revision"], "control": unit,
                 "record": record_path.read_text(encoding="utf-8") if record_path.exists() else None,
                 "allowed_transitions": transitions.allowed_from(unit["state"]),
-                "children": sorted(k for k, v in state["work"].items() if v.get("parent") == work_id),
-                "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" else None}
+                "children": children,
+                "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" and work_id in state["work"]
+                else None}
 
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
+        """The hot units, and finished ones: the most recent (bounded) when unfiltered, and every archived unit in a
+        finished state when that state is asked for (an explicit history query, proportional to its answer; R7)."""
         state = self.k.store.read()
         items = [
             {"id": wid, "kind": u["kind"], "state": u["state"], "title": u["title"], "parent": u.get("parent"),
@@ -491,4 +530,13 @@ class WorkCommands:
             for wid, u in sorted(state["work"].items())
             if state_filter is None or u["state"] == state_filter
         ]
+        if state_filter in transitions.TERMINAL:
+            hot = {i["id"] for i in items}
+            items += [{"id": e["id"], "kind": e.get("unit_kind"), "state": e["state"], "title": e.get("title"),
+                       "parent": e.get("parent"), "archived": True}
+                      for e in self.archive.archived_units(state, state_filter) if e["id"] not in hot]
+            items.sort(key=lambda i: i["id"])
+        elif state_filter is None:
+            items += [{**r, "archived": True} for r in state.get("recent", []) if r["id"] not in state["work"]]
+            items.sort(key=lambda i: i["id"])
         return {"revision": state["revision"], "items": items}

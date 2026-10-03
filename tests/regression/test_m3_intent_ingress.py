@@ -124,8 +124,10 @@ def test_reasons_and_notes_through_fields_and_stdin_are_stored_byte_for_byte(tmp
     res = p.aew("checkpoint", "--token", p.token, "--expect-rev", str(p.rev()), "--fields", "-",
                 input=dump({"next": CORPUS[1]}))
     assert res.returncode == 0, res.stderr
-    state = Engine.discover(p.root).store.read()
-    assert state["work"][wid]["history"][-1]["reason"] == reason
+    engine = Engine.discover(p.root)
+    state = engine.store.read()
+    # The cancelled Ticket is archived (ADR-0011): its record is read through the engine, not the raw hot layout.
+    assert engine.work_show(wid)["control"]["history"][-1]["reason"] == reason
     assert state["next_action"] == CORPUS[1]
 
 

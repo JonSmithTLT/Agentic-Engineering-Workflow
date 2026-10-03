@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "aew/control/v1",
+  "$id": "aew/control/v2",
   "title": "AEW authoritative control state",
-  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3).",
+  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3). v2 (ADR-0011) adds the hot root of cold history and the bounded facts kept hot about archived work; a v1 document is still read.",
   "type": "object",
   "required": [
     "schema",
@@ -20,7 +20,7 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "aew/control/v1"
+      "enum": ["aew/control/v1", "aew/control/v2"]
     },
     "project_id": {
       "$ref": "#/$defs/slug"
@@ -339,9 +339,137 @@
           ]
         }
       }
+    },
+    "cold": {
+      "description": "ADR-0011: the root that pins the cold history (implementation plan R1).",
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": {"$ref": "#/$defs/history_root"},
+        "archived": {
+          "description": "How many units were archived, by finished state (plan R7: views show counts).",
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "verified": {"$ref": "#/$defs/verified_root"},
+        "last_full": {"$ref": "#/$defs/verified_root"},
+        "first_at": {"description": "When the first history entry was recorded: how old a never fully verified history is (invariant 11), kept here so that status never reads the history.", "type": "string"},
+        "unverified_since": {"description": "The time of the oldest entry the verified root does not cover; absent when it covers everything (invariant 11).", "type": "string"}
+      }
+    },
+    "recent": {
+      "description": "The most recently archived units, newest last (bounded): what views show besides counts.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "state", "title", "at"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "title": {"type": "string"},
+          "at": {"type": "string"},
+          "parent": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "archived_refs": {
+      "description": "Facts about archived units that hot dependency edges still need (plan R4), counted by those edges.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "state", "refs", "bundle_sha256"],
+        "properties": {
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "mutating": {"type": ["boolean", "null"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "refs": {"type": "integer", "minimum": 0},
+          "bundle_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "retained_workspaces": {
+      "description": "Workspaces of archived Tickets retained after integration, until their directory is gone (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["work_id", "id", "path", "status"],
+        "properties": {
+          "work_id": {"type": "string"},
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
+    },
+    "retired_observations": {
+      "description": "Observation worktrees of archived invocations still on disk: listed until each is removed, and retried at every Lead commit (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invocation", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "invocation": {"type": "string"},
+          "path": {"type": "string"}
+        }
+      }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v1"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["cold"]},
+            {"required": ["recent"]},
+            {"required": ["archived_refs"]},
+            {"required": ["retained_workspaces"]},
+            {"required": ["retired_observations"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v2"}}},
+      "then": {"required": ["cold"]}
+    }
+  ],
   "$defs": {
+    "history_root": {
+      "type": "object",
+      "required": ["count", "head_h", "sealed_head"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "head_h": {"$ref": "#/$defs/sha256"},
+        "sealed_head": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["seq", "sha256"],
+              "additionalProperties": false,
+              "properties": {"seq": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+            }
+          ]
+        }
+      }
+    },
+    "verified_root": {
+      "description": "A root the history audit verified (plan R2): the chain state through the audit's own entry, when, and by which audit record.",
+      "type": "object",
+      "required": ["count", "h", "at", "audit"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "h": {"$ref": "#/$defs/sha256"},
+        "at": {"type": "string"},
+        "audit": {"type": "string"}
+      }
+    },
     "slug": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]*$"
@@ -363,6 +491,32 @@
         "depends_on"
       ],
       "properties": {
+        "legacy_digest": {
+          "description": "An open parent's children digest when its project migrated to v2 (ADR-0011 plan R3): evidence bound to the v1 digest stays current while the v2 digest is still v2_at_migration.",
+          "type": "object",
+          "required": ["v1", "v2_at_migration"],
+          "additionalProperties": false,
+          "properties": {"v1": {"$ref": "#/$defs/sha256"}, "v2_at_migration": {"$ref": "#/$defs/sha256"}}
+        },
+        "history_refs": {
+          "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "entry_seq", "sha256", "source", "reason", "loaded_at", "generation"],
+            "properties": {
+              "id": {"type": "string"},
+              "kind": {"enum": ["unit", "annotation", "audit", "lead", "evidence"]},
+              "held_by": {"description": "For an evidence record: the archived unit whose bundle holds it (entry_seq is that unit's entry, sha256 the evidence record's own hash).", "type": "string"},
+              "entry_seq": {"type": "integer", "minimum": 1},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "source": {"enum": ["engine", "operator", "model", "external"]},
+              "reason": {"type": "string", "minLength": 1},
+              "loaded_at": {"type": "string"},
+              "generation": {"type": "integer"}
+            }
+          }
+        },
         "kind": {
           "enum": [
             "ticket",

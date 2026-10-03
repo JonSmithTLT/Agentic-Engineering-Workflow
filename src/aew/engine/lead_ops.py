@@ -27,6 +27,7 @@ from aew.util import render_frontmatter, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
+    from aew.engine.ports import ArchivePort
 
 ACTIVE_INVOCATION_STATES = {"active"}
 # The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
@@ -45,8 +46,9 @@ PHASE_DRIVERS = {
 class Lead:
     """Lead authority lifecycle: acquire, handoff, takeover, release, handoff records."""
 
-    def __init__(self, k: Kernel) -> None:
+    def __init__(self, k: Kernel, *, archive: ArchivePort) -> None:
         self.k = k
+        self.archive = archive
 
     def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
         lead = state["lead"]
@@ -141,6 +143,7 @@ class Lead:
             token = self._new_lead(s.state, session_label)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
+            self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.acquire", actor=actor,
                                       summary=f"Lead authority acquired (generation {s.state['lead']['generation']})"),
                            expect_rev=expect_rev)
@@ -209,6 +212,7 @@ class Lead:
                 reason=f"handoff record {handoff['record']}",
                 evidence_refs=[handoff["record"]],
             )
+            self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.handoff.accept", actor=actor,
                                       summary=f"Lead authority transferred by handoff ({decision})",
                                       refs=ctx.refs), expect_rev=expect_rev)
@@ -256,6 +260,7 @@ class Lead:
                 reason=reason,
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
+            self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.takeover", actor=actor, reason=reason,
                                       summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs),
                            expect_rev=snapshot["revision"])

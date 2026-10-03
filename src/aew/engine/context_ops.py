@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from aew import roles
+from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
-from aew.errors import NotFound
+from aew.errors import IntegrityError, NotFound
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
@@ -15,7 +16,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import WorkUnitsPort
+    from aew.engine.ports import ArchivePort, WorkUnitsPort
 
 AEW_EXCLUDE = ":(exclude).aew"
 
@@ -23,9 +24,10 @@ AEW_EXCLUDE = ":(exclude).aew"
 class ContextPacks:
     """Context packs for invocations (WC §15.4; KC §15). Packs are rebuildable local data."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
+        self.archive = archive
 
     def _hierarchy_context(self, state: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         from aew.engine import gates as G
@@ -85,11 +87,13 @@ class ContextPacks:
             baseline = unit.get("baseline_commit")
             commit = (inv.get("observation") or {}).get("commit")
             children = []
-            for cid in H.children(state, wid):
-                c = state["work"][cid]
+            kids = sorted([(cid, state["work"][cid]) for cid in H.children(state, wid)]
+                          + self.archive.archived_children(state, wid))  # archived children, for this review only
+            for cid, c in kids:
                 entry = {"id": cid, "kind": c["kind"], "title": c["title"], "state": c["state"],
                          "completion_record": c.get("completion_record"),
-                         "completion_sha256": self.units.completion_sha(state, cid)}
+                         "completion_sha256": self.units.completion_sha(state, cid) if cid in state["work"]
+                         else c.get("completion_sha256")}
                 rec = (c.get("execution") or {}).get("record")
                 if rec and c["state"] == "DONE":
                     entry["record"] = rec["id"]
@@ -109,6 +113,33 @@ class ContextPacks:
                                                        AEW_EXCLUDE, cwd=self.k.repo_root)
         return extras
 
+    def _history_refs(self, state: dict[str, Any], inv: dict[str, Any]) -> list[dict[str, Any]]:
+        """The historical records the Lead loaded for this invocation's unit before it was dispatched (pinned on the
+        invocation), each read and verified against its pinned hash (ADR-0011 invariant 14)."""
+        out = []
+        for ref in inv.get("history_refs") or []:
+            if ref.get("held_by"):  # an evidence record inside an archived unit's bundle, pinned by its own hash
+                entries = [e for e in self.archive.index(state).by_id(ref["held_by"]) if e["seq"] == ref["entry_seq"]]
+                if not entries:
+                    raise IntegrityError(f"loaded historical record {ref['id']}: its holder {ref['held_by']} is not "
+                                         "in the history")
+                ev_ref, meta, body = held_evidence(self.k.aew_root, self.archive.record(entries[-1]), ref["id"])
+                if ev_ref["sha256"] != ref["sha256"]:
+                    raise IntegrityError(f"loaded historical record {ref['id']}@{ref['sha256'][:12]} is not the one "
+                                         f"{ref['held_by']} holds")
+                out.append({**ref, "content": evidence_reference(meta, body)})
+                continue
+            entries = [e for e in self.archive.index(state).by_id(ref["id"]) if e["sha256"] == ref["sha256"]]
+            if not entries:
+                raise IntegrityError(f"loaded historical record {ref['id']}@{ref['sha256'][:12]} is not in the history")
+            out.append({**ref, "content": reference_summary(entries[-1], self.archive.record(entries[-1]))})
+        return out
+
+    @staticmethod
+    def _history_sources(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"name": f"history:{r['id']}", "path": None, "sha256": r["sha256"], "trust": r["source"],
+                 "reference": True} for r in refs]
+
     def pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         inv = state["invocations"][inv_id]
         if inv.get("scope") in {"observation", "parent"}:
@@ -127,6 +158,7 @@ class ContextPacks:
         snapshot = inv["snapshot"]
         cutoff = inv.get("evidence_seq_cutoff", 0)
         evidence = [e for e in E.scan(self.k.aew_root, wid)[0] if e.get("seq", 0) <= cutoff]
+        history = self._history_refs(state, inv)
         fp = snapshot["relevant_inputs_fingerprint"]
         tree = fp.split(":", 1)[1]
         base = (unit.get("integration") or {}).get("base") if inv.get("scope") == "integration" \
@@ -164,6 +196,7 @@ class ContextPacks:
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             failure_evidence=failure,
             card=(card or {}).get("content"),
+            history=history,
             **{k: v for k, v in self._m2_pack_extras(state, inv, unit).items() if k in {"hierarchy", "inherited",
                                                                                         "inputs"}},
         )
@@ -178,6 +211,7 @@ class ContextPacks:
             {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
             {"name": "snapshot", "path": None, "sha256": None, "base": base, "tree": fp},
             *[{"name": f"evidence:{e['id']}", "path": e["_path"], "sha256": e["_sha256"]} for e in on_snapshot],
+            *self._history_sources(history),
         ]
         return inputs, sources
 
@@ -196,6 +230,7 @@ class ContextPacks:
         guard_path = self.k.aew_root / self.k.manifest["policy"]["guardrails"]
         checks_path = self.k.aew_root / self.k.manifest["policy"]["checks"]
         extras = self._m2_pack_extras(state, inv, unit)
+        history = self._history_refs(state, inv)
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=roles.archetype(role), work_id=wid, title=unit["title"],
             scope=inv.get("scope"), specialty=inv.get("specialty"), workspace=inv["workspace"],
@@ -203,7 +238,7 @@ class ContextPacks:
             guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.k.policy("checks")["checks"],
             authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
-            card=(card or {}).get("content"), **extras)
+            card=(card or {}).get("content"), history=history, **extras)
         sources = [
             {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
@@ -224,6 +259,7 @@ class ContextPacks:
               if inv.get("subject") else []),
             *[{"name": f"child:{c['id']}", "path": c.get("completion_record"), "sha256": c.get("completion_sha256")}
               for c in extras.get("children", [])],
+            *self._history_sources(history),
         ]
         return inputs, sources
 
@@ -233,6 +269,9 @@ class ContextPacks:
     def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
         inv = ctx.state["invocations"][inv_id]
         inv["evidence_seq_cutoff"] = E.next_seq(self.k.aew_root, inv["work_unit"]) - 1
+        refs = (ctx.state["work"].get(inv["work_unit"]) or {}).get("history_refs")
+        if refs:  # pinned per invocation: a later load changes later packs only, and a regenerated pack matches
+            inv["history_refs"] = [dict(r) for r in refs]
         inputs, sources = self.pack_inputs(ctx.state, inv_id)
         text = ctxmod.render(inputs)
         rel = self.pack_rel(inv_id)
@@ -242,6 +281,8 @@ class ContextPacks:
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
         state = self.k.store.read()
+        if inv_id not in state["invocations"]:  # a completed invocation of archived work: its pack, regenerated (R7)
+            state = self.archive.rehydrate_invocation(state, inv_id) or state
         inv = state["invocations"].get(inv_id)
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")

@@ -284,17 +284,132 @@ Each PR keeps the M1–M3 tests passing.
 - **Tests:** unit tests and crash-matrix entries, including the benign unreachable bundle left by a rollback.
 - **`tools/perf/control_plane.py`:** a hierarchy-history series, the active series to 1,000 open units, and a `coldwrite` subcommand (1k, 3k, 10k and 30k records). Their baselines are run against the baseline commit.
 
+**P2a as built** (2026-10-02). Everything above, with these implementation choices:
+- **Where the root lives.** The library is pure over a root, `{count, head_h, sealed_head}`, that the caller keeps. P2b keeps it in `control.yaml` under the `cold` key that schema v2 adds. Until then, the tests and the perf tool keep it in a file written in the same transaction, which the redo record makes exactly as atomic.
+- **Fault points.**
+  - Each history write is tagged with its fault point through a new per-write tag on `Session.write`: `history.after_bundle`, `history.mid_seal` and `history.after_tail`.
+  - The pre-write helper hits `history.after_prewrite`. Migration (P2d) uses that helper, so it is the point `migrate.after_prewrite` named.
+  - `history.audit_before_record` arrives in P2c, with the code that records an audit.
+- **R8 in the store.** `Session.prewritten(path, sha256)`:
+  - the commit verifies each declared file;
+  - the redo record lists them by path and hash;
+  - `last_transition.txn` carries only `{count, sha256}` of that list.
+- **Validation.**
+  - An entry is validated against its schema when it is created.
+  - On read, a file is checked only for its envelope. The hash chain binds the stored entries to the validated ones, because an altered entry breaks the chain.
+- **New measurements.**
+  - `sweep --hierarchy` puts every Ticket below one open Story and Epic.
+  - A `derive` profile phase isolates parent recomputation.
+  - `micro.control_reparse_s` is the H3 re-parse.
+  - `coldwrite` holds the tail at a fixed occupancy, so that sizes compare.
+  - `tools/perf/rocky8-gate.sh` is the exact Rocky 8 script for §7.2.
+  - The active series to 1,000 open units was already a `sweep` point.
+- **Measured** (`eval/adr-0011/perf/README.md` §3–§4):
+  - the hierarchy-history baseline at `0eb8ecf`;
+  - the first cold-write series. Appends, incremental verification, index catch-up and lookup are flat from 1.5k to 30.7k records.
+- **Independent review fixes** (2026-10-02, in PR #17).
+  - **The tail proves where it starts.** It must start at the newest sealed segment's end, or at the genesis for the first tail. Before this, a tail that dropped its committed prefix but still ended at the root was accepted, and the next append committed over it. Once the count is fixed, ending at the root pins the starting hash too.
+  - **A sealed lookup proves the segment it reads against the root.**
+    - The segment must start at its position, and its entries must continue the chain.
+    - Its file hash must be linked to the root through every later sealed segment: each one's `prev` holds the hash of the one before, and the newest one's hash is the root's `sealed_head`.
+    - The later segments are only hashed, and only their headers are parsed, at a fraction of a millisecond each. Any change to any of those files, including a coordinated rewrite of several, is therefore a contradiction when it is accessed. The operator chose this over checking only the next segment (2026-10-02). It is cheaper, because it parses one whole segment instead of two, and it is complete.
+  - **Verification reports what it reads, never raises.** Bytes that are not UTF-8, and files that cannot be read, are reported as problems.
+  - **The index tells busy from damaged.** A lock held past the timeout is a `LockTimeout`, and the file is kept. Metadata that is missing or malformed means a rebuild.
+  - **`coldwrite` times only the three measured archivals.** Before this, the timed index catch-up also took in the setup records. The series was rerun (README §4).
+
 **P2b: archival through the `TxnFinalizer`** (R3–R7).
 - **Bundle contents:** the unit, its ended invocations and their revoked tokens. Lead tokens are archived per generation at takeover, handoff accept and release.
+  - **Carry-forward from the E5 review (2026-10-02).** Lead acquire, handoff accept and takeover commit through their own sessions in `lead_ops.py`, not through `lead_txn`, so the `TxnFinalizer` does not run for them. The same holds for harness stop and kill requests. P2b either archives a Lead generation explicitly in those commits or routes them through the finalizers.
 - **Hot structures:** `archived_refs`, the frontier, the counters and the recent ring.
 - **Schema v2.**
 - **Readers:** `hierarchy.py` and `dependencies.py` read through the summaries and `upstream()`. `contradictions`, the `resume` evidence sweep and CURRENT.md become hot-only.
+  - **Found by the P2a hierarchy baseline (2026-10-02).** Parent recomputation is quadratic in a parent's descendants: 0.011 s at 250, 0.29 s at 1,000 and 2.2 s at 3,000 completed, per commit (`eval/adr-0011/perf/README.md` §3). `descendants()` calls `children()` once per descendant, and `children()` scans every unit. P2b builds one children map per recomputation as well as archiving.
 - **The cold fallbacks** (R7).
+
+**P2b as built** (2026-10-02). Everything above, with these implementation choices:
+- **Schema v2.** `aew init` creates v2. Its top-level keys are:
+  - `cold`: `root`, plus `archived` counts by state;
+  - `recent`: the last 20 archived units;
+  - `archived_refs`;
+  - `retained_workspaces`;
+  - `retired_observations` (added by the review fixes below).
+
+  A v1 project keeps working unchanged, without archival. The refusal of v1 mutations arrives in P2d together with `aew migrate`, so that no project is refused before the command that clears the refusal exists.
+- **Archival (R6).** The `Archive` collaborator is the `TxnFinalizer`. At the commit that finishes a unit, it archives every DONE or CANCELLED unit, deepest first, with its invocations and credentials.
+  - The finalizer hands the store a projection (`ctx.commit_state`), so the operation's own code keeps its working state.
+  - Retired observation worktrees of archived invocations are removed after the commit (`ctx.after_commit`).
+  - The finalizer does not recompute parents again. The operations' own `before_commit` already did, and oracle rule 22 checks that derivation from hot state and summaries equals derivation from the full state.
+- **R3.**
+  - The summary is `{done, cancelled, done_tickets_subtree, cancelled_tickets_subtree, acc}`. The fourth counter serves `rollup`.
+  - The v2 children digest is computed for every v2 project.
+  - `children_map` is built once per recomputation. It removes the quadratic recomputation the P2a baseline found.
+  - Moving an archived unit writes a `moved_to` annotation and moves its summary entries. A hot parent that moves carries its archived subtree counts and frontier with it.
+- **R4.** `archived_refs` is recomputed from the hot edges at each commit, with each entry counting the edges that name it. An edge to work archived earlier fills it from the index when the edge is parsed.
+- **R5.** An `integration_frontier` is kept on every ancestor of an archived integrated Ticket.
+- **R7.**
+  - **Lookups.** `work show`, `status <id>`, `invoke show`, `context pack`, `gate show`, `harness status <inv>` and `harness wait` read archived work by rehydrating that one unit into a copy of the state. `work list --state DONE|CANCELLED` is an explicit history query.
+  - **Acting on finished work.** It is still refused as `ILLEGAL_TRANSITION`.
+  - **Credentials.** An archived credential is `STALE_AUTHORITY` in the engine, the Lead broker and a run's supervisor.
+  - **Views.** The unfiltered `work tree`, `work list`, `resume` and `harness status` add the `recent` items, which are bounded. Views show counts and name `aew history list`.
+- **Lead credentials (the E5 carry-forward).** When the seat changes, ended Lead and handoff-offer credentials are archived as `history/lead/<n>.yaml`, with a manifest entry of kind `lead`. The finalizer does it for `lead_txn` commits; acquire, handoff accept and takeover do it explicitly.
+- **Manifest entries** carry `unit_kind` and `title`, so history listings need no bundle reads.
+- **Test-side changes** (invariant 8: raw layout only).
+  - The oracle rebuilds the full state from hot state and archive, runs every rule on it, and adds rules 19–23.
+  - The walks' `unit()` helpers and one intent-ingress assertion read archived units through the engine.
+  - The oracle-vacuity test corrupts the full state.
+  - The perf template builds the M3 (v1) layout. P2d's `migrate` turns it into v2 for the P3 series.
+- **Independent review fixes** (2026-10-02, in PR #18).
+  - **A read of archived work restores its archived ancestors.** Rehydration brings back the unit's archived Story and Epic as well, bounded by depth, never the whole history. Before this, `context pack` and `gate show` for a Ticket whose Story had closed failed on the missing ancestor.
+  - **Removing an archived invocation's observation worktree is a persisted obligation.**
+    - `retired_observations` (v2) lists each such worktree until its directory is gone.
+    - Every Lead commit retries the removal, and so does the non-mutating operations' pruning. `status` reports any that are left as contradictions.
+    - Before this, a crash between the commit and the removal, or a failed removal, lost the worktree for good.
+  - **Views follow moves of archived work.** A move updates the unit's `recent` entry, which is hot state, and `work list --state DONE|CANCELLED` applies `moved_to` annotations from the index (`HistoryIndex.moves`). Bundles and their manifest entries are never rewritten.
+  - **An index that is ahead stops at the synced root in SQL.** Every query, `links` and `paths` included, binds `seq <= upto` before ordering and limits. Before this, a limited listing could return nothing, and links and paths leaked later entries.
 
 **P2c: the history surface and the R2 audit.**
 - The commands in §3, and audit status in `status` (§4).
 - `history load` references in packs.
 - The Epic-closeout audit check.
+
+**P2c as built** (2026-10-02). Everything above, with these implementation choices:
+- **Where it lives.** `engine/history_ops.py` holds a new collaborator, `HistoryCommands`. `Hierarchy` uses it for the Epic closeout check, and `Resume` for audit status. The composition test lists it as `_history`. Archive's own `History` store attribute is renamed `cold`, so that the port generator does not mistake it for the collaborator.
+- **`history show <id>`.**
+  - It reads the exact record a manifest entry pins, verified against its hash when read (`Archive.record`).
+  - It also finds a record held inside an archived unit's bundle, through the link the unit recorded: an invocation, a credential, or an evidence record (the evidence is verified against the hash its unit recorded at ingest). Lead records hold credentials as well.
+  - Every answer carries the trust label: its source, and that it is reference only. Evidence written by a model is labelled `model`; a check result, `engine`.
+  - Credential verifiers are redacted.
+  - An archived unit also shows its current parent (moves applied) and its annotations.
+- **`history list`:** by kind (`unit`, `annotation`, `audit`, `lead`) and a UTC date range, newest first. The default limit is 50 and the maximum 1,000, and the answer says whether it was truncated.
+- **`history links <id> --depth 1..3`:** the recorded links, both directions, at most 500 edges. Each node is marked `history`, `hot` or `other` (a commit, a completion path).
+- **`history load <id> --into <unit>`** (Lead) records a reference on the hot unit (`history_refs`: id, kind, entry, hash, source, reason, generation).
+  - Each dispatch pins the unit's references onto its invocation. So a later load changes later packs only, and a regenerated pack still matches the one recorded.
+  - The pack gets a "Historical reference context" section, which says the records are not current evidence and carry no instruction authority. An archived unit appears as a summary of its outcome and provenance, not its whole bundle. Each reference is a pack source `history:<id>` with its trust label and `reference: true` (invariant 14).
+- **`history audit [--full]`:**
+  - Without `--expect-rev`, it is advisory: nothing is recorded, and problems exit with `INTEGRITY_ERROR`. CI runs it this way.
+  - With `--expect-rev`, it is a Lead mutation that records the audit.
+  - **R2 as built:**
+    1. Under the lock (a session that is not committed), it copies the root and the tail's bytes, and checks the credential and the revision.
+    2. It verifies outside the lock, against those bytes (`tail_raw` through `History.verify`).
+    3. It re-takes the lock through `lead_txn` at the then-current revision. If the root moved, it verifies the new entries incrementally and tries again, at most five times.
+    4. The audit record (`history/audits/<n>.yaml`, kind `audit`, id `AU-<n>`) is appended through the new `ctx.entries`. The finalizer appends those first, in the transaction's single append, so the verified root is known before the commit, and the audit's link to the audited root is checked locally.
+  - A passing audit sets `cold.verified` (`{count, h, at, audit}`) to the root this commit makes current. A full one also sets `cold.last_full`.
+  - A failing audit records `fail` and never advances the verified root. Each damaged unit record gets an `audit_finding` annotation.
+  - **Fault point:** `history.audit_before_record`. A pause point, `history.audit_after_verify`, lets a test land a commit inside the R2 window.
+- **Audit status.** `status` reports `history_audit`: the current root, the verified root, the unverified entries with the age of the oldest, the last full verification, the policy and what is over it.
+  - The thresholds come from the gates policy's optional `history_audit` block. The built-in defaults are 1,000 entries, 168 hours and 30 days.
+  - A history that was never fully verified is due once its first entry is older than the full-verification threshold, not as soon as it starts.
+  - Anything over policy becomes one next action, never an alarm (invariant 11).
+- **Epic closeout** is refused with `GATE_UNSATISFIED` while entries are unverified, and the Epic's next action names the audit.
+  - The test helper `close_parent` records an audit before it closes an Epic. That is the one edit to shared test code: invariant 8's deliberately changed path. AT-8/AT-13 and the archival tests close Epics through it.
+- **The walks.** Both seeded walks now inject `history.after_bundle` and `history.after_tail`, which fire on the commits that archive (§8). P2b had left them out.
+- **Independent review fixes** (2026-10-02, in PR #20).
+  - **An audit covers every record reachable from the root**, not only each entry's own record. An archived unit's bundle pins records by path and hash: its record, its plans, its ingested evidence and its completion record (`archive_ops.pinned_records`). Context packs are not: they live in the disposable `local/` and are checked by regeneration. Incremental and full verification check each against its pin (`History.verify(..., pinned=)`), outside the lock, and attribute damage to the unit, which gets the `audit_finding`. Before this, a full audit passed with an archived unit's evidence changed, and so released an Epic closeout.
+  - **A pack shows a loaded record redacted**, as `history show` does: a loaded Lead record's credential verifiers no longer reach the pack.
+  - **`history load` takes an archived evidence record by its id**, as `history show` finds it: pinned by the hash its unit recorded at ingest (`history_refs` kind `evidence`, `held_by` its unit), labelled with who wrote it (`model`, or `engine` for a check result), and shown in the pack as the exact record. An archived invocation or credential is refused with what to load instead. The pack's fence is longer than any run of backticks in the record.
+  - **Audit status never reads the history.** `cold.first_at` and `cold.unverified_since` are kept at each append, in the same transaction (`archive_ops.advance_cold`), so `status` and `resume` take the dates from the hot state. A v2 state from before the fix, which lacks them, reads them from the index until an audit makes them unnecessary: its next audit for `unverified_since`, its first full one for `first_at`.
+  - **`history reindex`** turns an index another process holds open into `LOCK_TIMEOUT`, not a traceback.
+  - **No storage paths on the surface:** `history show` drops the entries' `path` and the `completion` relation (its values are paths), `history links` skips it, and `history reindex` no longer prints the index's location.
 
 **P2d: migration and the oracle.**
 - **`aew migrate`** (R8): it refuses while any run is live, and it is idempotent. It is crash-tested at every new fault point on a project built by the M3 code (the perf tool's template).
@@ -302,9 +417,34 @@ Each PR keeps the M1–M3 tests passing.
 - **Two test edits**, the only ones to existing test files; invariant 8 allows them because they inspect the raw layout:
   - the AT-15 `tokens()` helper reads hot, then cold;
   - the footprint test splits hot and cold.
+
+  *Amended by the operator, 2026-10-02 (see "P2d as built"):* the edits P2d actually needs are two others, and this constraint now names those instead.
 - **A timing-free H1 regression** joins the scale tests.
 - **The fingerprint** gets `:(exclude).aew` (`snapshot/fingerprint.py:73`), as its own measured commit (investigation §8.1).
 - **Optional:** dedupe role-card content into `cards/<sha256>.yaml`, if A1 needs it.
+
+**P2d as built** (2026-10-02). Everything above, with these implementation choices:
+- **`aew migrate --expect-rev N`** (Lead; `engine/migrate_ops.py`, a new collaborator, `Migration`).
+  - It runs the archival finalizer once over the whole v1 state, in one transaction: every DONE or CANCELLED unit leaves the hot state, deepest first, with its invocations and credentials, and the summaries, `archived_refs`, frontiers and `recent` follow exactly as if each unit had been archived when it finished. Ended Lead credentials go too.
+  - **R8:** a new `TxnContext.prewrite` makes the finalizer write each bundle before the commit (`history.store.prewrite`, fault point `history.after_prewrite`) and reference it by hash (`Session.prewritten`). The redo record carries the sealed segments, the tail and the root; `last_transition` records the count and hash of the pre-written list. Bundles are deterministic, so a retry after a crash before the commit rewrites the same bytes.
+  - It refuses while any invocation's latest run may be live (`runlog.may_be_live`, the launch check), and on a v2 project it does nothing (`migrated: false`).
+- **The refusal of v1 mutations.** `lead_txn` refuses a v1 project's Lead mutations with the new error `MIGRATION_REQUIRED`, whose `next_action` names `aew migrate`; `resume` and `status` name it too. What the Lead needs to reach the migration still works: the seat (handoff offer and cancel, release; acquire, accept and takeover are outside `lead_txn`), `invoke cancel` (a live run blocks the migration) and `manifest adopt` (the migration checks the pin). Reads are unchanged.
+- **Existing parent evidence (R3).** Each open parent gets `legacy_digest: {v1, v2_at_migration}`. `Hierarchy.same_children` accepts a binding to the v1 digest while the v2 digest is still the one recorded at migration, in all three places the plan names: the gate context's `is_current`, the ingest staleness check, and `_classification_unmet` (where comparing the digests directly would have read the unchanged child set as changed, and released a LOCAL_IMPLEMENTATION_DEFECT closeout without its remediation child).
+- **The oracle.** P2b already rebuilt the full state from hot state and archive (through `History.walk`, with every record verified), so rules 4, 5, 17 and 18 see archived work; P2d adds nothing to it.
+- **The perf tool.** Its template builds the M3 (v1) layout in process, with a Kernel flag only it sets (`legacy_v1_writes`). `migrate()` migrates a built project, timed. `run` and `sweep` measure each project after migrating it (each sweep point is now a project of its own, since a v2 project cannot be grown by cloning hot DONE Tickets), and report the migration time. `project_footprint` reports the cold store on disk, and counts the hot aggregates of archived work as history.
+- **Tests.**
+  - New: `tests/integration/test_migration.py`: the refusal; what migration archives and keeps, against the full state, with a full audit of the migrated history (every pinned record included); a crash at each of the 11 fault points of a migration (the seal on a project of 256 finished units), each leaving v1 or the whole v2 with the same history root every time; live runs; parent evidence through the migration, including a classified failure.
+  - The H1 regression is `test_after_migration_the_hot_state_holds_history_only_as_aggregates` in the scale tests: at 250 and 1,000 completed (four times the history), the hot state grows at most 1.25x and history is at most 20% of it. H1's own points, 250 and 3,000, are P3's measurement; a 3,000-unit migration takes minutes.
+- **The fingerprint** skips `.aew/` in its `git add` (`:(exclude).aew`) instead of hashing it and then removing it from the index: the tree is identical, and `.aew/` holding thousands of uncommitted records (the authoritative checkout once history is archived) is no longer read. Measured on Windows with 3,000 uncommitted 20 KB records under `.aew/` and 200 tracked files: 1.74 s to 0.066 s per fingerprint (median of 10), the same tree. `working_tree_id` still reads `.aew/`, which its callers compare.
+- **Measured once, for P3:** migrating the template grown to 20 open and 3,000 completed Tickets took 102 s on the Windows development machine (not idle; P3 measures it properly). Most of it is likely serializing the 3,000 bundles (about 60 MB of YAML); P3's profile will show.
+- **Independent review fixes** (2026-10-02, in PR #21).
+  - **A retry after an interrupted migration survives a change of seat.** The seat may change hands on v1 between a crash after the pre-writes and the retry; the Lead record then has other content at the same path, and the retry used to be refused for good. A v1 project has no history root, so no history record on disk is reachable: the migration removes any it finds, under the lock, before it writes (`Migration.discard_unreachable`, reported as `discarded`). On v2 it does nothing, so a referenced record is never touched.
+  - **The recent ring is the most recently finished**, not the last in archive order: each commit's newly archived units join `recent` by completion time (stable for equal times). A migration archives deepest first and by id, which had kept the highest ids instead.
+- **Operator decisions on P2d** (2026-10-02):
+  - **Migration time:** continue to P3. P3 profiles the migration (§7.2); batching is not adopted now.
+  - **The existing-test edits:** approved, and the constraint above is amended. The plan named two edits (AT-15's `tokens()` helper, the footprint test) as the only ones to existing test files. P2d instead edits two others, each because the v1 refusal changes what they test: P2b's v1 test (P2b's interim behaviour, "a v1 project keeps working", was always meant to end in P2d) and the scale regression (its mutations now run on migrated projects). The AT-15 edit was not needed, and the footprint test stays as it was; its hot and cold split is a new test beside it.
+  - **The H1 regression** at 250 and 1,000 completed is approved as the CI regression. H1's acceptance gate stays at 250 and 3,000 completed, measured in P3 (§7.2).
+  - Edits to existing tests: the scale regression measures migrated projects (two builds, since a migrated project cannot grow by cloning), with the resume scan allowance now per open unit (H4); P2b's v1 test now checks the refusal and the migration. The plan's AT-15 `tokens()` edit was not needed: AT-15 reads only the credentials of invocations still running, which stay hot.
 
 ## 7. P3: the acceptance gate
 
@@ -322,8 +462,8 @@ Each PR keeps the M1–M3 tests passing.
 ### 7.2 The gate
 
 - **Linux (here):**
-  - all four series and the migration timing, against the baseline;
-  - H1–H4 and A1, each marked pass or fail in a results section of this document.
+  - all four series and the migration timing, against the baseline, with a profile of the migration (operator, 2026-10-02: batching only if the profile shows one transaction is impractical);
+  - H1–H4 and A1, each marked pass or fail in a results section of this document. H1 is judged at 250 and 3,000 completed; the CI regression's smaller points do not replace it.
 - **Windows reference (operator):** the full sweep (ADR-0011 coverage).
 - **Rocky 8.10 on aew-q7 (operator):** the hierarchy-history series, the H3 changed-hot-state re-parse, archival-write scaling and the absolute heartbeat bound. P2a adds the exact script.
 - **Review.** A review brief states what changed in ADR-0001's model, followed by the independent review. The register then moves F1 and E5 to §9 *Closed*.

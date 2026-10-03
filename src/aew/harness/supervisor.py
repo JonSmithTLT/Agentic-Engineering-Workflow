@@ -134,7 +134,8 @@ class Supervisor:
         faults.pause("harness.supervisor.before_custody")  # tests: a supervisor slow to take custody
         state = self.engine.store.read()
         try:
-            inv_id, inv, _ = require_invocation(state, self._credential, "context.read")
+            inv_id, inv, _ = require_invocation(state, self._credential, "context.read",
+                                                archived=self.engine.archived_credential)
         except errors.AEWError as exc:
             return self._refuse(f"credential rejected: {exc.message}")
         problem = self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)

@@ -17,10 +17,10 @@ from aew.engine import hierarchy as H
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
-from aew.errors import AEWError, NotFound
+from aew.errors import AEWError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
-from aew.knowledge.render import work_graph_lines
+from aew.knowledge.render import finished_summary, work_graph_lines
 from aew.util import parse_frontmatter
 
 if TYPE_CHECKING:
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         GatesPort,
         HarnessPort,
         HierarchyPort,
+        HistoryCommandsPort,
         InputsPort,
         LeadPort,
         RolesPort,
@@ -49,7 +50,7 @@ class Resume:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, inputs: InputsPort, gates: GatesPort,
                  hierarchy: HierarchyPort, lead: LeadPort, views: StatusViewsPort, harness: HarnessPort,
-                 kinds: KindRegistry) -> None:
+                 history: HistoryCommandsPort, kinds: KindRegistry) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -59,6 +60,7 @@ class Resume:
         self.lead = lead
         self.views = views
         self.harness = harness
+        self.history = history
         self.kinds = kinds
 
     def kind_registrations(self) -> list[KindRegistration]:
@@ -73,6 +75,9 @@ class Resume:
             actions.append("acquire Lead authority: `aew lead acquire --expect-rev N`")
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
+        if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
+            actions.append("migrate the control state to v2 (finished work leaves the hot state): "
+                           "`aew migrate --expect-rev N`")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates: `aew authority list`, then for each "
                            "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> "
@@ -87,6 +92,11 @@ class Resume:
         for wid, u in sorted(state["work"].items()):
             actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
+        audit = self.history.audit_status(state)
+        if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)
+            actions.append("the history audit is behind policy (" + "; ".join(audit["over_policy"])
+                           + "): `aew history audit --expect-rev N`" + (" --full" if any(
+                               "full" in o for o in audit["over_policy"]) else ""))
         return actions
 
     def _ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -185,6 +195,9 @@ class Resume:
                            f"(`aew invoke create {wid} --role reviewer|verifier`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
+            elif u["kind"] == "epic" and self.history.audit_backlog(state):
+                out.append(f"all parent gates are CURRENT: audit the history through the current root "
+                           f"(`aew history audit --expect-rev N`), then close it (`aew work close {wid}`)")
             else:
                 out.append(f"all parent gates are CURRENT: close it (`aew work close {wid}`)")
             out += [f"waiting on {b['id']} ({b['reason']}) before its acceptance review, verification and closeout"
@@ -357,6 +370,9 @@ class Resume:
                              plan_binding=self.units.plan_binding_problem(state, wid))
                 findings += [dict(f, work_unit=wid) for f in u.get("findings", []) if f["status"] == "open"]
             work.append(entry)
+        # Finished work is archived: the most recent units, bounded, and the counts (ADR-0011; operator 2026-10-01).
+        work += [{**r, "archived": True} for r in state.get("recent", []) if r["id"] not in state["work"]]
+        work.sort(key=lambda w: w["id"])
         latest = state.get("latest_handoff")
         handoff = None
         if latest and (self.k.aew_root / latest).exists():
@@ -389,6 +405,7 @@ class Resume:
                      "session_label": lead.get("session_label"), "holder_reachable": reachable},
             "authority_guidance": guidance,
             "work": work,
+            **({"finished": finished} if (finished := finished_summary(state)) else {}),
             "latest_handoff": handoff,
             "open_review_findings": findings,
             "verification_failures": failures,
@@ -465,9 +482,7 @@ class Resume:
     def _status_report(self, work_id: str | None) -> dict[str, Any]:
         state = self.k.store.read()
         if work_id:
-            unit = state["work"].get(work_id)
-            if unit is None:
-                raise NotFound(f"no work unit {work_id}")
+            unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}
         lead = state["lead"]
         return {
@@ -484,4 +499,6 @@ class Resume:
             "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
             "next_actions": self.next_actions(state),
             "contradictions": self.views.contradictions(state),
+            **({"finished": finished} if (finished := finished_summary(state)) else {}),
+            **({"history_audit": audit} if (audit := self.history.audit_status(state)) else {}),
         }

@@ -1590,3 +1590,21 @@ summary {
 .inspector-dialog .source-strip dt {
   margin-top: 5px;
 }
+/* Comparison values keep paired identities together on narrow screens. */
+.comparison-headings { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+.comparison-row { display: grid; grid-template-columns: minmax(140px, .65fr) minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--border); }
+.comparison-row header, .comparison-value { padding: 12px; overflow-wrap: anywhere; min-width: 0; }
+.comparison-row h3 { margin: 0 0 4px; }
+.comparison-value { border-left: 1px solid var(--border); }
+.comparison-mobile-label { display: none; }
+.comparison-side button { margin-right: 8px; }
+.comparison-side, .source-chooser, .packet-inspector .panel { padding: 16px; }
+.comparison-side label { display: block; margin: 12px 0; }
+.packet-items { list-style: none; padding: 0; }
+.packet-items > li, .packet-inspector .panel { margin: 12px 0; }
+.comparison-workspace h1, .packet-inspector h2, .source-chooser h2 { scroll-margin-top: 120px; }
+@media (max-width: 1023px) {
+  .comparison-headings, .comparison-row { grid-template-columns: 1fr; }
+  .comparison-value { border-left: 0; border-top: 1px solid var(--border); }
+  .comparison-mobile-label { display: block; color: var(--muted); }
+}

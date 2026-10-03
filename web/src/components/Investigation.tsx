@@ -33,9 +33,11 @@ const InspectorContext = createContext<Controls | null>(null);
 export function SourceStrip({
   source,
   failed = false,
+  readSnapshot,
 }: {
   source: Source;
   failed?: boolean;
+  readSnapshot?: string;
 }) {
   const session = useReadSession();
   return (
@@ -75,7 +77,7 @@ export function SourceStrip({
             {import.meta.env.MODE === 'demo' ? 'Demo data' : 'Live reads'}
           </dd>
           <dt>Snapshot</dt>
-          <dd>{session.identity.snapshot}</dd>
+          <dd>{readSnapshot ?? session.identity.snapshot}</dd>
         </dl>
         <p className="muted">
           Browser observations; not backend health or provenance.

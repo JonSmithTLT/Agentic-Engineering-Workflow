@@ -22,3 +22,13 @@ Initial reads show loading or an inline error/retry. Background failure retains 
 Desktop selection from a Journal results link preserves focus on that link and its sequential Tab position; the selected-ID status announces selection politely. Phone results selection focuses the replacing detail. Navigation originating inside detail, graph references or initial deep links focuses the available ID/title heading. The origin is captured before the asynchronous read, so refreshes do not move focus.
 
 No edit/create/delete, credential handling, billing, legal workflow or data-entry form is introduced by W03. Toast/dialog/date/form capabilities are not applicable. Future capabilities require explicit ownership rather than screen-local substitutes.
+
+## Comparison and packet interaction/state ledger
+
+W04 source choice is explicit; accepted invocation identity may seed A but never chooses a snapshot or counterpart by similarity/time/success. Changing one side preserves the other; Swap exchanges both source and run choices. Below1024px paired values stack A/B per field. Missing or partial data is Unavailable, never Same/Different. Structural differences are presentation only.
+
+`InvestigationTabs` owns W04 keyboard tab behavior; native selects and `Pager` retain their existing owners. `focusBelowHeader` owns W04 heading focus. Packet models, receipts, bindings and `PacketInspector` are independent of comparison; future Journal/retrieval consumers may reuse them without inferred semantic relations. SourceStrip's optional readSnapshot identifies the actual preview reader without changing accepted provenance.
+
+Opening a packet replaces comparison and stops hidden intervals. Back restores comparison state/scroll/origin focus after the route commits; direct inspector reload resolves only its owning source. Current visible sources poll10seconds; fixed sources and packet pages have no intervals. Refusal clears all representations/queries owned by the affected preview reader, preserving the other side and accepted scopes. Validation occurs before payload caching, including identity/snapshot and packet/receipt bindings. Ordinary failures retain marked valid prior data. No raw prompt/credential/artifact bodies or inferred receipt claims.
+
+Copy links allowlist explicit source/run/tab/filter/packet/page/case presentation state. Opaque demo cursors are filter/dataset/project/revision-bound and reloadable, not authorization credentials. Unsupported historical links stop preview reads. Source chooser payloads contain metadata only, so denied details cannot leak through collection payloads. Budget values and selection explanations are supplied; the browser never fabricates token accounting or selection reasons.

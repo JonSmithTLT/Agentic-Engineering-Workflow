@@ -52,6 +52,10 @@ export class ReadTransport {
   notify() {
     this.changed();
   }
+  /** Preview scope refusal invalidates all representations owned by that reader. */
+  clearRepresentations() {
+    this.cache.clear();
+  }
   constructor(
     private request: typeof fetch = (input, init) => {
       if (import.meta.env.MODE === 'demo' && document.querySelector('meta[name="aew-demo-transport"]')?.getAttribute('content') === 'http') {

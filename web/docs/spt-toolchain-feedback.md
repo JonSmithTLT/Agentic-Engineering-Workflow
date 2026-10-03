@@ -257,3 +257,21 @@ Main PR #26 integration is consumed; W02's web.yml change adds its compiled brow
 ## W02-1 consumer retest — 2026-10-03
 
 Source fix `7a18fa3` consumes the same immutable Node22 carrier, cache, lock and staged Chromium1217. Empty-module network-disabled gate passes 117 tests, artifact checks, typecheck/lint and both builds; compiled browser reports cover 10 W02 and 16 W01 groups. No new SPT repair or dependencies. The first browser regression capture reset the inspector graph before its link click; moving capture after navigation passes, with failed trace retained under W02 review-fix evidence. This is a browser harness observation, not a carrier defect. Lead fixing-diff review and green PR CI remain pending; live integration is not claimed.
+
+## W02 PR CI harness and execution retest — 2026-10-03
+
+PR #28's failed W01 trace records a service-worker update rejection before F6
+bootstrap requests bypass mocking and return 404. Independent scenarios and
+large-world measurements now receive isolated browser contexts, with measurement
+pages included in strict error monitoring and failure capture. The exact upstream
+race remains intermittent; a controlled negative baseline proves the original
+observer omission and the repaired failure path. See [CI repair](w02-ci-repair.md).
+
+Same immutable carrier/cache/lock/browser identities; offline 117-test gate and
+all 16 W01 + 10 W02 browser groups pass, including exact Node22 browser runs.
+The original carrier was found in Ubuntu's Snap Docker store and its existing
+service started; Docker Desktop has a separate image store. The existing Node
+launcher already provides browser libraries. Use Ubuntu WSL for Linux worktree
+metadata and `/snap/bin/docker` to avoid the PATH-selected Desktop shim. No
+carrier rebuild, dependency installation or SPT source repair. Sandbox credential
+and engine-pipe access failures do not establish invalid authentication.

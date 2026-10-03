@@ -55,6 +55,8 @@ export class ReadTransport {
     )
       throw new Error('Invalid API route');
     const context = this.context;
+    if (context.retired)
+      throw new DOMException('Request aborted', 'AbortError');
     const key = JSON.stringify([context.key(route), route]);
     const prior = this.cache.get(key) as Projection<T> | undefined;
     const headers = new Headers({ Accept: 'application/json' });

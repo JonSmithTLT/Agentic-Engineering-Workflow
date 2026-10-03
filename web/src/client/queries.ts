@@ -37,10 +37,10 @@ export function useReadSession() {
   return transport.context;
 }
 export async function resetReadSession(identity = transport.context.identity) {
-  transport.reset(identity, false);
+  transport.context.retire();
   await queryClient.cancelQueries();
   queryClient.removeQueries();
-  transport.notify();
+  transport.reset(identity);
 }
 export function installVisibility(
   client: QueryClient,

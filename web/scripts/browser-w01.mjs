@@ -125,8 +125,14 @@ try {
           .getByText('project_id', { exact: true })
           .count(),
       );
+      await page
+        .getByRole('tab', { name: 'Contract', exact: true })
+        .scrollIntoViewIfNeeded();
       await screenshot('contract-light');
       await page.getByLabel('Appearance').selectOption('dark');
+      await page
+        .getByRole('tab', { name: 'Contract', exact: true })
+        .scrollIntoViewIfNeeded();
       await screenshot('contract-dark');
       await page.keyboard.press('Escape');
       await page
@@ -148,6 +154,7 @@ try {
       await panel('Scenarios');
       await page.getByRole('button', { name: 'Reset', exact: true }).click();
       await page.getByRole('status').filter({ hasText: 'step 0/1' }).waitFor();
+      await page.getByRole('heading', { name: 'Work records' }).waitFor();
       await screenshot('scenario-replay');
     },
   );

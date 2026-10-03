@@ -1282,3 +1282,14 @@ summary {
 .developer-panel .scope-note {
   overflow-wrap: anywhere;
 }
+
+.developer-toolbar {
+  position: sticky;
+  top: -18px;
+  z-index: 2;
+  background: var(--surface);
+  padding: 8px 0;
+}
+.lab-panel textarea {
+  max-height: 180px;
+}

@@ -32,55 +32,57 @@ export function DeveloperPanel({
         if (e.key === 'Escape') close();
       }}
     >
-      <div className="panel-heading">
-        <div>
-          <h2>API requests</h2>
-          <p>
-            Last 200 completed requests · memory only · timings and diagnostics
-            are browser observations
-          </p>
+      <div className="developer-toolbar">
+        <div className="panel-heading">
+          <div>
+            <h2>API requests</h2>
+            <p>
+              Last 200 completed requests · memory only · timings and
+              diagnostics are browser observations
+            </p>
+          </div>
+          <button onClick={requestLog.clear}>Clear log</button>
+          <button onClick={close}>Close API panel</button>
         </div>
-        <button onClick={requestLog.clear}>Clear log</button>
-        <button onClick={close}>Close API panel</button>
+        {DemoLab && (
+          <div
+            role="tablist"
+            aria-label="Developer tools tabs"
+            className="lab-tabs"
+          >
+            {['Requests', 'Scenarios', 'Contract'].map((name, i) => (
+              <button
+                key={name}
+                role="tab"
+                aria-selected={tab === name}
+                tabIndex={tab === name ? 0 : -1}
+                onClick={() => setTab(name)}
+                onKeyDown={(e) => {
+                  if (
+                    ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)
+                  ) {
+                    e.preventDefault();
+                    const index =
+                      e.key === 'Home'
+                        ? 0
+                        : e.key === 'End'
+                          ? 2
+                          : (i + (e.key === 'ArrowRight' ? 1 : 2)) % 3;
+                    setTab(['Requests', 'Scenarios', 'Contract'][index]);
+                    (
+                      e.currentTarget.parentElement?.children[
+                        index
+                      ] as HTMLElement
+                    )?.focus();
+                  }
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      {DemoLab && (
-        <div
-          role="tablist"
-          aria-label="Developer tools tabs"
-          className="lab-tabs"
-        >
-          {['Requests', 'Scenarios', 'Contract'].map((name, i) => (
-            <button
-              key={name}
-              role="tab"
-              aria-selected={tab === name}
-              tabIndex={tab === name ? 0 : -1}
-              onClick={() => setTab(name)}
-              onKeyDown={(e) => {
-                if (
-                  ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)
-                ) {
-                  e.preventDefault();
-                  const index =
-                    e.key === 'Home'
-                      ? 0
-                      : e.key === 'End'
-                        ? 2
-                        : (i + (e.key === 'ArrowRight' ? 1 : 2)) % 3;
-                  setTab(['Requests', 'Scenarios', 'Contract'][index]);
-                  (
-                    e.currentTarget.parentElement?.children[
-                      index
-                    ] as HTMLElement
-                  )?.focus();
-                }
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      )}
       {tab === 'Requests' ? (
         <div role="tabpanel" aria-label="Requests">
           <p className="scope-note">

@@ -8,7 +8,8 @@ export default function DemoTools() {
         onChange={(e) => {
           const url = new URL(location.href);
           url.searchParams.set('fixture', e.target.value);
-          url.searchParams.delete('cursor');
+          for (const key of ['cursor', 'recipe', 'catalog', 'seed', 'fault'])
+            url.searchParams.delete(key);
           location.assign(url);
         }}
       >

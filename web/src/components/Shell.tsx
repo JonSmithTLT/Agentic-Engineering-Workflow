@@ -1,4 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useReadSession } from '../client/queries';
+import { useRef, useState, type ReactNode, type ComponentType } from 'react';
 import { useDashboard } from '../client/dashboard';
 import { SemanticValue, CapabilityWarnings } from './States';
 import { NavLink, Outlet } from 'react-router-dom';
@@ -14,7 +15,14 @@ const navigation = [
   ['/history', 'History / integrity'],
   ['/queue', 'Queue'],
 ];
-export function Shell({ demoTools }: { demoTools?: ReactNode }) {
+export function Shell({
+  demoTools,
+  demoLab,
+}: {
+  demoTools?: ReactNode;
+  demoLab?: ComponentType<{ tab: string }>;
+}) {
+  const session = useReadSession();
   const { project, overview, caps } = useDashboard();
   const demo = import.meta.env.MODE === 'demo';
   const [developer, setDeveloper] = useState(false);
@@ -39,7 +47,7 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
   const context = new URLSearchParams();
   if (demo) {
     const params = new URLSearchParams(window.location.search);
-    for (const key of ['fixture', 'fault']) {
+    for (const key of ['fixture', 'fault', 'catalog', 'recipe', 'seed']) {
       const value = params.get(key);
       if (value) context.set(key, value);
     }
@@ -128,10 +136,13 @@ export function Shell({ demoTools }: { demoTools?: ReactNode }) {
         </header>
         <main id="content" tabIndex={-1}>
           {caps && <CapabilityWarnings values={caps} />}
-          <Outlet />
+          <div key={session.generation}>
+            <Outlet />
+          </div>
         </main>
         {developer && (
           <DeveloperPanel
+            demoLab={demoLab}
             close={() => {
               setDeveloper(false);
               developerTrigger.current?.focus();

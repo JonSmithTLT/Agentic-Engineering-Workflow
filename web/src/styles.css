@@ -1245,3 +1245,40 @@ summary {
 .developer-requests details[open] summary::before {
   content: '▾';
 }
+
+.lab-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+.lab-tabs [aria-selected='true'] {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lab-panel {
+  display: grid;
+  gap: 10px;
+  max-width: 100%;
+}
+.lab-panel label {
+  display: grid;
+  gap: 4px;
+}
+.lab-panel textarea {
+  width: 100%;
+  min-width: 0;
+  font-family: monospace;
+  resize: vertical;
+}
+.lab-panel code {
+  overflow-wrap: anywhere;
+}
+.lab-panel button {
+  justify-self: start;
+}
+.lab-panel [aria-current='step'] {
+  font-weight: 600;
+}
+.developer-panel .scope-note {
+  overflow-wrap: anywhere;
+}

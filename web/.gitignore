@@ -4,3 +4,8 @@ dist-demo/
 artifacts/
 output/
 .playwright-cli/
+
+# Local links to staged build/dependency directories are artifacts too.
+node_modules
+dist
+dist-demo

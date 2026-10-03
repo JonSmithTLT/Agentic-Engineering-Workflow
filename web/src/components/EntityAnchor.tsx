@@ -31,7 +31,7 @@ export function EntityAnchor({
   const params = new URLSearchParams(location.search);
   const context = new URLSearchParams();
   if (import.meta.env.MODE === 'demo')
-    for (const key of ['fixture', 'fault']) {
+    for (const key of ['fixture', 'fault', 'catalog', 'recipe', 'seed']) {
       const value = params.get(key);
       if (value) context.set(key, value);
     }

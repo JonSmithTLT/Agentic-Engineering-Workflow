@@ -28,8 +28,10 @@ async function start() {
   if (saved && ['system', 'light', 'dark'].includes(saved))
     document.documentElement.dataset.theme = saved;
   let DemoTools: ComponentType | undefined;
+  let DemoLab: ComponentType<{ tab: string }> | undefined;
   if (import.meta.env.MODE === 'demo') {
-    const { worker } = await import('./api/mock/browser');
+    const { worker, initializeDemo } = await import('./api/mock/browser');
+    await initializeDemo();
     await worker.start({
       onUnhandledRequest: 'bypass',
       serviceWorker: {
@@ -38,6 +40,7 @@ async function start() {
       },
     });
     DemoTools = (await import('./api/mock/DemoTools')).default;
+    DemoLab = (await import('./api/mock/lab/Lab')).default;
   }
   let detachVisibility = installVisibility(queryClient);
   // Stop old-document reads before the demo worker deactivates on navigation.
@@ -63,7 +66,10 @@ async function start() {
           <Routes>
             <Route
               element={
-                <Shell demoTools={DemoTools ? <DemoTools /> : undefined} />
+                <Shell
+                  demoTools={DemoTools ? <DemoTools /> : undefined}
+                  demoLab={DemoLab}
+                />
               }
             >
               <Route index element={<OverviewPage />} />

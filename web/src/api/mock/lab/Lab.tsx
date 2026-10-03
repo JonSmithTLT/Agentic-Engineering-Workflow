@@ -1,5 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { acceptedContract } from '../../registry';
+import { journalContract } from '../../preview/journal/registration';
+import { journalEnvelope } from '../../preview/journal/projector';
+import { story } from '../../preview/journal/fixtures';
 import { transport } from '../../transport';
 import { worlds, selectedWorld } from '../worlds';
 import { replay } from '../browser';
@@ -19,6 +22,8 @@ export default function Lab({ tab }: { tab: string }) {
   const [recipeId, setRecipeId] = useState(replay?.recipe.id ?? 'conditional');
   const [seed, setSeed] = useState(replay?.seed ?? 1);
   const [model, setModel] = useState('OverviewResponse');
+  const [contractId, setContractId] = useState('dashboard-api');
+  const contract = contractId === 'journal-preview' ? journalContract : acceptedContract;
   const [text, setText] = useState('');
   const [result, setResult] = useState<ReturnType<typeof validateInput>>();
   const [message, setMessage] = useState('');
@@ -167,14 +172,15 @@ export default function Lab({ tab }: { tab: string }) {
       ) : (
         <>
           <h3>Contract Playground</h3>
+          <label>Contract <select value={contractId} onChange={(e) => { const next = e.target.value === 'journal-preview' ? journalContract : acceptedContract; setContractId(next.id); setModel(Object.keys(next.parsers)[0]); setText(''); setResult(undefined); }}><option value="dashboard-api">Accepted API 0.1.2</option><option value="journal-preview">Journal preview 0.1.0 PROVISIONAL</option></select></label>
           <p>
-            Accepted API {acceptedContract.version} ·{' '}
-            {acceptedContract.disposition}. Shape acceptance is separate from
+            {contract.id === 'dashboard-api' ? 'Accepted API' : 'Journal preview'} {contract.version} ·{' '}
+            {contract.disposition}. Shape acceptance is separate from
             semantic support and backend approval.
           </p>
           <details>
             <summary>Contract identity</summary>
-            <code>{acceptedContract.sha256}</code>
+            <code>{contract.sha256}</code>
           </details>
           <label>
             Response schema
@@ -185,13 +191,14 @@ export default function Lab({ tab }: { tab: string }) {
                 setResult(undefined);
               }}
             >
-              {Object.keys(acceptedContract.parsers).map((name) => (
+              {Object.keys(contract.parsers).map((name) => (
                 <option key={name}>{name}</option>
               ))}
             </select>
           </label>
           <button
             onClick={() => {
+              if (contract.id === 'journal-preview') { setText(JSON.stringify(journalEnvelope(model === 'JournalResponse' ? story[4] : { items: story, next_cursor: null, components: ['parser'], kinds: [...new Set(story.map((r) => r.kind))] }), null, 2)); setResult(undefined); return; }
               const world = selectedWorld();
               const route = Object.entries(world.models).find(
                 ([, name]) => name === model,
@@ -212,6 +219,7 @@ export default function Lab({ tab }: { tab: string }) {
           <label>
             Response JSON
             <textarea
+              className="resize-none"
               rows={12}
               value={text}
               onChange={(e) => {
@@ -223,7 +231,7 @@ export default function Lab({ tab }: { tab: string }) {
               }}
             />
           </label>
-          <button onClick={() => setResult(validateInput(model, text))}>
+          <button onClick={() => setResult(validateInput(model, text, contract))}>
             Validate
           </button>
           <button

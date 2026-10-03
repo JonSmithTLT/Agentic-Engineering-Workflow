@@ -29,8 +29,8 @@ export function comparisonScope() {
     identity.authorization_generation,
   ]);
 }
-export function projectionKey(route: string) {
-  return ['projection', transport.context.key(route), route] as const;
+export function projectionKey(route: string, reader = transport) {
+  return ['projection', reader.context.key(route), route] as const;
 }
 export function useReadSession() {
   useSyncExternalStore(transport.subscribe, transport.snapshot);
@@ -69,6 +69,7 @@ export function useProjection<T>(
   kind: keyof typeof pollIntervals,
   available = true,
   displayed = true,
+  reader = transport,
 ) {
   useReadSession();
   const localClient = useQueryClient();
@@ -78,8 +79,8 @@ export function useProjection<T>(
     return readClock.subscribe(change);
   }, []);
   const query = useQuery({
-    queryKey: projectionKey(route),
-    queryFn: ({ signal }) => transport.get(route, schema, signal),
+    queryKey: projectionKey(route, reader),
+    queryFn: ({ signal }) => reader.get(route, schema, signal),
     enabled: available && displayed,
     refetchInterval:
       visible && displayed && !readClock.manual ? pollIntervals[kind] : false,
@@ -89,8 +90,8 @@ export function useProjection<T>(
     if (accessRefused(query.error))
       localClient
         .getQueryCache()
-        .find({ queryKey: projectionKey(route), exact: true })
+        .find({ queryKey: projectionKey(route, reader), exact: true })
         ?.setState({ data: undefined });
-  }, [query.error, route, localClient]);
+  }, [query.error, route, localClient, reader]);
   return accessRefused(query.error) ? { ...query, data: undefined } : query;
 }

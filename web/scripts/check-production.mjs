@@ -12,7 +12,7 @@ function files(dir) {
 for (const file of files('dist')) {
   const text = fs.readFileSync(file, 'utf8');
   if (
-    /W01_REPLAY_CATALOG|Manual replay|Contract Playground|scenario-config|mockServiceWorker|setupWorker|Demo data|project:demo\/aew|aew-demo|FUTURE_WORK_STATE|attacker\.invalid|Mock Service Worker/.test(
+    /journal-preview|\/api\/preview\/journal|FUTURE_JOURNAL_KIND|CLANGD-E871|Journal scenario|Explore bounded origin graph|journal-fixtures|W01_REPLAY_CATALOG|Manual replay|Contract Playground|scenario-config|mockServiceWorker|setupWorker|Demo data|project:demo\/aew|aew-demo|FUTURE_WORK_STATE|attacker\.invalid|Mock Service Worker/.test(
       text,
     )
   )

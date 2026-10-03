@@ -64,6 +64,7 @@ export function JumpToId() {
           existence check is performed.
         </p>
         <form
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             const value = id.trim();

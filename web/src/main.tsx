@@ -29,6 +29,7 @@ async function start() {
     document.documentElement.dataset.theme = saved;
   let DemoTools: ComponentType | undefined;
   let DemoLab: ComponentType<{ tab: string }> | undefined;
+  let DemoKnowledge: ComponentType<{ Records: ComponentType }> | undefined;
   if (import.meta.env.MODE === 'demo') {
     const { worker, initializeDemo } = await import('./api/mock/browser');
     await initializeDemo();
@@ -41,6 +42,7 @@ async function start() {
     });
     DemoTools = (await import('./api/mock/DemoTools')).default;
     DemoLab = (await import('./api/mock/lab/Lab')).default;
+    DemoKnowledge = (await import('./api/preview/journal/Journal')).default;
   }
   let detachVisibility = installVisibility(queryClient);
   // Stop old-document reads when navigation actually hides the page.
@@ -80,7 +82,7 @@ async function start() {
               <Route path="runs/:id" element={<RunDetailPage />} />
               <Route path="evidence" element={<EvidencePage />} />
               <Route path="evidence/:id" element={<EvidenceDetailPage />} />
-              <Route path="knowledge" element={<KnowledgePage />} />
+              <Route path="knowledge" element={DemoKnowledge ? <DemoKnowledge Records={KnowledgePage} /> : <KnowledgePage />} />
               <Route path="knowledge/:id" element={<KnowledgeDetailPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="history/:id" element={<HistoryDetailPage />} />

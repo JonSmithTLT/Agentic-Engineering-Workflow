@@ -3,6 +3,7 @@ import { readScenario } from './lab/catalog';
 import { worlds } from './worlds';
 import { http, HttpResponse } from 'msw';
 import { setupWorker } from 'msw/browser';
+import { journalHandlers } from '../preview/journal/handlers';
 import { selectedWorld } from './worlds';
 import { DemoProjector, representationTag } from './projector';
 const scenario = readScenario(location.search);
@@ -76,6 +77,7 @@ async function respond({ request }: { request: Request }) {
       });
 }
 export const worker = setupWorker(
+  ...journalHandlers,
   http.get('/api/v1/*', respond),
   http.head('/api/v1/*', respond),
 );

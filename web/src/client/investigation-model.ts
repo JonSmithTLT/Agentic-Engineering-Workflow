@@ -12,6 +12,7 @@ import type { z } from 'zod';
 import { responseSchemas } from '../api/schema';
 import type { Projection } from '../api/transport';
 export type EntityKind =
+  | 'journal'
   | 'work'
   | 'invocation'
   | 'evidence'

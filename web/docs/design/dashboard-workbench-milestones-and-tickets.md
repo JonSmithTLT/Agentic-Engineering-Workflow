@@ -356,7 +356,7 @@ Approval records are factual: leave them pending until the operator actually app
 |---|---|---|---|---|---|
 | W01 | [Plan 1.1](plans/w01-foundation.md) | Operator approved | Accepted at ad9ed21 | ACCEPT — Claude, 2026-10-03 | Not claimed |
 | W02 | [Plan 1.1](plans/w02-workspace.md) | Operator approved, including both tightenings | Implemented and locally validated at 0e64b31; acceptance pending | Pending frozen main-line review | Not claimed |
-| W03 | Not written | Pending | Not started | Pending | Blocked on accepted journal projection |
+| W03 | [Plan 1.1](plans/w03-journal.md) | Operator approved 2026-10-03 | Implemented; implementer evidence in W03 review packet | Pending independent desktop/phone task review | Blocked on accepted journal projection; not claimed |
 | W04 | Not written | Pending | Not started | Pending | Accepted fields only; new projections pending |
 | W05 | Not written | Pending | Not started | Pending | Artifact/CLI/timeline/benchmark gaps pending |
 | W06 | Not written | Pending | Not started | Pending | Event/fanout/guarantee projections pending |

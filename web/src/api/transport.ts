@@ -57,6 +57,10 @@ export class ReadTransport {
       globalThis.fetch(input, init),
     private now = () => readClock.now(),
     private log: RequestLog = requestLog,
+    private policy = {
+      base: '/api/v1',
+      routes: /^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/,
+    },
   ) {}
   async get<T>(
     route: string,
@@ -64,13 +68,11 @@ export class ReadTransport {
     signal?: AbortSignal,
   ): Promise<Projection<T>> {
     if (
-      !/^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/.test(
-        route,
-      ) ||
+      !this.policy.routes.test(route) ||
       route.includes('\\') ||
       route.includes('#') ||
-      new URL(`/api/v1${route}`, 'http://aew.invalid').pathname !==
-        `/api/v1${route.split('?')[0]}`
+      new URL(`${this.policy.base}${route}`, 'http://aew.invalid').pathname !==
+        `${this.policy.base}${route.split('?')[0]}`
     )
       throw new Error('Invalid API route');
     const context = this.context;
@@ -82,7 +84,7 @@ export class ReadTransport {
     if (prior?.etag) headers.set('If-None-Match', prior.etag);
     const started = readClock.monotonic();
     const trace: Omit<RequestTrace, 'id'> = {
-      path: `/api/v1${route}`.slice(0, 2048),
+      path: `${this.policy.base}${route}`.slice(0, 2048),
       context: context.key(route).slice(0, 1024),
       started_at: this.now().toISOString(),
       duration_ms: 0,
@@ -91,7 +93,7 @@ export class ReadTransport {
       validation: [],
     };
     try {
-      const response = await this.request(`/api/v1${route}`, {
+      const response = await this.request(`${this.policy.base}${route}`, {
         method: 'GET',
         credentials: 'same-origin',
         headers,

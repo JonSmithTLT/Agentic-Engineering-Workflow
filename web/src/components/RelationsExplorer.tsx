@@ -14,6 +14,8 @@ import { capabilityView } from '../api/capabilities';
 import { EntityAnchor } from './EntityAnchor';
 import { SourceStrip } from './Investigation';
 import { JsonContent } from './Content';
+import type { ReadContext } from '../api/read-context';
+import type { ReactNode } from 'react';
 type Node = {
   key: string;
   kind: string;
@@ -38,7 +40,13 @@ const descriptors = {
   history: { path: 'history', schema: responseSchemas.HistoryResponse },
 };
 const limits = { nodes: 24, edges: 80, depth: 3 };
-export function RelationsExplorer({ root }: { root: Investigation }) {
+export type RelationReader = {
+  context: ReadContext;
+  canLoad: (kind: string) => boolean;
+  load: (kind: string, id: string, signal: AbortSignal) => Promise<Investigation>;
+  anchor: (entity: Relation['target']) => ReactNode;
+};
+export function RelationsExplorer({ root, reader }: { root: Investigation; reader?: RelationReader }) {
   const initial: Node = {
     key: root.key,
     kind: root.kind,
@@ -81,6 +89,7 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
       })) ?? [],
   );
   function allowed(node: Node) {
+    if (reader) return reader.canLoad(node.kind);
     const d = Object.hasOwn(descriptors, node.kind)
       ? descriptors[node.kind as keyof typeof descriptors]
       : undefined;
@@ -97,10 +106,13 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
     setBusy(node.key);
     const abort = new AbortController();
     controller.current = abort;
-    const context = transport.context;
+    const context = reader?.context ?? transport.context;
     try {
       let loaded = node.loaded;
       if (!loaded) {
+        if (reader) {
+          loaded = await reader.load(node.kind, node.id, abort.signal);
+        } else {
         const d = Object.hasOwn(descriptors, node.kind)
           ? descriptors[node.kind as keyof typeof descriptors]
           : undefined;
@@ -120,6 +132,7 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
           result.value.data,
           result,
         );
+        }
       }
       if (!mounted.current || context.retired || abort.signal.aborted) return;
       const additions: Node[] = [],
@@ -370,10 +383,10 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
                       ? ` · loaded revision ${node.loaded.source.value.control_revision}`
                       : ' · unresolved reference'}
                   </span>
-                  <EntityAnchor
+                  {reader ? reader.anchor({ id: node.id, kind: node.kind }) : <EntityAnchor
                     workWorkspace
                     entity={{ id: node.id, kind: node.kind }}
-                  />
+                  />}
                   {node.depth < limits.depth &&
                   (node.loaded || allowed(node)) ? (
                     <button
@@ -420,7 +433,7 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
                 <button onClick={() => setSelected(e)}>
                   {e.source.id} · {e.relation.field}
                 </button>{' '}
-                <EntityAnchor workWorkspace entity={e.relation.target} />
+                {reader ? reader.anchor(e.relation.target) : <EntityAnchor workWorkspace entity={e.relation.target} />}
               </li>
             ))}
           </ul>

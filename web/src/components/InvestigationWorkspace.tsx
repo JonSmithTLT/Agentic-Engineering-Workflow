@@ -16,8 +16,14 @@ export function InvestigationWorkspace({
   collection,
   results,
   detail,
+  title,
+  resultsLabel = 'Results',
+  selectionChanged,
 }: {
-  collection: 'work' | 'runs';
+  collection: 'work' | 'runs' | 'journal';
+  title?: string;
+  resultsLabel?: string;
+  selectionChanged?: () => void;
   results: ReactNode;
   detail: (id: string, visible: boolean) => ReactNode;
 }) {
@@ -41,7 +47,7 @@ export function InvestigationWorkspace({
   return (
     <WorkspaceContext.Provider value={collection}>
       <h1 className="investigation-heading" tabIndex={-1} ref={heading}>
-        {collection === 'work' ? 'Work' : 'Runs'} investigation
+        {title ?? (collection === 'work' ? 'Work' : 'Runs') + ' investigation'}
       </h1>
       <div className="workspace-controls">
         <p>Inspect a record without losing your results.</p>
@@ -51,11 +57,12 @@ export function InvestigationWorkspace({
             onClick={() => {
               setParams((old) => {
                 const p = new URLSearchParams(old);
-                for (const k of ['selected', 'inspector', 'field']) p.delete(k);
+                for (const k of ['selected', 'inspector', 'field', ...(collection === 'journal' ? ['panel'] : [])]) p.delete(k);
                 return p;
               });
               setPane('results');
               heading.current?.focus();
+              selectionChanged?.();
             }}
           >
             Close detail
@@ -72,7 +79,7 @@ export function InvestigationWorkspace({
             aria-pressed={pane === 'results'}
             onClick={() => setPane('results')}
           >
-            Results
+            {resultsLabel}
           </button>
           <button
             aria-pressed={pane === 'detail'}

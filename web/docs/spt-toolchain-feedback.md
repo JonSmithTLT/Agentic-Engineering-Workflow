@@ -284,3 +284,7 @@ requested `CHROMIUM_PATH` now, implemented in all ten browser/measurement script
 with existing defaults retained. A wrapper path containing spaces was used by
 both W01/W02; all 26 groups and affected-script lint pass. The latest offline
 117-test gate passes. The live-server/session interface stays deferred to F20.3/6.
+
+## W03 consumer retest — 2026-10-03
+
+Same immutable Linux/amd64 carrier `sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407`, Node22.22.2/npm10.9.7, dependency lock and cache identities above. The empty-module network-disabled gate passes artifact checks, typecheck/lint,127 tests and production/demo builds. Six Git detector probes and38 compiled-browser groups pass using the exact Node22 launcher and staged Playwright1.59.1/Chromium1217. The measurement launcher also passes with a CHROMIUM_PATH wrapper whose path contains spaces. No new package, image repair or dependency-lock change. See `w03-review-packet.md` and `w03-evidence/result.json`. Independent frontend acceptance and live integration remain pending. Browser scenario lifetime isolation is a harness correction, not an SPT carrier defect.

@@ -43,10 +43,10 @@ async function start() {
     DemoLab = (await import('./api/mock/lab/Lab')).default;
   }
   let detachVisibility = installVisibility(queryClient);
-  // Stop old-document reads before the demo worker deactivates on navigation.
+  // Stop old-document reads when navigation actually hides the page.
   // Resume focus/revision handling when restored from the browser back cache.
   window.addEventListener(
-    'beforeunload',
+    'pagehide',
     () => {
       detachVisibility();
       void queryClient.cancelQueries();

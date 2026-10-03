@@ -353,6 +353,95 @@ try {
     },
   );
   await check(
+    'Canceled departure preserves focus refresh; pagehide suspends and persisted pageshow restores it',
+    async () => {
+      expectedFailure = false;
+      for (const url of [base + '/work?fixture=F1', production + '/work']) {
+        const lifecycleContext = await browser.newContext({
+          serviceWorkers: url.startsWith(production) ? 'block' : 'allow',
+        });
+        const p = await lifecycleContext.newPage();
+        const lifecycleErrors = [];
+        let projects = 0;
+        p.on('pageerror', (error) => lifecycleErrors.push(error.message));
+        p.on('console', (message) => {
+          if (message.type() === 'error') lifecycleErrors.push(message.text());
+        });
+        p.on('response', (response) => {
+          if (response.status() >= 400)
+            lifecycleErrors.push(`${response.status()} ${response.url()}`);
+        });
+        p.on('request', (request) => {
+          const target = new URL(request.url());
+          if (target.origin !== new URL(url).origin)
+            lifecycleErrors.push(`External request: ${request.url()}`);
+          if (
+            target.pathname.startsWith('/api/v1') &&
+            !['GET', 'HEAD'].includes(request.method())
+          )
+            lifecycleErrors.push(`API write: ${request.method()}`);
+          if (target.pathname === '/api/v1/project') projects++;
+        });
+        await p.goto(url);
+        await p.getByRole('heading', { name: 'Work records' }).waitFor();
+        if (url.startsWith(production)) {
+          // Exercise canceled departure without MSW's own demo beforeunload handler.
+          await p.evaluate(() => {
+            const cancel = (event) => event.preventDefault();
+            window.addEventListener('beforeunload', cancel, { once: true });
+            window.dispatchEvent(
+              new window.Event('beforeunload', { cancelable: true }),
+            );
+          });
+        }
+        const beforeFocus = projects;
+        await p.evaluate(() => window.dispatchEvent(new window.Event('focus')));
+        for (let i = 0; i < 50 && projects <= beforeFocus; i++)
+          await p.waitForTimeout(20);
+        assert(
+          projects > beforeFocus,
+          'Canceled departure disabled focus refresh',
+        );
+        await p.evaluate(() =>
+          window.dispatchEvent(
+            new window.PageTransitionEvent('pagehide', { persisted: true }),
+          ),
+        );
+        await p.waitForTimeout(100);
+        const hidden = projects;
+        await p.evaluate(() => window.dispatchEvent(new window.Event('focus')));
+        await p.waitForTimeout(200);
+        assert.equal(
+          projects,
+          hidden,
+          'Hidden-page focus handler remained attached',
+        );
+        await p.evaluate(() =>
+          window.dispatchEvent(
+            new window.PageTransitionEvent('pageshow', { persisted: true }),
+          ),
+        );
+        for (let i = 0; i < 50 && projects <= hidden; i++)
+          await p.waitForTimeout(20);
+        assert(
+          projects > hidden,
+          'Persisted restore did not refetch active queries',
+        );
+        await p.waitForTimeout(100);
+        const restored = projects;
+        await p.evaluate(() => window.dispatchEvent(new window.Event('focus')));
+        for (let i = 0; i < 50 && projects <= restored; i++)
+          await p.waitForTimeout(20);
+        assert(
+          projects > restored,
+          'Persisted restore did not reattach focus refresh',
+        );
+        assert.deepEqual(lifecycleErrors, []);
+        await lifecycleContext.close();
+      }
+    },
+  );
+  await check(
     'Ordinary polling pauses hidden and immediately revalidates on visibility restoration',
     async () => {
       expectedFailure = false;

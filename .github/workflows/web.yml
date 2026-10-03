@@ -35,10 +35,19 @@ jobs:
           if [[ "$EVENT" == workflow_dispatch || -z "$BASE" || "$BASE" =~ ^0+$ ]]; then
             echo 'web=true' >> "$GITHUB_OUTPUT"
           else
-            git diff --name-only "$BASE" "$HEAD" > "$RUNNER_TEMP/web-changed-paths.txt"
-            if rg -q '^(web/|docs/design/dashboard-api-v1-provisional\.yaml$|\.github/workflows/web\.yml$)' "$RUNNER_TEMP/web-changed-paths.txt"; then
+            if [[ "$EVENT" == pull_request || "$EVENT" == merge_group ]]; then
+              git diff --no-renames --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/web-changed-paths.txt"
+            else
+              git diff --no-renames --name-only "$BASE" "$HEAD" > "$RUNNER_TEMP/web-changed-paths.txt"
+            fi
+            if grep -Eq '^(web/|docs/design/dashboard-api-v1-provisional\.yaml$|\.github/workflows/web\.yml$)' "$RUNNER_TEMP/web-changed-paths.txt"; then
               echo 'web=true' >> "$GITHUB_OUTPUT"
             else
+              match_status=$?
+              if [[ "$match_status" != 1 ]]; then
+                echo "Frontend path matching failed (exit $match_status)" >&2
+                exit "$match_status"
+              fi
               echo 'web=false' >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -63,6 +72,8 @@ jobs:
           npm install --global npm@10.9.7
           test "$(npm --version)" = 10.9.7
           npm ci --ignore-scripts
+      - name: Change detector regression probes
+        run: node --test scripts/ci-paths.test.mjs
       - name: Contract acceptance digest
         run: node scripts/check-contract.mjs
       - name: Generated artifact consistency

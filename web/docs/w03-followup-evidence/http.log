@@ -1,0 +1,3 @@
+PASS desktop HTTP investigation, selection, legend, focus and graph
+PASS phone HTTP investigation, selection, legend, focus and graph
+PASS HTTP fixture switching, accepted Records, large paging and conditional reads

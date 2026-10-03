@@ -60,8 +60,8 @@ type History = z.infer<typeof responseSchemas.HistoryResponse>['data'];
 export function historyTargetKind(relation: string) {
   if (relation === 'invocations') return 'invocation';
   if (relation === 'evidence') return 'evidence';
-  if (['depends_on', 'moved_to', 'audit_finding'].includes(relation))
-    return 'history';
+  if (['depends_on', 'moved_to'].includes(relation)) return 'work';
+  if (relation === 'audit_finding') return 'history';
   return 'reference';
 }
 export function investigate(

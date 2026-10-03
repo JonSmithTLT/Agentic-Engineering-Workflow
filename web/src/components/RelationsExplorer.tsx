@@ -370,7 +370,10 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
                       ? ` · loaded revision ${node.loaded.source.value.control_revision}`
                       : ' · unresolved reference'}
                   </span>
-                  <EntityAnchor entity={{ id: node.id, kind: node.kind }} />
+                  <EntityAnchor
+                    workWorkspace
+                    entity={{ id: node.id, kind: node.kind }}
+                  />
                   {node.depth < limits.depth &&
                   (node.loaded || allowed(node)) ? (
                     <button
@@ -417,7 +420,7 @@ export function RelationsExplorer({ root }: { root: Investigation }) {
                 <button onClick={() => setSelected(e)}>
                   {e.source.id} · {e.relation.field}
                 </button>{' '}
-                <EntityAnchor entity={e.relation.target} />
+                <EntityAnchor workWorkspace entity={e.relation.target} />
               </li>
             ))}
           </ul>

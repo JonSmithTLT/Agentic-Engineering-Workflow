@@ -254,6 +254,45 @@ describe('W02 investigation composed behavior', () => {
     ).toBeTruthy();
     expect(screen.getAllByText(/No edge-specific explanation/).length).toBe(1);
   });
+  it('expands hot History dependency and moved-to targets through Work and opens its workspace', async () => {
+    const history = responseSchemas.HistoryResponse.parse(
+      f3.responses['/history/T-0004'],
+    );
+    history.data.links.depends_on = ['T-0001'];
+    history.data.links.moved_to = ['S-0001'];
+    const root = investigate('history', history.data, {
+      value: history,
+      last_checked_at: source.last_checked_at,
+    });
+    expect(
+      root.relations.find((r) => r.field === 'links.audit_finding')?.target
+        .kind,
+    ).toBe('history');
+    const { paths } = mount(
+      <RelationsExplorer root={root} />,
+      '/history/T-0004?kind=ticket&cursor=history-page',
+      f3 as World,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Expand T-0004' }));
+    for (const id of ['T-0001', 'S-0001']) {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Expand ' + id }),
+      );
+      await waitFor(() => expect(paths).toContain('/api/v1/work/' + id));
+    }
+    expect(
+      paths.some((path) =>
+        /^\/api\/v1\/history\/(T-0001|S-0001)(?:\?|$)/.test(path),
+      ),
+    ).toBe(false);
+    const parentLink = screen.getByRole('link', { name: 'S-0001' });
+    expect(parentLink.getAttribute('href')).toBe('/work?selected=S-0001');
+    fireEvent.click(parentLink);
+    expect(screen.getByLabelText('Location').textContent).toBe(
+      '/work?selected=S-0001',
+    );
+    expect(screen.queryByText('Not found (404)')).toBeNull();
+  });
   it('graph bounds do not truncate the independently paged supplied relation list', async () => {
     const record = {
       ...work.data,

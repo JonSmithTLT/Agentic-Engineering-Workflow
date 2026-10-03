@@ -337,6 +337,49 @@ try {
     },
   );
   await check(
+    'History moved-to hot parent resolves through Work and opens its workspace',
+    async () => {
+      await page.goto(base + '/history/T-0004?fixture=F3');
+      await page
+        .getByRole('button', { name: 'Inspect relations', exact: true })
+        .click();
+      const panel = page.locator('.inspector-panel');
+      await panel.getByRole('button', { name: 'Expand T-0004' }).click();
+      const parent = panel
+        .locator('.provenance-node')
+        .filter({
+          has: page.getByRole('link', { name: 'S-0001', exact: true }),
+        });
+      await parent.getByRole('button', { name: 'Expand S-0001' }).click();
+      await parent.getByText(/work · loaded revision/).waitFor();
+      assert(
+        requests.some(
+          (r) =>
+            r.scenario === current && r.url === base + '/api/v1/work/S-0001',
+        ),
+      );
+      assert(
+        !requests.some(
+          (r) =>
+            r.scenario === current &&
+            r.url.startsWith(base + '/api/v1/history/S-0001'),
+        ),
+      );
+      const link = parent.getByRole('link', { name: 'S-0001', exact: true });
+      assert.equal(
+        await link.getAttribute('href'),
+        '/work?fixture=F3&selected=S-0001',
+      );
+      await link.click();
+      await page
+        .getByRole('region', { name: 'Investigation results' })
+        .waitFor();
+      assert.equal(new URL(page.url()).pathname, '/work');
+      assert.equal(new URL(page.url()).searchParams.get('selected'), 'S-0001');
+      await shot('history-hot-parent-workspace');
+    },
+  );
+  await check(
     'CSP hostile content, clipboard failure and dataset-switch cleanup',
     async () => {
       await page.goto(base + '/work?fixture=F8&selected=T-0001');

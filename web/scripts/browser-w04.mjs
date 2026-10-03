@@ -121,7 +121,10 @@ try {
     await page.goto(base + '/compare?fixture=F1&a_source=SRC-Removal&b_source=CURRENT-INV-0001&compare_tab=references'); await sourceB(page).getByText('CURRENT-INV-0001', { exact: true }).waitFor();
     await sourceA(page).getByText('SRC-Removal', { exact: true }).waitFor();
     const fixedReads = requests.filter(r => r.url.includes('/sources/SRC-Removal')).length;
-    await page.evaluate(() => window.dispatchEvent(new window.Event('focus')));
+    await page.evaluate(() => {
+      window.dispatchEvent(new window.Event('focus'));
+      window.dispatchEvent(new window.PageTransitionEvent('pageshow', { persisted: true }));
+    });
     await page.waitForTimeout(200);
     assert.equal(requests.filter(r => r.url.includes('/sources/SRC-Removal')).length, fixedReads);
     await sourceA(page).getByRole('button', { name: 'Refresh A', exact: true }).click(); await page.waitForFunction(() => document.querySelector('[aria-label="Source A"] time') !== null);

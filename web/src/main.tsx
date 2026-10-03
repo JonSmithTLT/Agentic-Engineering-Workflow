@@ -63,7 +63,7 @@ async function start() {
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
       detachVisibility = installVisibility(queryClient);
-      void queryClient.refetchQueries({ type: 'active' });
+      void queryClient.refetchQueries({ type: 'active', predicate: query => query.meta?.automaticRevalidation !== false });
     }
   });
   createRoot(document.getElementById('root')!).render(

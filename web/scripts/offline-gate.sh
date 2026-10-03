@@ -21,6 +21,7 @@ npm run generate:types
 cmp src/api/types.ts /tmp/types-before.ts
 node scripts/check-contract.mjs
 npm run check:scenario
+node --experimental-strip-types scripts/journal-artifact.mjs
 npm run typecheck
 npm run lint
 npm test

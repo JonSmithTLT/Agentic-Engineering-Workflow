@@ -34,13 +34,65 @@ async function ready(url, child) {
 }
 let browser,
   context,
+  page,
   current = 'startup';
 const checks = [],
   errors = [],
   responses = [],
   requests = [],
   allowedFailures = [];
+function observe(page) {
+  page.on('pageerror', (e) =>
+    errors.push({ scenario: current, message: e.message }),
+  );
+  page.on('console', (m) => {
+    if (m.type() === 'error') {
+      const expected = allowedFailures.some(
+        (f) =>
+          f.scenario === current &&
+          m.location().url === f.url &&
+          /Failed to load resource/.test(m.text()),
+      );
+      if (!expected)
+        errors.push({
+          scenario: current,
+          message: m.text(),
+          location: m.location(),
+        });
+    }
+  });
+  page.on('response', (r) => {
+    if (r.status() >= 400)
+      responses.push({
+        scenario: current,
+        url: r.url(),
+        status: r.status(),
+        expected: allowedFailures.some(
+          (f) =>
+            f.scenario === current &&
+            f.url === r.url() &&
+            f.status === r.status(),
+        ),
+      });
+  });
+  page.on('request', (r) =>
+    requests.push({ scenario: current, url: r.url(), method: r.method() }),
+  );
+}
 async function check(name, fn) {
+  // Only the graph continuation deliberately shares the preceding workspace.
+  // Independent groups retire their document and MSW registration together.
+  if (checks.length && !name.startsWith('Bounded supplied graph')) {
+    await context.tracing.stop({ path: out + '/passed-group-' + checks.length + '.zip' });
+    await context.close();
+    context = await browser.newContext({
+      viewport: name.startsWith('Concealed phone') ? { width: 390, height: 844 } : { width: 1600, height: 1000 },
+      permissions: ['clipboard-read', 'clipboard-write'],
+    });
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    page = await context.newPage();
+    observe(page);
+  }
   current = name;
   await fn();
   assert.equal(errors.length, 0, JSON.stringify(errors));
@@ -85,43 +137,8 @@ try {
     snapshots: true,
     sources: true,
   });
-  const page = await context.newPage();
-  page.on('pageerror', (e) =>
-    errors.push({ scenario: current, message: e.message }),
-  );
-  page.on('console', (m) => {
-    if (m.type() === 'error') {
-      const expected = allowedFailures.some(
-        (f) =>
-          f.scenario === current &&
-          m.location().url === f.url &&
-          /Failed to load resource/.test(m.text()),
-      );
-      if (!expected)
-        errors.push({
-          scenario: current,
-          message: m.text(),
-          location: m.location(),
-        });
-    }
-  });
-  page.on('response', (r) => {
-    if (r.status() >= 400)
-      responses.push({
-        scenario: current,
-        url: r.url(),
-        status: r.status(),
-        expected: allowedFailures.some(
-          (f) =>
-            f.scenario === current &&
-            f.url === r.url() &&
-            f.status === r.status(),
-        ),
-      });
-  });
-  page.on('request', (r) =>
-    requests.push({ scenario: current, url: r.url(), method: r.method() }),
-  );
+  page = await context.newPage();
+  observe(page);
   const shot = async (name) =>
     page.screenshot({ path: out + '/' + name + '.png', fullPage: true });
   async function guardedDemo(url) {

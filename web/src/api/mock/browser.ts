@@ -1,29 +1,10 @@
-import { ReplayEngine } from './lab/engine';
-import { readScenario } from './lab/catalog';
-import { worlds } from './worlds';
+import { replay } from './runtime';
+export { replay, initializeDemo } from './runtime';
 import { http, HttpResponse } from 'msw';
 import { setupWorker } from 'msw/browser';
+import { journalHandlers } from '../preview/journal/handlers';
 import { selectedWorld } from './worlds';
 import { DemoProjector, representationTag } from './projector';
-const scenario = readScenario(location.search);
-export const replay = scenario
-  ? new ReplayEngine(
-      scenario.definition,
-      scenario.seed,
-      worlds.find((w) => w.fixture === scenario.fixture)!,
-    )
-  : undefined;
-export async function initializeDemo() {
-  if (replay) await replay.start();
-  else {
-    const { transport } = await import('../transport');
-    transport.reset({
-      ...transport.context.identity,
-      mode: 'demo',
-      dataset: selectedWorld().fixture,
-    });
-  }
-}
 const checks = new Map<string, number>();
 const servers = new Map<string, DemoProjector>();
 async function respond({ request }: { request: Request }) {
@@ -76,6 +57,7 @@ async function respond({ request }: { request: Request }) {
       });
 }
 export const worker = setupWorker(
+  ...journalHandlers,
   http.get('/api/v1/*', respond),
   http.head('/api/v1/*', respond),
 );

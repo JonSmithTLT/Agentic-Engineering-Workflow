@@ -1,0 +1,95 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "2e29a7124738a19a89116a969c5979982badd8ec",
+  "reviewed_source_commit": "6e83b9516b0ef77c0838b88bd29204ed70e59015",
+  "branch": "feat/aew-dashboard-w03",
+  "preview_digest": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+  "accepted_api_and_dependency_lock": "UNCHANGED",
+  "runtime": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "playwright": "1.59.1",
+    "chromium": "147.0.7727.15",
+    "carrier": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407"
+  },
+  "validation": {
+    "offline_gate": "PASS",
+    "tests": 127,
+    "test_files": 15,
+    "browser_groups": 41,
+    "w01": 16,
+    "w02": 10,
+    "w03": 12,
+    "http_with_service_workers_blocked": 3,
+    "ci_path_probes": 6,
+    "premium_static_findings": 0,
+    "production_exclusion": "PASS"
+  },
+  "commands": [
+    "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh",
+    "cd web && node scripts/ci-browser.mjs",
+    "cd web && node scripts/browser-w02.mjs",
+    "cd web && node scripts/browser-w03.mjs",
+    "cd web && node scripts/browser-http-demo.mjs",
+    "cd web && node --test scripts/ci-paths.test.mjs",
+    "python3 <frontend-design-premium-skill>/scripts/audit_project.py web --mode strict"
+  ],
+  "independent_review": "Full task reviewed; four minor fixes required. Fixing-diff confirmation PENDING.",
+  "backend_adoption": "PENDING",
+  "live_integration": "PENDING",
+  "evidence_behavior": "Reference-only; no lookup or duplication added",
+  "limitations": [
+    "HTTP mode does not run service-worker Scenario Lab replay recipes.",
+    "Existing chunk-size advisories remain.",
+    "No new performance improvement claim.",
+    "Phone checks are desktop-browser emulation, not real touch hardware.",
+    "Official DESIGN lint CLI was not available; existing frontmatter/token verification applies."
+  ],
+  "files": {
+    "ci-paths.log": {
+      "sha256": "55bd0eb671bff5c6d34382636ee074f8f9516b8d4146784138f3b544f3be9eee"
+    },
+    "desktop.png": {
+      "sha256": "b995e0df64fadf2b0bb18c0b6d7bf0e5bcdc7c98b333ea4cf6c68d86d555a8f5"
+    },
+    "http-browser.json": {
+      "sha256": "1402f14c58bb57f9e5c1c22166faef553d48383efe702a5c46ddf24d00212896"
+    },
+    "http.log": {
+      "sha256": "05c038c8117b26a05ce30c676a5afe0f85c66afbc415e4edd36dc1f79546cbdd"
+    },
+    "offline.log": {
+      "sha256": "0b4d78b806d656ace8a4c709979bb682458e40f9184d165e1f13a8b91da2f1db"
+    },
+    "phone-results.png": {
+      "sha256": "4161f6607a562c8c8b557746b67b96e485fb7e9d5fd1448e2c1f0b803eb5ad4c"
+    },
+    "phone.png": {
+      "sha256": "516b4ef3437db2d570c29280328d68eca185a3ec504de3de253da0fd5b6acd47"
+    },
+    "premium-audit.json": {
+      "sha256": "59228c627ebe796c49c1900a4dd8c19c97b5e5ceda3209681b508738da1dd1e1"
+    },
+    "type-legend.png": {
+      "sha256": "9688d96b05128c1332d46ffab4ac8c232fd840f017331b35ce5ccba957b705de"
+    },
+    "w01-browser.json": {
+      "sha256": "2bcfdb94531664ac99609d7f4c0864995c0e4013eeacb693a505e64284fb91bc"
+    },
+    "w01.log": {
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w02-browser.json": {
+      "sha256": "ab6bf481fc7b7a7da222b9aceb46234eb977ce52409380bb00f82a4a07777ae9"
+    },
+    "w02.log": {
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe"
+    },
+    "w03-browser.json": {
+      "sha256": "ea98253fa14a5da1db9769af92c16bfd08bbf6086a4ac3521bcc2d0c52f75962"
+    },
+    "w03.log": {
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b"
+    }
+  }
+}

@@ -251,20 +251,6 @@ class Cloner:
                 return {remap(k): remap(v) for k, v in value.items()}
             return value
 
-        written: dict[str, str] = {}  # new relative path -> new text
-        sources = [p for d in (f"work/{wid}", f"evidence/{wid}") for p in (self.aew / d).rglob("*") if p.is_file()]
-        sources += [self.aew / "decisions" / f"{d}.md" for d in groups["decision"]]
-        for src in sources:
-            rel = remap(src.relative_to(self.aew).as_posix())
-            text = remap(src.read_text(encoding="utf-8"))
-            if rel.startswith("evidence/") and rel.endswith(".md"):  # a new seal over the renamed content
-                meta, body = parse_frontmatter(text, source=rel)
-                text = E.seal(meta, body)
-            target = self.aew / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(text.encode("utf-8"))
-            written[rel] = text
-
         def rehash(node: Any) -> None:
             if isinstance(node, dict):
                 if isinstance(node.get("path"), str) and node["path"] in written and "sha256" in node:
@@ -276,6 +262,27 @@ class Cloner:
             elif isinstance(node, list):
                 for v in node:
                     rehash(v)
+
+        written: dict[str, str] = {}  # new relative path -> new text
+
+        def evidence_record(path: Path) -> bool:
+            rel = path.relative_to(self.aew).as_posix()
+            return rel.startswith("evidence/") and rel.endswith(".md")
+
+        sources = [p for d in (f"work/{wid}", f"evidence/{wid}") for p in (self.aew / d).rglob("*") if p.is_file()]
+        sources += [self.aew / "decisions" / f"{d}.md" for d in groups["decision"]]
+        # Evidence records last: each pins files (a check's log) whose renamed text changes their hash.
+        for src in sorted(sources, key=evidence_record):
+            rel = remap(src.relative_to(self.aew).as_posix())
+            text = remap(src.read_text(encoding="utf-8"))
+            if evidence_record(src):  # its pins rehashed, and a new seal over the renamed content
+                meta, body = parse_frontmatter(text, source=rel)
+                rehash(meta)
+                text = E.seal(meta, body)
+            target = self.aew / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(text.encode("utf-8"))
+            written[rel] = text
 
         unit = remap(copy.deepcopy(self.state["work"][wid]))
         rehash(unit)
@@ -780,8 +787,35 @@ def sweep(points: list[tuple[int, int]], work: Path, reps: int, *, hierarchy: bo
                         "shape": "hierarchy" if hierarchy else "flat",
                         "project": info, "footprint_v1": fp_v1, "migration": migration,
                         "footprint": project_footprint(t.root), "micro": micro(t.root),
-                        "ops": measure(t, reps if want_done + want_open < 3000 else 1)})
+                        "ops": measure(t, reps)})
     return results
+
+
+def ab(points: list[tuple[int, int]], work: Path, rounds: int) -> dict[str, Any]:
+    """H2 paired: build and migrate one project per point, then measure them in turns, one sample each per round, so
+    that a change in the machine's speed during the run reaches every point alike (P3). Each op's median per point,
+    and its median paired difference from the first point."""
+    projects = []
+    for n, (want_open, want_done) in enumerate(points):
+        t = make_template(work / f"ab-{n}" / "repo")
+        add_units(t.root, done=max(want_done - 1, 0), planned=max(want_open - 3, 0))
+        migrate(t)
+        projects.append(t)
+        print(f"built {want_open}:{want_done}", flush=True)
+    walls: list[list[dict[str, float]]] = [[] for _ in points]
+    for r in range(rounds):
+        for i, t in enumerate(projects if r % 2 == 0 else list(reversed(projects))):
+            k = i if r % 2 == 0 else len(projects) - 1 - i
+            walls[k].append({o["op"]: o["wall_s"] for o in measure(t, 1)})
+    ops = list(walls[0][0])
+    out: dict[str, Any] = {"points": [{"open": o, "completed": d} for o, d in points], "rounds": rounds, "ops": {}}
+    for op in ops:
+        per = [[w[op] for w in walls[i]] for i in range(len(points))]
+        out["ops"][op] = {"median_s": [round(statistics.median(x), 4) for x in per],
+                          "paired_delta_s": [round(statistics.median(b - a for a, b in zip(per[0], x)), 4)
+                                             for x in per[1:]],
+                          "samples_s": [[round(v, 4) for v in x] for x in per]}
+    return out
 
 
 def sweep_table(results: list[dict[str, Any]]) -> str:
@@ -818,6 +852,11 @@ def main() -> int:
     s.add_argument("--json", type=Path)
     f = sub.add_parser("footprint")
     f.add_argument("project", type=Path)
+    a = sub.add_parser("ab", help="H2 paired: measure sweep points in turns, so machine drift reaches all alike")
+    a.add_argument("--points", default="20:250,20:3000")
+    a.add_argument("--rounds", type=int, default=6)
+    a.add_argument("--work", type=Path, required=True)
+    a.add_argument("--json", type=Path)
     c = sub.add_parser("coldwrite", help="ADR-0011 cold-write series: synthetic cold stores of these sizes")
     c.add_argument("--records", default="1000,3000,10000,30000")
     c.add_argument("--work", type=Path, required=True)
@@ -829,6 +868,13 @@ def main() -> int:
         print(cold_table(cold))
         if args.json:
             args.json.write_text(json.dumps(cold, indent=1), encoding="utf-8")
+        return 0
+    if args.cmd == "ab":
+        paired = ab(sweep_points(args.points), args.work, args.rounds)
+        for op, v in paired["ops"].items():
+            print(f"{op}: medians {v['median_s']}, paired delta {v['paired_delta_s']}")
+        if args.json:
+            args.json.write_text(json.dumps(paired, indent=1), encoding="utf-8")
         return 0
     if args.cmd == "build":
         build(args.out, args.units)

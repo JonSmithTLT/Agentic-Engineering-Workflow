@@ -22,11 +22,17 @@ v1, which changes the ended Lead credentials and so the content of a Lead record
 history references is never touched: on v2 the migration does nothing.
 
 The migration refuses while any harness run may be live (invariant 7): a run's supervisor holds custody of its
-invocation, which the migration would archive or rewrite under it. It is idempotent: on a v2 project it does nothing.
+invocation, which the migration would archive or rewrite under it.
+
+**On a v2 project** it records what older v2 history lacks, append-only, and is otherwise a no-op (idempotent). A
+unit archived before bundles recorded the checks its verification cites (``aew/archive/v1``) gets a ``cited_evidence``
+annotation that pins them, validated as archival validates them now; until then a full audit reports the unit's
+closure as unrecorded (independent P3 re-review, P3-R2). Its bundle is never rewritten.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import hierarchy as H
@@ -36,19 +42,21 @@ from aew.engine.store import Transition
 from aew.errors import AEWError, IllegalTransition, StaleRevision
 from aew.harness import runlog
 from aew.history import manifest as M
+from aew.history.index import HistoryIndex
 from aew.history.store import History
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import HierarchyPort
+    from aew.engine.ports import ArchivePort, HierarchyPort
 
 
 class Migration:
     """``aew migrate`` (Lead)."""
 
-    def __init__(self, k: Kernel, *, hierarchy: HierarchyPort) -> None:
+    def __init__(self, k: Kernel, *, hierarchy: HierarchyPort, archive: ArchivePort) -> None:
         self.k = k
         self.hierarchy = hierarchy
+        self.archive = archive
 
     def live_runs(self, state: dict[str, Any]) -> list[str]:
         """The harness runs whose supervisor may still hold custody: each invocation's latest run, conservatively (a
@@ -72,14 +80,35 @@ class Migration:
             (root / rel).unlink()
         return found
 
+    def _upgrade_v2(self, token: str, expect_rev: int) -> dict[str, Any]:
+        """A v2 project's units archived before bundles recorded their cited checks get the annotation that pins
+        them, in one transaction (P3-R2); with none, nothing happens."""
+        with self.k.store.session() as s:
+            require_lead(s.state, token, archived=self.k.archived_credential)
+            if expect_rev != s.revision:
+                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
+                                    expected=expect_rev, current=s.revision)
+            if not self.archive.legacy_units(s.state):
+                return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
+                        "summary": "the control state is already v2; nothing to migrate"}
+        with self.k.lead_txn(token, expect_rev, "migrate.closure",
+                             reason="ADR-0011: a full audit covers the checks a verification cites") as ctx:
+            closed = self.archive.close_legacy(ctx, self.archive.legacy_units(ctx.state))
+            ctx.summary = (f"recorded the cited checks of {len(closed)} unit(s) archived before bundles recorded them "
+                           f"({sum(len(c['cited']) for c in closed)} check(s) pinned)")
+        return {"ok": True, "migrated": False, "schema": V2, "revision": ctx.session.committed_revision,
+                "summary": ctx.summary, "closure": closed}
+
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
+        if self.k.store.read()["schema"] == V2:  # a project is never v1 again once it is v2
+            return self._upgrade_v2(token, expect_rev)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.k.archived_credential)
             if expect_rev != s.revision:
                 raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
                                     expected=expect_rev, current=s.revision)
             state = s.state
-            if state["schema"] == V2:
+            if state["schema"] == V2:  # migrated meanwhile
                 return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
                         "summary": "the control state is already v2; nothing to migrate"}
             self.k.check_manifest_pin(state)
@@ -113,8 +142,14 @@ class Migration:
                 effect()
             except (AEWError, OSError):
                 pass
+        # Build the derived index now, outside the lock: it is the one read of the whole history, and otherwise the
+        # first command to look up finished work would pay it. It is derived, so a failure only defers it.
+        try:
+            index = HistoryIndex(self.k.aew_root).sync(committed["cold"]["root"])["mode"]
+        except (AEWError, OSError, sqlite3.Error):
+            index = "deferred"
         return {"ok": True, "migrated": True, "schema": V2, "revision": revision, "summary": summary,
-                "discarded": discarded,
+                "discarded": discarded, "index": index,
                 "archived": {"units": before["units"] - len(committed["work"]),
                              "invocations": before["invocations"] - len(committed["invocations"]),
                              "credentials": before["tokens"] - len(committed["tokens"])},

@@ -1,6 +1,6 @@
 # ADR-0011 implementation plan (with E5)
 
-- **Status:** approved by the operator (2026-10-02). Nothing is implemented yet.
+- **Status:** approved by the operator (2026-10-02). **Complete** (2026-10-03): every phase is merged, P3 last (PR #24, `42239e1`); the register closed F1, E5 and the before-M4 gate.
 - **Scope:** the gate before M4. That covers [ADR-0011](adr/0011-hot-cold-control-state.md) (register F1) and E5, the Engine collaborator refactor (register E5).
 - **Inputs:**
   - ADR-0011 (final pre-implementation text, 2026-10-01);
@@ -194,7 +194,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
   schema: aew/annotation/v1
   id: AN-0001
   subject: {id: T-0042, entry_seq: 812, bundle_sha256: <hex>}
-  rel: moved_to            # superseded_by | moved_to | promoted_to | lineage | audit_finding
+  rel: moved_to            # superseded_by | moved_to | promoted_to | lineage | audit_finding | cited_evidence
   object: S-0007           # the other end of the relation, or null
   at: <ISO-8601>
   actor: {generation: 3}
@@ -203,7 +203,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
   note: <text>
   ```
 - Each annotation gets a manifest entry of kind `annotation`. The bundle it is about is never rewritten.
-- **Producers in this work:** `audit_finding` (the audit) and `moved_to` (R3). F4 (Ticket revisions) adds `superseded_by` and `lineage` later.
+- **Producers in this work:** `audit_finding` (the audit), `moved_to` (R3) and `cited_evidence` (`aew migrate` on v2: it pins the cited checks of a bundle archived before bundles recorded them, in a `cited_evidence` list; §7.4). F4 (Ticket revisions) adds `superseded_by` and `lineage` later.
 
 ### The history commands
 
@@ -215,7 +215,7 @@ Investigation §9 left three choices open, and ADR-0011 left two more ("whether 
 | `aew history load <id> --into <WORK-ID> --reason …` | Lead | Attach a historical record as reference context. Later packs for that unit carry it as a labelled `history:<id>@<sha>` source, never as current evidence (invariant 14) |
 | `aew history audit [--full] [--token …]` | read, or Lead to record | Incremental or full verification (R2) |
 | `aew history reindex` | read | Rebuild the derived index |
-| `aew migrate` | Lead, quiescent | The one-time v1 → v2 migration |
+| `aew migrate` | Lead, quiescent | The one-time v1 → v2 migration. On v2, it records the cited checks of bundles archived before bundles recorded them (§7.4), and is otherwise a no-op |
 
 ### Schema version
 
@@ -473,6 +473,103 @@ Each PR keeps the M1–M3 tests passing.
 These are the two findings from the F2 probes.
 1. When the engine inspects a run's workspace, it must add that run's private git object store as an alternate. F2 decides the store's lifetime.
 2. The E13 conformance scenario must translate namespace-local PIDs (`NSpid`) before it can gate F2.
+
+From P3 (A1, §7.4):
+
+3. `resume` grows with open work: about 3 ms per open unit on Windows (3.6 s at 1,000 open), 1.2 to 1.4 ms on Linux, in its compute phase. It is linear and inside the 8 s bound, but M4's concurrency raises the open frontier.
+
+### 7.4 P3 results (2026-10-03)
+
+The data and tables are in [`eval/adr-0011/perf/README.md`](../../eval/adr-0011/perf/README.md) §5–§7. `tools/perf/adr0011_gate.py` judges a flat and a hierarchy sweep against the criteria below and prints the table; on all three platforms every row is pass or report (on Windows with the paired H2 run, `--ab`). Code measured: `16c6757`.
+
+**Who ran what.** With the operator's go-ahead (2026-10-02), Claude ran all three:
+- **WSL2 Ubuntu 22.04** (supplement): flat, hierarchy and cold-write series.
+- **Rocky Linux 8.10 in `aew-q7`**: `tools/perf/rocky8-gate.sh` and the full flat sweep. It is Rocky's userland on WSL2's 6.18 kernel, not Rocky's 4.18; that is enough for this gate, which measures Python, YAML and file I/O, but not for F2's containment.
+- **Windows reference**: the full sweep, flat, hierarchy and cold-write. The operator did light design work during it; nothing else ran.
+
+**Verdicts.**
+
+| Criterion | Windows (reference) | Rocky 8.10 | WSL2 Ubuntu |
+|---|---|---|---|
+| **H1** hot state at 3,000 vs 250 completed (≤ 1.25x) | 1.05x flat, 1.08x hierarchy | 1.05x flat, 1.08x hierarchy | 1.05x, 1.08x |
+| **H1** history's share of hot state at 20 open, 3,000 completed (≤ 20%) | 7.6%; 12.6% hierarchy | 7.7%; 12.8% hierarchy | 7.7%; 12.8% |
+| **H2** largest change of any command, 250 to 3,000 completed (≤ +0.25 s) | +0.024 s paired (flat); +0.036 s hierarchy | +0.027 s | +0.076 s |
+| **H2** cold-write maintenance sublinear | flat, 1.5k to 30.7k records | flat, 1.5k to 30.7k records | flat |
+| **H3** re-parse of a changed hot state, 20 open, 3,000 completed (≤ 0.25 s) | 13.3 ms | 7.0 ms | 6.4 ms |
+| **H4** `resume`: no history-linear sweep (same reads and scans at 250 and 3,000; meets H2) | pass | pass | pass |
+| **Absolute bounds** at 3,000 (reads ≤ 2 s, commits ≤ 4 s, `resume` ≤ 8 s, heartbeat ≤ 2.5 s) | pass; slowest `resume`, 0.93 s (0.57 s paired) | pass, every command ≤ 0.28 s | pass |
+| **A1** (reported): hot bytes and `resume` per open unit, 20 to 1,000 open | 1.03 KB; 3.1 ms, linear, no knee | 1.03 KB; 1.35 ms, linear, no knee | 1.03 KB; 1.24 ms, linear |
+
+**Windows H2 is judged paired.** The sweep measured the 3,000 point once, in a slow moment: `aew --version`, which never reads the project, took 1.7x longer than at 250, and every phase of every command was about 1.6x slower. `status` (+0.255 s) and `resume` (+0.37 s) then exceeded +0.25 s with identical read and scan counters. `control_plane.py ab` measured both points in turns, six rounds: the largest difference is +0.024 s (perf README §7). The sweep's one-sample cap at 3,000, from M3, is removed.
+
+**H1 is judged at 250 and 3,000 completed**, as the operator decided; the CI regression's 250 and 1,000 do not replace it. The historical-access minimum (show, list, links, load) and the full and incremental audits are P2c's, covered by `tests/integration/test_history_surface.py`.
+
+**A1, read.** With history gone from the hot state, what remains grows with open work: about 1 KB and 0.3 to 0.5 ms per open unit for most commands, as in M3, and for `resume` 1.2 to 1.4 ms on Linux and 3.1 ms on Windows (0.56 s at 20 open, 3.59 s at 1,000; it was about 4.4 ms on Windows before ADR-0011). It is linear to 1,000 open, with no knee, and inside the 8 s bound; M4 takes it up (§7.3). The re-parse grows with it (0.29 to 0.41 s at 1,000 open on Linux), inside the 2.5 s heartbeat bound; H3's 0.25 s is defined at 20 open. Nothing here needs the optional role-card dedupe (§6, P2d).
+
+**Migration, profiled** (operator: profile it, batch only if one transaction is impractical). At 20 open and 3,000 completed on Windows, under cProfile (100 s; 102 s unprofiled at P2d):
+- parsing the 60 MB v1 `control.yaml` once, with its schema validation: about 30%;
+- hashing records on disk: each completion record when its unit is archived, and every pre-written bundle again at the commit (R8): about 27%, mostly opening 12,000 files just written (on Windows, about 2 ms per open);
+- serializing 3,000 bundles and the state: about 16%;
+- one avoidable cost: the finalizer found each unit's credentials by scanning every credential, N units x 15,000 credentials, about 9%. **Fixed** (`b57b681`): one map per commit.
+
+Unprofiled after the fix: 87 s on Windows (102 s before), 83 to 86 s on Linux. The rest is linear work the migration must do once (read everything, write and verify everything), so **one transaction stays**: a project migrates once, the time is linear (about 28 ms per finished Ticket), and splitting it would trade R8's one commit point for resumable batches with no measured need.
+
+**Found and fixed by the gate** (`16c6757`). The derived history index was built by whichever command first looked up finished work after a migration. At 3,000 completed that was `harness status`, measured once at 0.88 s against 0.25 s at 250: an H2 failure, though its steady state is constant (it rehydrates the bounded `recent` ring). `aew migrate` now builds the index after its commit, outside the lock, and reports it (`index`). The results above are from after the fix.
+
+**Not run, and why.** Nightly-strength crash and walk runs are CI's nightly job (§8). Live models are not part of this gate.
+
+**Independent review fixes** (2026-10-03, in PR #24). The review of the whole (frozen at `c6caa4c`) requested changes for two findings in the merged P2 code:
+
+- **P3-1: the index locates entries; it never vouches for them.**
+  - **The defect.** `local/history.sqlite` is derived and covered by no hash. A row whose entry named another record (another path, hash or content) was believed. `history show` then returned that record as engine history, `history load` pinned it into a pack, and a new dependency committed facts from it while naming the real bundle's hash.
+  - **What every query returns now.** Each query returns the history's own entries: each row is checked against the entry the root pins at its position (`History.authenticate`), and the authentic entry must satisfy the query itself (its id, kind, state, parent, subject, links). A mismatch rebuilds the index and asks again; a second one is an `IntegrityError`.
+  - **Missing rows** are caught at sync: the rows must be exactly the root's positions.
+  - **Links** are read from the authenticated entries, not from link rows.
+  - **Facts** take the bundle hash from the authenticated entry they were read with.
+  - **What remains, and how it is covered.** A row altered so that no query matches it omits a record rather than inventing one. The explicit full audit compares every row, column and link with the history, rebuilds the index if any differ, and reports `index: consistent | rebuilt`.
+  - **Cost.** Each history file is read and proven once per query, and once per command through two per-process caches:
+    - parses keyed by the file's hash;
+    - sealed segments proven to lead to the root's sealed head.
+
+    A command that reads several archived units syncs the index once, while its root and file are unchanged. `harness status` at 3,000 completed, which rehydrates the 20-unit recent ring: 0.50 s, against 0.59 s before.
+- **P3-2: the full audit covers the evidence closure.**
+  - **What is pinned now.** Archival pins the check results an ingested verification cites but the unit did not ingest (`cited_evidence` in the bundle, with hashes taken then, after the report is checked against its ingest hash). Their ids join the entry's `evidence` links, so `history show` finds them by id (`history load` uses the same lookup). A cited check that is missing, or a report that changed since ingest, refuses the archival (and the migration).
+  - **What the audit follows.** A verification follows what each pinned record pins in turn (`verify(..., nested=evidence_pins)`: a check's log), each file once per entry. Recorded audits and the Epic closeout gate use the same verification.
+- **Found by the new audit:** the perf tool's cloner rewrote each cloned check's log (its ids change) without rehashing the log pin inside the check record. Cloned evidence records are now written after their logs, with their pins rehashed. Measurements are unaffected: the cloner's files were never audited before.
+- **Tests:** `tests/integration/test_history_integrity.py`, six tests on a real finished mutating Ticket (the perf template), migrated:
+  - a forged index entry (show, then facts);
+  - a lost row and an invented link;
+  - a row that hides its entry, until the full audit;
+  - a cited check found by id;
+  - a changed cited check, and a changed or deleted log, ingested or cited, under advisory and recorded full audits;
+  - a verification changed after ingest refusing migration.
+
+  All six fail on `c6caa4c` and pass now.
+
+**Re-review fixes** (2026-10-03, in PR #24). The re-review (frozen at `1911894`) found P3-1 resolved and P3-2 partly resolved, with two remaining findings:
+
+- **P3-R1: archival pinned a cited check as it was found.**
+  - **The defect.** A cited check changed before archival was hashed as it stood. The audit then verified that hash and reported success.
+  - **The fix.** Archival pins nothing the engine did not record as it is (`cited_checks`). Each cited check must:
+    - be schema-valid and still under its seal;
+    - be a `check_result` of this unit under its own id;
+    - have every file it pins (its log) still match.
+
+    Anything else refuses the archival, so the migration refuses and control stays v1.
+  - **The audit.** It now checks the seal of every evidence record it reaches, as well as its hash.
+- **P3-R2: units archived before the fix kept the gap.**
+  - **The defect.** A bundle archived before bundles recorded `cited_evidence` keeps its cited checks outside the audit. The full audit still passed.
+  - **The policy.** An explicit upgrade, append-only:
+    - New bundles are `aew/archive/v2`, which always records `cited_evidence` (possibly empty). A bundle still at `aew/archive/v1` predates it.
+    - `aew migrate` on a v2 project gives each such unit a `cited_evidence` annotation that pins its cited checks, validated as archival validates them now (the report against its ingest hash from the authenticated bundle). The bundle is never rewritten. A cited check that is not what the engine recorded refuses the whole upgrade. With nothing to upgrade, `migrate` stays a no-op.
+    - Until a unit's annotation exists, a full audit reports it as a problem that names `aew migrate`, so the audit cannot pass. It is not damage: the unit gets no `audit_finding`, and a recorded audit leaves the verified root where it was.
+    - `history show` finds a check pinned this way by id, held by its unit.
+- **Tests:** three more in `tests/integration/test_history_integrity.py`:
+  - a cited check changed after its seal, replaced by another sealed record, or whose log changed, each refusing migration;
+  - an older v2 archive (built by migrating with the previous bundle format) failing the full audit until `aew migrate` records its closure, with no finding, then passing, then covering the cited check and its log;
+  - the upgrade refusing a cited check already changed.
+
+**Merged** by the operator with these fixes (PR #24, `42239e1`, 2026-10-03). The register moved F1, E5 and the before-M4 gate to §9 *Closed*.
 
 ## 8. Verification for every PR
 

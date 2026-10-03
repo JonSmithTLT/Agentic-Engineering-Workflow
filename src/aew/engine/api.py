@@ -242,7 +242,7 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._project = ProjectAdmin(k, roles=roles)
-        self._migration = Migration(k, hierarchy=hierarchy)
+        self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])

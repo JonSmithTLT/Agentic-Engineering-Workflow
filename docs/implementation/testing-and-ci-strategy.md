@@ -128,7 +128,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
 | Local full run (`-n auto -m "not serial"` + `--lane serial`) | ≤ 5 min | 268 s (260 s parallel + 8 s serial lane) |
 | First CI signal (`core`, Linux: frozen-spec pin + unit + serial) | ≤ 3 min | 29–32 s (Windows `core`: 71–123 s) |
 | Full PR / merge assurance (first job created to `assurance` done) | ≤ 15 min (target 10) | **279–325 s** over 3 runs (383–409 s while sharing the 20-job concurrency limit with a nightly run) |
-| Nightly | ≤ 90 min | first validation run: Linux jobs 98–1190 s; Windows jobs 196–1106 s, plus the Windows serial `reference`, the long pole, at 2675 s (~45 min) |
+| Nightly | ≤ 90 min | first validation run: Linux jobs 98–1190 s; Windows jobs 196–1106 s, plus the Windows serial `reference`, the long pole, at 2675 s (~45 min). **Over budget since 2026-10-01:** that job took 76 min on 2026-09-30, then hit its 90 min job timeout three nights running, while the Linux one grew from 41 to 62 min. Its timeout is now 150 min, so the nightly finishes. The budget still stands, and meeting it again needs the job split or sped up |
 
 Before and after:
 

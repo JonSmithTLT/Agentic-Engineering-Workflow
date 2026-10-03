@@ -1,0 +1,86 @@
+{
+  "dist": [
+    {
+      "path": "assets/index-DUo3JbYK.js",
+      "sha256": "64b041e77eb477f7fbe026b5adc959e6754987a0d5d0daf93a84e1dd89c42018",
+      "bytes": 576238
+    },
+    {
+      "path": "assets/index-uJjLlpNy.css",
+      "sha256": "61cada7a4f2a67cae0d4c9ac354d60639e0d3a9da08bb26affa5cb4ebfd7a577",
+      "bytes": 27294
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08",
+      "bytes": 220
+    },
+    {
+      "path": "index.html",
+      "sha256": "95e322449e529b597644931cf03a9c5b802b8dfc48ead75da1dcf25ff9b1c3a2",
+      "bytes": 496
+    }
+  ],
+  "dist-demo": [
+    {
+      "path": "assets/DemoTools-B3Wk4owS.js",
+      "sha256": "3c88c19039ff25d2e86ea047d76c6db37859f020a4b34df5e8738654b5cca328",
+      "bytes": 550
+    },
+    {
+      "path": "assets/Lab-CqcSpAPg.js",
+      "sha256": "8b57c3c1327706d8e5155bf85088ca17021fc14988ab62251de8b06554fc608a",
+      "bytes": 6482
+    },
+    {
+      "path": "assets/browser-CnWR4YLb.js",
+      "sha256": "9076b178c86bd422d781156df2c1a045ed53262586bd9ed8398b3d459c87561f",
+      "bytes": 273851
+    },
+    {
+      "path": "assets/index-DUU37eEu.js",
+      "sha256": "f3efa2202f06eb967d0fb5c3e0a9d1a746ffbb5665cd30105ba8d895eb3c6b0f",
+      "bytes": 563615
+    },
+    {
+      "path": "assets/index-uJjLlpNy.css",
+      "sha256": "61cada7a4f2a67cae0d4c9ac354d60639e0d3a9da08bb26affa5cb4ebfd7a577",
+      "bytes": 27294
+    },
+    {
+      "path": "assets/jsx-runtime-Cu7Iu-c-.js",
+      "sha256": "fa3a563edb347926a5fb1d1f7c12fd71bbb83bd002ba483aac3c53e989a57156",
+      "bytes": 435
+    },
+    {
+      "path": "assets/rolldown-runtime-S-ySWqyJ.js",
+      "sha256": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "bytes": 694
+    },
+    {
+      "path": "assets/transport-CljpnCZ7.js",
+      "sha256": "a414e606d2b4ce90c4acf5d4c389ecbc774ae408b0aed365f2ef81532512454e",
+      "bytes": 13858
+    },
+    {
+      "path": "assets/worlds-Cfp5AcLf.js",
+      "sha256": "99f620e70241981d9b83bd83119a034474f24bd1ffdba1709403b27b26ff8a76",
+      "bytes": 1125325
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08",
+      "bytes": 220
+    },
+    {
+      "path": "index.html",
+      "sha256": "4d763ca0266c79e1b64d82c3f6bfdf7ff006b447037e5ef8a61652b8bd7a2af9",
+      "bytes": 745
+    },
+    {
+      "path": "mockServiceWorker.js",
+      "sha256": "d6a8df5a5d63077dab8054438b249494bc89d77fb174276212b6950a946b11e1",
+      "bytes": 9120
+    }
+  ]
+}

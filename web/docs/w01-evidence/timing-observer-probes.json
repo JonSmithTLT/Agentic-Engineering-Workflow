@@ -1,0 +1,662 @@
+[
+  {
+    "port": 4187,
+    "trial": 0,
+    "load_ms": 548,
+    "first_rows_ms": 471.5,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 364
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 364
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 386
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 387
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 411
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 412
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 431
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 431
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-BSZbugwY.js",
+        "start": 30.900000005960464,
+        "duration": 32.8999999910593
+      },
+      {
+        "name": "/assets/index-BscBm5Dd.css",
+        "start": 31.100000008940697,
+        "duration": 20.19999998807907
+      },
+      {
+        "name": "/assets/browser-DgLvtNJV.js",
+        "start": 138.29999999701977,
+        "duration": 25.80000001192093
+      },
+      {
+        "name": "/assets/worlds-B0bqdRl0.js",
+        "start": 138.70000000298023,
+        "duration": 29.599999994039536
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 141.90000000596046,
+        "duration": 18.399999991059303
+      },
+      {
+        "name": "/assets/DemoTools-D9IQ56rl.js",
+        "start": 251.20000000298023,
+        "duration": 35.79999999701977
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 357.70000000298023,
+        "duration": 25
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 359.29999999701977,
+        "duration": 35.20000000298023
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 405.29999999701977,
+        "duration": 22
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 406.6000000089407,
+        "duration": 20.799999997019768
+      }
+    ]
+  },
+  {
+    "port": 4191,
+    "trial": 0,
+    "load_ms": 1091,
+    "first_rows_ms": 608.7999999970198,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 551
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 555
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 571
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 574
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 581
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 581
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 589
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 590
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-DUU37eEu.js",
+        "start": 33.8999999910593,
+        "duration": 72.29999999701977
+      },
+      {
+        "name": "/assets/rolldown-runtime-S-ySWqyJ.js",
+        "start": 34.29999999701977,
+        "duration": 66.59999999403954
+      },
+      {
+        "name": "/assets/jsx-runtime-Cu7Iu-c-.js",
+        "start": 34.3999999910593,
+        "duration": 66.70000000298023
+      },
+      {
+        "name": "/assets/index-uJjLlpNy.css",
+        "start": 34.5,
+        "duration": 59.69999998807907
+      },
+      {
+        "name": "/assets/transport-CljpnCZ7.js",
+        "start": 34.5,
+        "duration": 67.5
+      },
+      {
+        "name": "/assets/browser-CnWR4YLb.js",
+        "start": 235,
+        "duration": 65.3999999910593
+      },
+      {
+        "name": "/assets/worlds-Cfp5AcLf.js",
+        "start": 235.29999999701977,
+        "duration": 75.59999999403954
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 237,
+        "duration": 59.599999994039536
+      },
+      {
+        "name": "/assets/DemoTools-B3Wk4owS.js",
+        "start": 401.8999999910593,
+        "duration": 44.900000005960464
+      },
+      {
+        "name": "/assets/Lab-CqcSpAPg.js",
+        "start": 447.5,
+        "duration": 27.19999998807907
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 538,
+        "duration": 15
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 568.3999999910593,
+        "duration": 4
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 577.3999999910593,
+        "duration": 10.299999997019768
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 577.8999999910593,
+        "duration": 10.400000005960464
+      }
+    ]
+  },
+  {
+    "port": 4187,
+    "trial": 1,
+    "load_ms": 550,
+    "first_rows_ms": 477.8999999910593,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 403
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 403
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 415
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 416
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 430
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 430
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 438
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 439
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-BSZbugwY.js",
+        "start": 20.5,
+        "duration": 37.599999994039536
+      },
+      {
+        "name": "/assets/index-BscBm5Dd.css",
+        "start": 20.899999991059303,
+        "duration": 25.80000001192093
+      },
+      {
+        "name": "/assets/browser-DgLvtNJV.js",
+        "start": 160,
+        "duration": 42.79999999701977
+      },
+      {
+        "name": "/assets/worlds-B0bqdRl0.js",
+        "start": 160.5,
+        "duration": 66
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 163.20000000298023,
+        "duration": 37.099999994039536
+      },
+      {
+        "name": "/assets/DemoTools-D9IQ56rl.js",
+        "start": 302.09999999403954,
+        "duration": 45.79999999701977
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 400,
+        "duration": 14
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 400.5,
+        "duration": 14
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 427.3999999910593,
+        "duration": 9.400000005960464
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 427.8999999910593,
+        "duration": 9
+      }
+    ]
+  },
+  {
+    "port": 4191,
+    "trial": 1,
+    "load_ms": 1075,
+    "first_rows_ms": 617.5,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 547
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 551
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 561
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 569
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 576
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 576
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 587
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 587
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-DUU37eEu.js",
+        "start": 35.79999999701977,
+        "duration": 78.5
+      },
+      {
+        "name": "/assets/rolldown-runtime-S-ySWqyJ.js",
+        "start": 36.19999998807907,
+        "duration": 74.5
+      },
+      {
+        "name": "/assets/jsx-runtime-Cu7Iu-c-.js",
+        "start": 36.29999999701977,
+        "duration": 75.09999999403954
+      },
+      {
+        "name": "/assets/transport-CljpnCZ7.js",
+        "start": 36.29999999701977,
+        "duration": 76
+      },
+      {
+        "name": "/assets/index-uJjLlpNy.css",
+        "start": 36.3999999910593,
+        "duration": 63.900000005960464
+      },
+      {
+        "name": "/assets/browser-CnWR4YLb.js",
+        "start": 192.79999999701977,
+        "duration": 94.79999999701977
+      },
+      {
+        "name": "/assets/worlds-Cfp5AcLf.js",
+        "start": 193.09999999403954,
+        "duration": 113.29999999701977
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 194.8999999910593,
+        "duration": 86.29999999701977
+      },
+      {
+        "name": "/assets/DemoTools-B3Wk4owS.js",
+        "start": 394.59999999403954,
+        "duration": 47.70000000298023
+      },
+      {
+        "name": "/assets/Lab-CqcSpAPg.js",
+        "start": 443.19999998807907,
+        "duration": 28.200000002980232
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 528.1999999880791,
+        "duration": 20.200000002980232
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 558,
+        "duration": 9.199999988079071
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 572.8999999910593,
+        "duration": 11.799999997019768
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 573.5,
+        "duration": 11.599999994039536
+      }
+    ]
+  },
+  {
+    "port": 4187,
+    "trial": 2,
+    "load_ms": 564,
+    "first_rows_ms": 480.40000000596046,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 380
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 380
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 397
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 397
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 417
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 417
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 431
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 432
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-BSZbugwY.js",
+        "start": 22.599999994039536,
+        "duration": 41.5
+      },
+      {
+        "name": "/assets/index-BscBm5Dd.css",
+        "start": 22.799999997019768,
+        "duration": 29.400000005960464
+      },
+      {
+        "name": "/assets/browser-DgLvtNJV.js",
+        "start": 137.5,
+        "duration": 55.70000000298023
+      },
+      {
+        "name": "/assets/worlds-B0bqdRl0.js",
+        "start": 137.79999999701977,
+        "duration": 68.40000000596046
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 139.90000000596046,
+        "duration": 50.19999998807907
+      },
+      {
+        "name": "/assets/DemoTools-D9IQ56rl.js",
+        "start": 270.79999999701977,
+        "duration": 38.29999999701977
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 376.40000000596046,
+        "duration": 19
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 376.90000000596046,
+        "duration": 19.099999994039536
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 413.5,
+        "duration": 16.299999997019768
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 414,
+        "duration": 17.299999997019768
+      }
+    ]
+  },
+  {
+    "port": 4191,
+    "trial": 2,
+    "load_ms": 1054,
+    "first_rows_ms": 533.7999999970198,
+    "events": [
+      {
+        "event": "request",
+        "path": "/api/v1/project",
+        "ms": 459
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/project",
+        "ms": 463
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/capabilities",
+        "ms": 477
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/capabilities",
+        "ms": 480
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/history",
+        "ms": 490
+      },
+      {
+        "event": "request",
+        "path": "/api/v1/overview",
+        "ms": 490
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/history",
+        "ms": 498
+      },
+      {
+        "event": "response",
+        "path": "/api/v1/overview",
+        "ms": 499
+      }
+    ],
+    "resources": [
+      {
+        "name": "/assets/index-DUU37eEu.js",
+        "start": 35.70000000298023,
+        "duration": 85.59999999403954
+      },
+      {
+        "name": "/assets/rolldown-runtime-S-ySWqyJ.js",
+        "start": 36.099999994039536,
+        "duration": 65.5
+      },
+      {
+        "name": "/assets/jsx-runtime-Cu7Iu-c-.js",
+        "start": 36.099999994039536,
+        "duration": 67
+      },
+      {
+        "name": "/assets/transport-CljpnCZ7.js",
+        "start": 36.20000000298023,
+        "duration": 68.5
+      },
+      {
+        "name": "/assets/index-uJjLlpNy.css",
+        "start": 36.29999999701977,
+        "duration": 63.5
+      },
+      {
+        "name": "/assets/browser-CnWR4YLb.js",
+        "start": 189.79999999701977,
+        "duration": 48.70000000298023
+      },
+      {
+        "name": "/assets/worlds-Cfp5AcLf.js",
+        "start": 190.20000000298023,
+        "duration": 78.5
+      },
+      {
+        "name": "/favicon.svg",
+        "start": 192,
+        "duration": 37.70000000298023
+      },
+      {
+        "name": "/assets/DemoTools-B3Wk4owS.js",
+        "start": 337.79999999701977,
+        "duration": 42.79999999701977
+      },
+      {
+        "name": "/assets/Lab-CqcSpAPg.js",
+        "start": 384.79999999701977,
+        "duration": 24.600000008940697
+      },
+      {
+        "name": "/api/v1/project",
+        "start": 456.59999999403954,
+        "duration": 4.5
+      },
+      {
+        "name": "/api/v1/capabilities",
+        "start": 475.20000000298023,
+        "duration": 2.8999999910593033
+      },
+      {
+        "name": "/api/v1/history",
+        "start": 486.29999999701977,
+        "duration": 10.400000005960464
+      },
+      {
+        "name": "/api/v1/overview",
+        "start": 487.40000000596046,
+        "duration": 10
+      }
+    ]
+  }
+]

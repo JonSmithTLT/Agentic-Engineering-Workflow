@@ -1,0 +1,30 @@
+{
+  "status": "PASS",
+  "playwright": "1.59.1",
+  "chromium_revision": "1217",
+  "browser_version": "147.0.7727.15",
+  "checks": [
+    "FR-1: all seven known History link types recognized; correct destination navigation; tokens/commits plain",
+    "FR-2: 60 simulated seconds of busy revisions catch older views up without persistent warning",
+    "FR-2: persistent old 304 projection still warns; catch-up stays bounded",
+    "No browser/CSP errors, remote resources or API writes"
+  ],
+  "sequences": [
+    {
+      "scenario": "busy healthy",
+      "simulated_seconds_at_least": 60,
+      "revision_advances": 20,
+      "project_requests": 21
+    },
+    {
+      "scenario": "stuck project with conditional 304",
+      "simulated_seconds_at_least": 60,
+      "revision_advances": 20,
+      "project_requests": 21
+    }
+  ],
+  "errors": [],
+  "remote": [],
+  "writes": [],
+  "scope": "Compiled FR-1 and FR-2 regression; synthetic conditional API and simulated browser time, not live Engine"
+}

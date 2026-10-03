@@ -1,6 +1,6 @@
 # Independent frontend core review packet
 
-Prepared 2026-10-02. Status: **PENDING actual main AEW agent independent review**. User visual approval and frontend tests do not substitute for this gate. Do not integrate or declare core freeze accepted on this packet alone.
+Prepared 2026-10-02. Historical frozen packet: main-line review returned **AMEND (minor)** in `frontend-core-review-main-line.md`. Current fixing commit and retests are in `frontend-core-review-fix-response.md`; fixing-diff verification remains pending. The original target description/evidence below is retained. Do not declare core freeze accepted on this packet alone.
 
 ## Frozen target
 

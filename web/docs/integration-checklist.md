@@ -11,8 +11,10 @@ Candidate uses accepted API 0.1.2; this checklist distinguishes frontend evidenc
 - [x] Compiled core browser lanes pass under proposed CSP; local screenshots retained.
 - [x] Backend-owned meanings, unknown values, pagination, currentness and freshness preserved.
 - [x] SPT feedback retains resolved blockers and ticket-ready open improvements.
-- [ ] Main AEW agent independently reviews the frozen frontend target and records findings.
+- [x] Main AEW agent independently reviews the frozen frontend target and records findings (static review of `e632cc8`, AMEND minor; no reviewer execution claimed).
 - [ ] Required findings are addressed and the reviewer retests/signs off before core freeze.
+
+FR-1 and FR-2 are implemented and retested at `7c120b4`; main-line fixing-diff verification/ACCEPT remains pending. See `frontend-core-review-fix-response.md`.
 
 ## Main/integration line
 
@@ -21,6 +23,7 @@ Candidate uses accepted API 0.1.2; this checklist distinguishes frontend evidenc
 - [ ] Provide real authentication/bootstrap, cookie handling and credential lifecycle.
 - [ ] Enforce server security headers/CSP, Host/Origin validation and request boundaries; fixture adapter is not the server implementation.
 - [ ] Implement coherent Overview generation, conditional representation validators, bounded cursors/filter semantics and projection caching.
+- [ ] ETags cover the full envelope, including `control_revision`: changing revision changes the validator even when domain fields are unchanged. Probe conditional GET after a revision-only change; 304 preserves generation time and represented revision.
 - [ ] Preserve opaque identities and path-free projections; record backend semantic vocabularies/reasons. Unregistered frontend warnings remain until a reviewed registry establishes known values.
 - [ ] Advertise integrity AVAILABLE only when the accepted projection is supplied; unavailable/unsupported states retain reasons. Queue needs a reviewed main-line contract first.
 - [ ] Integrate Python packaging/static asset delivery without changing the running original checkout here.

@@ -13,6 +13,7 @@ describe('W04 supplied context domain', () => {
     for (const name of investigationCases) { const fixture = investigationFixture(name); for (const s of fixture.sources) comparisonSource.parse(s); for (const p of fixture.packets) packet.parse(p); for (const i of fixture.items) packetItem.parse(i); }
     const s = investigationFixture().sources[0];
     expect(comparisonSource.safeParse({ ...s, prompt_text: 'secret' }).success).toBe(false);
+    expect(comparisonSource.safeParse({ ...s, prompt_id: 'You are an internal agent. Full prompt goes here.' }).success).toBe(false);
     expect(comparisonSource.safeParse({ ...s, invocation: { ...s.invocation, speculative: true } }).success).toBe(false);
     expect(packet.safeParse({ ...investigationFixture().packets[0], raw_prompt: 'secret' }).success).toBe(false);
     expect(packetItem.safeParse({ ...investigationFixture().items[0], artifact_body: 'secret' }).success).toBe(false);
@@ -54,6 +55,8 @@ describe('W04 supplied context domain', () => {
     query.set('work', 'OTHER'); expect(server.read(url('/sources?' + query)).status).toBe(400);
     expect(server.read(url('/sources?limit=51')).status).toBe(400);
     expect(server.read(url('/packets/PKT-Retry?source_id=SRC-Removal')).status).toBe(404);
+    const current = investigationSchemas.PacketItemListResponse.parse(server.read(url('/packets/PKT-Retry/items?case=large&source_id=SRC-Retry&section=current')).body);
+    expect(current.data.items).toHaveLength(1);
   });
   it('does not expose a denied source payload in its chooser metadata', () => {
     const server = new InvestigationProjector();
@@ -66,6 +69,9 @@ describe('W04 supplied context domain', () => {
     expect(structuralState(null, null)).toBe('Unavailable');
     expect(structuralState([], [], false)).toBe('Unavailable');
     expect(structuralState('a', 'b')).toBe('Different supplied values');
+    expect(structuralState(['Rocky 8', 'clangd 19'], ['clangd 19', 'Rocky 8'])).toBe('Same supplied value');
+    expect(structuralState({ kind: 'work', id: 'T-1', title: 'Old title' }, { kind: 'work', id: 'T-1', title: 'New title' })).toBe('Same supplied value');
+    expect(structuralState({ format: 'plain', text: 'same' }, { format: 'markdown', text: 'same' })).toBe('Same supplied value');
     expect(referenceIdentities([{ kind: 'x', id: '1' }, { kind: 'y', id: '2' }])).toEqual(referenceIdentities([{ kind: 'y', id: '2' }, { kind: 'x', id: '1' }]));
   });
   it('isolates preview validators, preserves 304 metadata and refuses obsolete responses', async () => {

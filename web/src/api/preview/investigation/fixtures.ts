@@ -38,11 +38,12 @@ export function investigationFixture(name = 'story') {
   if (name === 'contradictory') packets[1].receipts.push({ ...packets[1].receipts[1], id: 'RECEIPT-CONTRADICTORY', state: 'REJECTED', result: 'Conflicting delivery receipt supplied; no resolution supplied.' });
   if (name === 'unknown') { sources[1].invocation.status = 'FUTURE_STATUS'; packets[1].receipts[0].type = 'FUTURE_RECEIPT'; items[2].disposition = 'FUTURE_DISPOSITION'; items[2].explanation.state = 'FUTURE_EXPLANATION'; }
   if (name === 'malformed') packets[1].receipts[0].source_id = 'WRONG-SOURCE';
-  if (name === 'hostile') items[2].excerpt = { format: 'markdown', text: '<script>globalThis.w04Attack=true</script>\n<img src="https://attacker.invalid/w04">\n[bad](javascript:alert(1))\n**Safe supplied excerpt**' };
+  if (name === 'hostile') items[2].excerpt = { format: 'markdown', text: '<script>globalThis.w04Attack=true</script>\n<img src="https://attacker.invalid/w04">\n\n[bad](javascript:alert(1))\n\n**Safe supplied excerpt**' };
   if (name === 'stale' || name === 'refresh-error') { sources[1].mode = 'CURRENT'; sources[1].snapshot_id = null; packets[1].snapshot_id = null; packets[1].receipts.forEach(r => r.snapshot_id = null); }
   if (name === 'large') {
     for (let i = 0; i < 1000; i++) sources.push({ ...structuredClone(sources[i % 2]), id: `L-${String(i).padStart(4, '0')}`, packets: [] });
-    for (let i = 0; i < 120; i++) items.push({ ...structuredClone(items[2]), id: `ITEM-${String(i).padStart(4, '0')}`, excerpt: { format: 'plain', text: 'Bounded page sample. '.repeat(50) } });
+    const seed = items.find(item => item.packet_id === 'PKT-Retry' && item.reference.id === 'CLANGD-E875')!;
+    for (let i = 0; i < 120; i++) items.push({ ...structuredClone(seed), id: `ITEM-${String(i).padStart(4, '0')}`, excerpt: { format: 'plain', text: 'Bounded page sample. '.repeat(50) } });
     packets[1].sections[1].count = 122;
   }
   if (name === 'empty') return { sources: [], packets: [], items: [] };

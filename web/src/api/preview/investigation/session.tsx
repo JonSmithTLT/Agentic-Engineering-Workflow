@@ -62,7 +62,7 @@ export function useComparisonSource(owner: string, name: string, sourceId: strin
     const s = value.data, issue = sourceBindingIssue(s) ?? (s.id !== sourceId || s.mode !== anchor?.mode || s.snapshot_id !== anchor?.snapshot_id || s.visibility_scope !== anchor?.visibility_scope ? 'Source snapshot/visibility binding mismatch' : undefined);
     if (issue) ctx.addIssue({ code: 'custom', message: issue });
   }), [sourceId, anchor]);
-  const query = useProjection(route, schema, displayed && anchor?.mode === 'CURRENT' ? 'detail' : 'history', !!sourceId && !!anchor && bound.ready, displayed || (initialize && initialized !== sourceId), bound.reader);
+  const query = useProjection(route, schema, displayed && anchor?.mode === 'CURRENT' ? 'detail' : 'history', !!sourceId && !!anchor && bound.ready, displayed || (initialize && initialized !== sourceId), bound.reader, anchor?.mode === 'CURRENT');
   useEffect(() => { if (query.data) setInitialized(sourceId); }, [query.data, sourceId]);
   const value = query.data?.value.data;
   const issue = value && (sourceBindingIssue(value) ?? (value.id !== sourceId || value.mode !== anchor?.mode || value.snapshot_id !== anchor?.snapshot_id || value.visibility_scope !== anchor?.visibility_scope ? 'Source snapshot/visibility binding mismatch' : undefined));

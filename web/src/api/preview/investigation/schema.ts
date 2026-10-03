@@ -2,6 +2,7 @@ import { z } from 'zod';
 // @ts-expect-error Node's pinned strip-types artifact runner requires the explicit extension.
 import { invocation, entityRef, richText, timestamp, id, reason } from '../../schema.ts';
 const meta = z.string().max(512).nullable();
+const identityMeta = z.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/).nullable();
 const refs = z.array(entityRef).max(250);
 export const investigationCases = ['story', 'later-ticket', 'parallel', 'large', 'missing', 'partial', 'contradictory', 'unknown', 'denied', 'not-found', 'historical-unavailable', 'malformed', 'stale', 'refresh-error', 'hostile', 'empty'] as const;
 const packetAssociation = z.strictObject({ id, source_id: id, invocation_id: id, run_id: id.nullable() });
@@ -10,7 +11,7 @@ export const comparisonSource = z.strictObject({
   id, invocation, mode: z.enum(['CURRENT', 'FIXED']), snapshot_id: id.nullable(), captured_at: timestamp.nullable(), visibility_scope: id,
   work_revision: meta, source_revision: meta, environment: z.array(z.string().max(512)).max(30),
   model_id: meta, provider: meta, profile_id: meta, card_id: meta, capability_id: meta,
-  prompt_id: meta, prompt_version: meta, prompt_digest: meta,
+  prompt_id: identityMeta, prompt_version: identityMeta, prompt_digest: z.string().max(256).regex(/^[A-Za-z0-9_-]+:[A-Fa-f0-9]+$/).nullable(),
   evidence_complete: z.boolean(), packets: z.array(packetAssociation).max(250), packets_complete: z.boolean(),
 });
 export const receipt = z.strictObject({

@@ -38,7 +38,7 @@ function SourceChooser({ name, side }: { name: string; side: 'a' | 'b' }) {
 type SourceQuery = ReturnType<typeof useComparisonSource>;
 function SideHeader({ side, query, change }: { side: 'a' | 'b'; query: SourceQuery; change: () => void }) {
   const { params, update } = useControls(), source = query.data?.value.data, run = params.get(side + '_run') ?? '';
-  return <section className="panel comparison-side" aria-label={`Source ${side.toUpperCase()}`}><h2>Source {side.toUpperCase()}</h2><button onClick={change}>Change {side.toUpperCase()}</button>
+  return <section className="panel comparison-side" aria-label={`Source ${side.toUpperCase()}`}><h2>Source {side.toUpperCase()}</h2><button data-change-side={side} onClick={change}>Change {side.toUpperCase()}</button>
     {query.error && <ErrorState error={query.error} retry={() => void query.refetch()} />}
     {source ? <><p><code>{source.invocation.id}</code> · <code>{source.id}</code></p><p>{source.mode === 'FIXED' ? <>Snapshot <code>{source.snapshot_id}</code></> : 'Current source'} · <time>{source.captured_at ?? 'Capture time not supplied'}</time></p>
       <label>Harness run {side.toUpperCase()}<select value={run} onChange={event => update({ [side + '_run']: event.target.value })}><option value="">Invocation only — no run selected</option>{source.invocation.runs.map(r => <option key={r.id} value={r.id}>{r.id}</option>)}</select></label>
@@ -51,6 +51,7 @@ function SideHeader({ side, query, change }: { side: 'a' | 'b'; query: SourceQue
 type Row = { label: string; left: unknown; right: unknown; complete?: boolean; render?: (value: unknown, side: 'a' | 'b') => ReactNode };
 function ComparisonRows({ a, b, openPacket }: { a?: ComparisonSource; b?: ComparisonSource; openPacket: (side: 'a' | 'b', packet: string, target: HTMLElement) => void }) {
   const { params, update } = useControls(), active = params.get('compare_tab') ?? 'overview', differences = params.get('differences') === '1';
+  const packetsFor = (source: ComparisonSource | undefined, side: 'a' | 'b') => source?.packets.filter(p => !params.get(side + '_run') || p.run_id === params.get(side + '_run') || p.run_id === null) ?? [];
   const runA = a?.invocation.runs.find(r => r.id === params.get('a_run')), runB = b?.invocation.runs.find(r => r.id === params.get('b_run'));
   let rows: Row[];
   if (active === 'overview') {
@@ -62,7 +63,7 @@ function ComparisonRows({ a, b, openPacket }: { a?: ComparisonSource; b?: Compar
   } else if (active === 'configuration') rows = ['work_revision', 'source_revision', 'environment', 'model_id', 'provider', 'profile_id', 'card_id', 'capability_id', 'prompt_id', 'prompt_version', 'prompt_digest'].map(field => ({ label: field.replaceAll('_', ' '), left: a?.[field as 'model_id'], right: b?.[field as 'model_id'] }));
   else rows = [
     { label: 'Evidence references', left: a && referenceIdentities(a.invocation.evidence), right: b && referenceIdentities(b.invocation.evidence), complete: !!a?.evidence_complete && !!b?.evidence_complete, render: (_, side) => { const source = side === 'a' ? a : b; return source ? <><References values={source.invocation.evidence} />{!source.evidence_complete && <p>Incomplete supplied evidence references.</p>}</> : 'Unavailable'; } },
-    { label: 'Context packets', left: a && referenceIdentities(a.packets.map(p => ({ kind: 'packet', id: p.id }))), right: b && referenceIdentities(b.packets.map(p => ({ kind: 'packet', id: p.id }))), complete: !!a?.packets_complete && !!b?.packets_complete, render: (_, side) => { const source = side === 'a' ? a : b, run = params.get(side + '_run'); return source ? <><ul>{source.packets.filter(p => !run || p.run_id === run || p.run_id === null).map(p => <li key={p.id}><button data-packet-link={`${side}:${p.id}`} onClick={event => openPacket(side, p.id, event.currentTarget)}>Inspect {p.id}</button> · {p.run_id ?? 'Invocation-level packet'}</li>)}</ul>{!source.packets.length && <p>No context packet references supplied.</p>}{!source.packets_complete && <p>Incomplete supplied packet references.</p>}</> : 'Unavailable'; } },
+    { label: 'Context packets', left: a && referenceIdentities(packetsFor(a, 'a').map(p => ({ kind: 'packet', id: p.id }))), right: b && referenceIdentities(packetsFor(b, 'b').map(p => ({ kind: 'packet', id: p.id }))), complete: !!a?.packets_complete && !!b?.packets_complete && (!params.get('a_run') || !!runA) && (!params.get('b_run') || !!runB), render: (_, side) => { const source = side === 'a' ? a : b; return source ? <><ul>{packetsFor(source, side).map(p => <li key={p.id}><button data-packet-link={`${side}:${p.id}`} onClick={event => openPacket(side, p.id, event.currentTarget)}>Inspect {p.id}</button> · {p.run_id ?? 'Invocation-level packet'}</li>)}</ul>{!packetsFor(source, side).length && <p>No context packet references supplied.</p>}{!source.packets_complete && <p>Incomplete supplied packet references.</p>}</> : 'Unavailable'; } },
   ];
   return <section aria-label="Structural comparison"><p className="scope-note">Structural comparison of supplied values. Differences do not establish causation. Array order does not indicate importance.</p>
     <InvestigationTabs prefix="compare" label="Comparison sections" tabs={tabs} active={active} select={id => update({ compare_tab: id })} />
@@ -77,6 +78,12 @@ function Workspace({ name }: { name: string }) {
   const a = useComparisonSource('a', name, params.get('a_source') ?? '', !inspector, !!inspector && side === 'a'), b = useComparisonSource('b', name, params.get('b_source') ?? '', !inspector, !!inspector && side === 'b');
   const restore = useRef<{ key: string; scroll: number } | null>(null);
   const restoring = useRef(false);
+  const previousChooser = useRef(choose);
+  useEffect(() => {
+    const prior = previousChooser.current;
+    previousChooser.current = choose;
+    if (!choose && (prior === 'a' || prior === 'b')) focusBelowHeader(document.querySelector(`[data-change-side="${prior}"]`));
+  }, [choose]);
   const back = () => { restoring.current = true; update({ packet: null, packet_side: null, packet_cursor: null, packet_section: null, packet_disposition: null, packet_tab: null }); };
   useEffect(() => {
     if (inspector || !restoring.current) return;

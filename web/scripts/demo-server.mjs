@@ -39,7 +39,7 @@ const server = http.createServer((req, res) => {
       const countKey = JSON.stringify([fixture, req.headers['x-aew-demo-fault'], url.pathname, url.search]);
       const count = (checks.get(countKey) ?? 0) + 1; checks.set(countKey, count);
       let result;
-      if (preview && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
+      if (preview && !investigation && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
       else if (!preview && fixture === 'F10') {
         const fault = req.headers['x-aew-demo-fault'];
         if (fault === 'offline') { req.socket.destroy(); return; }

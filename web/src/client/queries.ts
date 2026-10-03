@@ -48,13 +48,13 @@ export function installVisibility(
 ) {
   const onVisible = () => {
     if (doc.visibilityState === 'visible' && !readClock.manual)
-      void client.refetchQueries({ type: 'active' });
+      void client.refetchQueries({ type: 'active', predicate: query => query.meta?.automaticRevalidation !== false });
   };
   doc.addEventListener('visibilitychange', onVisible);
   const disposeReconciliation = installRevisionReconciliation(client, doc);
   const onFocus = () => {
     if (doc.visibilityState === 'visible' && !readClock.manual)
-      void client.refetchQueries({ type: 'active' });
+      void client.refetchQueries({ type: 'active', predicate: query => query.meta?.automaticRevalidation !== false });
   };
   window.addEventListener('focus', onFocus);
   return () => {
@@ -70,6 +70,7 @@ export function useProjection<T>(
   available = true,
   displayed = true,
   reader = transport,
+  automaticRevalidation = true,
 ) {
   useReadSession();
   const localClient = useQueryClient();
@@ -80,6 +81,8 @@ export function useProjection<T>(
   }, []);
   const query = useQuery({
     queryKey: projectionKey(route, reader),
+    meta: { automaticRevalidation },
+    staleTime: automaticRevalidation ? 0 : Infinity,
     queryFn: ({ signal }) => reader.get(route, schema, signal),
     enabled: available && displayed,
     refetchInterval:

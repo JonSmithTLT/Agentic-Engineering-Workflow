@@ -15,14 +15,14 @@ export class ExecutionProjector{
     const f=executionFixture(name,project),send=(data:unknown)=>({status:200,body:executionEnvelope(data,project,revision)});
     let rows:unknown[]=[];
     const m=/^\/traces\/([^/]+)(?:\/(events|executions)(?:\/([^/]+)(?:\/(controls|receipts))?)?)?$/.exec(route);
-    if(route==='/traces')rows=f.traces.filter(t=>(!p.get('work')||t.work.id===p.get('work'))&&(!p.get('invocation_id')||f.executions.some(e=>e.invocation?.id===p.get('invocation_id')&&(!p.get('run_id')||e.run_id===p.get('run_id')))));
+    if(route==='/traces')rows=f.traces.filter(t=>(!p.get('work')||t.work.id===p.get('work'))&&(!p.get('invocation_id')||f.executions.some(e=>e.invocation?.id===p.get('invocation_id')&&(!p.get('run_id')||e.run_id===p.get('run_id'))))).map(t=>({id:t.id,snapshot_id:t.snapshot_id,captured_at:t.captured_at,project_id:t.project_id,visibility_scope:t.visibility_scope,work:t.work,root_execution:t.root_execution,invocation_id:t.invocation_id,run_id:t.run_id,source_revision:t.source_revision,environment:t.environment}));
     else if(m){const t=f.traces.find(t=>t.id===m[1]);if(!t)return{status:404};
       // Each fixed source has its own exact binding, even with repeated object IDs.
       const b={source_id:t.id,snapshot_id:t.snapshot_id,project_id:project};
       f.events.forEach(e=>e.binding={...b});f.executions.forEach(e=>{e.binding={...b};e.relations.forEach(r=>r.binding={...b});});f.controls.forEach(c=>c.binding={...b});if(name!=='mismatch')f.receipts.forEach(r=>r.binding={...b});
       if(!m[2])return send(t);
       if(m[2]==='events'){rows=f.events.filter(e=>(!p.get('lane')||e.lane===p.get('lane'))&&(!p.get('execution_id')||e.execution_id===p.get('execution_id')));if(m[3]){const e=f.events.find(e=>e.id===m[3]);return e?send(e):{status:404};}}
-      else {const e=m[3]&&f.executions.find(e=>e.id===m[3]);if(m[3]&&!e)return{status:404};if(m[4]==='controls')return send(f.controls.find(c=>c.execution_id===m[3]));if(m[4]==='receipts')rows=f.receipts.filter(r=>r.execution_id===m[3]);else if(e)return send(e);else rows=f.executions;}
+      else {const e=m[3]&&f.executions.find(e=>e.id===m[3]);if(m[3]&&!e)return{status:404};if(m[4]==='controls'){const c=f.controls.find(c=>c.execution_id===m[3]);return c?send(c):{status:404};}if(m[4]==='receipts')rows=f.receipts.filter(r=>r.execution_id===m[3]);else if(e)return send(e);else rows=f.executions;}
     }else return{status:404};
     const limit=Number(p.get('limit')??50);if(!Number.isInteger(limit)||limit<1||limit>50)return{status:400};
     const scope=JSON.stringify([this.dataset,project,revision,name,route,p.get('work'),p.get('invocation_id'),p.get('run_id'),p.get('lane'),p.get('execution_id'),limit]);let offset=0;

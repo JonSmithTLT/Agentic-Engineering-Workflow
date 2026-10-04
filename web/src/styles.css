@@ -1670,3 +1670,10 @@ summary {
 .execution-controls .panel { padding: 16px; margin-block: 12px; }
 
 .investigation-detail .execution-relation { padding: 16px; margin-block: 12px; }
+
+.execution-fanout { padding: 16px; }
+
+.execution-lane-marks { display: grid; grid-template-columns: repeat(6, 1fr); align-items: start; gap: 2px; }
+.execution-mark { text-align: center; color: var(--border); }
+.execution-mark.active { color: var(--accent); }
+@media (max-width: 1023px) { .execution-lane-marks, .execution-lane-key { display: none; } .execution-event > div { grid-column: 2; } }

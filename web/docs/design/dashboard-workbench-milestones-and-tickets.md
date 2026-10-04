@@ -359,7 +359,7 @@ Approval records are factual: leave them pending until the operator actually app
 | W03 | [Plan 1.1](plans/w03-journal.md) | Operator approved 2026-10-03 | Frontend / fixture task review accepted at 7433ddd; PR merge separate | ACCEPT — main-line lead reviewer, 2026-10-03; findings1–5 resolved | Blocked on accepted journal projection; not claimed |
 | W04 | [Plan 1.0](plans/w04-comparison-context.md) | Operator approved 2026-10-03 | W04-01–03 merged at 211e29c | ACCEPT at 2808149; all findings resolved | Preview adoption and live integration pending |
 | W05 | [Plan 1.1](plans/w05-evidence-inspection.md) | Operator approved 2026-10-03 | W05-01 implemented; W05-02 capability gaps recorded | ACCEPT at e875e81; all findings fixed; clean committed-source evidence regenerated | Artifact adoption/live pending; Timeline/CLI gaps preserved; benchmarks deferred |
-| W06 | Not written | Pending | Not started | Pending | Event/fanout/guarantee projections pending |
+| W06 | [Plan 1.1](plans/w06-execution-investigation.md) | Explicit implementation approval 2026-10-04 | W06-01–03 in implementation | Pending committed-source review | Blocked on accepted T3 and Engine projections; G7/F7 adapter required |
 | W07 | Not written | Pending | Not started | Pending | Recall projections/policies pending |
 | W08 | Not written | Pending | Not started | Pending | F15/F17/coverage/aggregate projections pending |
 | W09 | Not written | Pending | Not started | Pending | Ticket-specific; fixture training needs none |

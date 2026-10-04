@@ -142,6 +142,7 @@ export function RunDetailPage({
                         <tr key={run.id}>
                           <td>
                             <code>{run.id}</code>
+                            <ExecutionEntry invocation={r.id} run={run.id} displayed={displayed} discloseControls={false} />
                           </td>
                           <td>{run.harness}</td>
                           <td>

@@ -31,7 +31,8 @@ export type Locator = z.infer<typeof locator>;
 export function bindingIssue(b:z.infer<typeof binding>,t:Trace){return b.source_id!==t.id||b.snapshot_id!==t.snapshot_id||b.project_id!==t.project_id?'Trace/snapshot/project binding mismatch':undefined;}
 export function eventIssue(e:Event,t:Trace){const owner=t.execution_bindings.find(b=>b.execution_id===e.execution_id);return bindingIssue(e.binding,t)??(!owner||owner.invocation_id!==e.invocation_id||owner.run_id!==e.run_id?'Event execution/invocation/run ownership mismatch':undefined);}
 export function executionIssue(e:Execution,t:Trace){
-  return bindingIssue(e.binding,t)??(e.run_id!==null&&(!e.invocation||!e.invocation.runs.some(r=>r.id===e.run_id))?'Invocation/run ownership mismatch':undefined)??(e.relations.some(r=>bindingIssue(r.binding,t)||r.from.id!==e.id||r.source.kind!=='relation_source')?'Relation source/endpoint binding mismatch':undefined);
+  const owner=t.execution_bindings.find(b=>b.execution_id===e.id);
+  return bindingIssue(e.binding,t)??(!owner||owner.invocation_id!==(e.invocation?.id??null)||owner.run_id!==e.run_id?'Invocation/run ownership mismatch':undefined)??(e.run_id!==null&&(!e.invocation||!e.invocation.runs.some(r=>r.id===e.run_id))?'Invocation/run ownership mismatch':undefined)??(e.relations.some(r=>bindingIssue(r.binding,t)||r.from.id!==e.id||r.from.kind!=='execution'||r.source.kind!=='relation_source')?'Relation source/endpoint binding mismatch':undefined);
 }
 export const executionSchemas = {...wireSchemas,
   TraceListResponse:wireSchemas.TraceListResponse.superRefine((v,c)=>{if(v.data.items.some(t=>t.project_id!==v.project_id||t.visibility_scope!==v.project_id))c.addIssue({code:'custom',message:'Project-only visibility mismatch'});}),

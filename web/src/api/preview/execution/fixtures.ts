@@ -22,7 +22,7 @@ export function executionFixture(name='story',project='aew-demo'){
   if(name==='fanout'){controls[1].budgets[0].observed=27;controls[1].budgets[0].active=11;controls[1].budgets[0].reported_enforcement=null;}
   if(name==='cycles')addRelation('EX-Helper','EX-Removal','registered_child_invocation');
   if(name==='unordered'){events[2].source_at='2026-10-02T15:00:00Z';events[1].ordinal=null;}
-  if(name==='unknown'){events[0].lane='FUTURE_LANE';events[0].kind='FUTURE_EVENT';executions[1].relations[0].relation_kind='FUTURE_RELATION';controls[1].dimensions.push({...controls[1].dimensions[0],name:'future_guarantee',active:'FUTURE_VALUE',vocabulary:'PROVISIONAL'});}
+  if(name==='unknown'){t.coverage[0].lane='FUTURE_LANE';events[0].lane='FUTURE_LANE';events[0].kind='FUTURE_EVENT';executions[1].relations[0].relation_kind='FUTURE_RELATION';controls[1].dimensions.push({...controls[1].dimensions[0],name:'future_guarantee',active:'FUTURE_VALUE',vocabulary:'PROVISIONAL'});}
   if(name==='missing'){receipts.splice(0);controls.forEach(c=>{c.dimensions.forEach(d=>{d.active=null;d.available=null;});c.budgets=[];});}
   if(name==='stale')receipts[0].currentness='STALE_SUPPLIED';
   if(name==='mismatch')receipts[0].binding.snapshot_id='WRONG-SNAPSHOT';
@@ -30,5 +30,7 @@ export function executionFixture(name='story',project='aew-demo'){
   if(name==='hostile')events[0].summary='<script>globalThis.w06Attack=true</script>\n[unsafe](javascript:alert(1))\n<img src="https://attacker.invalid/w06">';
   if(name==='partial')t.coverage.forEach(c=>c.complete=false);
   t.execution_bindings=executions.map(e=>({execution_id:e.id,invocation_id:e.invocation?.id??null,run_id:e.run_id}));
-  return {traces:name==='empty'?[]:[t,{...structuredClone(t),id:'TRACE-Alternate',snapshot_id:'TRACE-SNAP-2',root_execution:'EX-Removal'}],events,executions,controls,receipts};
+  const traces=name==='empty'?[]:[t,{...structuredClone(t),id:'TRACE-Alternate',snapshot_id:'TRACE-SNAP-2',root_execution:'EX-Removal'}];
+  if(name==='large')for(let i=0;i<120;i++)traces.push({...structuredClone(t),id:`TRACE-L-${String(i).padStart(4,'0')}`,snapshot_id:`TRACE-SNAP-L-${i}`});
+  return {traces,events,executions,controls,receipts};
 }

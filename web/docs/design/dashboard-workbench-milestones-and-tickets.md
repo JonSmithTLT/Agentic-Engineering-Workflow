@@ -358,7 +358,7 @@ Approval records are factual: leave them pending until the operator actually app
 | W02 | [Plan 1.1](plans/w02-workspace.md) | Operator approved, including both tightenings | Implemented and locally validated at 0e64b31; acceptance pending | Pending frozen main-line review | Not claimed |
 | W03 | [Plan 1.1](plans/w03-journal.md) | Operator approved 2026-10-03 | Frontend / fixture task review accepted at 7433ddd; PR merge separate | ACCEPT — main-line lead reviewer, 2026-10-03; findings1–5 resolved | Blocked on accepted journal projection; not claimed |
 | W04 | [Plan 1.0](plans/w04-comparison-context.md) | Operator approved 2026-10-03 | W04-01–03 merged at 211e29c | ACCEPT at 2808149; all findings resolved | Preview adoption and live integration pending |
-| W05 | [Plan 1.1](plans/w05-evidence-inspection.md) | Operator approved 2026-10-03 | W05-01 implemented; W05-02 capability gaps recorded | Pending independent desktop/phone task review | Artifact adoption/live pending; Timeline/CLI gaps preserved; benchmarks deferred |
+| W05 | [Plan 1.1](plans/w05-evidence-inspection.md) | Operator approved 2026-10-03 | W05-01 implemented; W05-02 capability gaps recorded | Changes requested in independent review; F1–F4 implemented; F1/F2 re-check pending | Artifact adoption/live pending; Timeline/CLI gaps preserved; benchmarks deferred |
 | W06 | Not written | Pending | Not started | Pending | Event/fanout/guarantee projections pending |
 | W07 | Not written | Pending | Not started | Pending | Recall projections/policies pending |
 | W08 | Not written | Pending | Not started | Pending | F15/F17/coverage/aggregate projections pending |

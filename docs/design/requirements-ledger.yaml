@@ -231,6 +231,11 @@ sources:
       "2. Every amendment on the map, and the sections it touches": the inventory read from the repository; it populates the index under SAI-07 and SAI-17
     carried:
       "7. Frozen designer disposition": [SAI-02, SAI-03, SAI-05, SAI-13, SAI-14, SAI-15, SAI-16, SAI-17]
+  - prefix: KMP
+    path: docs/research/knowledge-manifest-prototype-lessons-2026-10-04.md
+    role: research
+    no_requirements:
+      "1. What the prototype proved": evidence that ADR-0013's placement works; the requirements it implies are ADR-0013's (KST)
 requirements:
   # ---- KCA: knowledge capture and admission design v0.4 ---------------------------------------------------------
   KCA-01: {section: "2. Goals", kind: requirement, tracked_by: [F21], statement: "Retain evidence-backed Cases first, distill semantic Lessons selectively, keep raw canonical history searchable when distillation abstains or is off; the twelve goals (no model impressions as truth, exact provenance, abstention succeeds, provider-neutral, air-gap compatible, no operator curation of low-risk cases)"}
@@ -770,5 +775,20 @@ requirements:
   SAI-15: {section: "6. Re-freeze and migration", kind: sequencing, tracked_by: [E19, F4], statement: "Before the re-freeze: write the missing Ticket-revision WC/KC amendment; promote governing decisions stranded in research/ to a decision record or ADR; adopt the F15 overlay; clear the pending debt meant for the new base; fold the effective adopted heads into WC v0.8 / KC v0.5; create a new immutable manifest, pin and tag, keeping the old set for historical resolution"}
   SAI-16: {section: "6. Re-freeze and migration", kind: requirement, tracked_by: [E19], statement: "A new spec set never silently rewrites projects: migration is explicit and attributable (a migrate-spec path with migration review and compatibility checks); old-spec projects stay readable; mutating under the new spec requires the migration to pass; no mixed authority in one active project; the new base's overlay index starts clean while historical entries stay with the prior set"}
   SAI-17: {section: "7. Frozen designer disposition", kind: sequencing, tracked_by: [E19, F4], statement: "Immediate work is small: the index schema and file, the resolver and tests, populating it from the repository, and writing the missing Ticket-revision contract amendment; no further research needed"}
+  # ---- KMP: lessons from the knowledge-manifest prototype (research; ADR-0013 governs) ----------------------------
+  KMP-01: {section: "2. Patterns worth keeping", kind: requirement, tracked_by: [F21], statement: "Carry forward, where ADR-0013 allows: engine-owned fields refused by name on submission; the capture commit writes the initial disposition; search falls back to a phrase when FTS5 rejects the text; kind filtering in SQL so a planted row is dropped; and the prototype's tests (allowed hot keys only, a tampered FTS row hides and never invents, orphans reported, crash mid-capture leaves old or new history, audit covers records while resume and status read none)"}
+  KMP-02: {section: "3. Registry findings: the checks worked", kind: requirement, tracked_by: [E36], statement: "Define the v2-only hot-key set once (schema v1 exclusion list, aew init and the v1 test fixtures all derive from or are checked against it), before M4-D adds queue"}
+  KMP-03: {section: "3. Registry findings: the checks worked", kind: process, tracked_by: [F21], statement: "A new command family is classified in the DispatchDecision CLI enumeration (dispatching entry point or not dispatching); the M6b plan budgets for it"}
+  KMP-04: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "ENGINE_OBSERVED_WEAK_BOUNDARY never earns default serving (case_recall) through a coarse engine source (KST-15)"}
+  KMP-05: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21, E18], statement: "knowledge.capture follows the contiguous safe watermark, not the newest receipt, and a job's origin is the triggering committed event, never the capture transaction's own revision (KST-12, KST-14)"}
+  KMP-06: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "A duplicate capture of the same origin event returns the prior receipt, with a test (KST-12, completion criterion 6)"}
+  KMP-07: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Commit-time numbering (knowledge_disposition_seq, record paths) is computed from authenticated history plus staged entries, never from the derived index alone (KST-06, KST-25)"}
+  KMP-08: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Dispositions target and sequence by exact version (K@v), not the bare Knowledge ID (KST-06)"}
+  KMP-09: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "A disposition's coarse source follows the actual actor: a Lead judgment is model with its decision and Lead generation, operator only for a direct operator judgment (KST-08)"}
+  KMP-10: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Use the accepted vocabulary and names: no visibility_widened or audit_finding, supersedes/superseded_proposal, knowledge_disposition and capture_receipt (KST-08, KST-09, KST-51)"}
+  KMP-11: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Use the accepted layout: records under knowledge/records/, RECORD_GLOBS covering only that subtree (KST-04)"}
+  KMP-12: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Number the knowledge oracle rules 29 to 32, after ADR-0012's 24 to 28 (KST-33 to KST-36)"}
+  KMP-13: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "history list keeps the legacy kinds by default (KST-23)"}
+  KMP-14: {section: "4. Issues to address when ADR-0013 is implemented", kind: requirement, tracked_by: [F21], statement: "Build what the prototype left out: the knowledge_service principal with its commit-boundary closure check, and PARTIAL and NO_CANDIDATE receipts (KST-19, KST-21, KST-10, KST-11)"}
 
 retired: {}

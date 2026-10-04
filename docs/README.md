@@ -122,6 +122,7 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 | [`aew-phase6-airgap-capability-research-2026-10-01.md`](research/aew-phase6-airgap-capability-research-2026-10-01.md) | M6 (airgap, MCP selection) |
 | [`external-agent-workflow-lessons-2026-09-28.md`](research/external-agent-workflow-lessons-2026-09-28.md) | Dogfood inputs |
 | [`aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md`](research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md) | The M6b knowledge designs (F21) |
+| [`knowledge-manifest-prototype-lessons-2026-10-04.md`](research/knowledge-manifest-prototype-lessons-2026-10-04.md) | ADR-0013's implementation (F21): what the prototype proved, and the defects not to inherit; E36 |
 | [`harness-native-integration-research-v0.3.md`](research/harness-native-integration-research-v0.3.md) | OpenCode qualification (E35), a second adapter (F24), the capability registry (F13) |
 
 ## Archive ([`archive/`](archive/))

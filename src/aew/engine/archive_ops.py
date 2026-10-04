@@ -360,19 +360,23 @@ class Archive:
         return {"kind": "lead", "id": rid, "path": rel, "sha256": sha, "at": utc_now(), "source": "engine",
                 "links": {"tokens": ended}}
 
-    def end_lead_credentials(self, session: Any) -> None:
+    def end_lead_credentials(self, session: Any) -> dict[str, Any] | None:
         """For the Lead's own commits outside ``lead_txn`` (acquire, handoff accept, takeover): archive the credentials
-        the change of seat just ended, in the same commit."""
+        the change of seat just ended, in the same commit. Returns the state to commit (the ended credentials out, the
+        history root advanced), or None when nothing ended. The working state is left as it is, like the archival
+        finalizer's projection (ADR-0011 R6), so the commit's typed events still see the revocations (ADR-0012 D2)."""
         state = session.state
         if not is_v2(state):
-            return
+            return None
         ended = self._ended_lead_credentials(state)
         if not ended:
-            return
+            return None
         entry = self._lead_entry(session, state, ended)
-        for t in ended:
-            del state["tokens"][t]
-        state["cold"] = advance_cold(state["cold"], self.cold.append(session, state["cold"]["root"], [entry]), [entry])
+        projected = dict(state)
+        projected["tokens"] = {t: rec for t, rec in state["tokens"].items() if t not in ended}
+        projected["cold"] = advance_cold(state["cold"], self.cold.append(session, state["cold"]["root"], [entry]),
+                                         [entry])
+        return projected
 
     # ------------------------------------------------------------------ annotations (moves of archived units, R3)
 

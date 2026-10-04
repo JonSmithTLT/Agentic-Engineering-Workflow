@@ -14,6 +14,7 @@ requires-python = ">=3.11"
 dependencies = [
     "PyYAML>=6.0",
     "jsonschema>=4.18",
+    "referencing>=0.28",  # jsonschema's own dependency since 4.18; imported for cross-schema references
 ]
 
 [project.optional-dependencies]

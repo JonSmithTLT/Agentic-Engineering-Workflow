@@ -699,6 +699,44 @@ class Engine:
     def history_show(self, record_id: str) -> dict[str, Any]:
         return self._history.history_show(record_id)
 
+    def history_log(self, *, since: int, kinds: list[str] | None = None, follow: bool = False, timeout: float = 30.0,
+                    limit: int = 500) -> dict[str, Any]:
+        """The transition log after revision ``since`` (ADR-0012 D3): each logical transition in order, its complete
+        events (an overflow resolved and verified), the chain checked. The cursor is the revision: pass the returned
+        ``next`` as the next ``since``. ``follow`` waits up to ``timeout`` seconds for a transition after ``since``
+        (woken by ``local/wake``, re-checked every 2 s regardless). Reading takes no control lock beyond the brief
+        read that finds the current revision."""
+        from aew.engine import outbox
+
+        if since < 0:
+            raise UsageError("--since is a revision number, 0 or more")
+        if not 1 <= limit <= 5000:
+            raise UsageError("--limit must be 1 to 5000")
+        unknown = sorted(set(kinds or []) - set(outbox.DERIVED_KINDS) - set(outbox.DECLARED_KINDS)
+                         - {"queue.entry", "queue.lease"})
+        if unknown:
+            raise UsageError(f"unknown event kind(s) {unknown}: one of "
+                             f"{', '.join(outbox.DERIVED_KINDS + outbox.DECLARED_KINDS)}")
+        state = self._k.store.read()
+        if since > state["revision"]:
+            raise UsageError(f"--since {since} is after the current revision {state['revision']}")
+        if follow and since == state["revision"]:
+            state = outbox.wait_for(lambda: (s := self._k.store.read())["revision"] > since and s,
+                                    self._k.aew_root, timeout=timeout) or state
+        through = min(state["revision"], since + limit)
+        wanted = set(kinds or []) or None
+        found = []
+        for record in outbox.read_transitions(self._k.aew_root, since, through, outbox=state.get("outbox")):
+            if record["revision"] == state["revision"] and {k: v for k, v in record.items() if k != "events"} != {
+                    k: v for k, v in state["last_transition"].items() if k != "events"}:
+                raise IntegrityError(f"the newest log record (revision {record['revision']}) is not the committed "
+                                     "last transition", revision=record["revision"])
+            narrowed = outbox.matches(record, wanted)
+            if narrowed is not None:
+                found.append(narrowed)
+        return {"ok": True, "since": since, "through": through, "revision": state["revision"], "next": through,
+                "transitions": found}
+
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = 50) -> dict[str, Any]:
         return self._history.history_list(kind=kind, since=since, until=until, limit=limit)

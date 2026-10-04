@@ -217,7 +217,7 @@ Proposal: keep `aew/control/v2` with an additive `queue` key, closed with `addit
 - The default stays `verifier` until evaluation supports cheaper routing.
 
 ### 2.9 Wait-any (M4-D; E1, the wait-any part of O4)
-- `aew harness wait --any R1 R2 …`, woken by the supervisor through a per-project wake file or pipe instead of 0.2 s polling. Polling remains the fallback.
+- `aew harness wait --any R1 R2 …`, woken through a per-project wake file instead of 0.2 s polling (ADR-0012 D4 decided the file: `local/wake`, bumped by the store after each commit's log record and by the supervisor after each run-record write; built in M4-D slice D1). Polling remains the fallback.
 - It returns the first run to end, with its next action.
 
 ### 2.10 Stage commands (M4-E; F15)

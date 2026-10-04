@@ -1,0 +1,30 @@
+{
+  "source_commit": "032a316dcb8a70cbaf91abce45306d383d5705e1",
+  "source_tree": "cdb5c0036f7819a69ce0e9aa6bc0a649f6e798cc",
+  "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
+  "gate": "PASS",
+  "network": "none",
+  "checkout": "web/artifacts/commit-freeze/run-9VgUXdXX/source",
+  "build_trees": {
+    "dist": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+    "dist-demo": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a"
+  },
+  "browser_groups": 22,
+  "browser": "PASS; executed within committed checkout",
+  "build_unchanged_after_browser": true,
+  "source_clean_after_browser": true,
+  "regressions": "W01\u2013W05 and HTTP demo passed inside committed checkout",
+  "measurements": "source/web/output/w06-measurements/result.json",
+  "runtime": {
+    "node": {
+      "version": "v22.22.2",
+      "sha256": "81925c0995b5c1427b5d538e6a90ca2fdc4daffb786b09af749beaf7369d4e90"
+    },
+    "chromium": {
+      "version": "Google Chrome for Testing 147.0.7727.15",
+      "sha256": "696170a79640ec5b50c7518140ace06c69a49cfb295bf527d4a85e26a12b89a7"
+    }
+  },
+  "playwright": "1.59.1 (locked package)"
+}

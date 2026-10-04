@@ -1,4 +1,4 @@
-"""The OpenCode V2 adapter (ADR-0009; docs/implementation/m3-opencode-v2-rebaseline.md).
+"""The OpenCode V2 adapter (ADR-0009; docs/archive/milestones/m3-opencode-v2-rebaseline.md).
 
 One adapter serves one run, inside the run's supervisor:
 

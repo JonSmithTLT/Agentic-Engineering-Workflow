@@ -88,8 +88,8 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 [0009](implementation/adr/0009-harness-boundary-and-opencode-v2.md) the harness boundary and OpenCode V2 (and containment) ·
 [0010](implementation/adr/0010-execution-profiles.md) execution profiles ·
 [0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state ·
-[0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (design frozen, proposed for adoption; M4-D) ·
-[0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (design frozen, proposed for adoption; M6b)
+[0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D) ·
+[0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b)
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (provisional; the dashboard itself lives in `web/`).
 
@@ -108,6 +108,7 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 | [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | M6b |
 | [`aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md`](design/proposals/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md) | F21 | M6b; Arm B (guarded history recall) first |
 | [`evaluation-component-design-v0.2.md`](design/proposals/evaluation-component-design-v0.2.md) | F19 | Design frozen, proposed; its first slice comes before M4-H's preregistration |
+| [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed; the index now, the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; before internal alpha |
 | [`architecture-review-response-2026-10-04.md`](design/proposals/architecture-review-response-2026-10-04.md) | Q13; F21 to F27, E18 to E30 | The proposed disposition of the 2026-10-04 architecture review; awaiting the lead developer's review and acceptance |
 

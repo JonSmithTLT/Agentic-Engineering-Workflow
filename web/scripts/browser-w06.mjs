@@ -57,5 +57,31 @@ try{
  for(const phone of [false,true])await check('Keyboard tabs, long/hostile text, dark theme and 200% zoom','http',async(page,base)=>{
   await page.goto(base+route+'&execution_case=hostile&execution_selected=EV-01');await page.getByRole('heading',{name:'Captured execution',exact:true}).waitFor();await page.getByRole('tab',{name:'Details',exact:true}).focus();for(const [key,id] of [['ArrowRight','controls'],['End','provenance'],['Home','details']]){await page.keyboard.press(key);await page.waitForFunction(id=>document.activeElement?.id===`execution-detail-tab-${id}`,id);}assert.equal(await page.evaluate(()=>globalThis.w06Attack),undefined);assert.equal(await page.locator('img[src*="attacker.invalid"]').count(),0);await page.evaluate(()=>{document.documentElement.dataset.theme='dark';});await page.setViewportSize({width:phone?195:720,height:phone?422:500});await page.waitForTimeout(100);const geometry=await page.evaluate(()=>({viewport:window.innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>window.innerWidth+1).slice(0,20).map(e=>({tag:e.tagName,class:e.className,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width}))}));assert(geometry.scroll<=geometry.viewport+1,JSON.stringify(geometry));await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${out}/${phone?'phone':'desktop'}-dark-zoom.png`,fullPage:true});
  },phone);
+ for(const mode of ['http','worker'])for(const width of [390,720])await check(`Responsive tables are reachable and story provenance conforms (${width}px)`,mode,async(page,base)=>{
+  await page.setViewportSize({width,height:844});
+  for(const view of ['events','fanout']){
+   await page.goto(base+route+`&execution_view=${view}&execution_display=table`);
+   const buttons=page.locator('.execution-table [data-execution-pick]');await buttons.first().waitFor();
+   const identities=await buttons.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-execution-pick')));
+   for(const identity of identities){
+    const button=page.locator(`[data-execution-pick="${identity}"]`);await button.scrollIntoViewIfNeeded();
+    assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),`${width}px ${view} ${identity} hit target`);
+    await button.click();await page.getByRole('heading',{name:identity,exact:true}).waitFor();await page.getByRole('heading',{name:'Captured execution',exact:true}).waitFor();
+    await page.getByRole('tab',{name:'Provenance',exact:true}).click();
+    assert.equal(await page.locator('.unknown:visible').count(),0,'Story has no unknown semantic values');
+    await page.getByRole('button',{name:'Close detail',exact:true}).click();
+   }
+   const geometry=await page.locator('.execution-table td').evaluateAll(cells=>cells.map(el=>({height:el.getBoundingClientRect().height,content:el.scrollHeight,width:el.clientWidth,scroll:el.scrollWidth})));
+   assert(geometry.every(c=>c.content<=c.height+1&&c.scroll<=c.width+1),'Stacked cells contain their complete wrapped content');
+   await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${out}/${mode}-${width}-${view}-table.png`,fullPage:true});
+  }
+ },true);
+ await check('Copied Controls receipt tab and deep packet return state','http',async(page,base)=>{
+  await page.goto(base+route+'&execution_selected=EV-05&execution_tab=controls');
+  await page.getByRole('tab',{name:'Validation receipts',exact:true}).click();await page.getByRole('heading',{name:'CTRL-RETRY-1 · filesystem',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Copy dashboard link',exact:true}).click();const copied=await page.evaluate(()=>navigator.clipboard.readText());assert.equal(new URL(copied).searchParams.get('execution_control_tab'),'receipts');
+  await page.goto(copied);await page.getByRole('heading',{name:'CTRL-RETRY-1 · filesystem',exact:true}).waitFor();assert.equal(await page.getByRole('tab',{name:'Validation receipts',exact:true}).getAttribute('aria-selected'),'true');
+  await page.goto(base+route+'&execution_selected=EV-05&execution_locator=LOC-RetryPacket&packet_tab=receipts');await page.getByText('RECEIPT-Retry-DELIVERY',{exact:true}).waitFor();await page.getByRole('button',{name:'Back to recorded execution',exact:true}).click();await page.getByRole('heading',{name:'EV-05',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('packet_tab'),false);
+ });
  fs.writeFileSync(`${out}/result.json`,JSON.stringify({checks,measurements,independent_review:'PENDING; implementer automation is not independent acceptance.'},null,2)+'\n');
 }finally{await browser?.close();children.forEach(c=>c.kill('SIGTERM'));}

@@ -4,7 +4,7 @@ const demoKeys = ['fixture', 'fault', 'catalog', 'recipe', 'seed'];
 const journalKeys = ['display', 'panel', 'component', 'component_missing', 'journal_case'];
 const comparisonKeys = ['investigation_case', 'a_source', 'b_source', 'a_run', 'b_run', 'a_invocation', 'compare_work', 'compare_tab', 'differences', 'choose', 'source_cursor', 'packet', 'packet_side', 'packet_tab', 'packet_section', 'packet_disposition', 'packet_cursor'];
 const evidenceKeys = ['evidence_reference','evidence_source','evidence_artifact','evidence_revision','evidence_tab','evidence_case','evidence_filter','evidence_work','evidence_source_cursor','evidence_artifact_cursor','evidence_excerpt_cursor','evidence_pane'];
-const executionKeys = ['execution_case','execution_trace','execution_selected','execution_kind','execution_view','execution_display','execution_lane','execution_filter','execution_cursor','execution_trace_cursor','execution_work','execution_invocation','execution_run','execution_tab','execution_pane','execution_locator','execution_receipt_cursor'];
+const executionKeys = ['execution_case','execution_trace','execution_selected','execution_kind','execution_view','execution_display','execution_lane','execution_filter','execution_cursor','execution_trace_cursor','execution_work','execution_invocation','execution_run','execution_tab','execution_pane','execution_locator','execution_receipt_cursor','execution_control_tab'];
 const presentationKeys = ['selected', 'inspector', 'field', 'view', 'focus'];
 const filterKeys = [
   'state',

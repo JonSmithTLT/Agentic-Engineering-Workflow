@@ -6,7 +6,7 @@ import { rememberReference, restoreReference, returnPosition } from './return-fo
 import { navigationParams } from '../../navigation';
 import { EntityAnchor } from '../../../components/EntityAnchor';
 type Ref = { id: string; kind: string; title: string | null };
-const terminal = ['work_reference', 'evidence_reference', 'decision_reference', 'receipt_reference'];
+const terminal = ['work_reference', 'evidence_reference', 'decision_reference', 'receipt_reference', 'recording_source', 'relation_source'];
 /** Domain reference presentation is reusable outside comparison; routes remain explicit. */
 export function ContextReferences({ values, evidenceOrigin }: { values: Ref[]; evidenceOrigin?: { case: string; record_id: string; item_id: string | null; role: string; source_id: string; snapshot_id: string | null; visibility_scope: string } }) {
   const location = useLocation();

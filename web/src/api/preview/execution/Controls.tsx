@@ -9,8 +9,10 @@ import { executionSchemas,bindingIssue,executionIssue,type Trace } from './schem
 import { useExecutionPage,useExecutionReader,useTrace } from './session';
 import { vocabularyInventory } from './vocabulary';
 import type { ReadTransport } from '../../transport';
-export function ControlsPresentation({trace,executionId,name,reader}:{trace:Trace;executionId:string;name:string;reader:ReadTransport}){
- const {params}=useControls(),[activity,setActivity]=useState('claims');
+export function ControlsPresentation({trace,executionId,name,reader,shareActivity=false}:{trace:Trace;executionId:string;name:string;reader:ReadTransport;shareActivity?:boolean}){
+ const {params,update}=useControls(),[localActivity,setLocalActivity]=useState('claims');
+ const activity=shareActivity?(params.get('execution_control_tab')??'claims'):localActivity;
+ const setActivity=(value:string)=>shareActivity?update({execution_control_tab:value,execution_receipt_cursor:null}):setLocalActivity(value);
  const route=`/traces/${trace.id}/executions/${executionId}`,schema=useMemo(()=>executionSchemas.ControlsResponse.superRefine(({data:c},ctx)=>{if(bindingIssue(c.binding,trace)||c.execution_id!==executionId||JSON.stringify(c.environment)!==JSON.stringify(trace.environment))ctx.addIssue({code:'custom',message:'Control execution/environment binding mismatch'});}),[trace,executionId]);
  const query=useExecutionPage(`${route}/controls?case=${name}`,schema,reader,activity==='claims');
  const receiptSchema=useMemo(()=>executionSchemas.ReceiptListResponse.superRefine(({data:v},ctx)=>{if(v.items.some(r=>bindingIssue(r.binding,trace)||r.execution_id!==executionId||JSON.stringify(r.environment)!==JSON.stringify(trace.environment)))ctx.addIssue({code:'custom',message:'Validation receipt execution/environment binding mismatch'});}),[trace,executionId]);

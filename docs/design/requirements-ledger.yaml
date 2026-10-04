@@ -1,0 +1,512 @@
+# AEW requirements ledger (aew/requirements-ledger/v1)
+#
+# What this is: the hard gate that no requirement in a design or research document is lost. Every document under
+# docs/design/ and docs/research/ is either an ingested `source` here or a `legacy` document already tracked by the
+# register. For every source, every heading is accounted for: it holds ledger requirements, its requirements are
+# carried by ids elsewhere (`carried`), or it holds none (`no_requirements`, with the reason). Every requirement names
+# the register rows that track its work (`tracked_by`, ids in docs/implementation/future-work.md).
+#
+# Authority: none, like the register and the invariant index. The documents govern; the ledger only proves that
+# nothing in them went untracked. Never reinterpret a design from its entry here.
+#
+# Ingesting a new document or a new version (tests/unit/test_requirements_ledger.py enforces each step):
+#   1. Add it as a source (a new version replaces the old `path`; ids keep their numbers).
+#   2. Account for every heading. A heading that no longer exists fails the test until its entries are re-pointed.
+#   3. Ids are contiguous per prefix. A requirement that a new version drops is never deleted: move it to `retired`
+#      with its disposition (superseded by an id, absorbed, or rejected with the reason).
+#   4. Every `tracked_by` id exists in the register; add or update the register row in the same change.
+schema: aew/requirements-ledger/v1
+
+kinds: [requirement, invariant, gate, decision, evaluation, sequencing, open-question, process]
+
+# Documents from before the ledger (2026-10-04), tracked by these register rows. A new version of one of them is
+# ingested as a source.
+legacy:
+  docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md: [F15]
+  docs/design/dashboard-api-v1-provisional.yaml: [F20.2]
+  docs/design/failure-class-registry.md: [F14]
+  docs/design/invariant-index.md: [F14]
+  docs/design/plan-assurance-and-classification-decisions-2026-10-01.md: [F14, F19]
+  docs/design/plan-assurance-and-premise-validation-design-v0.4.md: [F14]
+  docs/design/ticket-revision-amendment-2026-09-30.md: [F4]
+  docs/design/workflow-contract-amendment-class0-2026-10-01.md: [F14]
+  docs/design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md: [F9]
+  docs/design/proposals/capability-discovery-and-progressive-disclosure-design-v0.1.md: [F13]
+  docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md: [F3]
+  docs/design/proposals/hierarchy-intent-revision-and-replanning-design-v0.1.md: [F4, F5]
+  docs/design/proposals/lead-operator-interaction-design-v0.1.md: [F7, F8]
+  docs/design/proposals/lead-workflow-efficiency-design-v0.1.md: [F15]
+  docs/design/proposals/shallow-finding-termination-proposal.md: [F17]
+  docs/research/adr-0011-storage-investigation-2026-10-01.md: [F1]
+  docs/research/aew-phase6-airgap-capability-research-2026-10-01.md: [F12, F13, Q11]
+  docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md: [F2]
+  docs/research/external-agent-workflow-lessons-2026-09-28.md: [F3]
+  docs/research/m4-integration-queue-research-2026-10-01.md: [F10]
+
+sources:
+  - prefix: KCA
+    path: docs/design/proposals/aew-knowledge-capture-admission-design-v0.4.md
+    role: proposal
+    no_requirements:
+      "1. Purpose": framing; the central choice is KCA-01
+      "27. Review questions": questions for the joint review (F21)
+      "Knowledge/research reviewer": review question
+      "Engine/workflow reviewer": review question
+      "Evidence/provenance reviewer": review question
+      "Security reviewer": review question
+      "API/dashboard reviewer": review question
+      "Capability/provider reviewer": review question
+  - prefix: KSS
+    path: docs/design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md
+    role: proposal
+    no_requirements:
+      "1. Problem": framing; independence of the two paths is KSS-01
+      "2. Naming": terminology only (capture/admission, recall/delivery, Evidence ingestion)
+      "4. Stable identity domains": heading; requirements in its subsections
+      "7. Shared state dimensions": heading; requirements in its subsections
+      "8. Shared relation semantics": heading; requirements in its subsections
+      "16. Shared precondition model": heading; requirements in its subsections
+      "21. Failure behavior": heading; requirements in its subsections
+      "27. Joint review questions": questions for the joint review (F21)
+      "Capture/admission owners": review question
+      "Recall/context owners": review question
+      "Evidence owners": review question
+      "API/dashboard owners": review question
+      "Security/authority owners": review question
+      "Evaluation owners": review question
+    carried:
+      "Case": [KSS-31]
+      "Lesson": [KSS-31]
+  - prefix: KRR
+    path: docs/design/proposals/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md
+    role: proposal
+    no_requirements:
+      "4. Recall source universe": heading; requirements in its subsections
+      "16. Progressive disclosure": heading; requirements in its subsections
+      "24. Failure and degraded modes": heading; requirements in its subsections
+      "27. Evaluation architecture": heading; requirements in its subsections
+      "34. Joint review questions": questions for the joint review (F21)
+      "Knowledge/capture reviewers": review question
+      "Engine/context reviewers": review question
+      "Agent/harness reviewers": review question
+      "Retrieval/provider reviewers": review question
+      "Evidence/API/dashboard reviewers": review question
+      "Evaluation reviewers": review question
+  - prefix: KRB
+    path: docs/research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md
+    role: research
+    # Research: what the three designs adopted is carried by their ids; what they did not is a KRB requirement here,
+    # so that nothing the research recommended is lost between it and the designs.
+    no_requirements:
+      "18. Primary sources": citations
+      "5. Ownership and contracts": heading; requirements in its subsections
+      "7. Record semantics and provenance": heading; requirements in its subsections
+      "15. Metrics and experiments": heading; requirements in its subsections
+    carried:
+      "1. Decision in brief": [KCA-01, KCA-04, KCA-23, KRR-02]
+      "2. What I would change in the brief": [KCA-01, KCA-69, KCA-30, KSS-01, KCA-34, KCA-29, KRR-25]
+      "Responsibilities": [KCA-13, KCA-14, KCA-31, KCA-32]
+      "Delivery and job integrity": [KCA-16, KCA-43]
+      "EvidenceEnvelope": [KCA-17]
+      "CandidateKnowledge": [KCA-19]
+      "AdmittedKnowledge": [KSS-04, KSS-07]
+      "A concrete example": [KCA-18]
+      "Anti-laundering": [KCA-28]
+      "8. Generalization and applicability": [KCA-29, KSS-14]
+      "9. Admission tiers: automatic versus judgment-bearing": [KCA-20, KCA-21, KCA-22, KCA-23, KCA-24, KCA-25]
+      "Challenge strategy": [KCA-30]
+      "10. Capture timing": [KCA-15]
+      "11. Duplicate, overlap, contradiction, correction": [KCA-27, KSS-16, KSS-17, KSS-18, KSS-19, KSS-20, KSS-21]
+      "12. Trust and lifecycle: avoid one overloaded enum": [KCA-34, KCA-35, KCA-36, KCA-37, KCA-38, KCA-39, KCA-40]
+      "13. Make the store worthwhile for agents": [KRR-21, KRR-24, KRR-25, KRR-26]
+      "Write quality": [KCA-44]
+      "Separate extraction, retrieval, and reading": [KCA-44, KRR-40]
+      "Agent behavior experiment": [KRR-41]
+      "16. Failure/invariant registry proposals": [KCA-50, KCA-51, KCA-53, KCA-54, KCA-55, KCA-56, KCA-57, KCA-58, KCA-59, KCA-60, KCA-61, KCA-62, KCA-63, KCA-64, KCA-65, KCA-66, KCA-67]
+      "17. M6 sequence and concrete design changes": [KCA-46, KCA-47]
+  - prefix: ARR
+    path: docs/design/proposals/architecture-review-response-2026-10-04.md
+    role: review-disposition
+    no_requirements:
+      "1. Disposition model": the disposition vocabulary of this response
+      "2. Executive outcome": summary; each point is an item below
+      "3. Ranked architecture findings G1–G12": heading; items below
+      "5. Tech-stack recommendations": heading; items below
+      "6. MCP / typed tool surfaces": heading; items below
+      "7. Skills recommendations": heading; items below
+      "9. Knowledge-system findings K1–K9": heading; items below
+      "10. Knowledge-specific follow-ups from §6.3": heading; items below
+      "13. New design/decision work created by this review": heading; D-AR1 to D-AR7 below
+    carried:
+      "Deterministic project map": [ARR-03]
+      "Semantic architecture/ownership/glossary material": [ARR-03]
+      "Existing audited/history integrity domain": [ARR-52]
+      "Operational job/outbox domain": [ARR-52]
+      "M6a — Capabilities and skills": [ARR-59]
+      "M6b — Knowledge and recall": [ARR-59]
+      "M4-B/C immediate corrections": [ARR-64]
+      "M4-D/E shared architecture work": [ARR-64]
+      "M4-G/H": [ARR-64]
+      "After M4 / M5": [ARR-64]
+      "M6a": [ARR-64]
+      "M6b": [ARR-64]
+      "Pre-internal-alpha candidates, not current M4 gates": [ARR-64]
+  - prefix: ARV
+    path: docs/archive/reviews/architecture-review-2026-10-04.md
+    role: review
+    # The review itself: every item is dispositioned by the response (ARR); what the response did not disposition is
+    # an ARV requirement, so that it reaches the designer instead of being lost.
+    no_requirements:
+      "1. Where the architecture stands": assessment, no requirement
+      "2. Gaps and risks in the architecture as designed": heading
+      "4. Upgrades: tech stack, MCP servers, skills": heading
+      "6. The three M6 knowledge-system drafts": heading
+      "6.1 Assessment": assessment of the drafts; no requirement
+      "Appendix A. Documents read": provenance of the review
+    carried:
+      "G1. Evaluation is the critical path and is not yet a component (H)": [ARR-01]
+      "G2. The Lead's interface is a shell, and the shell is where the cost and a whole defect class live (H)": [ARR-02]
+      "G3. The Knowledge Contract's project-knowledge classes are specified and not implemented (H)": [ARR-03]
+      "G4. One harness adapter, pinned to one unversioned release (H)": [ARR-04]
+      "G5. Containment stops at the filesystem and at Linux (H)": [ARR-05]
+      "G6. The contract-amendment layer is becoming a second specification (M)": [ARR-06]
+      "G7. Cost is not an engine fact (H)": [ARR-07]
+      "G8. Q12 is a single decision blocking five items (H)": [ARR-08]
+      "G9. The knowledge drafts introduce a visibility model AEW does not have (M)": [ARR-09]
+      "G10. The Workflow Contract has no \"team\" integration target (M)": [ARR-10]
+      "G11. `aew` has no service or event model; everything polls (H)": [ARR-11]
+      "G12. Operator attribution recorded through the Lead is attribution, not proof (H, known)": [ARR-12]
+      "3. Improvements to mechanisms that exist": [ARR-13, ARR-14, ARR-15, ARR-16, ARR-17, ARR-18, ARR-19, ARR-20, ARR-21, ARR-22, ARR-23, ARR-24]
+      "4.1 Tech stack": [ARR-25, ARR-26, ARR-27, ARR-28, ARR-29, ARR-30, ARR-31, ARR-32]
+      "4.2 MCP servers": [ARR-33, ARR-34, ARR-35, ARR-36, ARR-37]
+      "4.3 Skills": [ARR-38, ARR-39, ARR-40, ARR-41, ARR-42]
+      "6.2 Issues to resolve before adoption": [ARR-52, ARR-53, ARR-54, ARR-55, ARR-56, ARR-57, ARR-58, ARR-59, ARR-60]
+      "6.3 Two smaller points": [ARR-61, ARR-62]
+      "5. Whole features": [ARR-43, ARR-44, ARR-45, ARR-46, ARR-47, ARR-48, ARR-49, ARR-50, ARR-51]
+      "7. What looks sound and should be left alone": [ARR-63]
+      "8. Sequencing": [ARR-64]
+
+requirements:
+  # ---- KCA: knowledge capture and admission design v0.4 ---------------------------------------------------------
+  KCA-01: {section: "2. Goals", kind: requirement, tracked_by: [F21], statement: "Retain evidence-backed Cases first, distill semantic Lessons selectively, keep raw canonical history searchable when distillation abstains or is off; the twelve goals (no model impressions as truth, exact provenance, abstention succeeds, provider-neutral, air-gap compatible, no operator curation of low-risk cases)"}
+  KCA-02: {section: "3. Non-goals", kind: decision, tracked_by: [F21], statement: "Capture does not replace Evidence identity or authority paths, needs no vector/graph provider, grants knowledge text no authority, requires no lesson per unit and no human approval per case, and needs no recall system online"}
+  KCA-03: {section: "3.1 Terminology collision guard", kind: decision, tracked_by: [F21], statement: "Normative fields use workflow_disposition, knowledge_disposition and evidence admissibility; unqualified 'disposition' only in prose (glossary pass, K5)"}
+  KCA-04: {section: "4. Knowledge layers", kind: requirement, tracked_by: [F21], statement: "Four layers: canonical history/evidence, reusable Case, Conditional Lesson, derived recall/index state"}
+  KCA-05: {section: "4.1 Canonical engineering history and evidence", kind: requirement, tracked_by: [F21], statement: "Existing work records, decisions, Evidence, attempts and references stay the root material, useful without distillation"}
+  KCA-06: {section: "4.2 Reusable Case", kind: requirement, tracked_by: [F21], statement: "A Case is a bounded record of an observed situation; it may only structurally compress approved typed fields, never paraphrase untrusted prose, invent cause or generalize"}
+  KCA-07: {section: "4.3 Conditional Lesson", kind: requirement, tracked_by: [F21], statement: "A Lesson is advisory, with explicit applicability, limitations, claim-level support, counterevidence and a recorded admission disposition; never a decision, requirement, permission or proof"}
+  KCA-08: {section: "4.4 Derived recall/index state", kind: invariant, tracked_by: [F21], statement: "FTS, catalogs, vectors and other indexes are rebuildable; losing them never destroys durable knowledge or provenance"}
+  KCA-09: {section: "5. Evidence identity is unchanged", kind: invariant, tracked_by: [F21], statement: "Knowledge references existing Evidence ids/hashes and never replaces, renames or recreates them; derived records do not create new evidential roots"}
+  KCA-10: {section: "6. Authority model", kind: requirement, tracked_by: [F21], statement: "Knowledge publication is its own bounded advisory authority, distinct from project authority"}
+  KCA-11: {section: "6.1 Project authority remains with its current owner", kind: invariant, tracked_by: [F21], statement: "Contracts, ADRs, source and accepted procedures keep their authority; knowledge references them by canonical identity, never copies"}
+  KCA-12: {section: "6.2 Evidence producers still own their evidence content", kind: invariant, tracked_by: [F21], statement: "Capture consumes evidence and never retroactively changes what the producing role submitted"}
+  KCA-13: {section: "6.3 Knowledge publication is its own bounded authority", kind: requirement, tracked_by: [F21], statement: "AEW creates advisory Knowledge records only through an explicitly authorized admission operation; canonical means within the advisory domain"}
+  KCA-14: {section: "6.4 Providers have no publication authority", kind: invariant, tracked_by: [F21], statement: "Distillers, challengers, matchers and memory services return proposals only; they cannot publish, resolve contradictions, supersede, widen visibility, change workflow, decide, grant permissions or change configuration"}
+  KCA-15: {section: "7. Capture triggers", kind: requirement, tracked_by: [F21, E18], statement: "Capture begins from committed AEW events or validated durable records (the trigger table), debounced into bounded bundles; NO_CANDIDATE is success; candidate caps are maximums, never quotas"}
+  KCA-16: {section: "8. Capture job lifecycle", kind: requirement, tracked_by: [F21], statement: "Capture is asynchronous and never blocks completion; job status (PENDING..COMPLETE/PARTIAL/RETRYABLE/PERMANENT_FAILURE) is separate from per-candidate disposition; idempotent retries, persisted accepted provider output, recorded extractor/prompt/policy versions, recheck on source change, visible capture lag"}
+  KCA-17: {section: "9. EvidenceEnvelope", kind: requirement, tracked_by: [F21], statement: "AEW, not the model, constructs a bounded, pinned, authorized, attributable, replayable EvidenceEnvelope (the field list); untrusted prose stays untrusted; applicability-critical fields keep their provenance class"}
+  KCA-18: {section: "10. Safe deterministic Case projection", kind: requirement, tracked_by: [F21], statement: "K1 templates declare allowed source classes and fields, what each establishes, required authentication, default serving and excerpt size; every field records its source class (ENGINE_OBSERVED_CONTAINED, _WEAK_BOUNDARY, ROLE_ATTESTED, EXTERNAL_UNTRUSTED); source class authenticates provenance, not semantic validity; serving follows the most restrictive class; no inferred cause, intent, universality, fix or authority"}
+  KCA-19: {section: "11. CandidateKnowledge contract", kind: requirement, tracked_by: [F21], statement: "Distiller output is CandidateKnowledge (the field list); abstention allowed; unknown is not a wildcard; every claim component names its basis; confidence is not support; AEW, never the producer, assigns the admission class"}
+  KCA-20: {section: "12. Admission classes", kind: requirement, tracked_by: [F21], statement: "Admission classes K0 to K3 and KH, assigned by AEW from deterministic templates and policy"}
+  KCA-21: {section: "K0 — Canonical Reference", kind: requirement, tracked_by: [F21], statement: "K0 pointers auto-admit from typed committed identities with exact id/hash/scope and no copied authority"}
+  KCA-22: {section: "K1 — Observed Case", kind: requirement, tracked_by: [F21], statement: "K1 auto-admits only when AEW matches an approved deterministic template and its source-class requirements"}
+  KCA-23: {section: "K2 — Assessed Conditional Lesson", kind: gate, tracked_by: [F21, F19], statement: "K2 automatic admission and default serving disabled initially; enabled per policy class only after held-out evaluation; grounding, applicability, challenge, conflict hold, receipt, recheck, sampled audit and disable path"}
+  KCA-24: {section: "K3 — Broad or High-Impact Knowledge", kind: gate, tracked_by: [F21], statement: "M6 v1 never auto-admits K3; admission needs an attributable Lead/operator judgment plus targeted validation; no default decision; the dashboard inbox stays read-only"}
+  KCA-25: {section: "KH — Held/Rejected/Quarantined", kind: requirement, tracked_by: [F21], statement: "Held material is inspectable only in investigation modes; HELD_ACTIVE may age to HELD_DORMANT with a receipt; age never means REJECTED; dormant items can reopen"}
+  KCA-26: {section: "13. Deterministic validation", kind: requirement, tracked_by: [F21], statement: "Before semantic admission validate schema, sources, hashes, visibility, bindings, resolvability, tier fields, size, relation types, no authority or instruction mutation, preconditions, AEW-assigned class, source-class meaning, most-restrictive visibility; matching only within the caller's scope"}
+  KCA-27: {section: "14. Duplicate and relation handling", kind: requirement, tracked_by: [F21], statement: "Exact comparisons first within the authorized scope, semantic matching only as proposal; relation vocabulary derived_from/supports/challenges/refines/supersedes/references; exact replay never republishes; supersession is a disposition, not a timestamp"}
+  KCA-28: {section: "15. Anti-laundering and evidential roots", kind: invariant, tracked_by: [F21], statement: "Root evidence identity is preserved and deduplicated; a report proves only that it was said; a workflow disposition (known_limit, accepted_open, waived) is not proof of the proposition"}
+  KCA-29: {section: "16. Applicability and generalization", kind: requirement, tracked_by: [F21], statement: "Start from observed conditions; broader applicability needs a recorded basis; never infer version ranges, portability or universality; broadened claims are new versions; limitations never silently removed"}
+  KCA-30: {section: "17. Semantic challenge", kind: requirement, tracked_by: [F21], statement: "Challenge is selective, answers focused questions, allows INSUFFICIENT_EVIDENCE, is not proof by agreement, runs without the author's narrative where practical; targeted tests use the normal authorized workflow"}
+  KCA-31: {section: "18. Admission operation", kind: requirement, tracked_by: [F21], statement: "AdmissionPolicy.decide then KnowledgeStore.commit with an atomic final recheck (valid is not latest); generation outside control-state locks; immutable versions; append-only knowledge_disposition events with disposition_seq and knowledge_event_seq; capture records outside hot state; indexed affected-record lookup, no full scans"}
+  KCA-32: {section: "19. Service identity and automation", kind: requirement, tracked_by: [F21], statement: "A service identity with enumerated knowledge operations only, never a Lead credential, unreachable from worker shells; background running implies no ambient authority"}
+  KCA-33: {section: "Judgment boundary / Two Surfaces", kind: requirement, tracked_by: [F21, F15], statement: "K2/K3 admission is judgment-bearing and appears in the decisions-required projection with no silent default; a timeout, confidence score or absent response never means admit"}
+  KCA-34: {section: "20. Trust/lifecycle dimensions", kind: requirement, tracked_by: [F21], statement: "No single CURRENT/CONFIDENCE field; orthogonal dimensions; applicability to a request is computed at query time and receipted where consequential"}
+  KCA-35: {section: "Admission", kind: requirement, tracked_by: [F21], statement: "Admission state is a projection over append-only disposition events, separate from the immutable content version"}
+  KCA-36: {section: "Support", kind: requirement, tracked_by: [F21], statement: "Support is compositional; updating one support fact never discards another"}
+  KCA-37: {section: "Conflict", kind: requirement, tracked_by: [F21], statement: "Conflict state none_known | possible | unresolved | disposition_recorded"}
+  KCA-38: {section: "Lifecycle", kind: requirement, tracked_by: [F21], statement: "Lifecycle active | superseded_within_scope | archived | quarantined"}
+  KCA-39: {section: "Serving eligibility", kind: requirement, tracked_by: [F21], statement: "Serving eligibility direct_reference | case_recall | default_lesson_eligible | explicit_investigation_only | suppressed"}
+  KCA-40: {section: "Applicability", kind: requirement, tracked_by: [F21], statement: "The record stores its declared/observed applicability basis; request applicability is computed at delivery; fresh indexing never makes knowledge true"}
+  KCA-41: {section: "21. Capture/delivery coupling", kind: requirement, tracked_by: [F21], statement: "Capture persists enough identity, provenance and applicability for delivery to identify the version, resolve roots, qualify applicability, honour state and explain eligibility; admission is not serving; serving never mutates admission"}
+  KCA-42: {section: "22. Security and poisoning", kind: requirement, tracked_by: [F21], statement: "All candidate source prose is untrusted; the nine protections (no permission mutation, no self-defined authority, typed receipts outrank prose, no visibility widening, decisions resolved by id, no privileged remember-this, schema-constrained output, history is data, no security advice in K1 automation)"}
+  KCA-43: {section: "23. Failure and recovery", kind: requirement, tracked_by: [F21], statement: "Distiller failure never blocks recovery; replayable jobs; idempotent acknowledgement; no duplicate publication after a crash; integrity failure on missing evidence; new extractor versions propose, never rewrite; queue loss never erases an admitted record"}
+  KCA-44: {section: "24. Evaluation gates", kind: gate, tracked_by: [F21, F19], statement: "Adversarial corpus before automatic Lesson admission; the sixteen evaluation dimensions; Phase 1a A versus B first (Arm B is the first stop/go gate), 1b K1 replay plus a minimal C, Phase 2 only if C adds value; the K1 source-class replay report is a pre-build gate (defer K1 if the default-eligible share is small); report misses and bad admissions; critical authority, poisoning or cross-scope failures stop"}
+  KCA-45: {section: "Agent-use acceptance gate", kind: gate, tracked_by: [F21, F19], statement: "Accepted only when, ordinarily discoverable and unprompted, agents find and use relevant experience, improve independently verified outcomes and abstain when history is irrelevant; if B performs about as well as C, stop and defer K1/K2"}
+  KCA-46: {section: "25. Initial M6 implementation sequence", kind: sequencing, tracked_by: [F21], statement: "The 14-step order: freeze semantics and glossary names; freeze shared semantics; F19 fixtures; Arm B over FTS5 in the history SQLite; measure A/B; K1 replay; minimal C only on a measured gap; B/C comparison; full K1 and shadow candidates only after C earns it; relations and challenge; K2 classes after held-out gates; routing; providers; Journal/API projections"}
+  KCA-47: {section: "26. Required M6 design changes", kind: decision, tracked_by: [F21], statement: "Capture/admission first-class in M6; Cases the safest primitive; Lessons an evaluated layer; raw search permanent; runtime receipts stop at DELIVERY_ACKNOWLEDGED (citation only when structurally observed, benefit belongs to F19); retention/admission/serving/delivery separate; candidate UI inspection-only; providers cannot bypass admission"}
+  KCA-48: {section: "29. Review disposition", kind: process, tracked_by: [F21], statement: "Joint review with the research basis, shared semantics, KC v0.4, the Journal handoff, W05 and the recall design; approval is of direction only, not schemas, wire contracts or automatic K2"}
+  KCA-49: {section: "28. Invariant requirements for the existing invariant index", kind: process, tracked_by: [F21], statement: "Merge these invariants into the existing invariant index, deduplicated with the shared and recall lists; no separate KINV namespace (KCA-50 to KCA-73)"}
+  KCA-50: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Provider output cannot create binding decisions, completion, requirements, permissions or recovery state"}
+  KCA-51: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Every admitted claim resolves to permitted pinned source evidence or an explicit assessed-interpretation basis"}
+  KCA-52: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Origin/visibility claims state their actual containment/authentication level"}
+  KCA-53: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Model prose is not an execution/test receipt"}
+  KCA-54: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Derived repetition cannot increase independent evidential support"}
+  KCA-55: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Generalization or visibility widening requires a recorded authorized basis"}
+  KCA-56: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Supersession never silently deletes prior understanding or follows recency alone"}
+  KCA-57: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Default delivery excludes held/quarantined/unsupported Lessons"}
+  KCA-58: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Source/policy/conflict preconditions are rechecked at publication"}
+  KCA-59: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Lost providers/jobs cannot change AEW truth or block recovery"}
+  KCA-60: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "At-least-once capture yields idempotent admission"}
+  KCA-61: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Guarded raw-history recall survives distiller abstention/outage"}
+  KCA-62: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Historical text cannot alter tools, permissions, configuration or publication rules"}
+  KCA-63: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Use frequency/evaluator confidence never becomes evidential truth"}
+  KCA-64: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "New extractor versions do not overwrite previous admitted generated output without an attributable knowledge_disposition"}
+  KCA-65: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Corrupt/missing evidence degrades eligibility rather than reconstructing proof"}
+  KCA-66: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Recall/index lag and applicability uncertainty remain visible"}
+  KCA-67: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Default context delivery is bounded and owned by one AEW routing authority"}
+  KCA-68: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Existing Evidence identity survives capture/admission"}
+  KCA-69: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "NO_CANDIDATE is successful and candidate count is never an output quota"}
+  KCA-70: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Derived visibility is no broader than the most restrictive root absent authorized widening"}
+  KCA-71: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "K1 default serving is constrained by source/authentication class"}
+  KCA-72: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Immutable Knowledge content and mutable knowledge_disposition state remain separate"}
+  KCA-73: {section: "28. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "K2/K3 judgment-bearing admission has no silent default"}
+
+  # ---- KSS: capture-recall shared semantics v0.4 -----------------------------------------------------------------
+  KSS-01: {section: "3. Core principle", kind: requirement, tracked_by: [F21], statement: "Capture decides retention, recall decides exposure; shared identity, provenance, applicability vocabulary and policy semantics; the seven corollaries (admitted is not served, served is not believed, match is not applicability, recall cannot upgrade, capture cannot predict, raw recall may bypass distillation, every delivered item traces to version and root)"}
+  KSS-02: {section: "3.1 Qualified disposition vocabulary", kind: decision, tracked_by: [F21], statement: "workflow_disposition, knowledge_disposition and evidence admissibility are distinct in normative fields"}
+  KSS-03: {section: "4.1 Evidence identity", kind: invariant, tracked_by: [F21], statement: "Evidence ids/hashes stay canonical; neither path creates a substitute identity"}
+  KSS-04: {section: "4.2 Knowledge identity", kind: requirement, tracked_by: [F21], statement: "knowledge_id, version, content_fingerprint, record_kind, timestamps; stable across projections; changed claims are new versions; disposition is append-only events with disposition_seq and knowledge_event_seq, folded for current state"}
+  KSS-05: {section: "4.3 Canonical project references", kind: invariant, tracked_by: [F21], statement: "Project-authoritative identities stay owned by their domain; knowledge references and displays them, never copies"}
+  KSS-06: {section: "4.4 Subject identity", kind: requirement, tracked_by: [F21], statement: "Use existing stable subject identities; paths/symbols as locators; topic lenses never publication authority"}
+  KSS-07: {section: "5. Shared durable fields", kind: requirement, tracked_by: [F21], statement: "The common Knowledge header (the field list) persisted by capture; source/authentication class is serving semantics; provenance authentication is not semantic validity"}
+  KSS-08: {section: "6. RootEvidenceBinding", kind: requirement, tracked_by: [F21], statement: "Claim-level RootEvidenceBinding (evidence id/hash, snapshot, artifact, ranges, digest, field path, claim components, relation, basis) answering what exact source supports this part; the binding is not proof"}
+  KSS-09: {section: "7.1 Admission", kind: requirement, tracked_by: [F21], statement: "Admission is a fold over append-only knowledge_disposition events; delivery consumes the fold plus the governing revision"}
+  KSS-10: {section: "7.2 Support", kind: requirement, tracked_by: [F21], statement: "Support is orthogonal and compositional; recall never upgrades support"}
+  KSS-11: {section: "7.3 Conflict", kind: requirement, tracked_by: [F21], statement: "A matcher may find possible conflict; only an accepted disposition sets durable conflict state"}
+  KSS-12: {section: "7.4 Lifecycle", kind: requirement, tracked_by: [F21], statement: "Supersession is scoped; older records remain addressable"}
+  KSS-13: {section: "7.5 Serving eligibility", kind: requirement, tracked_by: [F21], statement: "Admission sets the serving envelope; K1 serving constrained by source class (contained may be default case recall; role-attested/untrusted begin explicit-only); the router still judges relevance"}
+  KSS-14: {section: "7.6 Applicability", kind: requirement, tracked_by: [F21], statement: "Durable record stores observed conditions, admitted applicability, exclusions, unknowns and basis; ApplicabilityAssessment is query-time and never rewrites the record"}
+  KSS-15: {section: "7.7 Visibility composition", kind: invariant, tracked_by: [F21], statement: "Derived records are no more visible than the most restrictive root absent authorized widening, across publication, matching, relations, reverse projections, topics, API and recall; no leaks through counts, hints, scores or metadata (v1 is project-scoped, ARR-09)"}
+  KSS-16: {section: "`derived_from`", kind: requirement, tracked_by: [F21], statement: "derived_from: origin basis, not independent confirmation"}
+  KSS-17: {section: "`supports`", kind: requirement, tracked_by: [F21], statement: "supports: specified evidence supports a proposition under conditions, claim-scoped where practical"}
+  KSS-18: {section: "`challenges`", kind: requirement, tracked_by: [F21], statement: "challenges: counterevidence or unresolved same-condition conflict; may trigger a serving hold"}
+  KSS-19: {section: "`refines`", kind: requirement, tracked_by: [F21], statement: "refines: narrows scope or conditions without declaring the predecessor false"}
+  KSS-20: {section: "`supersedes`", kind: requirement, tracked_by: [F21], statement: "supersedes: an authorized scoped disposition; never from recency, popularity or similarity"}
+  KSS-21: {section: "`references`", kind: requirement, tracked_by: [F21], statement: "references: points to external canonical identity without copying it; contradicts only with a confirmed meaning"}
+  KSS-22: {section: "9. Capture-side responsibilities for future delivery", kind: requirement, tracked_by: [F21], statement: "Capture owns and persists the listed fields and must not precompute future applicability, permanent scores, usefulness, benefit or budgets"}
+  KSS-23: {section: "10. Recall/delivery-side responsibilities", kind: requirement, tracked_by: [F21], statement: "Recall owns query-time operations and scores, honours capture semantics, matches over the authorized corpus before top-k, or bounded over-fetch with incomplete-coverage reporting"}
+  KSS-24: {section: "11. QualifiedRecallItem", kind: requirement, tracked_by: [F21], statement: "Recall results carry identity plus query-time qualification (the field list); raw canonical results are distinguishable from Knowledge records"}
+  KSS-25: {section: "12. Selection does not imply delivery or use", kind: requirement, tracked_by: [F21], statement: "MATCHED, SELECTED, PREPARED, DELIVERY_ACKNOWLEDGED, CITED_OR_REFERENCED, BENEFIT_EVALUATED are distinct events"}
+  KSS-26: {section: "Engine-observable delivery receipts", kind: decision, tracked_by: [F21], statement: "The backend initially builds only the four engine-observable stages as authoritative receipts"}
+  KSS-27: {section: "Citation/reference observation", kind: decision, tracked_by: [F21], statement: "CITED_OR_REFERENCED is authoritative only from a structured, directly observed event; parsed model output is heuristic telemetry"}
+  KSS-28: {section: "Benefit evaluation", kind: decision, tracked_by: [F21, F19], statement: "BENEFIT_EVALUATED belongs to F19 and binds independently evaluated outcomes to delivery receipts; self-report is insufficient"}
+  KSS-29: {section: "13. Pinned content identity versus current serving disposition", kind: requirement, tracked_by: [F21], statement: "Preparation pins knowledge_id + version; delivery rechecks visibility, holds, eligibility and policy; receipts record both; historical packets stay reconstructable and are never rewritten; no silent latest"}
+  KSS-30: {section: "14. Knowledge ↔ Evidence navigation", kind: requirement, tracked_by: [F21, F20], statement: "Knowledge to claim to RootEvidenceBinding to Evidence navigation; W05 stays the evidence reader; reverse Evidence to Knowledge is a derived, visibility-filtered index"}
+  KSS-31: {section: "23. Journal implications", kind: requirement, tracked_by: [F21, F20], statement: "The Journal distinguishes Case (this happened) from Lesson (admitted bounded interpretation); compact labels are projections of the orthogonal dimensions; the Journal is never mutation authority"}
+  KSS-32: {section: "15. Capture and delivery policy linkage", kind: requirement, tracked_by: [F21], statement: "One versioned knowledge-policy domain with sections; capture records the admission policy version, delivery records serving/ranking/applicability versions and the disposition revision"}
+  KSS-33: {section: "Admission preconditions", kind: requirement, tracked_by: [F21], statement: "Admission rechecks pinned source and prerequisites (older is not invalid), resolvability, visibility, conflict assumptions, relation target version, required receipts"}
+  KSS-34: {section: "Delivery preconditions", kind: requirement, tracked_by: [F21], statement: "Delivery rechecks visibility, eligibility, holds, index alignment and honest applicability; no cached ALLOW is trusted forever"}
+  KSS-35: {section: "17. Provider boundary", kind: invariant, tracked_by: [F21], statement: "Providers may retrieve, index, extract, propose, challenge and rank; they never own identity, admission, authority, relations, serving, workflow, visibility or context permission; capture records live in cold knowledge-history structures with reverse indexes, not hot state"}
+  KSS-36: {section: "18. Topic/subject linkage", kind: requirement, tracked_by: [F21], statement: "Subjects are shared anchors; topic lenses are derived aids; proposed lens tags never equal admission; no binding relation from similarity"}
+  KSS-37: {section: "19. Guarded raw-history bypass path", kind: requirement, tracked_by: [F21], statement: "Raw history bypasses semantic creation, not security: unadmitted prose is explicit-mode only, with capability, visibility, integrity, bounded excerpts, untrusted framing, holds and no instruction authority; request mode is intent, not permission"}
+  KSS-38: {section: "20. Telemetry and feedback", kind: invariant, tracked_by: [F21], statement: "Recall telemetry never raises support, broadens applicability, resolves conflict, supersedes or creates authority"}
+  KSS-39: {section: "Capture failure", kind: requirement, tracked_by: [F21], statement: "Capture failure erases no history, blocks no raw recall, fabricates no Lesson"}
+  KSS-40: {section: "Index failure", kind: requirement, tracked_by: [F21], statement: "Index failure destroys no durable Knowledge; exact expansion continues; degraded state visible"}
+  KSS-41: {section: "Applicability uncertainty", kind: requirement, tracked_by: [F21], statement: "Uncertain applicability is qualified, never rendered as confirmed"}
+  KSS-42: {section: "Conflict discovered after admission", kind: requirement, tracked_by: [F21], statement: "A later conflict may suppress default serving without rewriting sources or implying falsity"}
+  KSS-43: {section: "Delivery provider outage", kind: requirement, tracked_by: [F21], statement: "Provider outage may reduce recall, never changes admission"}
+  KSS-44: {section: "22. API/projection implications", kind: requirement, tracked_by: [F21, F20], statement: "Read APIs preserve version, authority class, references, supplied state fields, index generation and unknowns; the browser infers nothing; preview schemas are proposals"}
+  KSS-45: {section: "24. MCP/CLI implications", kind: requirement, tracked_by: [F21], statement: "knowledge.search/get/related/evidence/explain_selection (names open) returning qualified expandable results; requested challenged material keeps its status"}
+  KSS-46: {section: "26. Decisions intentionally left open", kind: open-question, tracked_by: [F21], statement: "Open: id prefix, storage path, version representation, endpoints, ranking, provider, budget, relation storage, UI labels, service capability names"}
+  KSS-47: {section: "28. Review set and approval boundary", kind: process, tracked_by: [F21], statement: "Joint review set; approval covers shared semantics, stable Evidence identity, the Case/Lesson/reference distinction, independent paths; not schemas, wire contracts, providers, ranking, K2 rollout or implementation"}
+  KSS-48: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Evidence identity is stable across capture and recall"}
+  KSS-49: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Knowledge identity/version is stable across CLI/MCP/API/Journal projections"}
+  KSS-50: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Every delivered item identifies exact content version plus governing knowledge-disposition/policy revision"}
+  KSS-51: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Admission does not imply serving"}
+  KSS-52: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Serving does not mutate admission/support/authority"}
+  KSS-53: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Query-time applicability does not rewrite durable applicability"}
+  KSS-54: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Retrieval scores do not establish semantic relations"}
+  KSS-55: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Multiple derived records do not multiply one root evidential source"}
+  KSS-56: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Supersession is scoped and attributable"}
+  KSS-57: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Guarded raw-history recall remains possible without semantic distillation but is explicit-mode only for unadmitted prose"}
+  KSS-58: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Canonical project references remain references, not copied authority"}
+  KSS-59: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Selection/preparation/delivery/citation/benefit remain distinct"}
+  KSS-60: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Capture and delivery record policy versions independently"}
+  KSS-61: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Visibility is most-restrictive-root by default and enforced before matching/result limits"}
+  KSS-62: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Provider outage cannot mutate durable semantics"}
+  KSS-63: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Reverse Evidence to Knowledge links are derived and scope-filtered"}
+  KSS-64: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Topic lenses/groupings do not establish truth or authority"}
+  KSS-65: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Knowledge text cannot grant execution/workflow authority"}
+  KSS-66: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Current-mode resolution records the concrete version returned"}
+  KSS-67: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "A protective serving hold is not equivalent to declaring content false"}
+  KSS-68: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Immutable Knowledge content and append-only knowledge-disposition state remain separate"}
+  KSS-69: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Request modes never grant capabilities/visibility"}
+  KSS-70: {section: "25. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Consequential post-delivery holds surface affected active/unmerged recipients via delivery receipts"}
+
+  # ---- KRR: recall, context routing and agent use v0.3 -----------------------------------------------------------
+  KRR-01: {section: "1. Purpose", kind: requirement, tracked_by: [F21], statement: "The read side owns query to receipts; relevant history must be cheaper to obtain and trust than rediscovery, and irrelevant or misleading history easy to ignore"}
+  KRR-02: {section: "2. Primary acceptance objective", kind: gate, tracked_by: [F21, F19], statement: "Accepted only when, ordinarily discoverable and unprompted, agents find and use relevant experience, improve independently verified outcomes and abstain appropriately; raw, Cases and Lessons evaluated separately; automatic discovery a separate arm; primary outcome verified task correctness"}
+  KRR-03: {section: "3. Design principles", kind: requirement, tracked_by: [F21], statement: "The ten principles: one owner of delivery semantics, exact before semantic, progressive disclosure, raw history first-class, admission is not serving, match is not applicability, delivery is not use, history is data, counterevidence travels, abstention can succeed"}
+  KRR-04: {section: "4.1 Canonical project authority references", kind: requirement, tracked_by: [F21], statement: "Authority references are returned as references to their owner, never cloned"}
+  KRR-05: {section: "4.2 Canonical engineering history/Evidence", kind: requirement, tracked_by: [F21], statement: "Canonical history and evidence are recallable through the guarded raw-history path"}
+  KRR-06: {section: "4.3 Admitted K0/K1/K2/K3 Knowledge", kind: requirement, tracked_by: [F21], statement: "Admitted knowledge returned per eligibility, visibility, state and request applicability"}
+  KRR-07: {section: "4.4 Held/challenged/historical material", kind: requirement, tracked_by: [F21], statement: "Held/challenged material only in authorized explicit investigation or debug modes, never mixed into default advice"}
+  KRR-08: {section: "4.5 Derived indexes", kind: invariant, tracked_by: [F21], statement: "Indexes are accelerators; their loss never erases durable history or Knowledge"}
+  KRR-09: {section: "5. Request binding", kind: requirement, tracked_by: [F21], statement: "Every recall has an AEW-owned RecallRequestBinding (the field list); the provider never declares visibility; request modes EXPLICIT_LOOKUP, AUTOMATIC_DISCOVERY, CONTEXT_ROUTING, INVESTIGATION_HISTORY, DEBUG_EVALUATION are intent, never permission"}
+  KRR-10: {section: "6. Recall pipeline", kind: requirement, tracked_by: [F21], statement: "The staged pipeline from binding through guard, exact, lexical, optional semantic, qualification, applicability, ranking, budget, PREPARED, final recheck, DELIVERY_ACKNOWLEDGED; any stage may return nothing"}
+  KRR-11: {section: "7. Access and visibility guard", kind: requirement, tracked_by: [F21], statement: "Authorization precedes exposure; no leaks of existence, titles, metadata, cross-project or cross-attempt data or similarity hints; scope before top-k, else partitioned index, bounded over-fetch with coverage_incomplete, or refuse the provider; applies to duplicates, relations, topics and reverse lookups"}
+  KRR-12: {section: "8. Guarded raw-history recall", kind: requirement, tracked_by: [F21], statement: "Raw prose and rejected/held candidate text only in explicit authorized modes, never default context; default routing uses admitted Knowledge and canonical references only; the guard list applies"}
+  KRR-13: {section: "9. Exact resolution and structured retrieval", kind: requirement, tracked_by: [F21], statement: "Exact ids, subjects, signatures, paths, relations before semantic search; structured query fields exposed to the agent"}
+  KRR-14: {section: "10. Lexical and semantic candidate generation", kind: requirement, tracked_by: [F21], statement: "Lexical/structured recall is the required baseline; semantic retrieval optional and replaceable and never decides applicability, contradiction, supersession, support, authority or eligibility; no merges from a cosine threshold"}
+  KRR-15: {section: "11. Applicability qualification", kind: requirement, tracked_by: [F21], statement: "Request-specific MATCH, QUALIFIED_MISMATCH, UNKNOWN, INAPPLICABLE with reasons; environment fields keep provenance; contained receipts are bounded observations, not conclusions; UNKNOWN is not MATCH"}
+  KRR-16: {section: "12. Current serving disposition versus pinned content", kind: requirement, tracked_by: [F21], statement: "Prepared items pin the version; delivery rechecks; receipts record version and disposition revision; a consequential hold after delivery raises an attention item listing affected active invocations and unmerged work for the Lead"}
+  KRR-17: {section: "13. Ranking", kind: requirement, tracked_by: [F21], statement: "Ranking uses bounded features and never treats recall count, citations, confidence, recency, derived summaries or self-reported helpfulness as truth; rare catastrophic knowledge must not disappear"}
+  KRR-18: {section: "14. Ranking and policy separation", kind: requirement, tracked_by: [F21], statement: "Eligibility before ranking; a policy-suppressed item never becomes deliverable by ranking; AEW produces the final order and reasons"}
+  KRR-19: {section: "15. Counterevidence and challenged knowledge", kind: requirement, tracked_by: [F21], statement: "Material challenge is visible within the bounded result; per-mode behaviour (suppress, qualify, side by side, historical); never hide a known challenge"}
+  KRR-20: {section: "L0 — capability awareness", kind: requirement, tracked_by: [F21, F13], statement: "A small stable description of what knowledge holds, when lookup saves work, how to search, that results are advisory"}
+  KRR-21: {section: "L1 — compact qualified hit", kind: requirement, tracked_by: [F21], statement: "Compact hits: id/version, kind, claim, conditions, qualification, source class, why matched, one next expansion"}
+  KRR-22: {section: "L2 — record detail", kind: requirement, tracked_by: [F21], statement: "Record detail: applicability, limitations, roots, relations, counterevidence, admission and serving metadata"}
+  KRR-23: {section: "L3 — exact source/evidence", kind: requirement, tracked_by: [F21, F20], statement: "Exact expansion through W05-style inspection or canonical readers"}
+  KRR-24: {section: "17. Agent-facing operations", kind: requirement, tracked_by: [F21], statement: "search/get/related/evidence/explain_selection equivalents with structured inputs (subject, path, signature, environment, kind, state, mode); no provider syntax exposed"}
+  KRR-25: {section: "18. Ordinary discoverability", kind: requirement, tracked_by: [F21, F13], statement: "Advertise through normal capability discovery; never instruct always search memory; investigate low adoption before forcing lookups"}
+  KRR-26: {section: "19. Automatic discovery and context routing", kind: requirement, tracked_by: [F21], statement: "Automatic delivery is separate from voluntary lookup; triggers listed; compact ids first; the router owns selection, order, budget, expansion, counterevidence, omissions; it never widens permissions"}
+  KRR-27: {section: "20. Context packet semantics", kind: requirement, tracked_by: [F21], statement: "Packet items bind identity, version, policies, applicability, reasons, qualification and expansion; the receipt ladder is conceptual and only the four engine-observable stages are built first; citation only from structured events; benefit is F19's"}
+  KRR-28: {section: "21. Context budgeting", kind: requirement, tracked_by: [F21, E29], statement: "Recall never crowds out mandatory context: instructions, then work/authority/guardrails, then source/evidence, then recall; a Lesson is atomic with its caveats (omit rather than strip); truncation explicit"}
+  KRR-29: {section: "22. Source expansion and W05", kind: requirement, tracked_by: [F21, F20], statement: "W05 stays the Evidence reader; recall links claims to evidence ranges without owning Evidence identity; expansion cheap enough to verify claims"}
+  KRR-30: {section: "23. Security and instruction isolation", kind: requirement, tracked_by: [F21], statement: "Retrieved history is untrusted data: cannot override policy, remember-this is not authority, decisions by id, no metadata leaks, providers cannot widen visibility, default context excludes held/unadmitted prose, K1 serving honours source class, excerpts delimited, injection treated as content"}
+  KRR-31: {section: "Distiller unavailable", kind: requirement, tracked_by: [F21], statement: "Raw history and admitted records remain recallable"}
+  KRR-32: {section: "Semantic/vector provider unavailable", kind: requirement, tracked_by: [F21], statement: "Fall back to exact/structured/lexical and surface the degradation"}
+  KRR-33: {section: "Index stale/unavailable", kind: requirement, tracked_by: [F21], statement: "Never claim complete search; exact expansion continues"}
+  KRR-34: {section: "Source/evidence missing or corrupt", kind: requirement, tracked_by: [F21], statement: "Qualify or suppress; never reconstruct proof from a summary"}
+  KRR-35: {section: "Protective hold appears after preparation", kind: requirement, tracked_by: [F21], statement: "Recheck at delivery; refuse or qualify"}
+  KRR-36: {section: "Consequential hold appears after delivery", kind: requirement, tracked_by: [F21], statement: "Surface an attention item from delivery receipts for the Lead"}
+  KRR-37: {section: "No useful result", kind: requirement, tracked_by: [F21], statement: "Explicit no-hit or insufficient-applicability state; never fabricate"}
+  KRR-38: {section: "25. Performance and latency", kind: evaluation, tracked_by: [F21], statement: "Measure exact, lexical, semantic, expansion, router, index and token costs on the target air-gapped environment; no invented SLA; lookup must beat rediscovery"}
+  KRR-39: {section: "26. Provider boundary", kind: invariant, tracked_by: [F21], statement: "Provider replacement never changes identity, visibility, authority, eligibility, relations, permissions or receipts"}
+  KRR-40: {section: "27.1 Diagnostic stages", kind: evaluation, tracked_by: [F21, F19], statement: "Separate oracle, writer, retrieval, routing/voluntary-lookup and temporal-loop stages"}
+  KRR-41: {section: "27.2 Agent-use arms", kind: evaluation, tracked_by: [F21, F19], statement: "Phase 1a A versus B (first stop/go), 1b K1 replay plus minimal C, Phase 2 D/E/O only if C adds value; ordinary discoverability, no use-memory prompts; corpus from real AEW incidents; tasks include useful, none, misleading, changed, challenged, rejected-advice, outage and rare-catastrophe history"}
+  KRR-42: {section: "28. Ranking/retrieval metrics", kind: evaluation, tracked_by: [F21, F19], statement: "The fifteen retrieval metrics; never optimize unprompted lookup in isolation"}
+  KRR-43: {section: "29. Harness/model conformance", kind: requirement, tracked_by: [F21], statement: "Across harness/model combinations: discoverable, disclosure works, ids and labels survive transport, denied never exposed, held excluded by default, expansion resolves, receipts distinguish prepared and delivered, history cannot become instruction"}
+  KRR-44: {section: "30. API/dashboard implications", kind: requirement, tracked_by: [F21, F20], statement: "The read API exposes request binding, identity, state, revisions, applicability, reasons, index generation, omissions, expansion and receipts; the retrieval debugger is a projection"}
+  KRR-45: {section: "31. Initial implementation sequence", kind: sequencing, tracked_by: [F21], statement: "Freeze the set; fixtures before providers; Arm B first; measure A/B; replay; minimal C only on a measured gap; full machinery only after C earns it; K2 and automatic discovery later; providers against the lexical baseline; Journal/API last"}
+  KRR-46: {section: "32. Decisions intentionally left open", kind: open-question, tracked_by: [F21], statement: "Open: ranking formula, provider, L0-L3 budgets, trigger thresholds, SLA, operation names, query rewrite, reranker, counterevidence count, model-specific routing, endpoints"}
+  KRR-47: {section: "35. Approval boundary", kind: process, tracked_by: [F21], statement: "Approval is of the read-path direction only; not ranking, vector store, budget, thresholds, schemas, automatic K2/K3 or rollout"}
+  KRR-48: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Retrieval never upgrades authority or evidential support"}
+  KRR-49: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Visibility/scope are enforced before concealed metadata or provider limits can affect caller-visible results"}
+  KRR-50: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Raw-history recall bypasses semantic creation only and is explicit-mode only for unadmitted prose"}
+  KRR-51: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Rejected/held semantic advice cannot silently re-enter automatic/default context through raw source prose"}
+  KRR-52: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Request modes never grant capability/visibility"}
+  KRR-53: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Match/similarity does not establish applicability or semantic relations"}
+  KRR-54: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Every delivered admitted item pins exact content version plus governing disposition/policy revision"}
+  KRR-55: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Protective holds are rechecked before delivery"}
+  KRR-56: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Consequential post-delivery holds surface affected active/unmerged recipients"}
+  KRR-57: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Prepared/delivered/cited/beneficial remain distinct"}
+  KRR-58: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "No-hit/abstention can be correct"}
+  KRR-59: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Material counterevidence/challenge cannot be silently stripped from delivered advice"}
+  KRR-60: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Raw canonical-history lookup survives semantic distiller failure"}
+  KRR-61: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Provider failure cannot mutate durable Knowledge/authority"}
+  KRR-62: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Exact Knowledge/Evidence ids survive provider/harness boundaries"}
+  KRR-63: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Topic/similarity clusters are navigation aids, not authority"}
+  KRR-64: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Recall frequency/citation/model-reported helpfulness does not increase truth"}
+  KRR-65: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Context budgets/truncation remain explicit and optional memory cannot displace mandatory current context"}
+  KRR-66: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Historical text cannot widen tools/permissions/workflow/context authorization"}
+  KRR-67: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Automatic discovery and voluntary lookup are measured separately"}
+  KRR-68: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Normal agent-use acceptance requires improved independently verified outcomes plus appropriate abstention under ordinary discoverability"}
+  KRR-69: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "K1 default serving respects source/authentication class"}
+  KRR-70: {section: "33. Invariant requirements for the existing invariant index", kind: invariant, tracked_by: [F21], statement: "Derived visibility defaults to the most restrictive root"}
+
+  # ---- KRB: the research basis, what the designs did not carry ---------------------------------------------------
+  KRB-01: {section: "3. Evidence survey: write paths, not storage marketing", kind: requirement, tracked_by: [F21], statement: "Do not design against an assumed provider protocol (e.g. Mem0's older ADD/UPDATE/DELETE) without testing a pinned provider; public issue reports are leads, not evidence"}
+  KRB-02: {section: "3. Evidence survey: write paths, not storage marketing", kind: requirement, tracked_by: [F21], statement: "Treat apparently successful trajectories and tool text as potentially hostile (MINJA-style poisoning is a write-path problem)"}
+  KRB-03: {section: "4. Plausible architectures", kind: decision, tracked_by: [F21], statement: "Architecture E (structured cases plus selective lessons) with D (canonical recall) throughout; Lead/role closeout lessons only as nominations (B); a continuous observer only as an optional candidate producer (A); an independent distiller plus challenger only as escalation (C); no prebuilt general knowledge graph platform"}
+  KRB-04: {section: "Narrow interfaces", kind: requirement, tracked_by: [F21], statement: "The ten narrow interfaces (CaptureCoordinator.on_committed, EvidenceResolver.bundle, CaseProjector.project, MemoryDistiller.propose, CandidateValidator.check, KnowledgeMatcher.compare, KnowledgeChallenger.assess, AdmissionPolicy.decide, KnowledgeStore.commit, ContextRouter.select); assess cannot verify by confidence; commit rechecks atomically"}
+  KRB-05: {section: "Delivery and job integrity", kind: requirement, tracked_by: [F21, E18], statement: "Capture jobs distinguish attempts that share a prompt; use the existing durable job/outbox mechanism; never put another project's worker queue on the resume critical path"}
+  KRB-06: {section: "6. What deserves retention", kind: requirement, tracked_by: [F21], statement: "A candidate names the future question it answers and the work it saves; the retain/exclude table per kind (case, failed approach, environment constraint, lesson, hypothesis, reference, pattern, procedure); a rejected candidate never deletes evidence; candidate prose may have its own bounded retention"}
+  KRB-07: {section: "AdmittedKnowledge", kind: requirement, tracked_by: [F21], statement: "Keep observation time, evidence-valid conditions, publication time and reassessment time separate; a fresh summary of old evidence is not fresh evidence"}
+  KRB-08: {section: "8. Generalization and applicability", kind: requirement, tracked_by: [F21], statement: "Record rename mappings and unresolved identity for path/symbol subjects; cross-component knowledge may have several subjects"}
+  KRB-09: {section: "Model routing", kind: requirement, tracked_by: [F21, F19], statement: "No model for deterministic references and cases; roles may nominate; evaluate an approved extraction model on exact AEW examples (cheap is not automatically suitable); stronger review for complex reasoning where measured; no mandated cheap model or fine-tune before evidence; batch, cache snapshots, escalate selectively"}
+  KRB-10: {section: "9. Admission tiers: automatic versus judgment-bearing", kind: requirement, tracked_by: [F21], statement: "Security-sensitive actions need stronger controls even when narrowly scoped (disable verification to fix the build is never an ordinary lesson)"}
+  KRB-11: {section: "11. Duplicate, overlap, contradiction, correction", kind: requirement, tracked_by: [F21], statement: "Proposing challenges may be automatic; resolving contradiction or applying supersedes is a disposition; preserve reversible membership when grouping; a plausible conflict may suspend default lesson delivery without declaring falsity while unrelated recall continues"}
+  KRB-12: {section: "12. Trust and lifecycle: avoid one overloaded enum", kind: requirement, tracked_by: [F21], statement: "Policy changes yield reassessment receipts, not rewritten evidence; never expire sound knowledge only because time passed; reassess on relevant dependency or evidence change"}
+  KRB-13: {section: "13. Make the store worthwhile for agents", kind: requirement, tracked_by: [F21], statement: "Records answer the five engineering questions (reproduced already, discriminating check, failing environment, contract location, overturning evidence); if the model reliably uses harmful knowledge, fix admission and serving before encouraging usage"}
+  KRB-14: {section: "14. Adversarial evaluation corpus", kind: evaluation, tracked_by: [F21, F19], statement: "The 28-fixture adversarial corpus K01-K28 with expert-adjudicated labels, plus paraphrase, adversarial wording, missing-field, truncation and environment perturbations; held-out repositories and later tasks; never tune on the acceptance corpus; add real AEW incidents"}
+  KRB-15: {section: "Agent behavior experiment", kind: evaluation, tracked_by: [F21, F19], statement: "Matched tasks with identical harness/model/skills/budgets and frozen prior history; several trials; count attempted authority violations even when guards block them; check seeded histories for future answer or test leakage; temporal arms with a defined history schedule and no cross-arm contamination; preregister error budgets and benefit targets; zero observed failures is not zero risk"}
+  KRB-16: {section: "16. Failure/invariant registry proposals", kind: requirement, tracked_by: [F21, F14], statement: "Map the proposed failure names (EVIDENCE_LAUNDERING, CAUSAL_OVERCLAIM, SCOPE_WIDENING, FALSE_MERGE, FALSE_SUPERSESSION, KNOWLEDGE_POISONING, STALE_ADMISSION_RACE, CROSS_ATTEMPT_CAPTURE, ACKNOWLEDGED_CANDIDATE_LOSS, RECALL_AS_AUTHORITY, DISTILLATION_UTILITY_LOSS) into the existing failure-class registry naming"}
+  KRB-17: {section: "16. Failure/invariant registry proposals", kind: invariant, tracked_by: [F21], statement: "KINV-03: origin and visibility are engine-bound; caller or model strings cannot assign another attempt (no design invariant states the attempt half); KINV-09: preconditions are rechecked at expansion as well as publication"}
+  KRB-18: {section: "17. M6 sequence and concrete design changes", kind: requirement, tracked_by: [F21, F20], statement: "Journal mocks must not present hypotheses or model interpretations as established knowledge; Journal views show held reasons, support basis, observed versus proposed conditions, capture lag and included/cited/helpful distinctions; no silent self-modification of instruction skills or policies"}
+
+  # ---- ARR: architecture review response (proposed disposition, 2026-10-04) ---------------------------------------
+  ARR-01: {section: "G1 — Evaluation is the critical path and not yet a component", kind: decision, tracked_by: [F19, Q13], statement: "ACCEPT: F19 becomes a reusable evaluation component (versioned fixture and run-record schemas, preregistration, protected evaluator material, metrics from AEW records, failed runs kept, incident fixtures, model/harness identity); before M4-H's consequential claims; does not stop approved M4 work (D-AR1)"}
+  ARR-02: {section: "G2 — The Lead surface is a shell and the shell carries measured cost/defects", kind: decision, tracked_by: [F15, Q13], statement: "ACCEPT WITH MODIFICATION: a typed AEW action surface over the same Engine, DispatchDecision and guards, with MCP, CLI, dashboard and scheduler as transports; F15 stages the normal surface; structured ActionProjection results; mechanical retry only where primitive semantics permit (D-AR2)"}
+  ARR-03: {section: "G3 — Project-knowledge maps are specified but largely unimplemented", kind: decision, tracked_by: [F22, Q13], statement: "ACCEPT WITH MODIFICATION: a deterministic project map (topology, generated/source boundaries, entry points, language boundaries, revision and freshness) earlier, semantic architecture/ownership/glossary material later; bounded fragments in packs; a generated map is derived knowledge, not K0 (D-AR6)"}
+  ARR-04: {section: "G4 — Only one real harness adapter", kind: decision, tracked_by: [F24, Q13], statement: "ACCEPT RISK, DEFER AS GATE: a second real adapter by M5/M6 or earlier on OpenCode drift; conformance suite is the acceptance; probe protocols in the real environment"}
+  ARR-05: {section: "G5 — Containment does not provide network isolation and Windows is weaker", kind: decision, tracked_by: [F23, Q13], statement: "ACCEPT RISK, DEFER TO PRE-ALPHA: network egress, provider-key proxy, two-account deployment and WSL execution need threat-model work before internal alpha; never expand the F2 claim silently"}
+  ARR-06: {section: "G6 — Contract amendments are becoming a second specification", kind: decision, tracked_by: [E19, Q13], statement: "ACCEPT: a machine-readable amendment index beside the spec pins now; decisions copied out of research into decision/ADR records; a consolidated WC/KC re-freeze after M4 (D-AR7)"}
+  ARR-07: {section: "G7 — Cost is not an AEW-owned engineering fact", kind: decision, tracked_by: [F25, Q13], statement: "ACCEPT WITH MODIFICATION: a cost/usage ledger (model/profile, token categories, wall time, provider and price-table cost, run to parent roll-ups) first; USD budget refusals are a later policy decision with M5/F7"}
+  ARR-08: {section: "G8 — Q12 blocks too many downstream surfaces", kind: decision, tracked_by: [Q12, Q13], statement: "ACCEPT: decide Q12 in the M4-D/M4-E window covering process ownership, Lead seat, wrapper/session lifecycle, dashboard attachment, service identities, harness-private versus AEW state (D-AR5)"}
+  ARR-09: {section: "G9 — Knowledge drafts introduce visibility semantics AEW does not currently need", kind: decision, tracked_by: [F21, Q13], statement: "ACCEPT SIMPLIFICATION: knowledge v1 visibility_scope = project; keep the most-restrictive-root invariant and scoped-before-limit in the schema; no multi-scope until Q12 creates a consumer"}
+  ARR-10: {section: "G10 — No team/remote integration target", kind: decision, tracked_by: [F23, Q13], statement: "DEFER: remote-PR integration designed when the first team repository needs it; DONE semantics then need contract/ADR work; not in M4"}
+  ARR-11: {section: "G11 — No durable committed-event/outbox model", kind: decision, tracked_by: [E18, Q13], statement: "ACCEPT: a transaction outbox, event append atomic with the commit, identity with revision/kind/ids, durable consumer cursors, at-least-once idempotent replay-safe consumers (never exactly-once processing), bounded retention per ADR-0011, never a second authority; ADR level (D-AR3)"}
+  ARR-12: {section: "G12 — Operator attribution through Lead is attribution, not cryptographic proof", kind: decision, tracked_by: [F23, Q13], statement: "ACCEPT DIRECTION, POLICY-DEPENDENT: terminal-authenticated operator sessions for consequential operator-only actions (high-impact waivers, pins, security-sensitive accepted_open, widening) where policy requires; not for ordinary annotations"}
+  ARR-13: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [F2], status: "done: M4-B #36 (ce794fb)", statement: "I1 ACCEPT: validate operator writable roots against protected roots and include them in the self-test"}
+  ARR-14: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [E13], status: "done: M4-B #36 (ce794fb)", statement: "I2 ACCEPT: host_pid fails clearly without a valid mapping and matches the run namespace's level"}
+  ARR-15: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [E20, E12], statement: "I3 ACCEPT DIRECTION: evidence show and structured/JSON read surfaces for humans and the typed surface"}
+  ARR-16: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [O2], statement: "I4 ACCEPT: widen the headless Lead's read-only git allow-list with proven-useful reconnaissance operations only"}
+  ARR-17: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [F14, O3], statement: "I5 ACCEPT: pin repository-local acceptance inputs by digest at plan acceptance and re-verify (the deterministic part of F14)"}
+  ARR-18: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [F17], statement: "I6 ACCEPT DIRECTION: executable consumer_search, when the obligation design is active"}
+  ARR-19: {section: "4. Bounded mechanism improvements I1–I12", kind: open-question, tracked_by: [V3], statement: "I7 PROBE: plan-bound reviewer default, tested against real review Tickets and F14/F15 semantics"}
+  ARR-20: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [E21, F22], statement: "I8 ACCEPT DIRECTION: init proposes discovered test commands (never silently configures); map part depends on G3"}
+  ARR-21: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [E22], statement: "I9 ACCEPT AFTER MEASUREMENT: doctor check that the supervisor staleness limit exceeds the measured re-parse"}
+  ARR-22: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [E23], statement: "I10 ACCEPT: Windows-specific code inside the coverage picture"}
+  ARR-23: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [U5], statement: "I11 ACCEPT: generated archetype command references after F15 names stabilize"}
+  ARR-24: {section: "4. Bounded mechanism improvements I1–I12", kind: requirement, tracked_by: [F20, E18], statement: "I12 ACCEPT DIRECTION: outbox-fed dashboard updates once G11 exists; transport is F20 work"}
+  ARR-25: {section: "5.1 Hot state", kind: decision, tracked_by: [F21], statement: "AFFIRMED: keep YAML human-readable hot authority"}
+  ARR-26: {section: "5.2 FTS over history/evidence/decisions", kind: decision, tracked_by: [F21], statement: "ACCEPT DIRECTION: FTS5 on the derived history SQLite is the lexical baseline; never authority; rebuildable"}
+  ARR-27: {section: "5.3 Generated/static typed Python record models", kind: requirement, tracked_by: [E24], statement: "ACCEPT DIRECTION: build-time generated or checked TypedDict record models; no runtime dependency"}
+  ARR-28: {section: "5.4 Release packaging / offline artifact", kind: requirement, tracked_by: [F18], statement: "ACCEPT DIRECTION: release packaging and offline artifact belong to F18"}
+  ARR-29: {section: "5.5 Real Rocky 8 CI/live lane", kind: requirement, tracked_by: [E25], statement: "ACCEPT GOAL: a real Rocky 8 CI/live lane, infrastructure environment-dependent"}
+  ARR-30: {section: "5.6 Split oversized Windows serial job", kind: requirement, tracked_by: [E26], statement: "ACCEPT: split the Windows serial job rather than raising timeouts"}
+  ARR-31: {section: "5.7 Dashboard lifecycle timeline / ActionProjection", kind: requirement, tracked_by: [F20], statement: "ACCEPT DIRECTION: the dashboard projects Engine-owned lifecycle and ActionProjection semantics"}
+  ARR-32: {section: "5.8 OpenTelemetry-shaped local spans", kind: open-question, tracked_by: [E27], statement: "DEFER/PROBE: local spans only with a concrete consumer and an air-gap-safe retention plan"}
+  ARR-33: {section: "`aew` Lead surface", kind: decision, tracked_by: [F15], statement: "ACCEPT DIRECTION: semantics in the typed surface; MCP a preferred adapter, not the owner"}
+  ARR-34: {section: "`aew-run` role surface", kind: decision, tracked_by: [F15], statement: "ACCEPT DIRECTION: typed role tools forward through the bridge; credentials stay supervisor-side; no widened role authority"}
+  ARR-35: {section: "`aew-knowledge`", kind: decision, tracked_by: [F21], statement: "ACCEPT AS M6b: operations over guarded exact/lexical history, later K0/K1"}
+  ARR-36: {section: "Structured `check.run`", kind: requirement, tracked_by: [E28], statement: "ACCEPT: check.run returns bounded structured results plus artifact references; logs are expandable evidence"}
+  ARR-37: {section: "External docs and language-server providers first", kind: decision, tracked_by: [Q11, F12], statement: "ACCEPT AS PRIORITY HYPOTHESIS: offline docs and language servers first, evaluated with F19"}
+  ARR-38: {section: "Minimal delivery path before full capability registry", kind: open-question, tracked_by: [F26, D3], statement: "NEEDS DESIGN/PROBE: a minimal hash-pinned skill delivery path as the smallest subset of the future registry, never a second resolution system"}
+  ARR-39: {section: "Lead skills", kind: evaluation, tracked_by: [D3, F19], statement: "ACCEPT AS CANDIDATES: scope/reconnaissance, protected goal inputs, classification calibration, promoted only through F19"}
+  ARR-40: {section: "Role skills", kind: evaluation, tracked_by: [D3, F19], statement: "ACCEPT AS CANDIDATES: verification-evidence, report-authoring, scope/reconnaissance"}
+  ARR-41: {section: "Evaluation", kind: decision, tracked_by: [D3, F19], statement: "ACCEPT: skill claims use the F19 component, not a separate framework"}
+  ARR-42: {section: "Language manuals / generic skill expansion", kind: decision, tracked_by: [D3], statement: "DEFER: no measured need"}
+  ARR-43: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F15, E18], statement: "F-A ACCEPT DIRECTION: typed Lead surface and operator inbox, absorbed into G2, G11 and F15"}
+  ARR-44: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F22], statement: "F-B ACCEPT DIRECTION: project maps, deterministic split from semantic"}
+  ARR-45: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F19], statement: "F-C ACCEPT NARROWER: deterministic historical state/context reconstruction; full execution replay not assumed"}
+  ARR-46: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F25, F7], statement: "F-D ACCEPT LEDGER, DEFER ENFORCEMENT"}
+  ARR-47: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F24], statement: "F-E ACCEPT STRATEGICALLY, DEFER GATE: second harness adapter"}
+  ARR-48: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F23], statement: "F-F DEFER TO PRE-ALPHA: network containment; F-G DEFER until a team repository needs remote integration"}
+  ARR-49: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F14, O3], statement: "F-H ACCEPT DETERMINISTIC HALF: repository-local acceptance-input digests now; the protected evaluator stays F14"}
+  ARR-50: {section: "8. Whole-feature ideas F-A–F-K", kind: evaluation, tracked_by: [F19], statement: "F-I PROBE: model-diverse review adopted only on unique-defect yield"}
+  ARR-51: {section: "8. Whole-feature ideas F-A–F-K", kind: decision, tracked_by: [F27, F23], statement: "F-J ACCEPT AS STRATEGIC GOAL: dogfood AEW on AEW once containment, real-repo and integration conditions are met; F-K DEFER: automatic Lead lease expiry needs its own design"}
+  ARR-52: {section: "K1 — Knowledge storage/integrity is unplaced", kind: decision, tracked_by: [F21, Q13], statement: "NEEDS ADR: one integrity story; admitted knowledge, dispositions, consequential relations and receipts under ADR-0011 integrity; capture queue, retries, transient status and cursors in a separate operational domain; decide manifest entry kinds versus a sibling manifest under the same root (D-AR4)"}
+  ARR-53: {section: "K2 — Capture triggers need a durable event source", kind: decision, tracked_by: [F21, E18], statement: "ACCEPT: capture consumes the G11 outbox, at-least-once and idempotent"}
+  ARR-54: {section: "K3 — Visibility is a new security model", kind: decision, tracked_by: [F21], statement: "ACCEPT SIMPLIFICATION: M6b v1 project-scoped; composition invariant and extension points kept"}
+  ARR-55: {section: "K4 — Knowledge service identity", kind: decision, tracked_by: [F21], statement: "NEEDS DESIGN: a new bounded credential kind through the existing verifier/custody architecture, not a Lead credential; enumerated operations, unreachable from worker shells, explicit rotation/revocation, binding per Q12"}
+  ARR-56: {section: "K5 — Vocabulary collisions", kind: requirement, tracked_by: [F21], statement: "ACCEPT: a glossary pass across workflow/knowledge dispositions, evidence admissibility, supersession, serving, review independence and admission classes before schema freeze, feeding the project glossary (KC §8.5)"}
+  ARR-57: {section: "K6 — Frontend preview schemas must not become backend semantics by familiarity", kind: decision, tracked_by: [F21, F20], statement: "ACCEPT: the Engine owns the receipt vocabulary; frontend preview contracts adapt to it"}
+  ARR-58: {section: "K7 — Research basis is missing from repository", kind: requirement, tracked_by: [F21], status: "done: this ledger change (the research basis added as docs/research, all four on the map)", statement: "ACCEPT: add the research basis and the drafts to the map under their non-governing status"}
+  ARR-59: {section: "K8 — M6 is overloaded", kind: decision, tracked_by: [F12, F13, F21], statement: "ACCEPT CONCEPTUAL SPLIT: M6a capabilities and skills; M6b knowledge and recall; release work supports both"}
+  ARR-60: {section: "K9 — Guarded raw-history recall is the cheapest knowledge increment", kind: decision, tracked_by: [F21], statement: "ACCEPT: Arm B (explicit guarded history search over FTS, project scope, provenance, untrusted framing) is the first M6b experiment; K1 template replay in parallel"}
+  ARR-61: {section: "Recall context-budget order", kind: requirement, tracked_by: [E29], statement: "ACCEPT AS A CURRENT PACK INVARIANT: packs reserve context in the order constraints, work/authority/guardrails, source/evidence, then optional recall, before recall exists"}
+  ARR-62: {section: "Workflow disposition is not proof", kind: requirement, tracked_by: [F17, F21], statement: "ACCEPT: cross-reference F17 and the knowledge design; accepted_open/known_limit are K1 material with the source disposition preserved"}
+  ARR-63: {section: "11. Architecture explicitly affirmed — no redesign", kind: decision, tracked_by: [Q13], statement: "AFFIRMED and closed unless new evidence: authority/commit and custody, generation fencing and takeover, evidence binding, ADR-0011 hot/cold, one dispatch predicate, registries, test lanes, truthful containment labels, adapters never authority"}
+  ARR-64: {section: "12. Sequencing response", kind: sequencing, tracked_by: [Q13], statement: "Review §8 is not copied into the roadmap; near-term changes limited to shared primitives and gates: M4-B/C fixes; M4-D/E outbox, Q12, typed surface design; M4-G/H ledger, map slice, F19 before M4-H claims, F14/I5; after M4 the re-freeze, second adapter, budgets, scheduler; M6a; M6b; pre-alpha candidates; the review alone never expands a milestone"}
+  ARR-65: {section: "D-AR1 — Evaluation component design", kind: requirement, tracked_by: [F19], statement: "Design fixture identity, preregistration, protected evaluator, run record, metrics, incident corpus, comparators, reconstruction needs; before M4-H claims"}
+  ARR-66: {section: "D-AR2 — Typed AEW action surface / F15 transport design", kind: requirement, tracked_by: [F15], statement: "Design the semantic surface versus transport, stages, ActionProjection, retry rules, MCP/CLI/dashboard adapters, typed role submission; M4-E"}
+  ARR-67: {section: "D-AR3 — Transaction outbox ADR/design", kind: requirement, tracked_by: [E18], statement: "ADR for commit atomicity, event schema, cursors, retention/archive, idempotency/replay, consumers; M4-D"}
+  ARR-68: {section: "D-AR4 — Knowledge durability and automation integration ADR", kind: requirement, tracked_by: [F21], statement: "ADR for knowledge placement under ADR-0011, capture-job durability, disposition indexing, FTS/expansion, service credential, project-only visibility, Q12 dependency; before M6b beyond raw history"}
+  ARR-69: {section: "D-AR5 — Q12 hosting/session decision", kind: requirement, tracked_by: [Q12], statement: "Decide process/service/session ownership for Lead, dashboard, capability and knowledge services; M4-D/E window"}
+  ARR-70: {section: "D-AR6 — Project-map design", kind: requirement, tracked_by: [F22], statement: "Design the deterministic map schema, freshness and bounded pack inclusion; semantic map separate; not an M4 blocker"}
+  ARR-71: {section: "D-AR7 — Contract consolidation/re-freeze plan", kind: requirement, tracked_by: [E19], statement: "Amendment index now; consolidated WC/KC after M4"}
+  ARR-72: {section: "14. Items that should *not* create new design work yet", kind: decision, tracked_by: [F23, F19, F21, D3, E27], statement: "No dedicated design yet for: network egress proxy, two-account deployment, remote PR integration, automatic lease expiry, full execution replay, team/org knowledge visibility, generic OpenTelemetry, a broad skill library"}
+  ARR-73: {section: "15. Requested developer review", kind: process, tracked_by: [Q13], statement: "The lead developer reviews the review and this response from the implementer's side (coupling, state growth, authority seams, recovery, sequencing, complexity, reuse, testability, knowledge split, typed-surface transport) with a disposition per item"}
+  ARR-74: {section: "16. Proposed acceptance boundary", kind: process, tracked_by: [Q13], statement: "Once accepted, the response is the disposition of record; decisions are promoted to ADR/decision/design records, improvements to the register, deferrals stay non-governing, affirmed foundations stay closed; the response becomes an audit trail"}
+
+  # ---- ARV: the archived review, what the response did not disposition ------------------------------------------
+  ARV-01: {section: "5. Whole features", kind: open-question, tracked_by: [Q13, F9, F3, F20], statement: "Not dispositioned by the response: the review's 'do not build yet' list (live coordination F9 until M4-D and a multi-agent dogfood show need; sparse or overlay workspaces until a repository needs them; dashboard write actions until the typed surface exists, so the dashboard calls the same tools)"}
+  ARV-02: {section: "9. Process notes", kind: open-question, tracked_by: [Q13, E30], statement: "Not dispositioned: keep the register as structured data (YAML with a rendered view the dashboard can show) so the milestone-start triage is mechanical"}
+  ARV-03: {section: "9. Process notes", kind: open-question, tracked_by: [Q13, E19], statement: "Not dispositioned: at the re-freeze, retire documents the ADRs have absorbed (about 1.7 MB of docs to 20k lines of code)"}
+  ARV-04: {section: "9. Process notes", kind: open-question, tracked_by: [Q13], statement: "Not dispositioned: the operator and designer are the serial path of every open question; the typed surface and operator inbox are named as the way to keep it short"}
+  ARV-05: {section: "9. Process notes", kind: open-question, tracked_by: [Q13, F19], statement: "Not dispositioned: probes the review could not run (gateway features such as tool search, structured output and caching; whether the current OpenCode release still fits; recall performance on the target hardware)"}
+
+retired: {}

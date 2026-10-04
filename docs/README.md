@@ -16,7 +16,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | ADR-0011 | Hot and cold control state: cost tracks open work, not history | Done |
 | **M4** | **Mutating concurrency above 1:** parallel Tickets, one serial integration lease | **In progress** |
 | M5 | A dynamic scheduler (register F11) | Planned |
-| M6 | Capability manifests, discovery and progressive disclosure (F12, F13) | Planned |
+| M6 | M6a: capability manifests, discovery and progressive disclosure, skills (F12, F13). M6b: the knowledge system, capture and recall (F21), guarded history recall first | Planned (the split is proposed: Q13) |
 
 **M4, phase by phase** ([`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) §5):
 
@@ -52,7 +52,7 @@ When documents disagree, the earlier one wins.
    - the designer's decision sections of two research documents: the integration queue ([§7 and §7.1](research/m4-integration-queue-research-2026-10-01.md)) and containment ([§8](research/containment-and-process-ownership-rocky8-research-2026-10-01.md))
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
-5. **Cross-document indexes** (they point, they do not decide): [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md).
+5. **Cross-document indexes** (they point, they do not decide): [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
 
 Everything in [`design/proposals/`](design/proposals/) and [`research/`](research/) is input, not governing, except
 the decision sections named above. Everything in [`archive/`](archive/) is a finished record.
@@ -102,6 +102,10 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 | [`capability-discovery-and-progressive-disclosure-design-v0.1.md`](design/proposals/capability-discovery-and-progressive-disclosure-design-v0.1.md) | F13 | M6 |
 | [`AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`](design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md) | F9 | Frozen; revisit on dogfood evidence |
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Evaluation baseline first |
+| [`aew-knowledge-capture-admission-design-v0.4.md`](design/proposals/aew-knowledge-capture-admission-design-v0.4.md) | F21 | M6b; for joint review with the two below |
+| [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | M6b |
+| [`aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md`](design/proposals/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md) | F21 | M6b; Arm B (guarded history recall) first |
+| [`architecture-review-response-2026-10-04.md`](design/proposals/architecture-review-response-2026-10-04.md) | Q13; F21 to F27, E18 to E30 | The proposed disposition of the 2026-10-04 architecture review; awaiting the lead developer's review and acceptance |
 
 ## Research and investigations ([`research/`](research/))
 
@@ -112,6 +116,7 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 | [`adr-0011-storage-investigation-2026-10-01.md`](research/adr-0011-storage-investigation-2026-10-01.md) | ADR-0011 |
 | [`aew-phase6-airgap-capability-research-2026-10-01.md`](research/aew-phase6-airgap-capability-research-2026-10-01.md) | M6 (airgap, MCP selection) |
 | [`external-agent-workflow-lessons-2026-09-28.md`](research/external-agent-workflow-lessons-2026-09-28.md) | Dogfood inputs |
+| [`aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md`](research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md) | The M6b knowledge designs (F21) |
 
 ## Archive ([`archive/`](archive/))
 
@@ -133,7 +138,8 @@ ADR-0011 [implementation plan](archive/milestones/adr-0011-implementation-plan.m
 [M3 independent audit](archive/reviews/m3-independent-audit-2026-09-29.md) and [response](archive/reviews/review-response-2026-09-29.md) ·
 [Ticket revision amendment review](archive/reviews/ticket-revision-amendment-review-2026-09-30.md) ·
 [M3 acceptance review response](archive/reviews/review-response-2026-10-01.md) ·
-[ADR-0011 reviewer brief](archive/reviews/adr-0011-reviewer-brief.md)
+[ADR-0011 reviewer brief](archive/reviews/adr-0011-reviewer-brief.md) ·
+[architecture review, ground up (2026-10-04)](archive/reviews/architecture-review-2026-10-04.md), dispositioned by the [proposed response](design/proposals/architecture-review-response-2026-10-04.md)
 
 **Superseded** ([`archive/superseded/`](archive/superseded/)):
 [plan assurance v0.3](archive/superseded/plan-assurance-and-premise-validation-design-v0.3.md), replaced by
@@ -146,5 +152,9 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
 ## Keeping this map true
 
 - A new document goes in the folder its status says, and on this page in the same change.
+- A new design, research or review document is **ingested, not just placed**: every requirement goes into
+  [`requirements-ledger.yaml`](design/requirements-ledger.yaml) and is tracked by a register row. A new version of a
+  document is re-mapped section by section; a requirement it drops is retired with its disposition, never deleted.
+  `tests/unit/test_requirements_ledger.py` enforces it.
 - When a milestone finishes, its plan, reports and review responses move to `archive/`.
 - `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this page.

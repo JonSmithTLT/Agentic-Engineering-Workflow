@@ -36,7 +36,7 @@ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.status_ops import StatusViews
 from aew.engine.store import ControlStore
 from aew.engine.work_ops import WorkCommands, WorkUnits
-from aew.engine.workspace_ops import Assignment, Invocations
+from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
@@ -243,10 +243,10 @@ class ProjectAdmin:
                     f"unconfigured checks {unconfigured}: gates requiring them stay blocked")
             else:
                 add("checks-configured", "PASS", "all declared checks configured")
-            gates = self.k.policy("gates")
-            if gates.get("mutating_concurrency", 1) > 1:
-                add("mutating-concurrency", "WARN",
-                    "isolation/integration for concurrency > 1 is not implemented; effective value is 1")
+            cap = mutating_cap(self.k.policy("gates"))
+            add("mutating-concurrency", "PASS",
+                f"{cap}: up to {cap} mutating Ticket(s) hold a live workspace at once, each in its own worktree; "
+                "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
         lead = state["lead"]

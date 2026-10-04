@@ -307,7 +307,7 @@ def test_establish_labels_a_contained_run_truthfully(lab):
                                 scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None)
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
-    assert label["network"] == "not_provided" and label["mechanism"].startswith("bubblewrap")
+    assert label["network"] == "shared" and label["mechanism"].startswith("bubblewrap")
     assert label["self_test"]["ok"] is True and label["layout"]["workspace_access"] == "read"
 
 

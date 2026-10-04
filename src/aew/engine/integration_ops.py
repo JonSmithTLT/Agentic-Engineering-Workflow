@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, transitions
-from aew.errors import GateUnsatisfied, IllegalTransition, IntegrityError, StaleCandidate
+from aew.errors import GateUnsatisfied, GitError, IllegalTransition, IntegrityError, StaleCandidate
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -101,10 +101,13 @@ class Integration:
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
                 raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
-            if integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None:
+            lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+            if (integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None
+                    and not lost):
                 raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
             if integ:
-                self._retire_integration(state, unit, f"replaced by a new candidate (was {integ.get('status')})")
+                why = "its integration worktree is gone" if lost else "replaced by a new candidate"
+                self._retire_integration(state, unit, f"{why} (was {integ.get('status')})")
             gc = self.gates.gate_context(state, work_id)
             self.gates.require_gates(gc, gc["obligations"]["gates"], what="integration")
             if gc["open_required_findings"]:
@@ -132,8 +135,12 @@ class Integration:
                 repo_root=self.k.repo_root, aew_root=self.k.aew_root, workspaces_root=self.k.workspaces_root(),
                 work_id=work_id, name=name, workspace_id=f"int-{work_id}-{attempt}", commit=base,
                 referenced_paths=referenced)
-            merged = I.merge_candidate(self.k.repo_root, Path(int_ws["path"]), ticket_commit,
-                                       f"aew: integrate {work_id} ({unit['title']})")
+            try:
+                merged = I.merge_candidate(self.k.repo_root, Path(int_ws["path"]), ticket_commit,
+                                           f"aew: integrate {work_id} ({unit['title']})")
+            except GitError:
+                worktrees.remove(self.k.repo_root, int_ws["path"])
+                raise
             record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                       "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
                       "binding": self.gates.integration_binding(unit)}
@@ -152,6 +159,14 @@ class Integration:
                 if protected:
                     worktrees.remove(self.k.repo_root, int_ws["path"])
                     raise GateUnsatisfied("the integrated change touches protected paths", violations=protected)
+                clashes = I.case_only_renames(self.k.repo_root, changed)
+                if clashes:
+                    worktrees.remove(self.k.repo_root, int_ws["path"])
+                    raise GateUnsatisfied(
+                        "the change renames paths only by letter case, which this checkout's case-insensitive "
+                        "filesystem cannot hold side by side, so the authoritative worktree could never be synced. "
+                        "Rename in two steps (to a different name, then to the target), or integrate on a "
+                        "case-sensitive filesystem", paths=clashes[:50])
                 snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
                 unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
                                        "candidate_snapshot": snap, "changed_paths": changed}
@@ -168,6 +183,9 @@ class Integration:
         policy = self.k.policy("gates")["post_integration"]
         integ = unit["integration"]
         fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
+        if not Path(integ["workspace"]).is_dir():
+            raise GateUnsatisfied(f"the integration worktree of {work_id} is gone ({integ['workspace']}); run "
+                                  "`aew integrate prepare` to build the candidate again", workspace=integ["workspace"])
         now = self.invocations.snapshot_of(integ["workspace"], integ["workspace_id"])["relevant_inputs_fingerprint"]
         if now != fp:
             raise GateUnsatisfied("the integration candidate changed after it was prepared", prepared=fp, current=now)
@@ -318,12 +336,10 @@ class Integration:
                 if applies:
                     try:
                         sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],
+                                               head=current if cas == "already_published" else None,
                                                on_first=lambda: faults.hit("integrate.mid_sync"))
                     except IntegrityError as exc:
-                        raise IntegrityError(
-                            f"{candidate[:12]} is published on {ref}, but the authoritative worktree holds local "
-                            f"work on paths it changes; nothing was overwritten. {exc.message}",
-                            published=candidate, ref=ref, **exc.details) from None
+                        raise IntegrityError(exc.message, published=candidate, ref=ref, **exc.details) from None
                     sync["status"] = "synced"
                 faults.hit("integrate.before_done")
                 transitions.check(unit["state"], "DONE", "integrate.publish")

@@ -188,8 +188,14 @@ class ProjectAdmin:
                 add("policy:execution", "PASS", f"configured; default profile {execution['routing']['default']}")
         except Exception as exc:
             add("policy:execution", "FAIL", str(exc))
+        from aew.harness import containment
         from aew.harness import contract as K
-        add("containment", "WARN", K.CONTAINMENT_NOTE)  # the actual guarantee, never implied (AEW-INV-ISO-001)
+        try:
+            policy_now = self.k.execution_policy()[0]
+        except Exception:
+            policy_now = None
+        # The actual guarantee, probed live and never implied (AEW-INV-ISO-001, M4-B).
+        add("containment", *containment.doctor(policy_now, K.CONTAINMENT_NOTE))
         try:
             checks_policy = self.k.policy("checks")
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
@@ -404,8 +410,10 @@ class Engine:
     def check_manifest_pin(self, state: dict[str, Any]) -> None:
         return self._k.check_manifest_pin(state)
 
-    def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None) -> dict[str, Any]:
-        return self._evidence.check_run(invocation_token=invocation_token, check_id=check_id, env=env)
+    def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
+                  layout: Any = None, trees: set[Any] | None = None, ending: Any = None) -> dict[str, Any]:
+        return self._evidence.check_run(invocation_token=invocation_token, check_id=check_id, env=env, layout=layout,
+                                        trees=trees, ending=ending)
 
     def checkpoint(self, *, token: str, expect_rev: int, note: str = "", next_action: str | None = None) -> dict[str,
                    Any]:

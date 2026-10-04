@@ -10,6 +10,10 @@ The run supervisor starts every harness process through a :class:`ProcessTree`:
   the whole group when the supervisor's pipe to it closes, including when the supervisor is killed. (No
   ``preexec_fn``: the supervisor is multi-threaded.) A descendant that calls ``setsid`` escapes the group
   (documented residual; authority is unaffected, because authority lives in the credential).
+* **Linux, contained (M4-B):** a tree built with a :class:`~aew.harness.containment.Layout` starts every process
+  inside that bubblewrap sandbox, in its own PID namespace. The recorded pid is bubblewrap's host pid, which leads
+  the process group; killing it ends the namespace, including a descendant that called ``setsid``. A tree that
+  requires a layout and has none refuses to spawn: there is no per-call way to start an uncontained process.
 
 Also: detached spawning of the supervisor itself, liveness by pid, and process suspension (tests).
 """
@@ -108,9 +112,16 @@ _SENTINEL = (
 
 
 class ProcessTree:
-    """Every harness process of one run. ``kill()`` ends all of them; so does the supervisor's death."""
+    """Every harness process of one run. ``kill()`` ends all of them; so does the supervisor's death.
 
-    def __init__(self) -> None:
+    ``layout`` contains every process the tree starts (Linux). ``require_layout`` makes a tree without one refuse
+    to start anything (fail closed until the run's containment is decided)."""
+
+    def __init__(self, layout: Any = None, *, require_layout: bool = False) -> None:
+        if layout is not None and sys.platform == "win32":  # pragma: windows-only
+            raise ValueError("filesystem containment layouts are Linux-only")
+        self.layout = layout
+        self.require_layout = require_layout
         self.pids: list[int] = []
         self._job: Any = None
         self._pgid: int | None = None
@@ -127,6 +138,14 @@ class ProcessTree:
             self._job = job
 
     def spawn(self, argv: list[str], **kwargs: Any) -> subprocess.Popen[Any]:
+        if self.layout is not None:  # pragma: posix-only
+            from aew.harness.containment import bwrap_argv
+
+            argv = bwrap_argv(self.layout, list(argv), cwd=kwargs.get("cwd"))
+        elif self.require_layout:
+            from aew.errors import ContainmentUnavailable
+
+            raise ContainmentUnavailable("this process tree requires filesystem containment and has no layout")
         if sys.platform == "win32":  # pragma: windows-only
             flags = kwargs.pop("creationflags", 0) | CREATE_SUSPENDED | CREATE_NO_WINDOW
             proc = subprocess.Popen(argv, creationflags=flags, **kwargs)
@@ -277,6 +296,44 @@ def started_at(pid: int | None) -> float | None:
         return boot + int(fields[19]) / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError, StopIteration):
         return None
+
+
+def host_pid(ns_pid: int, *, under: int | None = None) -> int:
+    """The host pid of a process that knows itself as ``ns_pid`` inside a PID namespace (Linux, ``NSpid`` in
+    ``/proc/<pid>/status``: the host pid first, the innermost last). With ``under``, only descendants of that
+    host process count. A process in no nested namespace is its own host pid. Raises ``LookupError`` when more
+    than one process matches: watching the wrong one would prove nothing."""
+    if not sys.platform.startswith("linux"):
+        return ns_pid
+    matches = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            status = Path("/proc", entry, "status").read_text()
+        except OSError:
+            continue
+        fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+        ids = [int(x) for x in fields.get("NSpid", "").split()]
+        if len(ids) >= 2 and ids[-1] == ns_pid and (under is None or _descends(int(entry), under)):
+            matches.append(ids[0])
+    if len(matches) > 1:
+        raise LookupError(f"namespace pid {ns_pid} matches host pids {sorted(matches)}")
+    return matches[0] if matches else ns_pid
+
+
+def _descends(pid: int, ancestor: int) -> bool:
+    seen = 0
+    while pid > 1 and seen < 4096:
+        if pid == ancestor:
+            return True
+        try:
+            status = Path("/proc", str(pid), "status").read_text()
+        except OSError:
+            return False
+        pid = next((int(line.split()[1]) for line in status.splitlines() if line.startswith("PPid:")), 0)
+        seen += 1
+    return pid == ancestor
 
 
 def same_process(pid: int | None, started_by: float) -> bool:

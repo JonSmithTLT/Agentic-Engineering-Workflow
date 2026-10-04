@@ -110,10 +110,15 @@ class HarnessLab:
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
                extra_env: dict[str, str] | None = None) -> HarnessLab:
-        (project.root / ".aew/policy/execution.yaml").write_text(dump_yaml(policy or POLICY), encoding="utf-8",
-                                                                 newline="\n")
         scripts = tmp / "fake-scripts"
         scripts.mkdir(parents=True, exist_ok=True)
+        (tmp / "sync").mkdir(exist_ok=True)
+        policy = dict(policy or POLICY)
+        # Contained runs (Linux, M4-B) can write only their own roots and see a private /tmp: the fake agent reads its
+        # script and tests exchange pid and sync files through these two directories, so the lab's policy adds them
+        # as operator-declared writable roots (recorded on every run's label, like any operator addition).
+        policy.setdefault("containment", {"writable": [str(scripts), str(tmp / "sync")]})
+        (project.root / ".aew/policy/execution.yaml").write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
         env = {"AEW_HARNESS_ADAPTERS": f"fake={HERE / 'fake_harness.py'}:FakeAdapter",
                SCRIPTS_ENV: str(scripts), "AEW_LAUNCH_ACK_S": "60", **(extra_env or {})}
         return cls(project, tmp, env)
@@ -207,6 +212,20 @@ class HarnessLab:
             while runlog.observed_status(directory)[0] in (K.STARTING, K.RUNNING) and time.monotonic() < deadline:
                 time.sleep(0.1)
             runlog.end_supervisor(directory)
+
+
+def watch_agent_pid(lab: HarnessLab, run: str, recorded: int) -> Any:
+    """A ``procs.Watch`` on a process a run's agent reported by its own pid. In a contained run (Linux, M4-B) that pid
+    is local to the run's PID namespace, so it is translated through ``NSpid`` to the host pid, looking only under
+    the run's own bubblewrap processes: parallel sandboxes reuse the same small pids."""
+    from aew.harness import procs
+
+    record = lab.record(run)
+    if (record.get("containment") or {}).get("process_ownership") != "pid_namespace":
+        return procs.Watch(recorded)
+    found = {procs.host_pid(recorded, under=root) for root in record.get("harness_pids") or []} - {recorded}
+    assert len(found) == 1, f"{run}: namespace pid {recorded} maps to {sorted(found) or 'nothing'}"
+    return procs.Watch(found.pop())
 
 
 def credential_hits(*roots: Path) -> list[str]:

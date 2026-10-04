@@ -34,7 +34,16 @@ import fake_opencode
 import pytest
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, CLIResult, clean_env
-from fake_harness import AGENT, IMPL_REPORT, POLICY, SCRIPTS_ENV, HarnessLab, contains_credential, credential_hits
+from fake_harness import (
+    AGENT,
+    IMPL_REPORT,
+    POLICY,
+    SCRIPTS_ENV,
+    HarnessLab,
+    contains_credential,
+    credential_hits,
+    watch_agent_pid,
+)
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, procs, runlog
@@ -173,7 +182,8 @@ class FakeOpenCodeDriver(Driver):
         policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"]}
         lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy,
                                 extra_env={"OPENAI_API_KEY": PROVIDER_SECRET})
-        launcher = fake_opencode.write_launcher(tmp_path / "fake-opencode", Path(lab.env[SCRIPTS_ENV]))
+        scripts = Path(lab.env[SCRIPTS_ENV])  # a root contained runs can see (the sandbox's /tmp is private)
+        launcher = fake_opencode.write_launcher(scripts / "fake-opencode", scripts)
         lab.env["AEW_OPENCODE_BIN"] = str(launcher)
         return lab
 
@@ -460,7 +470,7 @@ def stopping_a_run_ends_every_process_it_started(lab, driver, tmp_path):
         {"do": "wait_file", "path": str(sync / "never"), "timeout": 300, "pidfile": str(sync / "agent"),
          "ready": str(sync / "ready")}])
     lab.until(lambda: (sync / "ready").exists(), what="ready")
-    watches = [procs.Watch(int((sync / n).read_text())) for n in ("orphan", "agent")]
+    watches = [watch_agent_pid(lab, run, int((sync / n).read_text())) for n in ("orphan", "agent")]
     assert all(w.alive() for w in watches)
     lab.ok("harness", "stop", run, "--reason", "conformance", "--token", lab.project.token)
     assert lab.wait(run)["status"] == "terminated"

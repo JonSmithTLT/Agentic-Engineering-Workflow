@@ -34,6 +34,7 @@ from aew.errors import (
     IllegalTransition,
     NotFound,
     PermissionDenied,
+    StaleAuthority,
     StaleCandidate,
     UsageError,
     ValidationFailed,
@@ -580,9 +581,13 @@ class EvidenceCommands:
             raise NotFound(f"no invocation {invocation}")
         return {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
 
-    def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None) -> dict[str, Any]:
+    def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
+                  layout: Any = None, trees: set[Any] | None = None, ending: Any = None) -> dict[str, Any]:
         """Run a project check as a bounded role. ``env`` is the complete environment of the check's process
-        (a harness run passes its agent environment, so a check never sees the supervisor's)."""
+        (a harness run passes its agent environment, so a check never sees the supervisor's). ``layout`` is a
+        contained run's sandbox: the check runs inside it, through the same process-tree choke point (M4-B).
+        ``trees`` and ``ending`` come from a run's supervisor: the run ending kills the check, and a check the run's
+        end cut short records nothing (independent review, area 2, F6)."""
         with self.k.store.session() as s:
             inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run",
                                                     archived=self.archive.archived_credential)
@@ -615,7 +620,9 @@ class EvidenceCommands:
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
         else:
             verdict = None
-            run = C.run(cfg, workspace, env=env)
+            run = C.run(cfg, workspace, env=env, layout=layout, trees=trees)
+            if ending is not None and ending.is_set():
+                raise StaleAuthority(f"the run ended while check {check_id} ran; nothing was recorded")
         after = self.invocations.snapshot_of(workspace, ws_id)
         mutated = before["relevant_inputs_fingerprint"] != after["relevant_inputs_fingerprint"]
         result = "inconclusive" if mutated else ("pass" if run["exit_code"] == 0 else "fail")
@@ -635,7 +642,8 @@ class EvidenceCommands:
                 "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
-                           "provider": "aew-check-runner", "command": run["command"]},
+                           "provider": "aew-check-runner", "command": run["command"],
+                           "containment": "os_readonly_roots" if layout is not None else "workdir_separation_only"},
                 "claim": f"check {check_id} passes on the evaluated snapshot",
                 "result": result,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],

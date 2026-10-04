@@ -31,7 +31,7 @@ from typing import Any
 from aew import errors
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, procs, registry, runlog
+from aew.harness import agentenv, bridge, containment, procs, registry, runlog
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
@@ -62,12 +62,16 @@ class Supervisor:
         self.events = runlog.EventLog(run_dir / "events.jsonl")
         self._handled: set[str] = set()  # request files acted on (a replayed one is refused)
         self.record: dict[str, Any] = {"schema": K.RUN_SCHEMA, "run": self.run, "invocation": self.inv_id,
-                                       "containment": K.CONTAINMENT,
+                                       "containment": containment.label(contained=False),
                                        "status": K.STARTING, "supervisor_pid": os.getpid(), "custody_at": utc_now(),
                                        "timeline": [{"at": utc_now(), "event": "custody"}]}
         self.bridge: bridge.BridgeServer | None = None
         self.adapter: Any = None
-        self.tree = procs.ProcessTree()
+        # Fail closed until the run's containment is decided: on POSIX, nothing starts without a layout (M4-B).
+        self.tree = procs.ProcessTree(require_layout=not procs.IS_WINDOWS)
+        self.layout: containment.Layout | None = None
+        self._checks: set[procs.ProcessTree] = set()  # the trees of checks running for the agent now
+        self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
@@ -120,7 +124,8 @@ class Supervisor:
                 return self.engine.invocation_whoami(invocation_token=self._credential)
             if op == "check.run":
                 return self.engine.check_run(invocation_token=self._credential, check_id=args["check_id"],
-                                             env=dict(self.agent_env))
+                                             env=dict(self.agent_env), layout=self.layout, trees=self._checks,
+                                             ending=self._ending)
             if op == "submit":
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
         except errors.StaleAuthority as exc:
@@ -155,9 +160,11 @@ class Supervisor:
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
+            self._contain(contract)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
-                                            scratch=contract.scratch)
+                                            scratch=contract.scratch,
+                                            contained=self.layout.env if self.layout is not None else None)
             self.adapter = registry.load(profile["harness"])(self.tree, self.run_dir, self.events)
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
@@ -176,6 +183,25 @@ class Supervisor:
                         "session": (self.record.get("launch") or {}).get("session")})
         faults.hit("harness.supervisor.after_start")
         return True
+
+    def _contain(self, contract: K.LaunchContract) -> None:
+        """Build and self-test this run's sandbox before any harness process exists (F2, M4-B). Under the default
+        policy a sandbox that cannot be established refuses the launch; the label records what the run has."""
+        policy, _ = self.engine.execution_policy()
+        assert self.bridge is not None
+        try:
+            self.layout, self.record["containment"] = containment.establish(
+                role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
+                scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
+                project=str(self.engine.repo_root))
+        except errors.ContainmentUnavailable as exc:
+            self.record["containment"] = containment.label(contained=False, reason=exc.message)
+            self._event("containment_refused", reason=exc.message)
+            raise
+        self._event("containment", filesystem=self.record["containment"]["filesystem"],
+                    process_ownership=self.record["containment"]["process_ownership"])
+        if not procs.IS_WINDOWS:
+            self.tree = procs.ProcessTree(layout=self.layout)
 
     def _starting_beats(self) -> None:
         """Beat while the harness starts (a server start plus health checks can take a while); the watchdog loop
@@ -325,6 +351,9 @@ class Supervisor:
                 ending.set()
 
     def _end(self, status: str, reason: str) -> None:
+        self._ending.set()
+        for tree in list(self._checks):  # a check outlives neither its run nor the private git state it may use
+            tree.kill()
         if self.bridge is not None:
             self.bridge.close()
         try:
@@ -332,6 +361,7 @@ class Supervisor:
                 self._terminate_adapter()
         finally:  # the tree is killed whatever the adapter managed
             self.tree.kill()
+            containment.retire_private_git(self.run_dir)  # private staging is scratch: nothing real refers to it
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

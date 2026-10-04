@@ -1,9 +1,10 @@
+import { ContextReferences as References } from '../investigation/ContextReferences';
 import { useEffect,useMemo,useRef,useState } from 'react';
 import { Link,useLocation,useNavigate } from 'react-router-dom';
 import { useProjection } from '../../../client/queries';
 import { useControls,ErrorState } from '../investigation/ui';
 import { InvestigationTabs,focusBelowHeader } from '../../../components/InvestigationTabs';
-import { Pager,Reasons,References } from '../../../components/ProjectionViews';
+import { Pager,Reasons } from '../../../components/ProjectionViews';
 import { SourceStrip } from '../../../components/Investigation';
 import { SafeContent,JsonContent } from '../../../components/Content';
 import { SemanticValue } from '../../../components/States';
@@ -72,7 +73,7 @@ function Artifacts({name,source:s,query:sourceQuery,reference}:{name:string;sour
 function ArtifactDetail({name,source:s,artifact:a,query,reference}:{name:string;source:EvidenceSource;artifact:Artifact;query:SourceQuery;reference:string|null}){
   const heading=useRef<HTMLHeadingElement>(null);useEffect(()=>focusBelowHeader(heading.current),[]);
   const supported=supportedMedia.includes(a.media_type)&&a.encoding==='UTF-8';
-  return <><h3 ref={heading} tabIndex={-1}>{a.id} · revision {a.revision}</h3><p>{a.media_type} · {a.encoding} · {a.size_bytes??'Unknown'} bytes</p><p>Full artifact digest (supplied; not verified): <code>{a.full_digest??'Not supplied'}</code></p>{a.availability!=='AVAILABLE'?<p>{a.availability} — {a.explanation??'No artifact availability explanation supplied.'}</p>:!supported?<p>Unsupported media or encoding. No artifact body requested.</p>:<ExcerptView key={`${s.id}:${a.id}:${a.revision}`} name={name} source={s} artifact={a} query={query} reference={reference}/>}</>;
+  return <><h3 ref={heading} tabIndex={-1}>{a.id} · revision {a.revision}</h3><p>{a.media_type} · {a.encoding} · {a.size_bytes??'Unknown'} bytes</p><details><summary>Supplied artifact coverage</summary><p>{a.coverage_complete ? "Coverage supplied as complete; this does not verify the artifact." : "Artifact coverage is incomplete."}</p>{a.omitted_ranges.length ? <ul>{a.omitted_ranges.map((r,i)=><li key={i}>Omitted bytes [{r.byte_start}, {r.byte_end}) · {r.explanation ?? "No omission explanation supplied."}</li>)}</ul> : <p>No omitted ranges supplied; this does not prove none exist.</p>}</details><p>Full artifact digest (supplied; not verified): <code>{a.full_digest??'Not supplied'}</code></p>{a.availability!=='AVAILABLE'?<p>{a.availability} — {a.explanation??'No artifact availability explanation supplied.'}</p>:!supported?<p>Unsupported media or encoding. No artifact body requested.</p>:<ExcerptView key={`${s.id}:${a.id}:${a.revision}`} name={name} source={s} artifact={a} query={query} reference={reference}/>}</>;
 }
 function ExcerptView({name,source:s,artifact:a,query:sourceQuery,reference}:{name:string;source:EvidenceSource;artifact:Artifact;query:SourceQuery;reference:string|null}){
   const {params}=useControls(),cursor=params.get('evidence_excerpt_cursor'),location=useLocation(),[message,setMessage]=useState('');
@@ -81,4 +82,6 @@ function ExcerptView({name,source:s,artifact:a,query:sourceQuery,reference}:{nam
   let formatted:string|null=null;if(x&&a.media_type==='application/json'&&x.complete_value){try{formatted=JSON.stringify(JSON.parse(x.text),null,2);}catch{/* Invalid or partial JSON stays source text. */}}
   return <>{query.error&&<ErrorState error={query.error} retry={()=>void query.refetch()}/>}{x?<><Note error={query.error}/><p>Bytes [{x.byte_start}, {x.byte_end}) · supplied lines {x.line_start??'Not supplied'}–{x.line_end??'Not supplied'}</p><p>{x.scope}</p>{x.truncated&&<p className="preview-note">Excerpt is truncated; ranges outside this excerpt are not displayed.</p>}<p>Excerpt SHA-256 verified: <code>{x.sha256}</code>. Full artifact integrity is not verified.</p>{a.media_type==='text/markdown'?<SafeContent format="markdown" text={visibleSource(x.text)}/>:<pre className="evidence-source"><code>{visibleSource(formatted??x.text)}</code></pre>}<p className="scope-note">Control and invisible formatting characters are shown as code-point markers. Digest and byte range identify original source, not rendered escaping. An excerpt does not establish complete coverage or causal benefit.</p><button onClick={()=>void navigator.clipboard.writeText(citation(s,a,x,dashboardCopyLink(location.pathname,location.search,window.location.origin),reference)).then(()=>setMessage('Pinned citation copied.')).catch(()=>setMessage('Clipboard unavailable; citation is available below.'))}>Copy citation</button><p role="status">{message}</p><details><summary>Pinned citation</summary><pre>{citation(s,a,x,dashboardCopyLink(location.pathname,location.search,window.location.origin),reference)}</pre></details><button onClick={()=>void query.refetch()}>Refresh excerpt</button><Pager next={x.next_cursor} cursorKey="evidence_excerpt_cursor" resetKey={`${name}:${s.id}:${a.id}:${a.revision}`}/></>:!query.error&&<p role="status">Loading bounded excerpt…</p>}</>;
 }
+
+
 

@@ -919,6 +919,45 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "coverage_complete": {
+                    "type": "boolean"
+                  },
+                  "omitted_ranges": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "byte_start": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "byte_end": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "explanation": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 4096
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "byte_start",
+                        "byte_end",
+                        "explanation"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [
@@ -933,7 +972,9 @@
                   "full_digest",
                   "size_bytes",
                   "availability",
-                  "explanation"
+                  "explanation",
+                  "coverage_complete",
+                  "omitted_ranges"
                 ],
                 "additionalProperties": false
               }

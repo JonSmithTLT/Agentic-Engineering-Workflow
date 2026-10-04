@@ -23,8 +23,8 @@ def test_the_child_leaf_and_accumulator_are_pinned_by_golden_vectors():
 
 def test_the_v2_children_digest_is_pinned_and_covers_archived_children():
     state = {"schema": "aew/control/v2", "work": {
-        "S-0001": {"kind": "story", "archived_children": {"done": 1, "cancelled": 1,
-                                                          "acc": "0b2390c93829301939545cf141a076871cdb2f4a4eb856eebad7a10e05a9feb9"}},
+        "S-0001": {"kind": "story", "archived_children": {
+            "done": 1, "cancelled": 1, "acc": "0b2390c93829301939545cf141a076871cdb2f4a4eb856eebad7a10e05a9feb9"}},
         "T-0003": {"kind": "ticket", "parent": "S-0001", "state": "RUNNING"}}}
     digest = H.children_digest(state, "S-0001", {"T-0003": None})
     assert digest == "5aed861291c86db775af700c3249297562900e2e339828a28d7857af544944b7"

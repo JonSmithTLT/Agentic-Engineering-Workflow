@@ -5,8 +5,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (PROPOSAL, Role, assign, complete_investigation, create_investigation, create_planned_ticket,
-                     dispatch, integrate, sample_project, submit_record, to_commit_ready)
+from aewflow import (
+    PROPOSAL,
+    Role,
+    assign,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    dispatch,
+    integrate,
+    sample_project,
+    submit_record,
+    to_commit_ready,
+)
 from conftest import git
 from invariants import assert_control_invariants
 

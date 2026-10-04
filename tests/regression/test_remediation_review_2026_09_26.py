@@ -6,10 +6,11 @@ the SAFE behavior. Findings still open are marked xfail(strict=True); the commit
 removes its marker (see docs/implementation/review-response-2026-09-26.md, re-review section).
 """
 from pathlib import Path
+
 import pytest
+from aewflow import prepare_and_validate, sample_project, to_commit_ready, to_verified, verify
 from conftest import git, make_git_repo
-from aewflow import (sample_project, to_commit_ready, prepare_and_validate, verify,
-                     create_planned_ticket, to_verified)
+
 from aew.errors import AEWError
 from aew.workspace import integration as I
 
@@ -67,13 +68,15 @@ def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_pa
     p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'new acceptance requirements')
     plan = tmp_path / 'plan-v2.md'
     plan.write_text('Reassess the existing implementation against revised acceptance requirements.\n')
-    p.lead('plan', 'propose', '--assurance', 'none', wid, '--file', str(plan), '--reason', 'new acceptance requirements')
+    p.lead('plan', 'propose', '--assurance', 'none', wid, '--file', str(plan),
+           '--reason', 'new acceptance requirements')
     p.lead('plan', 'accept', wid, '--revision', '2')
     to_verified(p, tmp_path, wid=wid)
     p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')
     new = p.lead('integrate', 'prepare', wid)['integration']
     assert old['workspace_id'] != new['workspace_id']
-    assert old['candidate_snapshot']['relevant_inputs_fingerprint'] == new['candidate_snapshot']['relevant_inputs_fingerprint']
+    assert (old['candidate_snapshot']['relevant_inputs_fingerprint']
+            == new['candidate_snapshot']['relevant_inputs_fingerprint'])
     result = p.aew('verify', 'ingest', wid, '--evidence', old_report, '--token', p.token, '--expect-rev', str(p.rev()))
     publication = p.lead('integrate', 'publish', wid) if result.returncode == 0 else None
     assert result.returncode != 0, (
@@ -83,7 +86,7 @@ def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_pa
 
 def test_long_lived_role_catalog_refreshes_adopted_manifest(tmp_path):
     from aew.engine.api import Engine
-    from aew.util import read_yaml, dump_yaml
+    from aew.util import dump_yaml, read_yaml
     p = sample_project(tmp_path)
     engine = Engine.discover(p.root)
     assert 'special_engineer' not in {c['id'] for c in engine.role_list()['cards']}
@@ -98,11 +101,13 @@ def test_long_lived_role_catalog_refreshes_adopted_manifest(tmp_path):
     manifest_path.write_text(dump_yaml(manifest))
     p.lead('manifest', 'adopt', '--reason', 'use new role catalog')
     assert 'special_engineer' in {c['id'] for c in Engine.discover(p.root).role_list()['cards']}
-    assert 'special_engineer' in {c['id'] for c in engine.role_list()['cards']}, 'Long-lived role_list still uses the previous manifest'
+    cards = {c['id'] for c in engine.role_list()['cards']}
+    assert 'special_engineer' in cards, 'Long-lived role_list still uses the previous manifest'
 
 
 def test_retiring_candidate_revokes_its_verifier_submission_authority(tmp_path):
     from aewflow import Role
+
     from aew.util import dump_yaml
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)

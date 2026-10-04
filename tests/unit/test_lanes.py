@@ -12,9 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import lanes
+import pytest
 from conftest import IS_WINDOWS
 
 HELPERS = Path(lanes.__file__).resolve().parent
@@ -180,7 +179,8 @@ def test_an_unclassified_test_stops_the_run(tmp_path):
 
 
 def test_a_leaked_environment_variable_fails_the_leaking_test(tmp_path):
-    root = scratch(tmp_path, {"tests/unit/test_leak.py": "import os\n\ndef test_leak():\n    os.environ['AEW_X'] = '1'\n"})
+    root = scratch(tmp_path,
+                   {"tests/unit/test_leak.py": "import os\n\ndef test_leak():\n    os.environ['AEW_X'] = '1'\n"})
     proc = inner_pytest(root, "tests/unit/test_leak.py")
     assert proc.returncode == 1 and "test leaked process state" in proc.stdout
 
@@ -188,7 +188,8 @@ def test_a_leaked_environment_variable_fails_the_leaking_test(tmp_path):
 def test_a_session_that_writes_into_the_checkout_fails_the_isolation_guard(tmp_path):
     root = scratch(tmp_path, {"tests/unit/test_w.py": ("from pathlib import Path\n\n"
                                                        "def test_w():\n    Path('stray.txt').write_text('x')\n")})
-    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-qm", "i"]):
+    for args in (["init", "-q"], ["add", "-A"],
+                 ["-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-qm", "i"]):
         subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
     proc = inner_pytest(root, "tests/unit/test_w.py")
     assert proc.returncode == 1 and "isolation guard" in proc.stdout

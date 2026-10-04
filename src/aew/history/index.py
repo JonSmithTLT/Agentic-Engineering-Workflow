@@ -25,12 +25,10 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-
-from collections.abc import Callable
 
 from aew.errors import IntegrityError, LockTimeout
 from aew.history import manifest as M
@@ -216,12 +214,14 @@ class HistoryIndex:
     def list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
              limit: int | None = None) -> list[dict[str, Any]]:
         """Entries by kind and a date range (``at`` compares as ISO-8601 text), newest first."""
-        where, args = ["seq <= ?"], [self._upto()]
+        where: list[str] = ["seq <= ?"]
+        args: list[Any] = [self._upto()]
         for clause, value in (("kind = ?", kind), ("at >= ?", since), ("at <= ?", until)):
             if value is not None:
                 where.append(clause)
                 args.append(value)
-        sql = f"SELECT body FROM entries WHERE {' AND '.join(where)} ORDER BY seq DESC"
+        # The clauses are fixed strings above; every value is a bound parameter.
+        sql = f"SELECT body FROM entries WHERE {' AND '.join(where)} ORDER BY seq DESC"  # noqa: S608
         if limit is not None:
             sql += " LIMIT ?"
             args.append(limit)

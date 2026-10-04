@@ -76,7 +76,8 @@ def plan_lint(*, meta: dict[str, Any], affected: list[str], guardrails: dict[str
     unknown = [c for c in acc_checks if c != "guardrails" and c not in configured]
     if unknown:
         out.append({"code": "LINT_ACCEPTANCE_CHECK_UNKNOWN", "severity": "error",
-                    "message": f"acceptance check(s) {unknown} are not defined in policy/checks.yaml", "checks": unknown})
+                    "message": f"acceptance check(s) {unknown} are not defined in policy/checks.yaml",
+                    "checks": unknown})
     protected = ALWAYS_PROTECTED + list(guardrails.get("protected_paths") or [])
     hit = sorted(p for p in affected if glob_any(p, protected))
     if hit:
@@ -116,7 +117,8 @@ def class0_blockers(*, meta: dict[str, Any], files: list[str], guardrails: dict[
                                "(--acceptance-check)"})
     configured = checks.get("checks") or {}
     loose = [c for c in acc_checks
-             if c != "guardrails" and not ((configured.get(c) or {}).get("configured") and configured[c].get("command"))]
+             if c != "guardrails"
+             and not ((configured.get(c) or {}).get("configured") and configured[c].get("command"))]
     if loose:
         out.append({"code": "CLASS0_ACCEPTANCE_NOT_DETERMINISTIC",
                     "message": f"acceptance check(s) {loose} are not configured deterministic checks",

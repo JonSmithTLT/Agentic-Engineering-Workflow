@@ -21,12 +21,19 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from aewflow import SUBTRACT_PATCH, create_planned_ticket
 from conftest import git
 from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits
-from harness_conformance import (PROVIDER_SECRET, Driver, Scenario, code_of, evidence_of, kill_harness,
-                                 supervisor_gone, sync_dir)
+from harness_conformance import (
+    PROVIDER_SECRET,
+    Driver,
+    Scenario,
+    code_of,
+    evidence_of,
+    kill_harness,
+    supervisor_gone,
+    sync_dir,
+)
 from invariants import assert_control_invariants
 
 from aew.engine.api import Engine
@@ -428,7 +435,7 @@ def at16_isolated_review(lab: HarnessLab, driver: Driver, tmp_path: Path) -> Non
     assert roles == ["implementer", "reviewer", "implementer", "reviewer"] and len(set(invocations)) == 4
     sessions = [lab.record(r)["launch"]["session"] for r in runs]
     assert len(set(sessions)) == 4
-    for run, session in zip(runs, sessions):
+    for run, session in zip(runs, sessions, strict=True):
         assert driver.sessions(lab, run) == {session}  # each run's harness state: its own session, nothing else
     dirs = [driver.state_dir(lab, r).resolve() for r in runs]
     assert all(not a.is_relative_to(b) for a in dirs for b in dirs if a != b)

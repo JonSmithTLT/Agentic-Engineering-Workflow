@@ -40,7 +40,8 @@ def record_freshness(repo_root: Path, record: dict[str, Any], authoritative_comm
     if kind == "research_record":
         research = record.get("research") or {}
         return {"status": UNKNOWN, "basis": "external", "source_bound": False, "as_of": record.get("created_at"),
-                "subjects": [{"name": s.get("name"), "version": s.get("version")} for s in research.get("subjects", [])],
+                "subjects": [{"name": s.get("name"), "version": s.get("version")}
+                             for s in research.get("subjects", [])],
                 "detail": "external research: project source changes never make it stale; verify versions before "
                           "relying on it"}
     if kind not in SOURCE_BOUND:

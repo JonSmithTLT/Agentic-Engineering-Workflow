@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from aewflow import SUBTRACT_PATCH, sample_project
+from invariants import control_violations
 
 from aew import operator
 from aew.engine import transitions
@@ -32,8 +34,6 @@ from aew.engine.api import Engine
 from aew.engine.faults import InjectedFault
 from aew.errors import AEWError
 from aew.util import dump_yaml
-from aewflow import SUBTRACT_PATCH, sample_project
-from invariants import control_violations
 
 SEEDS = [int(s) for s in os.environ.get("AEW_WALK_SEEDS", "11,23,37,41,53").split(",")]
 STEPS = int(os.environ.get("AEW_WALK_STEPS", "60"))
@@ -93,7 +93,8 @@ class Walk:
                         risk_class=1, scope_paths=["calc/**", "tests/**"],
                         goal_backwards=["calc.core imports and subtract works"],
                         contract=["changes stay within calc/ and tests/"])["id"]
-        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body="Change calc/core.py; keep tests green.\n")["revision_number"]
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid,
+                        body="Change calc/core.py; keep tests green.\n")["revision_number"]
         self.lead("plan_accept", work_id=wid, revision=rev)
         return wid
 

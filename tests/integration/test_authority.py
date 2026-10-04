@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
 
@@ -171,7 +170,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> dict:
             "--reason", "Lead session lost", "--session-label", label]
     pid, fd = pty.fork()
     if pid == 0:  # child: controlling terminal is the pty slave
-        os.execvpe(argv[0], argv, clean_env())
+        os.execvpe(argv[0], argv, clean_env())  # noqa: S606 (argv is fixed above)
     buf = b""
     answered = False
     deadline = time.monotonic() + 120

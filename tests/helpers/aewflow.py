@@ -26,7 +26,8 @@ SAMPLE_FILES = {
 
 SUBTRACT_PATCH = {
     "calc/core.py": "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return a - b\n",
-    "tests/test_subtract.py": "from calc.core import subtract\n\n\ndef test_subtract():\n    assert subtract(5, 3) == 2\n",
+    "tests/test_subtract.py": ("from calc.core import subtract\n\n\n"
+                               "def test_subtract():\n    assert subtract(5, 3) == 2\n"),
 }
 
 

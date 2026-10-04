@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from aewflow import sample_project
 from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits

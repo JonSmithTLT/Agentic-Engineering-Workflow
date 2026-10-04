@@ -14,6 +14,7 @@ superseded credentials, so a superseded Lead can never overwrite newer state.
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
 from aew import operator
@@ -81,7 +82,8 @@ class Lead:
             return False
         return unit["state"] != "COMMIT_READY" or (unit.get("integration") or {}).get("status") == "prepared"
 
-    def _interrupt_invocations(self, state: dict[str, Any], reason: str, keep: set[str] = frozenset()) -> list[str]:
+    def _interrupt_invocations(self, state: dict[str, Any], reason: str,
+                               keep: AbstractSet[str] = frozenset()) -> list[str]:
         """Revoke in-flight invocations (except ``keep``).
 
         A Ticket becomes INTERRUPTED only if its current phase is waiting on the lost invocation;

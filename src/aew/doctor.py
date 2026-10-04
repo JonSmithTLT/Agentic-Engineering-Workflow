@@ -16,7 +16,7 @@ from typing import Any
 from aew import SPEC_SET, __version__
 
 MIN_PYTHON = (3, 11)
-MIN_GIT = (2, 31)
+MIN_GIT: tuple[int, int] = (2, 31)
 
 
 def _check(name: str, status: str, detail: str) -> dict[str, str]:
@@ -39,7 +39,7 @@ def environment_checks() -> list[dict[str, str]]:
     else:
         out = subprocess.run([git, "--version"], capture_output=True, text=True).stdout.strip()
         match = re.search(r"(\d+)\.(\d+)", out)
-        version = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+        version: tuple[int, int] = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
         checks.append(
             _check(
                 "git",

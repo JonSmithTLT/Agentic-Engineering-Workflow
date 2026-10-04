@@ -74,7 +74,8 @@ def test_the_footprint_attributes_every_byte_to_open_work_or_history(tmp_path):
     history = CP.project_footprint(t.root)
     assert history["open_bytes"] == before["open_bytes"]
     assert 0 <= history["other_bytes"] - before["other_bytes"] <= 16  # only the counters' digits
-    assert history["history_bytes"]["total"] - before["history_bytes"]["total"] == 5 * before["per_completed_unit_bytes"]
+    grown = history["history_bytes"]["total"] - before["history_bytes"]["total"]
+    assert grown == 5 * before["per_completed_unit_bytes"]
     CP.add_units(t.root, done=0, planned=4)
     active = CP.project_footprint(t.root)
     assert active["history_bytes"] == history["history_bytes"] and active["units"] == {"open": 9, "completed": 9}

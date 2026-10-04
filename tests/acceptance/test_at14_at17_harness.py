@@ -7,7 +7,6 @@ against the fake harness and against the real OpenCode adapter with the fake V2 
 from __future__ import annotations
 
 import pytest
-
 from harness_acceptance import ACCEPTANCE
 from harness_conformance import FakeDriver, FakeOpenCodeDriver, run_scenario
 

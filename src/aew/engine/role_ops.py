@@ -301,6 +301,8 @@ class Roles:
             else:
                 card_id = roles.default_card({"execute": "implementer", "review": "reviewer",
                                               "verify": "verifier"}[slot])
+        if card_id is None:
+            raise NotFound(f"no role card is named for {work_id}'s {slot} slot, and its archetype has no default")
         card = catalog.get(card_id)
         if role and card.archetype != role:
             raise UsageError(f"card {card.id} extends {card.archetype}, not {role}")

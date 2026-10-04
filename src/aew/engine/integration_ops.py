@@ -96,7 +96,8 @@ class Integration:
             if unit["state"] != "COMMIT_READY":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
             if not unit.get("mutating"):
-                raise IllegalTransition(f"{work_id} is a non-mutating (evidence-only) Ticket; it never integrates source")
+                raise IllegalTransition(f"{work_id} is a non-mutating (evidence-only) Ticket; "
+                                        "it never integrates source")
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
                 raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
@@ -121,6 +122,8 @@ class Integration:
                 raise IntegrityError("committed tree differs from the gated evaluated snapshot",
                                      gated=gated, committed=committed)
             base = self.k.authoritative_commit()
+            if base is None:
+                raise IntegrityError(f"the authoritative branch {self.k.authoritative_branch} has no commit")
             attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
             name = f"{work_id}-int-{attempt}"
             referenced = {u["integration"]["workspace"] for u in state["work"].values()
@@ -248,7 +251,9 @@ class Integration:
                     "the authoritative ref moved since the candidate was built; rebuild and revalidate")
             raise StaleCandidate(what, **stale)
         faults.hit("integrate.after_publishing_record")
-        return self._finish_publish(token, ctx.session.committed_revision, work_id)
+        committed = ctx.session.committed_revision
+        assert committed is not None  # the transaction above committed
+        return self._finish_publish(token, committed, work_id)
 
     def _finish_publish(self, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         """CAS, worktree sync and DONE as ONE Lead transaction (review 2026-09-26 M1).
@@ -261,6 +266,8 @@ class Integration:
         """
         stale: StaleCandidate | None = None
         withdrawn: GateUnsatisfied | None = None
+        sync: dict[str, Any] = {}  # set on the path that completes; the others raise below
+        remove_ticket_workspace = False
         with self.k.lead_txn(token, expect_rev, "integrate.publish") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
@@ -307,7 +314,7 @@ class Integration:
                 pass
             else:
                 faults.hit("integrate.after_cas")
-                sync: dict[str, Any] = {"status": "not_applicable (authoritative branch not checked out here)"}
+                sync = {"status": "not_applicable (authoritative branch not checked out here)"}
                 if applies:
                     try:
                         sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],

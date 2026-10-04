@@ -24,6 +24,9 @@ parallel = ["pytest-xdist>=3.6"]
 # Optional: coverage, including the `aew` CLI, supervisor and broker subprocesses the tests start (register E2;
 # docs/implementation/testing-and-ci-strategy.md, "Coverage"). CI measures the Linux lanes with it.
 coverage = ["coverage[toml]>=7.10"]
+# Static checks (docs/implementation/testing-and-ci-strategy.md, "Static checks"). Pinned: a new release can add rules
+# or change inference, and that should arrive as its own reviewed change, not as a red merge gate.
+lint = ["ruff==0.16.10", "pyright==1.1.414", "pip-audit==2.10.1"]
 
 [project.scripts]
 aew = "aew.cli.main:main"
@@ -35,6 +38,41 @@ where = ["src"]
 "aew.schemas" = ["*.json"]
 "aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]
 "aew.templates" = ["*.md", "*.yaml"]
+
+# Static checks (testing-and-ci-strategy.md, "Static checks"): Ruff and Pyright gate merges through `assurance`.
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+# web/ has its own lint (web.yml); the dogfood fixture is a sample project under evaluation, not AEW code.
+extend-exclude = ["web", "eval/m3/dogfood/fixture"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, bugbear, Bandit's security rules, pyupgrade, import order.
+select = ["E", "W", "F", "B", "S", "UP", "I"]
+ignore = [
+    "S603",  # every subprocess call passes an argv list; S602 (shell=True) stays on
+    "S607",  # git, sh and the harness are found on PATH by design
+    "S101",  # asserts narrow types and state internal invariants; no authority or input check is an assert
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use fixed fake credentials and temp paths, and seed their own randomness.
+"tests/**" = ["S105", "S106", "S108", "S311"]
+# Benchmarks time closures they call on the spot, and seed their own randomness.
+"tools/perf/**" = ["B023", "S311"]
+# The M3 spike probes are kept as they ran (results in eval/m3/spike/results); they talk only to a loopback server.
+"eval/m3/spike/**" = ["S310", "E741", "UP031", "B023", "E501"]
+# The dogfood harness's Lead prompt and task texts are evaluation inputs, kept byte-for-byte as they ran.
+"eval/m3/dogfood/dogfood.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["aew"]
+
+[tool.pyright]
+# The product code, checked as Linux and as Windows (CI runs both: platform branches are narrowed per platform).
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

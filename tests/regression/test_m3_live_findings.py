@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from aewflow import SUBTRACT_PATCH, assign, create_planned_ticket, sample_project
 from conftest import run_aew
 from harness_conformance import FakeDriver, evidence_of, launch_ticket
@@ -131,6 +130,7 @@ def test_a_relaunch_names_the_evidence_that_went_stale(tmp_path):
     "pass", so a relaunched agent had no way to know its evidence no longer counted. The continuation now says which
     of the invocation's evidence is stale; evidence that is still current is shown exactly as before."""
     from harness_conformance import IMPLEMENT
+
     from aew.harness import runlog
 
     driver = FakeDriver()

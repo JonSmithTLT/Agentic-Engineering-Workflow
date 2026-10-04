@@ -19,7 +19,8 @@ MANIFEST = "project.yaml"
 
 # Logical knowledge names -> manifest keys (KC §14). Roles request these names,
 # never physical paths, so layouts can change without changing role behavior.
-KNOWLEDGE_NAMES = ("project_overview", "open_questions", "architecture_map", "codebase_map", "ownership_map", "glossary")
+KNOWLEDGE_NAMES = ("project_overview", "open_questions", "architecture_map", "codebase_map", "ownership_map",
+                   "glossary")
 
 DEFAULT_GATES: dict[str, Any] = {
     "schema": "aew/gates/v1",

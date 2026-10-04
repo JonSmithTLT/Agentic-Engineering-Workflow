@@ -310,7 +310,7 @@ The engine binds identity, producer, snapshot and plan, exactly as in M1. Submit
 
 ## 6. Implementation steps (branch `impl/m2-hierarchy`; one commit or more per step; tests in the same commit)
 
-0. **Report** → `docs/implementation/m2-ambiguity-report.md` (this document) and draft ADR-0007/0008.
+0. **Report** → `docs/archive/milestones/m2-ambiguity-report.md` (this document) and draft ADR-0007/0008.
 1. **Schemas and records.**
    - Extend these schemas:
      - work-unit: `promoted_from`;
@@ -379,7 +379,7 @@ The engine binds identity, producer, snapshot and plan, exactly as in M1. Submit
 10. **Documentation.**
     - ADR-0007 (hierarchy), ADR-0008 (non-mutating path, observation workspaces, evidence freshness), and amendments to ADR-0003 (transitions) and ADR-0006 (dispatchable archetypes, cards).
     - `acceptance.md`, `implementation-status.md` (Implemented/Staged/Designed), `quickstart.md`, and the testing strategy doc if lanes or shards change.
-    - **Reviewer brief** `docs/implementation/m2-reviewer-brief.md`, focused on the hierarchy and non-mutating invariants.
+    - **Reviewer brief** `docs/archive/reviews/m2-reviewer-brief.md`, focused on the hierarchy and non-mutating invariants.
     - Memory update.
 
 ## 7. Test coverage mapped to the M2 brief

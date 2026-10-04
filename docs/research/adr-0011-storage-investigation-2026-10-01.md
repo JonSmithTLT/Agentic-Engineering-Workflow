@@ -209,7 +209,7 @@ Pass condition for P: items 1 and 6 are flat within H2; 3 and 4 take seconds at 
 
 ## 10. Implementation review (2026-10-02)
 
-The operator confirmed this investigation as good enough to implement (P0), with eight refinements recorded in [`adr-0011-implementation-plan.md`](../implementation/adr-0011-implementation-plan.md) §2. Where the two documents differ, the plan's refinements govern the implementation. They are:
+The operator confirmed this investigation as good enough to implement (P0), with eight refinements recorded in [`adr-0011-implementation-plan.md`](../archive/milestones/adr-0011-implementation-plan.md) §2. Where the two documents differ, the plan's refinements govern the implementation. They are:
 
 - R1: an entry-level hash chain as the root, replacing the tail-file hash (§3.2).
 - R2: an audit is recorded without leaving a one-entry backlog (§3.5).

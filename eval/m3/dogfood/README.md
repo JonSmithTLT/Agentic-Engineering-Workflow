@@ -1,7 +1,7 @@
 # M3 dogfood (step 9)
 
 AEW with a headless model Lead, against raw OpenCode, on six small but real tasks. The report is
-`docs/implementation/m3-dogfood-report.md`. The rubric was fixed before any paid run: `rubric.md`.
+`docs/archive/milestones/m3-dogfood-report.md`. The rubric was fixed before any paid run: `rubric.md`.
 
 | File | What |
 |---|---|

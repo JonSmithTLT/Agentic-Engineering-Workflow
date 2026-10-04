@@ -1202,14 +1202,12 @@ Context independence is required.
 
 Different model families may be tested, but vendor difference must not be treated as guaranteed independence.
 
-## Investigator
-
+## Investigator (routing)
 Use strong reasoning when causal discrimination is difficult.
 
 Prefer deterministic tools for retrieval/measurement.
 
-## Implementer
-
+## Implementer (routing)
 Use a capable model for substantive engineering.
 
 Evaluate cheaper routing only for bounded transformations after evidence shows outcome quality is preserved.

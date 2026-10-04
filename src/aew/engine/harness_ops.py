@@ -281,7 +281,7 @@ class Harness:
 
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         state = self.k.store.read()
-        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read",
+        inv_id, inv, _ = require_invocation(state, invocation_token, None,
                                             archived=self.archive.archived_credential)
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
         return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations.card_ref(inv),

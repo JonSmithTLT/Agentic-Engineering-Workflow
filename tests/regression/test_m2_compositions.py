@@ -341,7 +341,7 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     committed), so a green composition or walk means the rules held, not that they cannot fail."""
     import copy
 
-    from invariants import m2_violations, with_cold
+    from invariants import cap_violations, m2_violations, with_cold
 
     from aew.engine.api import Engine
 
@@ -379,9 +379,10 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     gates = p.root / ".aew/policy/gates.yaml"
     policy = load_yaml(gates.read_text(encoding="utf-8"), source="gates")
     gates.write_text(dump_yaml({**policy, "non_mutating_concurrency": 1}), encoding="utf-8", newline="\n")
-    assert m2_violations(p.root, state) == []  # one active executor is within a cap of one
-    assert "the policy cap is 1" in broken(lambda s: s["invocations"].update(
-        {"INV-9999": dict(s["invocations"][out["invocation"]], work_unit=survey)}))  # rule 15
+    assert cap_violations(p.root, state) == []  # one active executor is within a cap of one
+    over = copy.deepcopy(state)
+    over["invocations"]["INV-9999"] = dict(over["invocations"][out["invocation"]], work_unit=survey)
+    assert "the policy cap is 1" in " | ".join(cap_violations(p.root, over))  # the cap check the walks use
 
 
 def test_moving_started_work_under_new_dependencies_needs_a_new_dispatch(tmp_path):

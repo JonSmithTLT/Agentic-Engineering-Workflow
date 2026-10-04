@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 from aewflow import SUBTRACT_PATCH, sample_project
-from invariants import control_violations
+from invariants import cap_violations, control_violations
 
 from aew import operator
 from aew.engine import transitions
@@ -360,7 +360,7 @@ class Walk:
             self.mp.delenv("AEW_FAULT_MODE", raising=False)
             self.engine = Engine.discover(self.root)  # a fresh process: nothing survives in memory
         self.log.append(entry + f" (now {self.unit(wid)['state']})")
-        problems = control_violations(self.root)
+        problems = control_violations(self.root) + cap_violations(self.root)  # the policy never changes here
         assert not problems, "invariants violated after:\n  " + "\n  ".join(self.log[-12:] + problems)
 
 

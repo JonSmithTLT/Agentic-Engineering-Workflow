@@ -343,6 +343,32 @@ def _dispatch_binding_violations(root: Path, state: dict[str, Any]) -> list[str]
     return problems
 
 
+def cap_violations(root: Path, state: dict[str, Any] | None = None) -> list[str]:
+    """The concurrency caps, checked against the current policy file. Both caps are admission rules (operator,
+    2026-10-04): lowering one never makes admitted work illegal, it drains. So this holds only while the policy is
+    unchanged, which is how the seeded walks use it: there it still catches any path that admits past a cap (the M2
+    re-review's redispatch bypass). It is not part of the general oracle."""
+    root = Path(root)
+    if state is None:
+        state, _ = with_cold(root, load_control(root))
+    gates_file = root / ".aew" / "policy" / "gates.yaml"
+    gates = (yaml.safe_load(gates_file.read_text(encoding="utf-8")) or {}) if gates_file.exists() else {}
+    problems: list[str] = []
+    live = sorted(wid for wid, u in state["work"].items()
+                  if u["kind"] == "ticket" and u.get("mutating")
+                  and (u.get("workspace") or {}).get("status") == "active")
+    mutating_cap = max(1, int(gates.get("mutating_concurrency") or 1))
+    if len(live) > mutating_cap:
+        problems.append(f"mutating cap {mutating_cap} exceeded: live mutating workspaces {live}")
+    cap = gates.get("non_mutating_concurrency")
+    if cap:
+        busy = sorted({inv["work_unit"] for inv in state["invocations"].values() if inv["status"] == "active"
+                       and inv["role"] in EXECUTORS and inv.get("scope") == "observation"})
+        if len(busy) > cap:
+            problems.append(f"{len(busy)} non-mutating Tickets have active executors {busy}; the policy cap is {cap}")
+    return problems
+
+
 def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
     if state.get("schema") == "aew/control/v2" and "_archived" not in state:  # a caller passed the hot state
         state, _ = with_cold(Path(root), state)
@@ -456,16 +482,8 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
     # 14. A started Ticket's attempt holds under its current effective dependencies (M2 review B2): the edges
     #     recorded at its dispatch are its edges now, and each is satisfied in the source it works from (M1 rule).
     problems += _dispatch_binding_violations(root, state)
-    # 15. Active non-mutating executors never exceed the policy cap (M2 re-review: redispatch bypassed it).
-    #     Checked against the current policy file; tests never lower the cap while executors are active.
-    gates_file = root / ".aew" / "policy" / "gates.yaml"
-    cap = (yaml.safe_load(gates_file.read_text(encoding="utf-8")) or {}).get("non_mutating_concurrency") \
-        if gates_file.exists() else None
-    if cap:
-        busy = sorted({inv["work_unit"] for inv in invocations.values() if inv["status"] == "active"
-                       and inv["role"] in EXECUTORS and inv.get("scope") == "observation"})
-        if len(busy) > cap:
-            problems.append(f"{len(busy)} non-mutating Tickets have active executors {busy}; the policy cap is {cap}")
+    # 15. Moved to cap_violations: the non-mutating cap, like the mutating one, is an admission rule (operator,
+    #     2026-10-04), so it is not an invariant of the state against whatever the policy says now.
     # 16. A parent's acceptance is a downstream assignment (M2 re-review decision): every report its closeout relied
     #     on was dispatched under exactly the dependencies the closeout records, and each of those was DONE.
     for wid, u in sorted(work.items()):

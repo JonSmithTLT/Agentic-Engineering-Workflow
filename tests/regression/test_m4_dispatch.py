@@ -283,3 +283,87 @@ def test_a_decision_from_another_revision_admits_nothing(tmp_path):
             ctx.dispatch_decisions.append(stale)
             engine._invocations.new_invocation(ctx, "reviewer", wid)
     assert p.rev() == rev
+
+
+# ---------------------------------------------------------------- the dispatch legality review (area 3, 2026-10-03)
+
+
+def test_a_decision_refuses_a_record_or_plan_edited_outside_aew(tmp_path):
+    """D1: the predicate reads the Ticket record and the accepted plan only when they are the files control state
+    pins; an out-of-band edit that would turn a refusal into an admission is refused instead."""
+    from aew.util import parse_frontmatter, render_frontmatter
+
+    def edit(path, change):
+        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+        change(meta)
+        path.write_text(render_frontmatter(meta, body), encoding="utf-8", newline="\n")
+
+    p = sample_project(tmp_path)
+    wid = ticket(p, tmp_path, cls=0, scope=("calc/core.py",), extra=("--acceptance-check", "unit"))
+    assert codes(refused(p, "work", "assign", wid)) == {"CLASS0_ASSERTION_MISSING"}
+    record = p.root / ".aew" / p.ok("work", "show", wid)["control"]["record"]
+    edit(record, lambda m: m.update(class0_assertions=["inputs_complete", "no_consequential_boundary",
+                                                       "transformation_clear"]))
+    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "INTEGRITY_ERROR" and "record" in res.error["message"], res.stderr
+    assert p.aew("dispatch", "explain", wid, "--json").error["code"] == "INTEGRITY_ERROR"
+
+    p2 = sample_project(tmp_path / "second")
+    wid2 = ticket(p2, tmp_path, affected=("calc/core.py", "vendor/lib.py"))
+    assert "LINT_AFFECTED_PROTECTED" in codes(refused(p2, "work", "assign", wid2))
+    plan = p2.root / ".aew" / p2.ok("work", "show", wid2)["control"]["plan"]["path"]
+    edit(plan, lambda m: m.update(affected_paths=["calc/core.py"]))
+    res = p2.aew("work", "assign", wid2, "--token", p2.token, "--expect-rev", str(p2.rev()))
+    assert res.error["code"] == "INTEGRITY_ERROR" and "accepted plan" in res.error["message"], res.stderr
+    assert p2.ok("work", "show", wid2)["control"]["invocations"] == []
+
+
+def test_class0_refuses_a_scope_that_starts_with_a_globstar_even_without_protected_paths(tmp_path):
+    """D2: `**/*.py` is every Python file in the repository, not a bounded subject."""
+    p = sample_project(tmp_path, guardrails={"schema": "aew/guardrails/v1", "protected_paths": [],
+                                             "generated_paths": [], "ticket_scope_enforcement": True,
+                                             "review_triggers": [], "dependency_rules": []})
+    wide = ticket(p, tmp_path, cls=0, scope=("**/*.py",), extra=("--acceptance-check", "unit", *ALL_ASSERTIONS))
+    err = refused(p, "work", "assign", wide)
+    assert codes(err) == {"CLASS0_SUBJECT_UNBOUNDED"}
+    [blocker] = [b for b in err["details"]["blocking_conditions"] if b["code"] == "CLASS0_SUBJECT_UNBOUNDED"]
+    assert blocker["details"]["subject"]["leading_globstar"] == ["**/*.py"]
+    ok = eligible_class0(p, tmp_path)
+    assert p.ok("dispatch", "explain", ok, "--json")["dependency_digests"]["class0_subject"]["matched"] == 1
+
+
+def test_an_acceptance_check_on_a_non_mutating_ticket_is_refused(tmp_path):
+    """D3: it would be recorded and never run."""
+    p = sample_project(tmp_path)
+    res = p.aew("work", "create", "ticket", "--title", "Survey", "--class", "1", "--non-mutating", "--goal", "g",
+                "--acceptance-check", "unit", "--token", p.token, "--expect-rev", str(p.rev()))
+    assert res.error["code"] == "USAGE" and "non-mutating" in res.error["message"], res.stderr
+
+
+def test_a_commit_outside_the_lead_transaction_cannot_create_an_undecided_invocation(tmp_path):
+    """D4: the rule holds in the store's commit, so a commit path that runs no finalizers is covered too."""
+    from aew.engine.store import Transition
+
+    p = sample_project(tmp_path)
+    wid = ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+    rev = p.rev()
+    with pytest.raises(DispatchUndecided, match="INV-9999"):
+        with engine._k.store.session() as s:
+            s.state["invocations"]["INV-9999"] = {"work_unit": wid, "role": "implementer", "status": "active"}
+            s.commit(Transition(op="test.bypass", actor={"kind": "test"}))
+    assert p.rev() == rev
+
+
+def test_a_decision_made_before_a_policy_edit_admits_nothing(tmp_path):
+    """D6: a decision records the policy digests it was made under; the commit refuses it if they changed."""
+    p = sample_project(tmp_path)
+    wid = ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+    rev = p.rev()
+    with pytest.raises(DispatchUndecided, match="policy files"):
+        with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
+            card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
+            set_policy(p, "guardrails", lambda g: g["protected_paths"].append("calc/**"))
+            engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
+    assert p.rev() == rev

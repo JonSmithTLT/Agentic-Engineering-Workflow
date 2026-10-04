@@ -56,7 +56,7 @@ from typing import Any
 from aew import profile
 from aew.engine import faults
 from aew.engine.lock import FileLock
-from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision
+from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision
 from aew.schemas import validate
 from aew.util import (
     atomic_write,
@@ -119,6 +119,23 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
     return state
 
 
+def _require_dispatched(before: dict[str, Any], after: dict[str, Any]) -> None:
+    """No commit creates an invocation or a harness run without the dispatch decision that admitted it (M4-A).
+
+    The dispatch commit check (``Dispatch.finalize``) admits each new one and records its decision on it; it runs as a
+    Lead transaction finalizer. This makes the rule structural: whatever path commits, a new invocation or run with
+    no recorded decision is refused here (area 3 note 1)."""
+    old_invs = before.get("invocations") or {}
+    for inv_id, inv in (after.get("invocations") or {}).items():
+        old = old_invs.get(inv_id)
+        if old is None and "dispatch" not in inv:
+            raise DispatchUndecided(f"{inv_id} would be committed without a dispatch decision", invocation=inv_id)
+        for run in (inv.get("runs") or [])[len((old or {}).get("runs") or []):]:
+            if "dispatch" not in run:
+                raise DispatchUndecided(f"run {run.get('run')} of {inv_id} would be committed without a dispatch "
+                                        "decision", invocation=inv_id, run=run.get("run"))
+
+
 class Session:
     """A locked, recovered view of control state that may commit at most once."""
 
@@ -163,8 +180,10 @@ class Session:
                 expected=expect_rev,
                 current=self.revision,
             )
-        self.committed_revision = self._store._commit(self._committed_state, self.state if state is None else state,
-                                                      self._writes, transition, self._prewritten)
+        after = self.state if state is None else state
+        _require_dispatched(self._committed_state, after)
+        self.committed_revision = self._store._commit(self._committed_state, after, self._writes, transition,
+                                                      self._prewritten)
         return self.committed_revision
 
 

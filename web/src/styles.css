@@ -1677,3 +1677,9 @@ summary {
 .execution-mark { text-align: center; color: var(--border); }
 .execution-mark.active { color: var(--accent); }
 @media (max-width: 1023px) { .execution-lane-marks, .execution-lane-key { display: none; } .execution-event > div { grid-column: 2; } }
+
+.execution-panes.investigation-panes.has-selection { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+
+.execution-recorder { min-width: 0; overflow-wrap: anywhere; }
+.execution-recorder :is(input, select) { min-width: 0; max-width: 100%; }
+.execution-recorder .filter-bar > label { min-width: 0; max-width: 100%; }

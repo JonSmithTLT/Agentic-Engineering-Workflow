@@ -45,6 +45,14 @@ InvestigationTabs, Pager, SourceStrip, SafeContent and shared reference-return o
 
 W05 fixed source metadata, artifact lists and excerpt pages are manual-only with no concealed intervals/prefetch. Excerpt query and validator identities include source + artifact ID + revision + cursor. Only the active excerpt is retained; page departure cancels/removes its query and transport representation. Binding/range/SHA-256 checks occur before caching. Refusal clears affected scopes; ordinary refresh failure keeps visibly marked valid data. Unicode bidi/invisible/ANSI controls are visible markers, while hashing and citations identify original UTF-8 bytes. Full artifact digest is supplied, not verified. Missing material does not establish absence; outcomes/excerpts do not establish causation. M6 Capture & Admission references Evidence and never replaces ownership.
 
+## Work density improvement variant
+
+Work's explicit `work-summary` DetailView variant renders supplied identity/content before inspection utilities and discloses SourceStrip metadata without hiding currentness or error feedback. Other detail pages retain their default variant. Embedded Work owns one selected-record CLI action and the workspace dashboard link; direct detail retains its own dashboard copying. Source and browser meanings remain separate.
+
+Work phone pane state uses allowlisted `work_pane=results|detail`; it is presentation only and never enters workRoute. Inspect children selects Results, preserves parent selection, and focuses the results heading below the shared header. Copied/reloaded links restore the pane. Work entity links from an explicitly selected pane return to Detail, including selecting the same record. Loaded-page/filter absence is labeled separately from unavailable detail. No API, paging, graph or polling policy changes.
+
+Phone Results selection and explicit Detail switching focus the matching loaded record heading below the sticky header. Browser Back restores the originating Results link when it remains loaded; otherwise the visible Results heading is the fallback. Focus restoration waits for history scroll restoration and asynchronous detail loading, is cancelled on navigation, and does not repeat on refresh. Desktop Results selection preserves row focus.
+
 ## Recorded execution interaction/state ledger
 
 Stacked execution table cells use natural height and wrapping, matching the Evidence/source-chooser phone tables. Every table selection remains reachable by pointer and keyboard at narrow/zoomed widths. Recorder Controls activity is copied/reloaded through `execution_control_tab`; other disclosed hosts own independent activity state. Direct packet return clears inspector-only packet parameters.

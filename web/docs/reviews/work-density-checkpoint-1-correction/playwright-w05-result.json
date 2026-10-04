@@ -1,0 +1,175 @@
+{
+  "checks": [
+    {
+      "name": "Journal support/counterevidence, citation and origin restoration",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Journal support/counterevidence, citation and origin restoration",
+      "mode": "http",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Journal support/counterevidence, citation and origin restoration",
+      "mode": "worker",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Journal support/counterevidence, citation and origin restoration",
+      "mode": "worker",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Packet association maps exact source/snapshot and restores packet",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Packet association maps exact source/snapshot and restores packet",
+      "mode": "worker",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Bounded artifact/excerpt pages preserve selection and exact artifact identity",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Bounded artifact/excerpt pages preserve selection and exact artifact identity",
+      "mode": "worker",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit denied result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit not-found result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit historical-unavailable result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit malformed result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit hash-mismatch result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Explicit binding-mismatch result",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Hostile source controls, dark theme, zoom, keyboard tabs",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Missing/partial/unsupported/empty projections never fabricate contents",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Failed refresh retains visibly marked valid excerpt",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Refusal removes all owned source/excerpt representations",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Unsupported historical parameters stop preview reads",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F1/F2 canonical story results and selected-artifact keyboard tabs",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F1/F2 canonical story results and selected-artifact keyboard tabs",
+      "mode": "http",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F1/F2 canonical story results and selected-artifact keyboard tabs",
+      "mode": "worker",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F1/F2 canonical story results and selected-artifact keyboard tabs",
+      "mode": "worker",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F3/F4 one shared binding alert and unavailable selected identity",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
+    },
+    {
+      "name": "Review F3/F4 one shared binding alert and unavailable selected identity",
+      "mode": "http",
+      "phone": true,
+      "result": "PASS"
+    }
+  ],
+  "measurements": [
+    {
+      "mode": "http",
+      "rows_before": 50,
+      "rows_after": 50,
+      "dom_before": 466,
+      "dom_after": 494,
+      "requests": 7,
+      "duration_ms": 2991
+    },
+    {
+      "mode": "worker",
+      "rows_before": 50,
+      "rows_after": 50,
+      "dom_before": 466,
+      "dom_after": 494,
+      "requests": 7,
+      "duration_ms": 3484
+    }
+  ],
+  "independent_review": "PENDING; implementer automation is not independent acceptance."
+}

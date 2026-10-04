@@ -69,7 +69,7 @@ function WorkResultsPage() {
     <>
       <div className="page-heading">
         <div>
-          <h1>Work</h1>
+          <h1 tabIndex={-1}>Work</h1>
           <p>Inspect active work and recent finished records.</p>
         </div>
       </div>
@@ -160,6 +160,11 @@ function WorkResultsPage() {
           )
         ) : (
           <>
+            {params.get('selected') && !query.data.value.data.items.some(item => item.id === params.get('selected')) && (
+              <p className="scope-note" role="status">
+                Selected record <code>{params.get('selected')}</code> is outside this loaded results page or filter. Detail remains selected; this does not mean the record is unavailable.
+              </p>
+            )}
             <SinceViewed
               key={
                 query.data.value.project_id +
@@ -255,6 +260,7 @@ export function WorkDetailPage({
       schema={responseSchemas.WorkResponse}
       recordId={recordId}
       displayed={displayed}
+      presentation="work-summary"
     >
       {(work) => (
         <>
@@ -264,7 +270,7 @@ export function WorkDetailPage({
                 value={work.kind}
                 known={['epic', 'story', 'ticket']}
               />
-              <h1>{work.title}</h1>
+              <h1 tabIndex={-1} data-work-heading={work.id}>{work.title}</h1>
               <ComparisonEntry work={work.id} />
               <CopyCli kind="work" id={work.id} />
             </div>
@@ -313,6 +319,7 @@ export function WorkDetailPage({
                         for (const key of ['cursor', 'state', 'kind', 'view'])
                           params.delete(key);
                         params.set('parent', work.id);
+                        params.set('work_pane', 'results');
                         return '/work?' + params.toString();
                       })()}
                     >

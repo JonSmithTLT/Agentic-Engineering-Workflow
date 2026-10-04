@@ -1,0 +1,3477 @@
+{
+  "result": "PASS",
+  "checks": [
+    {
+      "name": "Work workspace preserves results while Why uses no extra reads",
+      "result": "PASS"
+    },
+    {
+      "name": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "result": "PASS"
+    },
+    {
+      "name": "Runs pilot, legacy routes and copied URL reload",
+      "result": "PASS"
+    },
+    {
+      "name": "Modal inspector keyboard focus, Escape and phone overflow",
+      "result": "PASS"
+    },
+    {
+      "name": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "result": "PASS"
+    },
+    {
+      "name": "Malformed IDs and unsupported history do not fall back to current reads",
+      "result": "PASS"
+    },
+    {
+      "name": "History provenance routes and unsupported historical claims stay explicit",
+      "result": "PASS"
+    },
+    {
+      "name": "History moved-to hot parent resolves through Work and opens its workspace",
+      "result": "PASS"
+    },
+    {
+      "name": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "Production access refusal removes cached detail and its inspector",
+      "result": "PASS"
+    },
+    {
+      "name": "Work density: child results, pinned pane and disclosed provenance",
+      "result": "PASS"
+    }
+  ],
+  "errors": [],
+  "responses": [
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/work/FutureNamespace-009",
+      "status": 404,
+      "expected": true
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/work/T-0001",
+      "status": 403,
+      "expected": true
+    }
+  ],
+  "requests": [
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work workspace preserves results while Why uses no extra reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Bounded supplied graph, edge sources, list switch and fit pan",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs?fixture=F1&selected=INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs?fixture=F1&selected=INV-0001&inspector=why&field=status",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/runs/INV-0001?fixture=F1",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/runs/INV-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Runs pilot, legacy routes and copied URL reload",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Modal inspector keyboard focus, Escape and phone overflow",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Concealed phone detail stops polling; revealing immediately revalidates",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=%3Cbad%3E",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001&rev=41",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=FutureNamespace-009",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/work/FutureNamespace-009",
+      "method": "GET"
+    },
+    {
+      "scenario": "Malformed IDs and unsupported history do not fall back to current reads",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/history/T-0004?fixture=F3",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/api/v1/history/T-0004?annotations_limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "History provenance routes and unsupported historical claims stay explicit",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/history/T-0004?fixture=F3",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/history/T-0004?annotations_limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/work/S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "History moved-to hot parent resolves through Work and opens its workspace",
+      "url": "http://127.0.0.1:4214/api/v1/work/S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/work?fixture=F8&selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=T-0001&inspector=relations",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "CSP hostile content, clipboard failure and dataset-switch cleanup",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/work?selected=T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/assets/index-JdX3sJkV.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Production access refusal removes cached detail and its inspector",
+      "url": "http://127.0.0.1:4215/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100&parent=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&parent=S-0001&selected=S-0001&work_pane=results",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100&parent=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&selected=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100&parent=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/work?fixture=F1&parent=S-0001&selected=S-0001&work_pane=results",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-BU2O3Eso.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/rolldown-runtime-S-ySWqyJ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/jsx-runtime-Cu7Iu-c-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/transport-Dzh_oLTu.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/index-DWAoQmdF.css",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/runtime-VxcMbZHF.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/worlds-Cfp5AcLf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/browser-DJso0CrX.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/projector-B9d0a4fz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/associations-PzH66BJv.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/execution-fixtures.manifest-BWwzP4o_.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-CRjb6kdN.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-DW2XXBLI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-BgidspsQ.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/schema-bqcOYULz.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/DemoTools-B3Wk4owS.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Lab-RKfL0Ok-.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-gr-sUGu0.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-Dmq1U_zs.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-CHCqQtRe.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/registration-D0DhxDP1.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Journal-fWzFcdX5.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reference-HCtiaN-k.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Comparison-Dc4r0-RI.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ContextReferences-IHtIy1vf.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/PacketInspector-Dhs-TN4H.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/ui-3Lf7jW_e.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Reader-DJhLLYP6.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Recorder-CChO-3LA.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/assets/Controls-CRiK9QuY.js",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/project",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/capabilities",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work?limit=100&parent=S-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/overview",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/api/v1/work/T-0001",
+      "method": "GET"
+    },
+    {
+      "scenario": "Work density: child results, pinned pane and disclosed provenance",
+      "url": "http://127.0.0.1:4214/favicon.svg",
+      "method": "GET"
+    }
+  ],
+  "scope": "Compiled Chromium; authored visibility/focus events; fixture server and demo, not authenticated AEW integration"
+}

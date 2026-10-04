@@ -1,0 +1,20 @@
+{
+  "source_commit": "c899c70d205b9c88cdd0314ef99f580c218e6a5f",
+  "viewport": [
+    390,
+    844
+  ],
+  "fixture": "F1",
+  "selected": "T-0003",
+  "before": {
+    "title_y": 1090,
+    "blocker_heading_y": 1422,
+    "document_height": 2564
+  },
+  "after": {
+    "title_y": 439,
+    "blocker_heading_y": 771,
+    "document_height": 2012
+  },
+  "method": "Read-only DOM coordinates and browser inspection; same fixture and viewport; not a timing SLA or physical-device test."
+}

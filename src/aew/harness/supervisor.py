@@ -70,7 +70,7 @@ class Supervisor:
         # Fail closed until the run's containment is decided: on POSIX, nothing starts without a layout (M4-B).
         self.tree = procs.ProcessTree(require_layout=not procs.IS_WINDOWS)
         self.layout: containment.Layout | None = None
-        self._checks: set[procs.ProcessTree] = set()  # the trees of checks running for the agent now
+        self._checks = procs.CheckTrees()              # the trees of checks running for the agent now
         self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
@@ -352,8 +352,9 @@ class Supervisor:
 
     def _end(self, status: str, reason: str) -> None:
         self._ending.set()
-        for tree in list(self._checks):  # a check outlives neither its run nor the private git state it may use
-            tree.kill()
+        # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
+        # request is still in flight starts nothing, and the private state is retired only once they have returned.
+        self._checks.end()
         if self.bridge is not None:
             self.bridge.close()
         try:

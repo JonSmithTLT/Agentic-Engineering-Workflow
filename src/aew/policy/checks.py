@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aew.engine import faults
 from aew.errors import GateUnsatisfied, NotFound
 
 BUILTIN = {"guardrails"}
@@ -63,7 +64,7 @@ def resolve(checks_policy: dict[str, Any], check_id: str) -> dict[str, Any]:
 
 
 def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None, layout: Any = None,
-        trees: set[Any] | None = None) -> dict[str, Any]:
+        trees: Any = None) -> dict[str, Any]:
     """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
     after-snapshot describes everything the check did (independent audit I2). With ``layout`` (a contained run's
     sandbox) the tree starts the check inside it (M4-B). ``trees`` (a run's supervisor) holds the check's tree while it
@@ -76,7 +77,8 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
     started = time.monotonic()
     tree = ProcessTree(layout=layout)
     if trees is not None:
-        trees.add(tree)
+        trees.add(tree)  # a run's CheckTrees: killed on arrival if the run has already ended
+    faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
     exit_code: int | None = None
     try:
         try:

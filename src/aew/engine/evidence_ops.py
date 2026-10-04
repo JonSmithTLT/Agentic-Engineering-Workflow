@@ -582,7 +582,7 @@ class EvidenceCommands:
         return {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
 
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
-                  layout: Any = None, trees: set[Any] | None = None, ending: Any = None) -> dict[str, Any]:
+                  layout: Any = None, trees: Any = None, ending: Any = None) -> dict[str, Any]:
         """Run a project check as a bounded role. ``env`` is the complete environment of the check's process
         (a harness run passes its agent environment, so a check never sees the supervisor's). ``layout`` is a
         contained run's sandbox: the check runs inside it, through the same process-tree choke point (M4-B).

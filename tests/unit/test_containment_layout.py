@@ -162,6 +162,23 @@ def test_policy_mode_defaults_to_required_where_containment_exists():
         assert C.mode({"containment": {"mode": "required"}}) == "allow_weaker"
 
 
+def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(monkeypatch, tmp_path):
+    """M4-B review: on a POSIX platform other than Linux, `required` is honoured by refusing, never silently weakened;
+    Windows stays labelled workdir_separation_only (ADR-0009)."""
+    monkeypatch.setattr(C, "supported", lambda: False)
+    required = {"containment": {"mode": "required"}}
+    args = dict(role="implementer", scope="ticket", workspace=str(tmp_path), run_dir=tmp_path / "run",
+                scratch=str(tmp_path / "s"), bridge_dir=None)
+    monkeypatch.setattr(C.sys, "platform", "darwin")
+    assert C.mode(required) == "required" and C.mode(None) == "allow_weaker"
+    with pytest.raises(ContainmentUnavailable, match="containment.mode: allow_weaker"):
+        C.establish(**args, policy=required)
+    assert C.establish(**args, policy=None)[0] is None
+    assert C.doctor(required, "note")[0] == "FAIL"
+    monkeypatch.setattr(C.sys, "platform", "win32")
+    assert C.mode(required) == "allow_weaker" and C.establish(**args, policy=required)[0] is None
+
+
 def test_a_tree_that_requires_a_layout_refuses_to_spawn_without_one():
     tree = procs.ProcessTree(require_layout=True)
     with pytest.raises(ContainmentUnavailable, match="requires filesystem containment"):

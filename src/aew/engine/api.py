@@ -37,7 +37,7 @@ from aew.engine.status_ops import StatusViews
 from aew.engine.store import ControlStore
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations
-from aew.errors import IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -149,6 +149,44 @@ class ProjectAdmin:
                 return c
         raise NotFound(f"no authority candidate {candidate_id}")
 
+    def _git_drivers_doctor(self) -> tuple[str, str]:
+        """Every configured git driver and whether AEW's own git runs it (M4-B review)."""
+        drivers: dict[str, dict[str, Any]] = {}
+        effective = {d["config"]: d for d in git.configured_drivers(self.k.repo_root)}  # the last definition wins
+        for d in effective.values():
+            entry = drivers.setdefault(d["driver"], {"kinds": set(), "commands": []})
+            entry["kinds"].add(d["kind"])
+            if d["key"] in {"clean", "smudge", "process", "command", "textconv", "driver"} and d["value"]:
+                entry["commands"].append(f"{d['config']} = `{d['value']}` ({d['origin']})")
+        if not drivers:
+            return "PASS", "no git filter, diff or merge drivers are configured"
+        trusted = git.trusted_drivers()
+
+        def describe(name: str) -> str:
+            return f"{name} ({'/'.join(sorted(drivers[name]['kinds']))}: {'; '.join(drivers[name]['commands'])})"
+        on = [n for n in sorted(drivers) if n in trusted]
+        off = [n for n in sorted(drivers) if n not in trusted]
+        listing = (f"AEW's git runs: {', '.join(map(describe, on)) or 'none'}. Switched off (not in "
+                   f"containment.trusted_git_drivers): {', '.join(map(describe, off)) or 'none'}")
+        risky = [n for n in on for c in drivers[n]["commands"]
+                 if (cmd := c.split("`")[1].split()[0] if "`" in c else "") and not Path(cmd).is_absolute()
+                 and ("/" in cmd or "\\" in cmd)]
+        if risky:
+            return "WARN", (f"trusted driver(s) {sorted(set(risky))} run a program by a relative path, which resolves "
+                            "inside the repository where agents can edit it: point them at an installed program. "
+                            + listing)
+        commit = self.k.authoritative_commit()
+        try:
+            needed = git.untrusted_filters(self.k.repo_root, commit) if commit else []
+        except AEWError:
+            needed = []
+        if needed:
+            path = X.policy_path(self.k.aew_root, self.k.manifest)
+            inside = path.is_relative_to(self.k.repo_root)
+            shown = path.relative_to(self.k.repo_root).as_posix() if inside else str(path)
+            return "FAIL", git.untrusted_filters_message(needed, shown, from_doctor=True)
+        return "PASS", listing
+
     def doctor_checks(self) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
 
@@ -196,6 +234,7 @@ class ProjectAdmin:
             policy_now = None
         # The actual guarantee, probed live and never implied (AEW-INV-ISO-001, M4-B).
         add("containment", *containment.doctor(policy_now, K.CONTAINMENT_NOTE))
+        add("git-drivers", *self._git_drivers_doctor())
         try:
             checks_policy = self.k.policy("checks")
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
@@ -382,7 +421,7 @@ class Engine:
         return self._k.check_manifest_pin(state)
 
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
-                  layout: Any = None, trees: set[Any] | None = None, ending: Any = None) -> dict[str, Any]:
+                  layout: Any = None, trees: Any = None, ending: Any = None) -> dict[str, Any]:
         return self._evidence.check_run(invocation_token=invocation_token, check_id=check_id, env=env, layout=layout,
                                         trees=trees, ending=ending)
 

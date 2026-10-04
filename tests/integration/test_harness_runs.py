@@ -175,6 +175,37 @@ def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path
     assert_control_invariants(lab.project)
 
 
+def test_a_check_in_flight_when_its_run_ends_starts_nothing(lab, tmp_path, sync):
+    """M4-B review (P2): a check registered just before its run ended, and not yet started, must not start after the
+    end. The run's end closes every registered check tree, and the check's request is refused."""
+    import time
+
+    from aew.knowledge import evidence
+    from aew.util import dump_yaml, load_yaml
+
+    beat = sync / "beat"
+    checks_path = lab.root / ".aew/policy/checks.yaml"
+    checks = load_yaml(checks_path.read_text(encoding="utf-8"))
+    checks["checks"]["unit"]["command"] = ["{python}", "-c",
+                                           "import pathlib, sys; pathlib.Path(sys.argv[1]).write_text('ran')",
+                                           str(beat)]
+    checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    gate = sync / "before-spawn"
+    gate.write_text("hold", encoding="utf-8")
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
+    run = lab.lead("work", "assign", wid, "--launch", env={"AEW_PAUSE": f"checks.before_spawn={gate}"})["launch"]["run"]
+    lab.until(lambda: Path(str(gate) + ".reached").exists(), what="the check registered and held before its start")
+    lab.ok("harness", "stop", run, "--reason", "ended mid-check", "--token", lab.project.token)
+    assert lab.wait(run)["status"] == "terminated"
+    gate.unlink()  # the held request now carries on, after its run ended
+    time.sleep(2.0)
+    assert not beat.exists()  # the check never started
+    records, _ = evidence.scan(lab.aew_root, wid)
+    assert not [e for e in records if e["kind"] == "check_result"]
+    assert_control_invariants(lab.project)
+
+
 def test_profile_deadline_terminates_a_hung_harness(lab, tmp_path):
     policy = dict(POLICY, profiles={"standard": {"provider": "fakeprov", "model": "fake-model", "deadline_s": 1.5}})
     HarnessLab.create(lab.project, tmp_path, policy=policy)

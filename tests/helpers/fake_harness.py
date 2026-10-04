@@ -229,7 +229,12 @@ def watch_agent_pid(lab: HarnessLab, run: str, recorded: int) -> Any:
     record = lab.record(run)
     if (record.get("containment") or {}).get("process_ownership") != "pid_namespace":
         return procs.Watch(recorded)
-    found = {procs.host_pid(recorded, under=root) for root in record.get("harness_pids") or []} - {recorded}
+    found = set()
+    for root in record.get("harness_pids") or []:
+        try:
+            found.add(procs.host_pid(recorded, under=root))
+        except LookupError:  # not under this root
+            pass
     assert len(found) == 1, f"{run}: namespace pid {recorded} maps to {sorted(found) or 'nothing'}"
     return procs.Watch(found.pop())
 

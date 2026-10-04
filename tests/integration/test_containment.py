@@ -248,6 +248,48 @@ def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_ove
     assert not list(lab.root.glob(".aew-containment-probe-*"))
 
 
+UNSAFE_ROOTS = ("project", "tmp", "aew_tmp", "runs", "home", "workspaces", "python")
+
+
+@pytest.mark.parametrize("which", UNSAFE_ROOTS)
+def test_an_operator_root_that_reaches_what_containment_protects_is_refused(lab, which):
+    """M4-B review (Fable F1): a containment.writable root over the project, /tmp, the runs directory, a masked
+    secret, other workspaces or the Python environment would leave the run labelled contained while it can write
+    control state, evidence, other runs' bridge credentials or AEW itself. Refused, naming what it would expose."""
+    (lab.repo / ".aew" / "state").mkdir(parents=True)
+    other_bridge = Path(tempfile.mkdtemp(prefix="aew-bridge-"))  # another run's, in the shared temporary directory
+    root = {"project": lab.repo, "tmp": Path(tempfile.gettempdir()), "aew_tmp": other_bridge, "runs": lab.run.parent,
+            "home": lab.home, "workspaces": lab.root, "python": Path(sys.prefix)}[which]
+    lab.run.mkdir(parents=True, exist_ok=True)
+    with pytest.raises(C.ContainmentUnavailable, match="would let every contained run write") as refused:
+        lab.layout(policy={"writable": [str(root)]})
+    assert "List a narrower directory" in refused.value.message and refused.value.details["exposes"]
+    other_bridge.rmdir()
+
+
+def test_a_narrow_operator_root_is_accepted_and_the_layout_stays_contained(lab):
+    (lab.repo / ".aew" / "state").mkdir(parents=True)
+    build = lab.repo / "build"
+    build.mkdir()
+    layout = lab.layout(policy={"writable": [str(build)]})
+    assert os.path.realpath(build) in layout.writable
+    assert probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root)["ok"] is True
+
+
+@pytest.mark.parametrize("reach", ["control_state", "host_tmp", "sibling_run"])
+def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run(lab, reach):
+    """Whatever widened the layout (an operator root, a future bug), reaching these fails the launch self-test."""
+    (lab.repo / ".aew" / "state").mkdir(parents=True)
+    good = lab.layout()
+    extra, expected = {"control_state": (str(lab.repo), ".aew"), "host_tmp": ("/tmp", ".tmp-marker"),
+                       "sibling_run": (str(lab.run.parent), ".probe-run")}[reach]
+    result = probe.self_test(dataclasses.replace(good, writable=(*good.writable, extra)), sentinel_dir=lab.outside,
+                             sibling_dir=lab.root)
+    assert result["ok"] is False and expected in result["reason"], result
+    assert not list(lab.run.parent.glob("*.probe-run"))
+    assert not list(Path(tempfile.gettempdir()).glob(".aew-containment-probe-*"))
+
+
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):
     monkeypatch.setenv("PATH", str(lab.root / "empty"))
     args = dict(role="implementer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
@@ -300,6 +342,47 @@ def test_killing_the_tree_ends_every_process_even_one_that_left_the_group(lab, e
     assert not watch.alive()
     tree.close()
     watch.close()
+
+
+def _descendants(root: int) -> list[tuple[int, list[int]]]:
+    """(host pid, NSpid) of every process under ``root``."""
+    out = []
+    for entry in os.listdir("/proc"):
+        if entry.isdigit() and procs._descends(int(entry), root) and int(entry) != root:
+            try:
+                out.append((int(entry), procs._nspid(entry)))
+            except OSError:
+                pass
+    return out
+
+
+def test_host_pid_reads_the_runs_namespace_level_and_never_guesses(lab):
+    """M4-B review (Fable F2): a pid is read at the run's namespace level, so a process the agent started in a
+    further nested sandbox translates to its own host pid; a pid nothing under the run has raises instead of coming
+    back as if it were a host pid."""
+    layout = lab.layout()
+    nested = "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid sleep 300"
+    tree = procs.ProcessTree(layout=layout)
+    proc = tree.spawn(["sh", "-c", f"{nested} & sleep 300"], cwd=str(lab.ws), stdin=subprocess.DEVNULL,
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={"PATH": os.environ["PATH"]})
+    try:
+        deadline = time.monotonic() + 30
+        deep: list[tuple[int, list[int]]] = []
+        while not deep and time.monotonic() < deadline:
+            depth = len(procs._nspid(proc.pid))
+            deep = [(h, ids) for h, ids in _descendants(proc.pid) if len(ids) == depth + 2]
+            time.sleep(0.1)
+        if not deep:
+            pytest.skip("nested PID namespaces are not available inside the sandbox on this host")
+        host, ids = deep[-1]
+        assert procs.host_pid(ids[depth], under=proc.pid) == host  # what the agent sees, placed correctly
+        shallow = [(h, ids) for h, ids in _descendants(proc.pid) if len(ids) == depth + 1]
+        h1, ids1 = shallow[0]
+        assert procs.host_pid(ids1[depth], under=proc.pid) == h1
+        with pytest.raises(LookupError):
+            procs.host_pid(4_000_000, under=proc.pid)
+    finally:
+        tree.kill()
 
 
 def test_sigkill_of_bubblewrap_ends_the_namespace(lab):

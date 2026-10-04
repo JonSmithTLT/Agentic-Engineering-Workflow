@@ -156,8 +156,9 @@ def _git_metadata(workspace: Path) -> tuple[list[str], list[str]]:
     try:
         gitdir = git.git_dir(workspace)
         common = git.common_dir(workspace)
-    except AEWError:
-        return [], []
+    except AEWError as exc:  # never an empty protected list: the self-test would have nothing to check
+        raise ContainmentUnavailable(f"the git metadata of workspace {workspace} cannot be resolved: {exc.message}",
+                                     workspace=str(workspace)) from exc
     binds = [_real(common)]
     if _real(gitdir) != _real(common) and not _real(gitdir).startswith(_real(common) + os.sep):
         binds.append(_real(gitdir))
@@ -170,6 +171,63 @@ def _git_metadata(workspace: Path) -> tuple[list[str], list[str]]:
         binds.append(_real(pointer))
         protected.append(str(pointer))
     return binds, [p for p in protected if os.path.exists(p)]
+
+
+def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os.PathLike[str] | None,
+             bridge_dir: str | None, masks: tuple[str, ...]) -> list[tuple[str, str]]:
+    """(what, path) for every location an operator's writable root must neither equal, contain nor lie under. The
+    shared temporary directory is listed separately (``_SHARED_TMP``): only containing it, or reaching one of AEW's
+    own directories in it, exposes other runs."""
+    import tempfile
+
+    from aew.workspace import git
+
+    out = [("the git repository metadata", _real(git.common_dir(ws))),
+           ("the workspace's git directory", _real(git.git_dir(ws)))]
+    for tmp in {_real(SANDBOX_TMP), _real(tempfile.gettempdir())}:
+        out.append((_SHARED_TMP, tmp))
+    if project is not None:
+        out.append(("AEW's control state, evidence and records (.aew)", _real(Path(project) / ".aew")))
+    if runs is not None:
+        out.append(("every run's harness state and bridge credentials (the runs directory)", _real(runs)))
+    if bridge_dir:
+        out.append(("this run's bridge socket", _real(bridge_dir)))
+    for prefix in {sys.prefix, sys.base_prefix}:
+        if prefix:
+            out.append(("the Python environment AEW runs from", _real(prefix)))
+    out += [("a masked secret", m) for m in masks]
+    return out
+
+
+_SHARED_TMP = "the shared temporary directory, where every run's bridge socket lives"
+
+
+def _within(path: str, root: str) -> bool:
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def _refuse_unsafe_root(raw: str, root: str, guarded: list[tuple[str, str]], *, workspaces: str) -> None:
+    """An operator root that reaches anything containment protects would make the sandbox a label only: refused,
+    naming what it would expose and what to list instead."""
+    exposed = []
+    for what, path in guarded:
+        if what == _SHARED_TMP:
+            below = os.path.relpath(root, path).split(os.sep)[0] if _within(root, path) and root != path else ""
+            if _within(path, root) or below.startswith("aew-"):  # it, or AEW's own directories in it
+                exposed.append((what if not below else "another run's AEW directory in the shared temporary "
+                                "directory", path if not below else os.path.join(path, below)))
+        elif _within(path, root) or _within(root, path):
+            exposed.append((what, path))
+    if _within(workspaces, root):
+        exposed.append(("every other workspace (the workspaces root)", workspaces))
+    if exposed:
+        listed = "; ".join(f"{what} ({path})" for what, path in exposed[:4])
+        raise ContainmentUnavailable(
+            f"policy containment.writable root {raw!r} ({root}) would let every contained run write {listed}. "
+            "Containment protects these, so this root is refused and runs cannot launch. List a narrower directory "
+            "that holds none of them instead, such as a build output or cache directory (for example "
+            "<project>/build, or ~/.cache/<tool>), in containment.writable in the execution policy.",
+            root=raw, resolved=root, exposes=[{"what": w, "path": p} for w, p in exposed])
 
 
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
@@ -209,14 +267,18 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         env.update(git_env)
     else:
         env.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(cache / "pycache")})
+    readonly, protected = _git_metadata(ws)
+    hide_dirs, hide_files = _masks(home if home is not None else os.path.expanduser("~"),
+                                   list(cfg.get("hide") or []))
+    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files))
     operator = []
     for raw in cfg.get("writable") or []:
         path = _real(os.path.expanduser(raw))
         if not os.path.isdir(path):
             raise ContainmentUnavailable(f"policy containment.writable path {raw!r} is not an existing directory")
+        _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
         operator.append(path)
     writable += [p for p in operator if p not in writable]
-    readonly, protected = _git_metadata(ws)
     if access == "read":
         readonly.insert(0, str(ws))       # the workspace itself, re-bound read-only over any broad writable root
         protected.append(str(ws))
@@ -225,8 +287,6 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
         if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
             readonly.append(_real(prefix))
-    hide_dirs, hide_files = _masks(home if home is not None else os.path.expanduser("~"),
-                                   list(cfg.get("hide") or []))
     visible = [_real(project)] if project is not None and os.path.isdir(project) else []
     hide_runs = [_real(runs)] if runs is not None and os.path.isdir(runs) else []
     return Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),

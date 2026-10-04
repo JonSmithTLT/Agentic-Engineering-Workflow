@@ -37,11 +37,15 @@ def supported() -> bool:
 
 
 def mode(policy: dict[str, Any] | None) -> str:
-    """The policy's containment mode. ``required`` unless the operator chose ``allow_weaker``; where containment
-    is unsupported (Windows) nothing can be required, and runs are labelled for what they are."""
-    if not supported():
+    """The policy's containment mode. On Linux, ``required`` unless the operator chose ``allow_weaker``. Windows has
+    no containment and is labelled for what it is (ADR-0009: real-repository work stays off it by process). Any
+    other platform honours an explicit ``required`` by refusing, and otherwise runs labelled weaker (M4-B review)."""
+    explicit = ((policy or {}).get("containment") or {}).get("mode")
+    if supported():
+        return str(explicit or REQUIRED)
+    if sys.platform == "win32" or explicit != REQUIRED:
         return ALLOW_WEAKER
-    return str(((policy or {}).get("containment") or {}).get("mode") or REQUIRED)
+    return REQUIRED
 
 
 def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str, Any] | None = None,
@@ -79,6 +83,11 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
 
     wanted = mode(policy)
     if not supported():
+        if wanted == REQUIRED:
+            raise ContainmentUnavailable(
+                f"execution policy requires containment (containment.mode: required), and this platform "
+                f"({sys.platform}) has no filesystem containment (Linux with bubblewrap only): run on Linux, or set "
+                "containment.mode: allow_weaker to run labelled workdir_separation_only")
         return None, label(contained=False)
     settings = (policy or {}).get("containment") or {}
     try:
@@ -104,9 +113,12 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
 
     from aew.harness.containment import probe
 
-    if not supported():
-        return "WARN", note_unsupported
     wanted = mode(policy)
+    if not supported():
+        if wanted == REQUIRED:
+            return "FAIL", (f"containment.mode: required, and this platform ({sys.platform}) has no filesystem "
+                            "containment: harness launches are refused")
+        return "WARN", note_unsupported
     with tempfile.TemporaryDirectory(prefix="aew-doctor-") as tmp:
         root = Path(tmp)
         (root / "ws").mkdir()

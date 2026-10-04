@@ -4,7 +4,9 @@ A probe process runs inside the layout and tries what containment must stop and 
 
 * append to an existing sentinel outside every writable root, and create a new sibling next to the workspace;
 * open each protected path for writing (checked with ``access(W_OK)``, which a read-only mount refuses without
-  changing anything: the protected paths are the repository's real git metadata);
+  changing anything): the repository's real git metadata, the project's ``.aew``, and two markers the host places
+  for the probe only, one in the host's temporary directory (where every run's bridge socket lives) and one in a
+  sibling run's directory (M4-B review: whatever widened the layout, reaching these fails the test);
 * create a file in every writable root.
 
 The host then checks the outcome itself: the sentinel is byte-identical, the sibling does not exist, each writable
@@ -66,8 +68,11 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path) -> dict[
     sibling = sibling_dir / f"{name}.sibling"
     content = secrets.token_hex(16).encode()
     sentinel.write_bytes(content)
+    markers = _markers(layout, name)
+    extra = [str(m) for m in markers] + [str(Path(v) / ".aew") for v in layout.visible
+                                         if (Path(v) / ".aew").is_dir()]
     spec = {"sentinel": str(sentinel), "sibling": str(sibling), "name": name,
-            "writable": list(layout.writable), "protected": list(layout.protected)}
+            "writable": list(layout.writable), "protected": [*layout.protected, *extra]}
     result: dict[str, Any] = {"ok": False, "reason": None}
     try:
         try:
@@ -100,11 +105,29 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path) -> dict[
         result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"))
         return result
     finally:
+        for m in markers:
+            m.unlink(missing_ok=True)
+            if m.parent.name.endswith(".probe-run"):
+                m.parent.rmdir()
         sentinel.unlink(missing_ok=True)
         if sibling.exists():
             sibling.unlink()
         for root in layout.writable:
             (Path(root) / name).unlink(missing_ok=True)
+
+
+def _markers(layout: Layout, name: str) -> list[Path]:
+    """Files the probe must not be able to write: one in the host's temporary directory, one in a sibling run."""
+    import tempfile
+
+    out = [Path(tempfile.gettempdir()) / f"{name}.tmp-marker"]
+    for runs in layout.hide_runs:
+        sibling = Path(runs) / f"{name}.probe-run"
+        sibling.mkdir()
+        out.append(sibling / "marker")
+    for m in out:
+        m.write_bytes(b"")
+    return out
 
 
 def mechanism(layout: Layout) -> str:

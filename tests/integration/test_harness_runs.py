@@ -290,3 +290,45 @@ def test_resume_shows_runs_only_when_there_are_some_and_a_lost_harness_is_not_an
     assert lab.ok("work", "show", wid)["control"]["state"] == "ASSIGNED"  # not INTERRUPTED
     text = lab.aew("resume").stdout
     assert "## Harness runs" in text and f"{run} (INV-0001, implementer, {wid}): crashed" in text
+
+
+@pytest.mark.parametrize("n", [2, 4])
+def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, tmp_path, n):
+    """M4-C on the scripted drivers: with `mutating_concurrency: n`, n implementer runs are live at the same time,
+    each in its own workspace and through its own bridge. Every run reaches a barrier before any is released, so
+    they truly overlap; each one's evidence is its own, and the oracle holds."""
+    from aew.util import dump_yaml, load_yaml
+
+    gates = lab.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": n}),
+                     encoding="utf-8", newline="\n")
+    sync = tmp_path / "sync"
+    tickets, runs = [], []
+    for i in range(n):
+        wid = create_planned_ticket(lab.project, tmp_path, title=f"Add op{i}")
+        change = {f"calc/op{i}.py": f"def op{i}():\n    return {i}\n"}
+        lab.script(f"INV-{i + 1:04d}", [
+            {"do": "write", "files": change},
+            touch_step(sync / f"ready{i}"),
+            {"do": "wait_file", "path": str(sync / "go")},
+            {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
+            {"do": "aew", "args": ["whoami"]}])
+        out = lab.lead("work", "assign", wid, "--launch")
+        assert out["invocation"] == f"INV-{i + 1:04d}"
+        tickets.append(wid)
+        runs.append(out["launch"]["run"])
+    lab.until(lambda: all((sync / f"ready{i}").exists() for i in range(n)), what="every run is under way at once")
+    assert_control_invariants(lab.project)
+    (sync / "go").write_text("", encoding="utf-8")
+    workspaces = set()
+    for i, (wid, run) in enumerate(zip(tickets, runs, strict=True)):
+        done = lab.wait(run)
+        assert done["status"] == "ended_with_evidence", lab.record(run)
+        who = lab.step(run, 4)["stdout_json"]
+        assert who["work_unit"] == wid and who["run"] == run
+        workspace = Path(lab.ok("work", "show", wid)["control"]["workspace"]["path"])
+        workspaces.add(workspace)
+        assert (workspace / f"calc/op{i}.py").exists()  # its own change, in its own worktree
+        assert not any((workspace / f"calc/op{j}.py").exists() for j in range(n) if j != i)
+    assert len(workspaces) == n
+    assert_control_invariants(lab.project)

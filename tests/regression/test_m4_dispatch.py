@@ -211,16 +211,28 @@ def test_a_new_implementer_rechecks_class0_eligibility(tmp_path):
     assert "CLASS0_ACCEPTANCE_NOT_DETERMINISTIC" in codes(err)
 
 
-# ---------------------------------------------------------------- the cap reads policy, clamped until M4-C
+# ---------------------------------------------------------------- the cap is the policy's (M4-C)
 
 
-def test_the_mutating_cap_reads_policy_but_stays_one_until_m4c(tmp_path):
+def test_the_mutating_cap_is_the_policys(tmp_path):
+    """M4-A clamped the cap to 1; since M4-C it is `mutating_concurrency` itself (the default stays 1)."""
     p = sample_project(tmp_path, gates=None)
-    set_policy(p, "gates", lambda g: g.update(mutating_concurrency=3))
     t1, t2 = ticket(p, tmp_path), ticket(p, tmp_path)
     p.lead("work", "assign", t1)
     err = refused(p, "work", "assign", t2)
     assert err["code"] == "CONCURRENCY_LIMIT" and "mutating concurrency is 1" in err["message"]
+    assert doctor_cap(p) == ("PASS", "1")
+    set_policy(p, "gates", lambda g: g.update(mutating_concurrency=2))
+    p.lead("work", "assign", t2)
+    err = refused(p, "work", "assign", ticket(p, tmp_path))
+    assert "mutating concurrency is 2" in err["message"] and err["details"]["holding"] == sorted([t1, t2])
+    # doctor reports the cap admission enforces (review of #47: it used to say 1 whatever the policy)
+    assert doctor_cap(p) == ("PASS", "2")
+
+
+def doctor_cap(p) -> tuple[str, str]:
+    [check] = [c for c in p.ok("doctor", "--json")["checks"] if c["check"] == "mutating-concurrency"]
+    return check["status"], check["detail"].split(":")[0]
 
 
 # ---------------------------------------------------------------- no invocation without a decision

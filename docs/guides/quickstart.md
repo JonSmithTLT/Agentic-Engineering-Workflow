@@ -20,10 +20,14 @@ Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py31
 cd <repo>                       # the main worktree, on the authoritative branch
 aew init                        # discovers authority *candidates*; confers no authority
 $EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
-aew lead acquire --expect-rev 0 --session-label lead-1   # prints the Lead credential ONCE
+aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
 ```
 
 Hand the credential to the Lead session (for example in its environment as `AEW_LEAD_TOKEN`). It is never written to disk.
+A command that issues a credential writes it only to your terminal, never to standard output, and the JSON result says
+`"(written to your terminal)"` instead. With no terminal (a pipe, a harness tool call) it is refused before anything is
+issued. A script that keeps the credential safe can ask for it on standard output with `aew --print-credential ...`;
+a Lead session refuses that flag.
 
 ## Lead: one Ticket, end to end
 
@@ -44,7 +48,7 @@ text binds nothing, which is why the declaration is required.
 
 ```bash
 aew work staff   T-0001 --execute python_engineer --review code_reviewer --expect-rev N   # optional
-aew work assign  T-0001 --expect-rev N    # workspace + implementer credential + launch contract/pack
+aew work assign  T-0001 --expect-rev N    # workspace + launch contract/pack; the implementer credential on your terminal
 aew work transition T-0001 --to RUNNING --expect-rev N
 ```
 

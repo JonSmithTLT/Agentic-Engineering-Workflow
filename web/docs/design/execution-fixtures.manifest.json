@@ -1,0 +1,212 @@
+{
+  "contract": "execution-preview",
+  "version": "0.1.0",
+  "sha256": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+  "cases": {
+    "story": {
+      "sha256": "94c10a200c73f0198b303b195ad6d77e991c3bfb6146743f6d742d5a391f434a"
+    },
+    "large": {
+      "sha256": "04e2a7a173a3f34a851beaad7f1cf3e85b27f1a683b7b46950487b60bc17927f"
+    },
+    "fanout": {
+      "sha256": "5348c55ed7c23464f1e47abf30b544aebe887529095535f143da85fdaee5da5c"
+    },
+    "partial": {
+      "sha256": "dfcc169f4aafbf277c4f934997e8bb12167ec9b773ed2f0843c3de20efb879b0"
+    },
+    "cycles": {
+      "sha256": "5a195c4d019ba89c98325d09727202a428009427f90f39fbbd7bdaf1cd296794"
+    },
+    "unordered": {
+      "sha256": "126969eee92ff6d938ce1f357931c2879676e8441d6d91e42a120c5b32207458"
+    },
+    "unknown": {
+      "sha256": "2737bbc5efa4cb73a28bc34100e310597e858f562de52e3ca09002bba4c628d4"
+    },
+    "missing": {
+      "sha256": "3a2b680d8b8074e31589f0768f0af849e1f88925987f7af2377d71032b5a3285"
+    },
+    "stale": {
+      "sha256": "4bbdbdf7334c36adf32f9ea41aed8ebcae68955c36c695bf997bd07cd7abd74d"
+    },
+    "mismatch": {
+      "sha256": "339eef354fea2f78368b9ee9bdb06bd473534db0877ff7b6ca7dafa8eda6ac8f"
+    },
+    "denied": {
+      "sha256": "94c10a200c73f0198b303b195ad6d77e991c3bfb6146743f6d742d5a391f434a"
+    },
+    "historical-unavailable": {
+      "sha256": "94c10a200c73f0198b303b195ad6d77e991c3bfb6146743f6d742d5a391f434a"
+    },
+    "malformed": {
+      "sha256": "49d8c0e274df02b162b7cdc7cbfc1f937e5949ed93e59b31cbb4c5e2556447a5"
+    },
+    "refresh-error": {
+      "sha256": "94c10a200c73f0198b303b195ad6d77e991c3bfb6146743f6d742d5a391f434a"
+    },
+    "hostile": {
+      "sha256": "c066841eb6e80b0f272a1bff720c3e92061604ce7ac1ace307d38b50eb19a526"
+    },
+    "empty": {
+      "sha256": "9b6ea39d428f8b5ba2cab45b3b4f19e89584725947049104cd98b17152c79074"
+    }
+  },
+  "mappings": [
+    {
+      "id": "LOC-Failure",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-03",
+        "item_id": null,
+        "project_id": "aew-demo",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1"
+      },
+      "target": {
+        "contract": "evidence-preview",
+        "case": "story",
+        "reference_id": "REF-EXEC-Failure",
+        "source_id": "ES-Removal",
+        "snapshot_id": "EV-SNAP-Removal",
+        "invocation_id": "CLANGD-INV-Removal",
+        "run_id": "CLANGD-R-A2-2",
+        "record_id": "CLANGD-E871",
+        "visibility_scope": "fictional-authorized"
+      }
+    },
+    {
+      "id": "LOC-Discovery",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-04",
+        "item_id": null,
+        "project_id": "aew-demo",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1"
+      },
+      "target": {
+        "contract": "evidence-preview",
+        "case": "story",
+        "reference_id": "REF-EXEC-Discovery",
+        "source_id": "ES-Discovery",
+        "snapshot_id": "EV-SNAP-Discovery",
+        "invocation_id": "CLANGD-INV-Discovery",
+        "run_id": "CLANGD-R-A2-3",
+        "record_id": "CLANGD-E875",
+        "visibility_scope": "fictional-authorized"
+      }
+    },
+    {
+      "id": "LOC-RetryPacket",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-05",
+        "item_id": null,
+        "project_id": "aew-demo",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1"
+      },
+      "target": {
+        "contract": "investigation-preview",
+        "case": "story",
+        "reference_id": null,
+        "source_id": "SRC-Retry",
+        "snapshot_id": "SNAP-Retry",
+        "invocation_id": "CLANGD-INV-Retry",
+        "run_id": "CLANGD-R-A2-4",
+        "record_id": "PKT-Retry",
+        "visibility_scope": "fictional-authorized"
+      }
+    },
+    {
+      "id": "LOC-RetryPacket",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-06",
+        "item_id": null,
+        "project_id": "aew-demo",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1"
+      },
+      "target": {
+        "contract": "investigation-preview",
+        "case": "story",
+        "reference_id": null,
+        "source_id": "SRC-Retry",
+        "snapshot_id": "SNAP-Retry",
+        "invocation_id": "CLANGD-INV-Retry",
+        "run_id": "CLANGD-R-A2-4",
+        "record_id": "PKT-Retry",
+        "visibility_scope": "fictional-authorized"
+      }
+    },
+    {
+      "id": "LOC-RetryPacket",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-07",
+        "item_id": null,
+        "project_id": "aew-demo",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1"
+      },
+      "target": {
+        "contract": "investigation-preview",
+        "case": "story",
+        "reference_id": null,
+        "source_id": "SRC-Retry",
+        "snapshot_id": "SNAP-Retry",
+        "invocation_id": "CLANGD-INV-Retry",
+        "run_id": "CLANGD-R-A2-4",
+        "record_id": "PKT-Retry",
+        "visibility_scope": "fictional-authorized"
+      }
+    }
+  ],
+  "evidence_associations": [
+    {
+      "reference_id": "REF-EXEC-Failure",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-03",
+        "item_id": null,
+        "kind": "evidence_reference",
+        "role": "recorded_event",
+        "evidence_id": "CLANGD-E871",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1",
+        "visibility_scope": "aew-demo"
+      },
+      "source_ids": [
+        "ES-Removal"
+      ],
+      "complete": true
+    },
+    {
+      "reference_id": "REF-EXEC-Discovery",
+      "origin": {
+        "contract": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+        "case": "story",
+        "record_id": "EV-04",
+        "item_id": null,
+        "kind": "evidence_reference",
+        "role": "recorded_event",
+        "evidence_id": "CLANGD-E875",
+        "source_id": "TRACE-Clangd",
+        "snapshot_id": "TRACE-SNAP-1",
+        "visibility_scope": "aew-demo"
+      },
+      "source_ids": [
+        "ES-Discovery"
+      ],
+      "complete": true
+    }
+  ]
+}

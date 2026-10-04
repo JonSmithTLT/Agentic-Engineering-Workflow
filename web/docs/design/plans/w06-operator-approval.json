@@ -1,0 +1,8 @@
+{
+  "date": "2026-10-04",
+  "revision": "1.1",
+  "scope": "W06-01–03 demo-only; frontend implementation approval, not backend adoption or independent acceptance",
+  "approval": "Explicit user instruction: PLEASE IMPLEMENT THIS PLAN: W06 — Recorded execution, fanout and control receipts, revision 1.1",
+  "plan": "web/docs/design/plans/w06-execution-investigation.md",
+  "sha256": "707246d7ca3e4a59d5b836b0096b5a47aad1de0ce6594eba5ce1048e411a75b8"
+}

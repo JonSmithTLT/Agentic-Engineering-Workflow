@@ -9,6 +9,7 @@ generation-bound token checked inside each locked transition.
 from __future__ import annotations
 
 import errno
+import os
 import sys
 import time
 from pathlib import Path
@@ -31,14 +32,37 @@ class FileLock:
             while True:
                 try:
                     self._try_lock(fh)
-                    break
                 except OSError:
-                    if time.monotonic() > deadline:
-                        fh.close()
-                        raise LockTimeout(f"could not lock {self.path} within {self.timeout}s") from None
-                    time.sleep(0.01)
+                    pass
+                else:
+                    if self._is_path(fh):
+                        break
+                    # the file was removed or replaced after we opened it: a lock on the old file excludes no one
+                    self._unlock(fh)
+                    fh.close()
+                    fh = self._open()
+                    continue
+                if time.monotonic() > deadline:
+                    fh.close()
+                    raise LockTimeout(f"could not lock {self.path} within {self.timeout}s") from None
+                time.sleep(0.01)
         self._fh = fh
         return self
+
+    def intact(self) -> bool:
+        """Whether the held lock is still on the file at the path. A holder checks this before it writes: if the
+        lock file was removed while held (``local/`` deleted under a running process), another process can lock a
+        new file at the same path, and this lock no longer excludes it."""
+        return self._fh is not None and self._is_path(self._fh)
+
+    def _is_path(self, fh) -> bool:  # type: ignore[no-untyped-def]
+        if sys.platform == "win32":  # pragma: windows-only (an open file cannot be removed or replaced)
+            return True
+        try:  # pragma: posix-only
+            held, now = os.fstat(fh.fileno()), os.stat(self.path)
+        except OSError:
+            return False
+        return (held.st_ino, held.st_dev) == (now.st_ino, now.st_dev)
 
     def _open(self):  # type: ignore[no-untyped-def]
         """The lock file, for writing where possible. On a read-only mount (a contained run's view of the project,

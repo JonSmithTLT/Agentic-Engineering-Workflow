@@ -492,6 +492,36 @@ try {
     ),
     JSON.stringify(requests),
   );
+  await check('Work density: child results, pinned pane and disclosed provenance', async () => {
+    for (const viewport of [{width:1440,height:1000},{width:390,height:844}]) {
+      await page.setViewportSize(viewport);
+      await page.goto(base + '/work?fixture=F1&selected=S-0001');
+      await page.getByRole('link', { name: 'Inspect children', exact: true }).waitFor();
+      const detail = page.getByRole('region', { name: 'Selected record detail', exact: true });
+      assert.equal(await detail.getByRole('button', { name: 'Copy read-only CLI for S-0001' }).count(), 1);
+      assert.equal(await page.getByRole('button', { name: 'Copy dashboard link', exact: true }).count(), 1);
+      assert(!(await detail.getByRole('region', { name: 'Source provenance' }).isVisible()));
+      await detail.getByText('Source and browser metadata', { exact:true }).click();
+      assert(await detail.getByRole('region', { name: 'Source provenance' }).isVisible());
+      await page.getByRole('link', { name: 'Inspect children', exact: true }).click();
+      const results = page.getByRole('region', { name:'Investigation results', exact:true });
+      await results.getByText(/outside this loaded results page or filter/).waitFor();
+      assert(await results.isVisible());
+      assert.equal(new URL(page.url()).searchParams.get('selected'), 'S-0001');
+      assert.equal(await results.getByRole('heading', {name:'Work',exact:true}).evaluate(el => el === document.activeElement), true);
+      await page.getByRole('button', { name:'Copy dashboard link',exact:true }).click();
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      assert.equal(new URL(copied).searchParams.get('work_pane'), 'results');
+      await page.goto(copied);
+      await page.getByRole('region', {name:'Investigation results',exact:true}).getByRole('link', {name:'Validate projection consistency',exact:true}).waitFor();
+      assert(await page.getByRole('region', {name:'Investigation results',exact:true}).isVisible());
+      await page.getByRole('link', {name:'Validate projection consistency',exact:true}).click();
+      await detail.getByRole('heading', {name:'Validate projection consistency',exact:true}).waitFor();
+      assert.equal(new URL(page.url()).searchParams.get('work_pane'), 'detail');
+      await shot('work-density-' + viewport.width);
+    }
+    assert(!requests.some(r => new URL(r.url).pathname.startsWith('/api/') && new URL(r.url).searchParams.has('work_pane')));
+  });
   fs.writeFileSync(
     out + '/result.json',
     JSON.stringify(

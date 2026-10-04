@@ -160,6 +160,11 @@ function WorkResultsPage() {
           )
         ) : (
           <>
+            {params.get('selected') && !query.data.value.data.items.some(item => item.id === params.get('selected')) && (
+              <p className="scope-note" role="status">
+                Selected record <code>{params.get('selected')}</code> is outside this loaded results page or filter. Detail remains selected; this does not mean the record is unavailable.
+              </p>
+            )}
             <SinceViewed
               key={
                 query.data.value.project_id +
@@ -255,6 +260,7 @@ export function WorkDetailPage({
       schema={responseSchemas.WorkResponse}
       recordId={recordId}
       displayed={displayed}
+      presentation="work-summary"
     >
       {(work) => (
         <>
@@ -313,6 +319,7 @@ export function WorkDetailPage({
                         for (const key of ['cursor', 'state', 'kind', 'view'])
                           params.delete(key);
                         params.set('parent', work.id);
+                        params.set('work_pane', 'results');
                         return '/work?' + params.toString();
                       })()}
                     >

@@ -1,5 +1,6 @@
 import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
 import { ComparisonEntry } from '../components/ComparisonEntry';
+import { EvidenceEntry } from '../components/EvidenceEntry';
 import { useSearchParams } from 'react-router-dom';
 import {
   CollectionView,
@@ -205,7 +206,7 @@ export function EvidencePage() {
       filters={['work']}
       valid={!work || identity.safeParse(work).success}
       filterUI={
-        <div className="filter-bar">
+        <div className="filter-bar"><EvidenceEntry />
           <label>
             Work ID
             <input
@@ -285,6 +286,7 @@ export function EvidenceDetailPage() {
           <div className="page-heading">
             <div>
               <h1>{e.id}</h1>
+              <EvidenceEntry id={e.id} />
               <p>
                 <SemanticValue value={e.kind} known={evidenceKinds} /> ·{' '}
                 <EntityAnchor entity={e.subject} />

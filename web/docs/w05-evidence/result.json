@@ -1,0 +1,119 @@
+{
+  "milestone": "W05-01 implementation; W05-02 capability assessment",
+  "date": "2026-10-03",
+  "source_commit": "405c83644abaf8dd3820c5659f304308af1f04ac",
+  "baseline_commit": "211e29c168171201fcce124795b11a22a13b64d7",
+  "preview": {
+    "id": "evidence-preview",
+    "version": "0.1.0",
+    "disposition": "PROVISIONAL",
+    "sha256": "2957999ca557a07abde3148afbc2168cb7a44961b96ba4514c5a8ea4daf40463"
+  },
+  "approved_plan_sha256": "9bbd78ed59b921fe916a9c0262afa97d9dcd4b0a015633181a0ebbc260aa8091",
+  "runtime": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "playwright": "1.59.1",
+    "chromium": "147 / revision 1217",
+    "node_binary_sha256": "81925c0995b5c1427b5d538e6a90ca2fdc4daffb786b09af749beaf7369d4e90",
+    "chromium_binary_sha256": "696170a79640ec5b50c7518140ace06c69a49cfb295bf527d4a85e26a12b89a7",
+    "chromium_override": "W05 suite exercised CHROMIUM_PATH through an executable wrapper whose path contains spaces."
+  },
+  "offline_gate": {
+    "result": "PASS",
+    "network": "none",
+    "install": "npm ci --offline --ignore-scripts from empty node_modules",
+    "unit_component_tests": 149,
+    "test_files": 17,
+    "checks": [
+      "accepted contract digest",
+      "generated accepted types unchanged",
+      "scenario artifacts",
+      "Journal artifacts",
+      "Investigation artifacts",
+      "Evidence artifacts",
+      "typecheck",
+      "lint",
+      "unit/component tests",
+      "production build/exclusion",
+      "demo build"
+    ]
+  },
+  "browser_groups": {
+    "w01.json": 16,
+    "w02.json": 10,
+    "w03.json": 12,
+    "http-demo.json": 4,
+    "w04.json": 22,
+    "w05.json": 19
+  },
+  "commands": [
+    {
+      "cwd": "repository root",
+      "command": "SPT_FRONTEND_IMAGE=<runtime.builder> bash web/scripts/offline-gate.sh",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/ci-browser.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/browser-w02.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/browser-w03.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/browser-http-demo.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/browser-w04.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "CHROMIUM_PATH=<pinned executable wrapper> node scripts/browser-w05.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "web",
+      "command": "node scripts/measure-w05.mjs",
+      "result": "PASS"
+    },
+    {
+      "cwd": "repository root",
+      "command": "python3 <installed frontend-design-premium skill>/scripts/audit_project.py web --mode strict --output web/output/w05-premium-audit.json",
+      "result": "PASS; zero findings"
+    }
+  ],
+  "measurement_notes": [
+    "Frozen W04 chooser and W05 artifact association workflow have different datasets; measurements establish bounds, not a speed improvement or timing SLA.",
+    "Each list remains 50 rows after paging. W05 begins at 459 DOM nodes and the selected/paged excerpt workflow has 487, rather than accumulating page bodies.",
+    "Active excerpt query cleanup removes its query and transport validator when the page changes or reader unmounts. This is code plus focused validator tests; no browser heap-size claim is made.",
+    "Regression runs preceded the final W05-only scoped table CSS correction. The complete W05 suite, offline gate and screenshots were rerun after it."
+  ],
+  "findings": {
+    "implementer_recovery_issue": "Resolved: refusal propagation triggers only on a newly reported query error, allowing manual recovery after authorization is restored. Browser refusal/retry group passes.",
+    "implementer_layout_issue": "Resolved: artifact columns wrap without clipping on desktop; phone rows keep their labeled presentation.",
+    "independent_findings": "PENDING independent review"
+  },
+  "capability_gaps": [
+    "Accepted API 0.1.2 has no lifecycle transitions; no fabricated Timeline.",
+    "Evidence CLI supports ingestion, not read-only show; no speculative command."
+  ],
+  "backend_questions": "web/docs/design/w05-backend-question-ledger.md",
+  "review_packet": "web/docs/w05-review-packet.md",
+  "frontend_fixture_acceptance": "PENDING independent desktop/phone product-UI investigation",
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "engine_work_records_created": false
+}

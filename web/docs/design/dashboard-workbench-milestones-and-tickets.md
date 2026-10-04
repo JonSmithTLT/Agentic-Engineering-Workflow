@@ -41,7 +41,7 @@ Use W identifiers to distinguish these dashboard milestones from AEW Engine mile
 | W02 — Shared investigation workspace | Inspect a record, its supplied reasons and links without losing place | W01 | Implemented; independent review pending |
 | W03 — Knowledge Journal flagship | Follow one discovery/failure/lesson story with exact provenance | W01, W02; reviewed journal preview schema | Frontend task review ACCEPT at 7433ddd; merge and live integration separate |
 | W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | W04-01–03 frontend fixture review ACCEPT at 2808149; CI and operator merge separate |
-| W05 — Evidence and benchmark investigation | Read pinned artifacts and inspect benchmark trials | W01, W02; W04-01 for paired comparisons | Not proposed |
+| W05 — Evidence and benchmark investigation | Read pinned artifacts; benchmark exploration deferred | W01, W02; W04-01 for paired comparisons | W05-01 implementation; independent fixture review pending |
 | W06 — Execution investigation | Follow recorded events, fanout and execution receipts | W01, W02, W05-01; W04 context components where used | Not proposed |
 | W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | Not proposed |
 | W08 — Operational obligations | Inspect supplied judgment, consequences and project aggregates | W01, W02; accepted F15/F17 or reviewed fixture proposals | Not proposed |
@@ -357,8 +357,8 @@ Approval records are factual: leave them pending until the operator actually app
 | W01 | [Plan 1.1](plans/w01-foundation.md) | Operator approved | Accepted at ad9ed21 | ACCEPT — Claude, 2026-10-03 | Not claimed |
 | W02 | [Plan 1.1](plans/w02-workspace.md) | Operator approved, including both tightenings | Implemented and locally validated at 0e64b31; acceptance pending | Pending frozen main-line review | Not claimed |
 | W03 | [Plan 1.1](plans/w03-journal.md) | Operator approved 2026-10-03 | Frontend / fixture task review accepted at 7433ddd; PR merge separate | ACCEPT — main-line lead reviewer, 2026-10-03; findings1–5 resolved | Blocked on accepted journal projection; not claimed |
-| W04 | [Plan 1.0](plans/w04-comparison-context.md) | Operator approved 2026-10-03 | W04-01–03 in implementation | Pending independent task review | Preview adoption and live integration pending |
-| W05 | Not written | Pending | Not started | Pending | Artifact/CLI/timeline/benchmark gaps pending |
+| W04 | [Plan 1.0](plans/w04-comparison-context.md) | Operator approved 2026-10-03 | W04-01–03 merged at 211e29c | ACCEPT at 2808149; all findings resolved | Preview adoption and live integration pending |
+| W05 | [Plan 1.1](plans/w05-evidence-inspection.md) | Operator approved 2026-10-03 | W05-01 implemented; W05-02 capability gaps recorded | ACCEPT at e875e81; all findings fixed; clean committed-source evidence regenerated | Artifact adoption/live pending; Timeline/CLI gaps preserved; benchmarks deferred |
 | W06 | Not written | Pending | Not started | Pending | Event/fanout/guarantee projections pending |
 | W07 | Not written | Pending | Not started | Pending | Recall projections/policies pending |
 | W08 | Not written | Pending | Not started | Pending | F15/F17/coverage/aggregate projections pending |

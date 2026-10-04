@@ -1,0 +1,4 @@
+import type { Artifact, EvidenceSource, Excerpt } from './schema';
+/** Escaping affects display only. Byte ranges/digests always use original text. */
+export function visibleSource(text:string){return text.replace(/[\p{Cf}\p{Cc}]/gu,ch=>ch==='\n'||ch==='\t'?ch:`⟦U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4,'0')}⟧`);}
+export function citation(s:EvidenceSource,a:Artifact,x:Excerpt,url:string,reference:string|null){return [`Evidence: ${s.evidence_id}`,`Reference association: ${reference??'Not supplied'}`,`Source: ${s.id}`,`Snapshot: ${s.snapshot_id}`,`Artifact: ${a.id}`,`Artifact revision: ${a.revision}`,`Full artifact digest (supplied; not verified): ${a.full_digest??'Not supplied'}`,`Bytes: [${x.byte_start}, ${x.byte_end})`,`Lines (supplied): ${x.line_start===null?'Not supplied':`${x.line_start}–${x.line_end}`}`,`Excerpt SHA-256 (verified): ${x.sha256}`,`Pinned link: ${url}`].join('\n');}

@@ -5,8 +5,10 @@
 
 For each level N, the engine's own ``worktrees.allocate`` creates N Ticket workspaces from the repository's HEAD
 (one after another, as N assignments would), then ``worktrees.remove`` removes them. The measured repository is a
-fresh local clone of ``--repo`` under ``--work``, so the source is never touched. Reported per level: the median
-time to set up one workspace and to clean one up, the total for all N, and the files in one worktree.
+fresh local clone of ``--repo`` in a new directory this run creates under ``--work``, so the source is never
+touched: the run refuses a ``--work`` that overlaps the source, and removes only the directory it created. Reported
+per level: the median time to set up one workspace and to clean one up, the total for all N, and the files in one
+worktree.
 
 This records cost on the sample and AEW repositories. It is not the repository-scale benchmark (isolation §13),
 which needs repositories M4 does not run on.
@@ -20,6 +22,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -36,10 +39,25 @@ def git(*args: str, cwd: Path) -> str:
                           creationflags=NO_WINDOW).stdout.strip()
 
 
+def overlaps(a: Path, b: Path) -> bool:
+    return a == b or a.is_relative_to(b) or b.is_relative_to(a)
+
+
 def measure(repo: Path, work: Path, levels: list[int], reps: int) -> dict:
+    """``repo`` and ``work`` are resolved. Everything this run writes is under one directory it creates in ``work``,
+    and only that directory is removed afterwards (the review of #47: an existing ``work/repo`` was deleted, which
+    could be the source)."""
+    if overlaps(repo, work):
+        raise SystemExit(f"--work {work} overlaps --repo {repo}: choose a work directory outside the repository")
+    run = Path(tempfile.mkdtemp(prefix="aew-wsbench-", dir=work))
+    try:
+        return _measure(repo, run, levels, reps)
+    finally:
+        shutil.rmtree(run, ignore_errors=True)
+
+
+def _measure(repo: Path, work: Path, levels: list[int], reps: int) -> dict:
     clone = work / "repo"
-    if clone.exists():
-        shutil.rmtree(clone)
     git("clone", "-q", "--no-hardlinks", str(repo), str(clone), cwd=work)
     head = git("rev-parse", "HEAD", cwd=clone)
     files = len(git("ls-files", cwd=clone).splitlines())
@@ -80,8 +98,11 @@ def main() -> int:
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--json", type=Path)
     a = ap.parse_args()
-    a.work.mkdir(parents=True, exist_ok=True)
-    result = measure(a.repo.resolve(), a.work.resolve(), [int(x) for x in a.levels.split(",")], a.reps)
+    repo, work = a.repo.resolve(), a.work.resolve()
+    if overlaps(repo, work):  # before anything is created
+        raise SystemExit(f"--work {work} overlaps --repo {repo}: choose a work directory outside the repository")
+    work.mkdir(parents=True, exist_ok=True)
+    result = measure(repo, work, [int(x) for x in a.levels.split(",")], a.reps)
     text = json.dumps(result, indent=2)
     print(text)
     if a.json:

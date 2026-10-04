@@ -221,10 +221,18 @@ def test_the_mutating_cap_is_the_policys(tmp_path):
     p.lead("work", "assign", t1)
     err = refused(p, "work", "assign", t2)
     assert err["code"] == "CONCURRENCY_LIMIT" and "mutating concurrency is 1" in err["message"]
+    assert doctor_cap(p) == ("PASS", "1")
     set_policy(p, "gates", lambda g: g.update(mutating_concurrency=2))
     p.lead("work", "assign", t2)
     err = refused(p, "work", "assign", ticket(p, tmp_path))
     assert "mutating concurrency is 2" in err["message"] and err["details"]["holding"] == sorted([t1, t2])
+    # doctor reports the cap admission enforces (review of #47: it used to say 1 whatever the policy)
+    assert doctor_cap(p) == ("PASS", "2")
+
+
+def doctor_cap(p) -> tuple[str, str]:
+    [check] = [c for c in p.ok("doctor", "--json")["checks"] if c["check"] == "mutating-concurrency"]
+    return check["status"], check["detail"].split(":")[0]
 
 
 # ---------------------------------------------------------------- no invocation without a decision

@@ -200,6 +200,14 @@ class Invocations:
 
 
 
+def mutating_cap(gates: dict[str, Any]) -> int:
+    """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``, default 1). Each mutating Ticket
+    works in its own worktree and integrates through the serialized, CAS-published path, so more than one may hold a
+    live workspace (M4-C, m4-ambiguity-report.md §2.5); concurrency is opt-in per project. Admission and ``doctor``
+    both read it here, so what ``doctor`` reports is what admission enforces."""
+    return max(1, int(gates.get("mutating_concurrency") or 1))
+
+
 class Assignment:
     """Assigning a mutating Ticket: its mutation workspace and implementer (WC §8, §8.1). Its legality is the
     ``work.assign`` dispatch entrypoint's guards (M4-A), evaluated in the order the checks always ran."""
@@ -223,11 +231,7 @@ class Assignment:
         )
 
     def mutating_cap(self) -> int:
-        """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``, default 1). Each mutating
-        Ticket works in its own worktree and integrates through the serialized, CAS-published path, so more than
-        one may hold a live workspace (M4-C, m4-ambiguity-report.md §2.5); concurrency is opt-in per project."""
-        configured = self.k.policy("gates").get("mutating_concurrency") or 1
-        return max(1, int(configured))
+        return mutating_cap(self.k.policy("gates"))
 
     # ---- the work.assign guards (the shared ones serve the non-mutating entrypoints too)
 

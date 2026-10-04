@@ -124,7 +124,7 @@
   | model-controlled child inspects its environment | `test_model_controlled_child_processes_inherit_no_secret` | a Python child and a shell see neither credential nor provider secret; Linux: the supervisor's `/proc/<pid>/environ` is unreadable (non-dumpable) |
   | run A uses run B's identity | `test_run_a_cannot_act_as_run_b` | identity fields in a request → `USAGE`; B's endpoint with A's key → `PERMISSION_DENIED`; a spoofed `AEW_RUN`/`AEW_INVOCATION` still acts as A; B's record kind → `PERMISSION_DENIED`; non-JSON and non-bridge operations refused; B unaffected |
   | successful exit, no evidence → state must not move | `test_harness_exit_without_its_expected_output_moves_no_state` (exit 0 and exit 3) | `ended_without_evidence` / `crashed`; control revision, unit state, invocation and its credential all unchanged; relaunch rotates; nothing moves until the Lead ingests |
-- **Frozen future design:** `docs/design/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`, the 2026-09-28 companion-review version. It replaced `AEW_Coordination_Design_v0.1.md` (sha256 `2725b747…`); the changes are status and review notes only. It is a compatibility constraint only; see §2.11.
+- **Frozen future design:** `docs/design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`, the 2026-09-28 companion-review version. It replaced `AEW_Coordination_Design_v0.1.md` (sha256 `2725b747…`); the changes are status and review notes only. It is a compatibility constraint only; see §2.11.
 
 
 ## Context
@@ -217,7 +217,7 @@ All earlier concrete OpenCode API details are **non-authoritative** unless confi
 
 ### Step-0 deliverable and spike
 
-**Deliverable: `docs/implementation/m3-opencode-v2-rebaseline.md`** records all of the above plus the results of a disposable spike (`eval/m3/spike/`: a free model, isolated XDG, never the Desktop service). **Any NO is reported explicitly.** The spike must establish:
+**Deliverable: `docs/archive/milestones/m3-opencode-v2-rebaseline.md`** records all of the above plus the results of a disposable spike (`eval/m3/spike/`: a free model, isolated XDG, never the Desktop service). **Any NO is reported explicitly.** The spike must establish:
 1. private `serve --stdio` + `OPENCODE_PASSWORD` (the password is stripped from the tool env); fallback to plain `serve`;
 2. session create with model+variant, location and permissions; prompt with a client `msg_` id; completion via events + `wait` + messages; effective model, tokens and cost;
 3. `interrupt`, then continue; `delivery: queue` and `steer` into a running loop;

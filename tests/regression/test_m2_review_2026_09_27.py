@@ -6,7 +6,7 @@ this repository, so each probe below is reconstructed from the report's sequence
 original, each one runs the reported sequence through the public CLI and asserts the SAFE outcome. It
 does not assume which step refuses: every step is attempted, and the probe fails only if the unsafe end
 state is reached. They were imported as strict xfails, and the commit fixing each finding removed its
-markers (see docs/implementation/review-response-2026-09-27.md).
+markers (see docs/archive/reviews/review-response-2026-09-27.md).
 """
 
 from __future__ import annotations

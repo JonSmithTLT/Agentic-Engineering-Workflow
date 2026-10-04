@@ -97,7 +97,7 @@ Agentic-Engineering-Workflow/
   docs/                         # frozen spec set (unchanged) + spec-pin.yaml (sha256 of each)
   docs/implementation/
     adr/                        # ADR-0001 persistence, -0002 snapshot, -0003 transition table, -0004 integration, ...
-    ambiguity-report.md         # §8 of this plan, with dispositions
+    m1-ambiguity-report.md         # §8 of this plan, with dispositions
     implementation-status.md    # WC Appendix C table: Implemented / Staged / Designed
   src/aew/
     cli/                        # argparse adapter ONLY (no logic): main.py + commands/*.py
@@ -288,7 +288,7 @@ Each step lists spec refs, what it delivers, and its completion criteria and tes
 
 | # | Step | Spec refs | Completion criteria / tests |
 |---|---|---|---|
-| 0 | **Pin frozen spec set.** Branch `impl/m1-serial-slice`. Commit `docs/` unchanged, tag `aew-spec-frozen-2026-09-25`, and add `docs/spec-pin.yaml` (sha256 per doc). Add `docs/implementation/{ambiguity-report.md, implementation-status.md}`. | Manifest freeze_rule; WC §21.2.1–2 | Tag exists. `test_spec_pin` fails if any frozen doc changes. |
+| 0 | **Pin frozen spec set.** Branch `impl/m1-serial-slice`. Commit `docs/` unchanged, tag `aew-spec-frozen-2026-09-25`, and add `docs/spec-pin.yaml` (sha256 per doc). Add `docs/implementation/{m1-ambiguity-report.md, implementation-status.md}`. | Manifest freeze_rule; WC §21.2.1–2 | Tag exists. `test_spec_pin` fails if any frozen doc changes. |
 | 1 | **Skeleton:** pyproject, `aew --version`, pytest config, CI matrix, and git/python preflight in `aew doctor`. | — | `pip install -e .[dev]`; `pytest` green on both OSes. |
 | 2 | **Schemas + record I/O:** JSON Schemas (manifest, control, work-unit, plan, evidence kinds, decision, guardrails, gates, role) and a frontmatter reader/writer. | KC §6, §9, §11, §23 | Round-trip tests. Invalid docs are rejected with the path and reason. |
 | 3 | **Persistence core** (`store.py`). | WC §5, §8.2; KC §12.3 | (a) Fault injection at every named point, in-process and via `os._exit` in a subprocess: the state is always revision N or N+1 and passes the invariant check. (b) 200 randomized crash iterations. (c) Two processes × 50 racing writes: revisions strictly sequential, no lost update. (d) Stale `--expect-rev` rejected. (e) Corrupt `control.yaml` → fail closed. |

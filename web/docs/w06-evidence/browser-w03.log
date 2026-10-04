@@ -1,0 +1,12 @@
+PASS desktop fictional investigation via UI
+PASS phone fictional investigation via UI
+PASS selection, filters, table, copy and reload
+PASS keyboard tabs, graph/list, partiality and close focus
+PASS missing, stale, contradictory and unknown supplied values
+PASS malformed, denied and missing initial projections
+PASS graph caps and omissions stay explicit
+PASS refresh failure preserves explicitly stale content
+PASS hostile Markdown, dark theme and zoom/reflow
+PASS phone concealed detail stops polling and revalidates on reveal
+PASS large fixture pages and bounded requests
+PASS accepted Records remains available and historical scope is honest

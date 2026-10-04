@@ -48,6 +48,7 @@ POLL_S = 1.0
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
+CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
 LOGGED_EVENTS = frozenset({
     "session.created", "session.execution.started", "session.execution.succeeded", "session.execution.failed",
     "session.execution.interrupted", "session.step.started", "session.step.ended", "session.step.failed",
@@ -201,9 +202,27 @@ class OpenCodeAdapter(HarnessAdapter):
         probe_s = time.monotonic() - t0
         model = self._await_model(contract.execution_profile)
         loaded = self._await_projection(config)
-        return {"version": version, "tested": version in capabilities.TESTED_VERSIONS,
+        stored = self._stored_credentials(spec)
+        return {"version": version, "tested": version in capabilities.TESTED_VERSIONS, "stored_credentials": stored,
                 "openapi_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
                 "probe_s": round(probe_s, 3), **model, **loaded}
+
+    def _stored_credentials(self, spec: Any) -> int:
+        """A run's server must hold no stored integration credential. OpenCode 2.0.22 serves them, values included,
+        at ``GET /api/credential``, and the server password is readable from the agent's shell (ADR-0009 residual),
+        so one stored there would be the agent's. A run's state is private and starts empty; this proves it at each
+        launch and refuses otherwise (register E17). A server without the endpoint holds none it could serve."""
+        assert self.client is not None
+        paths = spec.get("paths") if isinstance(spec, dict) else None
+        if not isinstance(paths, dict) or "get" not in (paths.get(CREDENTIALS) or {}):
+            return 0
+        found = self.client.get(CREDENTIALS)
+        items = found.get("data") if isinstance(found, dict) else found
+        count = len(items) if isinstance(items, (list, dict)) else int(bool(items))
+        if count:
+            raise HarnessIncompatible(f"the run's OpenCode server holds {count} stored credential(s), which its agent "
+                                      "could read; a run's server state must start empty", stored_credentials=count)
+        return 0
 
     def _await_model(self, profile: dict[str, Any]) -> dict[str, Any]:
         """The pinned model and variant, from a catalog that fills in asynchronously. Never a fallback."""
@@ -239,8 +258,8 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def _await_projection(self, config: dict[str, Any]) -> dict[str, Any]:
         """The server must have loaded AEW's agent exactly as projected: its system text, the pinned model and
-        effort, the step limit, and AEW's rules as the last (winning) part of its permissions. Agents load
-        asynchronously, like the catalog."""
+        effort, the step limit, and AEW's rules as the last (winning) part of its permissions, followed by nothing
+        but denials (``projection.rules_hold``). Agents load asynchronously, like the catalog."""
         assert self.client is not None
         want = config["agents"][projection.AGENT]
         pinned = (want["model"]["providerID"], want["model"]["model"], want["model"].get("variant") or "default")
@@ -257,11 +276,12 @@ class OpenCodeAdapter(HarnessAdapter):
                           ("model", (model.get("providerID"), model.get("id"), model.get("variant") or "default")
                            == pinned),
                           ("step limit", mine.get("steps") == want.get("steps")),
-                          ("permissions", rules[len(rules) - len(want["permissions"]):] == want["permissions"]))
+                          ("permissions", (why := projection.rules_hold(rules, want["permissions"])) is None))
                 differs = [name for name, same in checks if not same]
                 if differs:
                     raise HarnessIncompatible(f"OpenCode loaded AEW's agent with a different {', '.join(differs)}: the "
-                                              "projection was not applied as written", differs=differs)
+                                              "projection was not applied as written", differs=differs,
+                                              **({"permissions": why} if why else {}))
                 return {"projection_loaded_s": round(now - t0, 3), "agent_rules": len(rules)}
             if agents and first_seen is None:
                 first_seen = now

@@ -162,6 +162,14 @@ def test_takeover_cannot_be_self_authorized(project):
     assert project.ok("lead", "show")["generation"] == 1
 
 
+def pty_takeover_token(root: Path, rev: int, label: str) -> str:
+    """A takeover at a real terminal; the new Lead credential, read from the terminal it was written to."""
+    result, screen = _pty_takeover(root, rev, label)
+    written = re.search(r"^token: (aew1\.\S+)$", screen, re.M)
+    assert result["token"] == "(written to your terminal)" and written, screen
+    return written.group(1)
+
+
 def _pty_takeover(root: Path, rev: int, label: str) -> tuple[dict, str]:
     import pty
     import select

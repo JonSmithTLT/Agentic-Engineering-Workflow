@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew.engine.reasons import REASONS, require_known
-from aew.errors import AEWError, DispatchRefused, DispatchUndecided, NotFound, UsageError
+from aew.errors import AEWError, DispatchRefused, DispatchUndecided, IntegrityError, NotFound, UsageError
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
@@ -51,6 +51,9 @@ def channel(name: str) -> Iterator[None]:
 
 # New in M4-A (git.drivers: the M4-B review), evaluated after the rest; every one reports, none stops the others.
 MUTATION = ("protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers")
+# The assurance guards apply only when the archetype being dispatched is known (``facts["archetype"]``); an entrypoint
+# that reaches them without resolving it would make them silently do nothing (area 3 note 5).
+NEEDS_ARCHETYPE = frozenset(MUTATION) - {"git.drivers"}
 
 
 class Entrypoint(NamedTuple):
@@ -250,6 +253,10 @@ class Dispatch:
                                  "digests": decision.dependency_digests}
         decision.facts = facts
         for name in entry.guards:
+            if name in NEEDS_ARCHETYPE and "archetype" not in facts:
+                raise IntegrityError(f"engine defect: {entrypoint} reached the {name} guard without resolving the "
+                                     "archetype it dispatches, so the assurance guards would check nothing",
+                                     entrypoint=entrypoint, guard=name)
             result = self._guards[name](state, work_id, facts)
             found = [result] if isinstance(result, Blocker) else list(result or [])
             for b in found:
@@ -286,10 +293,15 @@ class Dispatch:
         admitting decision on what it admitted."""
         before = ctx.session.committed_view().get("invocations") or {}
         allowed = [d for d in ctx.dispatch_decisions if d.allowed]
+        policy = self._policy_digests()["policy"] if allowed else {}
         for d in allowed:
             if d.revision != ctx.session.revision:  # never an old ALLOW
                 raise DispatchUndecided(f"a dispatch decision for {d.work_id} was computed at revision {d.revision}, "
                                         f"not this transaction's {ctx.session.revision}")
+            if d.dependency_digests.get("policy", policy) != policy:  # nor one made under since-changed policy
+                raise DispatchUndecided(f"a dispatch decision for {d.work_id} was made under policy files that have "
+                                        "changed since; dispatch again", decided=d.dependency_digests.get("policy"),
+                                        current=policy)
         used: set[int] = set()  # a decision admits one new invocation: the one it checked
         for inv_id, inv in ctx.state.get("invocations", {}).items():
             old = before.get(inv_id)
@@ -333,6 +345,9 @@ class Dispatch:
             if inv["role"] != (d.facts.get("role") or card.archetype):
                 continue
             if inv.get("scope") != (CREATES_SCOPE[d.entrypoint] or d.facts.get("scope")):
+                continue
+            # the workspace or candidate the guards resolved, where they resolved one (area 3 note 2)
+            if any(k in d.facts and inv.get(k) != d.facts[k] for k in ("workspace", "workspace_id")):
                 continue
             return d
         return None

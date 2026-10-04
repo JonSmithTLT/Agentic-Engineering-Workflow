@@ -1,0 +1,22 @@
+PASS http desktop failed removal/retry and later inclusion
+PASS http phone failed removal/retry and later inclusion
+PASS worker desktop failed removal/retry and later inclusion
+PASS worker phone failed removal/retry and later inclusion
+PASS http paging, scope-bound copy/reload, filters, independent selection and swap
+PASS http missing states
+PASS http partial states
+PASS http unknown states
+PASS http contradictory states
+PASS http malformed states
+PASS http denied states
+PASS http historical-unavailable states
+PASS http hostile excerpts, dark theme, 200 percent text zoom and keyboard tabs
+PASS http 304 metadata and hidden current-source polling
+PASS http failed refresh retains marked valid data
+PASS http malformed historical link sends no preview reads
+PASS http late old-source response cannot replace new selection; other side remains stable
+PASS http changed fixed snapshot is rejected before display
+PASS http access refusal clears one side while retaining the other
+PASS http Work and invocation entry points carry explicit identities
+PASS http two agents retain explicit work and starting-context identities
+PASS http empty source chooser gives an explicit recoverable result

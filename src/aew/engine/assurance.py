@@ -27,7 +27,30 @@ CLASS0_ASSERTIONS = {
     "inputs_complete": "no known decision-sensitive input was omitted from the declared inputs",
     "no_consequential_boundary": "no consequential security, trust, persistence or compatibility boundary is touched",
 }
-CATCH_ALL = frozenset({"**", "**/*", "*", "./**", ""})
+# Class 0's bounded subject (amendment section 2; operator decision 2026-10-03), overridable in the gates policy
+CLASS0_MAX_SCOPE_FILES = 50
+CLASS0_MAX_SCOPE_FRACTION = 0.25
+# The fraction applies only to a tree at least this large: in a small repository or utility, a scope that covers much
+# of the tree is still a small, known subject (operator, 2026-10-04). Above 200 files the 50-file bound is the
+# tighter one, so the fraction matters only between these two sizes.
+CLASS0_FRACTION_MIN_TREE_FILES = 40
+
+
+def subject_measure(scope: list[str], files: list[str], gates: dict[str, Any] | None = None) -> dict[str, Any]:
+    """How much of the tracked tree ``scope`` covers, against the Class 0 bound. A glob whose first segment is ``**``
+    (``**``, ``**/*.py``) is never a bounded subject, whatever it matches today."""
+    bound = (gates or {}).get("class0") or {}
+    max_files = int(bound.get("max_scope_files", CLASS0_MAX_SCOPE_FILES))
+    max_fraction = float(bound.get("max_scope_fraction", CLASS0_MAX_SCOPE_FRACTION))
+    min_tree = int(bound.get("fraction_min_tree_files", CLASS0_FRACTION_MIN_TREE_FILES))
+    globstar = sorted(g for g in scope if g.strip().removeprefix("./").split("/", 1)[0] in {"**", ""})
+    matched = sum(1 for f in files if glob_any(f, scope)) if scope else 0
+    fraction_applies = len(files) >= min_tree
+    bounded = (bool(scope) and not globstar and 0 < matched <= max_files
+               and (not fraction_applies or matched <= max_fraction * len(files)))
+    return {"matched": matched, "tracked": len(files), "max_files": max_files, "max_fraction": max_fraction,
+            "fraction_applies": fraction_applies, "fraction_min_tree_files": min_tree,
+            "leading_globstar": globstar, "bounded": bounded}
 
 
 def _glob_chars(pattern: str) -> bool:
@@ -100,17 +123,23 @@ def plan_lint(*, meta: dict[str, Any], affected: list[str], guardrails: dict[str
 
 
 def class0_blockers(*, meta: dict[str, Any], files: list[str], guardrails: dict[str, Any], checks: dict[str, Any],
-                    triggers: list[dict[str, Any]], lint: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                    triggers: list[dict[str, Any]], lint: list[dict[str, Any]],
+                    gates: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Why a Class 0 request is not eligible: ``[{code, message, details?}]``, empty when it is."""
     scope = list((meta.get("scope") or {}).get("paths") or [])
     acceptance = meta.get("acceptance") or {}
     acc_checks = list(acceptance.get("checks") or [])
     out: list[dict[str, Any]] = []
-    unbounded = not scope or any(g.strip() in CATCH_ALL for g in scope) \
-        or not any(glob_any(f, scope) for f in files)
-    if unbounded:
+    subject = subject_measure(scope, files, gates)
+    if not subject["bounded"]:
+        why = (f"glob(s) {subject['leading_globstar']} start with `**`" if subject["leading_globstar"]
+               else "it matches no tracked file" if not subject["matched"]
+               else f"it matches {subject['matched']} of {subject['tracked']} tracked files (the bound is "
+                    f"{subject['max_files']} files, and {subject['max_fraction']:.0%} of a tree of at least "
+                    f"{subject['fraction_min_tree_files']} files)")
         out.append({"code": "CLASS0_SUBJECT_UNBOUNDED",
-                    "message": f"the scope {scope or '(none)'} is not a bounded subject matching tracked files"})
+                    "message": f"the scope {scope or '(none)'} is not a bounded subject: {why}",
+                    "details": {"subject": subject}})
     if not acceptance.get("goal_backwards") or not acc_checks:
         out.append({"code": "CLASS0_NO_ACCEPTANCE_REFERENCE",
                     "message": "Class 0 needs an explicit objective (--goal) and an acceptance check "

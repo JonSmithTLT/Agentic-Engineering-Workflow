@@ -17,6 +17,8 @@ How to install, configure and use OpenCode as AEW's harness. The design is ADR-0
 
 AEW never contacts OpenCode Desktop's own background service, and never writes to your OpenCode configuration or state.
 
+**What a launch checks, whatever the version.** Each run's server must load AEW's agent as projected: the system text, the pinned model and effort, the step limit, and AEW's permission rules in order as the last block that can grant anything. A server may append its own rules after AEW's only if they deny (2.0.22 appends `browser: deny`); an `allow` or `ask` there refuses the launch. A server that serves stored credentials (`GET /api/credential`, from 2.0.22) must hold none, because the agent can reach its own server. A newer version still runs as untested until it is added to `TESTED_VERSIONS` after a live-lane run.
+
 ## 1. Configure execution (once per project)
 
 `aew init` writes `.aew/policy/execution.yaml` as an unconfigured template. Until it is configured, `aew harness launch` and `--launch` refuse. A minimal configuration:

@@ -32,6 +32,7 @@ async function start() {
   let DemoKnowledge: ComponentType<{ Records: ComponentType }> | undefined;
   let DemoComparison: ComponentType | undefined;
   let DemoEvidence: ComponentType | undefined;
+  let DemoExecution: ComponentType | undefined;
   if (import.meta.env.MODE === 'demo') {
     const { httpDemo, initializeDemo } = await import('./api/mock/runtime');
     await initializeDemo();
@@ -50,6 +51,7 @@ async function start() {
     DemoKnowledge = (await import('./api/preview/journal/Journal')).default;
     DemoComparison = (await import('./api/preview/investigation/Comparison')).default;
     DemoEvidence = (await import('./api/preview/evidence/Reader')).default;
+    DemoExecution = (await import('./api/preview/execution/Recorder')).default;
   }
   let detachVisibility = installVisibility(queryClient);
   // Stop old-document reads when navigation actually hides the page.
@@ -86,6 +88,7 @@ async function start() {
               <Route path="work" element={<WorkPage />} />
               <Route path="work/:id" element={<WorkDetailPage />} />
               <Route path="runs" element={<RunsPage />} />
+              {DemoExecution && <Route path="execution" element={<DemoExecution />} />}
               {DemoComparison && <Route path="compare" element={<DemoComparison />} />}
               <Route path="runs/:id" element={<RunDetailPage />} />
               <Route path="evidence" element={<EvidencePage />} />

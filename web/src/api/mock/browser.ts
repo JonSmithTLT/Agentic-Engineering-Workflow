@@ -1,3 +1,4 @@
+import { executionHandlers } from '../preview/execution/handlers';
 import { replay } from './runtime';
 export { replay, initializeDemo } from './runtime';
 import { http, HttpResponse } from 'msw';
@@ -59,6 +60,7 @@ async function respond({ request }: { request: Request }) {
       });
 }
 export const worker = setupWorker(
+  ...executionHandlers,
   ...investigationHandlers,
   ...evidenceHandlers,
   ...journalHandlers,

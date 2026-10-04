@@ -1,0 +1,25 @@
+PASS http desktop Journal support/counterevidence, citation and origin restoration
+PASS http phone Journal support/counterevidence, citation and origin restoration
+PASS worker desktop Journal support/counterevidence, citation and origin restoration
+PASS worker phone Journal support/counterevidence, citation and origin restoration
+PASS http desktop Packet association maps exact source/snapshot and restores packet
+PASS worker desktop Packet association maps exact source/snapshot and restores packet
+PASS http desktop Bounded artifact/excerpt pages preserve selection and exact artifact identity
+PASS worker desktop Bounded artifact/excerpt pages preserve selection and exact artifact identity
+PASS http desktop Explicit denied result
+PASS http desktop Explicit not-found result
+PASS http desktop Explicit historical-unavailable result
+PASS http desktop Explicit malformed result
+PASS http desktop Explicit hash-mismatch result
+PASS http desktop Explicit binding-mismatch result
+PASS http desktop Hostile source controls, dark theme, zoom, keyboard tabs
+PASS http desktop Missing/partial/unsupported/empty projections never fabricate contents
+PASS http desktop Failed refresh retains visibly marked valid excerpt
+PASS http desktop Refusal removes all owned source/excerpt representations
+PASS http desktop Unsupported historical parameters stop preview reads
+PASS http desktop Review F1/F2 canonical story results and selected-artifact keyboard tabs
+PASS http phone Review F1/F2 canonical story results and selected-artifact keyboard tabs
+PASS worker desktop Review F1/F2 canonical story results and selected-artifact keyboard tabs
+PASS worker phone Review F1/F2 canonical story results and selected-artifact keyboard tabs
+PASS http desktop Review F3/F4 one shared binding alert and unavailable selected identity
+PASS http phone Review F3/F4 one shared binding alert and unavailable selected identity

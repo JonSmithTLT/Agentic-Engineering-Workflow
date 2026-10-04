@@ -183,3 +183,55 @@ def test_a_commit_wakes_a_waiter_in_another_process_within_50_ms(tmp_path):
         assert ok == "True"
         latencies.append(float(woke) - committed)
     assert statistics.median(latencies) < 0.05, latencies
+
+
+# ---------------------------------------------------------------------------------------------- review of PR #53
+
+def test_a_page_whose_cursor_record_is_missing_fails_instead_of_skipping_the_chain_check(tmp_path):
+    """The chain continues from the record the cursor names. Without it, the first record of the page would be
+    returned unchecked, and a page that stops before the current revision is never compared with last_transition."""
+    p = sample_project(tmp_path)
+    for i in range(2):
+        create_planned_ticket(p, tmp_path, title=f"Ticket {i}")
+    log_dir = p.root / ".aew/state/log"
+    (log_dir / "000000.yaml").rename(log_dir / "000000.yaml.kept")
+    first = log_dir / "000001.yaml"
+    first.write_text(first.read_text(encoding="utf-8").replace("summary: ", "summary: altered ", 1), encoding="utf-8")
+    assert p.aew("history", "log", "--since", "0", "--limit", "1").error["code"] == "INTEGRITY_ERROR"
+    (log_dir / "000000.yaml.kept").rename(log_dir / "000000.yaml")
+    assert p.aew("history", "log", "--since", "0", "--limit", "1").error["code"] == "INTEGRITY_ERROR"  # the altered one
+
+
+def transfer_events(p, revision: int) -> list[dict]:
+    [t] = log(p, "--since", str(revision - 1), "--limit", "1")["transitions"]
+    return t["events"]
+
+
+def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they_revoke(tmp_path):
+    """Both commit outside lead_txn, and both archive the ended credentials before committing: the decision each
+    records and the revocations must still reach the transition's events."""
+    import aew.operator
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    old_lead = p.token.split(".")[1]
+    offer = p.lead("lead", "handoff", "offer")["offer"]
+    accepted = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))
+    events = transfer_events(p, accepted["revision"])
+    assert {"kind": "decision.recorded", "id": accepted["decision"], "type": "authority_transfer"} in events
+    revoked = {e["id"] for e in events if e["kind"] == "credential.revoked"}
+    assert {old_lead, offer.split(".")[1]} <= revoked
+    narrowed = log(p, "--since", "0", "--kind", "decision.recorded")["transitions"]
+    assert accepted["revision"] in [t["revision"] for t in narrowed]
+
+    original = aew.operator.authorize
+    aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
+    try:
+        taken = Engine.discover(p.root).lead_takeover(expect_rev=p.rev(), reason="review of PR #53",
+                                                      session_label="operator")
+    finally:
+        aew.operator.authorize = original
+    events = transfer_events(p, taken["revision"])
+    assert {"kind": "decision.recorded", "id": taken["decision"], "type": "authority_transfer"} in events
+    assert accepted["token"].split(".")[1] in {e["id"] for e in events if e["kind"] == "credential.revoked"}
+    assert_control_invariants(p)

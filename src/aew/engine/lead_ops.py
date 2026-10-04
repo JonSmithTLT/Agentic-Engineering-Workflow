@@ -145,10 +145,10 @@ class Lead:
             token = self._new_lead(s.state, session_label)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
-            self.archive.end_lead_credentials(s)
+            projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.acquire", actor=actor,
                                       summary=f"Lead authority acquired (generation {s.state['lead']['generation']})"),
-                           expect_rev=expect_rev)
+                           expect_rev=expect_rev, state=projected)
         return {"ok": True, "token": token, "generation": s.state["lead"]["generation"], "revision": rev}
 
     def lead_handoff_offer(
@@ -214,10 +214,10 @@ class Lead:
                 reason=f"handoff record {handoff['record']}",
                 evidence_refs=[handoff["record"]],
             )
-            self.archive.end_lead_credentials(s)
+            projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.handoff.accept", actor=actor,
                                       summary=f"Lead authority transferred by handoff ({decision})",
-                                      refs=ctx.refs), expect_rev=expect_rev)
+                                      refs=ctx.refs, events=ctx.events), expect_rev=expect_rev, state=projected)
         return {"ok": True, "token": token, "generation": new_gen, "revision": rev,
                 "carried_invocations": sorted(carry), "interrupted_invocations": interrupted,
                 "decision": decision}
@@ -262,10 +262,11 @@ class Lead:
                 reason=reason,
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
-            self.archive.end_lead_credentials(s)
+            projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.takeover", actor=actor, reason=reason,
-                                      summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs),
-                           expect_rev=snapshot["revision"])
+                                      summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs,
+                                      events=ctx.events),
+                           expect_rev=snapshot["revision"], state=projected)
         return {"ok": True, "token": token, "generation": new_gen, "revision": rev,
                 "interrupted_invocations": interrupted, "decision": decision}
 

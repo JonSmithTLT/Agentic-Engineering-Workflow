@@ -183,10 +183,8 @@ def read_transitions(aew_root: Path, since: int, through: int, *, outbox: dict[s
     history, never skipped. ``prev_h`` is the ``h`` of record ``since`` when the caller knows it; otherwise the chain
     is checked from the first record read onwards."""
     start = (outbox or {}).get("since")
-    if prev_h is None and start is not None and start <= since < through:
-        anchor = _read_record(aew_root, since)  # the chain continues from the record the cursor names
-        prev_h = (anchor or {}).get("h")
-    for revision in range(since + 1, through + 1):
+
+    def required(revision: int, what: str) -> dict[str, Any]:
         record = None
         for attempt in range(retries + 1):
             record = _read_record(aew_root, revision)
@@ -195,17 +193,25 @@ def read_transitions(aew_root: Path, since: int, through: int, *, outbox: dict[s
             if attempt < retries:
                 time.sleep(0.05 * (attempt + 1))
         if record is None:
-            raise IntegrityError(f"the transition log has no record of revision {revision}: incomplete history",
-                                 revision=revision)
+            raise IntegrityError(f"the transition log has no record of revision {revision} ({what}): incomplete "
+                                 "history", revision=revision)
         if record.get("revision") != revision:
             raise IntegrityError(f"{LOG_DIR}/{revision:06d}.yaml records revision {record.get('revision')}",
                                  revision=revision)
+        if start is not None and revision >= start and record.get("h") is None:
+            raise IntegrityError(f"revision {revision} is after the outbox began ({start}) but has no hash",
+                                 revision=revision)
+        return record
+
+    if prev_h is None and start is not None and start <= since < through:
+        # The chain continues from the record the cursor names: it must exist and carry its hash, or the first record
+        # of the page would go unchecked (review of PR #53).
+        prev_h = required(since, "the cursor")["h"]
+    for revision in range(since + 1, through + 1):
+        record = required(revision, "requested")
         if start is not None and revision >= start:
             expected_prev = GENESIS_H if revision == start else prev_h
-            if record.get("h") is None:
-                raise IntegrityError(f"revision {revision} is after the outbox began ({start}) but has no hash",
-                                     revision=revision)
-            if expected_prev is not None and record["h"] != transition_hash(expected_prev, record):
+            if expected_prev is None or record["h"] != transition_hash(expected_prev, record):
                 raise IntegrityError(f"revision {revision}: the transition hash chain is broken", revision=revision)
             prev_h = record["h"]
         out = dict(record)

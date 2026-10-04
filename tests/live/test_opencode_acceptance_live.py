@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from harness_acceptance import ACCEPTANCE
 from harness_conformance import OpenCodeDriver, run_scenario
 

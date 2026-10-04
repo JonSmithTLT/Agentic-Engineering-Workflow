@@ -53,7 +53,8 @@ class ContextPacks:
                 summary += [f"fact: {f['statement']}" for f in d.get("facts", [])]
                 summary += [f"hypothesis: {h['statement']}" for h in d.get("hypotheses", [])]
                 summary += [f"conclusion: {c}" for c in r.get("conclusions", [])]
-                summary += [f"subject: {s.get('name')} {s.get('version') or ''} ({s.get('source')})" for s in r.get("subjects", [])]
+                summary += [f"subject: {s.get('name')} {s.get('version') or ''} ({s.get('source')})"
+                            for s in r.get("subjects", [])]
                 if pr:
                     summary += [f"objective: {pr.get('objective')}", f"approach: {pr.get('approach')}"]
             out.append({**i, "summary": summary})

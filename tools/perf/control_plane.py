@@ -17,8 +17,9 @@
   dispatch also creates a worktree).
 
 The rest is cloned from T-0001 and T-0002: for ``run``, two DONE for each planned, until the project has the
-requested number of units; for ``sweep``, until it has the requested numbers of open and completed units. Every id (unit, invocation, credential id, decision), path, evidence seal and content hash is rewritten, so
-the engine accepts the result as its own. The build checks this: the control state parses and validates, `doctor`
+requested number of units; for ``sweep``, until it has the requested numbers of open and completed units. Every
+id (unit, invocation, credential id, decision), path, evidence seal and content hash is rewritten, so the engine
+accepts the result as its own. The build checks this: the control state parses and validates, `doctor`
 passes, `status` finds every record intact, `resume` finds no contradiction, and cloned evidence verifies. Clones
 are top-level Tickets.
 
@@ -64,7 +65,7 @@ from typing import Any
 from aew.engine.api import Engine
 from aew.engine.store import serialize_control
 from aew.knowledge import evidence as E
-from aew.util import dump_yaml, parse_frontmatter, render_frontmatter, sha256_text
+from aew.util import dump_yaml, parse_frontmatter, sha256_text
 
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 FILES = {
@@ -812,7 +813,7 @@ def ab(points: list[tuple[int, int]], work: Path, rounds: int) -> dict[str, Any]
     for op in ops:
         per = [[w[op] for w in walls[i]] for i in range(len(points))]
         out["ops"][op] = {"median_s": [round(statistics.median(x), 4) for x in per],
-                          "paired_delta_s": [round(statistics.median(b - a for a, b in zip(per[0], x)), 4)
+                          "paired_delta_s": [round(statistics.median(b - a for a, b in zip(per[0], x, strict=True)), 4)
                                              for x in per[1:]],
                           "samples_s": [[round(v, 4) for v in x] for x in per]}
     return out

@@ -13,9 +13,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (DISCOVERY, Role, complete_investigation, create_investigation, create_planned_ticket,
-                     create_unit, dispatch, implement, assign, parent_verify, plan_unit, prepare_and_validate,
-                     sample_project, submit_record, to_commit_ready)
+from aewflow import (
+    DISCOVERY,
+    Role,
+    assign,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    create_unit,
+    dispatch,
+    implement,
+    parent_verify,
+    plan_unit,
+    prepare_and_validate,
+    sample_project,
+    submit_record,
+    to_commit_ready,
+)
 from conftest import git
 
 
@@ -83,7 +97,7 @@ def test_class0_mutating_prepare_requires_reconfirmation_after_an_ancestor_plan(
     assert unit(p, wid).get("integration") is None, "class 0 integration prepared under a stale ancestor plan"
 
 
-# ------------------------------------------------------------------ Blocker 2: moving started work past inherited dependencies
+# ---------------------------------------------------- Blocker 2: moving started work past inherited dependencies
 
 
 def test_moved_running_ticket_cannot_finish_before_its_inherited_prerequisite(tmp_path):
@@ -147,7 +161,7 @@ def test_parent_cannot_close_with_a_dependency_added_after_its_child_finished(tm
                 and unit(p, late)["state"] != "DONE"), "a parent closed with an unsatisfied dependency"
 
 
-# ------------------------------------------------------------------ Major 2: observation mutated between submit and ingest
+# ---------------------------------------------------- Major 2: observation mutated between submit and ingest
 
 
 def test_observation_mutated_after_submission_is_refused_at_ingest(tmp_path):

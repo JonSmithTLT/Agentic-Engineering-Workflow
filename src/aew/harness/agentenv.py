@@ -1,8 +1,8 @@
 """The environment of every model-controlled process (ADR-0009).
 
 Built from an **allowlist**: operating-system basics, ``PATH`` (with the running ``aew`` first), and the
-run's bridge coordinates and private scratch directory. It never contains an AEW credential, a provider secret, the harness server's
-password, the Lead's environment, or anything else the Lead's shell happened to hold.
+run's bridge coordinates and private scratch directory. It never contains an AEW credential, a provider secret,
+the harness server's password, the Lead's environment, or anything else the Lead's shell happened to hold.
 """
 
 from __future__ import annotations

@@ -9,10 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import git, make_git_repo
 
 from aew.errors import IntegrityError
 from aew.snapshot.fingerprint import changed_paths, relevant_inputs_fingerprint
-from conftest import git, make_git_repo
 
 
 def write(path: Path, text: str) -> None:

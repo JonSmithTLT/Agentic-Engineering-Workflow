@@ -31,7 +31,8 @@ if TYPE_CHECKING:
     from aew.engine.store import Session
 
 class EntryMismatch(IntegrityError):
-    """An entry offered as one of the history's (by the derived index) is not the entry the root pins at its position."""
+    """An entry offered as one of the history's (by the derived index) is not the entry the root pins at its
+    position."""
 
 
 # Parsed history files by the hash of their bytes, with the chain state after their entries: the same bytes always
@@ -359,8 +360,7 @@ class History:
             raise IntegrityError(f"{source} does not hold the entries after {state['count']}")
         todo = entries[state["count"] - doc["start"]["count"]:]
         end = M.fold(state, todo, source=source)
-        for entry in todo:
-            yield entry
+        yield from todo
         state.update(end)
 
     # ------------------------------------------------------------------ verification

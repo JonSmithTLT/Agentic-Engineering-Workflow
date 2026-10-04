@@ -342,6 +342,7 @@ def seed_t5(repo: Path, work: Path) -> tuple[str, str]:
 def lead_child(spec_path: Path) -> int:
     """Runs inside ``aew lead session``: the broker holds the Lead credential; this process never has it."""
     import headless
+
     from aew.engine.api import Engine
     from aew.harness import contract as K
     from aew.harness import runlog
@@ -413,7 +414,7 @@ def lead_child(spec_path: Path) -> int:
     session.say(spec["prompt"])
     try:
         while True:
-            outcome = session.wait_turn(deadline, lambda: tick(session))
+            outcome = session.wait_turn(deadline, lambda session=session: tick(session))
             if outcome == "lose":  # T6: the Lead's harness is lost; its OpenCode state is wiped
                 record = session.close()
                 spent_closed += float((record.get("usage") or {}).get("cost") or 0)
@@ -499,6 +500,7 @@ def session_summary(s: dict[str, Any], key: str) -> dict[str, Any]:
 
 def collect_aew(repo: Path, base: str, work: Path) -> dict[str, Any]:
     import headless
+
     from aew.engine.api import Engine
     from aew.harness import runlog
     from aew.knowledge import evidence as E
@@ -783,6 +785,7 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
     import sqlite3
 
     import headless
+
     from aew.engine.api import Engine
     from aew.harness.opencode import projection
 

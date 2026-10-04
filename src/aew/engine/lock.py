@@ -8,13 +8,13 @@ generation-bound token checked inside each locked transition.
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 from types import TracebackType
 
 from aew import profile
 from aew.errors import LockTimeout
-from aew.util import IS_WINDOWS
 
 
 class FileLock:
@@ -23,7 +23,7 @@ class FileLock:
         self.timeout = timeout
         self._fh = None
 
-    def __enter__(self) -> "FileLock":
+    def __enter__(self) -> FileLock:
         with profile.phase("lock"):
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fh = open(self.path, "a+b")
@@ -54,7 +54,7 @@ class FileLock:
         finally:
             fh.close()
 
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
 
         @staticmethod
         def _try_lock(fh) -> None:

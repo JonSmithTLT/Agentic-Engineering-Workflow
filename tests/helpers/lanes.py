@@ -249,7 +249,8 @@ class LanePlugin:
                     tr.write_sep("!", "isolation guard: the test session changed shared state", red=True)
                     for line in changes:
                         tr.write_line(f"  {line}")
-                    tr.write_line("  (a test wrote outside its tmp_path; if you edited the checkout during the run, rerun)")
+                    tr.write_line("  (a test wrote outside its tmp_path; "
+                                  "if you edited the checkout during the run, rerun)")
         if self.report_path:
             self._write_report(int(session.exitstatus))
 

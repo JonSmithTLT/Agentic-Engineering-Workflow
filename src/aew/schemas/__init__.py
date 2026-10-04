@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from importlib import resources
-from typing import Any
+from typing import Any, cast
 
 from jsonschema import Draft202012Validator
 
@@ -28,9 +28,9 @@ SCHEMAS = {
 }
 
 
-@lru_cache(maxsize=None)
+@cache
 def _validator(name: str) -> Draft202012Validator:
-    text = resources.files(__package__).joinpath(SCHEMAS[name]).read_text(encoding="utf-8")
+    text = resources.files(__name__).joinpath(SCHEMAS[name]).read_text(encoding="utf-8")
     schema = json.loads(text)
     Draft202012Validator.check_schema(schema)
     return Draft202012Validator(schema)
@@ -41,9 +41,9 @@ def validate(name: str, instance: Any, *, source: str) -> None:
     _raise(_validator(name), instance, f"{source}: does not match schema {name}")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _property_validator(name: str, prop: str) -> Draft202012Validator:
-    schema = _validator(name).schema
+    schema = cast(dict[str, Any], _validator(name).schema)
     return Draft202012Validator({**schema["properties"][prop], "$defs": schema.get("$defs", {})})
 
 
@@ -53,9 +53,9 @@ def validate_property(name: str, prop: str, instance: Any, *, source: str) -> No
     _raise(_property_validator(name, prop), instance, f"{source}: `{prop}` does not match schema {name}", prop)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _def_validator(name: str, definition: str) -> Draft202012Validator:
-    schema = _validator(name).schema
+    schema = cast(dict[str, Any], _validator(name).schema)
     return Draft202012Validator({"$ref": f"#/$defs/{definition}", "$defs": schema["$defs"]})
 
 

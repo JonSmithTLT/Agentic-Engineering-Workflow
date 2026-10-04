@@ -53,7 +53,7 @@ Deterministic fault points are named code locations, not timings. That is why th
 
 | When | What runs | Blocking |
 |---|---|---|
-| Every pull request, every push to `main`, the merge queue | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `assurance` | **Yes** |
+| Every pull request, every push to `main`, the merge queue | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `static` + `assurance` | **Yes** |
 | Nightly (07:17 UTC) and on demand | serial reference run, extended walk, race repetition, extended randomized crashes, extra interpreter matrix | No; failures open an issue |
 
 - **One gate for everything.** There is no separate "PR subset" versus "merge set": every merge gate runs on every pull request, in parallel. Fast feedback comes from ordering and parallelism, not from deferring assurance.
@@ -65,7 +65,7 @@ Deterministic fault points are named code locations, not timings. That is why th
   - the skipped tests are exactly those pinned in `tests/platform-skips.yaml`;
   - no xfail/xpass occurred unless pinned.
 
-  It also fails if any test job did not succeed. Mark `assurance` as a **required status check** on `main`.
+  It also fails if any test job, or `static`, did not succeed. Mark `assurance` as a **required status check** on `main`.
 - **The dashboard joins the same gate** (F20.1, 2026-10-03). `ci.yml` calls `web.yml`, whose `changes` job decides whether `web/`, the shared contract (`docs/design/dashboard-api-v1-provisional.yaml`) or `web.yml` changed (merge base for pull requests and merge groups; it fails closed). If so, `checks` runs: locked install, the contract's acceptance digest, generated-artifact consistency, typecheck, lint, the frontend tests, the production build with its mock exclusion, the demo build and the compiled browser checks. Its `result` job passes only when the checks passed, or when nothing they cover changed, and `assurance` requires it. The Python lanes never need Node, and the web jobs never need Python.
 - **The gate has already caught one gap.** On its first run it found that the frozen-spec tag `aew-spec-frozen-2026-09-25` had never been pushed to GitHub. So `test_spec_pin.py::test_tagged_revision_carries_pinned_blobs` had skipped silently in every earlier CI run. The tag was pushed on 2026-09-27, and the test now runs on both OSes.
 - **The nightly lane has already found one gap.** On its first run (150 steps, fault rate 0.15), seeds 1014 and 1034 failed on both OSes, and the failure was in the walk harness, not in AEW.
@@ -80,6 +80,21 @@ Deterministic fault points are named code locations, not timings. That is why th
 - **The ratchet.** `assurance` combines every job's data and runs `tools/ci/coverage_gate.py`. It writes the total and per-package table to the job summary, and fails when total line or branch coverage falls more than 0.3 percentage points below `tests/coverage-baseline.json`. Coverage may rise freely. Raising the baseline is a deliberate commit (`--update`), never automatic.
 - **The other platform's code.** A block that can only run on one OS is marked `# pragma: windows-only` or `# pragma: posix-only`, and the measurement excludes the other OS's marker (`AEW_COVERAGE_OTHER_OS`, default `windows`, so CI on Linux needs no setting). Both sides still run in their own OS's lanes; only the number ignores code that cannot run where it is measured.
 - **What it is for.** Coverage points to thin tests; it is not a target to game. The ratchet keeps it from silently falling. A new test is written for a behaviour, not for a line.
+
+### Static checks (2026-10-03, between M4-A and M4-B)
+
+The `static` job runs on Linux, independent of the test lanes, and `assurance` requires it. The tool versions are pinned in the `lint` extra, so a new release with new rules arrives as its own reviewed change.
+
+| Tool | What it checks | Scope and configuration (`pyproject.toml`) |
+|---|---|---|
+| **Ruff** | pycodestyle (`E`, `W`), pyflakes (`F`), bugbear (`B`), Bandit's security rules (`S`), pyupgrade (`UP`) and import order (`I`); lines up to 120 characters | The whole repository except `web/` (it has its own lint) and the dogfood fixture project. Off everywhere: `S603`/`S607` (every subprocess call passes an argv list to tools found on `PATH`; `S602`, `shell=True`, stays on) and `S101` (asserts narrow types and state internal invariants; no authority or input check is an assert). Per-file exceptions, each with its reason: tests (fake credentials, temp paths, seeded randomness), `tools/perf` (closures timed on the spot), the frozen M3 spike probes and the dogfood driver's evaluation texts |
+| **Pyright** (standard mode) | Types, using the hints the code already has | `src/`, checked twice: as Linux and as Windows, so each platform's branches are checked where they run. Platform branches use `sys.platform == "win32"` directly, which Pyright narrows (an alias such as `IS_WINDOWS` it cannot) |
+| **pip-audit** | Known vulnerabilities (PyPI advisories and OSV) in every installed distribution: the runtime dependencies, the test extras and the lint tools | The exact installed set (`pip freeze --exclude-editable`, so AEW itself is left out), audited with `--strict`: any distribution that cannot be audited fails the job |
+
+- **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).
+- **What the first run found and fixed:** the OpenCode client sent the server password to whatever address the server announced, now refused unless it is `http://127.0.0.1:<port>` (S310); several values that could be `None` reaching code that cannot take one (a guardrail check on a workspace without a base commit, a dependency to a unit that vanished, a role slot with no default card, a worktree sync entry with no target); closures binding loop variables late (B023).
+- **Pylint is not a gate.** Run it by hand now and then for its design checks (too many branches, duplicated code); its output is advice.
+- **CodeQL** (`codeql.yml`) stays the deep data-flow security analysis (tainted input reaching a subprocess or a path), which Ruff's pattern rules cannot do.
 
 ### Failure and merge-blocking policy
 
@@ -168,6 +183,9 @@ A lane that outgrows its budget gets another shard: add a matrix entry in `ci.ym
 
 ```bash
 pip install -e ".[dev,parallel]"                       # parallel = pytest-xdist (optional)
+pip install -e ".[lint]" && ruff check .                # static checks, as the `static` job runs them
+pyright --pythonplatform Linux && pyright --pythonplatform Windows
+pip freeze --exclude-editable > installed.txt && pip-audit --strict --no-deps --disable-pip -r installed.txt
 python -m pytest -q                                     # everything, serially (always valid)
 python -m pytest --lane fast -q                         # seconds: unit + frozen-spec pin
 python -m pytest --lane regression -n auto -q           # one lane in parallel

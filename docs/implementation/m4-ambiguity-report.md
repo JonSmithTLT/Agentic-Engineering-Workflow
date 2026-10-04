@@ -4,7 +4,7 @@
 - **Engine baseline:** `42239e1`, the ADR-0011 P3 merge (PR #24). This document is written on `main` at `0424c61` (PR #27, test and CI only, on top).
 - **Register housekeeping first:** PR #29 closes the before-M4 gate, F1, E5 and F20.1 in `future-work.md` §9. The triage in §R assumes it.
 - **§0 spike done** (variant A, engine-only, 2026-10-03). It does not change the plan (§0).
-- **Approved and in progress.** M4-A is built (§2, "M4-A as built"); M4-B (containment on Rocky 8) is next.
+- **Approved and in progress.** M4-A is built (§2, "M4-A as built"). The static checks (Ruff, Pyright, pip-audit; register E7) followed as their own change. M4-B (containment on Rocky 8) is next.
 
 ## Context
 
@@ -260,7 +260,7 @@ Every open entry whose *When* names M4 or an earlier gate, every M4 candidate, a
 | F12, F13, D3, U9 | M6 | **Deferred** | Capabilities and skills |
 | F16 | Evaluation | **Deferred** | Its content follows F15's stages. The next measurement is M4-H's dogfood |
 | F17, F19 | Evaluation | **Deferred** | Evaluation program, no product code. M4-H's dogfood uses F19's format where it exists |
-| F8, F9, F18, D1, D2, D5, E3, E4, E7, U4, U6 | Unscheduled | **Deferred** | Nothing in M4 depends on them. F9's wait-any part is E1 |
+| F8, F9, F18, D1, D2, D5, E3, E4, U4, U6 | Unscheduled | **Deferred** | Nothing in M4 depends on them. F9's wait-any part is E1. E7 (lint) was built between M4-A and M4-B as the static checks (`testing-and-ci-strategy.md`) |
 | E6, E14, U7 | On measured need | **Deferred** | No measured need yet. U7 needs U1 observed first |
 | Q4, Q5, Q7, Q8, Q11, Q12 | Designer | **Deferred** | Open questions. Q7's scratch rule binds every M4 dogfood run (M4-B9) |
 

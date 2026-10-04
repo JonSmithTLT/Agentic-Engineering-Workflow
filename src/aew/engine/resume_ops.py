@@ -85,7 +85,8 @@ class Resume:
         try:
             unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:
-                actions.append(f"configure checks {unconfigured} in policy/checks.yaml (gates needing them stay blocked)")
+                actions.append(f"configure checks {unconfigured} in policy/checks.yaml "
+                               "(gates needing them stay blocked)")
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())
@@ -132,8 +133,9 @@ class Resume:
                   "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "INTERRUPTED", "REPLAN_REQUIRED", "ESCALATED"}:
             actions = self._ticket_actions(state, wid, u)
             if st == "REVIEW_PASSED":
-                actions = [f"advance to VERIFY_PENDING (`aew work transition {wid} --to VERIFY_PENDING --expect-rev N`), or "
-                           f"accept the record (`aew work accept {wid} --expect-rev N`) if no verification applies"]
+                actions = [f"advance to VERIFY_PENDING (`aew work transition {wid} --to VERIFY_PENDING "
+                           f"--expect-rev N`), or accept the record (`aew work accept {wid} --expect-rev N`) "
+                           "if no verification applies"]
             if st == "VERIFIED":
                 actions = [f"accept the record (`aew work accept {wid} --expect-rev N`)"]
             if st == "INTERRUPTED":
@@ -151,8 +153,9 @@ class Resume:
                 unmet = G.unmet(gc["gates"]) | ({"accepted_plan": G.STALE} if gc.get("plan_binding") else {})
                 if unmet:
                     return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
-                return [f"advance to review or verification (`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING "
-                        f"--expect-rev N`), or accept the record (`aew work accept {wid} --expect-rev N`)"]
+                return [f"advance to review or verification (`aew work transition {wid} "
+                        f"--to REVIEW_PENDING|VERIFY_PENDING --expect-rev N`), "
+                        f"or accept the record (`aew work accept {wid} --expect-rev N`)"]
             if executor.get("status") == "active":
                 pending = self._submitted(state, wid, u, execution.get("expected_kind") or "")
                 if pending:
@@ -377,7 +380,8 @@ class Resume:
         handoff = None
         if latest and (self.k.aew_root / latest).exists():
             handoff = {"path": latest, "text": (self.k.aew_root / latest).read_text(encoding="utf-8")}
-        holder = f"generation {lead['generation']}" + (f" ({lead['session_label']})" if lead.get("session_label") else "")
+        label = f" ({lead['session_label']})" if lead.get("session_label") else ""
+        holder = f"generation {lead['generation']}{label}"
         guidance = {
             "vacant": "No Lead holds authority: acquire it with `aew lead acquire`.",
             "handoff_pending": "A cooperative handoff is pending; the successor accepts with the offer secret.",
@@ -491,8 +495,8 @@ class Resume:
             "lead": {"status": lead["status"], "generation": lead["generation"],
                      "session_label": lead.get("session_label")},
             "work_graph": work_graph_lines(state),
-            "hierarchy": self.hierarchy.work_tree()["lines"] if any(u["kind"] != "ticket" for u in state["work"].values())
-            else [],
+            "hierarchy": (self.hierarchy.work_tree()["lines"]
+                          if any(u["kind"] != "ticket" for u in state["work"].values()) else []),
             "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
                            "blocked_by": u.get("blocked_by", [])}
                      for wid, u in sorted(state["work"].items())},

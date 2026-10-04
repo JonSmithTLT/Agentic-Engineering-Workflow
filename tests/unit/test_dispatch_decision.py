@@ -11,7 +11,7 @@ import pytest
 from aew.cli.main import build_parser
 from aew.engine import assurance as A
 from aew.engine.api import Engine
-from aew.engine.dispatch import (CLI_DISPATCHES, ENTRYPOINTS, MUTATION, Blocker, DispatchDecision, blocker_from)
+from aew.engine.dispatch import CLI_DISPATCHES, ENTRYPOINTS, MUTATION, Blocker, DispatchDecision, blocker_from
 from aew.engine.reasons import REASONS, require_known
 from aew.errors import ConcurrencyLimit, DispatchRefused
 from aew.harness import lead_broker

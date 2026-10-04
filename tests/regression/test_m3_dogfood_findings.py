@@ -28,7 +28,6 @@ import json
 import sys
 
 import pytest
-
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, run_aew
 from fake_harness import AGENT, IMPL_REPORT, HarnessLab, credential_hits
@@ -180,9 +179,8 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     because `resume` named commands without their arguments (`aew authority list`, then accept/reject;
     `aew plan propose/accept`; `aew work assign`). Each next action now gives a command with its unit id, its required
     options and `--expect-rev N` (placeholders in <...>)."""
-    from conftest import Project
-
     from aewflow import create_unit
+    from conftest import Project
 
     fresh = Project(repo)
     fresh.ok("init")
@@ -193,7 +191,8 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--scope", "calc/**")["id"]
     story = create_unit(p, "story", "s")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    assert f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> --expect-rev N"         in actions, actions
+    propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> --expect-rev N"
+    assert propose in actions, actions
     assert f"aew plan accept {wid} --revision <n> --expect-rev N" in actions, actions
     assert f"aew work create ticket --parent {story}" in actions, actions
     plan = tmp_path / "plan.md"

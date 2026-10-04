@@ -259,7 +259,8 @@ class Hierarchy:
             requires = {"LOCAL_IMPLEMENTATION_DEFECT": "a remediation child (the child set must change)",
                         "PLAN_OR_DESIGN_DEFECT": "a new accepted parent plan revision",
                         "CONTRACT_VIOLATION": "a new accepted parent plan revision",
-                        "ENVIRONMENT_OR_EVIDENCE_BLOCKED": "re-verification once the environment is fixed"}[classification]
+                        "ENVIRONMENT_OR_EVIDENCE_BLOCKED": "re-verification once the environment is fixed",
+                        }[classification]
             decision = self.k.new_decision(ctx, "verification_failure_classification",
                                          f"{work_id} parent verification failure classified {classification}",
                                          work_unit=work_id, classification=classification,
@@ -386,7 +387,8 @@ class Hierarchy:
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             open_desc = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
-            publishing = [d for d in open_desc if (state["work"][d].get("integration") or {}).get("status") == "publishing"]
+            publishing = [d for d in open_desc
+                          if (state["work"][d].get("integration") or {}).get("status") == "publishing"]
             if publishing:
                 raise IllegalTransition("a publish is in progress under this parent; run `aew integrate reconcile` "
                                         "first", publishing=publishing)
@@ -474,8 +476,8 @@ class Hierarchy:
         if started:
             raise IllegalTransition(
                 f"{what} changes the effective dependencies of started work; a new dispatch is required. Move "
-                f"{', '.join(started)} to REPLAN_REQUIRED first (the attempt ends when a plan revision is accepted, and "
-                "the next dispatch checks the new dependencies)",
+                f"{', '.join(started)} to REPLAN_REQUIRED first (the attempt ends when a plan revision is accepted, "
+                "and the next dispatch checks the new dependencies)",
                 in_progress=started, dependencies={w: changed[w] for w in started})
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None,
@@ -503,8 +505,9 @@ class Hierarchy:
             if to not in PROMOTION.get(unit["kind"], set()):
                 raise UsageError(f"a {unit['kind']} cannot be promoted to a {to}")
             if unit["state"] in H.TERMINAL or unit["state"] == "VERIFICATION_FAILED":
+                failed = unit["state"] == "VERIFICATION_FAILED"
                 raise IllegalTransition(f"{work_id} is {unit['state']}"
-                                        + ("; classify the failure first" if unit["state"] == "VERIFICATION_FAILED" else ""))
+                                        + ("; classify the failure first" if failed else ""))
             if (unit.get("integration") or {}).get("status") == "publishing":
                 raise IllegalTransition("a publish is in progress; run `aew integrate reconcile` first")
             cls = max(unit["risk_class"], risk_class if risk_class is not None else unit["risk_class"])
@@ -526,8 +529,8 @@ class Hierarchy:
 
     def _create_promoted(self, ctx: Any, kind: str, title: str, risk_class: int, parent: str | None,
                          promoted_from: str) -> str:
-        from aew.knowledge.records import work_unit_record
         from aew.engine.work_ops import RECORD_NAME
+        from aew.knowledge.records import work_unit_record
 
         state = ctx.state
         origin = state["work"][promoted_from]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from conftest import git, make_git_repo
 
 from aew.errors import IntegrityError

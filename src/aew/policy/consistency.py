@@ -26,7 +26,7 @@ PATH_TABLES = (("risk_paths", "mutating Tickets", MUTATING), ("non_mutating_path
 
 def problems(gates: dict[str, Any], checks: dict[str, Any], specialties: set[str]) -> list[str]:
     out: list[str] = []
-    defined = set((checks.get("checks") or {}))
+    defined = set(checks.get("checks") or {})
     for where, ids in (("local_checks", gates.get("local_checks") or []),
                        ("post_integration.checks", (gates.get("post_integration") or {}).get("checks") or [])):
         for check_id in ids:

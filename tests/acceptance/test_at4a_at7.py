@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import SUBTRACT_PATCH, assign, create_planned_ticket, implement, sample_project
 
 

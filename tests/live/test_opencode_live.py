@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from harness_conformance import SCENARIOS, OpenCodeDriver, run_scenario, shell_in_revived_session
 
 from aew.harness import procs

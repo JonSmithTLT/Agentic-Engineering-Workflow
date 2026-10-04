@@ -17,6 +17,7 @@ import base64
 import http.client
 import json
 import queue
+import re
 import socket
 import subprocess
 import threading
@@ -31,6 +32,7 @@ from typing import Any
 from aew.errors import HarnessLaunchFailed
 
 START_TIMEOUT_S = 60.0
+LOOPBACK_URL = re.compile(r"http://127\.0\.0\.1:[0-9]{1,5}/?")
 REQUEST_TIMEOUT_S = 30.0
 
 
@@ -60,9 +62,9 @@ class Client:
                 timeout: float = REQUEST_TIMEOUT_S) -> Any:
         url = self.url + path + ("?" + urllib.parse.urlencode(params) if params else "")
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method, headers=self.headers())
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+        req = urllib.request.Request(url, data=data, method=method, headers=self.headers())  # noqa: S310
+        try:  # self.url is the run's own server, checked to be http://127.0.0.1:<port> when it started
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -144,6 +146,10 @@ class Server:
                 url = json.loads(raw.decode("utf-8", "replace"))["url"]
             except (ValueError, KeyError, TypeError):
                 continue  # anything else the server prints before its address
+            if not LOOPBACK_URL.fullmatch(str(url)):  # the password goes there: only the loopback server we started
+                proc.kill()
+                raise HarnessLaunchFailed(f"the OpenCode server announced {str(url)[:80]!r}, not an http://127.0.0.1 "
+                                          "address; refusing to send it the server password")
             # The rest of stdout keeps draining in the pump thread, so the pipe never blocks the server.
             return cls(proc, str(url), env["OPENCODE_PASSWORD"], time.monotonic() - t0)
 

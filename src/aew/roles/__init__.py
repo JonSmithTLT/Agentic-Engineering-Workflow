@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -58,11 +58,11 @@ class Card:
                 "sha256": self.sha256, "content": self.meta}
 
 
-@lru_cache(maxsize=None)
+@cache
 def archetype(name: str) -> dict[str, Any]:
     if name not in ARCHETYPES:
         raise NotFound(f"no role archetype {name!r}; archetypes are {', '.join(ARCHETYPES)}")
-    text = resources.files(__package__).joinpath("archetypes", f"{name}.yaml").read_text(encoding="utf-8")
+    text = resources.files(__name__).joinpath("archetypes", f"{name}.yaml").read_text(encoding="utf-8")
     data = load_yaml(text, source=f"archetypes/{name}.yaml")
     validate("role-archetype", data, source=f"archetypes/{name}.yaml")
     return data
@@ -98,10 +98,10 @@ def _read_card(text: str, *, source: str, origin: str, path: str) -> Card:
     return Card(meta["role"], meta, origin, path, sha256_bytes(text.encode("utf-8")))
 
 
-@lru_cache(maxsize=None)
+@cache
 def builtin_cards() -> dict[str, Card]:
     cards: dict[str, Card] = {}
-    for entry in sorted(resources.files(__package__).joinpath("cards").iterdir(), key=lambda e: e.name):
+    for entry in sorted(resources.files(__name__).joinpath("cards").iterdir(), key=lambda e: e.name):
         if entry.name.endswith(".yaml"):
             card = _read_card(entry.read_text(encoding="utf-8"), source=entry.name, origin="builtin",
                               path=f"aew/roles/cards/{entry.name}")

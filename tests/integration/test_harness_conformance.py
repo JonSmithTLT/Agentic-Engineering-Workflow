@@ -5,7 +5,6 @@ adapter driving a fake OpenCode V2 server. The live lane runs the same scenarios
 from __future__ import annotations
 
 import pytest
-
 from harness_conformance import SCENARIOS, FakeDriver, FakeOpenCodeDriver, run_scenario
 
 

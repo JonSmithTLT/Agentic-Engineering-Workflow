@@ -1,7 +1,8 @@
 """The requirements ledger (`docs/design/requirements-ledger.yaml`) is a hard gate: no requirement in a design or
 research document goes untracked, and none is lost between versions (operator, 2026-10-04).
 
-- Every document under docs/design/ and docs/research/ is an ingested source or a legacy document.
+- Every document under docs/design/ and docs/research/ is an ingested source or a legacy document, and so is every
+  ADR from ADR-0012 on (the ADRs before it predate the ledger and are tracked by the register).
 - Every heading of every source is accounted for: it holds requirements, its requirements are carried by ids
   elsewhere, or it holds none, with the reason. A heading a new version drops fails until its entries are re-pointed.
 - Requirement ids are contiguous per source; a requirement is never deleted, only moved to `retired` with its
@@ -50,9 +51,14 @@ def register_ids() -> set[str]:
     return set(re.findall(r"^\| ([A-Z][0-9]+(?:\.[0-9]+)?) \|", text, re.M))
 
 
+FIRST_LEDGER_ADR = 12
+
+
 def test_every_design_and_research_document_is_in_the_ledger():
     docs = {p.relative_to(ROOT).as_posix() for d in ("docs/design", "docs/research") for p in (ROOT / d).rglob("*")
             if p.is_file() and p.suffix in (".md", ".yaml") and p.name != "requirements-ledger.yaml"}
+    adrs = (ROOT / "docs" / "implementation" / "adr").glob("[0-9][0-9][0-9][0-9]-*.md")
+    docs |= {p.relative_to(ROOT).as_posix() for p in adrs if int(p.name[:4]) >= FIRST_LEDGER_ADR}
     known = {s["path"] for s in LEDGER["sources"]} | set(LEDGER["legacy"])
     assert sorted(docs - known) == [], "ingest these into the requirements ledger, every requirement tracked"
     assert sorted(known - docs - {s["path"] for s in LEDGER["sources"] if s["path"].startswith("docs/archive/")}) == []

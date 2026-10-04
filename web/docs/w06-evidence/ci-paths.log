@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: actual workflow change detector
+    # Subtest: detects web, canonical contract and workflow changes without ripgrep
+    ok 1 - detects web, canonical contract and workflow changes without ripgrep
+      ---
+      duration_ms: 20.931058
+      type: 'test'
+      ...
+    # Subtest: uses merge-base changes for behind-main PRs and merge groups
+    ok 2 - uses merge-base changes for behind-main PRs and merge groups
+      ---
+      duration_ms: 15.069
+      type: 'test'
+      ...
+    # Subtest: keeps direct push comparisons and detects old web paths on a rename
+    ok 3 - keeps direct push comparisons and detects old web paths on a rename
+      ---
+      duration_ms: 12.679496
+      type: 'test'
+      ...
+    # Subtest: fails closed on matcher errors or a missing matcher
+    ok 4 - fails closed on matcher errors or a missing matcher
+      ---
+      duration_ms: 14.866089
+      type: 'test'
+      ...
+    # Subtest: fails closed on diff errors
+    ok 5 - fails closed on diff errors
+      ---
+      duration_ms: 5.184194
+      type: 'test'
+      ...
+    # Subtest: runs checks for dispatch and absent initial push bases
+    ok 6 - runs checks for dispatch and absent initial push bases
+      ---
+      duration_ms: 9.863629
+      type: 'test'
+      ...
+    1..6
+ok 1 - actual workflow change detector
+  ---
+  duration_ms: 79.721727
+  type: 'suite'
+  ...
+1..1
+# tests 6
+# suites 1
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 344.822551

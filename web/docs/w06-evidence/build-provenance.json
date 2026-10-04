@@ -1,0 +1,30 @@
+{
+  "source_commit": "5aa55dfe0bdec7b80d80e01cb2f0921ea55546c7",
+  "source_tree": "0f4316ca9d83576d4ca3e473664dc70578cbc44e",
+  "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
+  "gate": "PASS",
+  "network": "none",
+  "checkout": "web/artifacts/commit-freeze/run-iLeTMtGv/source",
+  "build_trees": {
+    "dist": "253f62483e1bc4535d14810bd169e6edc896e740b1d98ccc90a0b699286332fd",
+    "dist-demo": "e2389caa540230a63d31beccdfc0422e0139a8d9a47c2f373d3347f97eed6118"
+  },
+  "browser_groups": 15,
+  "browser": "PASS; executed within committed checkout",
+  "build_unchanged_after_browser": true,
+  "source_clean_after_browser": true,
+  "regressions": "W01\u2013W05 and HTTP demo passed inside committed checkout",
+  "measurements": "source/web/output/w06-measurements/result.json",
+  "runtime": {
+    "node": {
+      "version": "v22.22.2",
+      "sha256": "81925c0995b5c1427b5d538e6a90ca2fdc4daffb786b09af749beaf7369d4e90"
+    },
+    "chromium": {
+      "version": "Google Chrome for Testing 147.0.7727.15",
+      "sha256": "696170a79640ec5b50c7518140ace06c69a49cfb295bf527d4a85e26a12b89a7"
+    }
+  },
+  "playwright": "1.59.1 (locked package)"
+}

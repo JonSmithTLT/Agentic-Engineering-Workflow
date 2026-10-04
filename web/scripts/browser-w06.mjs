@@ -71,8 +71,9 @@ try{
     assert.equal(await page.locator('.unknown:visible').count(),0,'Story has no unknown semantic values');
     await page.getByRole('button',{name:'Close detail',exact:true}).click();
    }
+   await page.waitForFunction(count=>document.querySelectorAll('.execution-table [data-execution-pick]').length===count,identities.length);
    const geometry=await page.locator('.execution-table td').evaluateAll(cells=>cells.map(el=>({height:el.getBoundingClientRect().height,content:el.scrollHeight,width:el.clientWidth,scroll:el.scrollWidth})));
-   assert(geometry.every(c=>c.content<=c.height+1&&c.scroll<=c.width+1),'Stacked cells contain their complete wrapped content');
+   assert(geometry.length&&geometry.every(c=>c.content<=c.height+1&&c.scroll<=c.width+1),'Stacked cells contain their complete wrapped content');
    await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${out}/${mode}-${width}-${view}-table.png`,fullPage:true});
   }
  },true);

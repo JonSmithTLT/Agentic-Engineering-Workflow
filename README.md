@@ -3,27 +3,20 @@ Provider-neutral, contract-first engineering workflow for AI coding agents. AEW 
 
 ## Status
 
-- **Specification:** frozen set `aew-frozen-2026-09-25` in `docs/` (Workflow Contract v0.7, Knowledge Contract v0.4, manifest, SPT remediation appendix). It is pinned by the tag `aew-spec-frozen-2026-09-25` and guarded by `tests/test_spec_pin.py`.
-- **Implementation:**
-  - **M1** (a deterministic state engine and CLI, `aew`: one serial Ticket lifecycle through controlled integration, Lead-session loss and reconstruction from durable state) and **M2** (Epic/Story hierarchy, non-mutating Tickets, Investigator/Researcher/Planner roles) are accepted and merged.
-  - **M3** (OpenCode V2 as the first agent harness: roles run as harness sessions, with no AEW credential in any model's hands) is accepted and merged (PR #5; tag `aew-m3-accepted-2026-10-01`), after the independent review's fixes ([`review-response-2026-10-01.md`](docs/implementation/review-response-2026-10-01.md)). Start with [`m3-reviewer-brief.md`](docs/implementation/m3-reviewer-brief.md) and the operator's guide, [`opencode.md`](docs/implementation/opencode.md).
-  - **Hot/cold control state** (ADR-0011, the prerequisite for M4) is accepted and merged (PR #24, 2026-10-03).
-  - **Next:** M4, mutating concurrency above 1, starting with its ambiguity report.
-  - What is implemented, staged or only designed: [`implementation-status.md`](docs/implementation/implementation-status.md). Deferred work, and how each milestone takes it up: [`future-work.md`](docs/implementation/future-work.md).
+**Documentation map: [`docs/README.md`](docs/README.md).** It says what AEW is building towards, which documents govern, and where everything else lives.
 
-| Document | Contents |
+- **Specification:** the frozen set `aew-frozen-2026-09-25` in `docs/` (Workflow Contract v0.7, Knowledge Contract v0.4, manifest, SPT remediation appendix), pinned by the tag `aew-spec-frozen-2026-09-25` and guarded by `tests/test_spec_pin.py`.
+- **Done:** M1 (the serial control engine and CLI, `aew`), M2 (Epic/Story hierarchy, non-mutating Tickets), M3 (OpenCode V2 as the first agent harness, with no AEW credential in any model's hands; tag `aew-m3-accepted-2026-10-01`) and ADR-0011 (hot and cold control state).
+- **In progress: M4**, mutating concurrency above 1 ([`m4-ambiguity-report.md`](docs/implementation/m4-ambiguity-report.md)). M4-A (one dispatch predicate) and M4-B (OS filesystem containment on Linux) are built; M4-C (workspaces for N > 1) is next.
+- What is implemented, staged or only designed: [`implementation-status.md`](docs/implementation/implementation-status.md). Deferred work and its gates: [`future-work.md`](docs/implementation/future-work.md).
+
+| Start with | For |
 |---|---|
-| [`docs/implementation/quickstart.md`](docs/implementation/quickstart.md) | Install, initialize, run one Ticket end to end |
-| [`docs/implementation/lead-guide.md`](docs/implementation/lead-guide.md) | How work flows in AEW, for a Lead: risk classes and their gates, the Ticket lifecycle, the command for each step (`aew guide`) |
-| [`docs/implementation/opencode.md`](docs/implementation/opencode.md) | Running AEW with OpenCode: configuration, the Lead's TUI, harness runs, containment |
-| [`docs/implementation/acceptance.md`](docs/implementation/acceptance.md) | Acceptance scenarios and how to run them |
-| [`docs/implementation/implementation-status.md`](docs/implementation/implementation-status.md) | Implemented / Staged / Designed |
-| [`docs/implementation/adr/`](docs/implementation/adr/) | Implementation decisions (persistence, snapshots, state machine, integration, authority, role cards, hierarchy, non-mutating work, the harness boundary, execution profiles, hot/cold control state) |
-| [`docs/implementation/ambiguity-report.md`](docs/implementation/ambiguity-report.md) | Spec gaps and their operator-approved dispositions |
-| [`docs/implementation/review-response-2026-09-26.md`](docs/implementation/review-response-2026-09-26.md) | Independent M1 review: every finding, its fix, commit and regression evidence |
-| [`docs/implementation/review-response-2026-09-27.md`](docs/implementation/review-response-2026-09-27.md) | Independent M2 review: every finding, its fix, commit and regression evidence |
-| [`docs/implementation/m3-reviewer-brief.md`](docs/implementation/m3-reviewer-brief.md) | M3 independent review brief: claims, evidence, risk areas, known limits |
-| [`docs/implementation/testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md) | Test lanes, what CI requires before merge, concurrency and isolation rules, nightly lane, budgets |
+| [`docs/guides/quickstart.md`](docs/guides/quickstart.md) | Install, initialize, run one Ticket end to end |
+| [`docs/guides/lead-guide.md`](docs/guides/lead-guide.md) | How work flows in AEW, for a Lead: risk classes and their gates, the Ticket lifecycle, the command for each step (`aew guide`) |
+| [`docs/guides/opencode.md`](docs/guides/opencode.md) | Running AEW with OpenCode: configuration, the Lead's TUI, harness runs, containment |
+| [`docs/implementation/adr/`](docs/implementation/adr/) | Implementation decisions (ADR-0001 to ADR-0011) |
+| [`docs/implementation/testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md) | Test lanes, what CI requires before merge, the containment lane |
 
 ## Development
 

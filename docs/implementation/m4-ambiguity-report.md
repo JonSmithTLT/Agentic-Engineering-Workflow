@@ -19,13 +19,13 @@ M4 lets mutating Tickets run in parallel while integration stays serial: **paral
 **Basis (governing):**
 - WC v0.7 and KC v0.4 (the frozen set `aew-frozen-2026-09-25`);
 - ADR-0001 to ADR-0011 and their amendments;
-- the designer's queue disposition: [`m4-integration-queue-research-2026-10-01.md`](../design/m4-integration-queue-research-2026-10-01.md) §7 and §7.1, with the review revision that makes the queue entry, not the candidate, the lease owner;
+- the designer's queue disposition: [`m4-integration-queue-research-2026-10-01.md`](../research/m4-integration-queue-research-2026-10-01.md) §7 and §7.1, with the review revision that makes the queue entry, not the candidate, the lease owner;
 - [`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md) §3.1, §3.2 and §3.5 ("M4's first step");
 - [`workflow-contract-amendment-class0-2026-10-01.md`](../design/workflow-contract-amendment-class0-2026-10-01.md) (adopted; enforced from M4-A);
-- containment research §8 ([`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../design/containment-and-process-ownership-rocky8-research-2026-10-01.md));
+- containment research §8 ([`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../research/containment-and-process-ownership-rocky8-research-2026-10-01.md));
 - the F15 direction (the v0.4 idea note §14 sequence, [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](../design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md)): adopted, and promoted to governing before M4-E (§3, decision 1).
 
-**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/integration-checklist.md`.
+**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/proposals/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/proposals/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/integration-checklist.md`.
 
 ---
 

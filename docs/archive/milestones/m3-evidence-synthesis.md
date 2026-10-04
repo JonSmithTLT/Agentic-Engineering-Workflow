@@ -134,7 +134,7 @@ Every run and trial is recorded, including failures, in `eval/m3/dogfood/results
   - the scope refusal says the scope is fixed and what to do;
   - creation warns about each scope glob that matches no file;
   - the Lead's system text and the guide say how to read the project, what the authority step is, and that a scope is fixed.
-- **Designed: Ticket revisions.** Adopted by the designer on 2026-09-30, decisions D1 to D7 (`docs/design/ticket-revision-amendment-review-2026-09-30.md`). A scope correction becomes a new revision of the same Ticket, the workspace can carry forward as input, and evidence admissibility across the revision is computed. Every revision's proof is regenerated or explicitly revalidated.
+- **Designed: Ticket revisions.** Adopted by the designer on 2026-09-30, decisions D1 to D7 (`docs/archive/reviews/ticket-revision-amendment-review-2026-09-30.md`). A scope correction becomes a new revision of the same Ticket, the workspace can carry forward as input, and evidence admissibility across the revision is computed. Every revision's proof is regenerated or explicitly revalidated.
 
 ## 4. What changed because of the tests
 
@@ -147,8 +147,8 @@ Every run and trial is recorded, including failures, in `eval/m3/dogfood/results
 | A4's scope case, A6 | E8 to E11 (above); O5 and A7, the brief corrected | `future-work.md` §5, §6 |
 | A5 | The dogfood driver: nudges and debriefs broken since audit I3, fixed; a debrief that reopens saved sessions | report §9 |
 | The scope case, M3-D9 | Ticket revisions (adopted in design) | `docs/design/ticket-revision-amendment-*.md` |
-| T4, the scope case | Plan assurance (F14): acceptance integrity, scope validity, reconnaissance before scope | `docs/design/plan-assurance-and-premise-validation-design-v0.3.md` |
-| L1 | Lead workflow efficiency: stage commands (F15) | `docs/design/lead-workflow-efficiency-design-v0.1.md` |
+| T4, the scope case | Plan assurance (F14): acceptance integrity, scope validity, reconnaissance before scope | `docs/archive/superseded/plan-assurance-and-premise-validation-design-v0.3.md` |
+| L1 | Lead workflow efficiency: stage commands (F15) | `docs/design/proposals/lead-workflow-efficiency-design-v0.1.md` |
 
 ## 5. What the tests could not show
 

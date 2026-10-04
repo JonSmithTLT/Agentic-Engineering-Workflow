@@ -110,7 +110,7 @@ The companion design review (2026-09-28, `m3-companion-review-triage.md`) was tr
 
 - Plain OpenCode passed 20 of 20; AEW 24 of 26 (Sol 12 of 12) at about 7× the cost and time. The Lead was about 40% of AEW's cost.
 - AEW's value, as measured: resume after losing the Lead's harness (3 of 3), independent review catching a seeded defect (4 of 4, and 6 of 6 in the model comparison), investigation Tickets.
-- **One run where AEW was worse** (T4, Luna): the Lead turned an operator's wrong hypothesis into goals, put the data those goals were measured against into scope, and the implementer met the goal by editing the data. Review and two verifications passed it. Every mechanism behaved as designed; the failure is upstream of all of them. The designer's response is the plan assurance design (`docs/design/plan-assurance-and-premise-validation-design-v0.3.md`, `future-work.md` F14), which is post-M3.
+- **One run where AEW was worse** (T4, Luna): the Lead turned an operator's wrong hypothesis into goals, put the data those goals were measured against into scope, and the implementer met the goal by editing the data. Review and two verifications passed it. Every mechanism behaved as designed; the failure is upstream of all of them. The designer's response is the plan assurance design (`docs/archive/superseded/plan-assurance-and-premise-validation-design-v0.3.md`, `future-work.md` F14), which is post-M3.
 - The tasks were too easy for either mode to fail, so AEW's quality claim is untested.
 
 ## How to run

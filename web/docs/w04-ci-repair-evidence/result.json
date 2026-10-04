@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "3a5ada372832ec1642fb01757a62f2c6033b0e8e",
+  "runtime_review_source": "280814982fba890a4b253ac04a921c20ef57629d",
+  "preview_digest": "79a1ac8460a8c4e39260c37c85197c16041f71e998023f039e292a2249bd436d",
+  "failed_run": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow/actions/runs/37161412128",
+  "failed_job": "web / web checks",
+  "cause": "Keyboard End changed the URL before React committed the selected-tab attribute. The assertion observed aria-selected=false during this transition.",
+  "repair": "Wait for the rendered Provenance tab aria-selected=true before asserting. Existing failure timeout and assertions remain; no application or contract changes.",
+  "local_validation": {
+    "node": "22.22.2",
+    "lint": "PASS",
+    "result": "PASS",
+    "w04_browser_groups": 22
+  },
+  "prior_ci_validation": "Failed run passed137 tests, artifact/type/lint checks, both builds, production exclusion and W01–W03/HTTP browser checks before failing in W04.",
+  "command": "cd web && node scripts/browser-w04.mjs",
+  "frontend_acceptance": "ACCEPT: main-line reviewer re-checked findings1–3 against2808149. Preserved in web/docs/w04-review-main-line.md.",
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "remote_ci": "PENDING new pushed head",
+  "files": {
+    "w04-browser.json": {
+      "sha256": "d8b85576ffea663cb57246d8afa31147143c53a40333ac73a9e2d3fe2e1dc134"
+    }
+  }
+}

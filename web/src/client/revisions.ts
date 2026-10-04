@@ -26,7 +26,7 @@ export function installRevisionReconciliation(
       return;
     const active = client
       .getQueryCache()
-      .findAll({ type: 'active', queryKey: ['projection'] });
+      .findAll({ type: 'active', queryKey: ['projection'], predicate: query => query.meta?.automaticRevalidation !== false });
     const records = active.flatMap((query) => {
       const current = revision(query.state.data);
       return current ? [{ query, ...current }] : [];

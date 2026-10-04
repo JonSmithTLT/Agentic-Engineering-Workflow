@@ -2,6 +2,7 @@ import { entityLink } from './links';
 import { id } from './schema';
 const demoKeys = ['fixture', 'fault', 'catalog', 'recipe', 'seed'];
 const journalKeys = ['display', 'panel', 'component', 'component_missing', 'journal_case'];
+const comparisonKeys = ['investigation_case', 'a_source', 'b_source', 'a_run', 'b_run', 'a_invocation', 'compare_work', 'compare_tab', 'differences', 'choose', 'source_cursor', 'packet', 'packet_side', 'packet_tab', 'packet_section', 'packet_disposition', 'packet_cursor'];
 const presentationKeys = ['selected', 'inspector', 'field', 'view', 'focus'];
 const filterKeys = [
   'state',
@@ -21,6 +22,7 @@ export function navigationParams(params: URLSearchParams, full = false) {
   for (const key of [
     ...(import.meta.env.MODE === 'demo' ? demoKeys : []),
     ...(full && import.meta.env.MODE === 'demo' ? journalKeys : []),
+    ...(full && import.meta.env.MODE === 'demo' ? comparisonKeys : []),
     ...(full ? [...filterKeys, ...presentationKeys, ...historicalKeys] : []),
   ]) {
     const value = params.get(key);

@@ -13,6 +13,26 @@ function hidden(value: boolean) {
   document.dispatchEvent(new Event('visibilitychange'));
 }
 describe('refresh and snapshot states', () => {
+  it('keeps explicitly fixed projections manual on focus and visibility changes', async () => {
+    hidden(false);
+    const get = vi.spyOn(transport, 'get').mockResolvedValue({ value: { ok: true }, last_checked_at: '2026-10-02T12:00:00Z' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+    const dispose = installVisibility(client);
+    function Probe({ displayed = true }: { displayed?: boolean }) {
+      const query = useProjection('/fixed-preview', z.object({ ok: z.boolean() }), 'history', true, displayed, transport, false);
+      return <button onClick={() => void query.refetch()}>Manual refresh</button>;
+    }
+    const view = render(<QueryClientProvider client={client}><Probe /></QueryClientProvider>);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+    await act(async () => { hidden(true); hidden(false); window.dispatchEvent(new Event('focus')); });
+    expect(get).toHaveBeenCalledTimes(1);
+    view.rerender(<QueryClientProvider client={client}><Probe displayed={false} /></QueryClientProvider>);
+    view.rerender(<QueryClientProvider client={client}><Probe /></QueryClientProvider>);
+    expect(get).toHaveBeenCalledTimes(1);
+    await act(async () => view.getByRole('button').click());
+    expect(get).toHaveBeenCalledTimes(2);
+    view.unmount(); dispose(); client.clear();
+  });
   it('distinguishes initial failure, coherent success, mixed success and failed cached refresh', () => {
     expect(snapshotState([], true)).toBe('LOAD ERROR');
     expect(snapshotState([{ revision: 'r1', failed: false }])).toBe('CURRENT');

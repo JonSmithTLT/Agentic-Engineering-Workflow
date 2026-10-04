@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-03",
+  "source_commit": "280814982fba890a4b253ac04a921c20ef57629d",
+  "baseline_commit": "86d301b5dc848de095028470b6efcc3b515c420c",
+  "preview_digest": "79a1ac8460a8c4e39260c37c85197c16041f71e998023f039e292a2249bd436d",
+  "plan_digest": "74baf7b4a110d5fb0baab9bd6daa6f7eb3d0730f6248e74a050f4070ace649e7",
+  "runtime": {
+    "npm": "10.9.7",
+    "node": "22.22.2",
+    "carrier": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "chromium": "147.0.7727.15",
+    "playwright": "1.59.1"
+  },
+  "unchanged": {
+    "accepted_api": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+    "dependency_lock": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
+    "journal": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+    "accepted_generated_types": "No diff from baseline"
+  },
+  "validation": {
+    "http_service_workers_blocked_groups": 4,
+    "offline_gate": "PASS",
+    "w01_groups": 16,
+    "production_exclusion": "PASS",
+    "w02_groups": 10,
+    "typecheck": "PASS",
+    "w03_groups": 12,
+    "lint": "PASS",
+    "test_files": 16,
+    "w04_groups": 22,
+    "premium_static_findings": 0,
+    "unit_tests": 137
+  },
+  "commands": [
+    "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh",
+    "cd web && node scripts/ci-browser.mjs",
+    "cd web && node scripts/browser-w02.mjs",
+    "cd web && node scripts/browser-w03.mjs",
+    "cd web && node scripts/browser-http-demo.mjs",
+    "cd web && node scripts/browser-w04.mjs",
+    "cd web && CHROMIUM_PATH=<staged wrapper path with spaces> node scripts/measure-w04.mjs",
+    "python3 <frontend-design-premium-skill>/scripts/audit_project.py web --mode strict"
+  ],
+  "measurements": "measurements.json: distinct large W03 and W04 workflows, 50 rows before/after paging, four initial API reads; no speed/SLA claim",
+  "independent_review": "Main-line review required minor changes1–3 against2f271c0. Implementer fixes pass; independent re-check PENDING.",
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "limitations": [
+    "Desktop Chromium emulates phone width.",
+    "200% is CSS zoom emulation, not browser-toolbar zoom.",
+    "Existing chunk-size advisories remain.",
+    "Official design-lint CLI unavailable; not claimed as executed.",
+    "Two warm samples per distinct workflow do not establish a timing SLA."
+  ],
+  "files": {
+    "chooser-http-desktop.png": {
+      "bytes": 198867,
+      "sha256": "3915f85783e99d7c86756789e9638bbddf62484edc2b854d99b7d9a955e1d9f3"
+    },
+    "chooser-http-phone.png": {
+      "bytes": 171708,
+      "sha256": "b8c47b3ab0335f4d97348a1b163b644ab8e1990c7489603242f3f0302c625345"
+    },
+    "chooser-worker-desktop.png": {
+      "bytes": 181736,
+      "sha256": "ab918e855c462347f4e8e7d83367b1dbbeba9615e1b881eca76c38eeeab072a3"
+    },
+    "chooser-worker-phone.png": {
+      "bytes": 171708,
+      "sha256": "b8c47b3ab0335f4d97348a1b163b644ab8e1990c7489603242f3f0302c625345"
+    },
+    "dark-zoom.png": {
+      "bytes": 268321,
+      "sha256": "f463c9da46396934bf7391d4a12c317a8b01585db06449c3ffa9ba765b819af1"
+    },
+    "http-browser.json": {
+      "bytes": 634,
+      "sha256": "6fde5f3546611b04181188ddce0b3f3faa5c30e0a8f4a6c60f5e780efbbdd21b"
+    },
+    "http-browser.log": {
+      "bytes": 303,
+      "sha256": "4f53063e4149b387464627ff60d93fb1c8fd387718cd78c7aa70dab2e8627be4"
+    },
+    "http-desktop-comparison.png": {
+      "bytes": 174713,
+      "sha256": "d28a0274625f42103ca314a4000f63380f0a344a7d1500aff47405960a6a2ee3"
+    },
+    "http-desktop-packet.png": {
+      "bytes": 153417,
+      "sha256": "a630bd4cdc930b297d7b240d1ea5daec4a9612ae9a7853669a3ffed147c7718b"
+    },
+    "http-phone-comparison.png": {
+      "bytes": 168700,
+      "sha256": "93ccc3dfa9d6e85aeeb9688ff0033b96d9cb1ad5e88bc3ae10cebf25dd8dec11"
+    },
+    "http-phone-packet.png": {
+      "bytes": 122959,
+      "sha256": "a5e31f422bdd4dc3ce09c7edea3a97f9591c33bbcb233b38ab0b819fe9c828c2"
+    },
+    "measurements.json": {
+      "bytes": 2014,
+      "sha256": "3c7ff64638713c79ca04cfa025e61cb522e03b096da5197e6d89773bf582787d"
+    },
+    "offline-gate.log": {
+      "bytes": 8299,
+      "sha256": "295075575bbb5da4285312c4764a4e44b35423c4f393ec8735362499da914394"
+    },
+    "premium-audit.json": {
+      "bytes": 200,
+      "sha256": "59228c627ebe796c49c1900a4dd8c19c97b5e5ceda3209681b508738da1dd1e1"
+    },
+    "w01-browser.json": {
+      "bytes": 2742,
+      "sha256": "25c2a66d1f34582c1bdc25092102bf4eb3d26ef422212991d9053f05d5299bb8"
+    },
+    "w01-browser.log": {
+      "bytes": 1016,
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c"
+    },
+    "w02-browser.json": {
+      "bytes": 66141,
+      "sha256": "03d4a07e2cea80b6ba362f080c0a83f0a40e9b0b33281a24e125b771cf3287a0"
+    },
+    "w02-browser.log": {
+      "bytes": 705,
+      "sha256": "bcef6e32dc274b15271ed70137b75940d9efaca9239ce0ebb190bdb9c143d1fe"
+    },
+    "w03-browser.json": {
+      "bytes": 3486,
+      "sha256": "78f60c5b3a4947454829f49c217c9fd73ee78d2eefaaede4f4c9995545b35205"
+    },
+    "w03-browser.log": {
+      "bytes": 646,
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b"
+    },
+    "w04-browser.json": {
+      "bytes": 3785,
+      "sha256": "ea35201d0bd84ea0828ea97a8b3941204396924321581b7b63ee30e3d008a145"
+    },
+    "w04-browser.log": {
+      "bytes": 1192,
+      "sha256": "1cdc73323252ded26a3a85f0254e107e6e6fe26132bda605a80f581eb35a1833"
+    }
+  },
+  "evidence_format": "Text line endings normalized to LF; trailing log whitespace trimmed. Test results and measurements are otherwise unchanged.",
+  "review_record": "web/docs/w04-review-main-line.md",
+  "findings": [
+    "1: Missing receipt uncertainty stated explicitly.",
+    "2: Desktop/phone packet-return focus and visibility checked after3seconds; Journal browser Back restores link/scroll.",
+    "3: Bounded supplied summaries, denied summaries null, phone labeled rows without overlap or horizontal scrolling."
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "milestone": "W04",
+  "date": "2026-10-03",
+  "disposition": "ACCEPT",
+  "scope": "Frontend fixture acceptance only",
+  "source_commit": "280814982fba890a4b253ac04a921c20ef57629d",
+  "review": "web/docs/w04-review-main-line.md",
+  "review_sha256": "38efad56e55a43d582c09c1f61eaac7e6e568e6a232c12f9e2170127916488b3",
+  "preview_digest": "79a1ac8460a8c4e39260c37c85197c16041f71e998023f039e292a2249bd436d",
+  "preview_digest_note": "Implementer manifest value; reviewer did not recompute it.",
+  "resolved_findings": [
+    1,
+    2,
+    3
+  ],
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "ci": "Separate gate",
+  "operator_merge": "Separate gate"
+}

@@ -1,0 +1,78 @@
+{
+  "baseline_commit": "86d301b5dc848de095028470b6efcc3b515c420c",
+  "samples": [
+    {
+      "label": "W03 baseline",
+      "dataset_population": 10000,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 387,
+      "rows": 50,
+      "dom_nodes": 727,
+      "api_requests": 4,
+      "api_response_bytes": 98988,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W03 baseline",
+      "dataset_population": 10000,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 369,
+      "rows": 50,
+      "dom_nodes": 727,
+      "api_requests": 4,
+      "api_response_bytes": 98988,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W03 baseline",
+      "dataset_population": 10000,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 368,
+      "rows": 50,
+      "dom_nodes": 727,
+      "api_requests": 4,
+      "api_response_bytes": 98988,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W04 source chooser",
+      "dataset_population": 1003,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 278,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W04 source chooser",
+      "dataset_population": 1003,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 278,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W04 source chooser",
+      "dataset_population": 1003,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 275,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    }
+  ],
+  "caveat": "One warmup and two warm samples per surface; different datasets and workflows. These establish bounded rendering/requests, not a speed improvement or SLA. CHROMIUM_PATH override used when supplied."
+}

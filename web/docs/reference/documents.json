@@ -4484,7 +4484,10 @@
     "web/docs/reference/status.md",
     "web/docs/reviews/README.md",
     "web/docs/reviews/docs-organization-2026-10-04.md",
-    "web/docs/templates/task-review.md"
+    "web/docs/templates/task-review.md",
+    "web/docs/reviews/docs-organization-2026-10-04/provenance.json",
+    "web/docs/reviews/docs-organization-2026-10-04/dist.SHA256SUMS",
+    "web/docs/reviews/docs-organization-2026-10-04/dist-demo.SHA256SUMS"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

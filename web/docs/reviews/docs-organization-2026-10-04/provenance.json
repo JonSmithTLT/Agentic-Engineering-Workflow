@@ -1,0 +1,13 @@
+{
+  "source_commit": "9f14445d314e2e9d1dd924ff793eab97cbc9b7cd",
+  "source_tree": "d73741194b867beb7bb7302d4495b683c39b4de8",
+  "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
+  "gate": "PASS",
+  "network": "none",
+  "checkout": "web/artifacts/commit-freeze/run-YqgXlhBK/source",
+  "build_trees": {
+    "dist": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+    "dist-demo": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a"
+  }
+}

@@ -15,6 +15,16 @@ runs:
         # Only downloaded wheels are cached; resolution runs every time (the dependency ranges are unpinned).
         cache: pip
         cache-dependency-path: pyproject.toml
+    - name: Bubblewrap for contained harness runs (Linux; M4-B, strategy "Containment lane")
+      if: runner.os == 'Linux'
+      shell: bash
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; bubblewrap needs them (as on RHEL 8,
+      # where they are allowed by default). Lifting the restriction affects only this throwaway runner.
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends bubblewrap
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        bwrap --ro-bind / / --unshare-pid --dev /dev --proc /proc -- true
     - name: Git identity for fixture repositories
       shell: bash
       run: |

@@ -32,7 +32,7 @@ def lab(tmp_path):
 @pytest.fixture
 def sync(tmp_path):
     d = tmp_path / "sync"
-    d.mkdir()
+    d.mkdir(exist_ok=True)  # HarnessLab already made it (a writable root for contained runs)
     return d
 
 

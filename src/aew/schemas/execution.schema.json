@@ -35,6 +35,17 @@
       "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
       "uniqueItems": true
     },
+    "containment": {
+      "type": "object",
+      "description": "OS filesystem containment of harness runs (F2, Linux; ADR-0009 amendment). mode required (the default) refuses a launch whose sandbox cannot be established or fails its self-test; allow_weaker launches it labelled workdir_separation_only. writable adds existing directories every contained run may write (recorded on each run's label); a root that equals, contains or lies under what containment protects (the project's .aew, its git directories, the runs directory, /tmp, the Python environment, a masked secret) is refused at launch. hide masks further secret files or directories. trusted_git_drivers names the git filter, diff and merge drivers AEW's own git may run (an installed program agents cannot modify, such as git-lfs); every other configured driver, hook and fsmonitor is switched off, and a dispatch whose base assigns an untrusted filter is refused.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["required", "allow_weaker"]},
+        "writable": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "hide": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "trusted_git_drivers": {"type": "array", "items": {"type": "string", "pattern": "^[^\\s=]+$"}, "uniqueItems": true}
+      }
+    },
     "description": {"type": "string"}
   },
   "$defs": {

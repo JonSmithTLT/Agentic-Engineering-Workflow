@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { setupWorker } from 'msw/browser';
 import { journalHandlers } from '../preview/journal/handlers';
 import { investigationHandlers } from '../preview/investigation/handlers';
+import { evidenceHandlers } from '../preview/evidence/handlers';
 import { selectedWorld } from './worlds';
 import { DemoProjector, representationTag } from './projector';
 const checks = new Map<string, number>();
@@ -59,6 +60,7 @@ async function respond({ request }: { request: Request }) {
 }
 export const worker = setupWorker(
   ...investigationHandlers,
+  ...evidenceHandlers,
   ...journalHandlers,
   http.get('/api/v1/*', respond),
   http.head('/api/v1/*', respond),

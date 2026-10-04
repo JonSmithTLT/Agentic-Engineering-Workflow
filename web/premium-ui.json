@@ -5,13 +5,14 @@
   "canonicalMap": "UX-CONTRACT.md",
   "requiredCapabilities": ["Table Selection", "Select/Listbox", "Scrollbar"],
   "ownership": { "Select/Listbox": "native" },
-  "requiredCommands": ["typecheck", "lint", "unit", "build", "journalArtifacts"],
+  "requiredCommands": ["typecheck", "lint", "unit", "build", "journalArtifacts", "evidenceArtifacts"],
   "commands": {
     "typecheck": "npm run typecheck",
     "lint": "npm run lint",
     "unit": "npm test",
     "build": "npm run build",
-    "journalArtifacts": "node --experimental-strip-types scripts/journal-artifact.mjs"
+    "journalArtifacts": "node --experimental-strip-types scripts/journal-artifact.mjs",
+    "evidenceArtifacts": "node --experimental-strip-types scripts/evidence-artifact.mjs"
   },
-  "evidence": { "failurePaths": "tests/w03-journal.test.tsx", "keyboardAndResponsive": "scripts/browser-w03.mjs" }
+  "evidence": { "failurePaths": "tests/evidence.test.ts", "keyboardAndResponsive": "scripts/browser-w05.mjs" }
 }

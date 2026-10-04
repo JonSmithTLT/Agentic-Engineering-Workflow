@@ -8,6 +8,7 @@ generation-bound token checked inside each locked transition.
 
 from __future__ import annotations
 
+import errno
 import sys
 import time
 from pathlib import Path
@@ -25,8 +26,7 @@ class FileLock:
 
     def __enter__(self) -> FileLock:
         with profile.phase("lock"):
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            fh = open(self.path, "a+b")
+            fh = self._open()
             deadline = time.monotonic() + self.timeout
             while True:
                 try:
@@ -39,6 +39,18 @@ class FileLock:
                     time.sleep(0.01)
         self._fh = fh
         return self
+
+    def _open(self):  # type: ignore[no-untyped-def]
+        """The lock file, for writing where possible. On a read-only mount (a contained run's view of the project,
+        M4-B) an existing lock file is opened read-only: POSIX ``flock`` needs no write access, so a contained reader
+        still serializes with the engine's writers instead of failing."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            return open(self.path, "a+b")
+        except OSError as exc:
+            if sys.platform == "win32" or exc.errno not in (errno.EROFS, errno.EACCES) or not self.path.exists():
+                raise
+            return open(self.path, "rb")
 
     def __exit__(
         self,

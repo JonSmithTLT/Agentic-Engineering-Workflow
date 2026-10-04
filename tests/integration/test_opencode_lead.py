@@ -69,7 +69,7 @@ def guide_of(lab) -> str:
 
 def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab, tmp_path):
     sync = tmp_path / "sync"
-    sync.mkdir()
+    sync.mkdir(exist_ok=True)
     res, steps, argv = run_tui(lab, [
         {"do": "dump_env", "path": str(sync / "env")},
         {"do": "child_env", "path": str(sync / "child"), "shell_path": str(sync / "shell")},
@@ -95,7 +95,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
 
 def test_a_provider_key_reaches_the_lead_only_when_passed_explicitly(lab, tmp_path):
     sync = tmp_path / "sync"
-    sync.mkdir()
+    sync.mkdir(exist_ok=True)
     res, _, _ = run_tui(lab, [{"do": "dump_env", "path": str(sync / "env")}], "--provider-env", "OPENAI_API_KEY")
     assert res.returncode == 0, res.stderr
     assert json.loads((sync / "env").read_text())["OPENAI_API_KEY"] == SECRET

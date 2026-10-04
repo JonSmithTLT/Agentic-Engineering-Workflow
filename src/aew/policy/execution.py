@@ -50,6 +50,11 @@ TEMPLATE = """\
 #     classes: {"0": light}
 #     cards: {}
 #   provider_env: [ANTHROPIC_API_KEY]
+#
+# Containment (Linux): every harness run and the checks it runs execute in a bubblewrap sandbox that can write
+# only the run's own roots. `containment: {mode: required}` is the default and refuses a launch whose sandbox
+# cannot be established; `mode: allow_weaker` launches it labelled workdir_separation_only. `writable` adds
+# directories every run may write (for example a shared build cache); `hide` masks further secrets.
 schema: aew/execution/v1
 configured: false
 harness: opencode

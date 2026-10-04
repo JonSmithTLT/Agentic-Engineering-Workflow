@@ -209,7 +209,7 @@ def test_every_run_is_told_where_to_write_outside_its_workspace(tmp_path):
     lab = driver.create_lab(tmp_path)
     try:
         sync = tmp_path / "sync"
-        sync.mkdir()
+        sync.mkdir(exist_ok=True)
         wid, inv, run = launch_ticket(lab, driver, tmp_path, [{"do": "dump_env", "path": str(sync / "env")}])
         lab.wait(run)
         env = __import__("json").loads((sync / "env").read_text(encoding="utf-8"))

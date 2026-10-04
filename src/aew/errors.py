@@ -175,6 +175,13 @@ class HarnessLaunchFailed(HarnessError):
     code = "HARNESS_LAUNCH_FAILED"
 
 
+class ContainmentUnavailable(HarnessError):
+    """Policy requires OS filesystem containment (F2) and this run's sandbox could not be established or failed its
+    self-test. No harness process started."""
+
+    code = "CONTAINMENT_UNAVAILABLE"
+
+
 class RunLive(IllegalTransition):
     """The invocation's latest harness run may still be running; relaunching needs --replace."""
 

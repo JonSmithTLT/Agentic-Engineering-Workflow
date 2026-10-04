@@ -13,14 +13,14 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 RUN_SCHEMA = "aew/harness-run/v1"
-# The filesystem guarantee a run actually has, stated so that its absence is never read as containment
-# (AEW-INV-ISO-001; execution-workspace-and-isolation design §3.1). Runs get their own workspace or observation,
-# private harness state and a scratch directory; nothing stops an agent's shell writing where the operator can.
-CONTAINMENT = "workdir_separation_only"
+# Where AEW cannot contain a run (Windows), what its runs actually have, stated so that its absence is never read as
+# containment (AEW-INV-ISO-001; execution-workspace-and-isolation design §3.1). On Linux runs are contained (M4-B,
+# `aew.harness.containment`) and each run records its own label.
 CONTAINMENT_NOTE = ("workdir separation only: each run has its own workspace or observation, private harness state and "
-                    "a scratch directory, but no OS-level filesystem containment. An agent's shell runs as you and can "
-                    "read and write whatever your account can, so evaluate on scratch repositories until containment "
-                    "exists (docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md)")
+                    "a scratch directory, but no OS-level filesystem containment on this platform. An agent's shell "
+                    "runs as you and can read and write whatever your account can, so evaluate on scratch repositories "
+                    "here; real-repository work runs contained on Linux "
+                    "(docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md)")
 
 # Run status, as recorded in the local run record (telemetry, never read by a gate).
 STARTING, RUNNING = "starting", "running"

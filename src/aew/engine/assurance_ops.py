@@ -15,6 +15,7 @@ from aew.engine import gates as G
 from aew.engine.dispatch import Blocker, GuardRegistration
 from aew.errors import GitError
 from aew.knowledge.records import read_record
+from aew.policy import execution as X
 from aew.workspace import git
 
 if TYPE_CHECKING:
@@ -30,7 +31,8 @@ class Assurance:
     def dispatch_guards(self) -> list[GuardRegistration]:
         return [GuardRegistration("protected.overlap", self.guard_protected),
                 GuardRegistration("assurance.triggers", self.guard_triggers),
-                GuardRegistration("class0.eligible", self.guard_class0)]
+                GuardRegistration("class0.eligible", self.guard_class0),
+                GuardRegistration("git.drivers", self.guard_git_drivers)]
 
     # ---- inputs
 
@@ -83,6 +85,25 @@ class Assurance:
                                                                                          "severity"}})
                 for x in i["lint"] if x["severity"] == "error"]
         return out
+
+    def guard_git_drivers(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Blocker | None:
+        """A base whose committed attributes assign a filter AEW will not run is refused for every role: a workspace
+        on it would be checked out, snapshotted and committed without the filter (M4-B review)."""
+        workspace = state["work"][work_id].get("workspace") or {}
+        commit = facts.get("base") or workspace.get("base_commit") or self.k.authoritative_commit()
+        if not commit:
+            return None
+        try:
+            found = git.untrusted_filters(self.k.repo_root, commit)
+        except GitError:
+            return None
+        if not found:
+            return None
+        path = X.policy_path(self.k.aew_root, self.k.manifest)
+        inside = path.is_relative_to(self.k.repo_root)
+        policy_file = path.relative_to(self.k.repo_root).as_posix() if inside else str(path)
+        return Blocker("GIT_DRIVER_UNTRUSTED", git.untrusted_filters_message(found, policy_file),
+                       {"drivers": found, "trusted": sorted(git.trusted_drivers()), "policy_file": policy_file})
 
     def guard_triggers(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> None:
         """Deterministic hard triggers (v0.4 §22): recorded as obligations, never a refusal on their own."""

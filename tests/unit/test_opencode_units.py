@@ -278,3 +278,16 @@ def _announcing_server(tmp_path: Path, url: str) -> Any:
 
     return Server.start(spawn, ["opencode"], env={"OPENCODE_PASSWORD": "pw"}, cwd=str(tmp_path),
                         log_path=tmp_path / "server.log", timeout=20)
+
+
+def test_rules_hold_when_only_denials_follow_aews_rules():
+    """E17: AEW's rules in order as one block; anything OpenCode appends after them may only deny."""
+    rule, rules_hold = projection.rule, projection.rules_hold
+    want = [rule("*", "deny"), rule("read", "allow"), rule("edit", "deny")]
+    defaults = [rule("*", "allow"), rule("external_directory", "ask")]
+    assert rules_hold(defaults + want, want) is None
+    assert rules_hold(defaults + want + [rule("browser", "deny")], want) is None
+    assert "widen" in rules_hold(defaults + want + [rule("browser", "allow")], want)
+    assert "widen" in rules_hold(defaults + want + [rule("shell", "ask")], want)
+    assert "missing" in rules_hold(defaults + [want[1], want[0], want[2]], want)
+    assert "missing" in rules_hold(defaults + want[:2], want)

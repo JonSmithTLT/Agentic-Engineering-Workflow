@@ -32,6 +32,7 @@ from aewflow import (  # noqa: E402
 from conftest import IS_WINDOWS, clean_env, run_aew  # noqa: E402
 from invariants import assert_control_invariants, load_control  # noqa: E402
 
+from aew.engine.base import as_v1  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 from aew.engine.store import serialize_control  # noqa: E402
 from aew.util import dump_yaml, load_yaml  # noqa: E402
@@ -118,9 +119,7 @@ def test_a_v1_project_has_no_cold_history(tmp_path):
     p = sample_project(tmp_path)
     control = p.root / ".aew/state/control.yaml"
     state = load_control(p.root)
-    state["schema"] = "aew/control/v1"
-    state.pop("cold")
-    control.write_bytes(serialize_control(state))
+    control.write_bytes(serialize_control(as_v1(state)))
     for args in (("show", "T-0001"), ("list",), ("audit",)):
         assert p.aew("history", *args).error["code"] == "USAGE"
 

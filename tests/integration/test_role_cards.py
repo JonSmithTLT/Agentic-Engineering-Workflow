@@ -44,6 +44,12 @@ SUBMIT_ONLY_VERIFIER = {
     "restrict": {"operations": ["submit.verification", "context.read"]},
 }
 
+NO_CONTEXT_VERIFIER = {
+    "schema": "aew/role/v1", "role": "no_context_verifier", "display_name": "No-context Verifier", "version": 1,
+    "extends": "verifier", "purpose": "Verifies without reading the pack.",
+    "restrict": {"operations": ["submit.verification"]},
+}
+
 
 def add_cards(p, *cards):
     catalog = p.root / ".aew/roles"
@@ -55,7 +61,7 @@ def add_cards(p, *cards):
 @pytest.fixture
 def calc(tmp_path):
     p = sample_project(tmp_path)
-    add_cards(p, TRIAGER, CALC_ENGINEER, STRICT_VERIFIER, SUBMIT_ONLY_VERIFIER)
+    add_cards(p, TRIAGER, CALC_ENGINEER, STRICT_VERIFIER, SUBMIT_ONLY_VERIFIER, NO_CONTEXT_VERIFIER)
     return p
 
 
@@ -185,6 +191,23 @@ def test_card_restriction_narrows_the_credential(calc, tmp_path):
     out = calc.lead("invoke", "create", wid, "--card", "submit_only_verifier")
     narrow = Role(calc, out["invocation_token"], impl.workspace)
     fail(narrow.aew("check", "run", "unit"), "PERMISSION_DENIED")
+
+
+def test_a_card_without_context_read_keeps_its_identity(calc, tmp_path):
+    """Area 2 review F7: custody and `whoami` check identity only, so a card that narrows `context.read` away still
+    identifies itself (and a supervisor can take custody of its run); the narrowed operation stays refused."""
+    wid = create_planned_ticket(calc, tmp_path)
+    impl = assign(calc, wid)
+    implement(impl)
+    calc.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    calc.lead("review", "ingest", wid, "--evidence", review(calc, wid))
+    calc.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    out = calc.lead("invoke", "create", wid, "--card", "no_context_verifier")
+    narrow = Role(calc, out["invocation_token"], impl.workspace)
+    who = narrow.aew("whoami")
+    assert who.returncode == 0, who.stderr
+    assert who.json["invocation"] == out["invocation"] and "context.read" not in who.json["operations"]
+    fail(narrow.aew("check", "run", "unit"), "PERMISSION_DENIED")  # what the card narrows away stays refused
 
 
 def test_slot_archetype_mismatch_rejected(calc, tmp_path):

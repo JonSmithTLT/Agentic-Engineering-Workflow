@@ -280,7 +280,8 @@ class Resume:
                 "stale_candidate": "the candidate is stale: `aew integrate prepare` again, then revalidate",
                 "conflict": "integration conflict: return to RUNNING (rebase) or REPLAN_REQUIRED",
                 "prepared": "dispatch post-integration verification (`aew invoke create --scope integration`)",
-                "validation_inconclusive": "resolve the post-integration verification blocker and re-verify",
+                "validation_inconclusive": "resolve the post-integration verification blocker, then run `aew integrate "
+                                           "prepare` (a new candidate) and verify it",
                 "validated": "publish: `aew integrate publish`",
                 "publishing": "an interrupted publish: `aew integrate reconcile`",
             }.get(status, f"integration status {status}")]

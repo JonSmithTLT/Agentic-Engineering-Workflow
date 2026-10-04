@@ -142,7 +142,7 @@ try {
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
     const visibleFocus = () => page.evaluate(() => {
       const rect = document.activeElement.getBoundingClientRect();
-      return rect.top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && rect.bottom <= innerHeight;
+      return rect.top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && rect.bottom <= window.innerHeight;
     });
     assert(await visibleFocus(), 'Detail heading is visible after selecting a child from scrolled Results');
     await page.screenshot({path:`${out}/work-density-phone-detail-focus.png`});

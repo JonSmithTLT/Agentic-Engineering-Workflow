@@ -523,7 +523,7 @@ try {
         await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
         assert(await heading.evaluate(el => {
           const top = el.getBoundingClientRect().top;
-          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < innerHeight;
+          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < window.innerHeight;
         }), 'Phone selection focuses the visible record heading below the header');
         await shot('work-density-phone-detail-focus');
         await page.goBack();
@@ -531,7 +531,7 @@ try {
         await page.waitForFunction(() => document.activeElement?.textContent === 'Validate projection consistency' && document.activeElement?.tagName === 'A');
         assert(await child.evaluate(el => {
           const top = el.getBoundingClientRect().top;
-          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < innerHeight;
+          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < window.innerHeight;
         }), 'Back restores focus to the visible selected Results link');
         await shot('work-density-phone-back-focus');
         await page.goForward();

@@ -39,6 +39,8 @@ export function InvestigationWorkspace({
   const detailRef = useRef<HTMLElement>(null);
   const resultLink = useRef<HTMLAnchorElement | null>(null);
   const navigationType = useNavigationType();
+  const navigationRef = useRef(navigationType);
+  useEffect(() => { navigationRef.current = navigationType; }, [navigationType]);
   const workPane = collection === 'work' ? params.get('work_pane') : null;
   const activePane =
     workPane === 'results' || workPane === 'detail' ? workPane : pane;
@@ -63,7 +65,7 @@ export function InvestigationWorkspace({
     function target() {
       if (showingResults) {
         const link = resultLink.current;
-        return navigationType === 'POP' && link?.isConnected && root!.contains(link)
+        return navigationRef.current === 'POP' && link?.isConnected && root!.contains(link)
           ? link : root!.querySelector<HTMLElement>('h1');
       }
       return [...root!.querySelectorAll<HTMLElement>('[data-work-heading]')]
@@ -89,7 +91,7 @@ export function InvestigationWorkspace({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [collection, workPane, selected, narrow, activePane, navigationType]);
+  }, [collection, workPane, selected, narrow, activePane]);
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 1023px)');
     if (!media) return;

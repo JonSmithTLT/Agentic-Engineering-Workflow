@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.api import Engine
+from aew.engine.base import as_v1
 from aew.engine.store import serialize_control
 from aew.knowledge import evidence as E
 from aew.util import dump_yaml, parse_frontmatter, sha256_text
@@ -117,9 +118,7 @@ class Template:
         control = root / ".aew/state/control.yaml"
         from aew.engine.store import deserialize_control
         state = deserialize_control(control.read_bytes(), source="control.yaml")
-        state["schema"] = "aew/control/v1"
-        state.pop("cold", None)
-        control.write_bytes(serialize_control(state))
+        control.write_bytes(serialize_control(as_v1(state)))
         policy = root / ".aew/policy"
         (policy / "checks.yaml").write_text(dump_yaml({
             "schema": "aew/checks/v1", "baseline_failures": [],

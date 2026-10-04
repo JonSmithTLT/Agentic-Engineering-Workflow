@@ -113,3 +113,21 @@ def test_gates_schema_requires_all_risk_classes():
              "post_integration": {"verification": True, "checks": []}},
             source="gates",
         )
+
+
+def test_the_v2_only_keys_are_defined_once():
+    """Register E36: the control schema's v1 rule refuses exactly `V2_ONLY_KEYS`, and `as_v1` of a v2 state is a
+    valid v1 document. A new v2 hot key added to one and not the other fails here, not in every fixture that fakes a
+    v1 project."""
+    import json
+    from importlib import resources
+
+    from aew.engine.base import V1, V2, V2_ONLY_KEYS, as_v1
+
+    schema = json.loads(resources.files("aew.schemas").joinpath("control.schema.json").read_text(encoding="utf-8"))
+    [v1_rule] = [r for r in schema["allOf"] if r["if"]["properties"]["schema"]["const"] == V1]
+    refused = {key for alt in v1_rule["then"]["not"]["anyOf"] for key in alt["required"]}
+    assert refused == set(V2_ONLY_KEYS)
+    assert set(V2_ONLY_KEYS) <= set(schema["properties"])
+    state = {"schema": V2, "revision": 3, **{k: {} for k in V2_ONLY_KEYS}}
+    assert as_v1(state) == {"schema": V1, "revision": 3} and state["schema"] == V2

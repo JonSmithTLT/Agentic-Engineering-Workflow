@@ -30,6 +30,7 @@ from aewflow import (  # noqa: E402
 from conftest import git, run_aew  # noqa: E402
 from invariants import assert_control_invariants, load_control  # noqa: E402
 
+from aew.engine.base import as_v1  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 from aew.engine.store import serialize_control  # noqa: E402
 from aew.util import parse_frontmatter, sha256_file  # noqa: E402
@@ -173,9 +174,7 @@ def test_a_v1_project_changes_no_work_until_it_is_migrated(tmp_path):
     p = sample_project(tmp_path)
     control = p.root / ".aew/state/control.yaml"
     state = load_control(p.root)
-    state["schema"] = "aew/control/v1"
-    state.pop("cold")
-    control.write_bytes(serialize_control(state))
+    control.write_bytes(serialize_control(as_v1(state)))
     refused = p.aew("work", "create", "ticket", "--title", "Investigate", "--class", "1", "--non-mutating",
                     "--token", p.token, "--expect-rev", str(p.rev()))
     assert refused.error["code"] == "MIGRATION_REQUIRED"

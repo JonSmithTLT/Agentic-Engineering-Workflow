@@ -1,6 +1,6 @@
 # AEW M4: ambiguity report and plan (mutating concurrency above 1)
 
-- **Status:** draft for the operator's and designer's plan review. The planning plan was approved by the operator on 2026-10-03, with the four decisions and three clarifications recorded in §3. No M4 code is written until this plan is approved.
+- **Status:** approved by the operator and designer (2026-10-03) and in progress; see the last bullet of this list for the phase state. Earlier: a draft for plan review; the planning plan was approved by the operator on 2026-10-03, with the four decisions and three clarifications recorded in §3, and no M4 code was written until the plan was approved.
 - **Engine baseline:** `42239e1`, the ADR-0011 P3 merge (PR #24). This document is written on `main` at `0424c61` (PR #27, test and CI only, on top).
 - **Register housekeeping first:** PR #29 closes the before-M4 gate, F1, E5 and F20.1 in `future-work.md` §9. The triage in §R assumes it.
 - **§0 spike done** (variant A, engine-only, 2026-10-03). It does not change the plan (§0).

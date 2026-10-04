@@ -1,0 +1,9 @@
+repo=tree commit=dcd43f1901b9999ec65ae6c84490e319384861df tracked=798
+record: 27926 bytes, 1134 lines; sha256 bf63796e8d5f6730
+imports: 212 modules, 578 intra-repo edges, 0 unparseable, capped=False
+observed_paths (object reads): 214 files + the ls-files listing
+sections (ms): ls_tree 39.2, directories 6.9, languages 1.8, build_system 0.0, entry_points 21.7, test_locations 24.7, generated_and_vendor 22.2, semantic_prerequisites 0.0, imports 634.7
+run 1: total 752.8 ms, sha256 bf63796e8d5f6730
+run 2: total 728.6 ms, sha256 bf63796e8d5f6730
+run 3: total 726.2 ms, sha256 bf63796e8d5f6730
+deterministic across repeats: True

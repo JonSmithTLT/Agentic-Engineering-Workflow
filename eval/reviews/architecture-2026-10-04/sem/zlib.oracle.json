@@ -1,0 +1,1341 @@
+{
+ "project": "zlib",
+ "commit": "51b7f2a",
+ "totals": {
+  "def_nm": 338,
+  "def_extracted": 338,
+  "def_missing": 0,
+  "def_extra": 0,
+  "def_extra_internal": 0,
+  "linkage_disagree": 0,
+  "call_objdump_direct_edges": 836,
+  "call_extracted_direct_edges": 844,
+  "call_agree": 832,
+  "call_missing": 0,
+  "call_extra": 8,
+  "call_objdump_indirect_sites": 92,
+  "call_extracted_indirect_sites": 92,
+  "undef_nm": 262,
+  "undef_unexplained": 0,
+  "inc_mm": 2588,
+  "inc_missing": 0,
+  "inc_extra": 0,
+  "mac_dM": 49784,
+  "mac_extracted": 51653,
+  "mac_extracted_distinct": 49955,
+  "tus": 34
+ },
+ "samples": {
+  "def_missing": [],
+  "def_extra": [],
+  "linkage_disagree": [],
+  "call_missing": [],
+  "call_extra": [
+   [
+    "gzlib.c",
+    "gzseek64",
+    "gz_intmax"
+   ],
+   [
+    "gzread.c",
+    "gz_skip",
+    "gz_intmax"
+   ],
+   [
+    "gzwrite.c",
+    "gz_zero",
+    "gz_intmax"
+   ],
+   [
+    "zutil.c",
+    "zcalloc",
+    "calloc"
+   ],
+   [
+    "gzlib.c",
+    "gzseek64",
+    "gz_intmax"
+   ],
+   [
+    "gzread.c",
+    "gz_skip",
+    "gz_intmax"
+   ],
+   [
+    "gzwrite.c",
+    "gz_zero",
+    "gz_intmax"
+   ],
+   [
+    "zutil.c",
+    "zcalloc",
+    "calloc"
+   ]
+  ],
+  "undefined_unexplained": [],
+  "include_missing": [],
+  "include_extra": [],
+  "macro_missing": [],
+  "macro_extra": []
+ },
+ "per_tu": [
+  {
+   "file": "adler32.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 70,
+    "extracted": 70,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1392,
+    "extracted_definitions_visible": 1446,
+    "extracted_names_distinct": 1397
+   }
+  },
+  {
+   "file": "compress.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 58,
+    "extracted": 58,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1268,
+    "extracted_definitions_visible": 1298,
+    "extracted_names_distinct": 1273
+   }
+  },
+  {
+   "file": "crc32.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 11,
+    "extracted_direct_edges": 11,
+    "agree": 11,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1385,
+    "extracted_definitions_visible": 1439,
+    "extracted_names_distinct": 1390
+   }
+  },
+  {
+   "file": "deflate.c",
+   "definitions": {
+    "nm": 28,
+    "extracted": 28,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 69,
+    "extracted_direct_edges": 69,
+    "agree": 69,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 16,
+    "extracted_indirect_sites": 16
+   },
+   "undefined": {
+    "nm": 14,
+    "explained_by_extraction": 14,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1425,
+    "extracted_definitions_visible": 1479,
+    "extracted_names_distinct": 1430
+   }
+  },
+  {
+   "file": "gzclose.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1669,
+    "extracted_definitions_visible": 1730,
+    "extracted_names_distinct": 1674
+   }
+  },
+  {
+   "file": "gzlib.c",
+   "definitions": {
+    "nm": 18,
+    "extracted": 18,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 28,
+    "extracted_direct_edges": 29,
+    "agree": 28,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 6,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1670,
+    "extracted_definitions_visible": 1731,
+    "extracted_names_distinct": 1675
+   }
+  },
+  {
+   "file": "gzread.c",
+   "definitions": {
+    "nm": 15,
+    "extracted": 15,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 42,
+    "extracted_direct_edges": 43,
+    "agree": 41,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 13,
+    "explained_by_extraction": 12,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1668,
+    "extracted_definitions_visible": 1730,
+    "extracted_names_distinct": 1674
+   }
+  },
+  {
+   "file": "gzwrite.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 43,
+    "extracted_direct_edges": 44,
+    "agree": 42,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 16,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1669,
+    "extracted_definitions_visible": 1735,
+    "extracted_names_distinct": 1674
+   }
+  },
+  {
+   "file": "inflate.c",
+   "definitions": {
+    "nm": 22,
+    "extracted": 22,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 34,
+    "extracted_direct_edges": 34,
+    "agree": 34,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 9
+   },
+   "undefined": {
+    "nm": 7,
+    "explained_by_extraction": 7,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 74,
+    "extracted": 74,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1397,
+    "extracted_definitions_visible": 1451,
+    "extracted_names_distinct": 1402
+   }
+  },
+  {
+   "file": "infback.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 21,
+    "extracted_indirect_sites": 21
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 74,
+    "extracted": 74,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1396,
+    "extracted_definitions_visible": 1450,
+    "extracted_names_distinct": 1401
+   }
+  },
+  {
+   "file": "inftrees.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1386,
+    "extracted_definitions_visible": 1440,
+    "extracted_names_distinct": 1391
+   }
+  },
+  {
+   "file": "inffast.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 73,
+    "extracted": 73,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1386,
+    "extracted_definitions_visible": 1440,
+    "extracted_names_distinct": 1391
+   }
+  },
+  {
+   "file": "trees.c",
+   "definitions": {
+    "nm": 21,
+    "extracted": 21,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 21,
+    "extracted_direct_edges": 21,
+    "agree": 21,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 72,
+    "extracted": 72,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1426,
+    "extracted_definitions_visible": 1480,
+    "extracted_names_distinct": 1431
+   }
+  },
+  {
+   "file": "uncompr.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 58,
+    "extracted": 58,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1268,
+    "extracted_definitions_visible": 1298,
+    "extracted_names_distinct": 1273
+   }
+  },
+  {
+   "file": "zutil.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 3,
+    "agree": 2,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 90,
+    "extracted": 90,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1695,
+    "extracted_definitions_visible": 1766,
+    "extracted_names_distinct": 1700
+   }
+  },
+  {
+   "file": "adler32.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 70,
+    "extracted": 70,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1392,
+    "extracted_definitions_visible": 1447,
+    "extracted_names_distinct": 1398
+   }
+  },
+  {
+   "file": "compress.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 58,
+    "extracted": 58,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1268,
+    "extracted_definitions_visible": 1299,
+    "extracted_names_distinct": 1274
+   }
+  },
+  {
+   "file": "crc32.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 11,
+    "extracted_direct_edges": 11,
+    "agree": 11,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1385,
+    "extracted_definitions_visible": 1440,
+    "extracted_names_distinct": 1391
+   }
+  },
+  {
+   "file": "deflate.c",
+   "definitions": {
+    "nm": 28,
+    "extracted": 28,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 69,
+    "extracted_direct_edges": 69,
+    "agree": 69,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 16,
+    "extracted_indirect_sites": 16
+   },
+   "undefined": {
+    "nm": 14,
+    "explained_by_extraction": 14,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1425,
+    "extracted_definitions_visible": 1480,
+    "extracted_names_distinct": 1431
+   }
+  },
+  {
+   "file": "gzclose.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1669,
+    "extracted_definitions_visible": 1731,
+    "extracted_names_distinct": 1675
+   }
+  },
+  {
+   "file": "gzlib.c",
+   "definitions": {
+    "nm": 18,
+    "extracted": 18,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 28,
+    "extracted_direct_edges": 29,
+    "agree": 28,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 6,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1670,
+    "extracted_definitions_visible": 1732,
+    "extracted_names_distinct": 1676
+   }
+  },
+  {
+   "file": "gzread.c",
+   "definitions": {
+    "nm": 15,
+    "extracted": 15,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 42,
+    "extracted_direct_edges": 43,
+    "agree": 41,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 13,
+    "explained_by_extraction": 12,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1668,
+    "extracted_definitions_visible": 1731,
+    "extracted_names_distinct": 1675
+   }
+  },
+  {
+   "file": "gzwrite.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 43,
+    "extracted_direct_edges": 44,
+    "agree": 42,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 16,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 89,
+    "extracted": 89,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1669,
+    "extracted_definitions_visible": 1736,
+    "extracted_names_distinct": 1675
+   }
+  },
+  {
+   "file": "inflate.c",
+   "definitions": {
+    "nm": 22,
+    "extracted": 22,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 34,
+    "extracted_direct_edges": 34,
+    "agree": 34,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 9
+   },
+   "undefined": {
+    "nm": 7,
+    "explained_by_extraction": 7,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 74,
+    "extracted": 74,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1397,
+    "extracted_definitions_visible": 1452,
+    "extracted_names_distinct": 1403
+   }
+  },
+  {
+   "file": "infback.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 21,
+    "extracted_indirect_sites": 21
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 74,
+    "extracted": 74,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1396,
+    "extracted_definitions_visible": 1451,
+    "extracted_names_distinct": 1402
+   }
+  },
+  {
+   "file": "inftrees.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 71,
+    "extracted": 71,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1386,
+    "extracted_definitions_visible": 1441,
+    "extracted_names_distinct": 1392
+   }
+  },
+  {
+   "file": "inffast.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 73,
+    "extracted": 73,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1386,
+    "extracted_definitions_visible": 1441,
+    "extracted_names_distinct": 1392
+   }
+  },
+  {
+   "file": "trees.c",
+   "definitions": {
+    "nm": 21,
+    "extracted": 21,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 21,
+    "extracted_direct_edges": 21,
+    "agree": 21,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 72,
+    "extracted": 72,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1426,
+    "extracted_definitions_visible": 1481,
+    "extracted_names_distinct": 1432
+   }
+  },
+  {
+   "file": "uncompr.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 58,
+    "extracted": 58,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1268,
+    "extracted_definitions_visible": 1299,
+    "extracted_names_distinct": 1274
+   }
+  },
+  {
+   "file": "zutil.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 3,
+    "agree": 2,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 90,
+    "extracted": 90,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1695,
+    "extracted_definitions_visible": 1767,
+    "extracted_names_distinct": 1701
+   }
+  },
+  {
+   "file": "test/example.c",
+   "definitions": {
+    "nm": 11,
+    "extracted": 11,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 101,
+    "extracted_direct_edges": 101,
+    "agree": 101,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 35,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 78,
+    "extracted": 78,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1394,
+    "extracted_definitions_visible": 1446,
+    "extracted_names_distinct": 1390
+   }
+  },
+  {
+   "file": "test/minigzip.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 50,
+    "extracted_direct_edges": 50,
+    "agree": 50,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 23,
+    "explained_by_extraction": 23,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 78,
+    "extracted": 78,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1398,
+    "extracted_definitions_visible": 1450,
+    "extracted_names_distinct": 1394
+   }
+  },
+  {
+   "file": "test/example.c",
+   "definitions": {
+    "nm": 11,
+    "extracted": 11,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 101,
+    "extracted_direct_edges": 101,
+    "agree": 101,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 35,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 78,
+    "extracted": 78,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1394,
+    "extracted_definitions_visible": 1456,
+    "extracted_names_distinct": 1400
+   }
+  },
+  {
+   "file": "test/minigzip.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 50,
+    "extracted_direct_edges": 50,
+    "agree": 50,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 23,
+    "explained_by_extraction": 23,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 78,
+    "extracted": 78,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 1398,
+    "extracted_definitions_visible": 1460,
+    "extracted_names_distinct": 1404
+   }
+  }
+ ]
+}

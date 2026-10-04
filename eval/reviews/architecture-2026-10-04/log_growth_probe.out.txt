@@ -1,0 +1,104 @@
+init (revision 0)                      rev=  0 log_files=  1 txn_files=0
+lead.acquire (seat op, no finalizers)  rev=  1 log_files=  2 txn_files=0
+5x work.create (lead_txn)              rev=  6 log_files=  7 txn_files=2
+3x checkpoint (lead_txn)               rev=  9 log_files= 10 txn_files=2
+lead.handoff.offer (lead_txn)          rev= 10 log_files= 11 txn_files=2
+lead.handoff.cancel (lead_txn)         rev= 11 log_files= 12 txn_files=2
+lead.release (lead_txn)                rev= 12 log_files= 13 txn_files=2
+lead.acquire again (seat op)           rev= 13 log_files= 14 txn_files=1
+after status/resume/doctor (reads)     rev= 13 log_files= 14 txn_files=0
+
+--- ops recorded, in revision order ---
+  000000  op=init                   actor={"kind": "operator", "command": "aew init"} txn=no refs=0 bytes=164
+  000001  op=lead.acquire           actor={"kind": "session", "session_label": "probe", "generation":  txn=no refs=0 bytes=198
+  000002  op=work.create            actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=471
+  000003  op=work.create            actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=471
+  000004  op=work.create            actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=471
+  000005  op=work.create            actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=471
+  000006  op=work.create            actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=471
+  000007  op=checkpoint             actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=484
+  000008  op=checkpoint             actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=484
+  000009  op=checkpoint             actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=484
+  000010  op=lead.handoff.offer     actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=1 bytes=478
+  000011  op=lead.handoff.cancel    actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=0 bytes=578
+  000012  op=lead.release           actor={"kind": "lead", "session_label": "probe", "generation": 1,  txn=yes refs=0 bytes=632
+  000013  op=lead.acquire           actor={"kind": "session", "session_label": "probe-2", "generation" txn=no refs=0 bytes=201
+
+--- one lead_txn record (work.create) ---
+revision: 2
+at: '2026-10-04T05:45:58Z'
+actor:
+  kind: lead
+  session_label: probe
+  generation: 1
+  token_id: tk_867b4ec44c1b94aa
+op: work.create
+summary: 'created ticket T-0001: T0'
+reason: null
+refs:
+- work/T-0001/ticket.md
+txn:
+  path: state/txn/000002.yaml
+  sha256: 6931495b9189abaa681a9e22f0a72c9fbb4301669c9f8d5244f590a86e22e4ed
+  writes:
+  - path: work/T-0001/ticket.md
+    before: null
+    after: 2feb60bc04af989d7f36963d143b1c07d622d323eaa886164643f00eac8515b2
+
+--- one seat-op record (lead.acquire) ---
+revision: 0
+at: '2026-10-04T05:45:57Z'
+actor:
+  kind: operator
+  command: aew init
+op: init
+summary: AEW project 'repo' initialized
+reason: null
+refs: []
+txn: null
+
+--- what the hot state keeps about the last commit ---
+revision: 13
+at: '2026-10-04T05:46:04Z'
+actor:
+  kind: session
+  session_label: probe-2
+  generation: 2
+op: lead.acquire
+summary: Lead authority acquired (generation 2)
+reason: null
+refs: []
+txn: null
+
+--- .aew layout ---
+   .gitignore 80
+   history/lead/000001.yaml 389
+   history/lead/000002.yaml 393
+   history/tail.yaml 761
+   knowledge/OPEN-QUESTIONS.md 741
+   knowledge/PROJECT.md 541
+   local/control.lock 0
+   policy/checks.yaml 253
+   policy/execution.yaml 1562
+   policy/gates.yaml 1471
+   policy/guardrails.yaml 282
+   project.yaml 1358
+   roles/README.md 538
+   state/control.yaml 4293
+   state/CURRENT.md 404
+   state/HANDOFF.md 663
+   state/handoffs/H-0001.md 576
+   state/handoffs/H-0002.md 576
+   state/handoffs/H-0003.md 576
+   state/handoffs/H-0004.md 576
+   work/T-0001/ticket.md 309
+   work/T-0002/ticket.md 309
+   work/T-0003/ticket.md 309
+   work/T-0004/ticket.md 309
+   work/T-0005/ticket.md 309
+   state/log/: 14 files, 6058 bytes total
+
+--- wall time per CLI commit (s), tiny project ---
+  work.create  n=5 min=0.56 median=0.57 max=0.57
+  checkpoint   n=3 min=0.52 median=0.54 max=0.54
+  lead show    (read) 0.50

@@ -1,0 +1,50 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_superseded_plan_integration_report_cannot_validate_new_candidate _____
+
+tmp_path = PosixPath('/tmp/pytest-of-jon/pytest-29/test_superseded_plan_integrati0')
+
+    def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_path):
+        p = sample_project(tmp_path)
+        wid, impl = to_commit_ready(p, tmp_path)
+        old = p.lead('integrate', 'prepare', wid)['integration']
+        old_report = verify(p, wid, scope='integration')  # submitted for v1, NOT ingested
+        p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'new acceptance requirements')
+        plan = tmp_path / 'plan-v2.md'
+        plan.write_text('Reassess the existing implementation against revised acceptance requirements.\n')
+        p.lead('plan', 'propose', wid, '--file', str(plan), '--reason', 'new acceptance requirements')
+        p.lead('plan', 'accept', wid, '--revision', '2')
+        to_verified(p, tmp_path, wid=wid)
+        p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')
+>       new = p.lead('integrate', 'prepare', wid)['integration']
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py:68: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/conftest.py:113: in lead
+    return self.ok(*args, "--token", self.token, "--expect-rev", str(self.rev()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Project(root=PosixPath('/tmp/pytest-of-jon/pytest-29/test_superseded_plan_integrati0/repo'), token='<redacted disposable fixture credential>', extra={})
+env = None
+args = ('integrate', 'prepare', 'T-0001', '--token', '<redacted disposable fixture credential>', '--expect-rev', ...)
+
+    def ok(self, *args: str, env: dict[str, str] | None = None) -> Any:
+        res = self.aew(*args, env=env)
+>       assert res.returncode == 0, f"aew {' '.join(args)} failed: {res.stderr or res.stdout}"
+E       AssertionError: aew integrate prepare T-0001 --token <redacted disposable fixture credential> --expect-rev 27 failed: {
+E           "ok": false,
+E           "error": {
+E             "code": "ILLEGAL_TRANSITION",
+E             "message": "T-0001 already has an integration in state prepared"
+E           }
+E         }
+E         
+E       assert 5 == 0
+E        +  where 5 = CLIResult(returncode=5, stdout='', stderr='{\n  "ok": false,\n  "error": {\n    "code": "ILLEGAL_TRANSITION",\n    "message": "T-0001 already has an integration in state prepared"\n  }\n}\n').returncode
+
+tests/conftest.py:105: AssertionError
+=========================== short test summary info ============================
+FAILED ../../mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py::test_superseded_plan_integration_report_cannot_validate_new_candidate
+1 failed, 5 deselected in 17.55s

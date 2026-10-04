@@ -1,0 +1,1457 @@
+From a9a9cd94d3a4b4284f9afb7fb9b79eadd79c311e Mon Sep 17 00:00:00 2001
+From: architecture review <review@local>
+Date: Sun, 4 Oct 2026 13:01:52 -0400
+Subject: [PATCH] T4 prototype: knowledge records in the ADR-0011 history
+ manifest (ADR-0013 draft)
+
+Review branch from dcd43f1, built by the independent architecture review
+after the designer approved ADR-0013 with terminology edits. Not for merge
+as is; it gives the M6b plan something concrete to diff against.
+
+- history.schema.json: entry kinds reference, case, lesson, disposition,
+  receipt; optional integer `version`.
+- control.schema.json: a v2-only `knowledge` block (capture cursor, bounded
+  pending list, overflow count), forbidden on v1 like the other v2 keys.
+- Record schemas aew/knowledge/{case,disposition,receipt}/v1.
+- history/store.py: knowledge record paths under .aew/knowledge/, covered by
+  RECORD_GLOBS so the orphan check and the audit see them.
+- history/index.py: about(), versions(), current() with the disposition
+  fold, an FTS5 table over knowledge bodies and search(); every hit is
+  authenticated at its position (locator, not voucher).
+- engine/knowledge_ops.py and cli/knowledge_commands.py: `aew knowledge
+  case|dispose|show|list|search`; one Lead transaction writes case,
+  initial disposition and receipt through History.write_record and
+  ctx.entries; the full audit appends the knowledge link checks.
+- tools/perf/control_plane.py: the v1 fixture drops the knowledge block as
+  it drops `cold`.
+- tests: invariants rule 29 (a disposition's subject precedes it);
+  test_knowledge_manifest.py (8) and test_knowledge_surface.py (6).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/aew/cli/commands.py                       |   3 +-
+ src/aew/cli/knowledge_commands.py             |  75 +++++
+ src/aew/engine/api.py                         |  22 +-
+ src/aew/engine/history_ops.py                 |   7 +
+ src/aew/engine/knowledge_ops.py               | 294 ++++++++++++++++++
+ src/aew/history/index.py                      | 119 ++++++-
+ src/aew/history/manifest.py                   |   6 +-
+ src/aew/history/store.py                      |  22 +-
+ src/aew/schemas/__init__.py                   |   3 +
+ src/aew/schemas/control.schema.json           |  39 ++-
+ src/aew/schemas/history.schema.json           |   3 +-
+ src/aew/schemas/knowledge-case.schema.json    |  51 +++
+ .../schemas/knowledge-disposition.schema.json |  41 +++
+ src/aew/schemas/knowledge-receipt.schema.json |  32 ++
+ tests/helpers/invariants.py                   |   5 +
+ tests/integration/test_archival.py            |   1 +
+ tests/integration/test_history_surface.py     |   1 +
+ tests/integration/test_knowledge_manifest.py  | 212 +++++++++++++
+ tests/integration/test_knowledge_surface.py   | 163 ++++++++++
+ tests/unit/test_dispatch_decision.py          |   3 +-
+ tools/perf/control_plane.py                   |   1 +
+ 21 files changed, 1090 insertions(+), 13 deletions(-)
+ create mode 100644 src/aew/cli/knowledge_commands.py
+ create mode 100644 src/aew/engine/knowledge_ops.py
+ create mode 100644 src/aew/schemas/knowledge-case.schema.json
+ create mode 100644 src/aew/schemas/knowledge-disposition.schema.json
+ create mode 100644 src/aew/schemas/knowledge-receipt.schema.json
+ create mode 100644 tests/integration/test_knowledge_manifest.py
+ create mode 100644 tests/integration/test_knowledge_surface.py
+
+diff --git a/src/aew/cli/commands.py b/src/aew/cli/commands.py
+index dc66e4f..c22b0c4 100644
+--- a/src/aew/cli/commands.py
++++ b/src/aew/cli/commands.py
+@@ -99,10 +99,11 @@ def register(sub: argparse._SubParsersAction) -> None:
+     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                               reason=a.reason))
+ 
+-    from aew.cli import history_commands, work_commands
++    from aew.cli import history_commands, knowledge_commands, work_commands
+ 
+     work_commands.register(sub)
+     history_commands.register(sub)
++    knowledge_commands.register(sub)
+ 
+ 
+ def _register_lead(sub: argparse._SubParsersAction) -> None:
+diff --git a/src/aew/cli/knowledge_commands.py b/src/aew/cli/knowledge_commands.py
+new file mode 100644
+index 0000000..3b42e60
+--- /dev/null
++++ b/src/aew/cli/knowledge_commands.py
+@@ -0,0 +1,75 @@
++"""`aew knowledge`: capture, dispositions and the read surface of knowledge records (ADR-0013 draft; review T4)."""
++
++from __future__ import annotations
++
++import argparse
++from typing import Any
++
++from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg
++from aew.errors import UsageError
++from aew.util import load_yaml
++
++
++def _record(args: argparse.Namespace) -> dict[str, Any]:
++    text = _read_text_arg(args.file)
++    doc = load_yaml(text, source=args.file or "-")
++    if not isinstance(doc, dict):
++        raise UsageError("the record file must hold a YAML or JSON mapping")
++    return doc
++
++
++def _case(a: argparse.Namespace) -> Any:
++    extractor = {"template_set": a.template_set} if a.template_set else None
++    return _engine(a).knowledge_case(token=_lead_token(a), expect_rev=a.expect_rev, record=_record(a), hold=a.hold,
++                                     job_revision=a.job_revision, job_index=a.job_index, extractor=extractor)
++
++
++def register(sub: argparse._SubParsersAction) -> None:
++    p = sub.add_parser("knowledge", help="knowledge records in the history: capture, dispose, show, list, search")
++    ksub = p.add_subparsers(dest="knowledge_cmd", required=True)
++
++    q = ksub.add_parser("case", help="admit (or hold) one observed Case from a record file, with its receipt (Lead)")
++    q.add_argument("--file", required=True, metavar="FILE|-", help="the Case record (YAML or JSON mapping)")
++    q.add_argument("--hold", action="store_true", help="hold the candidate for judgment instead of admitting it")
++    q.add_argument("--job-revision", type=int, help="the outbox revision the capture job read (default: --expect-rev)")
++    q.add_argument("--job-index", type=int, default=0, help="the event index within that revision")
++    q.add_argument("--template-set", help="the K1 template set the capture used, recorded on the receipt")
++    _add_lead(q)
++    _add_json(q)
++    q.set_defaults(handler=_case)
++
++    q = ksub.add_parser("dispose", help="record a later fact about a knowledge record (Lead): admitted, held, "
++                                        "rejected, serving_hold, serving_release, superseded_by, ...")
++    q.add_argument("knowledge_id")
++    q.add_argument("--rel", required=True)
++    q.add_argument("--object", dest="obj", help="what the event points at (K-nnnn@v<k>, a decision id, an audit id)")
++    q.add_argument("--decision", help="the decision record behind a judgment-bearing event")
++    q.add_argument("--note")
++    q.add_argument("--policy-version")
++    q.add_argument("--serving", dest="serving", help="serving eligibility an admission establishes")
++    _add_lead(q)
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).knowledge_dispose(
++        token=_lead_token(a), expect_rev=a.expect_rev, knowledge_id=a.knowledge_id, rel=a.rel, obj=a.obj,
++        decision=a.decision, note=a.note, policy_version=a.policy_version, serving_eligibility=a.serving))
++
++    q = ksub.add_parser("show", help="a knowledge record: its current version, its record and the fold of its "
++                                     "dispositions")
++    q.add_argument("knowledge_id")
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).knowledge_show(a.knowledge_id))
++
++    q = ksub.add_parser("list", help="knowledge entries, newest first")
++    q.add_argument("--kind", help="reference, case, lesson, disposition or receipt")
++    q.add_argument("--limit", type=int, default=50)
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).knowledge_list(kind=a.kind, limit=a.limit))
++
++    q = ksub.add_parser("search", help="full-text search over knowledge record bodies (derived index; hits are "
++                                       "authenticated against the history)")
++    q.add_argument("query")
++    q.add_argument("--kind", action="append", help="restrict to these kinds (repeatable)")
++    q.add_argument("--limit", type=int, default=20)
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).knowledge_search(a.query, kinds=tuple(a.kind) if a.kind else None,
++                                                                limit=a.limit))
+diff --git a/src/aew/engine/api.py b/src/aew/engine/api.py
+index 1e18733..fbb5651 100644
+--- a/src/aew/engine/api.py
++++ b/src/aew/engine/api.py
+@@ -26,6 +26,7 @@ from aew.engine.harness_ops import Harness
+ from aew.engine.hierarchy_ops import Hierarchy
+ from aew.engine.history_ops import HistoryCommands
+ from aew.engine.integration_ops import Integration
++from aew.engine.knowledge_ops import Knowledge
+ from aew.engine.lead_ops import Lead
+ from aew.engine.migrate_ops import Migration
+ from aew.engine.nonmutating_ops import Inputs, NonMutating
+@@ -222,6 +223,7 @@ class Engine:
+         self._archive = archive = Archive(k)
+         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
+         self._history = history = HistoryCommands(k, units=units, archive=archive)
++        self._knowledge = Knowledge(k, archive=archive)
+         self._roles = roles = Roles(k, units=units)
+         self._invocations = invocations = Invocations(k, roles=roles)
+         self._inputs = inputs = Inputs(k)
+@@ -323,12 +325,14 @@ class Engine:
+             "lead": {"schema": "aew/lead/v1", "status": "vacant", "generation": 0, "session_label": None,
+                      "token_id": None, "acquired_at": None, "handoff": None},
+             "tokens": {},
+-            "counters": {"ticket": 0, "story": 0, "epic": 0, "invocation": 0, "decision": 0, "handoff": 0},
++            "counters": {"ticket": 0, "story": 0, "epic": 0, "invocation": 0, "decision": 0, "handoff": 0,
++                         "knowledge": 0, "disposition": 0, "receipt": 0},
+             "latest_handoff": None,
+             "next_action": None,
+             "work": {},
+             "invocations": {},
+             "cold": {"root": history_manifest.empty_root()},  # ADR-0011: finished work is archived here
++            "knowledge": {"capture": None, "pending": [], "pending_overflow": 0},  # ADR-0013 (draft): the hot side
+             "last_transition": {
+                 "revision": 0, "at": utc_now(), "actor": {"kind": "operator", "command": "aew init"},
+                 "op": "init", "summary": f"AEW project '{project_id}' initialized", "reason": None,
+@@ -670,6 +674,22 @@ class Engine:
+     def history_reindex(self) -> dict[str, Any]:
+         return self._history.history_reindex()
+ 
++    def knowledge_case(self, **kw: Any) -> dict[str, Any]:
++        return self._knowledge.knowledge_case(**kw)
++
++    def knowledge_dispose(self, **kw: Any) -> dict[str, Any]:
++        return self._knowledge.knowledge_dispose(**kw)
++
++    def knowledge_show(self, knowledge_id: str) -> dict[str, Any]:
++        return self._knowledge.knowledge_show(knowledge_id)
++
++    def knowledge_list(self, *, kind: str | None = None, limit: int = 50) -> dict[str, Any]:
++        return self._knowledge.knowledge_list(kind=kind, limit=limit)
++
++    def knowledge_search(self, query: str, *, kinds: tuple[str, ...] | None = None,
++                         limit: int = 20) -> dict[str, Any]:
++        return self._knowledge.knowledge_search(query, kinds=kinds, limit=limit)
++
+     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
+         return self._migration.migrate(token=token, expect_rev=expect_rev)
+ 
+diff --git a/src/aew/engine/history_ops.py b/src/aew/engine/history_ops.py
+index 7dca160..710f38b 100644
+--- a/src/aew/engine/history_ops.py
++++ b/src/aew/engine/history_ops.py
+@@ -273,6 +273,13 @@ class HistoryCommands:
+                                   nested=evidence_pins)
+         checked = {"entries": report.entries, "records": report.records}
+         problems, damaged = list(report.problems) + self._unclosed(closure), list(report.damaged)
++        if full:  # ADR-0013 (draft) D12: the knowledge entries' link checks, from the derived index, never on a commit
++            from aew.engine.knowledge_ops import knowledge_problems
++
++            try:
++                problems += knowledge_problems(self.archive.index(state))
++            except (IntegrityError, LockTimeout) as exc:
++                problems.append(f"knowledge checks not run: {exc}")
+         result = {"mode": "full" if full else "incremental", "from": start or {"count": 0, "h": M.GENESIS_H},
+                   "through": {"count": target["count"], "h": target["head_h"]}, **checked,
+                   "ok": not problems, "problems": problems}
+diff --git a/src/aew/engine/knowledge_ops.py b/src/aew/engine/knowledge_ops.py
+new file mode 100644
+index 0000000..b787a18
+--- /dev/null
++++ b/src/aew/engine/knowledge_ops.py
+@@ -0,0 +1,294 @@
++"""Knowledge records in the history manifest (ADR-0013, draft; architecture review T4).
++
++A knowledge record (an observed Case, K1) is a durable, immutable, content-addressed record exactly like an archived
++unit's bundle: written create-if-absent through the ADR-0001 redo record and pinned by an entry of the ADR-0011
++history manifest. Every later fact about it is a ``disposition`` entry (admitted, held, rejected, serving hold or
++release, superseded); the current state is a fold over those in manifest order, never written back. A capture job's
++outcome is a ``receipt`` entry, which is also the capture cursor (the highest revision any receipt covers).
++
++One chain, one root, one audit, one derived index: the shared semantics' global ``knowledge_event_seq`` is the
++manifest sequence number. Hot state gains only constants: three counters, ``knowledge.capture`` (the last receipt
++and the revision it covers, so ``status`` never reads the history) and ``knowledge.pending`` (a bounded list of held
++candidates awaiting judgment, for the action projection).
++
++Prototype scope: the Lead commits (``lead_txn``); the service identity the draft's D9 proposes is not modelled, so
++the closed-transaction property (oracle rule 28) is asserted by tests on what a ``knowledge.*`` commit changes.
++"""
++
++from __future__ import annotations
++
++from typing import TYPE_CHECKING, Any
++
++from aew.engine.archive_ops import redact
++from aew.engine.history_ops import TRUST_LABEL
++from aew.errors import NotFound, UsageError, ValidationFailed
++from aew.history import manifest as M
++from aew.history.index import HistoryIndex
++from aew.history.store import History, disposition_rel, knowledge_rel, receipt_rel
++from aew.knowledge.records import format_id
++from aew.schemas import validate
++from aew.util import dump_yaml, utc_now
++
++if TYPE_CHECKING:
++    from aew.engine.base import Kernel, TxnContext
++    from aew.engine.ports import ArchivePort
++
++V2 = "aew/control/v2"
++CASE_SCHEMA = "aew/knowledge/case/v1"
++DISPOSITION_SCHEMA = "aew/knowledge/disposition/v1"
++RECEIPT_SCHEMA = "aew/knowledge/receipt/v1"
++PENDING_MAX = 20
++# The entry's trust label is the most restrictive source class in the record (ADR-0013 D7).
++SOURCE_RANK = {"ENGINE_OBSERVED_CONTAINED": 0, "ENGINE_OBSERVED_WEAK_BOUNDARY": 0, "ROLE_ATTESTED": 1,
++               "EXTERNAL_UNTRUSTED": 2}
++SOURCE_LABEL = {0: "engine", 1: "model", 2: "external"}
++ADMISSION_RELS = frozenset({"admitted", "held_active", "held_dormant", "rejected", "superseded_proposal"})
++SERVING_RELS = frozenset({"serving_hold", "serving_release"})
++LIFECYCLE_RELS = frozenset({"superseded_by", "quarantined", "archived"})
++OTHER_RELS = frozenset({"refines", "challenged", "reassessed", "visibility_widened", "audit_finding"})
++RELS = ADMISSION_RELS | SERVING_RELS | LIFECYCLE_RELS | OTHER_RELS
++
++
++def _empty_knowledge() -> dict[str, Any]:
++    return {"capture": None, "pending": [], "pending_overflow": 0}
++
++
++def knowledge_state(state: dict[str, Any]) -> dict[str, Any]:
++    """The hot ``knowledge`` block, created on first use (a v2 project from before this ADR has none)."""
++    block = state.get("knowledge")
++    if block is None:
++        block = state["knowledge"] = _empty_knowledge()
++    return block
++
++
++def source_of(record: dict[str, Any]) -> str:
++    classes = (record.get("source_classes") or {}).values()
++    return SOURCE_LABEL[max((SOURCE_RANK.get(c, 2) for c in classes), default=0)]
++
++
++def knowledge_problems(index: HistoryIndex) -> list[str]:
++    """Audit-time checks over the knowledge entries (ADR-0013 D12, the index-only part): every disposition's subject
++    is a content record at a lower position, and every receipt's produced ids exist. Linear in knowledge entries,
++    like the audit itself; never on the commit path."""
++    problems: list[str] = []
++    content = {e["id"]: e["seq"] for e in index.list(kind=None, limit=None) if e["kind"] in M.CONTENT_KINDS}
++    for e in index.list(kind="disposition", limit=None):
++        subject = e.get("subject")
++        if subject not in content:
++            problems.append(f"entry {e['seq']} ({e['id']}): disposition about {subject}, which is not a knowledge "
++                            "record")
++        elif content[subject] > e["seq"]:
++            problems.append(f"entry {e['seq']} ({e['id']}): disposition precedes its subject {subject}")
++    for e in index.list(kind="receipt", limit=None):
++        for kid in (e.get("links") or {}).get("produced") or []:
++            if kid not in content:
++                problems.append(f"entry {e['seq']} ({e['id']}): receipt names {kid}, which is not a knowledge record")
++    return problems
++
++
++class Knowledge:
++    """Capture, disposition and the read surface of knowledge records."""
++
++    def __init__(self, k: Kernel, *, archive: ArchivePort) -> None:
++        self.k = k
++        self.archive = archive
++        self.cold = History(k.aew_root)
++
++    # ------------------------------------------------------------------ helpers
++
++    @staticmethod
++    def _require_v2(state: dict[str, Any]) -> None:
++        if state.get("schema") != V2:
++            raise UsageError("this project's control state is v1: migrate it first (`aew migrate`); knowledge "
++                             "records live in the v2 history")
++
++    def _index(self, state: dict[str, Any]) -> HistoryIndex:
++        return self.archive.index(state)
++
++    def _content_entry(self, state: dict[str, Any], knowledge_id: str) -> dict[str, Any]:
++        entries = [e for e in self._index(state).by_id(knowledge_id) if e["kind"] in M.CONTENT_KINDS]
++        if not entries:
++            raise NotFound(f"no knowledge record {knowledge_id}")
++        return entries[-1]
++
++    def _pending_add(self, state: dict[str, Any], item: dict[str, Any]) -> None:
++        block = knowledge_state(state)
++        pending = [p for p in block["pending"] if p["id"] != item["id"]]
++        pending.append(item)
++        if len(pending) > PENDING_MAX:
++            block["pending_overflow"] = block.get("pending_overflow", 0) + len(pending) - PENDING_MAX
++            pending = pending[-PENDING_MAX:]
++        block["pending"] = pending
++
++    def _pending_drop(self, state: dict[str, Any], knowledge_id: str) -> None:
++        block = knowledge_state(state)
++        block["pending"] = [p for p in block["pending"] if p["id"] != knowledge_id]
++
++    # ------------------------------------------------------------------ capture (K1 case + receipt)
++
++    def knowledge_case(self, *, token: str, expect_rev: int, record: dict[str, Any], hold: bool = False,
++                       job_revision: int | None = None, job_index: int = 0,
++                       extractor: dict[str, str] | None = None) -> dict[str, Any]:
++        """Admit (or hold) one observed Case from a submitted record, with its initial disposition and the capture
++        receipt, in one transaction. The engine owns ``schema``, ``id``, ``version``, ``record_kind``,
++        ``authority_class``, ``visibility_scope`` and ``created_at``; a submission carrying them is refused."""
++        owned = sorted({"schema", "id", "version", "record_kind", "authority_class", "visibility_scope",
++                        "created_at"} & set(record))
++        if owned:
++            raise ValidationFailed("these fields are assigned by the engine and may not be supplied", fields=owned)
++        with self.k.lead_txn(token, expect_rev, "knowledge.capture") as ctx:
++            state = ctx.state
++            self._require_v2(state)
++            counters = state["counters"]
++            counters["knowledge"] = counters.get("knowledge", 0) + 1
++            counters["disposition"] = counters.get("disposition", 0) + 1
++            counters["receipt"] = counters.get("receipt", 0) + 1
++            kid = format_id("K", counters["knowledge"])
++            did = format_id("KD", counters["disposition"])
++            rid = format_id("KR", counters["receipt"])
++            at = utc_now()
++            case = {**record, "schema": CASE_SCHEMA, "id": kid, "version": 1, "record_kind": "case",
++                    "authority_class": "advisory", "visibility_scope": "project", "created_at": at}
++            validate("knowledge-case", case, source=kid)
++            source = source_of(case)
++            serving = "case_recall" if source == "engine" else "explicit_investigation_only"
++            rel = "held_active" if hold else "admitted"
++            disposition = {"schema": DISPOSITION_SCHEMA, "id": did, "subject": {"id": kid, "version": 1}, "rel": rel,
++                           "object": None, "disposition_seq": 1, "policy_version": (extractor or {}).get("policy"),
++                           "serving_eligibility": None if hold else serving, "decision": None,
++                           "actor": {"kind": "lead", "generation": state["lead"]["generation"], "identity": None},
++                           "note": None, "at": at}
++            validate("knowledge-disposition", disposition, source=did)
++            receipt = {"schema": RECEIPT_SCHEMA, "id": rid,
++                       "job": {"project": state["project_id"], "revision": expect_rev if job_revision is None
++                               else job_revision, "revision_from": None, "event_index": job_index},
++                       "status": "COMPLETE", "produced": [kid], "held": [kid] if hold else [], "no_candidate": False,
++                       "extractor": dict(extractor or {}), "input_sha256": None,
++                       "actor": {"kind": "lead", "generation": state["lead"]["generation"]}, "at": at}
++            validate("knowledge-receipt", receipt, source=rid)
++            # Records first (staged in the redo record), then their entries, appended by the finalizer in this order.
++            entries = []
++            for kind, obj, rel_path, extra in (
++                    ("case", case, knowledge_rel("case", kid, 1),
++                     {"version": 1, "links": {k: v for k, v in {
++                         "derived_from": sorted({b["evidence_id"] for b in case["root_evidence_bindings"]}),
++                         "subject": list(case["subject_refs"]), "job": [rid]}.items() if v}}),
++                    ("disposition", disposition, disposition_rel(kid, 1),
++                     {"subject": kid, "rel": rel, "links": {rel: [f"{kid}@v1"]}}),
++                    ("receipt", receipt, receipt_rel(rid),
++                     {"links": {"produced": [kid], "outbox": [f"rev:{receipt['job']['revision']}"],
++                                "subject": list(case["subject_refs"])}})):
++                text = dump_yaml(obj)
++                sha = History.write_record(ctx.session, rel_path, text)
++                entries.append({"kind": kind, "id": obj["id"], "path": rel_path, "sha256": sha, "at": at,
++                                "source": source if kind == "case" else "engine", **extra})
++            ctx.entries.extend(entries)
++            block = knowledge_state(state)
++            block["capture"] = {"last_receipt": rid, "through_revision": receipt["job"]["revision"]}
++            if hold:
++                self._pending_add(state, {"id": kid, "version": 1, "kind": "case", "class": "K1", "since": at})
++            ctx.refs += [knowledge_rel("case", kid, 1), receipt_rel(rid)]
++            ctx.summary = f"knowledge: {kid} {'held' if hold else 'admitted'} ({receipt['job']['revision']} -> {rid})"
++        return {"ok": True, "id": kid, "version": 1, "disposition": did, "receipt": rid, "source": source,
++                "serving_eligibility": None if hold else serving, "revision": ctx.session.committed_revision}
++
++    # ------------------------------------------------------------------ dispositions
++
++    def knowledge_dispose(self, *, token: str, expect_rev: int, knowledge_id: str, rel: str, obj: str | None = None,
++                          decision: str | None = None, note: str | None = None, policy_version: str | None = None,
++                          serving_eligibility: str | None = None) -> dict[str, Any]:
++        """Record a later fact about a knowledge record: one immutable disposition and its entry. The content version
++        is never rewritten."""
++        if rel not in RELS:
++            raise UsageError(f"--rel must be one of {', '.join(sorted(RELS))}")
++        with self.k.lead_txn(token, expect_rev, "knowledge.dispose") as ctx:
++            state = ctx.state
++            self._require_v2(state)
++            subject = self._content_entry(state, knowledge_id)
++            seq = len(self._index(state).about(knowledge_id, kinds=("disposition",))) + 1
++            counters = state["counters"]
++            counters["disposition"] = counters.get("disposition", 0) + 1
++            did = format_id("KD", counters["disposition"])
++            at = utc_now()
++            disposition = {"schema": DISPOSITION_SCHEMA, "id": did,
++                           "subject": {"id": knowledge_id, "version": subject.get("version", 1),
++                                       "entry_seq": subject["seq"]},
++                           "rel": rel, "object": obj, "disposition_seq": seq, "policy_version": policy_version,
++                           "serving_eligibility": serving_eligibility if rel == "admitted" else None,
++                           "decision": decision,
++                           "actor": {"kind": "lead", "generation": state["lead"]["generation"], "identity": None},
++                           "note": note, "at": at}
++            validate("knowledge-disposition", disposition, source=did)
++            rel_path = disposition_rel(knowledge_id, seq)
++            sha = History.write_record(ctx.session, rel_path, dump_yaml(disposition))
++            links: dict[str, list[str]] = {rel: [obj] if obj else [f"{knowledge_id}@v{subject.get('version', 1)}"]}
++            if decision:
++                links["decision"] = [decision]
++            ctx.entries.append({"kind": "disposition", "id": did, "path": rel_path, "sha256": sha, "at": at,
++                                "source": "operator" if decision else "engine", "subject": knowledge_id, "rel": rel,
++                                "links": links})
++            if rel == "held_active":
++                self._pending_add(state, {"id": knowledge_id, "version": subject.get("version", 1),
++                                          "kind": subject["kind"], "class": "K1", "since": at})
++            elif rel in ADMISSION_RELS or rel in LIFECYCLE_RELS:
++                self._pending_drop(state, knowledge_id)
++            ctx.refs.append(rel_path)
++            ctx.summary = f"knowledge: {knowledge_id} {rel}" + (f" {obj}" if obj else "")
++        return {"ok": True, "id": did, "subject": knowledge_id, "rel": rel, "disposition_seq": seq,
++                "revision": ctx.session.committed_revision}
++
++    # ------------------------------------------------------------------ reading
++
++    def knowledge_show(self, knowledge_id: str) -> dict[str, Any]:
++        """The current version of a knowledge record, its record (verified against its entry), the fold of its
++        dispositions, and the trust label every historical record carries (ADR-0011 invariant 14)."""
++        state = self.k.store.read()
++        self._require_v2(state)
++        entry = self._content_entry(state, knowledge_id)
++        index = self._index(state)
++        current = index.current(knowledge_id)
++        record = self.archive.record(entry)
++        return {"id": knowledge_id, "kind": entry["kind"], "version": entry.get("version"),
++                "trust": {"source": entry["source"], "label": TRUST_LABEL},
++                "entry": {k: v for k, v in entry.items() if k != "path"}, "record": redact(record),
++                "state": current, "pending": any(p["id"] == knowledge_id for p in
++                                                 (state.get("knowledge") or {}).get("pending") or [])}
++
++    def knowledge_list(self, *, kind: str | None = None, limit: int = 50) -> dict[str, Any]:
++        if kind is not None and kind not in M.KNOWLEDGE_KINDS:
++            raise UsageError(f"--kind must be one of {', '.join(M.KNOWLEDGE_KINDS)}")
++        if not 1 <= limit <= 1000:
++            raise UsageError("--limit must be between 1 and 1000")
++        state = self.k.store.read()
++        self._require_v2(state)
++        index = self._index(state)
++        items = []
++        for e in index.list(kind=kind, limit=limit) if kind else [
++                e for e in index.list(limit=limit * 4) if e["kind"] in M.KNOWLEDGE_KINDS][:limit]:
++            item = {k: e[k] for k in ("seq", "kind", "id", "at", "source") if k in e}
++            item.update({k: e[k] for k in ("version", "subject", "rel") if e.get(k) is not None})
++            items.append(item)
++        block = state.get("knowledge") or _empty_knowledge()
++        return {"items": items, "limit": limit, "truncated": len(items) == limit,
++                "capture": block.get("capture"), "pending": block.get("pending") or [],
++                "pending_overflow": block.get("pending_overflow", 0)}
++
++    def knowledge_search(self, query: str, *, kinds: tuple[str, ...] | None = None, limit: int = 20) -> dict[str, Any]:
++        """Full-text search over knowledge record bodies in the derived index. Hits are locators: each is
++        authenticated against the chain before it is returned (P3-1), so the index can hide, never invent."""
++        if not query.strip():
++            raise UsageError("a search needs a query")
++        if not 1 <= limit <= 200:
++            raise UsageError("--limit must be between 1 and 200")
++        state = self.k.store.read()
++        self._require_v2(state)
++        index = self._index(state)
++        hits = index.search(query, kinds=kinds, limit=limit)
++        return {"query": query, "items": [{k: e[k] for k in ("seq", "kind", "id", "at", "source", "version", "subject",
++                                                              "rel") if e.get(k) is not None} for e in hits],
++                "trust": TRUST_LABEL}
++
++    # ------------------------------------------------------------------ the finalizer hook (unused here)
++
++    def finalize(self, ctx: TxnContext) -> None:  # pragma: no cover - placeholder for the service-identity variant
++        return None
+diff --git a/src/aew/history/index.py b/src/aew/history/index.py
+index 0402f46..50ef4ca 100644
+--- a/src/aew/history/index.py
++++ b/src/aew/history/index.py
+@@ -30,7 +30,7 @@ from contextlib import contextmanager
+ from pathlib import Path
+ from typing import Any
+ 
+-from aew.errors import IntegrityError, LockTimeout
++from aew.errors import IntegrityError, LockTimeout, UsageError
+ from aew.history import manifest as M
+ from aew.history.store import EntryMismatch, History
+ 
+@@ -53,6 +53,34 @@ CREATE INDEX IF NOT EXISTS links_seq ON links (seq);
+ CREATE INDEX IF NOT EXISTS links_src ON links (src);
+ CREATE INDEX IF NOT EXISTS links_dst ON links (dst);
+ """
++# Full-text search over knowledge record bodies (ADR-0013 draft D8). Derived like everything else here, and a hit is a
++# locator: the entry at its position is authenticated before anything is shown, so a tampered body hides a record and
++# never invents one. Created only where this SQLite has FTS5.
++_FTS_SCHEMA = "CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(seq UNINDEXED, id UNINDEXED, kind UNINDEXED, body)"
++# The current state of a knowledge record is a fold over its disposition entries in manifest order (shared semantics
++# §4.2, §7): admission, serving hold, lifecycle. Never written back.
++ADMISSION_RELS = ("admitted", "held_active", "held_dormant", "rejected", "superseded_proposal")
++LIFECYCLE_RELS = ("superseded_by", "quarantined", "archived")
++
++
++def fold_dispositions(dispositions: list[dict[str, Any]]) -> dict[str, Any]:
++    """The current operational state of a knowledge record from its disposition entries, in manifest order."""
++    admission, serving_hold, lifecycle, challenges = "candidate", False, "active", 0
++    for d in dispositions:
++        rel = d.get("rel")
++        if rel in ADMISSION_RELS:
++            admission = str(rel)
++        elif rel == "serving_hold":
++            serving_hold = True
++        elif rel == "serving_release":
++            serving_hold = False
++        elif rel in LIFECYCLE_RELS:
++            lifecycle = {"superseded_by": "superseded_within_scope"}.get(str(rel), str(rel))
++        elif rel == "challenged":
++            challenges += 1
++    return {"admission": admission, "serving_hold": serving_hold, "lifecycle": lifecycle, "challenges": challenges,
++            "disposition_seq": len(dispositions),
++            "last_event_seq": dispositions[-1]["seq"] if dispositions else None}
+ 
+ 
+ class HistoryIndex:
+@@ -64,6 +92,7 @@ class HistoryIndex:
+         self.timeout = timeout  # how long to wait for another writer before reporting the index busy
+         self.upto: int | None = None  # queries see entries up to the root last synced to (another process may be ahead)
+         self.root: dict[str, Any] | None = None  # that root, which every query result is authenticated against
++        self.fts: bool | None = None  # whether this SQLite has FTS5 (known after the first connection)
+ 
+     @contextmanager
+     def _db(self) -> Iterator[sqlite3.Connection]:
+@@ -71,6 +100,12 @@ class HistoryIndex:
+         conn = sqlite3.connect(self.path, timeout=self.timeout, isolation_level=None)
+         try:
+             conn.executescript(_SCHEMA)
++            if self.fts is not False:
++                try:
++                    conn.execute(_FTS_SCHEMA)
++                    self.fts = True
++                except sqlite3.OperationalError:
++                    self.fts = False
+             yield conn
+         finally:
+             conn.close()  # never left open: on Windows an open handle would block a rebuild's delete
+@@ -119,6 +154,8 @@ class HistoryIndex:
+                     mode, since = "rebuilt", None
+                     conn.execute("DELETE FROM entries")
+                     conn.execute("DELETE FROM links")
++                    if self.fts:
++                        conn.execute("DELETE FROM fts")
+                 added = 0
+                 for entry in self.history.walk(root, since):
+                     self._insert(conn, entry)
+@@ -160,8 +197,7 @@ class HistoryIndex:
+             return built["h"] == M.GENESIS_H
+         return self.history.entry(root, built["count"])["h"] == built["h"]
+ 
+-    @staticmethod
+-    def _insert(conn: sqlite3.Connection, e: dict[str, Any]) -> None:
++    def _insert(self, conn: sqlite3.Connection, e: dict[str, Any]) -> None:
+         conn.execute(
+             "INSERT OR REPLACE INTO entries (seq, id, kind, state, at, parent, source, subject, rel, path, sha256, h,"
+             " segment, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+@@ -172,6 +208,14 @@ class HistoryIndex:
+         conn.executemany("INSERT INTO links (seq, src, rel, dst) VALUES (?, ?, ?, ?)",
+                          [(e["seq"], e["id"], rel, dst) for rel, dsts in sorted((e.get("links") or {}).items())
+                           for dst in dsts])
++        if self.fts and e["kind"] in M.KNOWLEDGE_KINDS:  # the record's text, for search; a missing file indexes empty
++            conn.execute("DELETE FROM fts WHERE seq = ?", (e["seq"],))
++            try:
++                body = (self.history.root / e["path"]).read_text(encoding="utf-8")
++            except (OSError, UnicodeDecodeError):
++                body = ""
++            conn.execute("INSERT INTO fts (seq, id, kind, body) VALUES (?, ?, ?, ?)",
++                         (e["seq"], e["id"], e["kind"], body))
+ 
+     # ------------------------------------------------------------------ queries (call ``sync`` first)
+ 
+@@ -244,10 +288,73 @@ class HistoryIndex:
+                           "WHERE l.rel = ? AND l.dst = ? AND e.seq <= ? ORDER BY e.seq", (rel, target, self._upto()),
+                           lambda e: target in (e.get("links") or {}).get(rel, []))
+ 
++    def about(self, subject: str, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
++        """Every entry about ``subject`` (an annotation about an archived unit, a disposition about a knowledge
++        record), optionally of the given kinds, in history order (ADR-0013 draft D4)."""
++        if kinds:
++            marks = ", ".join("?" for _ in kinds)
++            # The clause is built from placeholders only; every value is bound.
++            sql = f"SELECT body FROM entries WHERE subject = ? AND kind IN ({marks}) AND seq <= ? ORDER BY seq"  # noqa: S608
++            return self._rows(sql, (subject, *kinds, self._upto()),
++                              lambda e: e.get("subject") == subject and e["kind"] in kinds)
++        return self._rows("SELECT body FROM entries WHERE subject = ? AND seq <= ? ORDER BY seq",
++                          (subject, self._upto()), lambda e: e.get("subject") == subject)
++
+     def annotations(self, subject: str) -> list[dict[str, Any]]:
+-        return self._rows("SELECT body FROM entries WHERE kind = 'annotation' AND subject = ? AND seq <= ? "
+-                          "ORDER BY seq", (subject, self._upto()),
+-                          lambda e: e["kind"] == "annotation" and e.get("subject") == subject)
++        return self.about(subject, kinds=("annotation",))
++
++    def versions(self, knowledge_id: str) -> list[dict[str, Any]]:
++        """The content versions of a knowledge record (reference, case or lesson entries with that id), in order."""
++        return [e for e in self.by_id(knowledge_id) if e["kind"] in M.CONTENT_KINDS]
++
++    def current(self, knowledge_id: str) -> dict[str, Any] | None:
++        """The latest content version of a knowledge record and the fold of its dispositions, or None."""
++        versions = self.versions(knowledge_id)
++        if not versions:
++            return None
++        latest = versions[-1]
++        dispositions = self.about(knowledge_id, kinds=("disposition",))
++        return {"id": knowledge_id, "kind": latest["kind"], "version": latest.get("version"),
++                "entry_seq": latest["seq"],
++                "versions": [{"version": v.get("version"), "seq": v["seq"], "sha256": v["sha256"]} for v in versions],
++                **fold_dispositions(dispositions),
++                "dispositions": [{"seq": d["seq"], "id": d["id"], "rel": d.get("rel"), "at": d["at"],
++                                  "links": d.get("links") or {}} for d in dispositions]}
++
++    def search(self, query: str, *, kinds: tuple[str, ...] | None = None, limit: int = 20) -> list[dict[str, Any]]:
++        """Knowledge entries whose record body matches the FTS5 ``query``, best first. The FTS rows only locate: the
++        returned entries are the history's own, authenticated at their positions (``_rows``)."""
++        if self.root is None:
++            raise IntegrityError("the history index was queried before it was synced to a root")
++        if not self.fts:
++            raise UsageError("full-text search needs an SQLite with FTS5, which this Python's sqlite3 lacks")
++        with self._db() as conn:
++            # The query is tried as an FTS5 expression (AND, OR, NOT, NEAR, "phrases", prefix*); text FTS5 does not
++            # parse as one (punctuation such as a hyphen) is searched as a phrase instead.
++            phrase = '"' + query.replace('"', '""') + '"'
++            rows: list[Any] | None = None
++            error: Exception | None = None
++            for attempt in (query, phrase):
++                try:
++                    rows = conn.execute("SELECT seq FROM fts WHERE fts MATCH ? AND seq <= ? ORDER BY rank LIMIT ?",
++                                        (attempt, self._upto(), limit * 2)).fetchall()
++                    break
++                except sqlite3.OperationalError as exc:
++                    error = exc
++            if rows is None:
++                raise UsageError(f"search query not accepted by FTS5: {error}")
++        seqs = [int(r[0]) for r in rows]
++        if not seqs:
++            return []
++        wanted = tuple(k for k in (kinds or M.KNOWLEDGE_KINDS) if k in M.KNOWLEDGE_KINDS) or M.KNOWLEDGE_KINDS
++        marks, kind_marks = ", ".join("?" for _ in seqs), ", ".join("?" for _ in wanted)
++        # Placeholders only; every value is bound. The kind filter is in SQL so that a planted FTS row pointing at a
++        # non-knowledge position is dropped here rather than read as the index disagreeing with the history.
++        sql = (f"SELECT body FROM entries WHERE seq IN ({marks}) AND kind IN ({kind_marks}) AND seq <= ? "  # noqa: S608
++               "ORDER BY seq")
++        entries = self._rows(sql, (*seqs, *wanted, self._upto()), lambda e: e["kind"] in wanted)
++        order = {seq: i for i, seq in enumerate(seqs)}
++        return sorted(entries, key=lambda e: order[e["seq"]])[:limit]
+ 
+     def moves(self) -> dict[str, str | None]:
+         """Each archived unit moved since it was archived, and its current parent: the target of its last ``moved_to``
+diff --git a/src/aew/history/manifest.py b/src/aew/history/manifest.py
+index 980a27e..ac69c46 100644
+--- a/src/aew/history/manifest.py
++++ b/src/aew/history/manifest.py
+@@ -38,7 +38,11 @@ TAIL_REL = f"{HISTORY_DIR}/tail.yaml"
+ SEGMENT_SCHEMA = "aew/history/segment/v1"
+ TAIL_SCHEMA = "aew/history/tail/v1"
+ GENESIS_H = hashlib.sha256(b"aew/history/v1 genesis").hexdigest()
+-ENTRY_KINDS = ("unit", "annotation", "audit", "lead")
++# Knowledge records join the manifest as entry kinds (ADR-0013 draft D1): content versions, the append-only
++# dispositions about them, and capture receipts. The manifest sequence number is the global knowledge_event_seq.
++CONTENT_KINDS = ("reference", "case", "lesson")
++KNOWLEDGE_KINDS = (*CONTENT_KINDS, "disposition", "receipt")
++ENTRY_KINDS = ("unit", "annotation", "audit", "lead", *KNOWLEDGE_KINDS)
+ SOURCES = ("engine", "operator", "model", "external")
+ 
+ 
+diff --git a/src/aew/history/store.py b/src/aew/history/store.py
+index d41e266..a237b55 100644
+--- a/src/aew/history/store.py
++++ b/src/aew/history/store.py
+@@ -50,7 +50,11 @@ _TAIL_PROVEN: set[tuple[str, int, str]] = set()
+ # Where history records live (relative to the AEW root): a terminal unit's bundle and annotations beside its other
+ # records (investigation §3.1), the Lead's generations and audit records under history/.
+ RECORD_GLOBS = ("work/*/archive.yaml", "work/*/annotations/*.yaml", "history/lead/*.yaml",
+-                "history/lead/annotations/*.yaml", "history/audits/*.yaml")
++                "history/lead/annotations/*.yaml", "history/audits/*.yaml",
++                "knowledge/cases/*/*.yaml", "knowledge/cases/*/dispositions/*.yaml", "knowledge/lessons/*/*.yaml",
++                "knowledge/lessons/*/dispositions/*.yaml", "knowledge/references/*.yaml",
++                "knowledge/references/*/dispositions/*.yaml", "knowledge/receipts/*.yaml")
++KNOWLEDGE_DIRS = {"case": "cases", "lesson": "lessons", "reference": "references"}
+ 
+ 
+ def bundle_rel(work_id: str) -> str:
+@@ -61,6 +65,22 @@ def annotation_rel(subject: str, seq: int) -> str:
+     return f"work/{subject}/annotations/{seq:04d}.yaml"
+ 
+ 
++def knowledge_rel(kind: str, knowledge_id: str, version: int) -> str:
++    """A knowledge content version's record (ADR-0013 draft D2): immutable per version."""
++    if kind == "reference":
++        return f"knowledge/references/{knowledge_id}.yaml"
++    return f"knowledge/{KNOWLEDGE_DIRS[kind]}/{knowledge_id}/v{version}.yaml"
++
++
++def disposition_rel(subject: str, seq: int, kind: str = "case") -> str:
++    """The ``seq``-th disposition about a knowledge record, beside its versions."""
++    return f"knowledge/{KNOWLEDGE_DIRS.get(kind, 'cases')}/{subject}/dispositions/{seq:04d}.yaml"
++
++
++def receipt_rel(receipt_id: str) -> str:
++    return f"knowledge/receipts/{receipt_id}.yaml"
++
++
+ @dataclass
+ class Verification:
+     """What a verification walked: from which chain state, through which, and what it found."""
+diff --git a/src/aew/schemas/__init__.py b/src/aew/schemas/__init__.py
+index 7821568..9b6b454 100644
+--- a/src/aew/schemas/__init__.py
++++ b/src/aew/schemas/__init__.py
+@@ -25,6 +25,9 @@ SCHEMAS = {
+     "role": "role.schema.json",
+     "role-archetype": "role-archetype.schema.json",
+     "history": "history.schema.json",
++    "knowledge-case": "knowledge-case.schema.json",
++    "knowledge-disposition": "knowledge-disposition.schema.json",
++    "knowledge-receipt": "knowledge-receipt.schema.json",
+ }
+ 
+ 
+diff --git a/src/aew/schemas/control.schema.json b/src/aew/schemas/control.schema.json
+index fc1a83b..e0b935b 100644
+--- a/src/aew/schemas/control.schema.json
++++ b/src/aew/schemas/control.schema.json
+@@ -403,6 +403,42 @@
+         }
+       }
+     },
++    "knowledge": {
++      "description": "ADR-0013 (draft): the constant-size hot side of the knowledge records in the history. capture: the last receipt and the outbox revision it covers (so status never reads the history); pending: held candidates awaiting judgment (bounded; the action projection reads it).",
++      "type": "object",
++      "required": ["capture", "pending"],
++      "additionalProperties": false,
++      "properties": {
++        "capture": {
++          "oneOf": [
++            {"type": "null"},
++            {
++              "type": "object",
++              "required": ["last_receipt", "through_revision"],
++              "additionalProperties": false,
++              "properties": {"last_receipt": {"type": "string"}, "through_revision": {"type": "integer", "minimum": 0}}
++            }
++          ]
++        },
++        "pending": {
++          "type": "array",
++          "maxItems": 20,
++          "items": {
++            "type": "object",
++            "required": ["id", "version", "kind", "since"],
++            "additionalProperties": false,
++            "properties": {
++              "id": {"type": "string"},
++              "version": {"type": "integer", "minimum": 1},
++              "kind": {"enum": ["reference", "case", "lesson"]},
++              "class": {"type": ["string", "null"]},
++              "since": {"type": "string"}
++            }
++          }
++        },
++        "pending_overflow": {"type": "integer", "minimum": 0}
++      }
++    },
+     "retired_observations": {
+       "description": "Observation worktrees of archived invocations still on disk: listed until each is removed, and retried at every Lead commit (plan R7).",
+       "type": "array",
+@@ -427,7 +463,8 @@
+             {"required": ["recent"]},
+             {"required": ["archived_refs"]},
+             {"required": ["retained_workspaces"]},
+-            {"required": ["retired_observations"]}
++            {"required": ["retired_observations"]},
++            {"required": ["knowledge"]}
+           ]
+         }
+       }
+diff --git a/src/aew/schemas/history.schema.json b/src/aew/schemas/history.schema.json
+index 2f08f59..a43d6f5 100644
+--- a/src/aew/schemas/history.schema.json
++++ b/src/aew/schemas/history.schema.json
+@@ -61,7 +61,8 @@
+       "additionalProperties": false,
+       "properties": {
+         "seq": {"type": "integer", "minimum": 1},
+-        "kind": {"enum": ["unit", "annotation", "audit", "lead"]},
++        "kind": {"enum": ["unit", "annotation", "audit", "lead", "reference", "case", "lesson", "disposition", "receipt"]},
++        "version": {"description": "A knowledge content version (case, lesson): a changed claim is a new record and a new entry, never a rewrite (ADR-0013 draft D3).", "type": "integer", "minimum": 1},
+         "id": {"type": "string", "minLength": 1},
+         "path": {
+           "description": "POSIX path relative to the AEW root, never absolute and never through ..",
+diff --git a/src/aew/schemas/knowledge-case.schema.json b/src/aew/schemas/knowledge-case.schema.json
+new file mode 100644
+index 0000000..f29a0b3
+--- /dev/null
++++ b/src/aew/schemas/knowledge-case.schema.json
+@@ -0,0 +1,51 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "aew/knowledge/case/v1",
++  "title": "AEW knowledge record: an observed Case (K1)",
++  "description": "A structurally compressed, evidence-bound observation (capture draft §4.2, §10). Immutable once admitted: a changed claim is a new version. The engine owns schema, id, version and created_at; the record carries only literal or normalized fields, never an inferred cause, intent or recommendation. ADR-0013 (draft).",
++  "type": "object",
++  "required": ["schema", "id", "version", "record_kind", "template", "authority_class", "subject_refs", "root_evidence_bindings", "observed_conditions", "fields", "source_classes", "created_at"],
++  "additionalProperties": false,
++  "properties": {
++    "schema": {"const": "aew/knowledge/case/v1"},
++    "id": {"type": "string", "pattern": "^K-[0-9]{4,}$"},
++    "version": {"type": "integer", "minimum": 1},
++    "record_kind": {"const": "case"},
++    "template": {"description": "The approved K1 template this Case was composed by (capture draft §10).", "type": "string", "minLength": 1},
++    "authority_class": {"const": "advisory"},
++    "title": {"type": "string", "maxLength": 200},
++    "subject_refs": {"description": "Stable identities the Case is about: work units, components, tools, environments (shared semantics §4.4).", "type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
++    "canonical_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
++    "root_evidence_bindings": {
++      "description": "What exact source supports each part of the Case (shared semantics §6). Evidence identity is unchanged: these reference existing ids.",
++      "type": "array",
++      "minItems": 1,
++      "items": {
++        "type": "object",
++        "required": ["evidence_id", "relation", "basis"],
++        "additionalProperties": false,
++        "properties": {
++          "evidence_id": {"type": "string", "minLength": 1},
++          "evidence_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
++          "relation": {"enum": ["derived_from", "supports", "challenges"]},
++          "basis": {"enum": ["literal_outcome", "inspection", "test", "inference"]},
++          "claim_components": {"type": "array", "items": {"type": "string"}},
++          "structured_field_path": {"type": "string"}
++        }
++      }
++    },
++    "observed_conditions": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]}},
++    "fields": {"description": "The template's literal fields (condition, action, result, ...).", "type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null", "array"]}},
++    "source_classes": {
++      "description": "Per field, the source class and authentication boundary it was established under (capture draft §10). Typed is not trusted.",
++      "type": "object",
++      "additionalProperties": {"enum": ["ENGINE_OBSERVED_CONTAINED", "ENGINE_OBSERVED_WEAK_BOUNDARY", "ROLE_ATTESTED", "EXTERNAL_UNTRUSTED"]}
++    },
++    "source_disposition": {"description": "The workflow disposition of the observation, carried, never read as proof (capture draft §15).", "type": ["string", "null"]},
++    "limitations": {"type": "array", "items": {"type": "string"}},
++    "unknowns": {"type": "array", "items": {"type": "string"}},
++    "visibility_scope": {"const": "project"},
++    "created_at": {"type": "string", "minLength": 1},
++    "supersedes": {"description": "An exact earlier version this one replaces (K-nnnn@v<k>), when a new version is admitted.", "type": ["string", "null"]}
++  }
++}
+diff --git a/src/aew/schemas/knowledge-disposition.schema.json b/src/aew/schemas/knowledge-disposition.schema.json
+new file mode 100644
+index 0000000..b124488
+--- /dev/null
++++ b/src/aew/schemas/knowledge-disposition.schema.json
+@@ -0,0 +1,41 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "aew/knowledge/disposition/v1",
++  "title": "AEW knowledge disposition: an append-only event about a knowledge record",
++  "description": "Admission, hold, release, challenge, supersession and reassessment are events, never rewrites of the content version (shared semantics §4.2, §7). The current state is a fold over these in manifest order; the manifest sequence number is the global knowledge_event_seq. ADR-0013 (draft) D3, D4.",
++  "type": "object",
++  "required": ["schema", "id", "subject", "rel", "disposition_seq", "actor", "at"],
++  "additionalProperties": false,
++  "properties": {
++    "schema": {"const": "aew/knowledge/disposition/v1"},
++    "id": {"type": "string", "pattern": "^KD-[0-9]{4,}$"},
++    "subject": {
++      "type": "object",
++      "required": ["id", "version"],
++      "additionalProperties": false,
++      "properties": {
++        "id": {"type": "string", "pattern": "^K-[0-9]{4,}$"},
++        "version": {"type": "integer", "minimum": 1},
++        "entry_seq": {"description": "The manifest position of the content version this event is about.", "type": "integer", "minimum": 1}
++      }
++    },
++    "rel": {"enum": ["admitted", "held_active", "held_dormant", "rejected", "superseded_proposal", "serving_hold", "serving_release", "superseded_by", "refines", "challenged", "reassessed", "visibility_widened", "quarantined", "archived", "audit_finding"]},
++    "object": {"description": "What the event points at, when it points: a K-nnnn@v<k>, a decision id, an audit id.", "type": ["string", "null"]},
++    "disposition_seq": {"description": "This event's position among the events about its subject (checkable against the manifest).", "type": "integer", "minimum": 1},
++    "policy_version": {"type": ["string", "null"]},
++    "serving_eligibility": {"description": "The serving envelope an admission establishes (shared semantics §7.5).", "enum": ["direct_reference", "case_recall", "default_lesson_eligible", "explicit_investigation_only", "suppressed", null]},
++    "decision": {"description": "The decision record (D-nnnn) behind a judgment-bearing event.", "type": ["string", "null"]},
++    "actor": {
++      "type": "object",
++      "required": ["kind"],
++      "additionalProperties": false,
++      "properties": {
++        "kind": {"enum": ["lead", "operator", "service", "engine"]},
++        "generation": {"type": ["integer", "null"]},
++        "identity": {"type": ["string", "null"]}
++      }
++    },
++    "note": {"type": ["string", "null"]},
++    "at": {"type": "string", "minLength": 1}
++  }
++}
+diff --git a/src/aew/schemas/knowledge-receipt.schema.json b/src/aew/schemas/knowledge-receipt.schema.json
+new file mode 100644
+index 0000000..acb4981
+--- /dev/null
++++ b/src/aew/schemas/knowledge-receipt.schema.json
+@@ -0,0 +1,32 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "aew/knowledge/receipt/v1",
++  "title": "AEW knowledge capture receipt",
++  "description": "The durable outcome of one capture job (capture draft §8): what it read (the outbox position, ADR-0012 D3), what it produced or held, and under which extractor and policy. Receipts are the capture cursor: the highest revision any receipt covers is where a worker resumes (ADR-0013 draft D5). A job that produced nothing still has a receipt (NO_CANDIDATE is a successful outcome).",
++  "type": "object",
++  "required": ["schema", "id", "job", "status", "produced", "no_candidate", "at"],
++  "additionalProperties": false,
++  "properties": {
++    "schema": {"const": "aew/knowledge/receipt/v1"},
++    "id": {"type": "string", "pattern": "^KR-[0-9]{4,}$"},
++    "job": {
++      "type": "object",
++      "required": ["project", "revision", "event_index"],
++      "additionalProperties": false,
++      "properties": {
++        "project": {"type": "string", "minLength": 1},
++        "revision": {"description": "The control revision (outbox position) the job read, or the end of its debounce window.", "type": "integer", "minimum": 0},
++        "revision_from": {"type": ["integer", "null"], "minimum": 0},
++        "event_index": {"type": "integer", "minimum": 0}
++      }
++    },
++    "status": {"enum": ["COMPLETE", "PARTIAL", "RETRYABLE_FAILURE", "PERMANENT_FAILURE"]},
++    "produced": {"type": "array", "items": {"type": "string", "pattern": "^K-[0-9]{4,}$"}},
++    "held": {"type": "array", "items": {"type": "string", "pattern": "^K-[0-9]{4,}$"}},
++    "no_candidate": {"type": "boolean"},
++    "extractor": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
++    "input_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
++    "actor": {"type": "object", "additionalProperties": {"type": ["string", "integer", "null"]}},
++    "at": {"type": "string", "minLength": 1}
++  }
++}
+diff --git a/tests/helpers/invariants.py b/tests/helpers/invariants.py
+index 407f381..c8bbd22 100644
+--- a/tests/helpers/invariants.py
++++ b/tests/helpers/invariants.py
+@@ -49,7 +49,12 @@ def with_cold(root: Path, hot: dict[str, Any]) -> tuple[dict[str, Any], list[str
+         return hot, [f"history does not verify: {report.problems[:3]}"]
+     work, invocations, tokens = {}, {}, {}
+     moves: dict[str, str | None] = {}
++    knowledge_seen: set[str] = set()  # 29. a disposition's subject is a knowledge record at a lower position
+     for entry in history.walk(root_):
++        if entry["kind"] in ("reference", "case", "lesson"):
++            knowledge_seen.add(entry["id"])
++        elif entry["kind"] == "disposition" and entry.get("subject") not in knowledge_seen:
++            problems.append(f"disposition {entry['id']} precedes or lacks its subject {entry.get('subject')}")
+         if entry["kind"] == "unit":
+             doc = load_yaml((root / ".aew" / entry["path"]).read_text(encoding="utf-8"))
+             work[entry["id"]] = dict(doc["unit"])
+diff --git a/tests/integration/test_archival.py b/tests/integration/test_archival.py
+index 5b48718..60c8474 100644
+--- a/tests/integration/test_archival.py
++++ b/tests/integration/test_archival.py
+@@ -175,6 +175,7 @@ def test_a_v1_project_changes_no_work_until_it_is_migrated(tmp_path):
+     state = load_control(p.root)
+     state["schema"] = "aew/control/v1"
+     state.pop("cold")
++    state.pop("knowledge")  # v2 only (ADR-0013 draft, review T4)
+     control.write_bytes(serialize_control(state))
+     refused = p.aew("work", "create", "ticket", "--title", "Investigate", "--class", "1", "--non-mutating",
+                     "--token", p.token, "--expect-rev", str(p.rev()))
+diff --git a/tests/integration/test_history_surface.py b/tests/integration/test_history_surface.py
+index c3dfcd2..41fe2ba 100644
+--- a/tests/integration/test_history_surface.py
++++ b/tests/integration/test_history_surface.py
+@@ -120,6 +120,7 @@ def test_a_v1_project_has_no_cold_history(tmp_path):
+     state = load_control(p.root)
+     state["schema"] = "aew/control/v1"
+     state.pop("cold")
++    state.pop("knowledge")  # v2 only (ADR-0013 draft, review T4)
+     control.write_bytes(serialize_control(state))
+     for args in (("show", "T-0001"), ("list",), ("audit",)):
+         assert p.aew("history", *args).error["code"] == "USAGE"
+diff --git a/tests/integration/test_knowledge_manifest.py b/tests/integration/test_knowledge_manifest.py
+new file mode 100644
+index 0000000..e1a94c4
+--- /dev/null
++++ b/tests/integration/test_knowledge_manifest.py
+@@ -0,0 +1,212 @@
++"""Knowledge records in the history manifest (ADR-0013 draft; architecture review T4): the manifest takes the new
++kinds, the index folds dispositions and searches record bodies without vouching for them, and orphaned knowledge
++records are reported. In-process, over the deterministic history workload (``history_model``)."""
++
++from __future__ import annotations
++
++import sqlite3
++import sys
++from pathlib import Path
++
++import pytest
++
++HELPERS = Path(__file__).resolve().parents[1] / "helpers"
++sys.path.insert(0, str(HELPERS))
++
++from history_model import ROOT_REL, archive, init, read_root  # noqa: E402
++
++from aew.engine.store import Transition  # noqa: E402
++from aew.errors import ValidationFailed  # noqa: E402
++from aew.history import manifest as M  # noqa: E402
++from aew.history.index import HistoryIndex, fold_dispositions  # noqa: E402
++from aew.history.store import History, disposition_rel, knowledge_rel, receipt_rel  # noqa: E402
++from aew.schemas import validate  # noqa: E402
++from aew.util import dump_yaml  # noqa: E402
++
++AT = "2026-10-04T00:00:00Z"
++
++
++@pytest.fixture
++def store(tmp_path):
++    s = init(tmp_path)
++    archive(s, 2)
++    return s
++
++
++def case_text(n: int, unit: str, words: str) -> str:
++    return dump_yaml({"schema": "aew/knowledge/case/v1", "id": f"K-{n:04d}", "version": 1, "record_kind": "case",
++                      "template": "attempt-outcome/v1", "authority_class": "advisory", "subject_refs": [unit],
++                      "root_evidence_bindings": [{"evidence_id": f"E-{n:04d}", "relation": "derived_from",
++                                                  "basis": "literal_outcome"}],
++                      "observed_conditions": {"platform": "linux"}, "fields": {"condition": words, "result": "passed"},
++                      "source_classes": {"condition": "ENGINE_OBSERVED_WEAK_BOUNDARY", "result": "ROLE_ATTESTED"},
++                      "created_at": AT})
++
++
++def append(store, items: list[tuple[str, str, dict]]) -> dict:
++    """One commit: records then entries, as a capture job's transaction does."""
++    history = History(store.root)
++    with store.session() as s:
++        fields = []
++        for rel, text, f in items:
++            sha = history.write_record(s, rel, text)
++            fields.append({**f, "path": rel, "sha256": sha, "at": AT})
++        root = history.append(s, read_root(store.root), fields)
++        s.write(ROOT_REL, dump_yaml(root), immutable=False)
++        s.commit(Transition(op="knowledge.capture", actor={"kind": "test"}, summary="knowledge"))
++    return root
++
++
++def case_items(n: int, unit: str, words: str, rel: str = "admitted") -> list[tuple[str, str, dict]]:
++    kid, did, rid = f"K-{n:04d}", f"KD-{n:04d}", f"KR-{n:04d}"
++    return [
++        (knowledge_rel("case", kid, 1), case_text(n, unit, words),
++         {"kind": "case", "id": kid, "version": 1, "source": "model",
++          "links": {"derived_from": [f"E-{n:04d}"], "subject": [unit], "job": [rid]}}),
++        (disposition_rel(kid, 1), dump_yaml({"schema": "aew/knowledge/disposition/v1", "id": did, "subject": {"id": kid,
++                                             "version": 1}, "rel": rel, "disposition_seq": 1, "actor": {"kind": "lead"},
++                                             "at": AT}),
++         {"kind": "disposition", "id": did, "source": "engine", "subject": kid, "rel": rel,
++          "links": {rel: [f"{kid}@v1"]}}),
++        (receipt_rel(rid), dump_yaml({"schema": "aew/knowledge/receipt/v1", "id": rid, "job": {"project": "p",
++                                      "revision": 3, "event_index": 0}, "status": "COMPLETE", "produced": [kid],
++                                      "no_candidate": False, "at": AT}),
++         {"kind": "receipt", "id": rid, "source": "engine", "links": {"produced": [kid], "outbox": ["rev:3"]}}),
++    ]
++
++
++def synced(store) -> HistoryIndex:
++    index = HistoryIndex(store.root)
++    index.sync(read_root(store.root))
++    return index
++
++
++# ---------------------------------------------------------------------------------------------- the manifest
++
++def test_the_manifest_takes_knowledge_kinds_and_versions(store):
++    for kind in M.KNOWLEDGE_KINDS:
++        fields = {"kind": kind, "id": "X-1", "path": "knowledge/x.yaml", "sha256": "0" * 64, "at": AT,
++                  "source": "engine"}
++        if kind in M.CONTENT_KINDS:
++            fields["version"] = 2
++        entry = M.new_entry(1, M.GENESIS_H, fields)
++        assert entry["kind"] == kind
++    with pytest.raises(ValidationFailed):
++        M.new_entry(1, M.GENESIS_H, {"kind": "case", "id": "K-1", "path": "k.yaml", "sha256": "0" * 64, "at": AT,
++                                      "source": "engine", "version": 0})
++    with pytest.raises(ValidationFailed):
++        M.new_entry(1, M.GENESIS_H, {"kind": "memo", "id": "K-1", "path": "k.yaml", "sha256": "0" * 64, "at": AT})
++
++
++def test_the_record_schemas_accept_the_workload_records():
++    validate("knowledge-case", __import__("yaml").safe_load(case_text(1, "T-0001", "x")), source="t")
++
++
++def test_a_capture_commit_appends_verifies_and_indexes(store):
++    root = append(store, case_items(1, "T-0001", "fixture regenerated"))
++    assert root["count"] == 5  # 2 units + case + disposition + receipt
++    report = History(store.root).verify(root)
++    assert report.ok and report.records == 5
++    index = synced(store)
++    assert [e["kind"] for e in index.by_id("K-0001")] == ["case"]
++    assert index.by_id("K-0001")[0]["version"] == 1
++    assert [e["id"] for e in index.list(kind="case")] == ["K-0001"]
++    assert [e["id"] for e in index.linked("derived_from", "E-0001")] == ["K-0001"]
++    assert [e["id"] for e in index.linked("outbox", "rev:3")] == ["KR-0001"]  # the capture cursor is a receipt link
++    assert History(store.root).unreferenced(index.paths()) == []
++
++
++# ---------------------------------------------------------------------------------------------- about and the fold
++
++def test_dispositions_are_about_their_subject_and_fold_in_order(store):
++    append(store, case_items(1, "T-0001", "a", rel="held_active"))
++    history = History(store.root)
++    seq = 2
++    for rel in ("admitted", "serving_hold", "challenged", "serving_release", "superseded_by"):
++        with store.session() as s:
++            rel_path = disposition_rel("K-0001", seq)
++            sha = history.write_record(s, rel_path, dump_yaml({"schema": "aew/knowledge/disposition/v1",
++                                                                "id": f"KD-{seq:04d}", "subject": {"id": "K-0001",
++                                                                "version": 1}, "rel": rel, "disposition_seq": seq,
++                                                                "actor": {"kind": "lead"}, "at": AT}))
++            root = history.append(s, read_root(store.root), [{"kind": "disposition", "id": f"KD-{seq:04d}",
++                                                              "path": rel_path, "sha256": sha, "at": AT,
++                                                              "source": "operator", "subject": "K-0001", "rel": rel,
++                                                              "links": {rel: ["K-0002@v1" if rel == "superseded_by"
++                                                                              else "K-0001@v1"]}}])
++            s.write(ROOT_REL, dump_yaml(root), immutable=False)
++            s.commit(Transition(op="knowledge.dispose", actor={"kind": "test"}))
++        seq += 1
++    index = synced(store)
++    assert index.annotations("K-0001") == []  # annotations are a kind; dispositions another
++    about = index.about("K-0001")
++    assert [d["rel"] for d in about] == ["held_active", "admitted", "serving_hold", "challenged", "serving_release",
++                                         "superseded_by"]
++    assert [d["rel"] for d in index.about("K-0001", kinds=("disposition",))] == [d["rel"] for d in about]
++    current = index.current("K-0001")
++    assert current["version"] == 1 and current["kind"] == "case"
++    assert current["admission"] == "admitted" and current["serving_hold"] is False
++    assert current["lifecycle"] == "superseded_within_scope" and current["challenges"] == 1
++    assert current["disposition_seq"] == 6 and current["last_event_seq"] == about[-1]["seq"]
++    assert index.current("K-9999") is None
++
++
++def test_the_fold_is_a_pure_function_of_the_events():
++    assert fold_dispositions([]) == {"admission": "candidate", "serving_hold": False, "lifecycle": "active",
++                                     "challenges": 0, "disposition_seq": 0, "last_event_seq": None}
++    events = [{"seq": 1, "rel": "admitted"}, {"seq": 2, "rel": "serving_hold"}, {"seq": 3, "rel": "rejected"}]
++    assert fold_dispositions(events)["admission"] == "rejected"
++    assert fold_dispositions(events)["serving_hold"] is True
++
++
++# ---------------------------------------------------------------------------------------------- search
++
++def test_search_finds_record_bodies_and_authenticates_every_hit(store):
++    append(store, case_items(1, "T-0001", "fixture regenerated after a stale compilation database"))
++    append(store, case_items(2, "T-0002", "unrelated words only"))
++    index = synced(store)
++    if not index.fts:
++        pytest.skip("this SQLite has no FTS5")
++    hits = index.search("compilation AND database")
++    assert [e["id"] for e in hits] == ["K-0001"]
++    assert all(e["kind"] == "case" for e in hits)
++    assert index.search("unrelated", kinds=("receipt",)) == []  # kinds narrow the hits
++    assert [e["id"] for e in index.search("unrelated", kinds=("case",))] == ["K-0002"]
++    assert index.search("nothing-here") == []  # punctuation: searched as a phrase, not an FTS5 syntax error
++    assert index.search("AND AND") == []  # not an expression either: the phrase fallback finds nothing
++
++
++def test_a_tampered_fts_row_hides_a_record_and_never_invents_one(store):
++    append(store, case_items(1, "T-0001", "needle in the haystack"))
++    index = synced(store)
++    if not index.fts:
++        pytest.skip("this SQLite has no FTS5")
++    conn = sqlite3.connect(index.path)
++    # 1. a body rewritten to match a query it never matched: the hit is authenticated and the entry is genuine, so
++    #    the result is the real K-0001 (the index can only mislabel, not forge content: the record is read from disk)
++    conn.execute("UPDATE fts SET body = 'planted phrase' WHERE id = 'K-0001'")
++    # 2. a row pointing at a position that is not a knowledge entry: filtered out by the kind check
++    conn.execute("INSERT INTO fts (seq, id, kind, body) VALUES (1, 'T-0001', 'case', 'planted phrase')")
++    # 3. a row pointing beyond the history: refused by authentication and the index is rebuilt
++    conn.execute("INSERT INTO fts (seq, id, kind, body) VALUES (99, 'K-0099', 'case', 'planted phrase')")
++    conn.commit()
++    conn.close()
++    hits = index.search("planted")
++    assert [e["id"] for e in hits] == ["K-0001"]  # the only genuine knowledge entry among the planted rows
++    assert index.search("needle") == [] or [e["id"] for e in index.search("needle")] == ["K-0001"]
++    # a full consistency check restores the derived table from the manifest
++    index.sync(read_root(store.root))
++    index._rebuild()
++    assert [e["id"] for e in index.search("needle")] == ["K-0001"]
++    assert index.search("planted") == []
++
++
++# ---------------------------------------------------------------------------------------------- orphans
++
++def test_an_orphaned_knowledge_record_is_reported_as_unreferenced(store):
++    append(store, case_items(1, "T-0001", "a"))
++    orphan = store.root / knowledge_rel("case", "K-9999", 1)
++    orphan.parent.mkdir(parents=True)
++    orphan.write_text("schema: x\n", encoding="utf-8")
++    index = synced(store)
++    assert History(store.root).unreferenced(index.paths()) == [knowledge_rel("case", "K-9999", 1)]
+diff --git a/tests/integration/test_knowledge_surface.py b/tests/integration/test_knowledge_surface.py
+new file mode 100644
+index 0000000..6f1af24
+--- /dev/null
++++ b/tests/integration/test_knowledge_surface.py
+@@ -0,0 +1,163 @@
++"""`aew knowledge`: capture, dispositions and the read surface through the CLI (ADR-0013 draft; review T4).
++
++A knowledge commit is an ordinary Lead transaction that changes only the hot constants (counters, the knowledge
++block, the cold root, the transition), appends to the one history, and survives a crash at the history fault points.
++"""
++
++from __future__ import annotations
++
++import json
++import sys
++from pathlib import Path
++
++HELPERS = Path(__file__).resolve().parents[1] / "helpers"
++sys.path.insert(0, str(HELPERS))
++
++from conftest import clean_env, run_aew  # noqa: E402
++from invariants import assert_control_invariants, load_control  # noqa: E402
++
++from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
++
++CASE = {
++    "template": "attempt-outcome/v1",
++    "title": "unit check failed, then passed after the fixture was regenerated",
++    "subject_refs": ["T-0001", "component:calc.core"],
++    "root_evidence_bindings": [{"evidence_id": "INV-0001-impl-1", "relation": "derived_from",
++                                "basis": "literal_outcome"}],
++    "observed_conditions": {"platform": "windows", "python": "3.12", "check": "unit"},
++    "fields": {"condition": "check unit failed on attempt 1", "action": "regenerated the fixture",
++               "result": "check unit passed, 7 tests"},
++    "source_classes": {"condition": "ENGINE_OBSERVED_WEAK_BOUNDARY", "result": "ENGINE_OBSERVED_WEAK_BOUNDARY",
++                       "action": "ROLE_ATTESTED"},
++    "limitations": ["single attempt"],
++    "unknowns": ["root cause"],
++}
++
++
++def case(p, record: dict | None = None, *extra: str):
++    res = p.aew("knowledge", "case", "--file", "-", *extra, "--token", p.token, "--expect-rev", str(p.rev()),
++                input=json.dumps(record or CASE))
++    return res
++
++
++def test_a_case_is_admitted_with_its_disposition_and_receipt_in_one_commit(project):
++    p = project
++    before = load_control(p.root)
++    res = case(p)
++    assert res.returncode == 0, res.stderr
++    out = res.json
++    assert out["id"] == "K-0001" and out["disposition"] == "KD-0001" and out["receipt"] == "KR-0001"
++    assert out["source"] == "model"  # a ROLE_ATTESTED field: the most restrictive class labels the entry
++    assert out["serving_eligibility"] == "explicit_investigation_only"
++    after = load_control(p.root)
++    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
++    # Rule 28: a knowledge commit touches nothing under work, invocations, tokens or lead. The archival finalizer
++    # also materializes its own (empty) hot keys on the first commit that appends to the history.
++    assert changed <= {"revision", "counters", "knowledge", "cold", "last_transition", "next_action",
++                       "recent", "archived_refs", "retained_workspaces", "retired_observations"}
++    for key in ("work", "invocations", "tokens", "lead"):
++        assert after[key] == before[key], key
++    assert after.get("recent", []) == [] and after.get("archived_refs", {}) == {}
++    assert after["cold"]["root"]["count"] == 3
++    assert after["counters"]["knowledge"] == 1 and after["counters"]["receipt"] == 1
++    assert after["knowledge"]["capture"] == {"last_receipt": "KR-0001", "through_revision": before["revision"]}
++    assert after["knowledge"]["pending"] == []
++    assert_control_invariants(p)
++    # the records are where ADR-0013 D2 puts them, immutable
++    assert (p.root / ".aew/knowledge/cases/K-0001/v1.yaml").exists()
++    assert (p.root / ".aew/knowledge/cases/K-0001/dispositions/0001.yaml").exists()
++    assert (p.root / ".aew/knowledge/receipts/KR-0001.yaml").exists()
++
++
++def test_engine_owned_fields_are_refused_and_the_schema_is_enforced(project):
++    p = project
++    res = case(p, {**CASE, "id": "K-0042"})
++    assert res.returncode != 0 and "assigned by the engine" in (res.stderr + res.stdout)
++    res = case(p, {k: v for k, v in CASE.items() if k != "root_evidence_bindings"})
++    assert res.returncode != 0 and "knowledge-case" in (res.stderr + res.stdout)
++    assert load_control(p.root)["cold"]["root"]["count"] == 0  # nothing appended
++
++
++def test_show_list_search_and_the_history_surface_read_the_same_record(project):
++    p = project
++    assert case(p).returncode == 0
++    shown = p.ok("knowledge", "show", "K-0001")
++    assert shown["kind"] == "case" and shown["version"] == 1
++    assert shown["record"]["fields"]["action"] == "regenerated the fixture"
++    assert shown["state"]["admission"] == "admitted" and shown["state"]["disposition_seq"] == 1
++    assert shown["trust"]["source"] == "model" and "reference only" in shown["trust"]["label"]
++    listed = p.ok("knowledge", "list")
++    assert [i["id"] for i in listed["items"]] == ["KR-0001", "KD-0001", "K-0001"]  # newest first
++    assert [i["id"] for i in p.ok("knowledge", "list", "--kind", "case")["items"]] == ["K-0001"]
++    hits = p.ok("knowledge", "search", "regenerated AND fixture")
++    assert [h["id"] for h in hits["items"]] == ["K-0001"]
++    assert p.ok("knowledge", "search", "nothing-of-the-kind")["items"] == []
++    # the ADR-0011 surface sees the same entries, with the same trust label
++    hist = p.ok("history", "show", "K-0001")
++    assert hist["kind"] == "case" and hist["record"]["id"] == "K-0001"
++    assert [i["id"] for i in p.ok("history", "list", "--kind", "receipt")["items"]] == ["KR-0001"]
++    links = p.ok("history", "links", "K-0001")
++    assert {"from": "K-0001", "rel": "derived_from", "to": "INV-0001-impl-1"} in links["edges"]
++    assert {"from": "KR-0001", "rel": "produced", "to": "K-0001"} in links["edges"]
++
++
++def test_a_held_candidate_is_pending_until_a_disposition_settles_it(project):
++    p = project
++    out = case(p, None, "--hold").json
++    assert out["serving_eligibility"] is None
++    state = load_control(p.root)
++    assert [x["id"] for x in state["knowledge"]["pending"]] == ["K-0001"]
++    assert p.ok("knowledge", "show", "K-0001")["state"]["admission"] == "held_active"
++    d = p.lead("knowledge", "dispose", "K-0001", "--rel", "admitted", "--decision", "D-0001", "--serving",
++               "case_recall", "--note", "reviewed")
++    assert d["disposition_seq"] == 2 and d["id"] == "KD-0002"
++    assert load_control(p.root)["knowledge"]["pending"] == []
++    shown = p.ok("knowledge", "show", "K-0001")
++    assert shown["state"]["admission"] == "admitted" and [x["rel"] for x in shown["state"]["dispositions"]] == [
++        "held_active", "admitted"]
++    assert shown["pending"] is False
++    p.lead("knowledge", "dispose", "K-0001", "--rel", "serving_hold", "--object", "AU-0001")
++    assert p.ok("knowledge", "show", "K-0001")["state"]["serving_hold"] is True
++    res = p.aew("knowledge", "dispose", "K-0001", "--rel", "liked", "--token", p.token, "--expect-rev", str(p.rev()))
++    assert res.returncode != 0
++    res = p.aew("knowledge", "dispose", "K-0404", "--rel", "admitted", "--token", p.token, "--expect-rev", str(p.rev()))
++    assert res.returncode != 0 and "K-0404" in (res.stderr + res.stdout)
++    assert_control_invariants(p)
++
++
++def test_the_audit_covers_knowledge_records_and_resume_reads_none_of_them(project):
++    p = project
++    assert case(p).returncode == 0
++    advisory = p.ok("history", "audit", "--full")
++    assert advisory["ok"] and advisory["records"] == 3 and advisory["recorded"] is False
++    recorded = p.ok("history", "audit", "--full", "--token", p.token, "--expect-rev", str(p.rev()))
++    assert recorded["ok"] and recorded["recorded"] is True
++    # damage a disposition's record: the next read of it is a contradiction and the audit reports it
++    path = p.root / ".aew/knowledge/cases/K-0001/dispositions/0001.yaml"
++    original = path.read_bytes()
++    path.write_bytes(original.replace(b"admitted", b"rejected"))
++    res = p.aew("history", "audit", "--full")  # incremental covers only what the recorded audit did not
++    assert res.returncode != 0 and "does not hold the content" in (res.stderr + res.stdout)
++    res = p.aew("knowledge", "show", "K-0001")  # and reading the record is a contradiction too, not a stale view
++    assert res.returncode == 0  # the content version itself is intact; the damaged disposition is read lazily
++    path.write_bytes(original)
++    assert p.ok("history", "audit", "--full")["ok"]
++    # resume and status are history-independent: they succeed without reading any knowledge record
++    assert p.aew("resume").returncode == 0
++    assert p.aew("status").returncode == 0
++
++
++def test_a_crash_inside_a_capture_commit_leaves_the_old_or_the_new_history(project):
++    p = project
++    env = {**clean_env(), "AEW_FAULT": "history.after_tail", "AEW_FAULT_MODE": "exit"}
++    res = run_aew("-C", str(p.root), "knowledge", "case", "--file", "-", "--token", p.token, "--expect-rev",
++                  str(p.rev()), env=env, input=json.dumps(CASE))
++    assert res.returncode == CRASH_EXIT_CODE
++    state = load_control(p.root)  # recovery ran: the commit either landed whole or not at all
++    assert state["cold"]["root"]["count"] in (0, 3)
++    assert p.ok("history", "audit", "--full")["ok"]
++    assert_control_invariants(p)
++    again = case(p)
++    assert again.returncode == 0
++    assert load_control(p.root)["cold"]["root"]["count"] in (3, 6)
++    assert p.ok("history", "audit", "--full")["ok"]
+diff --git a/tests/unit/test_dispatch_decision.py b/tests/unit/test_dispatch_decision.py
+index 736537a..1aaabd1 100644
+--- a/tests/unit/test_dispatch_decision.py
++++ b/tests/unit/test_dispatch_decision.py
+@@ -23,7 +23,8 @@ NOT_DISPATCHING = {
+     "context show", "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
+     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
+     "history audit", "history links", "history list", "history load", "history reindex", "history show", "init",
+-    "integrate prepare", "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "lead acquire",
++    "integrate prepare", "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "knowledge case",
++    "knowledge dispose", "knowledge list", "knowledge search", "knowledge show", "lead acquire",
+     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
+     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
+diff --git a/tools/perf/control_plane.py b/tools/perf/control_plane.py
+index ab7b684..f1a7f25 100644
+--- a/tools/perf/control_plane.py
++++ b/tools/perf/control_plane.py
+@@ -119,6 +119,7 @@ class Template:
+         state = deserialize_control(control.read_bytes(), source="control.yaml")
+         state["schema"] = "aew/control/v1"
+         state.pop("cold", None)
++        state.pop("knowledge", None)  # v2 only (ADR-0013 draft, review T4): a v1 project never had the block
+         control.write_bytes(serialize_control(state))
+         policy = root / ".aew/policy"
+         (policy / "checks.yaml").write_text(dump_yaml({
+-- 
+2.46.0.windows.1
+

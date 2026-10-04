@@ -1,0 +1,36 @@
+toolchain: --gcc-toolchain=/opt/rh/gcc-toolset-15/root/usr
+{
+ "tus": 49,
+ "tus_failed": 0,
+ "tus_partial": 0,
+ "total_s": 323.68,
+ "parse_ms_mean": 1272.9,
+ "walk_ms_mean": 5199.7,
+ "includes": 21581,
+ "symbols": 146551,
+ "function_definitions": 46500,
+ "function_declarations_only": 21563,
+ "calls_direct": 104860,
+ "calls_indirect": 4366,
+ "calls_unresolved": 31633,
+ "calls_dependent": 35642,
+ "calls_virtual": 1257,
+ "calls_template": 0,
+ "address_taken": 5020,
+ "table_refs": 2190,
+ "macro_uses_main": 4208,
+ "includes_by_class": {
+  "project": 299,
+  "external": 9976,
+  "system": 11306
+ },
+ "distinct_function_definitions": 4226,
+ "function_definitions_seen_in_several_tus": 1665,
+ "defines_distinct": [
+  "FMT_ENFORCE_COMPILE_STRING",
+  "FMT_HAVE_STRPTIME",
+  "FMT_HEADER_ONLY=1",
+  "GTEST_HAS_STD_WSTRING=1",
+  "_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING=1"
+ ]
+}

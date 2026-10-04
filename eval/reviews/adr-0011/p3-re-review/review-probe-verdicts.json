@@ -1,0 +1,8 @@
+{
+  "target": "1911894bdc6e7126d31a9de362d792a9b7421fee",
+  "P3-1_original_reproduction": "resolved",
+  "P3-2_original_new_archive_reproduction": "resolved",
+  "P3-2_prearchival_and_existing_archive_cases": "remaining gaps",
+  "new_integrity_tests": "6 passed",
+  "perf_cloner_control": "2 entries, 32 records, clean audit"
+}

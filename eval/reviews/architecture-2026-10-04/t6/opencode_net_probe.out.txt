@@ -1,0 +1,38 @@
+# T6 network containment probe, part 2: OpenCode 2.0.18 serve
+cli /home/allm/opencode-2.0.18/opt/OpenCode/resources/opencode-cli; version: opencode v2.0.18
+config: {"$schema": "https://opencode.ai/config.json", "autoupdate": false, "share": "disabled", "lsp": false, "formatter": false}
+
+## A1: shared network, strace -f -e connect, fresh XDG state, 45 s catalog wait
+  {"announced": "http://127.0.0.1:42439", "start_s": 1.35, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 10, "catalog_wait_s": 5.9, "last": [200, "['opencode']"]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]}
+  non-loopback connect() targets: {"192.168.1.1:53": 1, "172.66.173.149:443": 2, "104.20.32.17:443": 2, "2606:4700:10::6814:2011:443": 2, "2606:4700:10::ac42:ad95:443": 2}
+  reverse lookups: {"192.168.1.1": "CR1000A.mynetworksettings.com", "172.66.173.149": "?", "104.20.32.17": "?", "2606:4700:10::6814:2011": "?", "2606:4700:10::ac42:ad95": "?"}
+  server.log (last 15 lines):
+    
+
+## A2: shared network, HTTP_PROXY/HTTPS_PROXY -> logging CONNECT proxy on the host (does Bun honour them?)
+  {"announced": "http://127.0.0.1:33123", "start_s": 1.28, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 10, "catalog_wait_s": 6.7, "last": [200, "['opencode']"]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db", "proxy.log"]}
+  proxy log: ["CONNECT models.opencode.ai:443"]
+  non-loopback connect() targets with proxy env set: {}
+
+## B: --unshare-net, fresh XDG state (no catalog cache), 45 s catalog wait
+  {"announced": "http://127.0.0.1:42741", "start_s": 0.42, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 7, "catalog_wait_s": 1.1, "last": [200, "['opencode']"]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]}
+  server.log (last 15 lines):
+    
+
+## C: --unshare-net, XDG cache copied from A1 (seeded catalog), 30 s catalog wait
+  seeded files: ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]
+  {"announced": "http://127.0.0.1:37527", "start_s": 0.38, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 10, "catalog_wait_s": 1.1, "last": [200, "['opencode']"]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]}
+  server.log (last 15 lines):
+    

@@ -1,0 +1,13 @@
+# T6 network containment probe, part 1
+kernel 4.18.0-553.134.1.el8_10.x86_64; bwrap bubblewrap 0.4.0; python 3.11.13; max_user_namespaces 30551
+
+## P5: slirp4netns (NAT uplink, no allowlist) as the alternative
+slirp4netns attached to host pid 4387: alive=False after 1002 ms
+outbound via slirp: OSError [Errno 101] Network is unreachable
+host 10.0.2.2:22: OSError
+ifaces: ['enp0s3', 'lo', 'virbr0']
+slirp stderr: setns(CLONE_NEWNET): Operation not permitted
+child failed(1)
+
+[note: "ifaces" here lists the host's interfaces because this rerun's sandbox command printed them from the host side
+of the ready-file handshake; the namespace itself had only lo, as P1 shows]

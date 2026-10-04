@@ -1,0 +1,6520 @@
+{
+ "project": "curl",
+ "commit": "75a2079",
+ "totals": {
+  "tus_without_object": 263,
+  "def_nm": 1680,
+  "def_extracted": 1685,
+  "def_missing": 0,
+  "def_extra": 5,
+  "def_extra_internal": 5,
+  "linkage_disagree": 0,
+  "call_objdump_direct_edges": 4766,
+  "call_extracted_direct_edges": 4761,
+  "call_agree": 4706,
+  "call_missing": 20,
+  "call_extra": 15,
+  "call_objdump_indirect_sites": 1027,
+  "call_extracted_indirect_sites": 1027,
+  "undef_nm": 2231,
+  "undef_unexplained": 8,
+  "inc_mm": 28178,
+  "inc_missing": 0,
+  "inc_extra": 2,
+  "mac_dM": 472608,
+  "mac_extracted": 488194,
+  "mac_extracted_distinct": 473481,
+  "tus": 171
+ },
+ "samples": {
+  "def_missing": [],
+  "def_extra": [
+   [
+    "lib/curl_sha512_256.c",
+    "MHDx_rotr64",
+    "INTERNAL"
+   ],
+   [
+    "lib/hostip.c",
+    "curl_simple_lock_lock",
+    "INTERNAL"
+   ],
+   [
+    "lib/hostip.c",
+    "curl_simple_lock_unlock",
+    "INTERNAL"
+   ],
+   [
+    "lib/version.c",
+    "curl_simple_lock_lock",
+    "INTERNAL"
+   ],
+   [
+    "lib/version.c",
+    "curl_simple_lock_unlock",
+    "INTERNAL"
+   ]
+  ],
+  "linkage_disagree": [],
+  "call_missing": [
+   [
+    "lib/altsvc.c",
+    "Curl_altsvc_parse",
+    "memset"
+   ],
+   [
+    "lib/asyn-thread.c",
+    "init_thread_sync_data",
+    "memcpy"
+   ],
+   [
+    "lib/cf-socket.c",
+    "Curl_cf_socket_peek",
+    "memcpy"
+   ],
+   [
+    "lib/cf-socket.c",
+    "cf_socket_active",
+    "memcpy"
+   ],
+   [
+    "lib/cf-socket.c",
+    "cf_socket_query",
+    "memcpy"
+   ],
+   [
+    "lib/cf-socket.c",
+    "cf_socket_update_data",
+    "memcpy"
+   ],
+   [
+    "lib/doh.c",
+    "doh_show",
+    "memcpy"
+   ],
+   [
+    "lib/easy.c",
+    "dupset",
+    "memcpy"
+   ]
+  ],
+  "call_extra": [
+   [
+    "lib/cf-h1-proxy.c",
+    "on_resp_header",
+    "strlen"
+   ],
+   [
+    "lib/conncache.c",
+    "cpool_update_shutdown_ev",
+    "memcpy"
+   ],
+   [
+    "lib/curl_sha512_256.c",
+    "MHDx_sha512_256_transform",
+    "MHDx_rotr64"
+   ],
+   [
+    "lib/doh.c",
+    "doh_store_a",
+    "memcpy"
+   ],
+   [
+    "lib/doh.c",
+    "doh_store_aaaa",
+    "memcpy"
+   ],
+   [
+    "lib/hostip.c",
+    "get_localhost",
+    "memcpy"
+   ],
+   [
+    "lib/hostip.c",
+    "get_localhost6",
+    "memcpy"
+   ],
+   [
+    "lib/http_aws_sigv4.c",
+    "make_headers",
+    "memcpy"
+   ]
+  ],
+  "undefined_unexplained": [
+   [
+    "lib/altsvc.c",
+    "memset"
+   ],
+   [
+    "lib/asyn-thread.c",
+    "memcpy"
+   ],
+   [
+    "lib/easy.c",
+    "memcpy"
+   ],
+   [
+    "lib/ftp.c",
+    "memset"
+   ],
+   [
+    "lib/http_aws_sigv4.c",
+    "memset"
+   ],
+   [
+    "lib/http_chunks.c",
+    "memset"
+   ],
+   [
+    "lib/if2ip.c",
+    "memset"
+   ],
+   [
+    "lib/urlapi.c",
+    "memcpy"
+   ]
+  ],
+  "include_missing": [],
+  "include_extra": [
+   [
+    "lib/base64.c",
+    "curl_memory.h"
+   ],
+   [
+    "lib/dynbuf.c",
+    "curl_memory.h"
+   ]
+  ],
+  "macro_missing": [],
+  "macro_extra": []
+ },
+ "per_tu": [
+  {
+   "file": "lib/altsvc.c",
+   "definitions": {
+    "nm": 18,
+    "extracted": 18,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 68,
+    "extracted_direct_edges": 67,
+    "agree": 67,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 11,
+    "extracted_indirect_sites": 11
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 34,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 209,
+    "extracted": 209,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3228,
+    "extracted_definitions_visible": 3345,
+    "extracted_names_distinct": 3240
+   }
+  },
+  {
+   "file": "lib/amigaos.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/asyn-ares.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/asyn-thread.c",
+   "definitions": {
+    "nm": 23,
+    "extracted": 23,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 56,
+    "extracted_direct_edges": 55,
+    "agree": 53,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 13,
+    "extracted_indirect_sites": 13
+   },
+   "undefined": {
+    "nm": 29,
+    "explained_by_extraction": 27,
+    "compiler_runtime": 1,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 206,
+    "extracted": 206,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3240,
+    "extracted_definitions_visible": 3357,
+    "extracted_names_distinct": 3252
+   }
+  },
+  {
+   "file": "lib/base64.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6,
+    "extracted_direct_edges": 6,
+    "agree": 6,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 142,
+    "missing": 0,
+    "extra": 1
+   },
+   "macros": {
+    "dM": 2669,
+    "extracted_definitions_visible": 2693,
+    "extracted_names_distinct": 2619
+   }
+  },
+  {
+   "file": "lib/bufq.c",
+   "definitions": {
+    "nm": 45,
+    "extracted": 45,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 49,
+    "extracted_direct_edges": 49,
+    "agree": 49,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 8
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 143,
+    "extracted": 143,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2623,
+    "extracted_definitions_visible": 2711,
+    "extracted_names_distinct": 2632
+   }
+  },
+  {
+   "file": "lib/bufref.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 197,
+    "extracted": 197,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3170,
+    "extracted_definitions_visible": 3281,
+    "extracted_names_distinct": 3181
+   }
+  },
+  {
+   "file": "lib/c-hyper.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/cf-h1-proxy.c",
+   "definitions": {
+    "nm": 17,
+    "extracted": 17,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 84,
+    "extracted_direct_edges": 85,
+    "agree": 84,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 10,
+    "extracted_indirect_sites": 10
+   },
+   "undefined": {
+    "nm": 54,
+    "explained_by_extraction": 54,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 220,
+    "extracted": 220,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3351,
+    "extracted_definitions_visible": 3468,
+    "extracted_names_distinct": 3363
+   }
+  },
+  {
+   "file": "lib/cf-h2-proxy.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/cf-haproxy.c",
+   "definitions": {
+    "nm": 9,
+    "extracted": 9,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 22,
+    "extracted_direct_edges": 22,
+    "agree": 22,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 26,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 202,
+    "extracted": 202,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3236,
+    "extracted_definitions_visible": 3353,
+    "extracted_names_distinct": 3248
+   }
+  },
+  {
+   "file": "lib/cf-https-connect.c",
+   "definitions": {
+    "nm": 24,
+    "extracted": 24,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 50,
+    "extracted_direct_edges": 50,
+    "agree": 50,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 11,
+    "extracted_indirect_sites": 11
+   },
+   "undefined": {
+    "nm": 23,
+    "explained_by_extraction": 23,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 205,
+    "extracted": 205,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 3372,
+    "extracted_names_distinct": 3267
+   }
+  },
+  {
+   "file": "lib/cf-socket.c",
+   "definitions": {
+    "nm": 42,
+    "extracted": 42,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 160,
+    "extracted_direct_edges": 156,
+    "agree": 144,
+    "missing": 4,
+    "extra": 0,
+    "objdump_indirect_sites": 19,
+    "extracted_indirect_sites": 19
+   },
+   "undefined": {
+    "nm": 50,
+    "explained_by_extraction": 49,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 242,
+    "extracted": 242,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3922,
+    "extracted_definitions_visible": 4075,
+    "extracted_names_distinct": 3936
+   }
+  },
+  {
+   "file": "lib/cfilters.c",
+   "definitions": {
+    "nm": 66,
+    "extracted": 66,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 42,
+    "extracted_direct_edges": 42,
+    "agree": 42,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 37,
+    "extracted_indirect_sites": 37
+   },
+   "undefined": {
+    "nm": 15,
+    "explained_by_extraction": 15,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 211,
+    "extracted": 211,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3290,
+    "extracted_definitions_visible": 3407,
+    "extracted_names_distinct": 3302
+   }
+  },
+  {
+   "file": "lib/conncache.c",
+   "definitions": {
+    "nm": 47,
+    "extracted": 47,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 210,
+    "extracted_direct_edges": 211,
+    "agree": 210,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 10,
+    "extracted_indirect_sites": 10
+   },
+   "undefined": {
+    "nm": 49,
+    "explained_by_extraction": 49,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 214,
+    "extracted": 214,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3307,
+    "extracted_definitions_visible": 3424,
+    "extracted_names_distinct": 3319
+   }
+  },
+  {
+   "file": "lib/connect.c",
+   "definitions": {
+    "nm": 41,
+    "extracted": 41,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 93,
+    "extracted_direct_edges": 93,
+    "agree": 91,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 19,
+    "extracted_indirect_sites": 19
+   },
+   "undefined": {
+    "nm": 43,
+    "explained_by_extraction": 42,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 242,
+    "extracted": 242,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3851,
+    "extracted_definitions_visible": 3994,
+    "extracted_names_distinct": 3863
+   }
+  },
+  {
+   "file": "lib/content_encoding.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 17,
+    "extracted_direct_edges": 17,
+    "agree": 17,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 18,
+    "explained_by_extraction": 18,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 203,
+    "extracted": 203,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3213,
+    "extracted_definitions_visible": 3335,
+    "extracted_names_distinct": 3225
+   }
+  },
+  {
+   "file": "lib/cookie.c",
+   "definitions": {
+    "nm": 29,
+    "extracted": 29,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 147,
+    "extracted_direct_edges": 147,
+    "agree": 147,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 31,
+    "extracted_indirect_sites": 31
+   },
+   "undefined": {
+    "nm": 51,
+    "explained_by_extraction": 51,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 211,
+    "extracted": 211,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3238,
+    "extracted_definitions_visible": 3360,
+    "extracted_names_distinct": 3250
+   }
+  },
+  {
+   "file": "lib/curl_addrinfo.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 12,
+    "extracted_direct_edges": 12,
+    "agree": 12,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 5,
+    "extracted_indirect_sites": 5
+   },
+   "undefined": {
+    "nm": 9,
+    "explained_by_extraction": 9,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 159,
+    "extracted": 159,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2913,
+    "extracted_definitions_visible": 3025,
+    "extracted_names_distinct": 2925
+   }
+  },
+  {
+   "file": "lib/curl_des.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_endian.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 123,
+    "extracted": 123,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2175,
+    "extracted_definitions_visible": 2239,
+    "extracted_names_distinct": 2176
+   }
+  },
+  {
+   "file": "lib/curl_fnmatch.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 142,
+    "extracted": 142,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2621,
+    "extracted_definitions_visible": 2703,
+    "extracted_names_distinct": 2629
+   }
+  },
+  {
+   "file": "lib/curl_get_line.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 5,
+    "extracted_direct_edges": 5,
+    "agree": 5,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 142,
+    "extracted": 142,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2623,
+    "extracted_definitions_visible": 2705,
+    "extracted_names_distinct": 2631
+   }
+  },
+  {
+   "file": "lib/curl_gethostname.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 123,
+    "extracted": 123,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2176,
+    "extracted_definitions_visible": 2240,
+    "extracted_names_distinct": 2177
+   }
+  },
+  {
+   "file": "lib/curl_gssapi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_memrchr.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2608,
+    "extracted_definitions_visible": 2690,
+    "extracted_names_distinct": 2616
+   }
+  },
+  {
+   "file": "lib/curl_multibyte.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2172,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_ntlm_core.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_range.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 198,
+    "extracted": 198,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3185,
+    "extracted_definitions_visible": 3296,
+    "extracted_names_distinct": 3196
+   }
+  },
+  {
+   "file": "lib/curl_rtmp.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_sasl.c",
+   "definitions": {
+    "nm": 10,
+    "extracted": 10,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 40,
+    "extracted_direct_edges": 40,
+    "agree": 40,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 21,
+    "explained_by_extraction": 21,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 208,
+    "extracted": 208,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3286,
+    "extracted_definitions_visible": 3408,
+    "extracted_names_distinct": 3298
+   }
+  },
+  {
+   "file": "lib/curl_sha512_256.c",
+   "definitions": {
+    "nm": 7,
+    "extracted": 8,
+    "missing": 0,
+    "extra": 1,
+    "extra_internal_linkage": 1,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 10,
+    "agree": 9,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2633,
+    "extracted_definitions_visible": 2715,
+    "extracted_names_distinct": 2641
+   }
+  },
+  {
+   "file": "lib/curl_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/curl_threads.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 8
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2616,
+    "extracted_definitions_visible": 2698,
+    "extracted_names_distinct": 2624
+   }
+  },
+  {
+   "file": "lib/curl_trc.c",
+   "definitions": {
+    "nm": 15,
+    "extracted": 15,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 24,
+    "extracted_direct_edges": 24,
+    "agree": 24,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 22,
+    "explained_by_extraction": 22,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 215,
+    "extracted": 215,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3316,
+    "extracted_definitions_visible": 3438,
+    "extracted_names_distinct": 3328
+   }
+  },
+  {
+   "file": "lib/cw-out.c",
+   "definitions": {
+    "nm": 17,
+    "extracted": 17,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 35,
+    "extracted_direct_edges": 35,
+    "agree": 35,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 13,
+    "explained_by_extraction": 13,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3246,
+    "extracted_definitions_visible": 3363,
+    "extracted_names_distinct": 3258
+   }
+  },
+  {
+   "file": "lib/dict.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 15,
+    "extracted_direct_edges": 15,
+    "agree": 15,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 14,
+    "explained_by_extraction": 14,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 238,
+    "extracted": 238,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3716,
+    "extracted_definitions_visible": 3854,
+    "extracted_names_distinct": 3729
+   }
+  },
+  {
+   "file": "lib/doh.c",
+   "definitions": {
+    "nm": 22,
+    "extracted": 22,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 65,
+    "extracted_direct_edges": 66,
+    "agree": 64,
+    "missing": 1,
+    "extra": 2,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 33,
+    "explained_by_extraction": 33,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 208,
+    "extracted": 208,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3238,
+    "extracted_definitions_visible": 3355,
+    "extracted_names_distinct": 3250
+   }
+  },
+  {
+   "file": "lib/dynbuf.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 6,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 142,
+    "extracted": 143,
+    "missing": 0,
+    "extra": 1
+   },
+   "macros": {
+    "dM": 2704,
+    "extracted_definitions_visible": 2724,
+    "extracted_names_distinct": 2645
+   }
+  },
+  {
+   "file": "lib/dynhds.c",
+   "definitions": {
+    "nm": 16,
+    "extracted": 16,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 20,
+    "extracted_direct_edges": 20,
+    "agree": 20,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 6,
+    "extracted_indirect_sites": 6
+   },
+   "undefined": {
+    "nm": 8,
+    "explained_by_extraction": 8,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 145,
+    "extracted": 145,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2641,
+    "extracted_definitions_visible": 2729,
+    "extracted_names_distinct": 2650
+   }
+  },
+  {
+   "file": "lib/easy.c",
+   "definitions": {
+    "nm": 24,
+    "extracted": 24,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 85,
+    "extracted_direct_edges": 84,
+    "agree": 84,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 6,
+    "extracted_indirect_sites": 6
+   },
+   "undefined": {
+    "nm": 59,
+    "explained_by_extraction": 58,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 264,
+    "extracted": 264,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4011,
+    "extracted_definitions_visible": 4165,
+    "extracted_names_distinct": 4027
+   }
+  },
+  {
+   "file": "lib/easygetopt.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 140,
+    "extracted": 140,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2603,
+    "extracted_definitions_visible": 2685,
+    "extracted_names_distinct": 2611
+   }
+  },
+  {
+   "file": "lib/easyoptions.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 139,
+    "extracted": 139,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2599,
+    "extracted_definitions_visible": 2681,
+    "extracted_names_distinct": 2607
+   }
+  },
+  {
+   "file": "lib/escape.c",
+   "definitions": {
+    "nm": 7,
+    "extracted": 7,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 5,
+    "extracted_indirect_sites": 5
+   },
+   "undefined": {
+    "nm": 8,
+    "explained_by_extraction": 8,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 201,
+    "extracted": 201,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3186,
+    "extracted_definitions_visible": 3303,
+    "extracted_names_distinct": 3198
+   }
+  },
+  {
+   "file": "lib/file.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 42,
+    "extracted_direct_edges": 42,
+    "agree": 42,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 35,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 250,
+    "extracted": 250,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3897,
+    "extracted_definitions_visible": 4062,
+    "extracted_names_distinct": 3910
+   }
+  },
+  {
+   "file": "lib/fileinfo.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 148,
+    "extracted": 148,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2629,
+    "extracted_definitions_visible": 2718,
+    "extracted_names_distinct": 2640
+   }
+  },
+  {
+   "file": "lib/fopen.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 15,
+    "extracted_direct_edges": 15,
+    "agree": 15,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 15,
+    "explained_by_extraction": 15,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3330,
+    "extracted_definitions_visible": 3473,
+    "extracted_names_distinct": 3342
+   }
+  },
+  {
+   "file": "lib/formdata.c",
+   "definitions": {
+    "nm": 9,
+    "extracted": 9,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 29,
+    "extracted_direct_edges": 29,
+    "agree": 29,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 28,
+    "extracted_indirect_sites": 28
+   },
+   "undefined": {
+    "nm": 25,
+    "explained_by_extraction": 25,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 206,
+    "extracted": 206,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3260,
+    "extracted_definitions_visible": 3377,
+    "extracted_names_distinct": 3272
+   }
+  },
+  {
+   "file": "lib/ftp.c",
+   "definitions": {
+    "nm": 66,
+    "extracted": 66,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 342,
+    "extracted_direct_edges": 341,
+    "agree": 339,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 60,
+    "extracted_indirect_sites": 60
+   },
+   "undefined": {
+    "nm": 102,
+    "explained_by_extraction": 100,
+    "compiler_runtime": 1,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 227,
+    "extracted": 227,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3368,
+    "extracted_definitions_visible": 3485,
+    "extracted_names_distinct": 3380
+   }
+  },
+  {
+   "file": "lib/ftplistparser.c",
+   "definitions": {
+    "nm": 9,
+    "extracted": 9,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 24,
+    "extracted_direct_edges": 24,
+    "agree": 24,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 7
+   },
+   "undefined": {
+    "nm": 21,
+    "explained_by_extraction": 21,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3182,
+    "extracted_definitions_visible": 3293,
+    "extracted_names_distinct": 3193
+   }
+  },
+  {
+   "file": "lib/getenv.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 140,
+    "extracted": 140,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2607,
+    "extracted_definitions_visible": 2689,
+    "extracted_names_distinct": 2615
+   }
+  },
+  {
+   "file": "lib/getinfo.c",
+   "definitions": {
+    "nm": 8,
+    "extracted": 8,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 11,
+    "extracted_direct_edges": 11,
+    "agree": 11,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3221,
+    "extracted_definitions_visible": 3332,
+    "extracted_names_distinct": 3232
+   }
+  },
+  {
+   "file": "lib/gopher.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 10,
+    "extracted_direct_edges": 10,
+    "agree": 10,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 12,
+    "explained_by_extraction": 12,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 214,
+    "extracted": 214,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3327,
+    "extracted_definitions_visible": 3444,
+    "extracted_names_distinct": 3339
+   }
+  },
+  {
+   "file": "lib/hash.c",
+   "definitions": {
+    "nm": 19,
+    "extracted": 19,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 30,
+    "extracted_direct_edges": 30,
+    "agree": 30,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 13,
+    "extracted_indirect_sites": 13
+   },
+   "undefined": {
+    "nm": 11,
+    "explained_by_extraction": 11,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 146,
+    "extracted": 146,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2616,
+    "extracted_definitions_visible": 2710,
+    "extracted_names_distinct": 2627
+   }
+  },
+  {
+   "file": "lib/headers.c",
+   "definitions": {
+    "nm": 10,
+    "extracted": 10,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 33,
+    "extracted_direct_edges": 33,
+    "agree": 33,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 23,
+    "explained_by_extraction": 23,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 203,
+    "extracted": 203,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3210,
+    "extracted_definitions_visible": 3327,
+    "extracted_names_distinct": 3222
+   }
+  },
+  {
+   "file": "lib/hmac.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 15,
+    "extracted_indirect_sites": 15
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 142,
+    "extracted": 142,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2612,
+    "extracted_definitions_visible": 2694,
+    "extracted_names_distinct": 2620
+   }
+  },
+  {
+   "file": "lib/hostasyn.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 5,
+    "extracted_direct_edges": 5,
+    "agree": 5,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3201,
+    "extracted_definitions_visible": 3312,
+    "extracted_names_distinct": 3212
+   }
+  },
+  {
+   "file": "lib/hostip.c",
+   "definitions": {
+    "nm": 27,
+    "extracted": 29,
+    "missing": 0,
+    "extra": 2,
+    "extra_internal_linkage": 2,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 104,
+    "extracted_direct_edges": 106,
+    "agree": 104,
+    "missing": 0,
+    "extra": 2,
+    "objdump_indirect_sites": 10,
+    "extracted_indirect_sites": 10
+   },
+   "undefined": {
+    "nm": 52,
+    "explained_by_extraction": 52,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 232,
+    "extracted": 232,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3576,
+    "extracted_definitions_visible": 3726,
+    "extracted_names_distinct": 3591
+   }
+  },
+  {
+   "file": "lib/hostip4.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/hostip6.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3224,
+    "extracted_definitions_visible": 3341,
+    "extracted_names_distinct": 3236
+   }
+  },
+  {
+   "file": "lib/hostsyn.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/hsts.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/http.c",
+   "definitions": {
+    "nm": 69,
+    "extracted": 69,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 300,
+    "extracted_direct_edges": 300,
+    "agree": 300,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 53,
+    "extracted_indirect_sites": 53
+   },
+   "undefined": {
+    "nm": 114,
+    "explained_by_extraction": 114,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 263,
+    "extracted": 263,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3867,
+    "extracted_definitions_visible": 4005,
+    "extracted_names_distinct": 3880
+   }
+  },
+  {
+   "file": "lib/http1.c",
+   "definitions": {
+    "nm": 8,
+    "extracted": 8,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 28,
+    "extracted_direct_edges": 28,
+    "agree": 28,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 21,
+    "explained_by_extraction": 21,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3186,
+    "extracted_definitions_visible": 3303,
+    "extracted_names_distinct": 3198
+   }
+  },
+  {
+   "file": "lib/http2.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 138,
+    "extracted": 138,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2598,
+    "extracted_definitions_visible": 2680,
+    "extracted_names_distinct": 2606
+   }
+  },
+  {
+   "file": "lib/http_aws_sigv4.c",
+   "definitions": {
+    "nm": 12,
+    "extracted": 12,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 72,
+    "extracted_direct_edges": 72,
+    "agree": 71,
+    "missing": 1,
+    "extra": 1,
+    "objdump_indirect_sites": 10,
+    "extracted_indirect_sites": 10
+   },
+   "undefined": {
+    "nm": 37,
+    "explained_by_extraction": 36,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 209,
+    "extracted": 209,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3234,
+    "extracted_definitions_visible": 3351,
+    "extracted_names_distinct": 3246
+   }
+  },
+  {
+   "file": "lib/http_chunks.c",
+   "definitions": {
+    "nm": 17,
+    "extracted": 17,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 44,
+    "extracted_direct_edges": 43,
+    "agree": 43,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 37,
+    "explained_by_extraction": 36,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3217,
+    "extracted_definitions_visible": 3334,
+    "extracted_names_distinct": 3229
+   }
+  },
+  {
+   "file": "lib/http_digest.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6,
+    "extracted_direct_edges": 7,
+    "agree": 6,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 8,
+    "explained_by_extraction": 8,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 201,
+    "extracted": 201,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3186,
+    "extracted_definitions_visible": 3303,
+    "extracted_names_distinct": 3198
+   }
+  },
+  {
+   "file": "lib/http_negotiate.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/http_ntlm.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/http_proxy.c",
+   "definitions": {
+    "nm": 9,
+    "extracted": 9,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 26,
+    "extracted_direct_edges": 26,
+    "agree": 26,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 7
+   },
+   "undefined": {
+    "nm": 30,
+    "explained_by_extraction": 30,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 221,
+    "extracted": 221,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3347,
+    "extracted_definitions_visible": 3464,
+    "extracted_names_distinct": 3359
+   }
+  },
+  {
+   "file": "lib/idn.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 203,
+    "extracted": 203,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3214,
+    "extracted_definitions_visible": 3331,
+    "extracted_names_distinct": 3226
+   }
+  },
+  {
+   "file": "lib/if2ip.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 7,
+    "extracted_direct_edges": 6,
+    "agree": 6,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 165,
+    "extracted": 165,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3189,
+    "extracted_definitions_visible": 3294,
+    "extracted_names_distinct": 3198
+   }
+  },
+  {
+   "file": "lib/imap.c",
+   "definitions": {
+    "nm": 49,
+    "extracted": 49,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 180,
+    "extracted_direct_edges": 181,
+    "agree": 180,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 29,
+    "extracted_indirect_sites": 29
+   },
+   "undefined": {
+    "nm": 60,
+    "explained_by_extraction": 60,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 216,
+    "extracted": 216,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3341,
+    "extracted_definitions_visible": 3458,
+    "extracted_names_distinct": 3353
+   }
+  },
+  {
+   "file": "lib/inet_ntop.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/inet_pton.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2172,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/krb5.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/ldap.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/llist.c",
+   "definitions": {
+    "nm": 11,
+    "extracted": 11,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3,
+    "extracted_direct_edges": 3,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 145,
+    "extracted": 145,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2616,
+    "extracted_definitions_visible": 2705,
+    "extracted_names_distinct": 2627
+   }
+  },
+  {
+   "file": "lib/macos.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/md4.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/md5.c",
+   "definitions": {
+    "nm": 8,
+    "extracted": 8,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 10,
+    "extracted_indirect_sites": 10
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 6,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 145,
+    "extracted": 145,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2634,
+    "extracted_definitions_visible": 2722,
+    "extracted_names_distinct": 2643
+   }
+  },
+  {
+   "file": "lib/memdebug.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2172,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/mime.c",
+   "definitions": {
+    "nm": 68,
+    "extracted": 68,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 125,
+    "extracted_direct_edges": 125,
+    "agree": 124,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 29,
+    "extracted_indirect_sites": 29
+   },
+   "undefined": {
+    "nm": 40,
+    "explained_by_extraction": 39,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 206,
+    "extracted": 206,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3225,
+    "extracted_definitions_visible": 3342,
+    "extracted_names_distinct": 3237
+   }
+  },
+  {
+   "file": "lib/mprintf.c",
+   "definitions": {
+    "nm": 18,
+    "extracted": 18,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 24,
+    "extracted_direct_edges": 24,
+    "agree": 24,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 24,
+    "extracted_indirect_sites": 24
+   },
+   "undefined": {
+    "nm": 11,
+    "explained_by_extraction": 11,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 143,
+    "extracted": 143,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2728,
+    "extracted_definitions_visible": 2742,
+    "extracted_names_distinct": 2663
+   }
+  },
+  {
+   "file": "lib/mqtt.c",
+   "definitions": {
+    "nm": 23,
+    "extracted": 23,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 72,
+    "extracted_direct_edges": 73,
+    "agree": 72,
+    "missing": 0,
+    "extra": 1,
+    "objdump_indirect_sites": 14,
+    "extracted_indirect_sites": 14
+   },
+   "undefined": {
+    "nm": 23,
+    "explained_by_extraction": 23,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 212,
+    "extracted": 212,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3263,
+    "extracted_definitions_visible": 3380,
+    "extracted_names_distinct": 3275
+   }
+  },
+  {
+   "file": "lib/multi.c",
+   "definitions": {
+    "nm": 95,
+    "extracted": 95,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 338,
+    "extracted_direct_edges": 341,
+    "agree": 336,
+    "missing": 0,
+    "extra": 3,
+    "objdump_indirect_sites": 50,
+    "extracted_indirect_sites": 50
+   },
+   "undefined": {
+    "nm": 119,
+    "explained_by_extraction": 118,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 220,
+    "extracted": 220,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3364,
+    "extracted_definitions_visible": 3483,
+    "extracted_names_distinct": 3378
+   }
+  },
+  {
+   "file": "lib/netrc.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 23,
+    "extracted_direct_edges": 23,
+    "agree": 23,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 16,
+    "extracted_indirect_sites": 16
+   },
+   "undefined": {
+    "nm": 18,
+    "explained_by_extraction": 18,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 147,
+    "extracted": 147,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2650,
+    "extracted_definitions_visible": 2739,
+    "extracted_names_distinct": 2659
+   }
+  },
+  {
+   "file": "lib/nonblock.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 152,
+    "extracted": 152,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3038,
+    "extracted_definitions_visible": 3085,
+    "extracted_names_distinct": 2985
+   }
+  },
+  {
+   "file": "lib/noproxy.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 13,
+    "extracted_direct_edges": 13,
+    "agree": 13,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 9,
+    "explained_by_extraction": 9,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 145,
+    "extracted": 145,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2819,
+    "extracted_definitions_visible": 2914,
+    "extracted_names_distinct": 2827
+   }
+  },
+  {
+   "file": "lib/openldap.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/parsedate.c",
+   "definitions": {
+    "nm": 11,
+    "extracted": 11,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 18,
+    "extracted_direct_edges": 18,
+    "agree": 17,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2612,
+    "extracted_definitions_visible": 2694,
+    "extracted_names_distinct": 2620
+   }
+  },
+  {
+   "file": "lib/pingpong.c",
+   "definitions": {
+    "nm": 12,
+    "extracted": 12,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 37,
+    "extracted_direct_edges": 37,
+    "agree": 36,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 21,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 210,
+    "extracted": 210,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3309,
+    "extracted_definitions_visible": 3426,
+    "extracted_names_distinct": 3321
+   }
+  },
+  {
+   "file": "lib/pop3.c",
+   "definitions": {
+    "nm": 41,
+    "extracted": 41,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 120,
+    "extracted_direct_edges": 120,
+    "agree": 120,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 47,
+    "explained_by_extraction": 47,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 219,
+    "extracted": 219,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3344,
+    "extracted_definitions_visible": 3461,
+    "extracted_names_distinct": 3356
+   }
+  },
+  {
+   "file": "lib/progress.c",
+   "definitions": {
+    "nm": 22,
+    "extracted": 22,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 32,
+    "extracted_direct_edges": 32,
+    "agree": 32,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 10,
+    "explained_by_extraction": 10,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3212,
+    "extracted_definitions_visible": 3329,
+    "extracted_names_distinct": 3224
+   }
+  },
+  {
+   "file": "lib/psl.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 138,
+    "extracted": 138,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2598,
+    "extracted_definitions_visible": 2680,
+    "extracted_names_distinct": 2606
+   }
+  },
+  {
+   "file": "lib/rand.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 8,
+    "extracted_direct_edges": 8,
+    "agree": 8,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 207,
+    "extracted": 207,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3390,
+    "extracted_definitions_visible": 3533,
+    "extracted_names_distinct": 3402
+   }
+  },
+  {
+   "file": "lib/rename.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 146,
+    "extracted": 146,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2629,
+    "extracted_definitions_visible": 2717,
+    "extracted_names_distinct": 2638
+   }
+  },
+  {
+   "file": "lib/request.c",
+   "definitions": {
+    "nm": 19,
+    "extracted": 19,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 57,
+    "extracted_direct_edges": 56,
+    "agree": 56,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 32,
+    "explained_by_extraction": 32,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 206,
+    "extracted": 206,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3264,
+    "extracted_definitions_visible": 3381,
+    "extracted_names_distinct": 3276
+   }
+  },
+  {
+   "file": "lib/rtsp.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 49,
+    "extracted_direct_edges": 49,
+    "agree": 49,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 9
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 35,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 212,
+    "extracted": 212,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3297,
+    "extracted_definitions_visible": 3414,
+    "extracted_names_distinct": 3309
+   }
+  },
+  {
+   "file": "lib/select.c",
+   "definitions": {
+    "nm": 12,
+    "extracted": 12,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 16,
+    "extracted_direct_edges": 16,
+    "agree": 14,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 3,
+    "extracted_indirect_sites": 3
+   },
+   "undefined": {
+    "nm": 8,
+    "explained_by_extraction": 7,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3213,
+    "extracted_definitions_visible": 3330,
+    "extracted_names_distinct": 3225
+   }
+  },
+  {
+   "file": "lib/sendf.c",
+   "definitions": {
+    "nm": 72,
+    "extracted": 72,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 75,
+    "extracted_direct_edges": 75,
+    "agree": 74,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 32,
+    "extracted_indirect_sites": 32
+   },
+   "undefined": {
+    "nm": 28,
+    "explained_by_extraction": 27,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 222,
+    "extracted": 222,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3452,
+    "extracted_definitions_visible": 3569,
+    "extracted_names_distinct": 3464
+   }
+  },
+  {
+   "file": "lib/setopt.c",
+   "definitions": {
+    "nm": 15,
+    "extracted": 15,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 51,
+    "extracted_direct_edges": 51,
+    "agree": 51,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 20,
+    "extracted_indirect_sites": 20
+   },
+   "undefined": {
+    "nm": 35,
+    "explained_by_extraction": 35,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 221,
+    "extracted": 221,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3409,
+    "extracted_definitions_visible": 3527,
+    "extracted_names_distinct": 3422
+   }
+  },
+  {
+   "file": "lib/sha256.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 7,
+    "extracted_direct_edges": 7,
+    "agree": 7,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 145,
+    "extracted": 145,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2640,
+    "extracted_definitions_visible": 2728,
+    "extracted_names_distinct": 2649
+   }
+  },
+  {
+   "file": "lib/share.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 7,
+    "extracted_direct_edges": 7,
+    "agree": 7,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 7
+   },
+   "undefined": {
+    "nm": 9,
+    "explained_by_extraction": 9,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 203,
+    "extracted": 203,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3239,
+    "extracted_definitions_visible": 3357,
+    "extracted_names_distinct": 3252
+   }
+  },
+  {
+   "file": "lib/slist.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 5,
+    "extracted_indirect_sites": 5
+   },
+   "undefined": {
+    "nm": 3,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2608,
+    "extracted_definitions_visible": 2690,
+    "extracted_names_distinct": 2616
+   }
+  },
+  {
+   "file": "lib/smb.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/smtp.c",
+   "definitions": {
+    "nm": 48,
+    "extracted": 48,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 161,
+    "extracted_direct_edges": 158,
+    "agree": 158,
+    "missing": 3,
+    "extra": 0,
+    "objdump_indirect_sites": 13,
+    "extracted_indirect_sites": 13
+   },
+   "undefined": {
+    "nm": 73,
+    "explained_by_extraction": 73,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 218,
+    "extracted": 218,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3345,
+    "extracted_definitions_visible": 3462,
+    "extracted_names_distinct": 3357
+   }
+  },
+  {
+   "file": "lib/socketpair.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3264,
+    "extracted_definitions_visible": 3385,
+    "extracted_names_distinct": 3277
+   }
+  },
+  {
+   "file": "lib/socks.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 45,
+    "extracted_direct_edges": 45,
+    "agree": 45,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 5,
+    "extracted_indirect_sites": 5
+   },
+   "undefined": {
+    "nm": 29,
+    "explained_by_extraction": 29,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 210,
+    "extracted": 210,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3284,
+    "extracted_definitions_visible": 3401,
+    "extracted_names_distinct": 3296
+   }
+  },
+  {
+   "file": "lib/socks_gssapi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/socks_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/speedcheck.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 198,
+    "extracted": 198,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3190,
+    "extracted_definitions_visible": 3301,
+    "extracted_names_distinct": 3201
+   }
+  },
+  {
+   "file": "lib/splay.c",
+   "definitions": {
+    "nm": 6,
+    "extracted": 6,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 7,
+    "extracted_direct_edges": 7,
+    "agree": 7,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 125,
+    "extracted": 125,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2181,
+    "extracted_definitions_visible": 2245,
+    "extracted_names_distinct": 2182
+   }
+  },
+  {
+   "file": "lib/strcase.c",
+   "definitions": {
+    "nm": 10,
+    "extracted": 10,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 7,
+    "extracted_direct_edges": 7,
+    "agree": 7,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 139,
+    "extracted": 139,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2663,
+    "extracted_definitions_visible": 2684,
+    "extracted_names_distinct": 2610
+   }
+  },
+  {
+   "file": "lib/strdup.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 4,
+    "extracted_indirect_sites": 4
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2669,
+    "extracted_definitions_visible": 2690,
+    "extracted_names_distinct": 2616
+   }
+  },
+  {
+   "file": "lib/strerror.c",
+   "definitions": {
+    "nm": 5,
+    "extracted": 5,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 3,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 199,
+    "extracted": 199,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3182,
+    "extracted_definitions_visible": 3299,
+    "extracted_names_distinct": 3194
+   }
+  },
+  {
+   "file": "lib/strtok.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/strtoofft.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 1,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 1,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 123,
+    "extracted": 123,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2173,
+    "extracted_definitions_visible": 2239,
+    "extracted_names_distinct": 2176
+   }
+  },
+  {
+   "file": "lib/system_win32.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/telnet.c",
+   "definitions": {
+    "nm": 19,
+    "extracted": 19,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 71,
+    "extracted_direct_edges": 71,
+    "agree": 68,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2
+   },
+   "undefined": {
+    "nm": 34,
+    "explained_by_extraction": 33,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 245,
+    "extracted": 245,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3798,
+    "extracted_definitions_visible": 3936,
+    "extracted_names_distinct": 3811
+   }
+  },
+  {
+   "file": "lib/tftp.c",
+   "definitions": {
+    "nm": 27,
+    "extracted": 27,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 98,
+    "extracted_direct_edges": 98,
+    "agree": 93,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 9
+   },
+   "undefined": {
+    "nm": 33,
+    "explained_by_extraction": 32,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 247,
+    "extracted": 247,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3766,
+    "extracted_definitions_visible": 3904,
+    "extracted_names_distinct": 3779
+   }
+  },
+  {
+   "file": "lib/timediff.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 131,
+    "extracted": 131,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2305,
+    "extracted_definitions_visible": 2389,
+    "extracted_names_distinct": 2315
+   }
+  },
+  {
+   "file": "lib/timeval.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 124,
+    "extracted": 124,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2179,
+    "extracted_definitions_visible": 2243,
+    "extracted_names_distinct": 2180
+   }
+  },
+  {
+   "file": "lib/transfer.c",
+   "definitions": {
+    "nm": 27,
+    "extracted": 27,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 62,
+    "extracted_direct_edges": 62,
+    "agree": 62,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 11,
+    "extracted_indirect_sites": 11
+   },
+   "undefined": {
+    "nm": 47,
+    "explained_by_extraction": 47,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 255,
+    "extracted": 255,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3848,
+    "extracted_definitions_visible": 3986,
+    "extracted_names_distinct": 3861
+   }
+  },
+  {
+   "file": "lib/url.c",
+   "definitions": {
+    "nm": 46,
+    "extracted": 46,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 217,
+    "extracted_direct_edges": 217,
+    "agree": 216,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 133,
+    "extracted_indirect_sites": 133
+   },
+   "undefined": {
+    "nm": 126,
+    "explained_by_extraction": 125,
+    "compiler_runtime": 1,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 277,
+    "extracted": 277,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3894,
+    "extracted_definitions_visible": 4037,
+    "extracted_names_distinct": 3907
+   }
+  },
+  {
+   "file": "lib/urlapi.c",
+   "definitions": {
+    "nm": 22,
+    "extracted": 22,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 120,
+    "extracted_direct_edges": 118,
+    "agree": 115,
+    "missing": 2,
+    "extra": 0,
+    "objdump_indirect_sites": 51,
+    "extracted_indirect_sites": 51
+   },
+   "undefined": {
+    "nm": 40,
+    "explained_by_extraction": 38,
+    "compiler_runtime": 1,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 206,
+    "extracted": 206,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3210,
+    "extracted_definitions_visible": 3327,
+    "extracted_names_distinct": 3222
+   }
+  },
+  {
+   "file": "lib/version.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 2,
+    "extra_internal_linkage": 2,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2,
+    "extracted_direct_edges": 2,
+    "agree": 2,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 2,
+    "explained_by_extraction": 2,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 204,
+    "extracted": 204,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3367,
+    "extracted_definitions_visible": 3499,
+    "extracted_names_distinct": 3381
+   }
+  },
+  {
+   "file": "lib/version_win32.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/warnless.c",
+   "definitions": {
+    "nm": 14,
+    "extracted": 14,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 131,
+    "extracted": 131,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2315,
+    "extracted_definitions_visible": 2400,
+    "extracted_names_distinct": 2326
+   }
+  },
+  {
+   "file": "lib/ws.c",
+   "definitions": {
+    "nm": 32,
+    "extracted": 32,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 116,
+    "extracted_direct_edges": 116,
+    "agree": 115,
+    "missing": 1,
+    "extra": 1,
+    "objdump_indirect_sites": 6,
+    "extracted_indirect_sites": 6
+   },
+   "undefined": {
+    "nm": 47,
+    "explained_by_extraction": 47,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 210,
+    "extracted": 210,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3261,
+    "extracted_definitions_visible": 3378,
+    "extracted_names_distinct": 3273
+   }
+  },
+  {
+   "file": "lib/vauth/cleartext.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6,
+    "extracted_direct_edges": 6,
+    "agree": 6,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 1
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 203,
+    "extracted": 203,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3210,
+    "extracted_definitions_visible": 3332,
+    "extracted_names_distinct": 3222
+   }
+  },
+  {
+   "file": "lib/vauth/cram.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 11,
+    "explained_by_extraction": 11,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 202,
+    "extracted": 202,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3188,
+    "extracted_definitions_visible": 3305,
+    "extracted_names_distinct": 3200
+   }
+  },
+  {
+   "file": "lib/vauth/digest.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 34,
+    "extracted_direct_edges": 34,
+    "agree": 34,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 57,
+    "extracted_indirect_sites": 57
+   },
+   "undefined": {
+    "nm": 27,
+    "explained_by_extraction": 27,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 210,
+    "extracted": 210,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3254,
+    "extracted_definitions_visible": 3376,
+    "extracted_names_distinct": 3266
+   }
+  },
+  {
+   "file": "lib/vauth/digest_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/gsasl.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/krb5_gssapi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/krb5_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/ntlm.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/ntlm_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/oauth2.c",
+   "definitions": {
+    "nm": 2,
+    "extracted": 2,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6,
+    "extracted_direct_edges": 6,
+    "agree": 6,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 200,
+    "extracted": 200,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3184,
+    "extracted_definitions_visible": 3301,
+    "extracted_names_distinct": 3196
+   }
+  },
+  {
+   "file": "lib/vauth/spnego_gssapi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/spnego_sspi.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vauth/vauth.c",
+   "definitions": {
+    "nm": 3,
+    "extracted": 3,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4,
+    "extracted_direct_edges": 4,
+    "agree": 4,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 4,
+    "explained_by_extraction": 4,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 201,
+    "extracted": 201,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3189,
+    "extracted_definitions_visible": 3306,
+    "extracted_names_distinct": 3201
+   }
+  },
+  {
+   "file": "lib/vtls/bearssl.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/cipher_suite.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/gtls.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/hostcheck.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/keylog.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/mbedtls.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/mbedtls_threadlock.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/openssl.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/rustls.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/schannel.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/schannel_verify.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/sectransp.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/vtls.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 10,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 22,
+    "extracted_indirect_sites": 22
+   },
+   "undefined": {
+    "nm": 7,
+    "explained_by_extraction": 7,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 233,
+    "extracted": 233,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3500,
+    "extracted_definitions_visible": 3643,
+    "extracted_names_distinct": 3512
+   }
+  },
+  {
+   "file": "lib/vtls/wolfssl.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vtls/x509asn1.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vquic/curl_msh3.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vquic/curl_ngtcp2.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vquic/curl_osslq.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vquic/curl_quiche.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vquic/vquic.c",
+   "definitions": {
+    "nm": 1,
+    "extracted": 1,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 217,
+    "extracted": 217,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3501,
+    "extracted_definitions_visible": 3654,
+    "extracted_names_distinct": 3515
+   }
+  },
+  {
+   "file": "lib/vquic/vquic-tls.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vssh/libssh.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vssh/libssh2.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vssh/curl_path.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/vssh/wolfssh.c",
+   "definitions": {
+    "nm": 0,
+    "extracted": 0,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 0,
+    "extracted_direct_edges": 0,
+    "agree": 0,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 0,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 122,
+    "extracted": 122,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2174,
+    "extracted_definitions_visible": 2238,
+    "extracted_names_distinct": 2175
+   }
+  },
+  {
+   "file": "lib/base64.c",
+   "definitions": {
+    "nm": 4,
+    "extracted": 4,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9,
+    "extracted_direct_edges": 9,
+    "agree": 9,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 5,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 141,
+    "extracted": 141,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2669,
+    "extracted_definitions_visible": 2753,
+    "extracted_names_distinct": 2679
+   }
+  },
+  {
+   "file": "lib/dynbuf.c",
+   "definitions": {
+    "nm": 13,
+    "extracted": 13,
+    "missing": 0,
+    "extra": 0,
+    "extra_internal_linkage": 0,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 15,
+    "extracted_direct_edges": 15,
+    "agree": 15,
+    "missing": 0,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 0
+   },
+   "undefined": {
+    "nm": 6,
+    "explained_by_extraction": 6,
+    "compiler_runtime": 0,
+    "unexplained": 0
+   },
+   "includes": {
+    "mm": 142,
+    "extracted": 142,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2704,
+    "extracted_definitions_visible": 2794,
+    "extracted_names_distinct": 2715
+   }
+  }
+ ]
+}

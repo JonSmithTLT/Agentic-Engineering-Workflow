@@ -1,7 +1,7 @@
 # AEW architecture review response and disposition
 
 **Date:** 2026-10-04  
-**Status:** Proposed designer/operator response for joint review; not governing until accepted  
+**Status:** Proposed designer/operator response for joint review; not governing until accepted. The lead developer's review requested in §15 is delivered ([developer review](../../archive/reviews/architecture-review-2026-10-04/developer-review.md), 2026-10-04: CONCUR WITH MODIFICATION); acceptance and the reconciliation of its modifications are register item Q13.  
 **Source review:** [`architecture-review-2026-10-04.md`](../../archive/reviews/architecture-review-2026-10-04.md) — *AEW architecture review, ground up* (delivered as `REVIEW.md`; this response calls it that)  
 **Purpose:** Convert the wide-ranging architecture review into controlled project input without turning the review itself into a replacement roadmap or design authority.
 

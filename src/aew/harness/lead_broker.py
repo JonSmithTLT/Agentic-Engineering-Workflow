@@ -15,8 +15,12 @@ redaction, drain) with one operation, ``lead.cli {argv, cwd, stdin}``. The broke
 * dispatches without ``--launch`` (they print an invocation credential into the Lead's transcript);
 * an explicit ``--token`` (the session never needs one) and any project other than its own.
 
-When the held credential stops being the current Lead's (takeover, handoff, release elsewhere), the
-broker refuses and closes its bridge. The Lead's harness keeps running as a read-only session.
+When the held credential stops being the current Lead's (takeover, an accepted handoff, release elsewhere), the
+broker refuses and closes its bridge; the Lead's harness keeps running as a read-only session. A pending handoff
+does not end authority: requests reach the engine, which refuses everything but `lead handoff cancel`.
+
+The Lead's harness runs in an owned process tree (:func:`aew.harness.procs.run_session_tree`): nothing it starts
+outlives it, and an acquired seat is released only once that is proven, so no leftover process can take the seat.
 """
 
 from __future__ import annotations
@@ -25,7 +29,6 @@ import argparse
 import contextlib
 import io
 import os
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -100,17 +103,22 @@ class LeadBroker:
         archived = getattr(self.engine, "archived_credential", None)
         require_lead(state, token, **({"archived": archived} if archived else {}))
 
-    def _authority_problem(self) -> str | None:
+    def _authority_lost(self) -> str | None:
+        """Why the held credential is no longer the current Lead's, or ``None`` while it is. Only lost authority
+        counts: a pending handoff (or any other refusal) is the engine's to report per request, and the Lead may still
+        cancel the handoff."""
         token = self._token  # taken before the (possibly slow) read: close() may clear it meanwhile (M3-D11)
         try:
             self._require_lead(self.engine.store.read(), token)
-        except errors.AEWError as exc:
+        except errors.StaleAuthority as exc:
             return exc.message
+        except errors.AEWError:
+            return None
         return None
 
     def _watchdog(self) -> None:
         while not self._stop.wait(POLL_S):
-            problem = self._authority_problem()
+            problem = self._authority_lost()
             if problem and not self._stop.is_set():
                 self.superseded = problem
                 self.server.close()
@@ -119,7 +127,7 @@ class LeadBroker:
     # ------------------------------------------------------------------ the one operation
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
-        problem = self._authority_problem()
+        problem = self._authority_lost()
         if problem:
             self.superseded = problem
             self.server.close()
@@ -146,6 +154,9 @@ class LeadBroker:
         refusal = refuses_locally(ns)
         if refusal:
             raise errors.PermissionDenied(refusal)
+        if getattr(ns, "print_credential", False):
+            raise errors.PermissionDenied("--print-credential is refused in a Lead session: a credential never goes "
+                                          "into the Lead's transcript")
         if ns.token:
             raise errors.UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
         path = command_path(ns)
@@ -206,15 +217,16 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
     """
     from aew.engine.harness_ops import supervisor_env
-    from aew.harness.procs import harden_current_process
+    from aew.harness.procs import harden_current_process, run_session_tree
 
     if not command:
         raise errors.UsageError("name the Lead's harness command after `--`, e.g. `aew lead session -- opencode-cli`")
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
+    held = os.environ.pop("AEW_LEAD_TOKEN", "")  # in memory only: never inherited by git, hooks or any child
     if acquire:
         token = engine.lead_acquire(expect_rev=engine.store.read()["revision"], session_label=session_label)["token"]
     else:
-        token = os.environ.get("AEW_LEAD_TOKEN") or ""
+        token = held
         if not token:
             raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
                                     "(it is removed from the session's environment), or take a vacant seat with "
@@ -223,14 +235,21 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     broker.start()
     child_env = {**(supervisor_env() if env is None else supervisor_env(env)), **broker.env}
     try:
-        code = subprocess.call(command, env=child_env, cwd=str(engine.repo_root))
+        code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
     finally:
         broker.close()
-    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded}
+    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership}
     state = engine.store.read()
     if acquire and not broker.superseded:
         active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
-        if keep_seat or active:
+        if ownership != "clean":
+            out["seat"] = ("held; "
+                           + ("processes started by the Lead's harness could not all be ended"
+                              if ownership == "survivors" else "this platform cannot prove that no process started by "
+                              "the Lead's harness is still running")
+                           + ", so the seat stays held and none of them can take it; continue with `aew lead "
+                           "takeover` at your own terminal")
+        elif keep_seat or active:
             out["seat"] = ("held; the Lead credential existed only inside this session, so continuing needs "
                            "`aew lead takeover` at your own terminal" + (f" (active: {', '.join(active)})"
                                                                          if active else ""))
@@ -239,5 +258,5 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
             out["seat"] = "released"
     else:
         out["seat"] = "held by your AEW_LEAD_TOKEN" if not broker.superseded else "superseded"
-    del token
+    del token, held
     return out

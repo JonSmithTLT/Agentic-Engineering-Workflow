@@ -55,6 +55,8 @@ export function sourceBindingIssue(source: ComparisonSource) {
   if ((source.mode === 'FIXED') !== (source.snapshot_id !== null)) return 'Snapshot binding mismatch';
   if (source.packets.some(p => p.source_id !== source.id || p.invocation_id !== source.invocation.id || (p.run_id !== null && !source.invocation.runs.some(r => r.id === p.run_id)))) return 'Packet association binding mismatch';
 }
+export type PacketSourceBinding={source_id:string;snapshot_id:string;visibility_scope:string;invocation_id:string;run_id:string|null;record_id:string};
+export function packetSourceIssue(s:ComparisonSource,t?:PacketSourceBinding){return t&&(s.id!==t.source_id||s.snapshot_id!==t.snapshot_id||s.visibility_scope!==t.visibility_scope||s.invocation.id!==t.invocation_id||!s.packets.some(p=>p.id===t.record_id&&p.run_id===t.run_id))?'Cross-preview packet source/snapshot/run binding mismatch':undefined;}
 export function packetBindingIssue(value: Packet, source: ComparisonSource) {
   const association = source.packets.find(p => p.id === value.id);
   if (!association || value.source_id !== source.id || value.invocation_id !== source.invocation.id || value.run_id !== association.run_id || value.snapshot_id !== source.snapshot_id) return 'Packet binding mismatch';

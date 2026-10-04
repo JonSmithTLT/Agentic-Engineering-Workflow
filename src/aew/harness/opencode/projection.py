@@ -43,6 +43,22 @@ def rule(action: str, effect: str, resource: str = "*") -> dict[str, str]:
     return {"action": action, "resource": resource, "effect": effect}
 
 
+def rules_hold(loaded: list[dict[str, Any]], want: list[dict[str, Any]]) -> str | None:
+    """Whether the rules OpenCode loaded for AEW's agent mean what AEW projected: ``None`` when they do, else why not.
+
+    The last matching rule wins, so AEW's rules must appear in order, as one block, and nothing after them may widen
+    access: OpenCode may append its own defaults there (2.0.22 appends ``browser: deny``), but only ``deny`` rules.
+    An ``allow`` or ``ask`` after AEW's rules could reopen what they close, and refuses (register E17)."""
+    n = len(want)
+    starts = [i for i in range(len(loaded) - n, -1, -1) if loaded[i:i + n] == want]
+    if not starts:
+        return "AEW's rules are missing or out of order"
+    widening = [r for r in loaded[starts[0] + n:] if r.get("effect") != "deny"]
+    if widening:
+        return f"rules after AEW's could widen access: {widening[:5]}"
+    return None
+
+
 # ---------------------------------------------------------------------------------------------- invocation runs
 
 

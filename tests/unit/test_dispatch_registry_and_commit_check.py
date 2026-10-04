@@ -88,3 +88,25 @@ def test_a_new_run_needs_a_harness_launch_decision_for_its_own_invocation():
     _dispatch().finalize(_ctx(old, state, [*elsewhere, _decision("T-0001", "harness.launch", invocation="I-0001")]))
     assert state["I-0001"]["runs"][1]["dispatch"]["entrypoint"] == "harness.launch"
     assert "dispatch" not in state["I-0001"]["runs"][0]  # an existing run is not re-attributed
+
+
+def test_admission_binds_the_workspace_the_guards_resolved():
+    """D5: a decision whose guards resolved a workspace admits only an invocation for that workspace."""
+    card = SimpleNamespace(id="code_reviewer", sha256="c" * 64, archetype="reviewer")
+    d = _decision("T-0001", "invoke.create.mutating", card=card, role="reviewer", scope="ticket",
+                  workspace="/w/T-0001", workspace_id="ws-1")
+    inv = {"work_unit": "T-0001", "role": "reviewer", "scope": "ticket", "card": {"id": card.id, "sha256": card.sha256},
+           "workspace": "/w/T-0001", "workspace_id": "ws-1"}
+    assert Dispatch._admitting_invocation([d], inv, set()) is d
+    assert Dispatch._admitting_invocation([d], {**inv, "workspace": "/w/other", "workspace_id": "ws-2"}, set()) is None
+
+
+def test_the_assurance_guards_refuse_to_run_without_the_archetype():
+    """D7: an entrypoint that reaches the assurance guards without resolving the archetype is an engine defect, not
+    a silent pass."""
+    from aew.errors import IntegrityError
+
+    d = _dispatch()
+    d.register_all([GuardRegistration(g, _pass) for g in sorted({g for e in ENTRYPOINTS.values() for g in e.guards})])
+    with pytest.raises(IntegrityError, match="without resolving the archetype"):
+        d.decide({"revision": 3, "work": {"T-0001": {}}}, "work.assign", "T-0001")

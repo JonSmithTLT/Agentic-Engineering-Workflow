@@ -496,7 +496,8 @@ class Snapshot:
 def cli(root: Path, args: list[str], env: dict[str, str]) -> tuple[float, dict[str, Any]]:
     profile = Path(tempfile.mkdtemp(prefix="aew-perf-prof-", dir=root.parent)) / "profile.jsonl"
     t0 = time.perf_counter()
-    res = subprocess.run([sys.executable, "-m", "aew", "-C", str(root), *args], capture_output=True, text=True,
+    res = subprocess.run([sys.executable, "-m", "aew", "--print-credential", "-C", str(root), *args],
+                         capture_output=True, text=True,
                          env={**env, "AEW_PROFILE": str(profile)}, stdin=subprocess.DEVNULL, **NO_WINDOW)
     wall = time.perf_counter() - t0
     if res.returncode != 0:

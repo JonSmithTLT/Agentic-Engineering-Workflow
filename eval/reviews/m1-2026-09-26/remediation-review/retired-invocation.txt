@@ -1,0 +1,32 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______ test_retiring_candidate_revokes_its_verifier_submission_authority _______
+
+tmp_path = PosixPath('/tmp/pytest-of-jon/pytest-28/test_retiring_candidate_revoke0')
+
+    def test_retiring_candidate_revokes_its_verifier_submission_authority(tmp_path):
+        from aewflow import Role
+        from aew.util import dump_yaml
+        p = sample_project(tmp_path)
+        wid, impl = to_commit_ready(p, tmp_path)
+        old = p.lead('integrate', 'prepare', wid)['integration']
+        invocation = p.lead('invoke', 'create', wid, '--role', 'verifier', '--scope', 'integration')
+        old_role = Role(p, invocation['invocation_token'], Path(old['workspace']))
+        check = old_role.check('unit')['evidence']
+        p.lead('work', 'transition', wid, '--to', 'RUNNING', '--reason', 'supersede candidate')
+        assert unit(p, wid)['integration'] is None
+        submission = tmp_path / 'superseded-verifier-report.md'
+        meta = {'verification': {'scope': 'integration', 'claims': [
+            {'type': 'goal_backwards', 'claim': 'old candidate passed', 'result': 'pass', 'checks': [check]}]}}
+        submission.write_text('---\n' + dump_yaml(meta) + '---\n')
+        result = p.aew('submit', '--kind', 'verification', '--file', str(submission),
+                       env={'AEW_INVOCATION_TOKEN': invocation['invocation_token']})
+>       assert result.returncode != 0, 'Retired-candidate invocation still has submission authority'
+E       AssertionError: Retired-candidate invocation still has submission authority
+E       assert 0 != 0
+E        +  where 0 = CLIResult(returncode=0, stdout='{\n  "ok": true,\n  "evidence": "INV-0004-verify-8",\n  "result": "pass",\n  "evaluate...test-of-jon/pytest-28/test_retiring_candidate_revoke0/repo/.aew/evidence/T-0001/INV-0004-verify-8.md"\n}\n', stderr='').returncode
+
+/mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py:114: AssertionError
+=========================== short test summary info ============================
+FAILED ../../mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py::test_retiring_candidate_revokes_its_verifier_submission_authority
+1 failed, 5 deselected in 10.20s

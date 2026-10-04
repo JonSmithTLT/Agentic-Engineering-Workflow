@@ -1,0 +1,37 @@
+# T6 network containment probe, part 1
+kernel 4.18.0-553.134.1.el8_10.x86_64; bwrap bubblewrap 0.4.0; python 3.11.13; max_user_namespaces 30551
+
+## P1: --unshare-net
+ifaces: ['enp0s3', 'lo', 'virbr0']
+connect 1.1.1.1:443 -> OSError: [Errno 101] Network is unreachable in 13 ms
+dns models.dev -> gaierror: [Errno -2] Name or service not known in 3 ms
+sandbox loopback bind ok on port 59157
+
+## P2: unix sockets across the namespace
+fs -> fs-ok
+abstract -> ConnectionRefusedError [Errno 111] Connection refused
+
+## P3: supervisor -> private server through an in-sandbox unix forwarder
+sandbox announced: {"url": "http://127.0.0.1:37559"}
+host -> sandbox 127.0.0.1:37559 directly: ConnectionRefusedError (as expected: different loopback)
+host -> unix -> in-sandbox forwarder -> server: 200 requests, median 1.88 ms, p95 2.76 ms; body {"path": "/api/info?199", "ns": "sandbox"}
+baseline plain loopback: median 1.18 ms, p95 2.07 ms
+note: the forwarder must be started by the sandbox command itself (a wrapper that starts it, then execs the harness); nsenter into the sandbox's netns from outside needs CAP_SYS_ADMIN over its user namespace
+
+## P4: egress through a host-side allowlisting proxy on a unix socket
+env has provider key: False
+http://127.0.0.1:40595/v1/models -> 200 b'gateway' in 13 ms
+http://127.0.0.1:46337/v1/models -> HTTP 403 (proxy refused) in 2 ms
+http://example.com/ -> HTTP 403 (proxy refused) in 2 ms
+gateway saw Authorization headers: ['Bearer sk-probe-not-a-real-key']
+proxy log:
+  ALLOW GET 127.0.0.1:40595 (key added: True)
+  DENY GET 127.0.0.1:46337
+  DENY GET example.com:80
+
+## P5: slirp4netns (NAT uplink, no allowlist) as the alternative
+(first attempt failed on a probe bug: the ready file was written to a read-only path inside the sandbox; the rerun with a
+writable bind is in netns_probe.p5.out.txt)
+
+[reconstructed from the run's console output on 2026-10-04: the P5-only rerun overwrote this file on the VM; the P1-P4
+lines above are verbatim from the first run]

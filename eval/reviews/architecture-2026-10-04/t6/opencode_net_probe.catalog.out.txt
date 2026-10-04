@@ -1,0 +1,13 @@
+# T6 probe part 3: provider catalog with and without network (dummy OPENAI_API_KEY in the server env)
+
+## D shared net
+  {"announced": "http://127.0.0.1:42229", "start_s": 0.48, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 89, "catalog_wait_s": 1.1, "last": [200, "['openai', 'opencode']", ["gpt-6.1-sol", "gpt-6.1-sol-fast", "gpt-6.1-sol-pro", "gpt-6-luna", "gpt-6-luna-fast", "gpt-6-luna-pro", "gpt-6-sol", "gpt-6-sol-fast"]]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]}
+
+## E --unshare-net
+  {"announced": "http://127.0.0.1:45691", "start_s": 0.43, "exit": null}
+  {"info": 200, "version": "2.0.18"}
+  {"models": 62, "catalog_wait_s": 1.1, "last": [200, "['openai', 'opencode']", ["gpt-6-luna", "gpt-6-luna-fast", "gpt-6-luna-pro", "gpt-6-sol", "gpt-6-sol-fast", "gpt-6-sol-pro", "gpt-6-astra", "gpt-6-astra-fast"]]}
+  {"exit": 0, "state_files": ["data/opencode/log/opencode.log", "data/opencode/opencode.db"]}

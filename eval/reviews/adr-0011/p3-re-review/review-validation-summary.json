@@ -1,0 +1,97 @@
+{
+  "target": "1911894bdc6e7126d31a9de362d792a9b7421fee",
+  "results": {
+    "review-fast": {
+      "args": [
+        "run_review_lane.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--lane",
+        "fast"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 16.942299365997314
+    },
+    "review-nonserial": {
+      "args": [
+        "run_review_lane.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-n",
+        "auto",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not serial"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 1187.4410436153412
+    },
+    "review-serial": {
+      "args": [
+        "run_review_lane.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--lane",
+        "serial"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 50.93057632446289
+    },
+    "review-integrity": {
+      "args": [
+        "run_review_lane.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-n",
+        "2",
+        "--dist",
+        "worksteal",
+        "tests/integration/test_history_integrity.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 199.43308186531067
+    },
+    "review-p3-probes": {
+      "args": [
+        "review_p3_probes.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 201.44687795639038
+    },
+    "review-p3-audit": {
+      "args": [
+        "review_p3_audit.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 4.048167705535889
+    },
+    "review-fix-boundaries-verified": {
+      "args": [
+        "review_fix_boundaries.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 136.42055916786194
+    },
+    "review-cloner-control": {
+      "args": [
+        "review_cloner_control.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 53.985846519470215
+    }
+  },
+  "finding_verdicts": {
+    "target": "1911894bdc6e7126d31a9de362d792a9b7421fee",
+    "P3-1_original_reproduction": "resolved",
+    "P3-2_original_new_archive_reproduction": "resolved",
+    "P3-2_prearchival_and_existing_archive_cases": "remaining gaps",
+    "new_integrity_tests": "6 passed",
+    "perf_cloner_control": "2 entries, 32 records, clean audit"
+  },
+  "performance": "not remeasured; no idle window established"
+}

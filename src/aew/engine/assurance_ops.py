@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Any
 from aew.engine import assurance as A
 from aew.engine import gates as G
 from aew.engine.dispatch import Blocker, GuardRegistration
-from aew.errors import GitError
+from aew.errors import GitError, IntegrityError
 from aew.knowledge.records import read_record
 from aew.policy import execution as X
+from aew.util import sha256_file
 from aew.workspace import git
 
 if TYPE_CHECKING:
@@ -41,11 +42,23 @@ class Assurance:
         unit = state["work"][work_id]
         return unit["kind"] == "ticket" and bool(unit.get("mutating")) and facts.get("archetype") == "implementer"
 
+    def _pinned(self, work_id: str, what: str, rel: str, sha256: str | None) -> None:
+        if sha256_file(self.k.aew_root / rel) != sha256:
+            raise IntegrityError(f"{work_id}: the {what} {rel} was modified or removed outside AEW, so dispatch "
+                                 "cannot check what the Lead committed; restore it, or record the change through "
+                                 "AEW (a new plan revision, or the command that sets the field)",
+                                 work_id=work_id, path=rel)
+
     def _inputs(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> dict[str, Any]:
         """The Ticket's record, plan, policy and tracked files, gathered once per decision."""
         if "assurance_inputs" in facts:
             return facts["assurance_inputs"]
         unit = state["work"][work_id]
+        plan = unit.get("plan") or {}
+        # a decision checks what the Lead committed: the files must still be the ones control state pins
+        self._pinned(work_id, "record", unit["record"], unit.get("record_sha256"))
+        if plan.get("path") and plan.get("sha256"):
+            self._pinned(work_id, "accepted plan", plan["path"], plan["sha256"])
         meta = self.gates.record_meta(unit)
         commit = facts.get("base") or (unit.get("workspace") or {}).get("base_commit") \
             or self.k.authoritative_commit()
@@ -53,7 +66,6 @@ class Assurance:
             files = git.out("ls-tree", "-r", "--name-only", commit, cwd=self.k.repo_root).splitlines() if commit else []
         except GitError:
             files = []
-        plan = unit.get("plan") or {}
         affected: list[str] = []
         if plan.get("path"):
             affected = list(read_record(self.k.aew_root / plan["path"], "plan").meta.get("affected_paths") or [])
@@ -135,7 +147,9 @@ class Assurance:
         triggers = [o for o in facts["obligations"]
                     if o["code"] in {"ACCEPTANCE_INPUT_IN_SCOPE", "INHERITED_ELEVATED_OBLIGATION"}]
         found = A.class0_blockers(meta=i["meta"], files=i["files"], guardrails=i["guardrails"], checks=i["checks"],
-                                  triggers=triggers, lint=i["lint"])
+                                  triggers=triggers, lint=i["lint"], gates=self.k.policy("gates"))
+        # what the bound measured, so `dispatch explain` shows it on an admitted decision too
+        facts["digests"]["class0_subject"] = A.subject_measure(i["scope"], i["files"], self.k.policy("gates"))
         return [Blocker(x["code"], x["message"] + " (Class 0 is refused, not reclassified: raise the class with "
                                                   f"`aew work reclassify {work_id} --class N --reason ...`, or make "
                                                   "the Ticket eligible)", x.get("details") or {})

@@ -300,3 +300,20 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
 
     assert lead["config"] == projection.lead_config(Engine.discover(lab.root).lead_guide())
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="/proc: Linux only")
+def test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell(lab, tmp_path):
+    """ADR-0009 residual (independent review, area 2, F3), asserted as it is rather than as hoped. The agent's own
+    environment carries no provider secret and no server password, but the harness server is its shell's parent, runs
+    as the same user and, contained or not, in the same PID namespace: its environment (the provider key the policy
+    names, the server password) is one read of /proc/<parent>/environ away. No AEW credential is ever there. Closing
+    this needs the server outside the agent's user or namespace (register); until then it is documented, and this
+    test fails the day it stops being true, so the ADR is updated with it."""
+    script(lab, [{"do": "read_parent_environ", "pid": "ppid", "names": ["OPENAI_API_KEY", "OPENCODE_PASSWORD"]}])
+    launch(lab, tmp_path)
+    lab.wait(RUN)
+    parent = lab.step(RUN, 0)
+    assert parent["readable"] is True, parent
+    assert parent["names_present"] == ["OPENAI_API_KEY", "OPENCODE_PASSWORD"], parent
+    assert parent["has_credential"] is False and parent["has_lead_var"] is False

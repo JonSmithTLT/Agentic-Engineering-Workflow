@@ -4,7 +4,7 @@
 - **Engine baseline:** `42239e1`, the ADR-0011 P3 merge (PR #24). This document is written on `main` at `0424c61` (PR #27, test and CI only, on top).
 - **Register housekeeping first:** PR #29 closes the before-M4 gate, F1, E5 and F20.1 in `future-work.md` §9. The triage in §R assumes it.
 - **§0 spike done** (variant A, engine-only, 2026-10-03). It does not change the plan (§0).
-- **Approved and in progress.** M4-A is built (§2, "M4-A as built"); M4-B (containment on Rocky 8) is next.
+- **Approved and in progress.** M4-A and M4-B are built (§2, "M4-A as built" and "M4-B as built"); M4-C (workspaces for concurrency above 1) is next.
 
 ## Context
 
@@ -126,6 +126,25 @@ Found by reading the code at the baseline, so that the plan builds on what exist
 - **E13:** process ownership through the same PID namespace. The live test translates namespace PIDs to host PIDs (`NSpid`). Until that test passes on a real Rocky 8 kernel, process-group mode is never described as complete process ownership.
 - **Acceptance:** the isolation §12 regression list (absolute path, `..`, symlink, rename, mkdir, temp file, `open()`, redirect, another worktree) produces OS-level write failures. Then come the research §6 probes on a **real Rocky 8 kernel**; WSL's kernel is not enough.
 - **Windows:** the guarantee stays `workdir separation only`. `doctor`, run records and the dashboard state the guarantee each platform actually gives.
+
+### M4-B as built (2026-10-03)
+- **Where it is specified:** ADR-0009, "Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux".
+- **Deviation: private git state replaces the engine-side alternate.**
+  - The designer's correction made the real git metadata read-only to the agent. The agent's git uses a private index (seeded from the real one) and a private object store.
+  - Staging is scratch: AEW commits the working-tree content, as it always did. So the engine never reads the private store, needs no alternate, and imports nothing. The private state is removed when the run ends.
+  - This supersedes "import at run end" (the operator's answer before the correction). The constraints for a future import are recorded in the approved plan.
+- **Deviation: reviewer and verifier source is read-only,** as decided. The Rocky probe did not show legitimate verification breaking: AEW's own harness suites, run contained, pass with read-only source plus writable scratch and caches. The fallback (an isolated writable workspace plus detection) was not needed.
+- **Added: the project and runs.**
+  - The project is bound read-only, so it stays visible even under `/tmp`.
+  - Every run's directory is hidden, so one run never reads another's harness state. The bridge socket always lives under `/tmp`, private per sandbox.
+  - Agent tools' own sign-in stores are masked.
+  - These came from the independent review of authority and custody (area 2), which also found a check could outlive its run. That is fixed: the supervisor kills running checks when the run ends, and records nothing from them.
+- **Added: a residual stated and tested.** The harness server's environment (provider key, server password) is readable from the agent's shell, as the same user in the same PID namespace. ADR-0009 states it, and a Linux test asserts it.
+- **Labels:** `{filesystem, process_ownership, network: not_provided, mechanism, self_test, layout}`; `aew doctor` probes it live. The dashboard contract (0.1.2) does not project containment, so no contract note is needed now.
+- **Verification:**
+  - **CI (Linux):** bubblewrap installed, with Ubuntu's AppArmor user-namespace restriction lifted in the setup action. Every harness suite runs contained, plus `tests/integration/test_containment.py` and `tests/unit/test_containment_layout.py`.
+  - **Rocky 8 (SELinux enforcing):** the same suites, then one full run.
+  - **Operator-assisted, still to run on the Rocky 8 host:** the live OpenCode lane under the real per-run layout, and the user-namespaces-disabled fail-closed check.
 
 ### 2.5 Workspaces for N > 1 (M4-C; F3, the concurrency part)
 - The engine reads `mutating_concurrency`. Live mutating workspaces are at most the policy cap, enforced as a `DispatchDecision` guard.

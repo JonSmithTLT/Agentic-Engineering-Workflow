@@ -242,6 +242,9 @@ def _launch_contract(p: PackInputs) -> list[str]:
     elif p.role == "implementer":
         lines += _bullets(["the accepted plan is implemented within scope",
                            "required local checks pass on the final snapshot (`aew check run`)",
+                           "the change is left as files in the workspace: AEW commits it, so never commit, branch, "
+                           "stash or move HEAD (a contained run refuses those writes, and `git add` stages only "
+                           "into the run's private index)",
                            "an implementation report with a completed self-review is submitted"])
     elif p.role == "reviewer":
         lines += _bullets(["every finding has a severity and says whether a change is required",

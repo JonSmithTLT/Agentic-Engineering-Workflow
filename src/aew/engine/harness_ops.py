@@ -36,7 +36,7 @@ from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.store import Transition
 from aew.errors import AEWError, HarnessLaunchFailed, IllegalTransition, NotFound, RunLive, UsageError
 from aew.harness import contract as K
-from aew.harness import procs, runlog
+from aew.harness import containment, procs, runlog
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.roles import archetype
@@ -331,7 +331,7 @@ class Harness:
                 out.append({"run": r["run"], "invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
-                            "containment": (record or {}).get("containment") or K.CONTAINMENT,
+                            "containment": containment.normalize((record or {}).get("containment")),
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),

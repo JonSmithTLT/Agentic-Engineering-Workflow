@@ -35,6 +35,16 @@
       "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
       "uniqueItems": true
     },
+    "containment": {
+      "type": "object",
+      "description": "OS filesystem containment of harness runs (F2, Linux; ADR-0009 amendment). mode required (the default) refuses a launch whose sandbox cannot be established or fails its self-test; allow_weaker launches it labelled workdir_separation_only. writable adds existing directories every contained run may write (recorded on each run's label); hide masks further secret files or directories.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["required", "allow_weaker"]},
+        "writable": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "hide": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
     "description": {"type": "string"}
   },
   "$defs": {

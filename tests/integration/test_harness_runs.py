@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
-from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits
+from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
 from aew.harness import procs, runlog
@@ -25,7 +25,7 @@ def lab(tmp_path):
 @pytest.fixture
 def sync(tmp_path):
     d = tmp_path / "sync"
-    d.mkdir()
+    d.mkdir(exist_ok=True)  # HarnessLab already made it (a writable root for contained runs)
     return d
 
 
@@ -145,6 +145,37 @@ def test_lead_stop_ends_the_run_but_not_the_invocation(lab, tmp_path, sync):
     assert_control_invariants(lab.project)
 
 
+def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path, sync):
+    """Independent review (area 2, F6): a check runs in its own process tree, so the run's end must end it too, and a
+    check its run's end cut short is not sealed as evidence after the run ended."""
+    import time
+
+    from aew.knowledge import evidence
+    from aew.util import dump_yaml, load_yaml
+
+    beat = sync / "beat"
+    checks_path = lab.root / ".aew/policy/checks.yaml"
+    checks = load_yaml(checks_path.read_text(encoding="utf-8"))
+    checks["checks"]["unit"]["command"] = [  # a check that keeps a heartbeat until it is killed
+        "{python}", "-c", "import pathlib, sys, time\np = pathlib.Path(sys.argv[1])\n"
+        "for i in range(3000):\n    p.write_text(str(i))\n    time.sleep(0.1)\n", str(beat)]
+    checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    lab.until(lambda: beat.exists(), what="the check running")
+    started = time.monotonic()
+    lab.ok("harness", "stop", run, "--reason", "check cut short", "--token", lab.project.token)
+    assert lab.wait(run)["status"] == "terminated"
+    assert time.monotonic() - started < 60  # not the check's own timeout
+    last = beat.read_text()
+    time.sleep(1.0)
+    assert beat.read_text() == last  # the check's process is gone
+    records, _ = evidence.scan(lab.aew_root, wid)
+    assert not [e for e in records if e["kind"] == "check_result"]
+    assert_control_invariants(lab.project)
+
+
 def test_profile_deadline_terminates_a_hung_harness(lab, tmp_path):
     policy = dict(POLICY, profiles={"standard": {"provider": "fakeprov", "model": "fake-model", "deadline_s": 1.5}})
     HarnessLab.create(lab.project, tmp_path, policy=policy)
@@ -161,7 +192,7 @@ def test_every_process_the_harness_started_ends_with_the_run(lab, tmp_path, sync
                            {"do": "wait_file", "path": str(sync / "go"), "timeout": 120}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
     lab.until(lambda: (sync / "spawned").exists(), what="orphan spawned")
-    orphan = procs.Watch(int((sync / "orphan").read_text()))
+    orphan = watch_agent_pid(lab, run, int((sync / "orphan").read_text()))
     assert orphan.alive()
     (sync / "go").touch()  # the agent exits normally; its descendant must not outlive the run
     assert lab.wait(run)["status"] == "ended_without_evidence"

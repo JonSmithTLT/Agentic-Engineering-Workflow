@@ -113,6 +113,11 @@ class BridgeServer:
         return self.key.hex()
 
     @property
+    def private_dir(self) -> str | None:
+        """The private directory holding the POSIX socket (None for a Windows named pipe)."""
+        return self._private_dir
+
+    @property
     def closed(self) -> bool:
         return self._closed.is_set()
 
@@ -241,6 +246,7 @@ def private_address() -> tuple[str, str, str | None]:
     """(address, family, private directory to remove) for a new bridge endpoint."""
     if IS_WINDOWS:  # pragma: windows-only
         return r"\\.\pipe\aew-bridge-" + secrets.token_hex(16), "AF_PIPE", None
-    directory = tempfile.mkdtemp(prefix="aew-bridge-")
+    # Under /tmp, whatever TMPDIR says: each contained run has a private /tmp, so no sandbox sees another's socket.
+    directory = tempfile.mkdtemp(prefix="aew-bridge-", dir="/tmp" if os.path.isdir("/tmp") else None)
     os.chmod(directory, 0o700)
     return os.path.join(directory, "s"), "AF_UNIX", directory

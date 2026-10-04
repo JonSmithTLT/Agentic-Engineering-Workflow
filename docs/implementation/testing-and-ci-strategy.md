@@ -81,6 +81,19 @@ Deterministic fault points are named code locations, not timings. That is why th
 - **The other platform's code.** A block that can only run on one OS is marked `# pragma: windows-only` or `# pragma: posix-only`, and the measurement excludes the other OS's marker (`AEW_COVERAGE_OTHER_OS`, default `windows`, so CI on Linux needs no setting). Both sides still run in their own OS's lanes; only the number ignores code that cannot run where it is measured.
 - **What it is for.** Coverage points to thin tests; it is not a target to game. The ratchet keeps it from silently falling. A new test is written for a behaviour, not for a line.
 
+### Containment (M4-B)
+
+- **Every Linux harness test runs contained.** The setup action installs bubblewrap and lifts Ubuntu 24.04's AppArmor restriction on unprivileged user namespaces (`kernel.apparmor_restrict_unprivileged_userns=0`), which RHEL 8 does not have. It checks that a sandbox starts before any test runs. Under the default policy, a run whose sandbox cannot start is refused, so a runner without bubblewrap fails loudly rather than silently testing uncontained.
+- **The containment tests** are Linux-only and pinned as Windows skips:
+  - `tests/integration/test_containment.py`: the isolation design's §12 escapes, the git-metadata confused-deputy attempts, the self-test, fail-closed launch, teardown, and a check inside the layout;
+  - the residual test in `tests/integration/test_opencode_adapter.py`.
+- **Tests that read pids an agent reported** translate them with `fake_harness.watch_agent_pid`. Inside a run's PID namespace, the agent sees only namespace-local pids.
+- **The lab's sync and script directories** are declared writable roots in the lab's execution policy. A contained run sees a private `/tmp`, while pytest's `tmp_path` lives under `/tmp`.
+- **Once per phase, a full run on the Rocky 8 host** (SELinux enforcing, kernel 4.18) from a frozen worktree. CI's Ubuntu kernel is not the target kernel.
+- **Operator-assisted, on that host:**
+  - the live OpenCode lane under the real per-run layout;
+  - the user-namespaces-disabled check (`sysctl user.max_user_namespaces=0`, then restored), which must refuse launches.
+
 ### Failure and merge-blocking policy
 
 - **Red `assurance` means no merge.** Re-running a failed job is allowed only to rule out runner infrastructure (network, image). A test that fails and then passes on re-run is a defect to investigate, not a flake to ignore.
@@ -91,8 +104,8 @@ Deterministic fault points are named code locations, not timings. That is why th
 
 | | Linux (Python 3.11: Rocky 8 / SPT wheelhouse target) | Windows (Python 3.13: developer workstation) |
 |---|---|---|
-| Runs | Everything | Everything except the 5 pinned POSIX-only tests |
-| Only here | pty operator takeover (AT-4b), executable-bit and symlink sync (review M6) | `CREATE_NO_WINDOW` process launching; AT-1's in-process terminal substitute; Windows file-replace retry paths |
+| Runs | Everything, harness runs contained (bubblewrap) | Everything except the pinned POSIX-only and containment tests |
+| Only here | pty operator takeover (AT-4b), executable-bit and symlink sync (review M6), filesystem containment and PID-namespace process ownership (M4-B) | `CREATE_NO_WINDOW` process launching; AT-1's in-process terminal substitute; Windows file-replace retry paths |
 | Nightly extra | Python 3.13 | Python 3.11 |
 
 Platform-specific tests use `skipif` with a reason naming the platform semantics they need, and are pinned in `tests/platform-skips.yaml`. No test may appear on a desktop: CLI test processes run with `CREATE_NO_WINDOW` on Windows and `start_new_session` on POSIX.

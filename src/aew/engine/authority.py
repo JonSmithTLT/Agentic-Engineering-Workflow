@@ -143,10 +143,14 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
 
 
 def require_invocation(
-    state: dict[str, Any], token: str, operation: str, *, work_unit: str | None = None,
+    state: dict[str, Any], token: str, operation: str | None, *, work_unit: str | None = None,
     archived: ArchivedCredential | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-    """Validate an invocation credential for ``operation``; return (invocation_id, invocation, actor)."""
+    """Validate an invocation credential for ``operation``; return (invocation_id, invocation, actor).
+
+    ``operation=None`` checks identity only: a live credential of an active invocation under the current Lead
+    generation. Custody (a supervisor taking its run's credential) and ``whoami`` need nothing more, so a role
+    card that narrows the invocation's operations can never make them fail (area 2 review, F7)."""
     token_id, record = _lookup(state, token, archived)
     if record["kind"] != "invocation":
         raise PermissionDenied(
@@ -171,10 +175,12 @@ def require_invocation(
     if scope.get("generation") != state["lead"]["generation"]:
         raise StaleAuthority("invocation was issued under a superseded Lead generation")
     role = scope["role"]
-    if operation not in ROLE_OPERATIONS.get(role, frozenset()):
+    if operation is None:
+        pass
+    elif operation not in ROLE_OPERATIONS.get(role, frozenset()):
         raise PermissionDenied(f"role {role} may not perform {operation}", role=role, operation=operation)
     narrowed = invocation.get("allowed_operations")
-    if narrowed is not None and operation not in narrowed:
+    if operation is not None and narrowed is not None and operation not in narrowed:
         card = (invocation.get("card") or {}).get("id")
         raise PermissionDenied(f"role card {card} narrows this invocation; {operation} is not permitted",
                                card=card, operation=operation)

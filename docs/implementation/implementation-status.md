@@ -37,7 +37,7 @@ This is operational metadata (WC Appendix C). It does not replace the workflow s
 | Workbench Capability Contract | Staged | Cards and archetypes carry capability names; authority-sensitive capabilities are enforced. Provider resolution and health come in M6. |
 | Remote validation provider | Designed | — |
 | Work graph / dynamic scheduler | Graph Implemented; scheduler Designed | AT-2; the scheduler comes in M5 |
-| Concurrent mutation isolation | Staged | Per-Ticket worktrees and a serialized, CAS-published integration exist. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency`, clamped to 1 until M4-C, and counts live workspaces whatever their state (review M2). |
+| Concurrent mutation isolation | Built (M4-C); the queue is M4-D | Per-Ticket worktrees and a serialized, CAS-published integration. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency` (default 1, opt-in per project) and counts live workspaces whatever their state (review M2). Several mutating Tickets work at once and integrate one after another; the integration queue and lease arrive in M4-D. |
 | Controlled integration | Implemented | AT-2, AT-4a (publish crashes), ADR-0004 (+ 2026-09-26 amendment); review probes B1/B2/M1/M6; `tests/integration/test_worktree_sync.py` |
 | Verification-failure classification | Implemented | AT-6 |
 | Validation provenance | Implemented | AT-1, AT-3; evidence records what/who/when/against/how/result/evidence plus role card |

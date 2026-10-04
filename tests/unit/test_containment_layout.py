@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -145,10 +146,11 @@ def test_operator_writable_roots_must_exist_and_are_recorded(tmp_path, fake_bwra
 def test_labels_say_what_a_run_had_and_old_records_read_as_workdir_only():
     contained = C.label(contained=True, mechanism="bubblewrap 0.4.0", self_test={"ok": True})
     assert contained == {"filesystem": "os_readonly_roots", "process_ownership": "pid_namespace",
-                         "network": "not_provided", "mechanism": "bubblewrap 0.4.0", "self_test": {"ok": True}}
+                         "network": C.network(), "mechanism": "bubblewrap 0.4.0", "self_test": {"ok": True}}
+    assert C.network() == ("not_provided" if sys.platform == "win32" else "shared")
     weaker = C.label(contained=False, reason="bwrap missing")
     assert weaker["filesystem"] == "workdir_separation_only" and weaker["weaker_because"] == "bwrap missing"
-    assert weaker["process_ownership"] in {"job_object", "process_group"} and weaker["network"] == "not_provided"
+    assert weaker["process_ownership"] in {"job_object", "process_group"} and weaker["network"] == C.network()
     for old in ("workdir_separation_only", None, {}):
         assert C.normalize(old)["filesystem"] == "workdir_separation_only"
     assert C.normalize(contained) is contained

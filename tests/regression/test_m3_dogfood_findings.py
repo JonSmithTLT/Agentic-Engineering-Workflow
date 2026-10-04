@@ -125,7 +125,7 @@ def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_
     record = lab.record("R-INV-0001-1")["containment"]
     [run] = lab.ok("harness", "status")["runs"]
     doctor = {c["check"]: c for c in lab.ok("doctor", "--json")["checks"]}
-    assert record["network"] == run["containment"]["network"] == "not_provided"
+    assert record["network"] == run["containment"]["network"] == ("not_provided" if IS_WINDOWS else "shared")
     if IS_WINDOWS:
         assert record["filesystem"] == run["containment"]["filesystem"] == "workdir_separation_only"
         assert record["process_ownership"] == "job_object"

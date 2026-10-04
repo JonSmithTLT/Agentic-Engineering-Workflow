@@ -162,7 +162,7 @@ def test_takeover_cannot_be_self_authorized(project):
     assert project.ok("lead", "show")["generation"] == 1
 
 
-def _pty_takeover(root: Path, rev: int, label: str) -> dict:
+def _pty_takeover(root: Path, rev: int, label: str) -> tuple[dict, str]:
     import pty
     import select
 
@@ -193,7 +193,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> dict:
     _, status = os.waitpid(pid, 0)
     text = buf.decode("utf-8", "replace").replace("\r\n", "\n")
     assert os.waitstatus_to_exitcode(status) == 0, text
-    return json.loads(text[text.index("{", text.index("> ")):])
+    return json.loads(text[text.index("{", text.index("> ")):]), text
 
 
 @pytest.mark.acceptance("AT-4b")
@@ -208,9 +208,14 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     offer = project.lead("lead", "handoff", "offer")["offer"]
     b_token = project.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(project.rev()))["token"]
     rev = project.rev()
-    result = _pty_takeover(project.root, rev, "lead-c")
+    result, screen = _pty_takeover(project.root, rev, "lead-c")
     assert result["generation"] == 3
-    c_token = result["token"]
+    # The prompt names who asked and where the credential goes; the credential reaches the terminal, not stdout.
+    assert "requested by" in screen and "credential to  : this terminal only" in screen
+    assert result["token"] == "(written to your terminal)"
+    written = re.search(r"^token: (aew1\.\S+)$", screen, re.M)
+    assert written, screen
+    c_token = written.group(1)
     for stale in (a_token, b_token):
         res = project.aew("manifest", "adopt", "--reason", "x", "--token", stale, "--expect-rev", str(project.rev()))
         assert res.error["code"] == "STALE_AUTHORITY"

@@ -117,9 +117,9 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
   - an explicit `--token`;
   - read-only commands;
   - other projects.
-- When the held credential stops being the current Lead's, the broker closes its bridge.
+- When the held credential stops being the current Lead's, the broker closes its bridge. (A pending handoff does not; see the 2026-10-04 amendment.)
 - Parity with the invocation bridge is tested property by property (`harness-conformance.md` §3).
-- With `--acquire`, the seat is released at exit when nothing is in flight; otherwise it stays held and the output says that continuing needs a terminal takeover. The credential is never printed.
+- With `--acquire`, the seat is released at exit when nothing is in flight; otherwise it stays held and the output says that continuing needs a terminal takeover. The credential is never printed. (Since 2026-10-04 the release also waits until no process the session started is running.)
 
 **Why custody at all.** The spike showed that anything a harness shell prints is persisted twice, in the harness DB and in shell-output files. A harness permission layer is not secret isolation: an `edit` deny was bypassed through the shell.
 
@@ -377,3 +377,46 @@ Windows keeps the M3 model: workdir separation, a job object, and the same-UID r
   - a check running inside the layout.
 - **`tests/unit/test_containment_layout.py`:** bind order, the exhaustive role table, masks by type and labels.
 - **The existing harness suites run contained on Linux.** CI installs bubblewrap, and the setup action lifts Ubuntu's AppArmor restriction on unprivileged user namespaces. Tests whose subject was the uncontained behaviour now assert both: uncontained, a reviewer's edit is detected afterwards (`WORKSPACE_MUTATED`); contained, it is refused where it is made.
+
+## Amendment 2026-10-04 — Lead session custody (independent review of authority and custody)
+
+The Lead's harness now gets what a run's harness already had: process ownership. A credential an `aew` command issues goes only to the operator's terminal. The guarantees the Lead is symmetric with are unchanged; this closes the paths around them.
+
+### The Lead's harness runs in an owned process tree (`procs.run_session_tree`)
+- **Windows:** the harness is created suspended, assigned to a kill-on-close job object, and resumed. It keeps the operator's console (a hidden one only when there is none, so no window appears).
+- **Linux:** a small reaper process parents the harness and makes itself a child subreaper (`PR_SET_CHILD_SUBREAPER`). A descendant that detaches (`setsid`, a double fork, `nohup ... &`) is re-parented to the reaper, not to init. When the harness exits, or the broker dies (its control pipe closes), the reaper kills every descendant, reaps until none is left, and reports `clean`, `survivors` or `unowned`. It stays in the session's process group and on its terminal; Ctrl-C belongs to the harness. Run supervisors the broker starts for `--launch` are the broker's children, not the reaper's, so runs outlive the session as before.
+- **An acquired seat is released only when the tree is `clean`.** Otherwise it stays held, and the output says to continue with a terminal takeover. A process the session left behind can therefore never find the seat vacant.
+- **Other POSIX systems** have no subreaper: ownership is `unowned`, and the seat is kept.
+- **Residual (documented):** a process started through another service (cron, `at`, a user systemd unit) is not a descendant, and no process ownership reaches it. The Lead's harness runs uncontained, as the operator, so persistence the operator's account allows is outside this boundary. That is the ADR-0005 same-UID threat model.
+
+### Credentials go only to the terminal (`src/aew/cli/credentials.py`)
+- `lead acquire`, `lead takeover`, `lead handoff offer` (its offer secret), `lead handoff accept`, and a dispatch without `--launch` (its invocation credential) write the credential to the controlling terminal (`/dev/tty`; on Windows the console), never to standard output. The JSON result says `"(written to your terminal)"` in its place.
+- With no terminal and no opt-in, such a command is **refused before it runs**, so no credential is issued that nobody received.
+- **`aew --print-credential ...`** puts it on standard output, for a script that keeps it safe (the test suite, the perf tooling, the dogfood driver). A Lead session refuses the flag, in the CLI and in the broker.
+- **The takeover prompt** names the requesting process chain (`requested by : aew (pid) <- ... `) and where the credential will go (`this terminal only`, or the requester's standard output under `--print-credential`). It tells the operator to refuse a request they did not start, for example one from an agent's shell.
+
+### Lead broker hygiene
+- The broker removes `AEW_LEAD_TOKEN` from its own environment as soon as it reads it. Host-side git builds its environment through `contract.scrub_credentials`, so git and its hooks never inherit a credential, whoever calls them.
+- **A pending handoff does not end authority.** The broker closes its bridge only on `StaleAuthority` (takeover, an accepted handoff, release elsewhere). While a handoff is pending, each request reaches the engine, which refuses everything but `lead handoff cancel`; after a cancel the same session continues.
+
+### What AEW trusts from the environment, and why an agent cannot use it
+An environment variable changes only the process that reads it. An agent controls the environment of the processes it starts, and none of those holds a credential: custody keeps every credential in a supervisor or broker, whose environment comes from the operator's launch, never from the agent. So an agent's environment can only change what a credential-less command does, and the engine refuses such a command anything that needs authority.
+
+| Variable | Read by | Effect | Why an agent cannot use it against custody |
+|---|---|---|---|
+| `AEW_LEAD_TOKEN` | any `aew` command; `aew lead session` (then removed) | the Lead credential | never in any harness or agent environment (`CREDENTIAL_ENV` is scrubbed everywhere); a forged value fails verification |
+| `AEW_INVOCATION_TOKEN` | role commands outside a run | an invocation credential | as above |
+| `AEW_AGENT_ENDPOINT`, `AEW_AGENT_KEY`, `AEW_INVOCATION`, `AEW_RUN`, `AEW_WORK_UNIT` | the `aew` CLI inside a run | which run bridge to call, and its key | the bridge authenticates by key and holds the credential itself; contained runs cannot see another run's bridge or state |
+| `AEW_LEAD_BROKER`, `AEW_LEAD_BROKER_KEY` | the `aew` CLI inside a Lead session | route Lead commands to the broker; refuse credential-issuing commands and `--print-credential` locally | unsetting them leaves a command with no credential (refused by the engine). Credentials still go only to the terminal, the takeover prompt names the requester, and the session's processes end before an acquired seat is released |
+| `AEW_SCRATCH` | the agent | where scratch files go | no authority |
+| `AEW_HARNESS_ADAPTERS` | the launching CLI and the supervisor | extra harness adapters (code it loads) | read from the operator's launch environment; never passed to an agent |
+| `AEW_OPENCODE_BIN`, `AEW_OPENCODE_CATALOG_S`, `AEW_OPENCODE_CATALOG_SETTLE_S` | the supervisor (OpenCode adapter) | which OpenCode binary, catalog timeouts | as above |
+| `AEW_LAUNCH_ACK_S`, `AEW_RUN_STALE_S` | the launching CLI; status readers | launch acknowledgement wait; supervisor staleness | timing only, and only in the reading process |
+| `AEW_FAULT`, `AEW_FAULT_MODE`, `AEW_PAUSE` | any `aew` process | fault injection and pause points (tests) | effective only in the process that reads them; a credential-less process can fail or pause only itself |
+| `AEW_PROFILE` | any `aew` process | write a timing profile to a file | as above |
+
+### Tests
+- `tests/integration/test_lead_session.py`: a detached process the Lead's harness leaves behind is dead before the seat is released and never acts; a credential is never issued onto a captured stdout; a pending handoff refuses without ending the session; `--print-credential` is refused in a session; the broker is non-dumpable and the reaper's environment holds no credential (Linux).
+- `tests/integration/test_authority.py` (AT-4b, Linux pty): a takeover at a real terminal shows the requester and the destination, writes the credential to the terminal, and puts `(written to your terminal)` on stdout.
+- `tests/unit/test_credential_delivery.py`: which commands issue a credential, delivery and refusal, the prompt, the process chain, and git's environment.
+- Each guard was shown to fail its test with the mechanism removed, on Windows and on Linux.

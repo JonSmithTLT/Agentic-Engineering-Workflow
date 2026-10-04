@@ -37,6 +37,16 @@ LOST = "lost"                # a supervisor took custody and stopped reporting (
 # Any AEW credential string. Custody scans look for it in every file a run leaves behind.
 CREDENTIAL_RE = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")
 
+# Variables that carry an AEW credential or a bridge's coordinates. Never handed to a supervisor, a harness, an agent
+# or a host-side git call (ADR-0009 custody).
+CREDENTIAL_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
+                  "AEW_RUN", "AEW_WORK_UNIT", "AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")
+
+
+def scrub_credentials(env: dict[str, str]) -> dict[str, str]:
+    """``env`` without any credential-bearing variable: the named ones, and any whose value holds a credential."""
+    return {k: v for k, v in env.items() if k.upper() not in CREDENTIAL_ENV and not CREDENTIAL_RE.search(v or "")}
+
 
 def redact(text: str) -> str:
     return CREDENTIAL_RE.sub("aew1.<redacted>", text)

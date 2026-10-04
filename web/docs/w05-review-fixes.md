@@ -1,6 +1,6 @@
 # W05 independent review corrections
 
-The independent main-line review of source `405c836` completed the investigation on desktop and phone and requested changes for F1/F2, with F3/F4 as minor UI findings. The report and its supplied screenshots are archived in `web/docs/w05-independent-review/`. Its disposition remains **CHANGES REQUESTED** until the reviewer records the requested re-check; implementer tests do not replace that re-check.
+The independent main-line review of source `405c836` completed the investigation on desktop and phone and requested changes for F1/F2, with F3/F4 as minor UI findings. The reviewer independently rebuilt and re-checked `e875e81` and recorded **ACCEPT** for all four fixes, conditional on regenerating the incorrectly attributed correction evidence. That condition is fulfilled by the clean detached-commit rebuild and browser evidence in `web/docs/w05-review-fixes-evidence/`. The report and its supplied screenshots are archived in `web/docs/w05-independent-review/`; implementer tests do not replace the independent review.
 
 | Finding | Implemented correction | Regression evidence |
 |---|---|---|
@@ -13,4 +13,4 @@ The review packet now explains Ubuntu WSL's native Docker builder and the statef
 
 The original frozen evidence remains historical at `web/docs/w05-evidence/`. Current correction source, commands, results, screenshots and hashes are recorded separately in `web/docs/w05-review-fixes-evidence/`. The preview schema digest remains unchanged; the fixture manifest changes because story result values were corrected.
 
-Re-review only F1 and F2's required scenarios, as requested in the independent report. Backend adoption and live integration remain separately pending. W04 acceptance remains preserved.
+The re-review is complete. Current frontend acceptance is recorded in `web/docs/w05-frontend-acceptance.json`. Backend adoption and live integration remain separately pending. W04 acceptance remains preserved.

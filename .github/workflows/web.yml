@@ -70,7 +70,9 @@ jobs:
           test "$(npm --version)" = 10.9.7
           npm ci --ignore-scripts
       - name: Change detector regression probes
-        run: node --test scripts/ci-paths.test.mjs
+        run: |
+          node --test scripts/ci-paths.test.mjs
+          bash -n scripts/freeze-committed-build.sh scripts/freeze-w05-evidence.sh
       - name: Contract acceptance digest
         run: node scripts/check-contract.mjs
       - name: Generated artifact consistency

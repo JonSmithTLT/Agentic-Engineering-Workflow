@@ -1,0 +1,17 @@
+{
+  "source_commit": "e875e81b417738dfaa9a43990ebfd330db795094",
+  "source_tree": "ca9c4b148cefd6dc006b99d01ca3d13d725a0fef",
+  "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
+  "gate": "PASS",
+  "network": "none",
+  "checkout": "web/artifacts/commit-freeze/run-UTg71Avz/source",
+  "build_trees": {
+    "dist": "305befe7b113c8c201ff829d3cdaaf0a8651a72690018984d62d64dbe6cddc89",
+    "dist-demo": "49e832dd587e020ff6fa4bd0e2448596885c199bf542b3b9f989e5384829bbf7"
+  },
+  "browser_groups": 25,
+  "browser": "PASS; executed within committed checkout",
+  "source_clean_after_browser": true,
+  "build_unchanged_after_browser": true
+}

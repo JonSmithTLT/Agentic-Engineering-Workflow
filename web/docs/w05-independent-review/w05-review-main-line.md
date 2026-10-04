@@ -78,3 +78,21 @@
 ## Evidence
 
 Screenshots and accessibility snapshots for every step are in `steps/` beside this file (desktop, `phone-*`, `zoom200-*`, `dark-*`).
+
+---
+
+# Re-review of the corrections (2026-10-04)
+
+- **Source:** `e875e81b417738dfaa9a43990ebfd330db795094` (`web/docs/w05-review-fixes.md`). Rebuilt independently in my own clone with the pinned offline gate (`/snap/bin/docker`, builder `sha256:ef83c04e…`, `--network none`): **PASS**, 17/17 test files. Served with Node 22.22.2 in the builder image; driven headless with the pinned Chromium, product UI only, desktop 1440×1000 and phone 390×844.
+- **Frontend fixture disposition: ACCEPT** for `e875e81`, with one condition on the evidence record (below).
+
+| Finding | Desktop | Phone | Observed |
+|---|---|---|---|
+| F1 | FIXED | FIXED | E871 "Reported result: fail"; E875 and E880 "pass"; no warning. The `unknown` scenario still shows "Unknown value: FUTURE_RESULT". |
+| F2 | FIXED | FIXED | ART-Removal preselected; from the focused *Record* tab: → *Artifacts*, → *Provenance*, ← *Artifacts*, Home *Record*, End *Provenance*: focus stays on the tab every time. A fresh pick of ART-Removal focuses its heading on both layouts (re-clicking an already selected artifact leaves focus on its button, which is reasonable). |
+| F3 | FIXED | FIXED | binding-mismatch: one alert, one Retry. |
+| F4 | FIXED | FIXED | missing: "Selected artifact: ART-Removal · unavailable"; nothing says off-page. |
+
+## Condition: the correction evidence is not of the commit it names
+
+`web/docs/w05-review-fixes-evidence/result.json` records `source_commit: e875e81…`, but the implementer's build output (`web/artifacts/offline-gate/dist-demo`, index.html written 00:09:11 −04:00) predates that commit (00:12:15 −04:00) and differs from a build of it (different asset files, e.g. `Comparison-K5bd7ILs.js` here vs `Comparison-_2d_wyE7.js` there). The browser suite and screenshots in that folder were therefore produced from an uncommitted working tree. My checks above are of `e875e81` itself, so the product disposition stands; before merge, regenerate the evidence folder from a clean checkout of the commit it names (or record the actual source), and make the freeze step build from the committed tree so the two cannot diverge again. In the original round the builds happened to match.

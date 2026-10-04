@@ -1,8 +1,8 @@
 # W05 independent review packet
 
-Implementation is ready for independent product review. Frontend fixture acceptance remains **PENDING**. Backend adoption and live integration remain separately pending. W04's merged acceptance is preserved. No Engine work records were created.
+Frontend fixture acceptance is **ACCEPT at e875e81**. Backend adoption and live integration remain separately pending. W04's merged acceptance is preserved. No Engine work records were created. Current disposition is recorded in `web/docs/w05-frontend-acceptance.json`.
 
-Update 2026-10-04: the initial independent investigation completed on both layouts and requested F1/F2 corrections, with F3/F4 UI nits. All four are implemented at `e875e81b417738dfaa9a43990ebfd330db795094`. Re-check F1/F2 against that source; current evidence is `web/docs/w05-review-fixes-evidence/`. The original report is `web/docs/w05-independent-review/w05-review-main-line.md`; the disposition remains CHANGES REQUESTED pending the independent re-check.
+Update 2026-10-04: the reviewer independently rebuilt `e875e81b417738dfaa9a43990ebfd330db795094`, verified all four fixes on both layouts and recorded ACCEPT, conditional on correcting the evidence provenance. The prior working-tree evidence was incorrectly attributed to the later commit and is superseded. Current evidence in `web/docs/w05-review-fixes-evidence/` was regenerated from a clean detached checkout of that exact commit; the offline gate and 25 browser groups passed, and source/build hashes remained unchanged afterward. This fulfills the recorded condition. The independent report is `web/docs/w05-independent-review/w05-review-main-line.md`.
 
 The approved plan is `web/docs/design/plans/w05-evidence-inspection.md`; operator approval is recorded against its SHA-256 in `w05-operator-approval.json`. The immutable implementation commit, preview digest, commands, screenshots and measurements are recorded in `web/docs/w05-evidence/result.json`. Review that source commit; the evidence commit changes documentation only.
 
@@ -15,6 +15,8 @@ Start at `/knowledge?fixture=F1&view=journal&selected=J-05&panel=evidence`. Repe
 The local immutable builder lives in Ubuntu WSL's native Docker, accessed through `/snap/bin/docker`, separately from Docker Desktop. From the repository root inside Ubuntu WSL, run `PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407 bash web/scripts/offline-gate.sh`. The pinned build uses `--network none`; a networked npm install is unnecessary when this image is present.
 
 The HTTP projector's `stale` and `refresh-error` scenarios intentionally retain failure state across browser sessions. Restart the demo server before independently exercising their initial successful load followed by failed refresh. A fresh browser session alone does not reset that server state.
+
+For evidence freezes, run `bash web/scripts/freeze-w05-evidence.sh <full-source-commit>` from the repository with `SPT_FRONTEND_IMAGE`, absolute `PINNED_NODE22` and `CHROMIUM_PATH` set, and the required browser runtime libraries available. This creates a separate clean committed checkout, runs the pinned offline gate and W05 browser suite inside it, then verifies the source and every build file stayed unchanged. `scripts/freeze-committed-build.sh` provides the build-only form. Use the emitted checkout's browser output and build provenance when archiving evidence; do not substitute an existing working-tree build or its screenshots.
 
 ## Required investigation
 

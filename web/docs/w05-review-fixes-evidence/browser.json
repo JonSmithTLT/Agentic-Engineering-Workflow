@@ -159,7 +159,7 @@
       "dom_before": 459,
       "dom_after": 487,
       "requests": 7,
-      "duration_ms": 2492
+      "duration_ms": 3056
     },
     {
       "mode": "worker",
@@ -168,7 +168,7 @@
       "dom_before": 459,
       "dom_after": 487,
       "requests": 7,
-      "duration_ms": 3252
+      "duration_ms": 3381
     }
   ],
   "independent_review": "PENDING; implementer automation is not independent acceptance."

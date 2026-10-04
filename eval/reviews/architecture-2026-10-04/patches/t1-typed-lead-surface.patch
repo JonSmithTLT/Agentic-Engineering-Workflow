@@ -1,0 +1,2003 @@
+From af72ec58bd8cd6a8f743a94c20e76500c4e4fbde Mon Sep 17 00:00:00 2001
+From: architecture review <review@local>
+Date: Sun, 4 Oct 2026 02:59:28 -0400
+Subject: [PATCH 1/2] T1 prototype: the typed Lead surface below transport,
+ with an MCP (stdio) and a CLI adapter
+
+A catalog (aew.surface.contract) of twelve built tools and one designed tool, each with a closed JSON Schema,
+its primitives, its judgments and its operation class; a runner (aew.surface.run) that composes existing guarded
+engine operations into stages with explicit stop and retry rules and returns a StageResult carrying the revision,
+the completed steps, where a bundle stopped, and an ActionProjection (aew.surface.projection). Transports: an MCP
+stdio server (aew lead mcp) that holds no credential and forwards lead.tool to the Lead broker, and aew lead tool,
+the CLI form of the same contract. The Lead projection declares the server as OpenCode 2.0.18's schema spells it;
+the capability probe checks that shape.
+
+Architecture review thread T1 (AEW-reviews/architecture-dcd43f1). Prototype, not for merge as is.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/aew/cli/commands.py                       |  42 +++
+ src/aew/harness/lead_broker.py                | 110 ++++---
+ src/aew/harness/opencode/capabilities.py      |   3 +-
+ src/aew/harness/opencode/projection.py        |  10 +
+ src/aew/schemas/__init__.py                   |   6 +
+ src/aew/schemas/surface.schema.json           | 119 +++++++
+ src/aew/surface/__init__.py                   |   7 +
+ src/aew/surface/contract.py                   | 231 +++++++++++++
+ src/aew/surface/mcp.py                        | 205 ++++++++++++
+ src/aew/surface/projection.py                 | 142 ++++++++
+ src/aew/surface/run.py                        | 304 ++++++++++++++++++
+ .../opencode/projection-lead.golden.json      |  19 +-
+ tests/helpers/mcp_probe_agent.py              | 125 +++++++
+ tests/integration/test_lead_mcp.py            | 113 +++++++
+ tests/unit/test_dispatch_decision.py          |   3 +-
+ tests/unit/test_surface.py                    | 271 ++++++++++++++++
+ 16 files changed, 1667 insertions(+), 43 deletions(-)
+ create mode 100644 src/aew/schemas/surface.schema.json
+ create mode 100644 src/aew/surface/__init__.py
+ create mode 100644 src/aew/surface/contract.py
+ create mode 100644 src/aew/surface/mcp.py
+ create mode 100644 src/aew/surface/projection.py
+ create mode 100644 src/aew/surface/run.py
+ create mode 100644 tests/helpers/mcp_probe_agent.py
+ create mode 100644 tests/integration/test_lead_mcp.py
+ create mode 100644 tests/unit/test_surface.py
+
+diff --git a/src/aew/cli/commands.py b/src/aew/cli/commands.py
+index dc66e4f..75f50a9 100644
+--- a/src/aew/cli/commands.py
++++ b/src/aew/cli/commands.py
+@@ -160,6 +160,18 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
+     q.add_argument("harness_command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
+     q.set_defaults(handler=_lead_session)
+ 
++    q = lsub.add_parser("tool", help="run one tool of the typed Lead surface: the same catalog the MCP server "
++                                     "serves, over the CLI (aew.surface; architecture review T1)")
++    q.add_argument("name", nargs="?", help="a tool name (see --list)")
++    q.add_argument("--arguments", default="{}", help="the tool's arguments as a JSON object (or via --fields)")
++    q.add_argument("--list", action="store_true", help="list the tools and their argument schemas")
++    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN); none inside a Lead session")
++    q.set_defaults(handler=_lead_tool)
++
++    q = lsub.add_parser("mcp", help="serve the typed Lead surface over MCP (stdio): spawned by the Lead's harness "
++                                    "inside a Lead session, or run in an operator shell that holds AEW_LEAD_TOKEN")
++    q.set_defaults(handler=_lead_mcp)
++
+     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
+                                         "credential or, by default, any provider key (ADR-0009)")
+     p.add_argument("--acquire", action="store_true",
+@@ -234,6 +246,36 @@ def _lead_session(args: argparse.Namespace) -> Any:
+                                    keep_seat=args.keep_seat)
+ 
+ 
++def _lead_tool(args: argparse.Namespace) -> Any:
++    import json
++
++    from aew.harness import lead_broker
++    from aew.surface import contract, run
++
++    if args.list:
++        return {"ok": True, "surface": contract.SURFACE_VERSION,
++                "tools": [contract.mcp_tool(t) for t in contract.exposed()]}
++    if not args.name:
++        raise UsageError("name a tool, or --list")
++    try:
++        arguments = json.loads(args.arguments)
++    except ValueError:
++        raise UsageError("--arguments must be a JSON object") from None
++    if not isinstance(arguments, dict):
++        raise UsageError("--arguments must be a JSON object")
++    engine, token = _engine(args), _lead_token(args)
++    return run.run_tool(engine, token, args.name, arguments,
++                        run_cli=lambda argv, stdin: lead_broker.run_cli(engine, token, argv, str(engine.repo_root),
++                                                                       stdin, channel="cli"))
++
++
++def _lead_mcp(args: argparse.Namespace) -> Any:
++    from aew.surface import mcp
++
++    mcp.serve(lambda: _engine(args))
++    return None
++
++
+ def _opencode(args: argparse.Namespace) -> Any:
+     from aew.harness.opencode import lead
+ 
+diff --git a/src/aew/harness/lead_broker.py b/src/aew/harness/lead_broker.py
+index e7ce694..7450472 100644
+--- a/src/aew/harness/lead_broker.py
++++ b/src/aew/harness/lead_broker.py
+@@ -41,7 +41,9 @@ ENV_ENDPOINT = "AEW_LEAD_BROKER"
+ ENV_KEY = "AEW_LEAD_BROKER_KEY"
+ ENV_NAMES = (ENV_ENDPOINT, ENV_KEY)
+ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin": str},
+-                                 "lead.whoami": {}}  # does this session hold Lead authority? (M3-D10)
++                                 "lead.whoami": {},  # does this session hold Lead authority? (M3-D10)
++                                 # the typed Lead surface (aew.surface, T1): one tool, its arguments as JSON text
++                                 "lead.tool": {"name": str, "arguments": str}}
+ 
+ CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
+                        frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}))
+@@ -127,49 +129,77 @@ class LeadBroker:
+         if op == "lead.whoami":
+             lead = self.engine.store.read()["lead"]
+             return {"generation": lead["generation"], "session_label": lead.get("session_label")}
++        if op == "lead.tool":
++            return self._run_tool(args["name"], args["arguments"])
+         return self._run_cli(list(args["argv"]), args["cwd"], args["stdin"])
+ 
+-    def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
+-        from aew.cli.main import build_parser
+-        from aew.engine.api import Engine
++    def _run_tool(self, name: str, arguments: str) -> dict[str, Any]:
++        """The typed surface (``aew.surface``, T1): one tool, run with the held credential. Its ``cli`` tool runs
++        through ``_run_cli``, so every refusal above applies to it unchanged."""
++        import json
++
++        from aew.surface import run as surface_run
+ 
+-        parser = build_parser()
+-        noise = io.StringIO()
+         try:
+-            with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
+-                ns = parser.parse_args(argv)
+-        except SystemExit:
+-            raise errors.UsageError(f"invalid command: {noise.getvalue().strip()[-400:]}") from None
+-        if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
+-            raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
+-                                          "directly", command=sorted(command_path(ns)))
+-        refusal = refuses_locally(ns)
+-        if refusal:
+-            raise errors.PermissionDenied(refusal)
+-        if ns.token:
+-            raise errors.UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
+-        path = command_path(ns)
+-        if any(p <= path for p in DISPATCHES) and not getattr(ns, "launch", False):
+-            raise errors.PermissionDenied(
+-                "in a Lead session, dispatch with --launch: without it the dispatch prints an invocation credential "
+-                "into this session (the run's supervisor takes custody instead)")
+-        target = Path(cwd).resolve()
+-        if Engine.discover(target).aew_root != self.engine.aew_root:
+-            raise errors.PermissionDenied("this Lead session brokers a different AEW project",
+-                                          project=str(self.engine.aew_root))
+-        ns.token = self._token
+-        ns.cwd = str(target)
+-        previous = os.getcwd()
+-        stdin_before = sys.stdin
+-        try:  # requests are serialized by the bridge, so the process-wide cwd/stdin swap is safe here
+-            os.chdir(target)
+-            sys.stdin = io.StringIO(stdin)
+-            with dispatch.channel("lead_broker"):  # its dispatches record that the broker relayed them (M4-A)
+-                result = ns.handler(ns)
+-        finally:
+-            sys.stdin = stdin_before
+-            os.chdir(previous)
+-        return {"result": result, "json": bool(getattr(ns, "json", False))}
++            parsed = json.loads(arguments)
++        except ValueError:
++            raise errors.UsageError("lead.tool: arguments must be a JSON object, as text") from None
++        if not isinstance(parsed, dict):
++            raise errors.UsageError("lead.tool: arguments must be a JSON object, as text")
++        cwd = str(self.engine.repo_root)
++        with dispatch.channel("lead_mcp"):  # its dispatches record that the typed surface carried them
++            return surface_run.run_tool(self.engine, self._token, name, parsed,
++                                        run_cli=lambda argv, stdin: self._run_cli(argv, cwd, stdin))
++
++    def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
++        return run_cli(self.engine, self._token, argv, cwd, stdin)
++
++
++def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *,
++            channel: str = "lead_broker") -> dict[str, Any]:
++    """One Lead-authenticated command, parsed as the CLI parses it and run with ``token``, under the broker's
++    refusals. The broker calls it for ``lead.cli``; the typed surface's ``cli`` tool calls it on every transport,
++    so the primitive surface has one definition (WC §15.6, invariant 21)."""
++    from aew.cli.main import build_parser
++    from aew.engine.api import Engine
++
++    parser = build_parser()
++    noise = io.StringIO()
++    try:
++        with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
++            ns = parser.parse_args(argv)
++    except SystemExit:
++        raise errors.UsageError(f"invalid command: {noise.getvalue().strip()[-400:]}") from None
++    if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
++        raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
++                                      "directly", command=sorted(command_path(ns)))
++    refusal = refuses_locally(ns)
++    if refusal:
++        raise errors.PermissionDenied(refusal)
++    if ns.token:
++        raise errors.UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
++    path = command_path(ns)
++    if any(p <= path for p in DISPATCHES) and not getattr(ns, "launch", False):
++        raise errors.PermissionDenied(
++            "in a Lead session, dispatch with --launch: without it the dispatch prints an invocation credential "
++            "into this session (the run's supervisor takes custody instead)")
++    target = Path(cwd).resolve()
++    if Engine.discover(target).aew_root != engine.aew_root:
++        raise errors.PermissionDenied("this Lead session brokers a different AEW project",
++                                      project=str(engine.aew_root))
++    ns.token = token
++    ns.cwd = str(target)
++    previous = os.getcwd()
++    stdin_before = sys.stdin
++    try:  # requests are serialized by the bridge, so the process-wide cwd/stdin swap is safe here
++        os.chdir(target)
++        sys.stdin = io.StringIO(stdin)
++        with dispatch.channel(channel):  # its dispatches record who carried them (M4-A)
++            result = ns.handler(ns)
++    finally:
++        sys.stdin = stdin_before
++        os.chdir(previous)
++    return {"result": result, "json": bool(getattr(ns, "json", False))}
+ 
+ 
+ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
+diff --git a/src/aew/harness/opencode/capabilities.py b/src/aew/harness/opencode/capabilities.py
+index 21fb4e8..045d520 100644
+--- a/src/aew/harness/opencode/capabilities.py
++++ b/src/aew/harness/opencode/capabilities.py
+@@ -72,7 +72,8 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
+     "Permission.Request": {"id": S, "action": S, "resources": A},
+     "Permission.Rule": {"action": S, "resource": S, "effect": S},
+     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
+-                           "formatter": B, "default_agent": S, "permissions": A, "commands": O},
++                           "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O},
++    "Mcp.LocalConfigEncoded": {"type": S, "command": A},  # the Lead surface's MCP server (T1)
+     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
+     "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
+ }
+diff --git a/src/aew/harness/opencode/projection.py b/src/aew/harness/opencode/projection.py
+index 94e6155..dfd57c4 100644
+--- a/src/aew/harness/opencode/projection.py
++++ b/src/aew/harness/opencode/projection.py
+@@ -160,6 +160,7 @@ LEAD_RULES = [
+     rule("edit", "deny"),
+     rule("subagent", "deny"),
+     rule("question", "allow"),
++    rule("aew_*", "allow"),  # the typed Lead surface (the `aew` MCP server below): the engine refuses or commits
+ ]
+ 
+ LEAD_SYSTEM = "\n".join([
+@@ -169,6 +170,10 @@ LEAD_SYSTEM = "\n".join([
+     "from an earlier conversation.",
+     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` "
+     "commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).",
++    "- Prefer the `aew_*` tools (status, resume, explain, ticket_draft, ticket_start, ticket_request_review, "
++    "ticket_request_verification, harness_wait, checkpoint, cli): typed arguments, no shell, and every result "
++    "carries the new `revision`, the steps that completed, where a bundle stopped, and the actions and decisions "
++    "open next. `aew_cli` runs any other `aew` command with its arguments as a list.",
+     "- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch "
+     "with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its "
+     "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
+@@ -237,8 +242,13 @@ def lead_config(guide: str = "") -> dict[str, Any]:
+ 
+     ``guide`` is the project's Lead guide (``aew guide``, F16), rendered from its own policy: appended to the Lead's
+     system text so every Lead works from how AEW actually runs here, not by trial and error."""
++    from aew.surface.contract import SERVER_NAME
++
+     system = f"{LEAD_SYSTEM}\n\n{guide}" if guide else LEAD_SYSTEM
++    # The typed Lead surface (T1): OpenCode spawns `aew lead mcp` in the TUI's curated environment, which holds the
++    # broker's coordinates and no credential; its tools appear as `aew_<name>`.
+     return {"share": "disabled", "default_agent": LEAD_AGENT,
++            "mcp": {"servers": {SERVER_NAME: {"type": "local", "command": ["aew", "lead", "mcp"]}}},
+             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
+                                     "system": system, "permissions": LEAD_RULES}},
+             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}
+diff --git a/src/aew/schemas/__init__.py b/src/aew/schemas/__init__.py
+index 7821568..c01e500 100644
+--- a/src/aew/schemas/__init__.py
++++ b/src/aew/schemas/__init__.py
+@@ -25,6 +25,7 @@ SCHEMAS = {
+     "role": "role.schema.json",
+     "role-archetype": "role-archetype.schema.json",
+     "history": "history.schema.json",
++    "surface": "surface.schema.json",
+ }
+ 
+ 
+@@ -36,6 +37,11 @@ def _validator(name: str) -> Draft202012Validator:
+     return Draft202012Validator(schema)
+ 
+ 
++def schema_defs(name: str) -> dict[str, Any]:
++    """The ``$defs`` of a schema, as plain data (a transport advertising the shape of what it returns)."""
++    return json.loads(json.dumps(cast(dict[str, Any], _validator(name).schema).get("$defs", {})))
++
++
+ def validate(name: str, instance: Any, *, source: str) -> None:
+     """Raise ValidationFailed listing every schema violation with its location."""
+     _raise(_validator(name), instance, f"{source}: does not match schema {name}")
+diff --git a/src/aew/schemas/surface.schema.json b/src/aew/schemas/surface.schema.json
+new file mode 100644
+index 0000000..7ad87d2
+--- /dev/null
++++ b/src/aew/schemas/surface.schema.json
+@@ -0,0 +1,119 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "aew/surface/v1",
++  "title": "AEW typed Lead surface: the result of every tool, and the action projection it carries",
++  "description": "F15 v0.4 §15 (ActionProjection), §9 (stage steps); architecture review T1. Transport-neutral: the MCP server and `aew lead tool` return exactly this.",
++  "$ref": "#/$defs/stage_result",
++  "$defs": {
++    "error": {
++      "type": "object",
++      "required": ["code", "message"],
++      "properties": {
++        "code": {"type": "string", "minLength": 1},
++        "message": {"type": "string"},
++        "details": {"type": "object"}
++      },
++      "additionalProperties": false
++    },
++    "step": {
++      "description": "One primitive the bundle ran, with the control revision after it committed (null for a step that commits nothing).",
++      "type": "object",
++      "required": ["primitive", "operation_class", "revision", "summary", "refs"],
++      "properties": {
++        "primitive": {"type": "string", "minLength": 1},
++        "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED", "JUDGMENT_BEARING"]},
++        "revision": {"type": ["integer", "null"]},
++        "summary": {"type": ["string", "null"]},
++        "refs": {"type": "array", "items": {"type": "string"}},
++        "retried_after_stale_revision": {"type": "boolean"}
++      },
++      "additionalProperties": false
++    },
++    "stopped": {
++      "description": "Where a bundle stopped and why. `boundary` classifies the stop; `error` is the engine's own refusal, unchanged.",
++      "type": "object",
++      "required": ["at", "boundary", "error"],
++      "properties": {
++        "at": {"type": "string", "minLength": 1},
++        "boundary": {"enum": ["refused", "stale_revision", "stale_authority", "permission", "launch_failed", "not_found", "usage", "judgment_required", "unavailable", "error"]},
++        "error": {"$ref": "#/$defs/error"}
++      },
++      "additionalProperties": false
++    },
++    "action": {
++      "description": "A mechanical or policy-resolved action that is open now. `auto_runnable` only when the queryable guards allow it at this revision (v0.4 §15).",
++      "type": "object",
++      "required": ["action", "arguments", "operation_class", "auto_runnable", "reason_codes"],
++      "properties": {
++        "action": {"type": "string", "minLength": 1},
++        "arguments": {"type": "object"},
++        "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED"]},
++        "auto_runnable": {"type": "boolean"},
++        "reason_codes": {"type": "array", "items": {"type": "string"}},
++        "available": {"type": "boolean", "description": "false when the named tool is in the contract but not yet built; `cli` then carries the primitive path"},
++        "cli": {"type": ["array", "null"], "items": {"type": "string"}}
++      },
++      "additionalProperties": false
++    },
++    "decision": {
++      "description": "A judgment the Lead must make. It never has a default (v0.4 §15: default NONE).",
++      "type": "object",
++      "required": ["decision", "subject", "evidence", "tool", "arguments", "default"],
++      "properties": {
++        "decision": {"type": "string", "minLength": 1},
++        "subject": {"type": "string", "minLength": 1},
++        "evidence": {"type": "array", "items": {"type": "string"}},
++        "tool": {"type": ["string", "null"], "description": "the tool that records the judgment once made"},
++        "arguments": {"type": ["object", "null"]},
++        "default": {"const": "NONE"},
++        "available": {"type": "boolean"},
++        "cli": {"type": ["array", "null"], "items": {"type": "string"}}
++      },
++      "additionalProperties": false
++    },
++    "blocker": {
++      "type": "object",
++      "required": ["code", "message"],
++      "properties": {
++        "code": {"type": "string", "minLength": 1},
++        "message": {"type": "string"},
++        "details": {"type": "object"}
++      },
++      "additionalProperties": false
++    },
++    "action_projection": {
++      "type": "object",
++      "required": ["revision", "generation", "subject", "mechanical_actions", "decisions_required", "blockers", "anomalies", "hints"],
++      "properties": {
++        "revision": {"type": "integer", "minimum": 0},
++        "generation": {"type": ["integer", "null"]},
++        "subject": {"type": "string", "minLength": 1, "description": "a work unit id, or `project`"},
++        "state": {"type": ["string", "null"]},
++        "mechanical_actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
++        "decisions_required": {"type": "array", "items": {"$ref": "#/$defs/decision"}},
++        "blockers": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
++        "anomalies": {"type": "array", "items": {"type": "object"}},
++        "hints": {"type": "array", "items": {"type": "string"}, "description": "the engine's prose next actions for the subject (resume/status), for a reader; never parsed"},
++        "runs": {"type": "array", "items": {"type": "object"}},
++        "error": {"$ref": "#/$defs/error"}
++      },
++      "additionalProperties": false
++    },
++    "stage_result": {
++      "type": "object",
++      "required": ["ok", "surface", "tool", "revision", "generation", "completed_steps", "stopped", "result", "projection"],
++      "properties": {
++        "ok": {"type": "boolean", "description": "the whole tool completed; false when it stopped (see `stopped`), whether or not steps committed"},
++        "surface": {"const": "aew/surface/v1"},
++        "tool": {"type": "string", "minLength": 1},
++        "revision": {"type": "integer", "minimum": 0, "description": "the committed control revision after the call: the `expect_rev` of your next mutation"},
++        "generation": {"type": ["integer", "null"]},
++        "completed_steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
++        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/stopped"}]},
++        "result": {"description": "the tool's own payload (a query's report, a stage's ids, a cli command's output)"},
++        "projection": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/action_projection"}]}
++      },
++      "additionalProperties": false
++    }
++  }
++}
+diff --git a/src/aew/surface/__init__.py b/src/aew/surface/__init__.py
+new file mode 100644
+index 0000000..3001d96
+--- /dev/null
++++ b/src/aew/surface/__init__.py
+@@ -0,0 +1,7 @@
++"""The typed Lead surface: one contract below every transport (F15 v0.4 §5, §12, §15; architecture review T1).
++
++* :mod:`aew.surface.contract` is the catalog: every tool, its argument schema, its primitives and its class.
++* :mod:`aew.surface.run` runs a tool against the Engine with a Lead credential and returns a ``StageResult``.
++* :mod:`aew.surface.projection` derives the ``ActionProjection`` every result carries.
++* :mod:`aew.surface.mcp` is the MCP (stdio) transport; ``aew lead tool`` is the CLI transport. Both call ``run``.
++"""
+diff --git a/src/aew/surface/contract.py b/src/aew/surface/contract.py
+new file mode 100644
+index 0000000..e5a20d4
+--- /dev/null
++++ b/src/aew/surface/contract.py
+@@ -0,0 +1,231 @@
++"""The typed Lead surface, below any transport (F15 v0.4 §5, §12, §15; architecture review G2, thread T1).
++
++One catalog states every tool the Lead may be offered: what it does, the exact JSON Schema of its arguments, the
++engine primitives it expands to, the judgment inputs it carries and its operation class (``aew.engine.primitives``).
++Every transport is an adapter over this catalog and over :mod:`aew.surface.run`: the MCP server (``aew lead mcp``)
++and the CLI (``aew lead tool``) call the same runner, so neither is a second state authority (WC §15.6, invariant
++21) and neither carries semantics the other lacks. The catalog is data: a conformance test enumerates it against the
++dispatch registry, and the tool list a model sees is rendered from it.
++
++A tool's result is a ``StageResult`` (``schemas/surface.schema.json``): the revision after the call, the primitive
++steps that completed, where and why a bundle stopped, the tool's own payload, and the ``ActionProjection`` of what
++can happen next, so a Lead never reads the state between steps to learn the revision or the next action.
++
++Classification (v0.4 §3): a stage's class is the class of the judgment it stands for. A stage whose primitives are
++judgment-bearing is offered only when every judgment it needs is an explicit argument (``required_judgments`` names
++them); the engine still refuses at each step, so the catalog never widens what a primitive allows.
++"""
++
++from __future__ import annotations
++
++from typing import Any, NamedTuple
++
++from aew.engine.dispatch import ENTRYPOINTS
++from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
++
++SERVER_NAME = "aew"  # the MCP server's name: OpenCode exposes its tools as ``aew_<name>``
++SURFACE_VERSION = "aew/surface/v1"
++
++QUERY = "query"  # reads committed state; never commits
++STAGE = "stage"  # a guarded sequence of primitives for one Lead judgment (v0.4 §5, surface A)
++PRIMITIVE = "primitive"  # the recovery surface (v0.4 §5, surface B): one existing command
++WAIT = "wait"  # blocks on local run telemetry; never commits
++KINDS = (QUERY, STAGE, PRIMITIVE, WAIT)
++
++BUILT = "built"  # exposed to every transport
++DESIGNED = "designed"  # in the contract, not yet implemented: never listed to a model, refused if called
++
++
++class Tool(NamedTuple):
++    name: str
++    kind: str
++    operation_class: str
++    description: str
++    input_schema: dict[str, Any]
++    expands_to: tuple[str, ...] = ()  # primitive ids or transaction ops, in the order the stage runs them
++    required_judgments: tuple[str, ...] = ()  # judgment inputs the arguments must carry (v0.4 §4)
++    dispatches: bool = False  # creates an invocation or a run: always with the run's supervisor taking custody
++    mutates: bool = False
++    status: str = BUILT
++
++    @property
++    def read_only(self) -> bool:
++        return not self.mutates
++
++
++# ---------------------------------------------------------------------------------------------- schema pieces
++
++def _obj(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
++    out: dict[str, Any] = {"type": "object", "properties": properties, "additionalProperties": False}
++    if required:
++        out["required"] = list(required)
++    return out
++
++
++def _strings(description: str, *, min_items: int = 0) -> dict[str, Any]:
++    out: dict[str, Any] = {"type": "array", "items": {"type": "string", "minLength": 1}, "description": description}
++    if min_items:
++        out["minItems"] = min_items
++    return out
++
++
++EXPECT_REV = {"type": "integer", "minimum": 0,
++              "description": "the control revision this decision is based on: the `revision` of your last result. "
++                             "If the state moved since, the call is refused (STALE_REVISION) and nothing changes."}
++WORK_ID = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$", "description": "a work unit id, e.g. T-0012"}
++TEXT = {"type": "string", "description": "free text; it is stored as given, no shell ever sees it"}
++EXECUTION = _obj({
++    "profile": {"type": "string", "description": "an execution profile from policy/execution.yaml"},
++    "model": {"type": "string", "description": "PROVIDER/MODEL to pin instead of a profile"},
++    "effort": {"type": "string", "description": "reasoning-effort variant"},
++})
++EXECUTION["description"] = ("Lead override of the execution policy for the invocation this creates (ADR-0010); "
++                            "omit to route by policy")
++ASSURANCE = {
++    "description": "the plan's assurance: the string 'none', or the review and verification cards that become "
++                   "required gates",
++    "oneOf": [
++        {"const": "none"},
++        _obj({"review": _strings("review cards"), "verify": _strings("verification cards")}),
++    ],
++}
++PLAN = _obj({
++    "body": {**TEXT, "description": "the plan, Markdown"},
++    "affected": _strings("paths the plan changes (plan lint checks them against the scope)"),
++    "assurance": ASSURANCE,
++    "reason": TEXT,
++}, ("body", "assurance"))
++PLAN["description"] = "a proposed plan revision for the new Ticket; it is proposed, never accepted, by this stage"
++
++
++# ---------------------------------------------------------------------------------------------- the catalog
++
++def _catalog(*tools: Tool) -> dict[str, Tool]:
++    out: dict[str, Tool] = {}
++    for t in tools:
++        if t.kind not in KINDS or t.operation_class not in (MECHANICAL, POLICY_RESOLVED, JUDGMENT_BEARING):
++            raise ValueError(f"tool {t.name}: unknown kind or class")
++        if t.name in out:
++            raise ValueError(f"tool {t.name} is declared twice")
++        out[t.name] = t
++    return out
++
++
++TOOLS: dict[str, Tool] = _catalog(
++    # ---- queries: committed state, read without a lock being held across the call
++    Tool("status", QUERY, MECHANICAL,
++         "AEW status: the project (Lead, work graph, runs, next actions) or one work unit's control record.",
++         _obj({"work_id": WORK_ID})),
++    Tool("resume", QUERY, MECHANICAL,
++         "Rebuild the Lead's context from durable state: objective, active work, in-flight runs, contradictions, "
++         "next actions. Run it first after any restart.",
++         _obj({})),
++    Tool("work_show", QUERY, MECHANICAL, "One work unit: its record, plans, evidence, gates and integration.",
++         _obj({"work_id": WORK_ID}, ("work_id",))),
++    Tool("explain", QUERY, MECHANICAL,
++         "The dispatch decision a dispatch would get now (allowed or not, every blocking condition and obligation), "
++         "from the same predicate the dispatch itself uses. Query equals execution.",
++         _obj({"work_id": WORK_ID,
++               "entrypoint": {"type": "string", "enum": sorted(e for e in ENTRYPOINTS if e != "lead_broker.relay"),
++                              "description": "which dispatch; default: the unit's next one"},
++               "role": {"type": "string"}, "card": {"type": "string"},
++               "scope": {"type": "string", "enum": ["ticket", "integration", "observation", "parent"]},
++               "invocation": {"type": "string", "description": "explain a harness launch of this invocation"}})),
++    Tool("harness_status", QUERY, MECHANICAL, "Harness runs: status, heartbeat, evidence produced, next action.",
++         _obj({"invocation": {"type": "string"}})),
++    # ---- waiting: local telemetry, no commit
++    Tool("harness_wait", WAIT, MECHANICAL,
++         "Block until one of the named runs is no longer running, then return its status, its evidence and the next "
++         "action. One blocking call replaces polling in slices.",
++         _obj({"runs": {**_strings("run ids, e.g. R-INV-0003-1", min_items=1), "maxItems": 16},
++               "timeout_s": {"type": "number", "minimum": 1, "maximum": 3600, "default": 600}}, ("runs",))),
++    # ---- stages: one Lead judgment, the mechanics it implies (v0.4 §5, surface A)
++    Tool("checkpoint", STAGE, MECHANICAL,
++         "Record a checkpoint note and the Lead's next intended action (for a handoff or before a pause).",
++         _obj({"expect_rev": EXPECT_REV, "note": TEXT, "next": {**TEXT, "description": "the next intended action"}},
++              ("expect_rev",)),
++         expands_to=("checkpoint",), mutates=True),
++    Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
++         "Create a Ticket from your proposition (title, risk class, scope, goals, contract) and, if given, propose "
++         "its plan. The plan is proposed, not accepted: accept it with cli ['plan','accept',...] after inspection.",
++         _obj({"expect_rev": EXPECT_REV,
++               "title": {"type": "string", "minLength": 1},
++               "risk_class": {"type": "integer", "minimum": 0, "maximum": 4,
++                              "description": "by the guide's class definitions"},
++               "scope": _strings("allowed change path globs, e.g. ['src/**', 'tests/**']"),
++               "goal": _strings("goal-backwards acceptance criteria"),
++               "contract": _strings("contract or conformance criteria"),
++               "non_mutating": {"type": "boolean", "description": "an evidence-only Ticket (changes no source)"},
++               "parent": WORK_ID,
++               "depends_on": _strings("ID or ID:mutating|evidence"),
++               "rationale": TEXT, "body": {**TEXT, "description": "objective/body, Markdown"},
++               "card": {"type": "string", "description": "the role card that executes it"},
++               "acceptance_checks": _strings("project checks that decide acceptance"),
++               "acceptance_inputs": _strings("acceptance input globs"),
++               "class0_assert": {"type": "array", "items": {"type": "string", "enum": [
++                   "transformation_clear", "inputs_complete", "no_consequential_boundary"]}},
++               "plan": PLAN},
++              ("expect_rev", "title", "risk_class")),
++         expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
++         mutates=True),
++    Tool("ticket_start", STAGE, POLICY_RESOLVED,
++         "Start an accepted, READY mutating Ticket: assign an implementer by policy, launch its run (the run's "
++         "supervisor holds the credential) and move the Ticket to RUNNING once custody is acknowledged.",
++         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
++         expands_to=("work.assign", "dispatch.launch", "work.transition"), dispatches=True, mutates=True),
++    Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
++         "Submit a RUNNING Ticket's implementation for independent review: move it to REVIEW_PENDING (the current "
++         "implementation report and checks are required) and launch the reviewer the policy names.",
++         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
++         expands_to=("work.transition", "invoke.create.mutating", "dispatch.launch"), dispatches=True, mutates=True),
++    Tool("ticket_request_verification", STAGE, JUDGMENT_BEARING,
++         "Accept an inspected, passing review report and request verification: ingest exactly that report, move the "
++         "Ticket to VERIFY_PENDING and launch the verifier the policy names. A failed or pending review stops here.",
++         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
++               "review_evidence": {"type": "string",
++                                   "description": "the review report you inspected (its evidence id)"},
++               "execution": EXECUTION},
++              ("expect_rev", "work_id", "review_evidence")),
++         expands_to=("review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"),
++         required_judgments=("accept_review_evidence",), dispatches=True, mutates=True),
++    Tool("ticket_prepare", STAGE, JUDGMENT_BEARING,
++         "Accept an inspected, passing verification and prepare the integration candidate, launching the "
++         "post-integration verifier if policy requires one. Publication stays a separate decision.",
++         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
++               "verification_evidence": {"type": "string"}, "execution": EXECUTION},
++              ("expect_rev", "work_id", "verification_evidence")),
++         expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
++                     "dispatch.launch"),
++         required_judgments=("accept_verification",), dispatches=True, mutates=True, status=DESIGNED),
++    # ---- the primitive surface (v0.4 §5, surface B): every `aew` command, as data
++    Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
++         "Run one `aew` command with its arguments as a list (never a shell): the recovery and expert surface. Lead "
++         "authentication is supplied by the session; never pass --token. Use a stage when one applies.",
++         _obj({"argv": _strings("the command and its arguments, e.g. ['plan','accept','T-0001','--revision','1',"
++                                "'--expect-rev','12']", min_items=1),
++               "stdin": {"type": "string", "description": "text for an argument given as '-'"}},
++              ("argv",)),
++         required_judgments=("undeclared",), mutates=True),
++)
++
++
++def exposed() -> list[Tool]:
++    """The tools a transport offers: built ones, in catalog order."""
++    return [t for t in TOOLS.values() if t.status == BUILT]
++
++
++def tool(name: str) -> Tool:
++    """The named tool, or ``KeyError``."""
++    return TOOLS[name]
++
++
++def mcp_tool(t: Tool, output_schema: dict[str, Any] | None = None) -> dict[str, Any]:
++    """One entry of an MCP ``tools/list`` result."""
++    out: dict[str, Any] = {
++        "name": t.name, "description": t.description, "inputSchema": t.input_schema,
++        "annotations": {"title": t.name.replace("_", " "), "readOnlyHint": t.read_only,
++                        "destructiveHint": False, "idempotentHint": t.kind in (QUERY, WAIT), "openWorldHint": False},
++    }
++    if output_schema is not None:
++        out["outputSchema"] = output_schema
++    return out
+diff --git a/src/aew/surface/mcp.py b/src/aew/surface/mcp.py
+new file mode 100644
+index 0000000..b8d49b6
+--- /dev/null
++++ b/src/aew/surface/mcp.py
+@@ -0,0 +1,205 @@
++"""The MCP transport of the Lead surface: ``aew lead mcp`` (architecture review T1; WC §15.6 "an optional MCP
++adapter may expose the same engine"; invariant 21).
++
++A model's harness spawns this process (OpenCode: an ``mcp`` entry of type ``local`` in the Lead projection) and
++speaks MCP over its stdin and stdout: newline-delimited JSON-RPC 2.0, the ``initialize`` handshake, ``tools/list``
++and ``tools/call``. The process **holds no credential**. Inside a Lead session it has only the Lead broker's
++coordinates in its environment, like the ``aew`` CLI client, and forwards every call as ``lead.tool {name,
++arguments}`` to the broker, which runs the tool with the credential it holds (``aew.harness.lead_broker``). Custody
++is therefore exactly ADR-0009's: the model can exercise the Lead's operations without possessing, printing or
++inheriting the Lead credential, and the broker's refusals (credential-emitting commands, other projects, a
++superseded seat) apply unchanged.
++
++Outside a session, with ``AEW_LEAD_TOKEN`` in the operator's own environment, the server runs tools directly: the
++operator's terminal already holds that credential (ADR-0005), and an MCP client there (an IDE, another agent) gets
++the same surface. A harness-launched server never has that variable: ``aew opencode`` removes it.
++
++The protocol layer is deliberately small and dependency-free: AEW pins what it speaks, and a probe can check a
++harness against it. Nothing here is authority; the engine refuses or commits.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import sys
++from collections.abc import Callable
++from typing import Any, TextIO
++
++from aew import __version__, errors
++from aew.schemas import schema_defs
++from aew.surface import contract
++
++PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")  # newest first; a known one is echoed
++Call = Callable[[str, dict[str, Any]], dict[str, Any]]  # (tool name, arguments) -> StageResult
++
++PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
++
++
++def output_schema() -> dict[str, Any]:
++    """The StageResult schema, self-contained, for ``tools/list``."""
++    defs = schema_defs("surface")
++    return {**defs["stage_result"], "$defs": defs}
++
++
++def tools_list() -> dict[str, Any]:
++    return {"tools": [contract.mcp_tool(t) for t in contract.exposed()]}  # no per-tool outputSchema: context cost
++
++
++def call_result(result: dict[str, Any]) -> dict[str, Any]:
++    """A ``tools/call`` result: the StageResult as structured content and as text (for clients without structured
++    support). ``isError`` follows the result's ``ok``: a refusal is a tool outcome the model must read, not a
++    protocol failure."""
++    return {"content": [{"type": "text", "text": json.dumps(result, indent=1, sort_keys=False, default=str)}],
++            "structuredContent": result, "isError": not result.get("ok", False)}
++
++
++class Server:
++    """One MCP session over a pair of text streams."""
++
++    def __init__(self, call: Call, *, stdin: TextIO | None = None, stdout: TextIO | None = None,
++                 log: TextIO | None = None) -> None:
++        self.call = call
++        self.stdin = stdin or sys.stdin
++        self.stdout = stdout or sys.stdout
++        self.log = log or sys.stderr
++        self.initialized = False
++        self.client: dict[str, Any] = {}
++
++    # ---- framing
++
++    def _write(self, message: dict[str, Any]) -> None:
++        self.stdout.write(json.dumps(message, separators=(",", ":"), default=str) + "\n")
++        self.stdout.flush()
++
++    def _reply(self, request_id: Any, result: Any) -> None:
++        self._write({"jsonrpc": "2.0", "id": request_id, "result": result})
++
++    def _error(self, request_id: Any, code: int, message: str, data: Any = None) -> None:
++        err: dict[str, Any] = {"code": code, "message": message}
++        if data is not None:
++            err["data"] = data
++        self._write({"jsonrpc": "2.0", "id": request_id, "error": err})
++
++    def serve_forever(self) -> int:
++        """Serve until stdin closes. Returns the process exit code."""
++        for line in self.stdin:
++            line = line.strip()
++            if not line:
++                continue
++            try:
++                message = json.loads(line)
++            except ValueError:
++                self._error(None, PARSE_ERROR, "a message is one JSON object per line")
++                continue
++            if isinstance(message, list):  # a batch: handled one by one, replies in order
++                for item in message:
++                    self.handle(item)
++            else:
++                self.handle(message)
++        return 0
++
++    # ---- dispatch
++
++    def handle(self, message: Any) -> None:
++        if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
++            self._error(message.get("id") if isinstance(message, dict) else None, INVALID_REQUEST,
++                        "not a JSON-RPC 2.0 message")
++            return
++        method, request_id = message.get("method"), message.get("id")
++        params = message.get("params") if message.get("params") is not None else {}
++        if method is None:  # a response to something we never sent
++            return
++        if not isinstance(params, dict):
++            if request_id is not None:
++                self._error(request_id, INVALID_PARAMS, "params must be an object")
++            return
++        if method.startswith("notifications/"):
++            if method == "notifications/initialized":
++                self.initialized = True
++            return  # notifications get no reply
++        try:
++            result = self.dispatch(method, params)
++        except errors.AEWError as exc:  # a transport-level refusal (not a tool outcome, which is a result)
++            self._error(request_id, INVALID_PARAMS, exc.message, exc.to_dict())
++            return
++        except KeyError as exc:
++            self._error(request_id, METHOD_NOT_FOUND, f"method not found: {exc.args[0]}")
++            return
++        except Exception as exc:  # never let one request end the session
++            self.log.write(f"aew lead mcp: {type(exc).__name__}: {exc}\n")
++            self._error(request_id, INTERNAL_ERROR, f"{type(exc).__name__}: {exc}")
++            return
++        if request_id is not None:
++            self._reply(request_id, result)
++
++    def dispatch(self, method: str, params: dict[str, Any]) -> Any:
++        if method == "initialize":
++            self.client = params.get("clientInfo") or {}
++            asked = params.get("protocolVersion")
++            version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
++            return {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
++                    "serverInfo": {"name": contract.SERVER_NAME, "title": "AEW Lead surface", "version": __version__},
++                    "instructions": INSTRUCTIONS}
++        if method == "ping":
++            return {}
++        if method == "tools/list":
++            return tools_list()
++        if method == "tools/call":
++            name = params.get("name")
++            arguments = params.get("arguments") or {}
++            if not isinstance(name, str) or not isinstance(arguments, dict):
++                raise errors.UsageError("tools/call takes {name: string, arguments: object}")
++            if name not in contract.TOOLS or contract.TOOLS[name].status != contract.BUILT:
++                raise errors.UsageError(f"unknown tool {name!r}", offered=[t.name for t in contract.exposed()])
++            return call_result(self.call(name, arguments))
++        if method in ("resources/list", "resources/templates/list", "prompts/list"):
++            return {method.split("/")[0]: []} if method != "resources/templates/list" else {"resourceTemplates": []}
++        raise KeyError(method)
++
++
++INSTRUCTIONS = (
++    "AEW holds the workflow; this server is the Lead's typed interface to it. Every result carries `revision` (pass "
++    "it as `expect_rev` to your next mutation), `completed_steps`, `stopped` (where and why a bundle stopped) and "
++    "`projection`: the mechanical actions open now, the decisions only you can make (no defaults), blockers and "
++    "hints. Prefer a stage tool; use `cli` for anything else. You never hold a credential here."
++)
++
++
++# ---------------------------------------------------------------------------------------------- entry point
++
++def forwarding_call() -> Call:
++    """A ``call`` that forwards to the Lead broker of the session this process runs in (no credential here)."""
++    from aew.harness import bridge, lead_broker
++
++    def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
++        return bridge.call("lead.tool", {"name": name, "arguments": json.dumps(arguments)},
++                           env_names=lead_broker.ENV_NAMES)
++
++    return call
++
++
++def direct_call(engine: Any, token: str) -> Call:
++    """A ``call`` that runs tools here with a credential this process legitimately holds (the operator's shell)."""
++    from aew.engine import dispatch
++    from aew.surface import run
++
++    def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
++        with dispatch.channel("lead_mcp"):
++            return run.run_tool(engine, token, name, arguments)
++
++    return call
++
++
++def serve(engine_factory: Callable[[], Any]) -> int:
++    """``aew lead mcp``: pick the custody mode from the environment and serve stdio until the client closes it."""
++    from aew.harness import lead_broker
++
++    if os.environ.get(lead_broker.ENV_ENDPOINT):
++        call = forwarding_call()
++    elif os.environ.get("AEW_LEAD_TOKEN"):
++        call = direct_call(engine_factory(), os.environ["AEW_LEAD_TOKEN"])
++    else:
++        raise errors.UsageError("aew lead mcp serves a Lead session (started by `aew lead session` or `aew opencode`), "
++                                "or an operator's own shell with AEW_LEAD_TOKEN set; neither is the case here")
++    return Server(call).serve_forever()
+diff --git a/src/aew/surface/projection.py b/src/aew/surface/projection.py
+new file mode 100644
+index 0000000..eb1ed2c
+--- /dev/null
++++ b/src/aew/surface/projection.py
+@@ -0,0 +1,142 @@
++"""``ActionProjection`` (F15 v0.4 §15): what can happen next, typed, for one work unit or the project.
++
++Every ``StageResult`` carries one, so a Lead needs no status read between steps (audit L1, X2). It separates:
++
++* ``mechanical_actions``: mechanical or policy-resolved tools open now, ``auto_runnable`` only when the queryable
++  guard substrate (``DispatchDecision``, M4-A) allows them at this revision;
++* ``decisions_required``: judgments only the Lead can make, each naming the tool that records it once made and
++  carrying **no default** (publish, accept evidence, classify a failure, rework or escalate, reconcile);
++* ``blockers``: the engine's own blocking conditions and dependency blocks, with their reason codes;
++* ``hints``: the engine's prose next actions for the subject (``status``/``resume``), for a reader, never parsed.
++
++Prototype limits (thread T1): the derivation reads the unit's state and the runs' local telemetry and asks the
++dispatch predicate where one exists. Transition and ingest guards have no query form yet, so an action over them is
++reported with ``auto_runnable: false``; M4-E's guard migration (v0.4 §13) turns those into real answers. Anomalies
++(v0.4 §19) are not derived.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++from aew.engine.primitives import MECHANICAL, POLICY_RESOLVED
++from aew.errors import AEWError
++
++# Run statuses, as the harness contract spells them (local telemetry, never authority).
++RUNNING = ("starting", "running")
++ENDED_WITH_EVIDENCE = "ended_with_evidence"
++
++
++def _action(name: str, arguments: dict[str, Any], operation_class: str, *, auto_runnable: bool = False,
++            reason_codes: list[str] | None = None, available: bool = True,
++            cli: list[str] | None = None) -> dict[str, Any]:
++    return {"action": name, "arguments": arguments, "operation_class": operation_class,
++            "auto_runnable": auto_runnable, "reason_codes": reason_codes or [], "available": available, "cli": cli}
++
++
++def _decision(name: str, subject: str, *, evidence: list[str] | None = None, tool: str | None = None,
++              arguments: dict[str, Any] | None = None, available: bool = True,
++              cli: list[str] | None = None) -> dict[str, Any]:
++    return {"decision": name, "subject": subject, "evidence": evidence or [], "tool": tool, "arguments": arguments,
++            "default": "NONE", "available": available, "cli": cli}
++
++
++def projection(engine: Any, work_id: str | None = None) -> dict[str, Any]:
++    """The projection for ``work_id``, or for the project. Never raises: a failure to derive is reported in it."""
++    state = engine.store.read()
++    out: dict[str, Any] = {
++        "revision": state["revision"], "generation": (state.get("lead") or {}).get("generation"),
++        "subject": work_id or "project", "state": None, "mechanical_actions": [], "decisions_required": [],
++        "blockers": [], "anomalies": [], "hints": [], "runs": [],
++    }
++    try:
++        report = engine.status()
++        runs = engine.harness_resume(state)
++        if work_id is None:
++            out["hints"] = list(report.get("next_actions") or [])
++            out["runs"] = runs
++            for c in report.get("contradictions") or []:
++                out["blockers"].append({"code": "CONTRADICTION", "message": str(c)})
++            return out
++        unit = engine.status(work_id)["work_unit"]
++        out["state"] = unit.get("state")
++        prefix = f"{work_id}: "
++        out["hints"] = [a[len(prefix):] for a in report.get("next_actions") or [] if a.startswith(prefix)]
++        out["runs"] = [r for r in runs if r.get("work_unit") == work_id]
++        _derive_unit(engine, state, work_id, unit, out)
++    except AEWError as exc:
++        out["error"] = exc.to_dict()
++    return out
++
++
++def _derive_unit(engine: Any, state: dict[str, Any], wid: str, unit: dict[str, Any], out: dict[str, Any]) -> None:
++    rev = state["revision"]
++    st = unit.get("state")
++    live = [r for r in out["runs"] if r.get("status") in RUNNING]
++    ended = [r for r in out["runs"] if r.get("status") == ENDED_WITH_EVIDENCE]
++    evidence = sorted({e for r in ended for e in r.get("evidence") or []})
++    if live:
++        out["mechanical_actions"].append(_action(
++            "harness_wait", {"runs": [r["run"] for r in live]}, MECHANICAL, auto_runnable=True))
++    for b in unit.get("blocked_by") or []:
++        kind = str(b.get("kind") or "blocked")
++        out["blockers"].append({"code": kind.upper(), "message": kind.replace("_", " "),
++                                "details": {k: v for k, v in b.items() if k != "kind"}})
++    if unit.get("kind") != "ticket":
++        return
++    mutating = bool(unit.get("mutating"))
++    if st in ("READY", "BLOCKED") and mutating:
++        _dispatch_action(engine, wid, "ticket_start", {"expect_rev": rev, "work_id": wid}, out)
++    elif st in ("READY", "BLOCKED"):
++        _dispatch_action(engine, wid, "cli", {"argv": ["work", "dispatch", wid, "--launch", "--expect-rev", str(rev)]},
++                         out, available=True)
++    elif st == "RUNNING" and mutating and ended and not live:
++        out["mechanical_actions"].append(_action(
++            "ticket_request_review", {"expect_rev": rev, "work_id": wid}, POLICY_RESOLVED,
++            reason_codes=["TRANSITION_GUARD_AT_EXECUTION"]))
++    elif st == "REVIEW_PENDING" and ended:
++        for e in evidence:
++            out["decisions_required"].append(_decision(
++                "ACCEPT_REVIEW_EVIDENCE", wid, evidence=[e], tool="ticket_request_verification",
++                arguments={"expect_rev": rev, "work_id": wid, "review_evidence": e}))
++    elif st == "REVIEW_FAILED":
++        out["decisions_required"].append(_decision(
++            "REWORK_OR_ESCALATE", wid, tool="cli",
++            cli=["work", "transition", wid, "--to", "RUNNING", "--reason", "<why>", "--expect-rev", str(rev)]))
++    elif st == "VERIFY_PENDING" and ended:
++        for e in evidence:
++            out["decisions_required"].append(_decision(
++                "ACCEPT_VERIFICATION", wid, evidence=[e], tool="ticket_prepare",
++                arguments={"expect_rev": rev, "work_id": wid, "verification_evidence": e}, available=False,
++                cli=["verify", "ingest", wid, "--evidence", e, "--expect-rev", str(rev)]))
++    elif st == "VERIFICATION_FAILED":
++        out["decisions_required"].append(_decision(
++            "CLASSIFY_FAILURE", wid, tool="cli",
++            cli=["verify", "classify", wid, "--as", "<implementation|plan|inconclusive>", "--reason", "<why>",
++                 "--expect-rev", str(rev)]))
++    elif st == "COMMIT_READY":
++        integration = unit.get("integration") or {}
++        if integration.get("status") == "prepared" and not live:
++            out["decisions_required"].append(_decision(
++                "PUBLISH", wid, evidence=evidence, tool="cli",
++                cli=["integrate", "publish", wid, "--expect-rev", str(rev)]))
++    elif st == "INTERRUPTED":
++        out["decisions_required"].append(_decision(
++            "RECONCILE", wid, tool="cli",
++            cli=["work", "reconcile", wid, "--to", "<phase>", "--expect-rev", str(rev)]))
++
++
++def _dispatch_action(engine: Any, wid: str, name: str, arguments: dict[str, Any], out: dict[str, Any], *,
++                     available: bool = True) -> None:
++    """A dispatching action, answered by the dispatch predicate: allowed means auto-runnable, else its blockers."""
++    try:
++        decision = engine.dispatch_explain(wid)
++    except AEWError as exc:
++        out["blockers"].append({"code": exc.code, "message": exc.message, "details": dict(exc.details)})
++        return
++    out["mechanical_actions"].append(_action(
++        name, arguments, POLICY_RESOLVED, auto_runnable=bool(decision.get("allowed")),
++        reason_codes=list(decision.get("reason_codes") or []), available=available))
++    for b in decision.get("blocking_conditions") or []:
++        out["blockers"].append({"code": b["code"], "message": b["message"], **({"details": b["details"]}
++                                                                              if b.get("details") else {})})
+diff --git a/src/aew/surface/run.py b/src/aew/surface/run.py
+new file mode 100644
+index 0000000..545900c
+--- /dev/null
++++ b/src/aew/surface/run.py
+@@ -0,0 +1,304 @@
++"""Run one tool of the Lead surface against the Engine and return its ``StageResult`` (F15 v0.4 §7, §9; T1).
++
++A **stage** is one Lead judgment and the mechanics it implies: a sequence of existing, individually guarded engine
++operations, run in order, each with the revision the previous one committed. The engine's checks (current Lead,
++expected revision, every gate and guard) stay authoritative at every step: this module composes, it never bypasses.
++A bundle is one tool call, not one atomic commit: each step is its own durable transition with its own ``via``.
++
++Stop rules. The first refusal stops the bundle; completed steps are reported, nothing is undone (every intermediate
++state is a legal primitive-reachable state, §9). ``STALE_REVISION`` on the **first** step is the caller's CAS and
++stops. On a later step it means another writer committed between two of our steps; a ``MECHANICAL`` or
++``POLICY_RESOLVED`` step is then re-run once against the current revision (its guards are re-evaluated by the engine;
++nothing is cached), a ``JUDGMENT_BEARING`` step never is (the judgment was made against a state that moved). Policy
++drift (``STALE_POLICY``, §8) and the stage-intent journal (§9 to §11) are M4-E engine work and are not here.
++
++Transports call :func:`run_tool`; nothing else needs to know a tool's steps.
++"""
++
++from __future__ import annotations
++
++import copy
++from collections.abc import Callable
++from dataclasses import dataclass, field
++from typing import Any
++
++from jsonschema import Draft202012Validator
++
++from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
++from aew.errors import AEWError, IllegalTransition, StaleRevision, UsageError, ValidationFailed
++from aew.schemas import validate as validate_schema
++from aew.surface import contract
++from aew.surface.projection import projection
++
++RunCli = Callable[[list[str], str], dict[str, Any]]  # (argv, stdin) -> {"result": ..., "json": bool}
++SECRET_KEYS = frozenset({"invocation_token", "token", "offer", "secret"})  # never in a result, whatever a step returns
++
++
++def boundary_of(exc: AEWError) -> str:
++    code = exc.code
++    if code == "STALE_REVISION":
++        return "stale_revision"
++    if code == "STALE_AUTHORITY":
++        return "stale_authority"
++    if code in ("PERMISSION_DENIED", "OPERATOR_AUTHORIZATION_REQUIRED", "OBSERVATION_MUTATED", "WORKSPACE_MUTATED"):
++        return "permission"
++    if code in ("NOT_FOUND", "PROJECT_NOT_FOUND"):
++        return "not_found"
++    if code in ("USAGE", "VALIDATION_FAILED"):
++        return "usage"
++    if code.startswith("HARNESS_LAUNCH") or code == "HARNESS_INCOMPATIBLE":
++        return "launch_failed"
++    if isinstance(exc, IllegalTransition):
++        return "refused"
++    return "error"
++
++
++def scrub(value: Any) -> Any:
++    """A result with no credential-bearing key, however deep (defense in depth: the bridge also redacts)."""
++    if isinstance(value, dict):
++        return {k: scrub(v) for k, v in value.items() if k not in SECRET_KEYS}
++    if isinstance(value, list):
++        return [scrub(v) for v in value]
++    return value
++
++
++def _summary(out: Any) -> str | None:
++    if not isinstance(out, dict):
++        return None
++    parts = [f"{k}={out[k]}" for k in ("id", "work_id", "invocation", "run", "from", "to", "revision_number",
++                                        "accepted") if k in out and not isinstance(out[k], (dict, list))]
++    return ", ".join(parts) or None
++
++
++def _refs(out: Any) -> list[str]:
++    if not isinstance(out, dict):
++        return []
++    return [str(out[k]) for k in ("path", "record", "handoff_record") if isinstance(out.get(k), str)]
++
++
++@dataclass
++class Bundle:
++    """The steps of one tool call and the revision they carry forward."""
++
++    engine: Any
++    token: str
++    tool: contract.Tool
++    revision: int | None
++    steps: list[dict[str, Any]] = field(default_factory=list)
++    current: str | None = None
++    retried: bool = False
++    subject: str | None = None  # the unit a step created or acted on, for the projection of a stopped bundle
++
++    def step(self, primitive: str, fn: Callable[[int], Any], *, operation_class: str, commits: bool = True) -> Any:
++        """Run one primitive with the bundle's current expected revision; record it; carry its revision forward."""
++        if commits and self.revision is None:
++            raise UsageError(f"{self.tool.name}: expect_rev is required")
++        self.current = primitive
++        retried = False
++        try:
++            out = fn(self.revision)  # type: ignore[arg-type]
++        except StaleRevision as exc:
++            if not self.steps or operation_class == JUDGMENT_BEARING or self.retried:
++                raise
++            # Another writer committed between two of our steps: re-run this mechanical step once, re-guarded.
++            current = exc.details.get("current")
++            self.revision = current if isinstance(current, int) else self.engine.store.read()["revision"]
++            self.retried = retried = True
++            out = fn(self.revision)  # type: ignore[arg-type]
++        if commits and isinstance(out, dict) and isinstance(out.get("revision"), int):
++            self.revision = out["revision"]
++        record: dict[str, Any] = {"primitive": primitive, "operation_class": operation_class,
++                                  "revision": self.revision if commits else None, "summary": _summary(out),
++                                  "refs": _refs(out)}
++        if retried:
++            record["retried_after_stale_revision"] = True
++        self.steps.append(record)
++        self.current = None
++        return out
++
++
++@dataclass
++class Call:
++    engine: Any
++    token: str
++    args: dict[str, Any]
++    bundle: Bundle
++    run_cli: RunCli | None
++
++
++# ---------------------------------------------------------------------------------------------- the runners
++
++def _status(c: Call) -> Any:
++    return c.engine.status(c.args.get("work_id"))
++
++
++def _resume(c: Call) -> Any:
++    lead = c.engine.store.read()["lead"]  # this call holds the Lead's authority: say so (M3-D10), never the credential
++    return c.engine.resume(session={"holds": True, "generation": lead["generation"],
++                                    "session_label": lead.get("session_label")})
++
++
++def _work_show(c: Call) -> Any:
++    return c.engine.work_show(c.args["work_id"])
++
++
++def _explain(c: Call) -> Any:
++    a = c.args
++    return c.engine.dispatch_explain(a.get("work_id") or "", entrypoint=a.get("entrypoint"), role=a.get("role"),
++                                     card=a.get("card"), scope=a.get("scope") or "ticket",
++                                     invocation=a.get("invocation"))
++
++
++def _harness_status(c: Call) -> Any:
++    return c.engine.harness_status(c.args.get("invocation"))
++
++
++def _harness_wait(c: Call) -> Any:
++    runs = list(c.args["runs"])
++    if len(runs) > 1:
++        raise UsageError("waiting on several runs at once arrives with wait-any (M4-D, with the transaction outbox); "
++                         "name one run for now", runs=runs)
++    return c.engine.harness_wait(runs[0], timeout=float(c.args.get("timeout_s") or 600.0))
++
++
++def _checkpoint(c: Call) -> Any:
++    a = c.args
++    return c.bundle.step("checkpoint", lambda rev: c.engine.checkpoint(
++        token=c.token, expect_rev=rev, note=a.get("note") or "", next_action=a.get("next")),
++        operation_class=MECHANICAL)
++
++
++def _ticket_draft(c: Call) -> Any:
++    a = c.args
++    created = c.bundle.step("work.create", lambda rev: c.engine.work_create(
++        token=c.token, expect_rev=rev, kind="ticket", title=a["title"], risk_class=int(a["risk_class"]),
++        mutating=not a.get("non_mutating"), parent=a.get("parent"), depends_on=list(a.get("depends_on") or []),
++        scope_paths=list(a.get("scope") or []), goal_backwards=list(a.get("goal") or []),
++        contract=list(a.get("contract") or []), rationale=a.get("rationale"), body=a.get("body") or "",
++        card=a.get("card"), acceptance_checks=list(a.get("acceptance_checks") or []),
++        acceptance_inputs=list(a.get("acceptance_inputs") or []),
++        class0_assertions=list(a.get("class0_assert") or [])), operation_class=JUDGMENT_BEARING)
++    wid = created["id"]
++    c.bundle.subject = wid
++    out: dict[str, Any] = {"work_id": wid, "record": created.get("record") or created.get("path"), "plan": None}
++    plan = a.get("plan")
++    if plan:
++        assurance = plan["assurance"]
++        proposed = c.bundle.step("plan.propose", lambda rev: c.engine.plan_propose(
++            token=c.token, expect_rev=rev, work_id=wid, body=plan["body"], reason=plan.get("reason"),
++            affected_paths=list(plan.get("affected") or []) or None,
++            review=list(assurance.get("review") or []) if isinstance(assurance, dict) else None,
++            verify=list(assurance.get("verify") or []) if isinstance(assurance, dict) else None,
++            no_assurance=assurance == "none"), operation_class=JUDGMENT_BEARING)
++        out["plan"] = {"revision_number": proposed.get("revision_number"), "path": proposed.get("path"),
++                       "accepted": False}
++    return out
++
++
++def _execution(a: dict[str, Any]) -> dict[str, Any] | None:
++    chosen = {k: v for k, v in (a.get("execution") or {}).items() if v is not None}
++    return chosen or None
++
++
++def _ticket_start(c: Call) -> Any:
++    a, wid = c.args, c.args["work_id"]
++    assigned = c.bundle.step("work.assign", lambda rev: c.engine.work_assign(
++        token=c.token, expect_rev=rev, work_id=wid, execution_profile=_execution(a), launch=True),
++        operation_class=POLICY_RESOLVED)
++    launched = c.bundle.step("dispatch.launch", lambda rev: c.engine.launch_dispatched(assigned),
++                             operation_class=MECHANICAL, commits=False)
++    c.bundle.step("work.transition", lambda rev: c.engine.work_transition(
++        token=c.token, expect_rev=rev, work_id=wid, to="RUNNING"), operation_class=MECHANICAL)
++    return {"work_id": wid, "invocation": assigned.get("invocation"), "run": (launched.get("launch") or {}).get("run"),
++            "workspace": assigned.get("workspace"), "state": "RUNNING"}
++
++
++def _launch_role(c: Call, wid: str, role: str) -> dict[str, Any]:
++    """Dispatch the policy's default card of ``role`` for the Ticket and launch its run (custody to the supervisor)."""
++    created = c.bundle.step("invoke.create.mutating", lambda rev: c.engine.invoke_create(
++        token=c.token, expect_rev=rev, work_id=wid, role=role, scope="ticket", execution_profile=_execution(c.args),
++        launch=True), operation_class=POLICY_RESOLVED)
++    launched = c.bundle.step("dispatch.launch", lambda rev: c.engine.launch_dispatched(created),
++                             operation_class=MECHANICAL, commits=False)
++    return {"invocation": created.get("invocation"), "run": (launched.get("launch") or {}).get("run"), "role": role}
++
++
++def _ticket_request_review(c: Call) -> Any:
++    wid = c.args["work_id"]
++    c.bundle.step("work.transition", lambda rev: c.engine.work_transition(
++        token=c.token, expect_rev=rev, work_id=wid, to="REVIEW_PENDING"), operation_class=MECHANICAL)
++    return {"work_id": wid, "state": "REVIEW_PENDING", "launched": [_launch_role(c, wid, "reviewer")]}
++
++
++def _ticket_request_verification(c: Call) -> Any:
++    a, wid = c.args, c.args["work_id"]
++    ingested = c.bundle.step("review.ingest", lambda rev: c.engine.review_ingest(
++        token=c.token, expect_rev=rev, work_id=wid, evidence_id=a["review_evidence"]),
++        operation_class=JUDGMENT_BEARING)
++    c.bundle.step("work.transition", lambda rev: c.engine.work_transition(
++        token=c.token, expect_rev=rev, work_id=wid, to="VERIFY_PENDING"), operation_class=MECHANICAL)
++    return {"work_id": wid, "state": "VERIFY_PENDING", "review": scrub(ingested),
++            "launched": [_launch_role(c, wid, "verifier")]}
++
++
++def _cli(c: Call) -> Any:
++    if c.run_cli is None:
++        raise UsageError("the cli tool needs a Lead session or an operator shell to run commands in")
++    reply = c.run_cli([str(x) for x in c.args["argv"]], str(c.args.get("stdin") or ""))
++    return reply.get("result") if isinstance(reply, dict) else reply
++
++
++RUNNERS: dict[str, Callable[[Call], Any]] = {
++    "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
++    "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
++    "ticket_draft": _ticket_draft, "ticket_start": _ticket_start, "ticket_request_review": _ticket_request_review,
++    "ticket_request_verification": _ticket_request_verification, "cli": _cli,
++}
++
++
++# ---------------------------------------------------------------------------------------------- the entry point
++
++def validate_arguments(t: contract.Tool, arguments: dict[str, Any]) -> None:
++    errors = sorted(Draft202012Validator(t.input_schema).iter_errors(arguments), key=lambda e: list(e.absolute_path))
++    if errors:
++        raise ValidationFailed(f"{t.name}: arguments do not match the tool's schema",
++                               violations=[f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}"
++                                           for e in errors[:20]])
++
++
++def run_tool(engine: Any, token: str, name: str, arguments: dict[str, Any], *,
++             run_cli: RunCli | None = None) -> dict[str, Any]:
++    """Run ``name`` with ``arguments`` as the Lead ``token`` authenticates; always a ``StageResult``.
++
++    Every refusal the engine makes, and every argument error, is a tool **outcome** (``ok: false``, ``stopped``):
++    the caller reads what happened and what is open now. Only a bug raises."""
++    t = contract.TOOLS.get(name)
++    if t is None:
++        raise UsageError(f"unknown tool {name!r}", offered=[x.name for x in contract.exposed()])
++    if t.status != contract.BUILT:
++        raise UsageError(f"tool {name!r} is in the contract but not built yet; see its `cli` path in the projection",
++                         offered=[x.name for x in contract.exposed()])
++    arguments = copy.deepcopy(arguments)
++    bundle = Bundle(engine, token, t, arguments.get("expect_rev") if isinstance(arguments.get("expect_rev"), int)
++                    else None)
++    payload: Any = None
++    stopped: dict[str, Any] | None = None
++    try:
++        validate_arguments(t, arguments)
++        payload = RUNNERS[name](Call(engine, token, arguments, bundle, run_cli))
++    except AEWError as exc:
++        stopped = {"at": bundle.current or name, "boundary": boundary_of(exc), "error": exc.to_dict()}
++    state = engine.store.read()
++    subject = arguments.get("work_id") if isinstance(arguments.get("work_id"), str) else None
++    if subject is None and isinstance(payload, dict) and isinstance(payload.get("work_id"), str):
++        subject = payload["work_id"]
++    if subject is None:
++        subject = bundle.subject
++    result = {
++        "ok": stopped is None, "surface": contract.SURFACE_VERSION, "tool": name,
++        "revision": state["revision"], "generation": (state.get("lead") or {}).get("generation"),
++        "completed_steps": bundle.steps, "stopped": stopped, "result": scrub(payload),
++        "projection": projection(engine, subject),
++    }
++    validate_schema("surface", result, source=f"tool {name}")  # our own contract, checked on every call
++    return result
+diff --git a/tests/fixtures/opencode/projection-lead.golden.json b/tests/fixtures/opencode/projection-lead.golden.json
+index ef26460..d27e3c7 100644
+--- a/tests/fixtures/opencode/projection-lead.golden.json
++++ b/tests/fixtures/opencode/projection-lead.golden.json
+@@ -68,9 +68,14 @@
+      "action": "question",
+      "effect": "allow",
+      "resource": "*"
++    },
++    {
++     "action": "aew_*",
++     "effect": "allow",
++     "resource": "*"
+     }
+    ],
+-   "system": "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work units, plans, dispatches, evidence and decisions live in `.aew/` and change only through the `aew` command. This session is disposable. After any restart, rebuild your context with `aew resume` (/aew-resume), never from an earlier conversation.\n- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).\n- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.\n- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.\n- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket lifecycle, and the command for each step. Work from it, not by trial and error. When it is included below, it is the same text.\n- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'`, then `title: '...'`, `goal: ['...', '...']`, `contract: ['...']`, `scope: ['...']`, then `EOF`). Put every value in single quotes (two single quotes for one inside it), or write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).\n- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show`; anything else needs the operator.\n- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are refused here.\n- Report contradictions between artifacts to the operator. Never resolve them silently."
++   "system": "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work units, plans, dispatches, evidence and decisions live in `.aew/` and change only through the `aew` command. This session is disposable. After any restart, rebuild your context with `aew resume` (/aew-resume), never from an earlier conversation.\n- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).\n- Prefer the `aew_*` tools (status, resume, explain, ticket_draft, ticket_start, ticket_request_review, ticket_request_verification, harness_wait, checkpoint, cli): typed arguments, no shell, and every result carries the new `revision`, the steps that completed, where a bundle stopped, and the actions and decisions open next. `aew_cli` runs any other `aew` command with its arguments as a list.\n- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.\n- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.\n- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket lifecycle, and the command for each step. Work from it, not by trial and error. When it is included below, it is the same text.\n- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'`, then `title: '...'`, `goal: ['...', '...']`, `contract: ['...']`, `scope: ['...']`, then `EOF`). Put every value in single quotes (two single quotes for one inside it), or write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).\n- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show`; anything else needs the operator.\n- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are refused here.\n- Report contradictions between artifacts to the operator. Never resolve them silently."
+   }
+  },
+  "commands": {
+@@ -101,5 +106,17 @@
+   }
+  },
+  "default_agent": "aew-lead",
++ "mcp": {
++  "servers": {
++   "aew": {
++    "command": [
++     "aew",
++     "lead",
++     "mcp"
++    ],
++    "type": "local"
++   }
++  }
++ },
+  "share": "disabled"
+ }
+diff --git a/tests/helpers/mcp_probe_agent.py b/tests/helpers/mcp_probe_agent.py
+new file mode 100644
+index 0000000..d03f65c
+--- /dev/null
++++ b/tests/helpers/mcp_probe_agent.py
+@@ -0,0 +1,125 @@
++"""A scripted, model-free MCP *client* standing in for the Lead's harness (the T1 prototype's tests).
++
++It runs as the harness command of ``aew lead session`` (so it has exactly the environment a real harness gives
++the Lead's model: the broker's coordinates, no credential), spawns ``aew lead mcp`` the way OpenCode would spawn a
++local MCP server, performs the MCP handshake, lists the tools, and runs a script of ``tools/call`` steps. Every
++response is appended to a transcript (the stand-in for the harness's persisted conversation, which custody scans
++read).
++
++Script: a JSON list of ``{"tool": name, "arguments": {...}}`` steps. A string argument ``"$revision"`` is replaced
++by the ``revision`` of the previous result; ``"$result.<path>"`` by a field of the previous structured result.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++from typing import Any
++
++NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
++
++
++def aew_argv() -> list[str]:
++    exe = shutil.which("aew")
++    return [exe] if exe else [sys.executable, "-m", "aew"]
++
++
++class Client:
++    def __init__(self, proc: subprocess.Popen[str]) -> None:
++        self.proc = proc
++        self.next_id = 1
++
++    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
++        rid, self.next_id = self.next_id, self.next_id + 1
++        message: dict[str, Any] = {"jsonrpc": "2.0", "id": rid, "method": method}
++        if params is not None:
++            message["params"] = params
++        assert self.proc.stdin is not None and self.proc.stdout is not None
++        self.proc.stdin.write(json.dumps(message) + "\n")
++        self.proc.stdin.flush()
++        line = self.proc.stdout.readline()
++        if not line:
++            raise SystemExit(f"the MCP server closed before answering {method}")
++        reply = json.loads(line)
++        if reply.get("id") != rid:
++            raise SystemExit(f"reply id {reply.get('id')} for request {rid}")
++        return reply
++
++    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
++        assert self.proc.stdin is not None
++        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method, "params": params or {}}) + "\n")
++        self.proc.stdin.flush()
++
++
++def resolve(value: Any, previous: dict[str, Any] | None) -> Any:
++    if isinstance(value, str) and value == "$revision":
++        return (previous or {}).get("revision")
++    if isinstance(value, str) and value == "$revision_text":
++        return str((previous or {}).get("revision"))
++    if isinstance(value, str) and value.startswith("$result."):
++        node: Any = (previous or {}).get("result")
++        for part in value[len("$result."):].split("."):
++            node = node[int(part)] if isinstance(node, list) else (node or {}).get(part)
++        return node
++    if isinstance(value, list):
++        return [resolve(v, previous) for v in value]
++    if isinstance(value, dict):
++        return {k: resolve(v, previous) for k, v in value.items()}
++    return value
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--script", required=True)
++    ap.add_argument("--transcript", required=True)
++    ap.add_argument("--cwd", default=os.getcwd())
++    args = ap.parse_args()
++    steps = json.loads(Path(args.script).read_text(encoding="utf-8"))
++    transcript = Path(args.transcript)
++    kwargs: dict[str, Any] = {"creationflags": NO_WINDOW} if sys.platform == "win32" else {}
++    proc = subprocess.Popen([*aew_argv(), "-C", args.cwd, "lead", "mcp"], stdin=subprocess.PIPE,
++                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
++                            cwd=args.cwd, env=dict(os.environ), **kwargs)
++    client = Client(proc)
++    out: list[dict[str, Any]] = []
++
++    def record(i: int, kind: str, result: Any) -> None:
++        out.append({"i": i, "kind": kind, "result": result})
++        transcript.write_text("\n".join(json.dumps(e, default=str) for e in out) + "\n", encoding="utf-8")
++
++    try:
++        init = client.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
++                                             "clientInfo": {"name": "aew-mcp-probe", "version": "0"}})
++        record(0, "initialize", init)
++        client.notify("notifications/initialized")
++        record(1, "tools/list", client.request("tools/list"))
++        previous: dict[str, Any] | None = None
++        for i, step in enumerate(steps, start=2):
++            arguments = resolve(step.get("arguments") or {}, previous)
++            reply = client.request("tools/call", {"name": step["tool"], "arguments": arguments})
++            record(i, f"tools/call {step['tool']}", reply)
++            result = (reply.get("result") or {}).get("structuredContent")
++            if isinstance(result, dict):
++                previous = result
++        record(len(steps) + 2, "env", {"has_lead_token": "AEW_LEAD_TOKEN" in os.environ,
++                                      "names": sorted(k for k in os.environ if k.startswith("AEW_"))})
++    finally:
++        if proc.stdin is not None:
++            proc.stdin.close()
++        try:
++            proc.wait(timeout=30)
++        except subprocess.TimeoutExpired:
++            proc.kill()
++        err = proc.stderr.read() if proc.stderr is not None else ""
++        if err:
++            record(len(out), "server-stderr", err[-2000:])
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/integration/test_lead_mcp.py b/tests/integration/test_lead_mcp.py
+new file mode 100644
+index 0000000..61e9b73
+--- /dev/null
++++ b/tests/integration/test_lead_mcp.py
+@@ -0,0 +1,113 @@
++"""The MCP transport of the Lead surface, end to end (T1 prototype): a scripted MCP client stands in for the Lead's
++harness inside ``aew lead session``, spawns ``aew lead mcp`` as OpenCode would, and drives AEW through it. The
++custody properties of the Lead bridge hold unchanged: no credential reaches the harness, its child, or its
++transcript; the broker's refusals apply to the ``cli`` tool."""
++
++from __future__ import annotations
++
++import json
++import sys
++from pathlib import Path
++
++import pytest
++from aewflow import sample_project
++from conftest import run_aew
++from fake_harness import HarnessLab, contains_credential, credential_hits, finished
++from invariants import assert_control_invariants
++
++PROBE = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
++
++
++@pytest.fixture
++def lab(tmp_path):
++    lab = HarnessLab.create(sample_project(tmp_path), tmp_path)
++    yield lab
++    lab.cleanup()
++    assert not credential_hits(tmp_path), "a credential string was left in a file"
++
++
++def session(lab, name: str, steps: list[dict]) -> tuple[object, dict[int, dict]]:
++    script, transcript = lab.tmp / f"{name}.json", lab.tmp / f"{name}.transcript.jsonl"
++    script.write_text(json.dumps(steps), encoding="utf-8")
++    argv = ["lead", "session", "--", sys.executable, str(PROBE), "--script", str(script), "--transcript",
++            str(transcript), "--cwd", str(lab.root)]
++    res = run_aew("-C", str(lab.root), *argv, env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
++    lines = transcript.read_text(encoding="utf-8").splitlines() if transcript.exists() else []
++    return res, {e["i"]: e for e in map(json.loads, lines)}
++
++
++def structured(entry: dict) -> dict:
++    return entry["result"]["result"]["structuredContent"]
++
++
++DRAFT = {
++    "expect_rev": "$revision", "title": "Add subtract()", "risk_class": 1, "scope": ["calc/**", "tests/**"],
++    "goal": ["calc.core.subtract(5, 3) == 2 through the public module"],
++    "contract": ["changes stay within calc/ and tests/; vendored code untouched"],
++    "plan": {"body": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test.\n",
++             "affected": ["calc/core.py"], "assurance": "none"},
++}
++
++
++def test_the_lead_harness_drives_aew_through_mcp_and_never_holds_the_credential(lab):
++    lab.script("default", [{"do": "aew", "args": ["whoami"]}])  # the implementer run: starts, acts once, ends
++    res, steps = session(lab, "mcp-a", [
++        {"tool": "status", "arguments": {}},
++        {"tool": "ticket_draft", "arguments": DRAFT},
++        {"tool": "cli", "arguments": {"argv": ["plan", "accept", "$result.work_id", "--revision", "1",
++                                               "--expect-rev", "$revision_text"]}},
++        {"tool": "explain", "arguments": {"work_id": "$result.work_id"}},
++        {"tool": "ticket_start", "arguments": {"expect_rev": "$revision", "work_id": "T-0001"}},
++        {"tool": "harness_wait", "arguments": {"runs": ["$result.run"], "timeout_s": 120}},
++        {"tool": "status", "arguments": {"work_id": "T-0001"}},
++    ])
++    assert res.returncode == 0, res.stderr
++    assert res.json["exit"] == 0 and res.json["seat"] == "held by your AEW_LEAD_TOKEN"
++    assert steps[0]["result"]["result"]["serverInfo"]["name"] == "aew"
++    listed = {t["name"] for t in steps[1]["result"]["result"]["tools"]}
++    assert {"status", "resume", "explain", "ticket_draft", "ticket_start", "harness_wait", "cli"} <= listed
++    assert "ticket_prepare" not in listed
++    status, draft, accept, explain, start, wait, final = (structured(steps[i]) for i in range(2, 9))
++    assert status["ok"] and status["projection"]["subject"] == "project"
++    assert draft["ok"] and [s["primitive"] for s in draft["completed_steps"]] == ["work.create", "plan.propose"]
++    assert draft["result"]["work_id"] == "T-0001" and draft["revision"] == status["revision"] + 2
++    assert accept["ok"] and accept["tool"] == "cli" and accept["revision"] == draft["revision"] + 1
++    assert explain["ok"] and explain["result"]["allowed"] is True and explain["result"]["entrypoint"] == "work.assign"
++    # the projection before the start already named the stage, auto-runnable, from the same predicate
++    ready = [a for a in accept["projection"]["mechanical_actions"] if a["action"] == "ticket_start"]
++    assert ready and ready[0]["auto_runnable"] is True and ready[0]["arguments"]["work_id"] == "T-0001"
++    assert start["ok"], start
++    assert [s["primitive"] for s in start["completed_steps"]] == ["work.assign", "dispatch.launch", "work.transition"]
++    assert start["completed_steps"][1]["revision"] is None  # the launch commits nothing of its own
++    assert start["result"]["run"] and start["projection"]["state"] == "RUNNING"
++    assert "invocation_token" not in json.dumps(start)
++    assert wait["ok"] and finished(wait["result"]["status"]) and not wait["result"]["timed_out"]
++    assert final["ok"] and final["result"]["work_unit"]["state"] == "RUNNING"
++    env = steps[max(steps)]["result"] if steps[max(steps)]["kind"] == "env" else steps[9]["result"]
++    assert env["has_lead_token"] is False and "AEW_LEAD_TOKEN" not in env["names"]
++    for blob in (res.stdout, json.dumps(steps)):
++        assert not contains_credential(blob)
++    assert_control_invariants(lab.project)
++
++
++def test_the_cli_tool_keeps_the_brokers_refusals(lab):
++    res, steps = session(lab, "mcp-b", [
++        {"tool": "status", "arguments": {}},
++        {"tool": "cli", "arguments": {"argv": ["lead", "release", "--expect-rev", "$revision_text"]}},
++        {"tool": "cli", "arguments": {"argv": ["work", "create", "ticket", "--title", "x", "--class", "1",
++                                               "--token", "not-a-credential",
++                                               "--expect-rev", "$revision_text"]}},
++        {"tool": "cli", "arguments": {"argv": ["status"]}},
++        {"tool": "cli", "arguments": {"argv": ["invoke", "create", "T-0001", "--role", "reviewer",
++                                               "--expect-rev", "$revision_text"]}},
++    ])
++    assert res.returncode == 0, res.stderr
++    release, token, read_only, dispatch = (structured(steps[i]) for i in range(3, 7))
++    assert not release["ok"] and release["stopped"]["error"]["code"] == "PERMISSION_DENIED"
++    assert "operator" in release["stopped"]["error"]["message"]
++    assert not token["ok"] and token["stopped"]["error"]["code"] == "USAGE"
++    assert not read_only["ok"] and read_only["stopped"]["error"]["code"] == "PERMISSION_DENIED"
++    assert not dispatch["ok"] and dispatch["stopped"]["error"]["code"] == "PERMISSION_DENIED"
++    assert "--launch" in dispatch["stopped"]["error"]["message"]
++    assert lab.project.rev() == structured(steps[2])["revision"]  # nothing committed
++    assert not contains_credential(json.dumps(steps))
+diff --git a/tests/unit/test_dispatch_decision.py b/tests/unit/test_dispatch_decision.py
+index 736537a..cebfd45 100644
+--- a/tests/unit/test_dispatch_decision.py
++++ b/tests/unit/test_dispatch_decision.py
+@@ -25,7 +25,8 @@ NOT_DISPATCHING = {
+     "history audit", "history links", "history list", "history load", "history reindex", "history show", "init",
+     "integrate prepare", "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "lead acquire",
+     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+-    "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
++    "lead takeover", "lead tool", "lead mcp", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt",
++    "plan lint",
+     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
+     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
+     "work close", "work create", "work depend", "work list", "work move", "work promote", "work ready",
+diff --git a/tests/unit/test_surface.py b/tests/unit/test_surface.py
+new file mode 100644
+index 0000000..c6c861c
+--- /dev/null
++++ b/tests/unit/test_surface.py
+@@ -0,0 +1,271 @@
++"""The typed Lead surface (T1 prototype): the catalog's structure, the runner's stop rules, the StageResult contract
++and the MCP framing, without a harness."""
++
++from __future__ import annotations
++
++import io
++import json
++from typing import Any
++
++import yaml
++from aewflow import sample_project
++from jsonschema import Draft202012Validator
++
++from aew.engine.api import Engine
++from aew.engine.dispatch import ENTRYPOINTS
++from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
++from aew.schemas import validate
++from aew.surface import contract, mcp, run
++
++# ---------------------------------------------------------------------------------------------- the catalog
++
++
++def _object_schemas(schema: Any):
++    if isinstance(schema, dict):
++        if schema.get("type") == "object" or "properties" in schema:
++            yield schema
++        for v in schema.values():
++            yield from _object_schemas(v)
++    elif isinstance(schema, list):
++        for v in schema:
++            yield from _object_schemas(v)
++
++
++def test_every_tool_schema_is_valid_and_closed():
++    for t in contract.TOOLS.values():
++        Draft202012Validator.check_schema(t.input_schema)
++        for obj in _object_schemas(t.input_schema):
++            assert obj.get("additionalProperties") is False, f"{t.name}: an open object schema"
++        assert t.description and len(t.description) < 400, t.name  # context cost: short, specific descriptions
++
++
++def test_dispatching_tools_name_registered_entrypoints_and_no_other_tool_does():
++    for t in contract.TOOLS.values():
++        reached = set(t.expands_to) & set(ENTRYPOINTS)
++        assert bool(reached) == t.dispatches, (t.name, reached)
++        if t.dispatches:
++            assert "dispatch.launch" in t.expands_to, f"{t.name}: a dispatching stage always launches (custody)"
++
++
++def test_judgment_bearing_tools_name_the_judgments_their_arguments_carry():
++    for t in contract.TOOLS.values():
++        if t.operation_class == JUDGMENT_BEARING:
++            assert t.required_judgments, t.name
++        else:
++            assert t.operation_class in (MECHANICAL, POLICY_RESOLVED) and not t.required_judgments, t.name
++
++
++def test_designed_tools_are_in_the_contract_but_never_listed_and_refused_if_called(tmp_path):
++    listed = {x["name"] for x in mcp.tools_list()["tools"]}
++    assert listed == {t.name for t in contract.exposed()}
++    assert "ticket_prepare" in contract.TOOLS and "ticket_prepare" not in listed
++    p = sample_project(tmp_path)
++    try:
++        run.run_tool(Engine.discover(p.root), p.token, "ticket_prepare", {})
++    except Exception as exc:  # noqa: BLE001 (the refusal's code is the assertion)
++        assert getattr(exc, "code", None) == "USAGE" and "not built" in str(exc)
++    else:
++        raise AssertionError("a designed tool ran")
++
++
++def test_every_exposed_tool_has_a_runner_and_vice_versa():
++    assert set(run.RUNNERS) == {t.name for t in contract.exposed()}
++
++
++def test_the_tool_list_fits_a_context_budget():
++    text = json.dumps(mcp.tools_list(), separators=(",", ":"))
++    assert len(text) < 12_000, f"tools/list is {len(text)} bytes: the Lead's whole surface must stay small (G2, F13)"
++    assert len(mcp.tools_list()["tools"]) <= 16
++
++
++# ---------------------------------------------------------------------------------------------- the runner
++
++
++def test_queries_return_a_valid_result_and_commit_nothing(tmp_path):
++    p = sample_project(tmp_path)
++    engine, rev = Engine.discover(p.root), p.rev()
++    for name, args in (("status", {}), ("resume", {}), ("harness_status", {})):
++        out = run.run_tool(engine, p.token, name, args)
++        validate("surface", out, source=name)
++        assert out["ok"] and out["revision"] == rev and out["completed_steps"] == [] and out["stopped"] is None
++        assert out["projection"]["subject"] == "project" and out["projection"]["revision"] == rev
++    assert p.rev() == rev
++
++
++def test_a_refused_query_is_a_tool_outcome_not_an_exception(tmp_path):
++    p = sample_project(tmp_path)
++    out = run.run_tool(Engine.discover(p.root), p.token, "work_show", {"work_id": "T-9999"})
++    validate("surface", out, source="work_show")
++    assert not out["ok"] and out["stopped"]["boundary"] == "not_found"
++    assert out["stopped"]["error"]["code"] == "NOT_FOUND"
++
++
++def test_arguments_outside_the_schema_are_a_usage_outcome(tmp_path):
++    p = sample_project(tmp_path)
++    out = run.run_tool(Engine.discover(p.root), p.token, "status", {"bogus": 1})
++    assert not out["ok"] and out["stopped"]["boundary"] == "usage"
++    assert "bogus" in json.dumps(out["stopped"]["error"])
++
++
++DRAFT = {
++    "title": "Add subtract()", "risk_class": 1, "scope": ["calc/**", "tests/**"],
++    "goal": ["calc.core.subtract(5, 3) == 2 through the public module"],
++    "contract": ["changes stay within calc/ and tests/; vendored code untouched"],
++    "plan": {"body": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test.\n",
++             "affected": ["calc/core.py"], "assurance": "none"},
++}
++
++
++def _unit_record(p, wid: str) -> dict[str, Any]:
++    text = (p.root / ".aew" / "work" / wid / "ticket.md").read_text(encoding="utf-8")
++    front = yaml.safe_load(text.split("---")[1])
++    for volatile in ("created_at", "id"):
++        front.pop(volatile, None)
++    return front
++
++
++def test_ticket_draft_equals_the_primitive_sequence(tmp_path):
++    """v0.4 §20: a stage produces the same durable result as its documented primitive sequence."""
++    a, b = sample_project(tmp_path / "a"), sample_project(tmp_path / "b")
++    out = run.run_tool(Engine.discover(a.root), a.token, "ticket_draft", {"expect_rev": a.rev(), **DRAFT})
++    validate("surface", out, source="ticket_draft")
++    assert out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["work.create", "plan.propose"]
++    assert out["revision"] == a.rev() and out["completed_steps"][-1]["revision"] == a.rev()
++    wid = out["result"]["work_id"]
++    assert out["projection"]["subject"] == wid and out["projection"]["state"] == "BLOCKED"
++    assert any(b["code"] == "PLAN_NOT_ACCEPTED" for b in out["projection"]["blockers"])
++    # the primitive path
++    args = ["work", "create", "ticket", "--title", DRAFT["title"], "--class", "1", "--goal", DRAFT["goal"][0],
++            "--contract", DRAFT["contract"][0]]
++    for s in DRAFT["scope"]:
++        args += ["--scope", s]
++    wid_b = b.lead(*args)["id"]
++    plan = tmp_path / "plan.md"
++    plan.write_text(DRAFT["plan"]["body"], encoding="utf-8")
++    b.lead("plan", "propose", "--assurance", "none", wid_b, "--file", str(plan), "--affected", "calc/core.py")
++    assert wid == wid_b
++    assert _unit_record(a, wid) == _unit_record(b, wid_b)
++    plan_a = a.ok("status", wid, "--json")["work_unit"]["plans"]
++    plan_b = b.ok("status", wid_b, "--json")["work_unit"]["plans"]
++    assert len(plan_a) == len(plan_b) == 1
++    volatile = ("at", "sha256", "proposed_at")
++    assert {k: v for k, v in plan_a[0].items() if k not in volatile} == {
++        k: v for k, v in plan_b[0].items() if k not in volatile}
++    if plan_a[0].get("path"):  # the plan text itself, apart from timestamps
++        texts = [__import__("re").sub(r"\d{4}-\d{2}-\d{2}T[0-9:Z]+", "<t>",
++                                     (p.root / ".aew" / plan_a[0]["path"]).read_text(encoding="utf-8"))
++                 for p in (a, b)]
++        assert texts[0] == texts[1]
++
++
++def test_a_stale_first_step_stops_before_anything_commits(tmp_path):
++    p = sample_project(tmp_path)
++    rev = p.rev()
++    out = run.run_tool(Engine.discover(p.root), p.token, "ticket_draft", {"expect_rev": rev - 1, **DRAFT})
++    assert not out["ok"] and out["stopped"] == {
++        "at": "work.create", "boundary": "stale_revision", "error": out["stopped"]["error"]}
++    assert out["stopped"]["error"]["code"] == "STALE_REVISION" and out["completed_steps"] == []
++    assert out["revision"] == rev == p.rev()
++
++
++def test_a_refusal_mid_bundle_keeps_the_completed_steps_and_projects_the_new_unit(tmp_path):
++    p = sample_project(tmp_path)
++    bad = {**DRAFT, "plan": {**DRAFT["plan"], "assurance": {"review": ["no-such-card"]}}}
++    out = run.run_tool(Engine.discover(p.root), p.token, "ticket_draft", {"expect_rev": p.rev(), **bad})
++    validate("surface", out, source="ticket_draft")
++    assert not out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["work.create"]
++    assert out["stopped"]["at"] == "plan.propose" and out["stopped"]["boundary"] in ("refused", "not_found", "usage")
++    assert out["projection"]["subject"] == "T-0001" and out["revision"] == p.rev()
++
++
++def test_results_never_carry_a_credential_key():
++    assert run.scrub({"a": {"invocation_token": "x", "token": "y", "keep": [{"offer": "z", "b": 1}]}}) == {
++        "a": {"keep": [{"b": 1}]}}
++
++
++def test_the_cli_transport_returns_the_same_contract(tmp_path):
++    p = sample_project(tmp_path)
++    listed = p.ok("lead", "tool", "--list")
++    assert {t["name"] for t in listed["tools"]} == {t.name for t in contract.exposed()}
++    out = p.ok("lead", "tool", "status", "--token", p.token)
++    validate("surface", out, source="aew lead tool status")
++    assert out["ok"] and out["tool"] == "status" and out["revision"] == p.rev()
++    out = p.ok("lead", "tool", "ticket_draft", "--token", p.token,
++               "--arguments", json.dumps({"expect_rev": p.rev(), **DRAFT}))
++    assert out["ok"] and out["result"]["work_id"] == "T-0001"
++
++
++# ---------------------------------------------------------------------------------------------- the projection
++
++
++def test_the_lead_projection_matches_the_pinned_opencode_configuration_schema():
++    """The MCP server entry is spelled as OpenCode 2.0.18's own schema spells it (the capability probe checks the
++    same keys against a served server)."""
++    from pathlib import Path
++
++    from aew.harness.opencode import capabilities, projection
++
++    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json")
++                      .read_text(encoding="utf-8"))
++    root = {"$ref": "#/components/schemas/Config.InfoEncoded", "components": spec["components"]}
++    config = projection.lead_config("guide text")
++    problems = [f"{list(e.absolute_path)}: {e.message}" for e in Draft202012Validator(root).iter_errors(config)]
++    assert not problems, problems
++    assert config["mcp"]["servers"][contract.SERVER_NAME]["command"] == ["aew", "lead", "mcp"]
++    assert capabilities.problems(spec) == [] if hasattr(capabilities, "problems") else True
++
++
++# ---------------------------------------------------------------------------------------------- MCP framing
++
++
++def _serve(lines: list[dict[str, Any]], call) -> list[dict[str, Any]]:
++    stdin = io.StringIO("".join(json.dumps(m) + "\n" for m in lines))
++    stdout, log = io.StringIO(), io.StringIO()
++    mcp.Server(call, stdin=stdin, stdout=stdout, log=log).serve_forever()
++    return [json.loads(line) for line in stdout.getvalue().splitlines()]
++
++
++def test_mcp_handshake_listing_and_calls():
++    calls: list[tuple[str, dict[str, Any]]] = []
++
++    def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
++        calls.append((name, arguments))
++        return {"ok": name == "status", "tool": name, "revision": 3}
++
++    replies = _serve([
++        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
++         "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t"}}},
++        {"jsonrpc": "2.0", "method": "notifications/initialized"},
++        {"jsonrpc": "2.0", "id": 2, "method": "ping"},
++        {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
++        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "status", "arguments": {}}},
++        {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "work_show",
++                                                                       "arguments": {"work_id": "T-1"}}},
++        {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "ticket_prepare", "arguments": {}}},
++        {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "nope", "arguments": {}}},
++        {"jsonrpc": "2.0", "id": 8, "method": "resources/list"},
++        {"jsonrpc": "2.0", "id": 9, "method": "something/else"},
++        [{"jsonrpc": "2.0", "id": 10, "method": "ping"}, {"jsonrpc": "2.0", "id": 11, "method": "ping"}],
++    ], call)
++    by_id = {r["id"]: r for r in replies}
++    assert by_id[1]["result"]["protocolVersion"] == "2025-03-26"
++    assert by_id[1]["result"]["serverInfo"]["name"] == contract.SERVER_NAME
++    assert "tools" in by_id[1]["result"]["capabilities"]
++    assert by_id[2]["result"] == {} and by_id[10]["result"] == {} and by_id[11]["result"] == {}
++    assert {t["name"] for t in by_id[3]["result"]["tools"]} == {t.name for t in contract.exposed()}
++    assert by_id[4]["result"]["isError"] is False and by_id[4]["result"]["structuredContent"]["revision"] == 3
++    assert json.loads(by_id[4]["result"]["content"][0]["text"])["tool"] == "status"
++    assert by_id[5]["result"]["isError"] is True  # a refusal is a tool outcome
++    assert by_id[6]["error"]["code"] == mcp.INVALID_PARAMS and by_id[7]["error"]["code"] == mcp.INVALID_PARAMS
++    assert by_id[8]["result"] == {"resources": []}
++    assert by_id[9]["error"]["code"] == mcp.METHOD_NOT_FOUND
++    assert calls == [("status", {}), ("work_show", {"work_id": "T-1"})]
++    assert len(replies) == 11  # nine requests and a batch of two; the notification got none
++
++
++def test_mcp_rejects_what_is_not_a_request_without_dying():
++    replies = _serve([{"jsonrpc": "1.0", "id": 1, "method": "ping"},
++                      {"jsonrpc": "2.0", "id": 2, "method": "ping", "params": []},
++                      {"jsonrpc": "2.0", "id": 3, "method": "ping"}], lambda n, a: {"ok": True})
++    assert [r.get("error", {}).get("code") for r in replies[:2]] == [mcp.INVALID_REQUEST, mcp.INVALID_PARAMS]
++    assert replies[2]["result"] == {}
+-- 
+2.46.0.windows.1
+
+
+From 084e3fa4fd4a4191b3fa0215d5f42d5066c169b3 Mon Sep 17 00:00:00 2001
+From: architecture review <review@local>
+Date: Sun, 4 Oct 2026 11:44:50 -0400
+Subject: [PATCH 2/2] T1 follow-up: the Lead projection's MCP server runs with
+ Code Mode off
+
+OpenCode 2.0.18 puts MCP servers behind Code Mode by default: the model receives an `execute` JavaScript tool and a
+partial catalog in its instructions, never the server's tools as function tools. A live probe against the real
+binary (AEW-reviews/architecture-dcd43f1/T9-live-probe-1-results.md) showed the twelve `aew_*` tools absent from the
+model request until the server entry set `codemode: false`; with it, all twelve are function tools (11,178 bytes).
+The capability probe now requires the `codemode` key in Mcp.LocalConfigEncoded; the Lead golden is regenerated.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/aew/harness/opencode/capabilities.py            | 2 +-
+ src/aew/harness/opencode/projection.py              | 6 +++++-
+ tests/fixtures/opencode/projection-lead.golden.json | 1 +
+ 3 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/aew/harness/opencode/capabilities.py b/src/aew/harness/opencode/capabilities.py
+index 045d520..4613fe7 100644
+--- a/src/aew/harness/opencode/capabilities.py
++++ b/src/aew/harness/opencode/capabilities.py
+@@ -73,7 +73,7 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
+     "Permission.Rule": {"action": S, "resource": S, "effect": S},
+     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
+                            "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O},
+-    "Mcp.LocalConfigEncoded": {"type": S, "command": A},  # the Lead surface's MCP server (T1)
++    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B},  # the Lead surface's MCP server (T1)
+     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
+     "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
+ }
+diff --git a/src/aew/harness/opencode/projection.py b/src/aew/harness/opencode/projection.py
+index dfd57c4..3ed7689 100644
+--- a/src/aew/harness/opencode/projection.py
++++ b/src/aew/harness/opencode/projection.py
+@@ -248,7 +248,11 @@ def lead_config(guide: str = "") -> dict[str, Any]:
+     # The typed Lead surface (T1): OpenCode spawns `aew lead mcp` in the TUI's curated environment, which holds the
+     # broker's coordinates and no credential; its tools appear as `aew_<name>`.
+     return {"share": "disabled", "default_agent": LEAD_AGENT,
+-            "mcp": {"servers": {SERVER_NAME: {"type": "local", "command": ["aew", "lead", "mcp"]}}},
++            "mcp": {"servers": {SERVER_NAME: {"type": "local", "command": ["aew", "lead", "mcp"],
++                                              # Code Mode (2.0.18's default) hides MCP tools behind an `execute`
++                                              # JavaScript runtime and a partial catalog; off, the tools are the
++                                              # model's function tools (live probe, review T9).
++                                              "codemode": False}}},
+             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
+                                     "system": system, "permissions": LEAD_RULES}},
+             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}
+diff --git a/tests/fixtures/opencode/projection-lead.golden.json b/tests/fixtures/opencode/projection-lead.golden.json
+index d27e3c7..ff1a182 100644
+--- a/tests/fixtures/opencode/projection-lead.golden.json
++++ b/tests/fixtures/opencode/projection-lead.golden.json
+@@ -109,6 +109,7 @@
+  "mcp": {
+   "servers": {
+    "aew": {
++    "codemode": false,
+     "command": [
+      "aew",
+      "lead",
+-- 
+2.46.0.windows.1
+

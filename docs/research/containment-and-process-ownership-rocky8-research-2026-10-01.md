@@ -1,6 +1,6 @@
 # Research: filesystem containment and process ownership on Rocky Linux 8
 
-- **Status:** research input for the designer, not governing. §8 records the designer's decisions on Q3 and E13 (2026-10-01) and §9 the probe results on WSL; nothing here is implemented.
+- **Status:** research input for the designer, not governing. §8 records the designer's decisions on Q3 and E13 (2026-10-01) and §9 the probe results on WSL. Since 2026-10-05 the governing copy of §8 is the decision record [`decisions-2026-10-01-containment-and-integration-queue.md`](../design/decisions-2026-10-01-containment-and-integration-queue.md) §1; §8 stays here as the record of what was asked. F2 and E13 were built in M4-B (2026-10-03).
 - **Date:** 2026-10-01, after M3's acceptance.
 - **Feeds:**
   - `future-work.md` F2 (real filesystem containment) and its gate, "before real-repository dogfood";

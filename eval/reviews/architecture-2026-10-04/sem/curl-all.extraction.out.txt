@@ -1,0 +1,80 @@
+  100/1379 TUs, 20.4s
+  200/1379 TUs, 38.4s
+  300/1379 TUs, 61.5s
+  400/1379 TUs, 79.8s
+  500/1379 TUs, 93.6s
+  600/1379 TUs, 108.5s
+  700/1379 TUs, 125.1s
+  800/1379 TUs, 140.7s
+  900/1379 TUs, 156.6s
+  1000/1379 TUs, 172.4s
+  1100/1379 TUs, 188.5s
+  1200/1379 TUs, 205.2s
+  1300/1379 TUs, 223.1s
+{
+ "tus": 1379,
+ "tus_failed": 1,
+ "tus_partial": 0,
+ "total_s": 241.53,
+ "parse_ms_mean": 28.6,
+ "walk_ms_mean": 116.6,
+ "includes": 261744,
+ "symbols": 1192397,
+ "function_definitions": 7031,
+ "function_declarations_only": 186827,
+ "calls_direct": 35952,
+ "calls_indirect": 2615,
+ "calls_unresolved": 18,
+ "address_taken": 1100,
+ "table_refs": 937,
+ "macro_uses_main": 48331,
+ "includes_by_class": {
+  "project": 34264,
+  "generated": 1261,
+  "system": 226219
+ },
+ "distinct_function_definitions": 2490,
+ "function_definitions_seen_in_several_tus": 1934,
+ "defines_distinct": [
+  "BUILDING_CURL",
+  "BUILDING_LIBCURL",
+  "CURL_HIDDEN_SYMBOLS",
+  "CURL_NO_GETADDRINFO_OVERRIDE",
+  "CURL_NO_OLDIES",
+  "CURL_STATICLIB",
+  "HAVE_CONFIG_H",
+  "LIB1156",
+  "LIB1301",
+  "LIB1485",
+  "LIB1500",
+  "LIB1501",
+  "LIB1502",
+  "LIB1503",
+  "LIB1504",
+  "LIB1505",
+  "LIB1506",
+  "LIB1507",
+  "LIB1508",
+  "LIB1509",
+  "LIB1510",
+  "LIB1511",
+  "LIB1512",
+  "LIB1513",
+  "LIB1514",
+  "LIB1515",
+  "LIB1517",
+  "LIB1518",
+  "LIB1520",
+  "LIB1521",
+  "LIB1522",
+  "LIB1523",
+  "LIB1525",
+  "LIB1526",
+  "LIB1527",
+  "LIB1528",
+  "LIB1529",
+  "LIB1530",
+  "LIB1531",
+  "LIB1532"
+ ]
+}

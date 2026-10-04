@@ -1,0 +1,9 @@
+repo=<reviewer-home>/GitHub/Agentic-Engineering-Workflow commit=dcd43f1901b9999ec65ae6c84490e319384861df tracked=930
+record: 27934 bytes, 1127 lines; sha256 2313948633afd0d9
+imports: 217 modules, 578 intra-repo edges, 0 unparseable, capped=False
+observed_paths (object reads): 219 files + the ls-files listing
+sections (ms): ls_files 24.8, directories 7.4, languages 2.2, build_system 0.0, entry_points 21.6, test_locations 21.4, generated_and_vendor 22.1, semantic_prerequisites 0.1, imports 496.0
+run 1: total 597.4 ms, sha256 2313948633afd0d9
+run 2: total 589.4 ms, sha256 2313948633afd0d9
+run 3: total 592.7 ms, sha256 2313948633afd0d9
+deterministic across repeats: True

@@ -44,8 +44,9 @@ where = ["src"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-# web/ has its own lint (web.yml); the dogfood fixture is a sample project under evaluation, not AEW code.
-extend-exclude = ["web", "eval/m3/dogfood/fixture"]
+# web/ has its own lint (web.yml); the dogfood fixture is a sample project under evaluation, not AEW code;
+# eval/reviews holds the independent reviews' probe scripts as they ran (their records are in docs/archive/reviews).
+extend-exclude = ["web", "eval/m3/dogfood/fixture", "eval/reviews"]
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, bugbear, Bandit's security rules, pyupgrade, import order.

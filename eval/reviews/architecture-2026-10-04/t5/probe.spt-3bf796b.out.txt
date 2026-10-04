@@ -1,0 +1,9 @@
+repo=<reviewer-home>/GitHub/security-platform-toolchain commit=3bf796be69313638d9d0261dfeeba31d0d60e6a9 tracked=330
+record: 6762 bytes, 338 lines; sha256 2c7d295621a33be4
+imports: 32 modules, 0 intra-repo edges, 0 unparseable, capped=False
+observed_paths (object reads): 33 files + the ls-files listing
+sections (ms): ls_tree 45.2, directories 4.1, languages 0.8, build_system 0.0, entry_points 0.0, test_locations 0.6, generated_and_vendor 21.6, semantic_prerequisites 0.0, imports 74.7
+run 1: total 147.7 ms, sha256 2c7d295621a33be4
+run 2: total 119.0 ms, sha256 2c7d295621a33be4
+run 3: total 122.9 ms, sha256 2c7d295621a33be4
+deterministic across repeats: True

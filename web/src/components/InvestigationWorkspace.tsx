@@ -6,8 +6,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigationType, useSearchParams } from 'react-router-dom';
 import { CopyDashboardLink } from './CopyDashboardLink';
+import { focusBelowHeader } from './InvestigationTabs';
 const WorkspaceContext = createContext<string | null>(null);
 export function useWorkspaceCollection() {
   return useContext(WorkspaceContext);
@@ -34,6 +35,63 @@ export function InvestigationWorkspace({
     ),
     [pane, setPane] = useState('results');
   const heading = useRef<HTMLHeadingElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const resultLink = useRef<HTMLAnchorElement | null>(null);
+  const navigationType = useNavigationType();
+  const navigationRef = useRef(navigationType);
+  useEffect(() => { navigationRef.current = navigationType; }, [navigationType]);
+  const workPane = collection === 'work' ? params.get('work_pane') : null;
+  const activePane =
+    workPane === 'results' || workPane === 'detail' ? workPane : pane;
+  function switchPane(value: 'results' | 'detail') {
+    setPane(value);
+    if (collection === 'work')
+      setParams(old => {
+        const next = new URLSearchParams(old);
+        next.set('work_pane', value);
+        return next;
+      });
+  }
+  useEffect(() => {
+    if (collection !== 'work') return;
+    const showingResults = workPane === 'results';
+    if (!showingResults && (!narrow || !selected || activePane !== 'detail')) return;
+    const root = showingResults ? resultsRef.current : detailRef.current;
+    if (!root) return;
+    let cancelled = false;
+    let frame = 0;
+    let scheduled = false;
+    function target() {
+      if (showingResults) {
+        const link = resultLink.current;
+        return navigationRef.current === 'POP' && link?.isConnected && root!.contains(link)
+          ? link : root!.querySelector<HTMLElement>('h1');
+      }
+      return [...root!.querySelectorAll<HTMLElement>('[data-work-heading]')]
+        .find(element => element.dataset.workHeading === selected) ?? null;
+    }
+    const schedule = () => {
+      if (scheduled || !target()) return;
+      scheduled = true;
+      // History restores document scroll after the route update. Wait for that
+      // restoration before bringing the actual focus target below the header.
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (!cancelled) focusBelowHeader(target());
+          observer.disconnect();
+        });
+      });
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-work-heading'] });
+    schedule(); // Detail may already be cached; otherwise wait for its heading.
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [collection, workPane, selected, narrow, activePane]);
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 1023px)');
     if (!media) return;
@@ -58,7 +116,7 @@ export function InvestigationWorkspace({
             onClick={() => {
               setParams((old) => {
                 const p = new URLSearchParams(old);
-                for (const k of ['selected', 'inspector', 'field', ...(collection === 'journal' ? ['panel'] : [])]) p.delete(k);
+                for (const k of ['selected', 'inspector', 'field', ...(collection === 'work' ? ['work_pane'] : []), ...(collection === 'journal' ? ['panel'] : [])]) p.delete(k);
                 return p;
               });
               setPane('results');
@@ -77,14 +135,14 @@ export function InvestigationWorkspace({
           aria-label="Workspace pane"
         >
           <button
-            aria-pressed={pane === 'results'}
-            onClick={() => setPane('results')}
+            aria-pressed={activePane === 'results'}
+            onClick={() => switchPane('results')}
           >
             {resultsLabel}
           </button>
           <button
-            aria-pressed={pane === 'detail'}
-            onClick={() => setPane('detail')}
+            aria-pressed={activePane === 'detail'}
+            onClick={() => switchPane('detail')}
           >
             Detail <span aria-hidden="true">· {selected}</span>
           </button>
@@ -96,19 +154,26 @@ export function InvestigationWorkspace({
         }
       >
         <section
+          ref={resultsRef}
+          onClickCapture={event => {
+            if (collection !== 'work') return;
+            const link = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
+            if (link && new URL(link.href).searchParams.has('selected')) resultLink.current = link;
+          }}
           className="investigation-results"
-          hidden={narrow && selected !== '' && pane === 'detail'}
+          hidden={narrow && selected !== '' && activePane === 'detail'}
           aria-label="Investigation results"
         >
           {results}
         </section>
         {selected && (
           <section
+            ref={detailRef}
             className="investigation-detail"
-            hidden={narrow && pane === 'results'}
+            hidden={narrow && activePane === 'results'}
             aria-label="Selected record detail"
           >
-            {detail(selected, !narrow || pane === 'detail')}
+            {detail(selected, !narrow || activePane === 'detail')}
           </section>
         )}
       </div>

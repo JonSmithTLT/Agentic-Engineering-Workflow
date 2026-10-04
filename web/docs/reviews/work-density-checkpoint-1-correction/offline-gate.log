@@ -1,0 +1,155 @@
+v22.22.2
+10.9.7
+3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2  package-lock.json
+d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f  /opt/spt-frontend/frontend-npm-manifest.json
+9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246  /opt/spt-frontend/SHA256SUMS
+
+added 395 packages in 6s
+
+> @aew/read-only-dashboard@0.1.0 generate:types
+> openapi-typescript ../docs/design/dashboard-api-v1-provisional.yaml -o src/api/types.ts
+
+✨ openapi-typescript 7.13.0
+🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [120.2ms]
+Accepted API 0.1.2: 68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691
+
+> @aew/read-only-dashboard@0.1.0 check:scenario
+> node --experimental-strip-types scripts/scenario-artifact.mjs
+
+Scenario configuration artifacts match their runtime schema
+Journal preview schema and fixture digests match
+Investigation preview artifacts and fixtures match
+Evidence preview artifacts and fixture identities match
+Execution preview artifacts and fixture identities match
+
+> @aew/read-only-dashboard@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @aew/read-only-dashboard@0.1.0 lint
+> eslint .
+
+
+> @aew/read-only-dashboard@0.1.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90m/tmp/aew/web[39m
+
+ [32m✓[39m tests/w04-investigation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 272[2mms[22m[39m
+ [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 297[2mms[22m[39m
+ [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 599[2mms[22m[39m
+   [33m[2m✓[22m[39m busy revisions every 3s for 60s catch up unequal polling cadences without a persistent warning [33m 311[2mms[22m[39m
+ [32m✓[39m tests/execution.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 250[2mms[22m[39m
+ [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 551[2mms[22m[39m
+   [33m[2m✓[22m[39m bootstraps project before dependent capabilities and Work requests [33m 500[2mms[22m[39m
+ [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1310[2mms[22m[39m
+   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 1271[2mms[22m[39m
+ [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 1187[2mms[22m[39m
+   [33m[2m✓[22m[39m developer tabs support keyboard selection, only demo mounts its lab, Escape closes [33m 361[2mms[22m[39m
+   [33m[2m✓[22m[39m composed replay conditional 304 preserves generation and malformed refresh preserves cached content [33m 379[2mms[22m[39m
+ [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 1255[2mms[22m[39m
+   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 1228[2mms[22m[39m
+ [32m✓[39m tests/evidence.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 2273[2mms[22m[39m
+     [33m[2m✓[22m[39m pages at UTF-8 boundaries and does not accept another artifact cursor [33m 1119[2mms[22m[39m
+     [33m[2m✓[22m[39m bounds and binds collection cursors to filters and project [33m 1073[2mms[22m[39m
+ [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1475[2mms[22m[39m
+     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 1429[2mms[22m[39m
+ [32m✓[39m tests/refresh.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 205[2mms[22m[39m
+ [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 1041[2mms[22m[39m
+   [33m[2m✓[22m[39m FR-1: every contract link relation is recognized and navigates by relation; unknown targets stay text [33m 484[2mms[22m[39m
+   [33m[2m✓[22m[39m FR-2: advancing every 3 seconds for 60 seconds catches slower and manual projections up without a persistent warning [33m 327[2mms[22m[39m
+ [32m✓[39m tests/transport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 174[2mms[22m[39m
+ [32m✓[39m tests/execution-reader.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 482[2mms[22m[39m
+   [33m[2m✓[22m[39m retries the failed child expansion rather than the already loaded root [33m 334[2mms[22m[39m
+Not implemented: Window's scrollBy() method
+ [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 2776[2mms[22m[39m
+   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 891[2mms[22m[39m
+   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 1498[2mms[22m[39m
+   [33m[2m✓[22m[39m shrinking a refreshed page clamps the virtual window rather than leaving blank rows [33m 329[2mms[22m[39m
+ [32m✓[39m tests/w03-journal.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 2630[2mms[22m[39m
+     [33m[2m✓[22m[39m validates all authored cases and rejects raw prompts and malformed timestamps [33m 1445[2mms[22m[39m
+     [33m[2m✓[22m[39m server pages 10000 entries by 50 and binds cursors to filters [33m 494[2mms[22m[39m
+     [33m[2m✓[22m[39m has explicit missing explanation and evidence and preserves selection under filters [33m 426[2mms[22m[39m
+ [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m19 tests[22m[2m)[22m[33m 3639[2mms[22m[39m
+     [33m[2m✓[22m[39m reveals phone child-filter results, retains the selected parent and restores results links [33m 1617[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 442[2mms[22m[39m
+   [33m[2m✓[22m[39m explicit read-session reset remounts graph and drops an old expansion even when fetch ignores abort [33m 363[2mms[22m[39m
+ [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 4066[2mms[22m[39m
+   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 929[2mms[22m[39m
+   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 1301[2mms[22m[39m
+   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 1190[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m19 passed[39m[22m[90m (19)[39m
+[2m      Tests [22m [1m[32m167 passed[39m[22m[90m (167)[39m
+[2m   Start at [22m 21:24:05
+[2m   Duration [22m 7.42s[2m (transform 7.73s, setup 6.15s, import 14.77s, tests 24.52s, environment 26.40s)[22m
+
+
+> @aew/read-only-dashboard@0.1.0 build
+> vite build && node scripts/check-production.mjs
+
+vite v8.0.10 building client environment for production...
+[2K
+transforming...✓ 442 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.49 kB │ gzip:   0.30 kB
+dist/assets/index-DWAoQmdF.css   39.63 kB │ gzip:   8.79 kB
+dist/assets/index-JdX3sJkV.js   597.28 kB │ gzip: 177.08 kB
+
+✓ built in 399ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+Production build excludes fixtures and mock initialization
+
+> @aew/read-only-dashboard@0.1.0 build:demo
+> vite build --mode demo
+
+vite v8.0.10 building client environment for demo...
+[2K
+transforming...✓ 740 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-demo/index.html                                          0.74 kB │ gzip:   0.37 kB
+dist-demo/assets/index-DWAoQmdF.css                          39.63 kB │ gzip:   8.79 kB
+dist-demo/assets/registration-D0DhxDP1.js                     0.35 kB │ gzip:   0.28 kB
+dist-demo/assets/jsx-runtime-Cu7Iu-c-.js                      0.43 kB │ gzip:   0.30 kB
+dist-demo/assets/DemoTools-B3Wk4owS.js                        0.55 kB │ gzip:   0.36 kB
+dist-demo/assets/ui-3Lf7jW_e.js                               0.56 kB │ gzip:   0.38 kB
+dist-demo/assets/rolldown-runtime-S-ySWqyJ.js                 0.69 kB │ gzip:   0.42 kB
+dist-demo/assets/Reference-HCtiaN-k.js                        0.99 kB │ gzip:   0.57 kB
+dist-demo/assets/registration-CHCqQtRe.js                     1.65 kB │ gzip:   0.81 kB
+dist-demo/assets/registration-gr-sUGu0.js                     1.81 kB │ gzip:   0.90 kB
+dist-demo/assets/registration-Dmq1U_zs.js                     1.82 kB │ gzip:   0.92 kB
+dist-demo/assets/ContextReferences-IHtIy1vf.js                1.86 kB │ gzip:   0.89 kB
+dist-demo/assets/schema-bqcOYULz.js                           1.88 kB │ gzip:   0.92 kB
+dist-demo/assets/schema-CRjb6kdN.js                           3.57 kB │ gzip:   1.35 kB
+dist-demo/assets/schema-BgidspsQ.js                           3.90 kB │ gzip:   1.60 kB
+dist-demo/assets/schema-DW2XXBLI.js                           4.53 kB │ gzip:   1.72 kB
+dist-demo/assets/execution-fixtures.manifest-BWwzP4o_.js      4.62 kB │ gzip:   1.26 kB
+dist-demo/assets/associations-PzH66BJv.js                     8.36 kB │ gzip:   3.79 kB
+dist-demo/assets/Lab-RKfL0Ok-.js                             10.27 kB │ gzip:   3.70 kB
+dist-demo/assets/PacketInspector-Dhs-TN4H.js                 12.70 kB │ gzip:   4.34 kB
+dist-demo/assets/Controls-CRiK9QuY.js                        13.15 kB │ gzip:   4.56 kB
+dist-demo/assets/runtime-VxcMbZHF.js                         13.63 kB │ gzip:   5.28 kB
+dist-demo/assets/Comparison-Dc4r0-RI.js                      13.85 kB │ gzip:   4.53 kB
+dist-demo/assets/transport-Dzh_oLTu.js                       14.81 kB │ gzip:   5.47 kB
+dist-demo/assets/Journal-fWzFcdX5.js                         18.47 kB │ gzip:   5.85 kB
+dist-demo/assets/Reader-DJhLLYP6.js                          21.36 kB │ gzip:   6.59 kB
+dist-demo/assets/Recorder-CChO-3LA.js                        29.62 kB │ gzip:   8.15 kB
+dist-demo/assets/projector-B9d0a4fz.js                       30.68 kB │ gzip:   9.79 kB
+dist-demo/assets/browser-DJso0CrX.js                        262.97 kB │ gzip:  88.63 kB
+dist-demo/assets/index-BU2O3Eso.js                          588.76 kB │ gzip: 174.83 kB
+dist-demo/assets/worlds-Cfp5AcLf.js                       1,125.32 kB │ gzip:  43.48 kB
+
+✓ built in 501ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

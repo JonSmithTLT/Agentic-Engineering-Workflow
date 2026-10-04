@@ -1,0 +1,30 @@
+# Known false positives in history, scoped by commit, path, rule and line.
+#
+# Commit d7ef742 (docs/consolidation, 2026-10-05) added the raw OpenCode and Codex model-request captures of the
+# architecture review's T9 probe and the T3 log-growth probe's console output. The 22 `prompt_cache_key` values in
+# the captures and the one engine `token_id` in the console output are not credentials. The captures were removed
+# from the tree before the branch merged and the token id was redacted; these entries keep a history scan of main
+# (`gitleaks git`) clean.
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/log_growth_probe.out.txt:generic-api-key:34
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V0.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V1.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V1_turn2.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V2.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V2_turn2.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V3.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V3_turn2.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V4.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V4_turn2.json:generic-api-key:307
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V5.json:generic-api-key:816
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V5_turn2.json:generic-api-key:816
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V6.json:generic-api-key:153
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/request_V6_turn2.json:generic-api-key:153
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C0.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C1.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C2.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C3.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C4.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C5.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C6.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C7.json:generic-api-key:422
+d7ef742bd602523b02583a7d84b716f09b83202a:eval/reviews/architecture-2026-10-04/t9/codex_request_C8.json:generic-api-key:422

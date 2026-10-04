@@ -1,0 +1,17 @@
+== case 1: integration recovery (base ce794fb, truth 4 existing src + 0 existing test files; 1 files created by the change: ['test_m4_integration_recovery.py'])
+  src: seeds only            predicted  16 truth   4 hit   3 recall 0.75 precision 0.19
+     missed: ['src/aew/workspace/git.py']
+  src: seeds + radius 1      predicted  44 truth   4 hit   4 recall 1.00 precision 0.09
+  tests: named symbols       predicted  82 truth   0 hit   0 recall 0.00 precision 0.00
+== case 2: mutating concurrency above 1 (M4-C) (base ce794fb, truth 3 existing src + 4 existing test files; 0 files created by the change: [])
+  src: seeds only            predicted  15 truth   3 hit   3 recall 1.00 precision 0.20
+  src: seeds + radius 1      predicted  37 truth   3 hit   3 recall 1.00 precision 0.08
+  tests: named symbols       predicted  76 truth   4 hit   3 recall 0.75 precision 0.04
+     missed: ['tests/helpers/invariants.py']
+== case 3: one dispatch predicate (M4-A) (base 4cc8bd8, truth 24 existing src + 5 existing test files; 10 files created by the change: ['assurance.py', 'assurance_ops.py', 'dispatch.py', 'primitives.p
+  src: seeds only            predicted   8 truth  24 hit   7 recall 0.29 precision 0.88
+     missed: ['src/aew/cli/main.py', 'src/aew/engine/base.py', 'src/aew/engine/evidence_ops.py', 'src/aew/engine/gates.py', 'src/aew/engine/guide.py', 'src/aew/engine/hierarchy_ops.py', 'src/aew/engin
+  src: seeds + radius 1      predicted  22 truth  24 hit  13 recall 0.54 precision 0.59
+     missed: ['src/aew/cli/main.py', 'src/aew/engine/gates.py', 'src/aew/engine/guide.py', 'src/aew/engine/integration_ops.py', 'src/aew/engine/lock.py', 'src/aew/engine/store.py', 'src/aew/harness/br
+  tests: named symbols       predicted  21 truth   5 hit   3 recall 0.60 precision 0.14
+     missed: ['tests/acceptance/test_at8_at13_hierarchy.py', 'tests/unit/test_guide.py']

@@ -1,0 +1,130 @@
+whole extraction 133,911,266 bytes (~33,477,816 tokens); direct-edge list alone 566,927 bytes (~141,731 tokens)
+  Curl_cf_def_cntrl            define                 351 bytes (~87 tokens)
+  Curl_cf_def_cntrl            callers                763 bytes (~190 tokens)
+  Curl_cf_def_cntrl            callees                256 bytes (~64 tokens)
+  Curl_cf_def_cntrl            neighborhood r=1       893 bytes (~223 tokens)
+  Curl_cf_def_cntrl            neighborhood r=2     1,467 bytes (~366 tokens)
+  curl_easy_perform            define                 299 bytes (~74 tokens)
+  curl_easy_perform            callers                223 bytes (~55 tokens)
+  curl_easy_perform            callees                302 bytes (~75 tokens)
+  curl_easy_perform            neighborhood r=1       314 bytes (~78 tokens)
+  curl_easy_perform            neighborhood r=2     1,243 bytes (~310 tokens)
+  Curl_altsvc_parse            define                 384 bytes (~96 tokens)
+  Curl_altsvc_parse            callers                284 bytes (~71 tokens)
+  Curl_altsvc_parse            callees                854 bytes (~213 tokens)
+  Curl_altsvc_parse            neighborhood r=1     1,711 bytes (~427 tokens)
+  Curl_altsvc_parse            neighborhood r=2    43,263 bytes (~10,815 tokens)
+  Curl_dyn_add                 define                 312 bytes (~78 tokens)
+  Curl_dyn_add                 callers              1,381 bytes (~345 tokens)
+  Curl_dyn_add                 callees                337 bytes (~84 tokens)
+  Curl_dyn_add                 neighborhood r=1     1,772 bytes (~443 tokens)
+  Curl_dyn_add                 neighborhood r=2    26,670 bytes (~6,667 tokens)
+=== callers Curl_cf_def_cntrl (table-dispatched)
+{
+ "symbol": "Curl_cf_def_cntrl",
+ "direct_callers": [],
+ "address_taken_in": [
+  {
+   "holder": "Curl_cft_h1_proxy",
+   "evidence": "lib/cf-h1-proxy.c:1084"
+  },
+  {
+   "holder": "Curl_cft_happy_eyeballs",
+   "evidence": "lib/connect.c:1122"
+  },
+  {
+   "holder": "Curl_cft_haproxy",
+   "evidence": "lib/cf-haproxy.c:205"
+  },
+  {
+   "holder": "Curl_cft_http_proxy",
+   "evidence": "lib/http_proxy.c:450"
+  },
+  {
+   "holder": "Curl_cft_setup",
+   "evidence": "lib/connect.c:1387"
+  },
+  {
+   "holder": "Curl_cft_socks_proxy",
+   "evidence": "lib/socks.c:1258"
+  },
+  {
+   "holder": "Curl_conn_cf_cntrl",
+=== define + callees Curl_altsvc_parse
+{
+ "symbol": "Curl_altsvc_parse",
+ "status": "defined",
+ "definitions": [
+  {
+   "file": "lib/altsvc.c",
+   "line": 487,
+   "linkage": "EXTERNAL"
+  }
+ ],
+ "seen_in_tus": 1,
+ "declared_in": [
+  "lib/altsvc.h"
+ ],
+{
+ "symbol": "Curl_altsvc_parse",
+ "direct": [
+  {
+   "callee": "Curl_alpnid2str",
+   "where": "project"
+  },
+  {
+   "callee": "Curl_infof",
+   "where": "project"
+  },
+  {
+   "callee": "Curl_llist_append",
+   "where": "project"
+  },
+  {
+   "callee": "alpn2alpnid",
+   "where": "project"
+  },
+  {
+   "callee": "altsvc_createid",
+   "where": "project"
+  },
+  {
+   "callee": "altsvc_flush",
+   "where": "project"
+  },
+  {
+   "callee": "curl_strequal",
+   "where": "project"
+  },
+  {
+   "callee": "curlx_ultous",
+   "where": "project"
+  },
+  {
+   "callee": "getalnum",
+   "where": "project"
+  },
+  {
+=== includers
+{
+ "header": "dynbuf.h",
+ "translation_units": 77,
+ "sample": [
+{
+ "header": "curl_setup.h",
+ "translation_units": 169,
+=== defines-for
+{
+ "symbol": "Curl_altsvc_parse",
+ "tus": 5,
+ "build_defines": [
+  "BUILDING_LIBCURL",
+  "CURL_HIDDEN_SYMBOLS",
+  "HAVE_CONFIG_H",
+  "_GNU_SOURCE"
+=== evidence
+{
+ "edge": "Curl_altsvc_parse -> Curl_dyn_add",
+ "sites": [],
+ "boundary": "each site is a CALL_EXPR in the TU's AST under its compile command; the object file's call instruction agreed for 99% of direct edges in the probe (exceptions: libc builtins, constant-folded branches)"
+}

@@ -1,0 +1,65 @@
+# T6 — Network containment: probes on the real Rocky 8 kernel and a design candidate
+
+- **Status:** research note with live probes, from the independent architecture review (thread T6 of `HANDOFF.md`; `REVIEW.md` G5, F-F), 2026-10-04. Not governing. Answers the containment research's open question 5 ("network containment: out of scope for F2, or a sibling entry?") with evidence, and proposes the register entry, the label change and the two code seams.
+- **Where it ran:** the operator's Rocky Linux 8.10 VM (kernel `4.18.0-553.134.1.el8_10.x86_64`, bubblewrap 0.4.0, SELinux enforcing, `user.max_user_namespaces` 30,551, Python 3.11.13, OpenCode 2.0.18 at `~/opencode-2.0.18/opt/OpenCode/resources/opencode-cli`), under `~/aew-review/t6-net`, no sudo, the lead developer's suite held while it ran (`pgrep` check), scratch under `~/.aew-test-tmp/review-*` removed by the scripts. The earlier M4-B probes ran on WSL's kernel; these are the first network probes on an EL8 kernel.
+- **Scripts and outputs:** `repro/t6/netns_probe.py` (P1–P5) with `netns_probe.out.txt` and `netns_probe.p5.out.txt`; `repro/t6/opencode_net_probe.py` (A1, A2, B, C, and `--catalog` D, E) with `opencode_net_probe.out.txt`, `opencode_net_probe.catalog.out.txt` and the strace `opencode_net_probe.A1.trace.txt`. Everything below marked **[probe]** is read from those files; **[doc]** is documentation; **[inf]** inference; **[rec]** recommendation; **[hyp]** open.
+- **Not reopened:** M4-B's filesystem layout and labels (`os_readonly_roots`, `pid_namespace`, `network: not_provided`), ADR-0009's adapter boundary, ADR-0005 custody. This note adds a network dimension beside them.
+
+## 1. Results
+
+| # | Question | Result [probe] |
+|---|---|---|
+| P1 | What does `bwrap --unshare-net` give a run on EL8? | A namespace with only `lo` (the host has `enp0s3`, `lo`, `virbr0`). An outbound connect fails in 13 ms with `ENETUNREACH`; DNS fails in 3 ms (`Name or service not known`); binding 127.0.0.1 inside works. Nothing hangs. |
+| P2 | Does the custody bridge survive the namespace? | Yes. A **filesystem** AF_UNIX socket in a 0700 directory bound read-only into the sandbox is connectable from inside (`fs-ok`). An **abstract** AF_UNIX socket is not (`ECONNREFUSED`): abstract sockets belong to the network namespace. The bridge uses a filesystem path (`bridge.private_address`), so it keeps working unchanged. |
+| P3 | How does the supervisor reach the private server, which listens on the sandbox's own 127.0.0.1? | It cannot connect to `127.0.0.1:<port>` from the host (`ECONNREFUSED`: a different loopback). A forwarder **started inside the sandbox** that listens on a unix socket in a bound-in directory and connects to the server's loopback port works: 200 requests, median 1.88 ms, p95 2.76 ms, against 1.18 ms / 2.07 ms for plain host loopback. `nsenter` from outside is not available to an unprivileged supervisor (it needs `CAP_SYS_ADMIN` over the sandbox's user namespace). |
+| P4 | Can egress be limited to the model gateway with the provider key kept out of the sandbox? | Yes. A host-side HTTP CONNECT proxy on a unix socket with an allowlist, an in-sandbox forwarder from `127.0.0.1:3128` to that socket, and `HTTP_PROXY`/`HTTPS_PROXY` set in the sandbox: the allowed target answers (13 ms), a second local target and `example.com` are refused with 403 in 2 ms, the sandbox's environment holds no provider key, and the gateway stand-in received `Authorization: Bearer <key>` added by the proxy. |
+| P5 | Is slirp4netns an alternative? | Not as tried: `setns(CLONE_NEWNET): Operation not permitted` when attaching to bubblewrap's child from outside. It also offers no allowlist (NAT for everything), so it would not serve the goal even if attached. **[hyp]** the EPERM is the single-uid user namespace bubblewrap creates (podman succeeds because it uses `newuidmap`); not pursued. |
+| A1 | What does `opencode-cli serve` 2.0.18 fetch at startup with a shared network? | Exactly one thing: after a DNS query to the host's resolver, two TLS connections each to two Cloudflare addresses (IPv4 and IPv6), identified by A2 as **`models.opencode.ai:443`** (the model catalog). With `autoupdate: false`, `share: disabled`, `lsp: false`, `formatter: false` and `OPENCODE_DISABLE_AUTOUPDATE=1`, nothing else. Server up in 1.35 s; `/api/info` 200. |
+| A2 | Does the Bun runtime honour proxy variables? | **Yes.** With `HTTP_PROXY`/`HTTPS_PROXY` set to a host proxy the strace shows **no** non-loopback connect, and the proxy log shows `CONNECT models.opencode.ai:443`. This is what makes P4's design usable for OpenCode without patching it. |
+| B | Does `serve` work with no network at all? | Yes. Under `--unshare-net` with fresh private XDG state it announces in 0.43 s, answers `/api/info`, and `/api/model` lists 7 models (the `opencode` provider's embedded catalog) in 1.1 s. Nothing hangs or crashes; the server log is empty. |
+| C | Does a seeded catalog change that? | Copying A1's `data/opencode/opencode.db` (where the fetched catalog is stored) into the offline run gives 10 models instead of 7. The catalog cache lives in the per-run database, not under `XDG_CACHE_HOME`. |
+| D | With a configured provider (a dummy `OPENAI_API_KEY` in the server's environment) and network? | 89 models, providers `openai` and `opencode`, including `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6.1-sol-pro`, `gpt-6-luna…`, `gpt-6-sol…`. Catalog in 1.1 s. |
+| E | Same, with `--unshare-net`? | 62 models from the **embedded** catalog: `gpt-6-luna…`, `gpt-6-sol…`, `gpt-6-astra…`; **the `gpt-6.1-*` models are absent**. The adapter's pinned-model check (the model and variant must appear in `/api/model`) would therefore **fail closed offline for a model newer than the binary's embedded catalog**, and pass for an older one. |
+
+Two facts from the T1 and M4-B work that this note relies on without re-deriving: the adapter talks to the server over `http://127.0.0.1:<port>` and asserts the announced URL is loopback (`client.py` `LOOPBACK_URL`); the M4-B layout shares the network namespace by design and labels it `network: not_provided`.
+
+## 2. What the results settle
+
+1. **`--unshare-net` is viable on EL8 for the whole run tree** (P1, B): nothing in OpenCode's startup needs the network when the catalog is embedded or seeded, and the sandbox fails fast rather than hanging. The containment research's §3.2 note "network stays shared … the harness needs the model API" is true, but the need is satisfiable through a bound-in socket (P4), not only through a shared namespace.
+2. **The custody bridge needs no change** (P2). The supervisor–server link needs **one new piece**: an in-sandbox forwarder (P3), since the server listens on the sandbox's loopback. Cost about 0.7 ms per request.
+3. **The provider key can leave the sandbox entirely** (P4, A2): the proxy adds it. This closes REVIEW G5's exfiltration path (an agent with a shell in the sandbox reading the server's environment or `/proc/<pid>/environ`) and the N1 lead in one step, for OpenCode as it is.
+4. **The allowlist is the gateway and nothing else** (P4): `models.opencode.ai` is the only other startup destination (A1), and it is unnecessary when the catalog is seeded (C, E). An air-gapped deployment seeds it (T10 §5); a connected one may allow it or not.
+5. **Offline model availability is a catalog question, not a network one** (D, E): the embedded catalog is a snapshot at the binary's build; a pinned model newer than that needs a seeded `opencode.db` catalog (C) or the fetch allowed once. `aew doctor` must say which (T10 §6, "Credentials / gateway" row).
+
+## 3. Design candidate (F-F)
+
+**Label.** `network: proxy_only | shared | not_provided` on the run label (`containment.label()`), beside `filesystem` and `process_ownership`, with `egress: {allow: [host:port…], proxy: unix path}` recorded when `proxy_only`. `shared` is today's truthful value for a contained run (M4-B says `not_provided`; the distinction is whether AEW declares the shared network or merely has not addressed it; **[rec]** `shared` for M4-B's layout from now on, `not_provided` only for Windows).
+
+**Layout.** The M4-B `Layout` gains `unshare_net: bool` and `egress: tuple[str, ...]`. `bwrap_argv` adds `--unshare-net` when set. Two directories are bound read-only: the bridge's (already) and the proxy socket's.
+
+**Supervisor.** For a `proxy_only` run the supervisor starts, outside the sandbox and as its own child: (a) the **egress proxy** on a unix socket with the run's allowlist and the provider variables the execution policy names (`provider_env`), which it injects as headers for allowed hosts and never passes into the sandbox; (b) nothing else. Inside the sandbox the harness command is wrapped: a tiny **forwarder** (`aew-run netfwd`, a Python stdlib process like the probe's, about 60 lines) that listens on the sandbox loopback at a fixed port for the proxy and on a bound-in unix socket for the server, then `exec`s the harness. The supervisor's `Client` connects over the unix socket instead of TCP (`client.py` gains an address family; `Server.start` learns to read the announced port and hand it to the forwarder). The `--stdio` lease is unchanged: the forwarder is PID 1 of the sandbox and its stdin is the server's.
+
+**Adapter.** The OpenCode adapter's `server_env` adds `HTTP_PROXY`, `HTTPS_PROXY` (`http://127.0.0.1:<fixed port>`) and `NO_PROXY=127.0.0.1,localhost` for a `proxy_only` run, and drops `provider_env` from the server's environment (the proxy holds the key). Codex: `features.network_proxy` domain rules are a second line **behind** the namespace (T9 §B); the app-server over `unix://PATH` would remove the forwarder's server leg.
+
+**Self-test.** The launch self-test (M4-B `probe.py`) gains a network row for `proxy_only`: from inside the sandbox, connect to a disallowed host must fail (`ENETUNREACH` without the proxy, 403 through it), the allowed gateway must answer `HEAD`, and the bridge must answer `whoami`. Fail closed as today.
+
+**Policy.** `containment.network: proxy_only | shared` in the execution policy, default `proxy_only` on Linux once built, with `egress_allow` defaulting to the hosts the configured providers need (OpenCode's catalog host optional). `aew doctor` reports the mode and whether the catalog is seeded.
+
+**Checks.** Project checks run under the same layout today (M4-B); a check that needs the network (a package install) would fail under `proxy_only`. **[rec]** checks get their own `network` setting in `checks.yaml` (`none | proxy_only | shared`), recorded on the check's evidence; the default is `none`, which is what a test command should need.
+
+## 4. Costs and what is not shown
+
+- Per-request overhead on the supervisor path about 0.7 ms (P3); on the model path one extra unix hop and the proxy's parsing, unmeasured against a real gateway (the gateway stand-in was local).
+- Not shown: a real model turn through the proxy (needs a provider key; out of this review's scope), OpenCode's behaviour when the proxy refuses a mid-run fetch (A1 suggests there is none, but a tool such as `webfetch` would hit the proxy: it should be denied or allowed by policy, which is the right place), IPv6 edge cases, and Windows (no namespaces; `network: not_provided` stays).
+- slirp4netns is recorded as not working out of the box and not needed (P5).
+
+## 5. Register entry text (F-F, proposed)
+
+> **F-F. Network containment (Linux).** Runs get a private network namespace (`--unshare-net`) with egress only through a supervisor-owned allowlisting proxy on a unix socket that holds the provider credentials; the supervisor reaches the run's private harness server through an in-sandbox forwarder. Label `network: proxy_only`; self-test row; `checks.yaml` network setting. Probes on Rocky 8.10 (kernel 4.18, bwrap 0.4.0) show the namespace, the bridge, the forwarder (0.7 ms/request), the proxy allowlist with the key kept outside, OpenCode 2.0.18 starting with no network, its only startup fetch (`models.opencode.ai`), and the Bun runtime honouring `HTTPS_PROXY` (`AEW-reviews/architecture-dcd43f1/T6-network-containment.md`). Depends on M4-B. Before internal alpha (REVIEW §8). ADR-0009 label amendment.
+
+## 6. Questions for the designer
+
+1. Is `proxy_only` the default for Linux runs once built, with `shared` an explicit policy choice, or the reverse during M4?
+2. Should the Lead's own harness session (`aew opencode`) also run behind the proxy? It is the operator's TUI with the operator's network today; the custody argument is weaker there (the operator's key is the operator's), but the exfiltration argument applies to the Lead model's shell too.
+3. Should project checks default to `network: none` (this note) or inherit the run's mode?
+4. Is the catalog seeding (a copied `opencode.db`) acceptable as the air-gap mechanism, or should AEW ask OpenCode for an offline catalog file if one exists in a later version (the web search found an offline-mode feature request, not a shipped flag, for the version pinned)?

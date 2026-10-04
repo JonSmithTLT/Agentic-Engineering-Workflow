@@ -1,0 +1,2 @@
+control_violations(retired_candidate_fixture):
+INV-0004 (integration) is not bound to the current integration candidate

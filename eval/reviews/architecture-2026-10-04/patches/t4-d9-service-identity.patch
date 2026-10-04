@@ -1,0 +1,1053 @@
+From d9a9645d5b1adeef33f227f871493b702155c3a1 Mon Sep 17 00:00:00 2001
+From: architecture review <review@local>
+Date: Sun, 4 Oct 2026 14:33:19 -0400
+Subject: [PATCH] D9 spike: the knowledge_service principal, a closed non-Lead
+ committer (ADR-0013 Q1)
+
+Review branch on top of the T4 prototype, built after the designer accepted
+ADR-0013 question 1: one project-scoped service principal with its own
+credential kind may commit only the knowledge.* transaction family, holds no
+Lead authority, and survives Lead handoff and takeover.
+
+- control.schema.json: token kind `service`.
+- engine/authority.py: SERVICE_FAMILIES, issue_service_token (rotation is
+  re-issuance), require_service (no generation check), credential_kind.
+- engine/closure.py (new): the closed family table; the control store
+  enforces it at commit by comparing the committed state with the one to be
+  written (keys, counters, record paths, op prefix). TRANSACTION_CLOSURE.
+- engine/base.py: TxnContext.archival; Kernel.service_txn and actor_txn.
+- engine/archive_ops.py: a non-archival transaction appends its own entries
+  and archives nothing, ends no credential, prunes nothing.
+- engine/service_ops.py, cli/service_commands.py: `aew service
+  issue|revoke|show` (issue and revoke are Lead transitions).
+- engine/knowledge_ops.py, cli/knowledge_commands.py: knowledge commands
+  route by credential kind; AEW_SERVICE_TOKEN; the result names the actor.
+- harness/lead_broker.py: `service issue` is credential-emitting.
+- tests: invariants rule 30; the dispatch registry classifies the service
+  commands; test_service_identity.py (8 tests, the takeover one on a pty).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/aew/cli/commands.py                    |   3 +-
+ src/aew/cli/knowledge_commands.py          |  15 +-
+ src/aew/cli/service_commands.py            |  37 +++
+ src/aew/engine/api.py                      |  19 ++
+ src/aew/engine/archive_ops.py              |  23 +-
+ src/aew/engine/authority.py                |  58 ++++-
+ src/aew/engine/base.py                     |  47 +++-
+ src/aew/engine/closure.py                  |  83 +++++++
+ src/aew/engine/knowledge_ops.py            |  12 +-
+ src/aew/engine/service_ops.py              |  67 +++++
+ src/aew/engine/store.py                    |   6 +
+ src/aew/errors.py                          |   6 +
+ src/aew/harness/lead_broker.py             |   8 +-
+ src/aew/schemas/control.schema.json        |   3 +-
+ tests/conftest.py                          |   2 +-
+ tests/helpers/invariants.py                |  27 +-
+ tests/integration/test_service_identity.py | 276 +++++++++++++++++++++
+ tests/unit/test_dispatch_decision.py       |   3 +-
+ 18 files changed, 668 insertions(+), 27 deletions(-)
+ create mode 100644 src/aew/cli/service_commands.py
+ create mode 100644 src/aew/engine/closure.py
+ create mode 100644 src/aew/engine/service_ops.py
+ create mode 100644 tests/integration/test_service_identity.py
+
+diff --git a/src/aew/cli/commands.py b/src/aew/cli/commands.py
+index c22b0c4..5c89fa6 100644
+--- a/src/aew/cli/commands.py
++++ b/src/aew/cli/commands.py
+@@ -99,11 +99,12 @@ def register(sub: argparse._SubParsersAction) -> None:
+     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
+                                                               reason=a.reason))
+ 
+-    from aew.cli import history_commands, knowledge_commands, work_commands
++    from aew.cli import history_commands, knowledge_commands, service_commands, work_commands
+ 
+     work_commands.register(sub)
+     history_commands.register(sub)
+     knowledge_commands.register(sub)
++    service_commands.register(sub)
+ 
+ 
+ def _register_lead(sub: argparse._SubParsersAction) -> None:
+diff --git a/src/aew/cli/knowledge_commands.py b/src/aew/cli/knowledge_commands.py
+index 3b42e60..662d850 100644
+--- a/src/aew/cli/knowledge_commands.py
++++ b/src/aew/cli/knowledge_commands.py
+@@ -3,13 +3,22 @@
+ from __future__ import annotations
+ 
+ import argparse
++import os
+ from typing import Any
+ 
+-from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg
++from aew.cli.commands import _add_json, _add_lead, _engine, _read_text_arg
+ from aew.errors import UsageError
+ from aew.util import load_yaml
+ 
+ 
++def _actor_token(args: argparse.Namespace) -> str:
++    """The Lead's credential or the knowledge service's (ADR-0013 D9): --token, AEW_SERVICE_TOKEN or AEW_LEAD_TOKEN."""
++    token = getattr(args, "token", None) or os.environ.get("AEW_SERVICE_TOKEN") or os.environ.get("AEW_LEAD_TOKEN")
++    if not token:
++        raise UsageError("a credential is required: pass --token, or set AEW_SERVICE_TOKEN or AEW_LEAD_TOKEN")
++    return token
++
++
+ def _record(args: argparse.Namespace) -> dict[str, Any]:
+     text = _read_text_arg(args.file)
+     doc = load_yaml(text, source=args.file or "-")
+@@ -20,7 +29,7 @@ def _record(args: argparse.Namespace) -> dict[str, Any]:
+ 
+ def _case(a: argparse.Namespace) -> Any:
+     extractor = {"template_set": a.template_set} if a.template_set else None
+-    return _engine(a).knowledge_case(token=_lead_token(a), expect_rev=a.expect_rev, record=_record(a), hold=a.hold,
++    return _engine(a).knowledge_case(token=_actor_token(a), expect_rev=a.expect_rev, record=_record(a), hold=a.hold,
+                                      job_revision=a.job_revision, job_index=a.job_index, extractor=extractor)
+ 
+ 
+@@ -50,7 +59,7 @@ def register(sub: argparse._SubParsersAction) -> None:
+     _add_lead(q)
+     _add_json(q)
+     q.set_defaults(handler=lambda a: _engine(a).knowledge_dispose(
+-        token=_lead_token(a), expect_rev=a.expect_rev, knowledge_id=a.knowledge_id, rel=a.rel, obj=a.obj,
++        token=_actor_token(a), expect_rev=a.expect_rev, knowledge_id=a.knowledge_id, rel=a.rel, obj=a.obj,
+         decision=a.decision, note=a.note, policy_version=a.policy_version, serving_eligibility=a.serving))
+ 
+     q = ksub.add_parser("show", help="a knowledge record: its current version, its record and the fold of its "
+diff --git a/src/aew/cli/service_commands.py b/src/aew/cli/service_commands.py
+new file mode 100644
+index 0000000..d99bfdb
+--- /dev/null
++++ b/src/aew/cli/service_commands.py
+@@ -0,0 +1,37 @@
++"""`aew service`: service principals and their credentials (ADR-0013 D9 spike). Issue and revoke are Lead actions."""
++
++from __future__ import annotations
++
++import argparse
++from typing import Any
++
++from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token
++
++
++def register(sub: argparse._SubParsersAction) -> None:
++    p = sub.add_parser("service", help="service principals: issue, revoke and show their credentials")
++    ssub = p.add_subparsers(dest="service_cmd", required=True)
++
++    q = ssub.add_parser("issue", help="issue (or rotate) a service's credential; printed once, never stored (Lead)")
++    q.add_argument("service", help="the service principal, e.g. knowledge_service")
++    q.add_argument("--reason")
++    _add_lead(q)
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).service_issue(token=_lead_token(a), expect_rev=a.expect_rev,
++                                                              service=a.service, reason=a.reason))
++
++    q = ssub.add_parser("revoke", help="revoke a service's current credential (Lead)")
++    q.add_argument("service")
++    q.add_argument("--reason")
++    _add_lead(q)
++    _add_json(q)
++    q.set_defaults(handler=lambda a: _engine(a).service_revoke(token=_lead_token(a), expect_rev=a.expect_rev,
++                                                               service=a.service, reason=a.reason))
++
++    q = ssub.add_parser("show", help="every service principal and whether it holds a credential (never the secret)")
++    _add_json(q)
++    q.set_defaults(handler=_show)
++
++
++def _show(a: argparse.Namespace) -> Any:
++    return _engine(a).service_show()
+diff --git a/src/aew/engine/api.py b/src/aew/engine/api.py
+index fbb5651..7a16667 100644
+--- a/src/aew/engine/api.py
++++ b/src/aew/engine/api.py
+@@ -34,6 +34,7 @@ from aew.engine.ports import RolesPort
+ from aew.engine.resume_ops import Resume
+ from aew.engine.role_ops import Roles
+ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
++from aew.engine.service_ops import Services
+ from aew.engine.status_ops import StatusViews
+ from aew.engine.store import ControlStore
+ from aew.engine.work_ops import WorkCommands, WorkUnits
+@@ -224,6 +225,7 @@ class Engine:
+         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
+         self._history = history = HistoryCommands(k, units=units, archive=archive)
+         self._knowledge = Knowledge(k, archive=archive)
++        self._services = Services(k)
+         self._roles = roles = Roles(k, units=units)
+         self._invocations = invocations = Invocations(k, roles=roles)
+         self._inputs = inputs = Inputs(k)
+@@ -674,6 +676,23 @@ class Engine:
+     def history_reindex(self) -> dict[str, Any]:
+         return self._history.history_reindex()
+ 
++    def service_issue(self, **kw: Any) -> dict[str, Any]:
++        return self._services.service_issue(**kw)
++
++    def service_revoke(self, **kw: Any) -> dict[str, Any]:
++        return self._services.service_revoke(**kw)
++
++    def service_show(self) -> dict[str, Any]:
++        return self._services.service_show()
++
++    def service_txn(self, token: str, expect_rev: int | None, op: str, *, family: str,
++                    reason: str | None = None) -> AbstractContextManager[TxnContext]:
++        return self._k.service_txn(token, expect_rev, op, family=family, reason=reason)
++
++    def actor_txn(self, token: str, expect_rev: int | None, op: str, *, family: str,
++                  reason: str | None = None) -> AbstractContextManager[TxnContext]:
++        return self._k.actor_txn(token, expect_rev, op, family=family, reason=reason)
++
+     def knowledge_case(self, **kw: Any) -> dict[str, Any]:
+         return self._knowledge.knowledge_case(**kw)
+ 
+diff --git a/src/aew/engine/archive_ops.py b/src/aew/engine/archive_ops.py
+index 2a20796..68e166a 100644
+--- a/src/aew/engine/archive_ops.py
++++ b/src/aew/engine/archive_ops.py
+@@ -267,15 +267,22 @@ class Archive:
+         if not is_v2(state):
+             return
+         work = state["work"]
+-        order = sorted((w for w, u in work.items() if u["state"] in H.TERMINAL),
+-                       key=lambda w: (-H.depth(state, w), w))
+-        retained = self._retained(state, order)
++        if not ctx.archival:
++            # A closed-family (service) transition archives nothing and ends no credential: it appends its own
++            # entries only, and finished units wait for the next Lead commit (ADR-0013 D9).
++            order, lead_ended = [], []
++            retained = list(state.get("retained_workspaces", []))
++            retired = list(state.get("retired_observations", []))
++        else:
++            order = sorted((w for w, u in work.items() if u["state"] in H.TERMINAL),
++                           key=lambda w: (-H.depth(state, w), w))
++            retained = self._retained(state, order)
++            lead_ended = self._ended_lead_credentials(state)
++            retired = self._retired_observations(state, order)
++            # Removing a retired observation is an obligation that outlives its invocation: it stays listed until
++            # the directory is gone, and every commit retries it, so a crash or a failed removal never loses it.
++            ctx.after_commit.extend(lambda p=o["path"]: self._prune_observation(p) for o in retired)
+         archived = set(order)
+-        lead_ended = self._ended_lead_credentials(state)
+-        retired = self._retired_observations(state, order)
+-        # Removing a retired observation is an obligation that outlives its invocation: it stays listed until the
+-        # directory is gone, and every commit retries it, so a crash or a failed removal never loses it.
+-        ctx.after_commit.extend(lambda p=o["path"]: self._prune_observation(p) for o in retired)
+         if not order and not ctx.annotations and not ctx.entries and not lead_ended \
+                 and retained == state.get("retained_workspaces", []) \
+                 and retired == state.get("retired_observations", []) and self._refs_unchanged(state, archived):
+diff --git a/src/aew/engine/authority.py b/src/aew/engine/authority.py
+index 38e8476..54f4d2c 100644
+--- a/src/aew/engine/authority.py
++++ b/src/aew/engine/authority.py
+@@ -20,7 +20,7 @@ import secrets
+ from collections.abc import Callable
+ from typing import Any
+ 
+-from aew.errors import PermissionDenied, StaleAuthority
++from aew.errors import IntegrityError, PermissionDenied, StaleAuthority
+ from aew.util import sha256_text, utc_now
+ 
+ TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
+@@ -40,6 +40,12 @@ ROLE_OPERATIONS: dict[str, frozenset[str]] = {
+     "researcher": frozenset({"submit.research_record", "context.read"}),
+ }
+ 
++# Service principals (ADR-0013 D9 spike): a project-scoped identity bound to one closed transaction family, with
++# its own credential kind. Not a role (no invocation, no work unit, no operation table) and not the Lead (no
++# generation): it survives handoff and takeover, and the Lead may rotate or revoke it at any time. The family is
++# enforced twice: by ``Kernel.service_txn`` and, independently, by the control store at commit (``closure``).
++SERVICE_FAMILIES: dict[str, str] = {"knowledge_service": "knowledge"}
++
+ 
+ def issue_token(state: dict[str, Any], kind: str, scope: dict[str, Any]) -> str:
+     """Create a credential, store only its verifier, and return the secret string once."""
+@@ -193,3 +199,53 @@ def verify_offer(state: dict[str, Any], offer: str) -> str:
+     if record["revoked_at"] is not None or state["lead"]["status"] != "handoff_pending":
+         raise StaleAuthority("handoff offer is no longer valid")
+     return token_id
++
++
++# ---------------------------------------------------------------------------- service principals (ADR-0013 D9)
++
++
++def service_token_id(state: dict[str, Any], service: str) -> str | None:
++    """The service's current (unrevoked) credential id; at most one exists (oracle rule 30)."""
++    live = [t for t, r in state["tokens"].items()
++            if r["kind"] == "service" and r["scope"].get("service") == service and r["revoked_at"] is None]
++    if len(live) > 1:
++        raise IntegrityError(f"{service} holds {len(live)} live credentials; a service holds at most one", live=live)
++    return live[0] if live else None
++
++
++def issue_service_token(state: dict[str, Any], service: str, issued_by: dict[str, Any]) -> str:
++    """Issue the service's credential, revoking the previous one in the same state change (rotation is re-issuance,
++    as for invocations). The scope names the service and its family and records who issued it; it carries no
++    generation, because the credential grants no Lead authority that a new generation could supersede."""
++    family = SERVICE_FAMILIES.get(service)
++    if family is None:
++        raise PermissionDenied(f"unknown service principal {service!r}", service=service)
++    previous = service_token_id(state, service)
++    if previous:
++        revoke(state, previous, "rotated by the Lead")
++    scope = {"service": service, "family": family,
++             "issued_by": {k: issued_by.get(k) for k in ("kind", "session_label", "generation")}}
++    return issue_token(state, "service", scope)
++
++
++def require_service(state: dict[str, Any], token: str, family: str, *,
++                    archived: ArchivedCredential | None = None) -> dict[str, Any]:
++    """Return the actor record for a valid service credential bound to ``family``. No generation check: a service
++    holds no Lead authority, so a Lead handoff or takeover supersedes nothing of its; only revocation ends it."""
++    token_id, record = _lookup(state, token, archived)
++    if record["kind"] != "service":
++        raise PermissionDenied("this operation requires a service credential", presented=record["kind"])
++    scope = record["scope"]
++    if record["revoked_at"] is not None:
++        raise StaleAuthority(f"the {scope.get('service')} credential was revoked: {record.get('revoke_reason')}",
++                             token_id=token_id, revoke_reason=record.get("revoke_reason"))
++    if scope.get("family") != family:
++        raise PermissionDenied(f"{scope.get('service')} may commit only {scope.get('family')}.* transitions",
++                               service=scope.get("service"), family=scope.get("family"), requested=family)
++    return {"kind": "service", "service": scope["service"], "family": family, "token_id": token_id}
++
++
++def credential_kind(state: dict[str, Any], token: str, *, archived: ArchivedCredential | None = None) -> str:
++    """The kind of a valid credential (lead, invocation, handoff_offer, service), to route a command to the right
++    transaction. Authority itself is checked by the ``require_*`` function the route leads to."""
++    return _lookup(state, token, archived)[1]["kind"]
+diff --git a/src/aew/engine/base.py b/src/aew/engine/base.py
+index 18f459c..4dc97e6 100644
+--- a/src/aew/engine/base.py
++++ b/src/aew/engine/base.py
+@@ -5,18 +5,19 @@ Every collaborator of the Engine (register E5) receives the ``Kernel`` explicitl
+ from __future__ import annotations
+ 
+ from collections.abc import Callable, Iterator
+-from contextlib import contextmanager
++from contextlib import AbstractContextManager, contextmanager
+ from dataclasses import dataclass, field
+ from pathlib import Path
+ from typing import Any
+ 
+-from aew.engine.authority import require_lead
++from aew.engine.authority import credential_kind, require_lead, require_service
+ from aew.engine.seams import TxnFinalizers
+ from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
+ from aew.errors import (
+     AEWError,
+     IntegrityError,
+     MigrationRequired,
++    PermissionDenied,
+     ProjectNotFound,
+     StaleRevision,
+     WorkspaceNotAuthority,
+@@ -65,6 +66,9 @@ class TxnContext:
+     # The dispatch decisions this transaction computed (M4-A): the dispatch finalizer admits a new invocation or run
+     # only with one of them.
+     dispatch_decisions: list[Any] = field(default_factory=list)
++    # False for a service principal's transition (ADR-0013 D9): the archival finalizer appends the operation's own
++    # entries and archives nothing, so the commit changes only what the family owns.
++    archival: bool = True
+ 
+     @property
+     def state(self) -> dict[str, Any]:
+@@ -246,6 +250,45 @@ class Kernel:
+                 except (AEWError, OSError):
+                     pass
+ 
++    @contextmanager
++    def service_txn(self, token: str, expect_rev: int | None, op: str, *, family: str,
++                    reason: str | None = None) -> Iterator[TxnContext]:
++        """A closed-family transition by a service principal (ADR-0013 D9): a service credential bound to ``family``,
++        the expected revision, an op inside the family, no archival. The store checks the closure again at commit."""
++        if not op.startswith(family + "."):
++            raise PermissionDenied(f"{op} is outside the {family}.* family", family=family, op=op)
++        with self.store.session() as s:
++            actor = require_service(s.state, token, family, archived=self.archived_credential)
++            if expect_rev is None:
++                raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
++                                    current=s.revision)
++            if expect_rev != s.revision:
++                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
++                                    expected=expect_rev, current=s.revision)
++            if s.state.get("schema") != V2:
++                raise MigrationRequired("this project's control state is v1: a service may not write it; the Lead "
++                                        "migrates it first (`aew migrate --expect-rev N`)",
++                                        schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
++            self.check_manifest_pin(s.state)
++            ctx = TxnContext(session=s, actor=actor, archival=False)
++            yield ctx
++            self.finalizers.run(ctx)
++            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
++                     expect_rev=expect_rev, state=ctx.commit_state)
++            for effect in ctx.after_commit:
++                try:
++                    effect()
++                except (AEWError, OSError):
++                    pass
++
++    def actor_txn(self, token: str, expect_rev: int | None, op: str, *, family: str,
++                  reason: str | None = None) -> AbstractContextManager[TxnContext]:
++        """Route a transition by the credential's kind: a service credential commits through ``service_txn`` (and
++        is bound to ``family``), anything else through ``lead_txn`` (which refuses every kind but the Lead's)."""
++        if credential_kind(self.store.read(), token, archived=self.archived_credential) == "service":
++            return self.service_txn(token, expect_rev, op, family=family, reason=reason)
++        return self.lead_txn(token, expect_rev, op, reason=reason)
++
+     def new_decision(
+         self,
+         ctx: TxnContext,
+diff --git a/src/aew/engine/closure.py b/src/aew/engine/closure.py
+new file mode 100644
+index 0000000..4d1d1fc
+--- /dev/null
++++ b/src/aew/engine/closure.py
+@@ -0,0 +1,83 @@
++"""Closed transaction families, enforced where the control store commits (ADR-0013 D9 spike).
++
++A *service principal* (`knowledge_service`) holds a durable, tiny mutation authority: it may commit transitions of
++exactly one family (``knowledge.*``) and nothing else. The command layer routes such a credential through
++``Kernel.service_txn``; this module is the second, independent check: ``ControlStore`` refuses to commit a
++transition whose actor is a service unless the state it would write differs from the committed state only in the
++keys the family owns, its record writes stay under the family's paths, and the op carries the family's prefix.
++The check does not trust the caller: it compares the two states, so a bug or a hostile call site that reached the
++store with a Lead-only change under a service actor fails before anything touches disk.
++
++Nothing here applies to the Lead. A Lead transition has no closure; the Lead's authority is bounded by generation
++and revision (ADR-0005), not by a key list.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++from aew.errors import ClosureViolation
++
++
++@dataclass(frozen=True)
++class Closure:
++    family: str
++    hot_keys: frozenset[str]            # top-level control keys the family may change
++    counters: frozenset[str]            # counters it may change (``counters`` itself is always in ``hot_keys``)
++    write_prefixes: tuple[str, ...]     # record paths (relative to the AEW root) it may stage or pre-write
++
++
++# Keys the archival finalizer materializes as empty containers on the first commit that appends to the history. A
++# service commit may create them empty; it may never change them once they exist.
++MATERIALIZED = frozenset({"recent", "archived_refs", "retained_workspaces", "retired_observations"})
++
++CLOSURES: dict[str, Closure] = {
++    "knowledge": Closure(
++        family="knowledge",
++        hot_keys=frozenset({"revision", "last_transition", "counters", "knowledge", "cold"}),
++        counters=frozenset({"knowledge", "disposition", "receipt"}),
++        write_prefixes=("knowledge/", "history/"),
++    ),
++}
++
++
++def closure_for(actor: dict[str, Any]) -> Closure | None:
++    """The closure a transition's actor is bound by: none for the Lead and the operator, the family's for a service.
++    A service actor that names no known family is refused: the store never guesses an open authority."""
++    if actor.get("kind") != "service":
++        return None
++    closure = CLOSURES.get(str(actor.get("family") or ""))
++    if closure is None:
++        raise ClosureViolation(f"a service actor must name a known closed family, not {actor.get('family')!r}",
++                               family=actor.get("family"))
++    return closure
++
++
++def violations(closure: Closure, before: dict[str, Any], after: dict[str, Any], op: str,
++               write_paths: list[str]) -> list[str]:
++    problems: list[str] = []
++    if not op.startswith(closure.family + "."):
++        problems.append(f"op {op} is outside the {closure.family}.* family")
++    for key in sorted(set(before) | set(after)):
++        if before.get(key) == after.get(key) or key in closure.hot_keys:
++            continue
++        if key in MATERIALIZED and key not in before and after.get(key) in ([], {}):
++            continue
++        problems.append(f"{key} changed")
++    counters_before, counters_after = before.get("counters") or {}, after.get("counters") or {}
++    for name in sorted(set(counters_before) | set(counters_after)):
++        if counters_before.get(name) != counters_after.get(name) and name not in closure.counters:
++            problems.append(f"counters.{name} changed")
++    for path in write_paths:
++        if not path.startswith(closure.write_prefixes):
++            problems.append(f"record write outside {'/'.join(closure.write_prefixes)}: {path}")
++    return problems
++
++
++def enforce(closure: Closure, before: dict[str, Any], after: dict[str, Any], op: str,
++            write_paths: list[str]) -> None:
++    problems = violations(closure, before, after, op, write_paths)
++    if problems:
++        raise ClosureViolation(f"the {closure.family} service may not commit this transition: " + "; ".join(problems),
++                               family=closure.family, violations=problems)
+diff --git a/src/aew/engine/knowledge_ops.py b/src/aew/engine/knowledge_ops.py
+index b787a18..2ac565c 100644
+--- a/src/aew/engine/knowledge_ops.py
++++ b/src/aew/engine/knowledge_ops.py
+@@ -11,7 +11,8 @@ manifest sequence number. Hot state gains only constants: three counters, ``know
+ and the revision it covers, so ``status`` never reads the history) and ``knowledge.pending`` (a bounded list of held
+ candidates awaiting judgment, for the action projection).
+ 
+-Prototype scope: the Lead commits (``lead_txn``); the service identity the draft's D9 proposes is not modelled, so
++Committers: the Lead (``lead_txn``) or the ``knowledge_service`` principal (``service_txn``, ADR-0013 D9 spike), chosen
++by the credential's kind. The service's commits are closed to the ``knowledge.*`` family by the control store itself;
+ the closed-transaction property (oracle rule 28) is asserted by tests on what a ``knowledge.*`` commit changes.
+ """
+ 
+@@ -136,7 +137,7 @@ class Knowledge:
+                         "created_at"} & set(record))
+         if owned:
+             raise ValidationFailed("these fields are assigned by the engine and may not be supplied", fields=owned)
+-        with self.k.lead_txn(token, expect_rev, "knowledge.capture") as ctx:
++        with self.k.actor_txn(token, expect_rev, "knowledge.capture", family="knowledge") as ctx:
+             state = ctx.state
+             self._require_v2(state)
+             counters = state["counters"]
+@@ -190,7 +191,8 @@ class Knowledge:
+             ctx.refs += [knowledge_rel("case", kid, 1), receipt_rel(rid)]
+             ctx.summary = f"knowledge: {kid} {'held' if hold else 'admitted'} ({receipt['job']['revision']} -> {rid})"
+         return {"ok": True, "id": kid, "version": 1, "disposition": did, "receipt": rid, "source": source,
+-                "serving_eligibility": None if hold else serving, "revision": ctx.session.committed_revision}
++                "serving_eligibility": None if hold else serving, "actor": ctx.actor["kind"],
++                "revision": ctx.session.committed_revision}
+ 
+     # ------------------------------------------------------------------ dispositions
+ 
+@@ -201,7 +203,7 @@ class Knowledge:
+         is never rewritten."""
+         if rel not in RELS:
+             raise UsageError(f"--rel must be one of {', '.join(sorted(RELS))}")
+-        with self.k.lead_txn(token, expect_rev, "knowledge.dispose") as ctx:
++        with self.k.actor_txn(token, expect_rev, "knowledge.dispose", family="knowledge") as ctx:
+             state = ctx.state
+             self._require_v2(state)
+             subject = self._content_entry(state, knowledge_id)
+@@ -235,7 +237,7 @@ class Knowledge:
+             ctx.refs.append(rel_path)
+             ctx.summary = f"knowledge: {knowledge_id} {rel}" + (f" {obj}" if obj else "")
+         return {"ok": True, "id": did, "subject": knowledge_id, "rel": rel, "disposition_seq": seq,
+-                "revision": ctx.session.committed_revision}
++                "actor": ctx.actor["kind"], "revision": ctx.session.committed_revision}
+ 
+     # ------------------------------------------------------------------ reading
+ 
+diff --git a/src/aew/engine/service_ops.py b/src/aew/engine/service_ops.py
+new file mode 100644
+index 0000000..afc7758
+--- /dev/null
++++ b/src/aew/engine/service_ops.py
+@@ -0,0 +1,67 @@
++"""Service principals (ADR-0013 D9 spike): a project-scoped identity with its own credential kind, issued and revoked by
++the Lead, bound to one closed transaction family, independent of the Lead generation.
++
++The Lead issues the credential once (``aew service issue knowledge_service``), hands it to the service's own process
++the way its own credential travels (environment of the operator's shell, or in memory), and may rotate or revoke it
++at any time. A Lead handoff or takeover revokes every Lead credential and advances the generation; it leaves service
++credentials alone, because a service holds no Lead authority to supersede (``require_service`` checks no generation).
++The new Lead may revoke them.
++"""
++
++from __future__ import annotations
++
++from typing import TYPE_CHECKING, Any
++
++from aew.engine.authority import SERVICE_FAMILIES, issue_service_token, revoke, service_token_id
++from aew.errors import NotFound, UsageError
++
++if TYPE_CHECKING:
++    from aew.engine.base import Kernel
++
++
++class Services:
++    def __init__(self, k: Kernel) -> None:
++        self.k = k
++
++    @staticmethod
++    def _known(service: str) -> str:
++        if service not in SERVICE_FAMILIES:
++            raise UsageError(f"unknown service {service!r}; known: {', '.join(sorted(SERVICE_FAMILIES))}")
++        return SERVICE_FAMILIES[service]
++
++    def service_issue(self, *, token: str, expect_rev: int, service: str, reason: str | None = None) -> dict[str, Any]:
++        """Issue (or rotate) the service's credential: a Lead transition. The secret is returned once and never
++        stored; a previous credential is revoked in the same commit."""
++        family = self._known(service)
++        with self.k.lead_txn(token, expect_rev, "service.issue", reason=reason) as ctx:
++            previous = service_token_id(ctx.state, service)
++            secret = issue_service_token(ctx.state, service, ctx.actor)
++            ctx.summary = f"service credential {'rotated' if previous else 'issued'}: {service} ({family}.*)"
++        return {"ok": True, "service": service, "family": family, "token": secret, "token_id": secret.split(".")[1],
++                "rotated": previous, "revision": ctx.session.committed_revision}
++
++    def service_revoke(self, *, token: str, expect_rev: int, service: str, reason: str | None = None) -> dict[str, Any]:
++        self._known(service)
++        with self.k.lead_txn(token, expect_rev, "service.revoke", reason=reason) as ctx:
++            current = service_token_id(ctx.state, service)
++            if current is None:
++                raise NotFound(f"{service} holds no credential")
++            revoke(ctx.state, current, reason or "revoked by the Lead")
++            ctx.summary = f"service credential revoked: {service}"
++        return {"ok": True, "service": service, "token_id": current, "revision": ctx.session.committed_revision}
++
++    def service_show(self) -> dict[str, Any]:
++        """Every service principal: its family, whether it holds a credential, and that credential's issuance. Never
++        the secret, which exists only where the Lead sent it."""
++        state = self.k.store.read()
++        out: dict[str, Any] = {}
++        for service, family in sorted(SERVICE_FAMILIES.items()):
++            current = service_token_id(state, service)
++            record = state["tokens"].get(current) if current else None
++            history = sorted(t for t, r in state["tokens"].items()
++                             if r["kind"] == "service" and r["scope"].get("service") == service)
++            out[service] = {"family": family, "token_id": current,
++                            "issued_at": record["issued_at"] if record else None,
++                            "issued_by_generation": record["issued_by_generation"] if record else None,
++                            "credentials_ever": len(history)}
++        return {"services": out, "lead_generation": state["lead"]["generation"], "revision": state["revision"]}
+diff --git a/src/aew/engine/store.py b/src/aew/engine/store.py
+index dee76c1..ccabb68 100644
+--- a/src/aew/engine/store.py
++++ b/src/aew/engine/store.py
+@@ -55,6 +55,7 @@ from typing import Any
+ 
+ from aew import profile
+ from aew.engine import faults
++from aew.engine.closure import closure_for, enforce
+ from aew.engine.lock import FileLock
+ from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision
+ from aew.schemas import validate
+@@ -297,6 +298,11 @@ class ControlStore:
+             "refs": list(transition.refs),
+             "txn": txn_ref,
+         }
++        # A service principal's transition is closed: the store compares what it would write with what is committed
++        # and refuses anything outside the family, whatever layer asked (ADR-0013 D9).
++        closure = closure_for(transition.actor)
++        if closure is not None:
++            enforce(closure, before, after, transition.op, [w.path for w in writes] + sorted(prewritten))
+         # Validate before anything touches disk so a rejected transition leaves no trace.
+         validate("control", after, source=f"control state revision {revision}")
+         control_bytes = serialize_control(after)
+diff --git a/src/aew/errors.py b/src/aew/errors.py
+index c4cd4fc..f436c02 100644
+--- a/src/aew/errors.py
++++ b/src/aew/errors.py
+@@ -71,6 +71,12 @@ class OperatorAuthorizationRequired(PermissionDenied):
+     code = "OPERATOR_AUTHORIZATION_REQUIRED"
+ 
+ 
++class ClosureViolation(PermissionDenied):
++    """A service principal's transition would change control state outside its closed family (ADR-0013 D9)."""
++
++    code = "TRANSACTION_CLOSURE"
++
++
+ class IllegalTransition(AEWError):
+     code = "ILLEGAL_TRANSITION"
+     exit_code = 5
+diff --git a/src/aew/harness/lead_broker.py b/src/aew/harness/lead_broker.py
+index e7ce694..f1a8d42 100644
+--- a/src/aew/harness/lead_broker.py
++++ b/src/aew/harness/lead_broker.py
+@@ -44,7 +44,8 @@ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin":
+                                  "lead.whoami": {}}  # does this session hold Lead authority? (M3-D10)
+ 
+ CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
+-                       frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}))
++                       frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}),
++                       frozenset({"service", "issue"}))
+ DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
+               frozenset({"invoke", "create"}))
+ POLL_S = 1.0
+@@ -61,8 +62,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
+     """Inside a Lead session, commands that would print a credential are refused before they run."""
+     path = command_path(ns)
+     if any(p <= path for p in CREDENTIAL_EMITTING):
+-        return (f"`aew {' '.join(sorted(path))}` would put a Lead credential or offer secret into this session; "
+-                "Lead acquisition, handoff, takeover and release are operator actions at the operator's own terminal")
++        return (f"`aew {' '.join(sorted(path))}` would put a Lead, service or offer credential into this session; "
++                "Lead acquisition, handoff, takeover, release and service issuance are operator actions at the "
++                "operator's own terminal")
+     return None
+ 
+ 
+diff --git a/src/aew/schemas/control.schema.json b/src/aew/schemas/control.schema.json
+index e0b935b..18d3532 100644
+--- a/src/aew/schemas/control.schema.json
++++ b/src/aew/schemas/control.schema.json
+@@ -124,7 +124,8 @@
+             "enum": [
+               "lead",
+               "invocation",
+-              "handoff_offer"
++              "handoff_offer",
++              "service"
+             ]
+           },
+           "verifier": {
+diff --git a/tests/conftest.py b/tests/conftest.py
+index 38c6724..2d8092d 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -46,7 +46,7 @@ class CLIResult:
+ 
+ def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+     env = dict(os.environ)
+-    for key in ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_FAULT", "AEW_FAULT_MODE"):
++    for key in ("AEW_LEAD_TOKEN", "AEW_SERVICE_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_FAULT", "AEW_FAULT_MODE"):
+         env.pop(key, None)
+     if extra:
+         env.update(extra)
+diff --git a/tests/helpers/invariants.py b/tests/helpers/invariants.py
+index c8bbd22..16e4093 100644
+--- a/tests/helpers/invariants.py
++++ b/tests/helpers/invariants.py
+@@ -131,6 +131,31 @@ def cold_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> li
+     return problems
+ 
+ 
++def service_violations(state: dict[str, Any]) -> list[str]:
++    """Rule 30 (ADR-0013 D9): a service principal holds at most one live credential; a service credential names
++    its service and family and carries no Lead generation; a transition a service committed is in its family."""
++    problems: list[str] = []
++    live: dict[str, list[str]] = {}
++    for tid, rec in state["tokens"].items():
++        if rec["kind"] != "service":
++            continue
++        scope = rec["scope"]
++        if not scope.get("service") or not scope.get("family"):
++            problems.append(f"service credential {tid} names no service or family: {scope}")
++        if "generation" in scope:
++            problems.append(f"service credential {tid} is bound to a Lead generation")
++        if rec["revoked_at"] is None:
++            live.setdefault(scope.get("service", "?"), []).append(tid)
++    for service, tids in live.items():
++        if len(tids) > 1:
++            problems.append(f"{service} holds {len(tids)} live credentials: {sorted(tids)}")
++    last = state.get("last_transition") or {}
++    actor = last.get("actor") or {}
++    if actor.get("kind") == "service" and not str(last.get("op", "")).startswith(f"{actor.get('family')}."):
++        problems.append(f"a service committed {last.get('op')}, outside its {actor.get('family')} family")
++    return problems
++
++
+ def control_violations(root: Path) -> list[str]:
+     root = Path(root)
+     hot = load_control(root)
+@@ -278,7 +303,7 @@ def _evidence(root: Path, wid: str) -> dict[str, dict[str, Any]]:
+ 
+ def assert_control_invariants(project_or_root: Any) -> None:
+     root = Path(getattr(project_or_root, "root", project_or_root))
+-    problems = control_violations(root)
++    problems = control_violations(root) + service_violations(load_control(root))
+     assert not problems, "control-state invariants violated:\n  " + "\n  ".join(problems)
+ 
+ 
+diff --git a/tests/integration/test_service_identity.py b/tests/integration/test_service_identity.py
+new file mode 100644
+index 0000000..e50490b
+--- /dev/null
++++ b/tests/integration/test_service_identity.py
+@@ -0,0 +1,276 @@
++"""ADR-0013 D9 spike: one non-Lead service principal with a tiny, durable mutation authority, without a second Lead.
++
++`knowledge_service` holds its own credential kind, may commit only the `knowledge.*` family, is refused everywhere
++else, is bounded by the control store at commit (not only by the command layer), survives Lead handoff and takeover,
++and its secret reaches no file, output or agent environment.
++"""
++
++from __future__ import annotations
++
++import json
++import sys
++from pathlib import Path
++
++import pytest
++
++HERE = Path(__file__).resolve().parent
++sys.path.insert(0, str(HERE.parent / "helpers"))
++sys.path.insert(0, str(HERE))
++
++from conftest import clean_env, run_aew  # noqa: E402
++from invariants import assert_control_invariants, load_control  # noqa: E402
++
++from aew.cli.main import build_parser  # noqa: E402
++from aew.engine.api import Engine  # noqa: E402
++from aew.engine.authority import issue_token  # noqa: E402
++from aew.engine.store import TXN_DIR, Transition, serialize_control  # noqa: E402
++from aew.errors import ClosureViolation, PermissionDenied  # noqa: E402
++from aew.harness import agentenv, lead_broker  # noqa: E402
++
++CASE = {
++    "template": "attempt-outcome/v1",
++    "title": "unit check failed, then passed after the fixture was regenerated",
++    "subject_refs": ["T-0001"],
++    "root_evidence_bindings": [{"evidence_id": "INV-0001-impl-1", "relation": "derived_from",
++                                "basis": "literal_outcome"}],
++    "observed_conditions": {"platform": "windows"},
++    "fields": {"condition": "check unit failed on attempt 1", "result": "check unit passed"},
++    "source_classes": {"condition": "ENGINE_OBSERVED_WEAK_BOUNDARY", "result": "ENGINE_OBSERVED_WEAK_BOUNDARY"},
++}
++SERVICE_ACTOR_KEYS = {"kind", "service", "family", "token_id"}
++
++
++def issue(p):
++    return p.lead("service", "issue", "knowledge_service")
++
++
++def case_as(p, token: str, *extra: str):
++    return p.aew("knowledge", "case", "--file", "-", *extra, "--token", token, "--expect-rev", str(p.rev()),
++                 input=json.dumps(CASE))
++
++
++# ------------------------------------------------------------------------------------- the principal's lifecycle
++
++def test_the_lead_issues_rotates_and_revokes_the_service_credential(project):
++    p = project
++    first = issue(p)
++    assert first["family"] == "knowledge" and first["rotated"] is None and first["token"].startswith("aew1.")
++    shown = p.ok("service", "show")
++    assert first["token"] not in json.dumps(shown)  # the secret is printed once, to the Lead, and never again
++    entry = shown["services"]["knowledge_service"]
++    assert entry == {"family": "knowledge", "token_id": first["token_id"], "issued_at": entry["issued_at"],
++                     "issued_by_generation": 1, "credentials_ever": 1}
++    second = issue(p)  # rotation is re-issuance: the old credential dies in the same commit
++    assert second["rotated"] == first["token_id"]
++    tokens = load_control(p.root)["tokens"]
++    assert tokens[first["token_id"]]["revoke_reason"] == "rotated by the Lead"
++    scope = tokens[second["token_id"]]["scope"]
++    assert scope["service"] == "knowledge_service" and scope["family"] == "knowledge"
++    assert scope["issued_by"]["kind"] == "lead" and scope["issued_by"]["generation"] == 1
++    assert "generation" not in scope  # no Lead authority to supersede
++    assert case_as(p, first["token"]).error["code"] == "STALE_AUTHORITY"
++    p.lead("service", "revoke", "knowledge_service", "--reason", "done")
++    assert p.ok("service", "show")["services"]["knowledge_service"]["token_id"] is None
++    assert case_as(p, second["token"]).error["code"] == "STALE_AUTHORITY"
++    res = p.aew("service", "revoke", "knowledge_service", "--token", p.token, "--expect-rev", str(p.rev()))
++    assert res.error["code"] == "NOT_FOUND"
++    res = p.aew("service", "issue", "payroll_service", "--token", p.token, "--expect-rev", str(p.rev()))
++    assert res.error["code"] == "USAGE"
++    assert_control_invariants(p)
++
++
++# ------------------------------------------------------------------------------------- the family it may commit
++
++def test_the_service_commits_the_knowledge_family_and_changes_nothing_else(project):
++    p = project
++    tok = issue(p)["token"]
++    before = load_control(p.root)
++    res = case_as(p, tok)
++    assert res.returncode == 0, res.stderr
++    assert res.json["actor"] == "service" and res.json["id"] == "K-0001"
++    after = load_control(p.root)
++    assert after["last_transition"]["actor"] == {"kind": "service", "service": "knowledge_service",
++                                                 "family": "knowledge", "token_id": tok.split(".")[1]}
++    assert after["last_transition"]["op"] == "knowledge.capture"
++    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
++    assert changed <= {"revision", "counters", "knowledge", "cold", "last_transition",
++                       "recent", "archived_refs", "retained_workspaces", "retired_observations"}
++    for key in ("work", "invocations", "tokens", "lead"):
++        assert after[key] == before[key], key
++    assert {k for k in after["counters"] if after["counters"][k] != before["counters"].get(k)} == {
++        "knowledge", "disposition", "receipt"}
++    # the credential travels like the Lead's: in the environment of its own process, never on the command line
++    env = {**clean_env(), "AEW_SERVICE_TOKEN": tok}
++    d = run_aew("-C", str(p.root), "knowledge", "dispose", "K-0001", "--rel", "serving_hold", "--object", "AU-0001",
++                "--expect-rev", str(p.rev()), env=env)
++    assert d.returncode == 0, d.stderr
++    assert d.json["actor"] == "service"
++    assert p.ok("knowledge", "show", "K-0001")["state"]["serving_hold"] is True
++    # the Lead keeps the same surface
++    assert case_as(p, p.token).json["actor"] == "lead"
++    assert p.ok("history", "audit", "--full")["ok"]
++    assert_control_invariants(p)
++
++
++def test_the_service_credential_is_refused_everywhere_outside_its_family(project):
++    p = project
++    tok = issue(p)["token"]
++    rev = p.rev()
++    control = p.root / ".aew/state/control.yaml"
++    before = control.read_bytes()
++    attempts = [("work", "create", "ticket", "--title", "x", "--class", "1"), ("manifest", "adopt", "--reason", "x"),
++                ("service", "issue", "knowledge_service"), ("service", "revoke", "knowledge_service"),
++                ("history", "audit", "--full")]
++    for args in attempts:
++        res = p.aew(*args, "--token", tok, "--expect-rev", str(rev))
++        assert res.error["code"] == "PERMISSION_DENIED", (args, res.stdout, res.stderr)
++        assert "requires the Lead credential" in (res.stderr + res.stdout), args
++    # nor is it an invocation credential: the role surface refuses it as well
++    res = run_aew("-C", str(p.root), "whoami", env={**clean_env(), "AEW_INVOCATION_TOKEN": tok})
++    assert res.error["code"] == "PERMISSION_DENIED"
++    assert control.read_bytes() == before  # nothing was committed, nothing changed
++    assert_control_invariants(p)
++
++
++# ------------------------------------------------------------------------------------- the store's own check
++
++def test_closure_is_enforced_by_the_store_at_commit_whatever_layer_asked(project):
++    p = project
++    tok = issue(p)["token"]
++    eng = Engine.discover(p.root)
++    control = p.root / ".aew/state/control.yaml"
++    before = control.read_bytes()
++    txn_dir = p.root / ".aew" / TXN_DIR
++    staged_before = sorted(x.name for x in txn_dir.iterdir()) if txn_dir.exists() else []
++
++    def attempt(mutate, op: str = "knowledge.capture") -> str:
++        with pytest.raises(ClosureViolation) as e:
++            with eng.service_txn(tok, p.rev(), op, family="knowledge") as ctx:
++                mutate(ctx)
++        return str(e.value)
++
++    # every mutation outside the family is refused before the commit touches disk
++    assert "work changed" in attempt(lambda c: c.state["work"].__setitem__("T-0099", {"state": "PLANNED",
++                                                                                      "kind": "ticket"}))
++    assert "lead changed" in attempt(lambda c: c.state["lead"].__setitem__("generation", 99))
++    assert "tokens changed" in attempt(lambda c: issue_token(c.state, "lead", {"generation": 1}))
++    assert "tokens changed" in attempt(lambda c: c.state["tokens"].__delitem__(tok.split(".")[1]))
++    assert "counters.work changed" in attempt(lambda c: c.state["counters"].__setitem__("work", 42))
++    assert "record write outside" in attempt(lambda c: c.session.write("state/evil.yaml", "x: 1\n"))
++    assert "record write outside" in attempt(lambda c: c.session.write("evidence/T-0001/x.yaml", "x: 1\n"))
++    assert control.read_bytes() == before
++    assert (sorted(x.name for x in txn_dir.iterdir()) if txn_dir.exists() else []) == staged_before
++    # the positive control: the family's own keys commit
++    with eng.service_txn(tok, p.rev(), "knowledge.capture", family="knowledge") as ctx:
++        ctx.state["knowledge"]["pending_overflow"] = 1
++        ctx.state["counters"]["receipt"] += 1
++    assert load_control(p.root)["knowledge"]["pending_overflow"] == 1
++    rev = p.rev()
++    # an op outside the family is refused by the kernel...
++    with pytest.raises(PermissionDenied):
++        with eng.service_txn(tok, rev, "work.create", family="knowledge"):
++            pass
++    # ...and, when the kernel is bypassed, by the store: a service actor cannot commit a Lead change, an op outside
++    # its family, or without a family at all
++    store = eng.store
++    service = {"kind": "service", "service": "knowledge_service", "family": "knowledge", "token_id": "tk_x"}
++    with pytest.raises(ClosureViolation, match="counters.work changed"):
++        with store.session() as s:
++            s.state["counters"]["work"] = 7
++            s.commit(Transition(op="knowledge.capture", actor=service))
++    with pytest.raises(ClosureViolation, match="invocations changed"):  # (the dispatch finalizer guards this too)
++        with store.session() as s:
++            s.state["invocations"]["INV-9999"] = {"role": "implementer", "work_unit": "T-0001", "status": "active"}
++            s.commit(Transition(op="knowledge.capture", actor=service))
++    with pytest.raises(ClosureViolation, match="outside the knowledge"):
++        with store.session() as s:
++            s.commit(Transition(op="work.create", actor=service))
++    with pytest.raises(ClosureViolation, match="known closed family"):
++        with store.session() as s:
++            s.commit(Transition(op="knowledge.capture", actor={"kind": "service"}))
++    with pytest.raises(ClosureViolation, match="known closed family"):
++        with store.session() as s:
++            s.commit(Transition(op="payroll.pay", actor={"kind": "service", "family": "payroll"}))
++    assert p.rev() == rev
++    assert_control_invariants(p)
++
++
++# ------------------------------------------------------------------------------------- Lead rotation
++
++def test_lead_handoff_does_not_invalidate_the_service_principal(project):
++    p = project
++    tok = issue(p)["token"]
++    gen0 = load_control(p.root)["lead"]["generation"]
++    offer = p.lead("lead", "handoff", "offer")["offer"]
++    new = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))
++    assert new["generation"] == gen0 + 1
++    old_lead, p.token = p.token, new["token"]
++    res = p.aew("manifest", "adopt", "--reason", "x", "--token", old_lead, "--expect-rev", str(p.rev()))
++    assert res.error["code"] == "STALE_AUTHORITY"  # the Lead's authority rotated...
++    res = case_as(p, tok)
++    assert res.returncode == 0 and res.json["actor"] == "service"  # ...the service's did not
++    record = load_control(p.root)["tokens"][tok.split(".")[1]]
++    assert record["revoked_at"] is None and record["issued_by_generation"] == gen0
++    assert p.ok("service", "show")["services"]["knowledge_service"]["token_id"] == tok.split(".")[1]
++    # the new Lead owns the principal: it can rotate and revoke it
++    rotated = p.lead("service", "issue", "knowledge_service")
++    assert rotated["rotated"] == tok.split(".")[1]
++    assert case_as(p, tok).error["code"] == "STALE_AUTHORITY"
++    assert case_as(p, rotated["token"]).returncode == 0
++    p.lead("service", "revoke", "knowledge_service")
++    assert case_as(p, rotated["token"]).error["code"] == "STALE_AUTHORITY"
++    assert_control_invariants(p)
++
++
++@pytest.mark.skipif(sys.platform == "win32", reason="an operator takeover needs a controlling terminal (pty)")
++def test_operator_takeover_does_not_invalidate_the_service_principal(project):
++    from test_authority import _pty_takeover
++
++    p = project
++    tok = issue(p)["token"]
++    result = _pty_takeover(p.root, p.rev(), "lead-b")
++    assert result["generation"] == 2
++    assert case_as(p, p.token).error["code"] == "STALE_AUTHORITY"
++    assert case_as(p, tok).returncode == 0
++    p.token = result["token"]
++    p.lead("service", "revoke", "knowledge_service", "--reason", "new Lead, new service credential")
++    assert case_as(p, tok).error["code"] == "STALE_AUTHORITY"
++    assert_control_invariants(p)
++
++
++# ------------------------------------------------------------------------------------- custody
++
++def test_the_service_secret_reaches_no_file_output_or_agent_environment(project):
++    p = project
++    issued = issue(p)
++    tok = issued["token"]
++    secret = tok.split(".")[2]
++    assert case_as(p, tok).returncode == 0
++    for f in (p.root / ".aew").rglob("*"):
++        if f.is_file():
++            assert secret not in f.read_text(encoding="utf-8", errors="replace"), f
++    for args in (("service", "show"), ("status",), ("lead", "show"), ("knowledge", "show", "K-0001"),
++                 ("history", "list"), ("history", "show", "KR-0001")):
++        res = p.aew(*args)
++        assert secret not in (res.stdout + res.stderr), args
++    # an agent's environment is built from an allowlist: the service credential is not on it
++    env = agentenv.build({**clean_env(), "AEW_SERVICE_TOKEN": tok, "AEW_LEAD_TOKEN": p.token}, endpoint="unix:/x",
++                         key_hex="00", invocation="INV-0001", run="R-INV-0001-1", work_unit="T-0001")
++    assert "AEW_SERVICE_TOKEN" not in env and "AEW_LEAD_TOKEN" not in env
++    # the Lead broker never runs the one command that would print a service credential into a model session
++    ns = build_parser().parse_args(["service", "issue", "knowledge_service", "--expect-rev", "1"])
++    assert "credential" in (lead_broker.refuses_locally(ns) or "")
++    assert lead_broker.refuses_locally(build_parser().parse_args(["service", "show"])) is None
++    assert lead_broker.refuses_locally(build_parser().parse_args(["knowledge", "list"])) is None
++
++
++def test_a_v1_project_refuses_a_service_commit_until_it_is_migrated(project):
++    p = project
++    tok = issue(p)["token"]
++    control = p.root / ".aew/state/control.yaml"
++    state = load_control(p.root)
++    state["schema"] = "aew/control/v1"
++    state.pop("cold")
++    state.pop("knowledge")
++    control.write_bytes(serialize_control(state))
++    assert case_as(p, tok).error["code"] == "MIGRATION_REQUIRED"
+diff --git a/tests/unit/test_dispatch_decision.py b/tests/unit/test_dispatch_decision.py
+index 1aaabd1..371aa92 100644
+--- a/tests/unit/test_dispatch_decision.py
++++ b/tests/unit/test_dispatch_decision.py
+@@ -27,7 +27,8 @@ NOT_DISPATCHING = {
+     "knowledge dispose", "knowledge list", "knowledge search", "knowledge show", "lead acquire",
+     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
+-    "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
++    "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate",
++    "service issue", "service revoke", "service show", "status",
+     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
+     "work close", "work create", "work depend", "work list", "work move", "work promote", "work ready",
+     "work reclassify", "work reconcile", "work roles", "work show", "work staff", "work transition", "work tree",
+-- 
+2.46.0.windows.1
+

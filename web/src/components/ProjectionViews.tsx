@@ -22,6 +22,7 @@ import { LoadError } from './States';
 import { SinceViewed } from './SinceViewed';
 import { CopyCli } from './CopyCli';
 import { EntityAnchor } from './EntityAnchor';
+import { useWorkspaceCollection } from './InvestigationWorkspace';
 
 function locationScope() {
   return comparisonScope();
@@ -221,6 +222,7 @@ export function DetailView<T>({
   suffix = '',
   recordId,
   displayed = true,
+  presentation = 'default',
   children,
 }: {
   name: string;
@@ -231,11 +233,13 @@ export function DetailView<T>({
   suffix?: string;
   recordId?: string;
   displayed?: boolean;
+  presentation?: 'default' | 'work-summary';
   children: (data: T, projection: Projection<Envelope<T>>) => ReactNode;
 }) {
   const { id: routeId = '' } = useParams();
   const id = recordId ?? routeId;
   const location = useLocation();
+  const workspace = useWorkspaceCollection();
   const available = useCapability(name).available;
   const valid = identity.safeParse(id).success;
   const query = useProjection(
@@ -269,21 +273,28 @@ export function DetailView<T>({
           )
         ) : (
           <>
-            <div className="entity-actions">
-              <CopyCli kind={name === 'runs' ? 'invocation' : name} id={id} />
-              {name === 'evidence' && (
-                <p className="scope-note">
-                  This AEW CLI has no read-only evidence show command.
-                </p>
-              )}
-            </div>
+            {presentation === 'default' && (
+              <div className="entity-actions">
+                <CopyCli kind={name === 'runs' ? 'invocation' : name} id={id} />
+                {name === 'evidence' && (
+                  <p className="scope-note">
+                    This AEW CLI has no read-only evidence show command.
+                  </p>
+                )}
+              </div>
+            )}
+            {presentation === 'work-summary' &&
+              children(query.data.value.data, query.data)}
             <RecordInspection
               kind={(name === 'runs' ? 'invocation' : name) as EntityKind}
               record={query.data.value.data}
               source={query.data}
               failed={query.isError}
+              presentation={presentation}
+              copyDashboard={presentation !== 'work-summary' || workspace !== 'work'}
             />
-            {children(query.data.value.data, query.data)}
+            {presentation === 'default' &&
+              children(query.data.value.data, query.data)}
             {historical && (
               <button
                 onClick={() => {
@@ -301,7 +312,7 @@ export function DetailView<T>({
                 }}
               />
             )}
-            <ProjectionMetadata record={query.data} />
+            {presentation === 'default' && <ProjectionMetadata record={query.data} />}
           </>
         )}
       </CapabilityGate>

@@ -1,0 +1,36 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_publish_rechecks_new_required_role_gate _________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jon/pytest-46/test_publish_rechecks_new_requ0')
+
+    def test_publish_rechecks_new_required_role_gate(tmp_path):
+        p = sample_project(tmp_path)
+        wid, impl = to_commit_ready(p, tmp_path)
+        prepare_and_validate(p, wid)
+        p.lead('work', 'staff', wid, '--review', 'security_reviewer', '--by', 'operator', '--pin')
+        gates = p.ok('gate', 'show', wid)
+        assert gates['gates']['review_card:security_reviewer']['status'] == 'MISSING'
+        result = p.aew('integrate', 'publish', wid, '--token', p.token, '--expect-rev', str(p.rev()))
+>       assert result.returncode != 0, 'Published DONE with an unfulfilled operator-pinned review obligation: ' + result.stdout
+E       AssertionError: Published DONE with an unfulfilled operator-pinned review obligation: {
+E           "ok": true,
+E           "work_id": "T-0001",
+E           "state": "DONE",
+E           "integrated_commit": "c260f37dd06ed458bead849b8328c74fa5917a8d",
+E           "cas": "published",
+E           "worktree_sync": {
+E             "synced": 2,
+E             "paths": 2,
+E             "status": "synced"
+E           },
+E           "revision": 19
+E         }
+E         
+E       assert 0 != 0
+E        +  where 0 = CLIResult(returncode=0, stdout='{\n  "ok": true,\n  "work_id": "T-0001",\n  "state": "DONE",\n  "integrated_commit": "..."worktree_sync": {\n    "synced": 2,\n    "paths": 2,\n    "status": "synced"\n  },\n  "revision": 19\n}\n', stderr='').returncode
+
+/mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/foundation-review/test_foundation_probes.py:42: AssertionError
+=========================== short test summary info ============================
+FAILED ../../mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/foundation-review/test_foundation_probes.py::test_publish_rechecks_new_required_role_gate
+1 failed, 2 deselected in 12.00s

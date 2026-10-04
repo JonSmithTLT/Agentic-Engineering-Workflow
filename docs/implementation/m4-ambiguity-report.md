@@ -1,6 +1,6 @@
 # AEW M4: ambiguity report and plan (mutating concurrency above 1)
 
-- **Status:** draft for the operator's and designer's plan review. The planning plan was approved by the operator on 2026-10-03, with the four decisions and three clarifications recorded in §3. No M4 code is written until this plan is approved.
+- **Status:** approved by the operator and designer (2026-10-03) and in progress; see the last bullet of this list for the phase state. Earlier: a draft for plan review; the planning plan was approved by the operator on 2026-10-03, with the four decisions and three clarifications recorded in §3, and no M4 code was written until the plan was approved.
 - **Engine baseline:** `42239e1`, the ADR-0011 P3 merge (PR #24). This document is written on `main` at `0424c61` (PR #27, test and CI only, on top).
 - **Register housekeeping first:** PR #29 closes the before-M4 gate, F1, E5 and F20.1 in `future-work.md` §9. The triage in §R assumes it.
 - **§0 spike done** (variant A, engine-only, 2026-10-03). It does not change the plan (§0).
@@ -321,7 +321,7 @@ The register gained entries after the M4 triage above: from the architecture rev
 | F25 the cost and usage ledger | **In scope, before M4-H** | With the evaluation component (thread T2, F19), its first consumer, and available before M4-H's evaluation |
 | F26 minimal skill delivery | **Deferred** | Needs design or a probe (response §7); M6a |
 | F27 dogfood AEW on AEW | **Deferred** | A strategic goal once containment, real-repository and integration conditions hold |
-| Q13 accept the review response | **In design-authority reconciliation** (not M4 scope) | The lead developer's review is delivered; the designer is reconciling it, then promotes decisions to their homes |
+| Q13 accept the review response | **In design-authority reconciliation** (not M4 scope) | The lead developer's review is delivered and its three differences with the response are reconciled (designer, 2026-10-05); acceptance and the promotion of decisions to their homes remain |
 | E17 OpenCode upgrades | **In progress** | Part 1 (meaning comparison, stored-credential check) in its own PR; part 2 (2.0.22 on the live lane, `TESTED_VERSIONS`) needs the operator's binary and provider key |
 | E18 transaction outbox | **In scope** | M4-D, the full design: ADR-0012 (frozen) makes the transaction log the outbox, with typed events, complete overflow handling, sealing and a hash chain |
 | E19 amendment index | **In scope** (proposed) | M4-G: the machine-readable index now; the consolidated WC/KC re-freeze after M4 |

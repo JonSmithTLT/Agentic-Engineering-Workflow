@@ -1,0 +1,209 @@
+{
+  "source_commit": "c899c70d205b9c88cdd0314ef99f580c218e6a5f",
+  "source_tree": "6e53d2ca3f31409ab772907dafde0354fd22406d",
+  "offline_gate": "PASS",
+  "unit_tests": 167,
+  "unit_files": 19,
+  "browser_regressions": "W01-W06 and HTTP demo PASS",
+  "suite_results": {
+    "playwright-w01": {
+      "result": "PASS",
+      "groups": 16
+    },
+    "playwright-w02": {
+      "result": "PASS",
+      "groups": 11
+    },
+    "playwright-w03": {
+      "result": "PASS",
+      "groups": 12
+    },
+    "playwright-http-demo": {
+      "result": "PASS",
+      "groups": 4
+    },
+    "playwright-w04": {
+      "result": "PASS",
+      "groups": 22
+    },
+    "playwright-w05": {
+      "result": "PASS",
+      "groups": 25
+    },
+    "playwright-w06": {
+      "result": "PASS",
+      "groups": 22
+    }
+  },
+  "static_audit": "PASS; zero findings",
+  "source_clean_after_browser": true,
+  "build_unchanged_after_browser": true,
+  "independent_review": "PENDING",
+  "files": [
+    {
+      "file": "browser-http-demo.log",
+      "sha256": "4f53063e4149b387464627ff60d93fb1c8fd387718cd78c7aa70dab2e8627be4",
+      "bytes": 303
+    },
+    {
+      "file": "browser-w02.log",
+      "sha256": "8613d58d2d04a9b5f43ffa7e0a71976fccdc4a3fc174b4c68bfa41126a723dd7",
+      "bytes": 776
+    },
+    {
+      "file": "browser-w03.log",
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b",
+      "bytes": 646
+    },
+    {
+      "file": "browser-w04.log",
+      "sha256": "1cdc73323252ded26a3a85f0254e107e6e6fe26132bda605a80f581eb35a1833",
+      "bytes": 1192
+    },
+    {
+      "file": "browser-w05.log",
+      "sha256": "af6babfc541b92a1b12f8ed1537176aa9871d668d0a69df2f8043e1501e01b47",
+      "bytes": 1903
+    },
+    {
+      "file": "browser-w06.log",
+      "sha256": "2d6d8fd80f7a3ad3347ca8d49671affc4847ed2e3efc2d983ef22011551d093f",
+      "bytes": 1896
+    },
+    {
+      "file": "ci-browser.log",
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c",
+      "bytes": 1016
+    },
+    {
+      "file": "desktop-detail.jpg",
+      "sha256": "e808df7d2d67ba2194b8603626c084ba4311c6d1fcf5f03cd405ab9ddbd230ed",
+      "bytes": 165983
+    },
+    {
+      "file": "dist-demo.SHA256SUMS",
+      "sha256": "2533807f6f8320dd7c4f3c1a20853a96b46603de00c8bc0f0d286c0acb6f5cd0",
+      "bytes": 3169
+    },
+    {
+      "file": "dist-demo.after-browser.SHA256SUMS",
+      "sha256": "2533807f6f8320dd7c4f3c1a20853a96b46603de00c8bc0f0d286c0acb6f5cd0",
+      "bytes": 3169
+    },
+    {
+      "file": "dist-demo.verified.log",
+      "sha256": "1500c1f502e5c861998c123aa61a9bbf63d14a0b5e9bbeed97bc0689efb94352",
+      "bytes": 1123
+    },
+    {
+      "file": "dist.SHA256SUMS",
+      "sha256": "4821bab12dfc58be2a035bb78c96fff2e394588b581319af6dd719dec4e8b02b",
+      "bytes": 346
+    },
+    {
+      "file": "dist.after-browser.SHA256SUMS",
+      "sha256": "4821bab12dfc58be2a035bb78c96fff2e394588b581319af6dd719dec4e8b02b",
+      "bytes": 346
+    },
+    {
+      "file": "dist.verified.log",
+      "sha256": "e4aa96b351e6857db28f81a16635edb5dfea59b4b2f24c1963e5f95530a86ac1",
+      "bytes": 98
+    },
+    {
+      "file": "measure-w06.log",
+      "sha256": "bc1aa63922781b1b1ad51e8d83762b7b9d3072192218a5fc4784c8adfcacad33",
+      "bytes": 1169
+    },
+    {
+      "file": "measurements.json",
+      "sha256": "588abad1da4f68c31b011ad23129f12a329ab06c64cbba860b4fb2c89f493326",
+      "bytes": 476
+    },
+    {
+      "file": "narrow-light.jpg",
+      "sha256": "24115950f7237d7b11ad8b24990db6c673e0ebaf3aa25e83254c7d6bdb65595b",
+      "bytes": 29525
+    },
+    {
+      "file": "offline-gate.log",
+      "sha256": "3a000e6605fa037f84416d4899fce544b4d8bc8502154b3c1b174d714d724049",
+      "bytes": 11721
+    },
+    {
+      "file": "phone-child-results.jpg",
+      "sha256": "369b9dd11daf094c9af42166beeaf68ccd7b49beed60c410e1f4ccb04a493393",
+      "bytes": 73852
+    },
+    {
+      "file": "phone-dark.jpg",
+      "sha256": "2f9e46ba412844a496aa11959027593f97b584a54aaf9ee1abdf88198f1a543c",
+      "bytes": 38157
+    },
+    {
+      "file": "phone-detail.jpg",
+      "sha256": "98d564594d0a163ccc66e4ee7f17d880e60f2ad196270acfc9b3ddfc7c0c03ff",
+      "bytes": 80458
+    },
+    {
+      "file": "phone-viewport.jpg",
+      "sha256": "6c2904b228f34c043b121ff39922895c8102f3ef2c1c6dfe919a72f3ee9b1c10",
+      "bytes": 39063
+    },
+    {
+      "file": "playwright-http-demo-result.json",
+      "sha256": "6fde5f3546611b04181188ddce0b3f3faa5c30e0a8f4a6c60f5e780efbbdd21b",
+      "bytes": 634
+    },
+    {
+      "file": "playwright-w01-result.json",
+      "sha256": "79affa78e4df9670601b8ff901d0c379145735251b7b99662fa5749887da9831",
+      "bytes": 2744
+    },
+    {
+      "file": "playwright-w02-result.json",
+      "sha256": "22ad8b2ea105abf4355375b3e5d8abb5d9355dca0be190025595ad079558a18c",
+      "bytes": 127958
+    },
+    {
+      "file": "playwright-w03-result.json",
+      "sha256": "e851cf6c7ec45f821976fca8c8e8c98412df7f18eed5eb4a900cd47a40f2d265",
+      "bytes": 3487
+    },
+    {
+      "file": "playwright-w04-result.json",
+      "sha256": "0e2c372f43bbfe842a6efd57fde3b66a576f04bdf85ba69f401a7721a45f2122",
+      "bytes": 3796
+    },
+    {
+      "file": "playwright-w05-result.json",
+      "sha256": "a1e0751f1973a5d39c450be010834dd23ce5bdb1778c77157bb16364364d90fa",
+      "bytes": 4380
+    },
+    {
+      "file": "playwright-w06-result.json",
+      "sha256": "1d74044e937cfd178474a998ed857ca6e8a1b1893d27f355527976522861b3d0",
+      "bytes": 4134
+    },
+    {
+      "file": "premium-audit.json",
+      "sha256": "ac5e48c71f007cd6540258681cbfea1f5dc9a7faf09518fccafc2807a8fd7fdb",
+      "bytes": 298
+    },
+    {
+      "file": "provenance.json",
+      "sha256": "c950c57040f3e02b7aeed3b9b91ee3b4018db9f5218bfe2afb20ad12d6b0ea73",
+      "bytes": 1320
+    },
+    {
+      "file": "work-density-1440.png",
+      "sha256": "608afa2860f9e723c770e5086d35bf96595c21750b2d03803dcb05bf4e538b28",
+      "bytes": 220123
+    },
+    {
+      "file": "work-density-390.png",
+      "sha256": "40641aff3dd7d57650c178bc8e150a72857d2f81471206196a0b229210fe5727",
+      "bytes": 116964
+    }
+  ]
+}

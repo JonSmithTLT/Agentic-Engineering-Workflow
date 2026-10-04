@@ -1,14 +1,14 @@
 {
   "date": "2026-10-04",
-  "source_commit": "5aa55dfe0bdec7b80d80e01cb2f0921ea55546c7",
-  "source_tree": "0f4316ca9d83576d4ca3e473664dc70578cbc44e",
+  "source_commit": "d15bc135f23340b7fe4e1f8039290410383d2be0",
+  "source_tree": "340519d85d09f0b8257f7caab084c4d7893c7f9c",
   "baseline_commit": "da46807d4fb35ec742f042425c347cd480ba8f65",
   "preview_sha256": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
   "fixture_manifest_sha256": "2eb3bd433f76c545d003a0ca6d584d08f876d4141b690efb6976675ea915ebe8",
   "plan_sha256": "707246d7ca3e4a59d5b836b0096b5a47aad1de0ce6594eba5ce1048e411a75b8",
   "offline_gate": {
     "result": "PASS",
-    "tests": 163,
+    "tests": 164,
     "test_files": 19,
     "node": "22.22.2",
     "npm": "10.9.7",
@@ -18,7 +18,7 @@
   },
   "browser": {
     "result": "PASS",
-    "w06_groups": 15,
+    "w06_groups": 17,
     "regressions": "W01\u2013W05 and HTTP demo passed inside committed checkout",
     "adapters": "Worker and HTTP; service workers blocked for HTTP"
   },
@@ -78,7 +78,7 @@
     }
   ],
   "commands": {
-    "freeze": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> PINNED_NODE22=<absolute pinned Node> CHROMIUM_PATH=<absolute pinned Chromium> W06_BASELINE_WEB=<frozen W05 frontend> bash web/scripts/freeze-w06-evidence.sh 5aa55dfe0bdec7b80d80e01cb2f0921ea55546c7",
+    "freeze": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> PINNED_NODE22=<absolute pinned Node> CHROMIUM_PATH=<absolute pinned Chromium> W06_BASELINE_WEB=<frozen W05 frontend> bash web/scripts/freeze-w06-evidence.sh d15bc135f23340b7fe4e1f8039290410383d2be0",
     "browser": "Inside emitted clean checkout: ci-browser, browser-w02, browser-w03, browser-http-demo, browser-w04, browser-w05, browser-w06 and measure-w06 scripts with pinned Node/Chromium",
     "verification": "Clean source status; complete production/demo manifests compared and sha256sum verified afterward",
     "premium": "audit_project.py <frozen frontend> --mode strict"

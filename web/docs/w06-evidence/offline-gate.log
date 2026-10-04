@@ -4,13 +4,13 @@ v22.22.2
 d6356958ad38cd52e4383f869a9a05b20b44fa98be22ce0240bd3b182521980f  /opt/spt-frontend/frontend-npm-manifest.json
 9b6b6030d1958c80ec6b284e03a46cc3b050cde0ad008f5157c13520b0bf3246  /opt/spt-frontend/SHA256SUMS
 
-added 395 packages in 6s
+added 395 packages in 4s
 
 > @aew/read-only-dashboard@0.1.0 generate:types
 > openapi-typescript ../docs/design/dashboard-api-v1-provisional.yaml -o src/api/types.ts
 
 ✨ openapi-typescript 7.13.0
-🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [132.3ms]
+🚀 ../docs/design/dashboard-api-v1-provisional.yaml → src/api/types.ts [84ms]
 Accepted API 0.1.2: 68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691
 
 > @aew/read-only-dashboard@0.1.0 check:scenario
@@ -36,49 +36,46 @@ Execution preview artifacts and fixture identities match
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90m/tmp/aew/web[39m
 
- [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 242[2mms[22m[39m
- [32m✓[39m tests/execution.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 141[2mms[22m[39m
- [32m✓[39m tests/w04-investigation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 239[2mms[22m[39m
- [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 914[2mms[22m[39m
-   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 878[2mms[22m[39m
- [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 389[2mms[22m[39m
- [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 425[2mms[22m[39m
-   [33m[2m✓[22m[39m bootstraps project before dependent capabilities and Work requests [33m 390[2mms[22m[39m
- [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 848[2mms[22m[39m
-   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 832[2mms[22m[39m
- [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 981[2mms[22m[39m
- [32m✓[39m tests/evidence.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1718[2mms[22m[39m
-     [33m[2m✓[22m[39m pages at UTF-8 boundaries and does not accept another artifact cursor [33m 862[2mms[22m[39m
-     [33m[2m✓[22m[39m bounds and binds collection cursors to filters and project [33m 801[2mms[22m[39m
- [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1223[2mms[22m[39m
-     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 1194[2mms[22m[39m
- [32m✓[39m tests/refresh.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 192[2mms[22m[39m
+ [32m✓[39m tests/w04-investigation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+ [32m✓[39m tests/contract.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 177[2mms[22m[39m
+ [32m✓[39m tests/execution.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 187[2mms[22m[39m
+ [32m✓[39m tests/revision-reconciliation.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 317[2mms[22m[39m
+ [32m✓[39m tests/developer-tools.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 736[2mms[22m[39m
+   [33m[2m✓[22m[39m historical graph bounds supplied references and does not automatically crawl them [33m 717[2mms[22m[39m
+ [32m✓[39m tests/w01-context.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 373[2mms[22m[39m
+   [33m[2m✓[22m[39m bootstraps project before dependent capabilities and Work requests [33m 345[2mms[22m[39m
+ [32m✓[39m tests/work-graph.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 583[2mms[22m[39m
+   [33m[2m✓[22m[39m native graph controls select, collapse, focus and zoom without issuing graph or per-node requests [33m 574[2mms[22m[39m
+ [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 768[2mms[22m[39m
+   [33m[2m✓[22m[39m FR-1: every contract link relation is recognized and navigates by relation; unknown targets stay text [33m 351[2mms[22m[39m
+ [32m✓[39m tests/w01-lab.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 803[2mms[22m[39m
+ [32m✓[39m tests/mock-projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1097[2mms[22m[39m
+     [33m[2m✓[22m[39m history cursor retains starting count despite appends and control revision changes [33m 1079[2mms[22m[39m
+ [32m✓[39m tests/refresh.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 190[2mms[22m[39m
  [32m✓[39m tests/transport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 27[2mms[22m[39m
- [32m✓[39m tests/frontend-review-findings.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 1317[2mms[22m[39m
-   [33m[2m✓[22m[39m FR-1: every contract link relation is recognized and navigates by relation; unknown targets stay text [33m 663[2mms[22m[39m
-   [33m[2m✓[22m[39m FR-2 negative control: server-pinned old 304 representations still trigger the warning without a retry storm [33m 358[2mms[22m[39m
+ [32m✓[39m tests/evidence.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1569[2mms[22m[39m
+     [33m[2m✓[22m[39m pages at UTF-8 boundaries and does not accept another artifact cursor [33m 771[2mms[22m[39m
+     [33m[2m✓[22m[39m bounds and binds collection cursors to filters and project [33m 737[2mms[22m[39m
+ [32m✓[39m tests/execution-reader.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 256[2mms[22m[39m
 Not implemented: Window's scrollBy() method
- [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 147[2mms[22m[39m
- [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 2106[2mms[22m[39m
-   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 601[2mms[22m[39m
-   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 1176[2mms[22m[39m
- [32m✓[39m tests/w03-journal.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 1933[2mms[22m[39m
-     [33m[2m✓[22m[39m validates all authored cases and rejects raw prompts and malformed timestamps [33m 747[2mms[22m[39m
-     [33m[2m✓[22m[39m server pages 10000 entries by 50 and binds cursors to filters [33m 495[2mms[22m[39m
-     [33m[2m✓[22m[39m has explicit missing explanation and evidence and preserves selection under filters [33m 393[2mms[22m[39m
- [32m✓[39m tests/execution-reader.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 135[2mms[22m[39m
- [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 2974[2mms[22m[39m
-     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 1389[2mms[22m[39m
-   [33m[2m✓[22m[39m explicit read-session reset remounts graph and drops an old expansion even when fetch ignores abort [33m 348[2mms[22m[39m
- [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 3557[2mms[22m[39m
-   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 514[2mms[22m[39m
-   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 1202[2mms[22m[39m
-   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 1268[2mms[22m[39m
+ [32m✓[39m tests/content.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m tests/w03-journal.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 1488[2mms[22m[39m
+     [33m[2m✓[22m[39m validates all authored cases and rejects raw prompts and malformed timestamps [33m 608[2mms[22m[39m
+     [33m[2m✓[22m[39m server pages 10000 entries by 50 and binds cursors to filters [33m 442[2mms[22m[39m
+ [32m✓[39m tests/work-d1.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1625[2mms[22m[39m
+   [33m[2m✓[22m[39m changing terminal state filter reaches older archived work with server filtering [33m 619[2mms[22m[39m
+   [33m[2m✓[22m[39m virtualized page renders a bounded window and provides an accessible complete-page view [33m 816[2mms[22m[39m
+ [32m✓[39m tests/w02-investigation.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 1979[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mounted results, restores URL panels with Back/Forward, and adds no Why request [33m 882[2mms[22m[39m
+ [32m✓[39m tests/core-pages.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2317[2mms[22m[39m
+   [33m[2m✓[22m[39m Runs includes invocations without harness runs and links to nested harness inspection [33m 483[2mms[22m[39m
+   [33m[2m✓[22m[39m History holds a bounded cursor window over 50000 records without requesting integrity when unsupported [33m 774[2mms[22m[39m
+   [33m[2m✓[22m[39m History annotations are separately bounded and keep content hashes and trust labels [33m 696[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m19 passed[39m[22m[90m (19)[39m
-[2m      Tests [22m [1m[32m163 passed[39m[22m[90m (163)[39m
-[2m   Start at [22m 07:11:38
-[2m   Duration [22m 6.65s[2m (transform 8.38s, setup 4.79s, import 13.96s, tests 19.51s, environment 24.21s)[22m
+[2m      Tests [22m [1m[32m164 passed[39m[22m[90m (164)[39m
+[2m   Start at [22m 08:34:32
+[2m   Duration [22m 4.65s[2m (transform 5.00s, setup 3.92s, import 9.13s, tests 14.68s, environment 19.57s)[22m
 
 
 > @aew/read-only-dashboard@0.1.0 build
@@ -92,7 +89,7 @@ dist/index.html                   0.49 kB │ gzip:   0.30 kB
 dist/assets/index-D0UYUPgP.css   39.60 kB │ gzip:   8.79 kB
 dist/assets/index-CPzqigx1.js   595.05 kB │ gzip: 176.36 kB
 
-✓ built in 375ms
+✓ built in 258ms
 [plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
@@ -109,37 +106,37 @@ rendering chunks...
 computing gzip size...
 dist-demo/index.html                                          0.74 kB │ gzip:   0.37 kB
 dist-demo/assets/index-D0UYUPgP.css                          39.60 kB │ gzip:   8.79 kB
-dist-demo/assets/registration-CVdjyi-v.js                     0.35 kB │ gzip:   0.28 kB
+dist-demo/assets/registration-CGPQUwJc.js                     0.35 kB │ gzip:   0.28 kB
 dist-demo/assets/jsx-runtime-Cu7Iu-c-.js                      0.43 kB │ gzip:   0.30 kB
 dist-demo/assets/DemoTools-B3Wk4owS.js                        0.55 kB │ gzip:   0.36 kB
-dist-demo/assets/ui-BBQEfXwC.js                               0.56 kB │ gzip:   0.38 kB
+dist-demo/assets/ui-0dnIIhK3.js                               0.56 kB │ gzip:   0.38 kB
 dist-demo/assets/rolldown-runtime-S-ySWqyJ.js                 0.69 kB │ gzip:   0.42 kB
-dist-demo/assets/Reference-A8aWz5pG.js                        0.99 kB │ gzip:   0.57 kB
-dist-demo/assets/registration-CgDSoSZS.js                     1.65 kB │ gzip:   0.81 kB
-dist-demo/assets/registration-CPHrBdXq.js                     1.81 kB │ gzip:   0.90 kB
-dist-demo/assets/registration-DABTRhUK.js                     1.82 kB │ gzip:   0.92 kB
-dist-demo/assets/ContextReferences-CV57Vj-f.js                1.83 kB │ gzip:   0.88 kB
-dist-demo/assets/schema-C-9qMNqC.js                           1.88 kB │ gzip:   0.92 kB
-dist-demo/assets/schema-Dm4HLYZe.js                           3.57 kB │ gzip:   1.35 kB
-dist-demo/assets/schema-BmX1OFwh.js                           3.90 kB │ gzip:   1.60 kB
-dist-demo/assets/schema-v4xNXhSn.js                           4.53 kB │ gzip:   1.72 kB
+dist-demo/assets/Reference-CPQTxwy3.js                        0.99 kB │ gzip:   0.57 kB
+dist-demo/assets/registration-CTU_FdLC.js                     1.65 kB │ gzip:   0.81 kB
+dist-demo/assets/registration-I35CF1Hm.js                     1.81 kB │ gzip:   0.90 kB
+dist-demo/assets/registration-B75X03Kf.js                     1.82 kB │ gzip:   0.92 kB
+dist-demo/assets/ContextReferences-C0oNQ3O1.js                1.83 kB │ gzip:   0.88 kB
+dist-demo/assets/schema-jwmCV_0n.js                           1.88 kB │ gzip:   0.92 kB
+dist-demo/assets/schema-Rx0ggSiC.js                           3.57 kB │ gzip:   1.35 kB
+dist-demo/assets/schema-CXgIYneJ.js                           3.90 kB │ gzip:   1.60 kB
+dist-demo/assets/schema-Bwfvk5PS.js                           4.53 kB │ gzip:   1.72 kB
 dist-demo/assets/execution-fixtures.manifest-BWwzP4o_.js      4.62 kB │ gzip:   1.26 kB
 dist-demo/assets/associations-PzH66BJv.js                     8.36 kB │ gzip:   3.79 kB
-dist-demo/assets/Lab-CRz86qAr.js                             10.27 kB │ gzip:   3.69 kB
-dist-demo/assets/Controls-CoUvqu2Z.js                        12.54 kB │ gzip:   4.42 kB
-dist-demo/assets/PacketInspector-CzARIlHr.js                 12.70 kB │ gzip:   4.34 kB
-dist-demo/assets/runtime-Bd7K7Unv.js                         13.63 kB │ gzip:   5.28 kB
-dist-demo/assets/Comparison-DAl2nfwq.js                      13.85 kB │ gzip:   4.53 kB
+dist-demo/assets/Lab-Bl7_8Ssj.js                             10.27 kB │ gzip:   3.70 kB
+dist-demo/assets/PacketInspector-DLrYP-hq.js                 12.70 kB │ gzip:   4.33 kB
+dist-demo/assets/Controls-CV62wfEa.js                        13.00 kB │ gzip:   4.49 kB
+dist-demo/assets/runtime-BVa1o9Mn.js                         13.63 kB │ gzip:   5.28 kB
+dist-demo/assets/Comparison-ejCiU-Gy.js                      13.85 kB │ gzip:   4.53 kB
 dist-demo/assets/transport-Dzh_oLTu.js                       14.81 kB │ gzip:   5.47 kB
-dist-demo/assets/Journal-DqYPfM1m.js                         18.48 kB │ gzip:   5.86 kB
-dist-demo/assets/Reader-DYvPptyl.js                          21.36 kB │ gzip:   6.59 kB
-dist-demo/assets/Recorder-BWdV55C3.js                        28.48 kB │ gzip:   8.01 kB
-dist-demo/assets/projector-qCqSrLzc.js                       30.68 kB │ gzip:   9.79 kB
-dist-demo/assets/browser-BB3cnvKE.js                        262.97 kB │ gzip:  88.63 kB
-dist-demo/assets/index-DWbr-DIw.js                          586.53 kB │ gzip: 174.02 kB
+dist-demo/assets/Journal-DHPhM2TB.js                         18.48 kB │ gzip:   5.86 kB
+dist-demo/assets/Reader-Ur8sNDzN.js                          21.36 kB │ gzip:   6.59 kB
+dist-demo/assets/Recorder-CBmiq_PW.js                        28.95 kB │ gzip:   8.04 kB
+dist-demo/assets/projector-BBLqyx-m.js                       30.68 kB │ gzip:   9.79 kB
+dist-demo/assets/browser-CilCkUzp.js                        262.97 kB │ gzip:  88.63 kB
+dist-demo/assets/index-qLGikyFm.js                          586.53 kB │ gzip: 174.02 kB
 dist-demo/assets/worlds-Cfp5AcLf.js                       1,125.32 kB │ gzip:  43.48 kB
 
-✓ built in 443ms
+✓ built in 312ms
 [plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application

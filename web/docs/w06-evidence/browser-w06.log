@@ -11,5 +11,7 @@ PASS http desktop Failed refresh retains valid data; refusal clears owned data a
 PASS http desktop Conditional manual refresh, historical firewall and explicit trace choice
 PASS http desktop Unexpected project/snapshot bindings and obsolete source replies
 PASS http desktop Concealed shared Controls make no reads; source selection is explicit
+PASS http desktop Execution table off-page selection and list-focus restoration
+PASS http desktop Disclosed Controls execution-list failure is explicit and recoverable
 PASS http desktop Keyboard tabs, long/hostile text, dark theme and 200% zoom
 PASS http phone Keyboard tabs, long/hostile text, dark theme and 200% zoom

@@ -37,15 +37,17 @@ Implementer automation is supporting evidence, not independent acceptance. `web/
 
 Measurements compare bounded W05 artifact pages with W06 event pages, with different fixture populations and workflows. They are observations, not an improvement claim or timing SLA. Source/tree and build identities are checked before and after verification.
 
-The final freeze targets runtime commit `5aa55dfe0bdec7b80d80e01cb2f0921ea55546c7` and Execution digest `481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375`. The pinned offline gate passed 163 tests in 19 files; W01–W05 regressions, 15 W06 browser groups and the strict premium audit passed. Production and demo build manifests remained unchanged afterward. This records implementer verification, not independent acceptance.
+The final freeze targets runtime commit `d15bc135f23340b7fe4e1f8039290410383d2be0` and Execution digest `481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375`. The pinned offline gate passed 164 tests in 19 files; W01–W05 regressions, 17 W06 browser groups and the strict premium audit passed. Production and demo build manifests remained unchanged afterward. This records implementer verification, not independent acceptance.
 
 | Workflow | Fixture population | Displayed rows before/after paging | DOM nodes before/after | Initial API reads / bytes | Two warm render-ready samples |
 |---|---:|---|---|---|---|
-| Frozen W05 artifact page | 126 | 50 / 50 | 459 / 459 | 6 / 30,700 | 1,438 / 1,441 ms |
-| W06 recorded event page | 189 | 50 / 50 | 671 / 671 | 6 / 56,286 | 936 / 943 ms |
+| Frozen W05 artifact page | 126 | 50 / 50 | 459 / 459 | 6 / 30,700 | 909 / 895 ms |
+| W06 recorded event page | 189 | 50 / 50 | 671 / 671 | 6 / 56,286 | 902 / 897 ms |
 
 Each workflow also has a recorded warmup. The cache test retires prior page payloads and validators, retains only the active page, and clears owned queries on unmount. Fanout separately limits displayed nodes and supplied edges. The zoom screenshots model 720px desktop and 195px phone CSS viewports; normal phone investigation screenshots use 390px.
 
 Execution events/ordinals/lanes/relationships are presentation-fixture semantics, not the future T3 outbox contract. Visibility is project-only, with opaque binding metadata conferring no authorization. Budget observations do not define cost-ledger fields, remaining-budget arithmetic, enforcement or dispatch decisions. Canonical decisions remain references to authoritative records; preparation, delivery acknowledgment, citation and evaluated benefit remain distinct.
 
 Pending adoption decisions are in `web/docs/design/w06-backend-question-ledger.md`. The page-density review remains deferred and starts with Work; W06 does not redesign that page.
+
+Overnight review corrections are recorded in `web/docs/w06-overnight-review.md`: failed-child retry, execution-table off-page status/focus and explicit Controls chooser failure/recovery. The W01 reload regression now waits for represented record content before and after reload rather than treating a breadcrumb as readiness. No errors are suppressed. The current freeze supersedes the original evidence at `5aa55df`, which remains available in Git history.

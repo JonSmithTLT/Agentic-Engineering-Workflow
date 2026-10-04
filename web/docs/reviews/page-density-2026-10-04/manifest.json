@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-04",
+  "reviewed_source": "55c48ec5054a4b6830722978b36bfc4e0d55ff60",
+  "images": [
+    {
+      "bytes": 169650,
+      "sha256": "01c03e5ea49fdf2231088a09648771c76fd726c45b0aaec5361ae709749c5760",
+      "file": "desktop-detail.jpg"
+    },
+    {
+      "bytes": 80027,
+      "sha256": "21d1fbe0201d3d52d86cf534d637bbdacb6b126d78072dee2595c9fa316d0df0",
+      "file": "desktop-large.jpg"
+    },
+    {
+      "bytes": 12136,
+      "sha256": "1145ad662e44d8b11f835e71bb46e8c01b068e5aa5afac3daa7773dbb175fa42",
+      "file": "narrow-light.jpg"
+    },
+    {
+      "bytes": 100087,
+      "sha256": "efa4b7af20dd85fd938ee5d686162b9dd96a5dda48f021ae3f06d22fe01d159d",
+      "file": "phone-detail.jpg"
+    },
+    {
+      "bytes": 67643,
+      "sha256": "145191cca4ad415af9385915c67cd0254d149d5334cd3e25ca6ab7efc0445779",
+      "file": "phone-results.jpg"
+    },
+    {
+      "bytes": 101084,
+      "sha256": "cc55daf0a8851f85336c53d8f8ceaeb15dde4a9c614063c9605bce91ab7bb4ab",
+      "file": "phone-why.jpg"
+    }
+  ],
+  "static_audit": {
+    "exit_code": 0,
+    "errors": 0,
+    "violations": 0,
+    "mode": "strict",
+    "warnings": 0
+  },
+  "merged_baseline": "ec727f3c1d4cd9cc29ce131350d061afa7531460"
+}

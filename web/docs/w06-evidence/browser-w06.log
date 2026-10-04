@@ -15,3 +15,8 @@ PASS http desktop Execution table off-page selection and list-focus restoration
 PASS http desktop Disclosed Controls execution-list failure is explicit and recoverable
 PASS http desktop Keyboard tabs, long/hostile text, dark theme and 200% zoom
 PASS http phone Keyboard tabs, long/hostile text, dark theme and 200% zoom
+PASS http phone Responsive tables are reachable and story provenance conforms (390px)
+PASS http phone Responsive tables are reachable and story provenance conforms (720px)
+PASS worker phone Responsive tables are reachable and story provenance conforms (390px)
+PASS worker phone Responsive tables are reachable and story provenance conforms (720px)
+PASS http desktop Copied Controls receipt tab and deep packet return state

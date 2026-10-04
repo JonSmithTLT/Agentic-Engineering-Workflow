@@ -47,4 +47,6 @@ W05 fixed source metadata, artifact lists and excerpt pages are manual-only with
 
 ## Recorded execution interaction/state ledger
 
+Stacked execution table cells use natural height and wrapping, matching the Evidence/source-chooser phone tables. Every table selection remains reachable by pointer and keyboard at narrow/zoomed widths. Recorder Controls activity is copied/reloaded through `execution_control_tab`; other disclosed hosts own independent activity state. Direct packet return clears inspector-only packet parameters.
+
 W06 reuses InvestigationTabs, Pager, SourceStrip, safe content, focusBelowHeader and reference-return. All recorded reads are manual-only and bootstrap the project. Results/pages replace bodies; selected detail resolves independently. Desktop picking preserves entry focus; phone picking and explicit detail navigation focus the replacing heading. Close restores entry/heading. Inspector navigation replaces recorder and restores exact presentation state and originating-link focus. Shared Controls is read only when disclosed, with explicit trace/execution choice outside the recorder. Fixed project visibility, typed relationships, coverage, control stages and budget observations are supplied; the browser infers no event history, parentage, custody, guarantees or enforcement. T3/G7 backend projections remain separately pending.

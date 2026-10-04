@@ -101,6 +101,36 @@
       "mode": "http",
       "phone": true,
       "result": "PASS"
+    },
+    {
+      "name": "Responsive tables are reachable and story provenance conforms (390px)",
+      "mode": "http",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Responsive tables are reachable and story provenance conforms (720px)",
+      "mode": "http",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Responsive tables are reachable and story provenance conforms (390px)",
+      "mode": "worker",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Responsive tables are reachable and story provenance conforms (720px)",
+      "mode": "worker",
+      "phone": true,
+      "result": "PASS"
+    },
+    {
+      "name": "Copied Controls receipt tab and deep packet return state",
+      "mode": "http",
+      "phone": false,
+      "result": "PASS"
     }
   ],
   "measurements": [
@@ -110,7 +140,7 @@
       "dom_before": 710,
       "dom_after": 711,
       "requests": 6,
-      "duration_ms": 1250,
+      "duration_ms": 1293,
       "fixture_events": 189
     },
     {
@@ -119,7 +149,7 @@
       "dom_before": 710,
       "dom_after": 711,
       "requests": 6,
-      "duration_ms": 1186,
+      "duration_ms": 1310,
       "fixture_events": 189
     }
   ],

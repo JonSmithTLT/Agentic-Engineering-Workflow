@@ -1,6 +1,6 @@
 # W06 independent review packet
 
-Frontend fixture acceptance is **PENDING independent review**. W05's merged acceptance is preserved. Backend/live adoption remains blocked on accepted T3 event/outbox design and Engine-owned projections; G7/F7 requires an explicit adapter. No Engine work records were created.
+Frontend fixture acceptance is **CHANGES REQUESTED; F1/F2 re-review pending**. The independent report is preserved in `web/docs/w06-review-main-line.md`; corrections and the harmless-read assessment are recorded in `web/docs/w06-review-corrections.md`. W05's merged acceptance is preserved. Backend/live adoption remains blocked on accepted T3 event/outbox design and Engine-owned projections; G7/F7 requires an explicit adapter. No Engine work records were created.
 
 Review the immutable runtime commit recorded in `web/docs/w06-evidence/result.json`. The subsequent evidence commit changes documentation only. The approved revision 1.1 plan is `web/docs/design/plans/w06-execution-investigation.md`; its factual operator approval and digest are recorded in `w06-operator-approval.json`.
 
@@ -37,12 +37,12 @@ Implementer automation is supporting evidence, not independent acceptance. `web/
 
 Measurements compare bounded W05 artifact pages with W06 event pages, with different fixture populations and workflows. They are observations, not an improvement claim or timing SLA. Source/tree and build identities are checked before and after verification.
 
-The final freeze targets runtime commit `d15bc135f23340b7fe4e1f8039290410383d2be0` and Execution digest `481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375`. The pinned offline gate passed 164 tests in 19 files; W01–W05 regressions, 17 W06 browser groups and the strict premium audit passed. Production and demo build manifests remained unchanged afterward. This records implementer verification, not independent acceptance.
+The final freeze targets runtime commit `55c48ec5054a4b6830722978b36bfc4e0d55ff60` and Execution digest `481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375`. The pinned offline gate passed 164 tests in 19 files; W01–W05 regressions, 22 W06 browser groups and the strict premium audit passed. Production and demo build manifests remained unchanged afterward. This records implementer verification, not independent acceptance.
 
 | Workflow | Fixture population | Displayed rows before/after paging | DOM nodes before/after | Initial API reads / bytes | Two warm render-ready samples |
 |---|---:|---|---|---|---|
-| Frozen W05 artifact page | 126 | 50 / 50 | 459 / 459 | 6 / 30,700 | 909 / 895 ms |
-| W06 recorded event page | 189 | 50 / 50 | 671 / 671 | 6 / 56,286 | 902 / 897 ms |
+| Frozen W05 artifact page | 126 | 50 / 50 | 459 / 459 | 6 / 30,700 | 1439 / 1433 ms |
+| W06 recorded event page | 189 | 50 / 50 | 671 / 671 | 6 / 56,286 | 932 / 935 ms |
 
 Each workflow also has a recorded warmup. The cache test retires prior page payloads and validators, retains only the active page, and clears owned queries on unmount. Fanout separately limits displayed nodes and supplied edges. The zoom screenshots model 720px desktop and 195px phone CSS viewports; normal phone investigation screenshots use 390px.
 

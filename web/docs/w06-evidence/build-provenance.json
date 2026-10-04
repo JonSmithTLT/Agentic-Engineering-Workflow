@@ -1,16 +1,16 @@
 {
-  "source_commit": "d15bc135f23340b7fe4e1f8039290410383d2be0",
-  "source_tree": "340519d85d09f0b8257f7caab084c4d7893c7f9c",
+  "source_commit": "55c48ec5054a4b6830722978b36bfc4e0d55ff60",
+  "source_tree": "96021ffadbb182482c03d823909ce81dd371a51b",
   "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
   "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
   "gate": "PASS",
   "network": "none",
-  "checkout": "web/artifacts/commit-freeze/run-QBQkQt7K/source",
+  "checkout": "web/artifacts/commit-freeze/run-JacFywZE/source",
   "build_trees": {
-    "dist": "253f62483e1bc4535d14810bd169e6edc896e740b1d98ccc90a0b699286332fd",
-    "dist-demo": "8a7bc6dc999693b1a8770189274b788de1f287984e44ed256cd8ba1716374f76"
+    "dist": "7ea95e437fa7bdfa2be7053b6a00123f431573dbe72e9aeda5c0d449b23bd34f",
+    "dist-demo": "8f7e690d49c26a78d799d24a26be417cde070707420f8d0188de57e38c74d2f6"
   },
-  "browser_groups": 17,
+  "browser_groups": 22,
   "browser": "PASS; executed within committed checkout",
   "build_unchanged_after_browser": true,
   "source_clean_after_browser": true,

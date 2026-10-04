@@ -36,3 +36,7 @@ The intermediate `adebe3a` freeze failed W01's “Graph navigation and reload re
 Intermediate reproduction artifacts remain in the ignored `web/artifacts/commit-freeze/run-k5u9h1Vo/` checkout, including both failure traces. They are not acceptance evidence. The initial test compilation option error was corrected before its successful 164-test gate.
 
 All three concrete review corrections are implemented and verified. Subsequent overnight follow-ups should check PR 39 CI and new independent feedback; do not invent stretch features or expand scope. Existing architecture/adoption questions and the density review stay deferred to their owners.
+
+## Independent review follow-up
+
+The operator supplied the independent changes-requested review of d15bc13. F1/F2 and nits N1/N2/N4 were corrected and verified from clean committed source `55c48ec5054a4b6830722978b36bfc4e0d55ff60`; N3 retains the separately owned discovery/bound read contexts and accepted overview cadence. See `web/docs/w06-review-main-line.md` and `web/docs/w06-review-corrections.md`. The independent disposition is unchanged until re-review. No backend/live acceptance is claimed.

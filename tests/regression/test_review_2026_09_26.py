@@ -5,7 +5,7 @@ Provenance: AEW M1 independent technical review, 2026-09-26
 The probe bodies below are the reviewer's, unchanged; each asserts the SAFE
 behavior. Findings still open are marked xfail(strict=True) and the marker is
 removed by the commit that fixes the finding (see
-docs/implementation/review-response-2026-09-26.md).
+docs/archive/reviews/review-response-2026-09-26.md).
 """
 import pytest
 from aewflow import (

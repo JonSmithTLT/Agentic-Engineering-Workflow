@@ -1,0 +1,124 @@
+{
+  "date": "2026-10-04",
+  "source_commit": "55c48ec5054a4b6830722978b36bfc4e0d55ff60",
+  "source_tree": "96021ffadbb182482c03d823909ce81dd371a51b",
+  "baseline_commit": "da46807d4fb35ec742f042425c347cd480ba8f65",
+  "preview_sha256": "481f5f0612986ad70101663c9cf4921cdd5cdd7d665d84f058660699afb27375",
+  "fixture_manifest_sha256": "2eb3bd433f76c545d003a0ca6d584d08f876d4141b690efb6976675ea915ebe8",
+  "plan_sha256": "707246d7ca3e4a59d5b836b0096b5a47aad1de0ce6594eba5ce1048e411a75b8",
+  "offline_gate": {
+    "result": "PASS",
+    "tests": 164,
+    "test_files": 19,
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "network": "none",
+    "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "checks": "Artifact checks, unchanged accepted types, typecheck, lint, unit/component tests, production exclusion and both builds"
+  },
+  "browser": {
+    "result": "PASS",
+    "w06_groups": 22,
+    "regressions": "W01\u2013W05 and HTTP demo passed inside committed checkout",
+    "adapters": "Worker and HTTP; service workers blocked for HTTP"
+  },
+  "additional_checks": "Freeze shell syntax and six CI path detector probes passed in committed checkout",
+  "runtime": {
+    "node": {
+      "version": "v22.22.2",
+      "sha256": "81925c0995b5c1427b5d538e6a90ca2fdc4daffb786b09af749beaf7369d4e90"
+    },
+    "chromium": {
+      "version": "Google Chrome for Testing 147.0.7727.15",
+      "sha256": "696170a79640ec5b50c7518140ace06c69a49cfb295bf527d4a85e26a12b89a7"
+    }
+  },
+  "playwright": "1.59.1 (locked package)",
+  "source_clean_after_browser": true,
+  "build_unchanged_after_browser": true,
+  "premium_audit": "PASS; zero findings",
+  "frontend_acceptance": "ACCEPTED independent frontend fixture re-review, 2026-10-04, source 55c48ec5054a4b6830722978b36bfc4e0d55ff60",
+  "independent_re_review": "web/docs/w06-re-review-55c48ec.md",
+  "independent_review": "web/docs/w06-review-main-line.md",
+  "review_corrections": "web/docs/w06-review-corrections.md",
+  "backend_adoption": "BLOCKED on accepted T3 and Engine-owned projections; G7/F7 requires explicit adapter",
+  "live_integration": "NOT_CLAIMED",
+  "engine_work_records": "NONE",
+  "build_provenance": "web/docs/w06-evidence/build-provenance.json",
+  "measurements": "web/docs/w06-evidence/measurements.json",
+  "screenshots": [
+    {
+      "file": "web/docs/w06-evidence/desktop-dark-zoom.png",
+      "sha256": "b4f050e4aa8b8da170bedbadc832b70b07f5e2ece7be93ae622045d1efe74867"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-390-events-table.png",
+      "sha256": "6b26fc9d192ee8251a30785f89708c0f2527af4bc5ca8d7b1f784e501ba265cf"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-390-fanout-table.png",
+      "sha256": "eef3b89f45d1fd26bd9cb20b1e2bd0ec8868fe0283bb9cd3eeecdd5c859a02c4"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-720-events-table.png",
+      "sha256": "94c6bee19cfcbbfdb19f2482ba01c838995597d162a12804787726e0d615b1c4"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-720-fanout-table.png",
+      "sha256": "b9dcb8c22384d7623f1c6e7459503c75e3e35d4c5855a8c29053f9f7cb09c471"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-desktop-story.png",
+      "sha256": "69eb4ae3fb7774e8e94caacfc429635b28cbc7953232c1f5cdc1c125b3a4c05b"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-fanout.png",
+      "sha256": "0b4ba8320a06bfc022576d8240ffd31902bfe7137ebe791503da0f44c8821f25"
+    },
+    {
+      "file": "web/docs/w06-evidence/http-phone-story.png",
+      "sha256": "4dc095a791a6ced86cc5050ace069584b0dffe7876d0e5ef6edca54c6c33a957"
+    },
+    {
+      "file": "web/docs/w06-evidence/phone-dark-zoom.png",
+      "sha256": "2ebcab137e9c9f3d6bbfa92f5ced855cf994be9f761e2c9ceaf6fc9189aebdb5"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-390-events-table.png",
+      "sha256": "2ce59317743bcb137d645ff33a4bacb6cf2bd9afe103c49a9c946fbed5bac40a"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-390-fanout-table.png",
+      "sha256": "8cf3e9198093d7fa178160699909d0492ca048aec5d242f73d2e725716ce98f1"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-720-events-table.png",
+      "sha256": "94c6bee19cfcbbfdb19f2482ba01c838995597d162a12804787726e0d615b1c4"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-720-fanout-table.png",
+      "sha256": "b9dcb8c22384d7623f1c6e7459503c75e3e35d4c5855a8c29053f9f7cb09c471"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-desktop-story.png",
+      "sha256": "69eb4ae3fb7774e8e94caacfc429635b28cbc7953232c1f5cdc1c125b3a4c05b"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-fanout.png",
+      "sha256": "0b4ba8320a06bfc022576d8240ffd31902bfe7137ebe791503da0f44c8821f25"
+    },
+    {
+      "file": "web/docs/w06-evidence/worker-phone-story.png",
+      "sha256": "4dc095a791a6ced86cc5050ace069584b0dffe7876d0e5ef6edca54c6c33a957"
+    }
+  ],
+  "commands": {
+    "freeze": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> PINNED_NODE22=<absolute pinned Node> CHROMIUM_PATH=<absolute pinned Chromium> W06_BASELINE_WEB=<frozen W05 frontend> bash web/scripts/freeze-w06-evidence.sh 55c48ec5054a4b6830722978b36bfc4e0d55ff60",
+    "browser": "Inside emitted clean checkout: ci-browser, browser-w02, browser-w03, browser-http-demo, browser-w04, browser-w05, browser-w06 and measure-w06 scripts with pinned Node/Chromium",
+    "verification": "Clean source status; complete production/demo manifests compared and sha256sum verified afterward",
+    "premium": "audit_project.py <frozen frontend> --mode strict"
+  },
+  "zoom_method": "Halved CSS viewport (720 desktop /195 phone) models layout space at200% browser zoom; native toolbar zoom remains a reviewer task",
+  "measurement_limit": "Different W05 artifact and W06 event workflows/populations; bounded rows/DOM/requests, not an improvement or timing SLA",
+  "backend_questions": "web/docs/design/w06-backend-question-ledger.md"
+}

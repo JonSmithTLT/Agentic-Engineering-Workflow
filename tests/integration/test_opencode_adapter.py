@@ -168,11 +168,39 @@ def test_a_missing_effort_variant_fails_closed(lab, tmp_path):
      "with a different model"),
     ({"agent_override": {"permissions": [{"action": "*", "resource": "*", "effect": "allow"}]}},
      "with a different permissions"),
-], ids=["v1-server", "doctored-openapi", "config-ignored", "steps-differ", "model-differs", "rules-differ"])
+    ({"appended_rules": [{"action": "browser", "resource": "*", "effect": "allow"}]},
+     "with a different permissions"),
+    ({"appended_rules": [{"action": "shell", "resource": "*", "effect": "ask"}]},
+     "with a different permissions"),
+], ids=["v1-server", "doctored-openapi", "config-ignored", "steps-differ", "model-differs", "rules-differ",
+        "appended-allow", "appended-ask"])
 def test_an_incompatible_server_fails_closed(lab, tmp_path, knobs, expected):
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, **knobs)
     assert expected in refused_launch(lab, tmp_path)
+
+
+def test_a_denial_the_server_appends_after_aews_rules_is_accepted(lab, tmp_path):
+    """E17: OpenCode 2.0.22 appends a default `browser: deny` after AEW's rules. It can only narrow access, so the
+    projection still holds and the run proceeds."""
+    script(lab, IMPLEMENT, appended_rules=[{"action": "browser", "resource": "*", "effect": "deny"}])
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+
+
+def test_a_run_server_with_stored_credentials_is_refused(lab, tmp_path):
+    """E17: 2.0.22 serves stored integration credentials, values included, and the agent can reach its server. A run's
+    server state starts empty; AEW proves it at launch, and refuses a server that holds any."""
+    lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
+    script(lab, IMPLEMENT, stored_credentials=[{"id": "github", "type": "oauth", "access": "gho_example"}])
+    assert "holds 1 stored credential" in refused_launch(lab, tmp_path)
+
+
+def test_an_empty_credential_store_is_recorded(lab, tmp_path):
+    script(lab, IMPLEMENT, stored_credentials=[])
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    assert lab.record(run)["launch"]["health"]["stored_credentials"] == 0
 
 
 # ---------------------------------------------------------------------------------------------- completion

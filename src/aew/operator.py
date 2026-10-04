@@ -19,11 +19,16 @@ import os
 import secrets
 import sys
 import time
+from contextvars import ContextVar
 
 from aew.errors import OperatorAuthorizationRequired, PermissionDenied
 from aew.util import IS_WINDOWS
 
 DEFAULT_TIMEOUT_S = 300.0
+
+# Where a credential this authorization releases will go; the CLI sets it from `--print-credential` (ADR-0009).
+TERMINAL_ONLY = "this terminal only"
+credential_destination: ContextVar[str] = ContextVar("aew_credential_destination", default=TERMINAL_ONLY)
 
 
 def _code() -> str:
@@ -32,10 +37,15 @@ def _code() -> str:
 
 def authorize(challenge: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
     """Block until the operator confirms at the controlling terminal, or raise."""
+    from aew.harness.procs import process_chain
+
     code = _code()
     prompt = (
         "\n==== AEW OPERATOR AUTHORIZATION REQUIRED ====\n"
         f"{challenge}\n"
+        f"  requested by   : {' <- '.join(process_chain()) or 'unknown'}\n"
+        f"  credential to  : {credential_destination.get()}\n"
+        "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
         f"Type the confirmation code {code} and press Enter to authorize; anything else refuses.\n"
         "> "
     )

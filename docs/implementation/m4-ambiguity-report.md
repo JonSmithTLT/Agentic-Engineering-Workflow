@@ -321,7 +321,7 @@ The register gained entries after the M4 triage above: from the architecture rev
 | F25 the cost and usage ledger | **In scope, before M4-H** | With the evaluation component (thread T2, F19), its first consumer, and available before M4-H's evaluation |
 | F26 minimal skill delivery | **Deferred** | Needs design or a probe (response §7); M6a |
 | F27 dogfood AEW on AEW | **Deferred** | A strategic goal once containment, real-repository and integration conditions hold |
-| Q13 accept the review response | **In design-authority reconciliation** (not M4 scope) | The lead developer's review is delivered; the designer is reconciling it, then promotes decisions to their homes |
+| Q13 accept the review response | **In design-authority reconciliation** (not M4 scope) | The lead developer's review is delivered and its three differences with the response are reconciled (designer, 2026-10-05); acceptance and the promotion of decisions to their homes remain |
 | E17 OpenCode upgrades | **In progress** | Part 1 (meaning comparison, stored-credential check) in its own PR; part 2 (2.0.22 on the live lane, `TESTED_VERSIONS`) needs the operator's binary and provider key |
 | E18 transaction outbox | **In scope** | M4-D, the full design: ADR-0012 (frozen) makes the transaction log the outbox, with typed events, complete overflow handling, sealing and a hash chain |
 | E19 amendment index | **In scope** (proposed) | M4-G: the machine-readable index now; the consolidated WC/KC re-freeze after M4 |

@@ -109,13 +109,13 @@ text is not governing.
 
 | Proposal | Register | Adoption state | Scheduled |
 |---|---|---|---|
-| [`typed-lead-surface-design-v0.2.md`](design/proposals/typed-lead-surface-design-v0.2.md) | F15, F15.1 to F15.3 | Design frozen, proposed (2026-10-04); first-transport question open under Q13 | M4-D (read-only slice), M4-E (stages), M6 (role server) |
+| [`typed-lead-surface-design-v0.2.md`](design/proposals/typed-lead-surface-design-v0.2.md) | F15, F15.1 to F15.3 | Design frozen, proposed (2026-10-04); first transport settled as MCP (designer, 2026-10-05); promotion to governing is the before-M4-E gate | M4-D (read-only slice), M4-E (stages), M6 (role server) |
 | [`evaluation-component-design-v0.2.md`](design/proposals/evaluation-component-design-v0.2.md) | F19 | Design frozen, proposed | Its first slice before M4-H's preregistration |
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
 | [`project-maps-design-v0.3.md`](design/proposals/project-maps-design-v0.3.md) | F22, F22.1 to F22.3 | Design frozen, proposed (2026-10-04) | Structural slice an M4 candidate; semantic extension with M6 |
 | [`install-bootstrap-ux-design-v0.3.md`](design/proposals/install-bootstrap-ux-design-v0.3.md) | F18, F18.1 to F18.4, E21 | Design frozen, proposed (2026-10-04); host topology waits for Q12 | Unscheduled |
-| [`architecture-review-response-2026-10-04.md`](design/proposals/architecture-review-response-2026-10-04.md) | Q13; F21 to F27, E18 to E30 | Proposed disposition of the architecture review; the lead developer's review is in (concur with modification); awaiting the designer's reconciliation and acceptance | Q13 |
+| [`architecture-review-response-2026-10-04.md`](design/proposals/architecture-review-response-2026-10-04.md) | Q13; F21 to F27, E18 to E30 | Proposed disposition of the architecture review; the lead developer's review is in (concur with modification) and its three differences reconciled by the designer (2026-10-05); awaiting acceptance and promotion (Q13) | Q13 |
 | [`remote-integration-target-sketch-2026-10-04.md`](design/proposals/remote-integration-target-sketch-2026-10-04.md) | F23, Q14 | Sketch, waiting on the designer's scope question (Q14) | Deferred until a team repository requires it; M4-D must not foreclose it |
 | [`aew-knowledge-capture-admission-design-v0.4.md`](design/proposals/aew-knowledge-capture-admission-design-v0.4.md) | F21 | Proposed, for joint review with the two below | M6b |
 | [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | Proposed | M6b |

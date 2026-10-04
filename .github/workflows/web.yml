@@ -72,7 +72,7 @@ jobs:
       - name: Change detector regression probes
         run: |
           node --test scripts/ci-paths.test.mjs
-          bash -n scripts/freeze-committed-build.sh scripts/freeze-w05-evidence.sh
+          bash -n scripts/freeze-committed-build.sh scripts/freeze-w05-evidence.sh scripts/freeze-w06-evidence.sh
       - name: Contract acceptance digest
         run: node scripts/check-contract.mjs
       - name: Generated artifact consistency
@@ -83,6 +83,7 @@ jobs:
           node --experimental-strip-types scripts/journal-artifact.mjs
           node --experimental-strip-types scripts/investigation-artifact.mjs
           node --experimental-strip-types scripts/evidence-artifact.mjs
+          node --experimental-strip-types scripts/execution-artifact.mjs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
@@ -101,6 +102,7 @@ jobs:
           node scripts/browser-http-demo.mjs
           node scripts/browser-w04.mjs
           node scripts/browser-w05.mjs
+          node scripts/browser-w06.mjs
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -112,6 +114,7 @@ jobs:
             web/output/playwright-http-demo/
             web/output/playwright-w04/
             web/output/playwright-w05/
+            web/output/playwright-w06/
           if-no-files-found: ignore
           retention-days: 14
 

@@ -4,7 +4,7 @@
 - **Engine baseline:** `42239e1`, the ADR-0011 P3 merge (PR #24). This document is written on `main` at `0424c61` (PR #27, test and CI only, on top).
 - **Register housekeeping first:** PR #29 closes the before-M4 gate, F1, E5 and F20.1 in `future-work.md` §9. The triage in §R assumes it.
 - **§0 spike done** (variant A, engine-only, 2026-10-03). It does not change the plan (§0).
-- **Approved and in progress.** M4-A is built (§2, "M4-A as built"). The static checks (Ruff, Pyright, pip-audit; register E7) followed as their own change. M4-B is built (§2, "M4-B as built"); M4-C (workspaces for concurrency above 1) is next.
+- **Approved and in progress.** M4-A is built (§2, "M4-A as built"). The static checks (Ruff, Pyright, pip-audit; register E7) followed as their own change. M4-B is built (§2, "M4-B as built"). M4-C is built (§2, "M4-C as built"); M4-D (the queue engine) is next.
 
 ## Context
 
@@ -162,6 +162,20 @@ Found by reading the code at the baseline, so that the plan builds on what exist
 - **That lock is serialization only, never eligibility or authority.** Holding it never makes an operation legal; `DispatchDecision` alone decides legality, so the lock cannot become a second integration-authority path. A test proves that holding the lock without an ALLOW changes nothing. The wording is proposed to the designer for the invariant index, which the designer owns.
 - Repository-scale workspace benchmarks (isolation §13) stay a selection gate for project defaults. M4 records worktree setup and cleanup cost at concurrency 1, 2 and 4 on the sample and AEW repositories, not on a large monorepo.
 
+### M4-C as built (2026-10-04)
+- **The cap is the policy's.** `cap.mutating` reads `gates.yaml` `mutating_concurrency` (default 1) with no clamp. The refusal (`CONCURRENCY_LIMIT`) names the cap and the Tickets holding live workspaces. Each mutating Ticket works in its own worktree (`<workspaces.root>/<T>-<attempt>`), and integration stays the serialized, CAS-published path of ADR-0004. A later candidate is built on the head its predecessors moved, and two Tickets that change the same lines conflict at `prepare`, with nothing published.
+- **Oracle rule 1** now reads: live mutating workspaces never exceed the policy cap, and no two share a path. **Correction to §4:** its proposed second clause ("every live one is bound to an active invocation") does not hold. A COMMIT_READY or INTERRUPTED Ticket keeps its workspace with no active invocation, which the walks showed. Binding stays where it was: rule 2 binds every active invocation to its Ticket's current live workspace.
+- **Short paths.** Workspace names were already short. A path git rejects as too long (spike fact 4) is now a `GitError` naming the path, its length, and what to change: `workspaces.root`, or long-path support.
+- **Cost** (`tools/perf/workspaces.py`, Windows, median of 3; setting up and cleaning up one workspace at each level):
+
+  | Repository | Tracked files | Set up one workspace | Clean up one | N = 1, 2, 4 in total |
+  |---|---|---|---|---|
+  | sample | 6 | 0.16 to 0.18 s | 0.04 s | 0.22, 0.40, 0.81 s |
+  | AEW (`ce794fb`) | 930 | 1.08 to 1.11 s | 0.30 s | 1.43, 2.82, 5.79 s |
+
+  The per-workspace cost does not change with concurrency. Totals grow linearly, because assignments are sequential. The repository-scale benchmark stays a selection gate (isolation §13).
+- **`AEW-INV-ISO-004` is not built here (a question for the operator).** M4-C's shared mutable step, syncing a published commit into the authoritative checkout, already runs inside the control-state lock, held from the CAS through DONE (ADR-0004). So no M4-C operation needs a second lock. The lock's first consumer is M4-D's lease, whose custodian (M4-B10) and control-state schema (M4-B7, downgrade safety) are still to be decided. Building it now would fix its record shape and its stale-owner rule before either is known. **Proposed:** build ISO-004 with the lease in M4-D, keeping "serialization only, never eligibility" (M4-B6) and its test (holding the lock without an ALLOW changes nothing). M4-C's exit criterion for ISO-004 moves to M4-D.
+
 ### 2.6 The integration queue and lease (M4-D; F10)
 
 **Records.** Each COMMIT_READY mutating Ticket gets one queue entry in control state:
@@ -291,6 +305,42 @@ Every open entry whose *When* names M4 or an earlier gate, every M4 candidate, a
 | F8, F9, F18, D1, D2, D5, E3, E4, U4, U6 | Unscheduled | **Deferred** | Nothing in M4 depends on them. F9's wait-any part is E1. E7 (lint) was built between M4-A and M4-B as the static checks (`testing-and-ci-strategy.md`) |
 | E6, E14, U7 | On measured need | **Deferred** | No measured need yet. U7 needs U1 observed first |
 | Q4, Q5, Q7, Q8, Q11, Q12 | Designer | **Deferred** | Open questions. Q7's scratch rule binds every M4 dogfood run (M4-B9) |
+
+### R.2 M4-C start: entries added since M4 began (milestone-start rule)
+
+The register gained entries after the M4 triage above: from the architecture review and its proposed response (Q13), and from the four independent area reviews of M4-A and M4-B. Each is marked here for the operator to ratify. **Proposed** marks a disposition the response itself leaves to Q13.
+
+| Entry | Disposition | Phase or reason |
+|---|---|---|
+| F3 (the concurrency part) | **In scope** | M4-C: this phase |
+| F21 the M6b knowledge system | **Deferred** | M6b. The response affirms the drafts as the direction; its storage and identity questions are D-AR4 |
+| F22 project maps | **Deferred** | After M4, or a bounded deterministic slice in M4-G/H if it does not put approved scope at risk (response §12). Not an M4 gate |
+| F23 pre-internal-alpha hardening | **Deferred** | Pre-internal-alpha; the response's §14 says no design work yet |
+| F24 a second harness adapter | **Deferred** | M5, or earlier if OpenCode drift blocks operation (G4) |
+| F25 the cost and usage ledger | **Deferred** (proposed) | With the evaluation component (D-AR1, F19), its first consumer. The lead developer's review argues against building it before then |
+| F26 minimal skill delivery | **Deferred** | Needs design or a probe (response §7); M6a |
+| F27 dogfood AEW on AEW | **Deferred** | A strategic goal once containment, real-repository and integration conditions hold |
+| Q13 accept the review response | **Open** (not M4 scope) | The lead developer's review is written; the designer decides, then promotes decisions to their homes |
+| E17 OpenCode upgrades | **In progress** | Part 1 (meaning comparison, stored-credential check) in its own PR; part 2 (2.0.22 on the live lane, `TESTED_VERSIONS`) needs the operator's binary and provider key |
+| E18 transaction outbox | **In scope, in part** (proposed) | M4-D: the wake signal and the log's completeness guarantee, which wait-any (E1) needs. Typed events, sealing and the chain with their first consumer (the lead developer's review, point 4) |
+| E19 amendment index | **In scope** (proposed) | M4-G: the machine-readable index now; the consolidated WC/KC re-freeze after M4 |
+| E20 `--json` on read commands | **In scope** | M4-E/F, with F15 and D-AR2 |
+| E21 `aew init` proposes the test command | **In scope** (proposed) | M4-G (Lead UX) |
+| E22 heartbeat `doctor` check | **Deferred** | On measured need: large-host re-parse bounds first |
+| E23 Windows coverage | **In scope** (proposed) | M4-G |
+| E24 typed record models | **Deferred** | Unscheduled; no runtime dependency, no consumer yet |
+| E25 a real Rocky 8 CI lane | **Deferred** | Depends on infrastructure; the VM remains the per-phase acceptance host |
+| E26 split the Windows serial job | **In scope** (proposed) | M4-G (CI hygiene); never by raising the timeout |
+| E27 OpenTelemetry-shaped spans | **Deferred** | A probe, only with a concrete consumer and an air-gap-safe retention plan |
+| E28 structured `check.run` results | **In scope** | M4-E, with F15 and D-AR2 |
+| E29 context-pack budget order | **In scope** (proposed) | M4-G: a pack-generator invariant, before any recall exists |
+| E30 the register as structured data | **Open** | The designer's call (Q13) |
+| Area 2, T6 (custody check independent of card operations) | **In scope** | A small PR alongside M4-C |
+| Area 2, T8 (streaming credential scan) | **Deferred** | A register E-item, on measured need |
+| Area 3, D9 and area 4, I9 (an in-process `Engine` test driver) | **Deferred** | A register E-item (efficiency); one driver serves both |
+| Area 4, I6 (the sync classifier under concurrent publishers; bounded lock hold for large publishes) | **In scope** | M4-D's plan: publication stays serialized under the control lock in M4-C, so one publisher at a time still holds |
+| Area 4, I8 (`_interrupt_invocations` through `set_state`; `doctor` lists orphan worktrees) | **In scope** (proposed) | M4-G (hardening) |
+| `AEW-INV-ISO-004` lock | **Question for the operator** | See "M4-C as built": no M4-C operation needs it, and its first consumer is M4-D's lease |
 
 ## 5. Phases
 

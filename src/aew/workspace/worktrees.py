@@ -40,7 +40,7 @@ def allocate(
     branch = branch_name(work_id, attempt)
     _clear_orphan(repo_root, path, branch, referenced_paths)
     path.parent.mkdir(parents=True, exist_ok=True)
-    git.git("worktree", "add", "-q", "-b", branch, str(path), base_commit, cwd=repo_root)
+    _add(repo_root, path, "-b", branch, str(path), base_commit)
     marker = git.git_dir(path) / WORKSPACE_MARKER
     marker.write_text(dump_yaml({
         "authoritative_repo_root": str(repo_root),
@@ -76,7 +76,7 @@ def allocate_detached(
     if path.exists():
         remove(repo_root, str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    git.git("worktree", "add", "-q", "--detach", str(path), commit, cwd=repo_root)
+    _add(repo_root, path, "--detach", str(path), commit)
     (git.git_dir(path) / WORKSPACE_MARKER).write_text(dump_yaml({
         "authoritative_repo_root": str(repo_root),
         "authoritative_aew_root": str(aew_root),
@@ -84,6 +84,26 @@ def allocate_detached(
         "workspace_id": workspace_id,
     }), encoding="utf-8")
     return {"path": str(path), "workspace_id": workspace_id}
+
+
+# git's own paths below a worktree (``.git/worktrees/<name>/...``) and its files must fit the platform's limit; on
+# Windows without long paths that is 260 characters, and a deep workspaces root fails inside git (M4 spike fact 4).
+LONG_PATH_HINTS = ("too big", "filename too long", "path too long", "name too long")
+
+
+def _add(repo_root: Path, path: Path, *args: str) -> None:
+    """``git worktree add``, with a path-length failure reported as one: where, how long, and what to change."""
+    try:
+        git.git("worktree", "add", "-q", *args, cwd=repo_root)
+    except GitError as exc:
+        stderr = str(exc.details.get("stderr") or "").lower()
+        if not any(hint in stderr for hint in LONG_PATH_HINTS):
+            raise
+        raise GitError(f"the workspace path {path} ({len(str(path))} characters) is too long for git here; set a "
+                       "shorter `workspaces.root` in .aew/project.yaml and run `aew manifest adopt` (for example a "
+                       "short directory beside the repository), or enable long paths (git config core.longpaths "
+                       "true, and Windows long-path support)", path=str(path), length=len(str(path)),
+                       stderr=exc.details.get("stderr")) from None
 
 
 def _clear_orphan(repo_root: Path, path: Path, branch: str, referenced_paths: set[str]) -> None:

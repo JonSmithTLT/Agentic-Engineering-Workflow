@@ -26,9 +26,6 @@ if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
 
-# Isolated workspaces and the integration queue for concurrency > 1 arrive in M4-C and M4-D, so the policy's
-# ``mutating_concurrency`` is read but clamped to 1 until then (WC §8.1, §21.1; m4-ambiguity-report.md §2.5).
-EFFECTIVE_MUTATING_CAP = 1
 
 
 class Invocations:
@@ -226,9 +223,11 @@ class Assignment:
         )
 
     def mutating_cap(self) -> int:
-        """The policy's mutating concurrency, clamped to what this milestone supports (M4-A: 1)."""
+        """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``, default 1). Each mutating
+        Ticket works in its own worktree and integrates through the serialized, CAS-published path, so more than
+        one may hold a live workspace (M4-C, m4-ambiguity-report.md §2.5); concurrency is opt-in per project."""
         configured = self.k.policy("gates").get("mutating_concurrency") or 1
-        return max(1, min(int(configured), EFFECTIVE_MUTATING_CAP))
+        return max(1, int(configured))
 
     # ---- the work.assign guards (the shared ones serve the non-mutating entrypoints too)
 
@@ -293,8 +292,8 @@ class Assignment:
         cap = self.mutating_cap()
         if len(busy) >= cap:
             return blocker_from(ConcurrencyLimit(
-                f"mutating concurrency is {cap} until isolated concurrent integration exists (WC §8.1); "
-                f"{busy} still hold unintegrated workspaces", holding=busy))
+                f"mutating concurrency is {cap} (gates policy `mutating_concurrency`); {busy} still hold "
+                "unintegrated workspaces", holding=busy, cap=cap))
         return None
 
     def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:

@@ -136,12 +136,20 @@ def control_violations(root: Path) -> list[str]:
     problems: list[str] = []
     evidence: dict[str, dict[str, dict[str, Any]]] = {}
 
-    # 1. Serial mutation: at most one mutating Ticket holds a live workspace (ADR-0003 B6).
+    # 1. Mutation is capped: live mutating workspaces never exceed the policy's `mutating_concurrency` (default 1;
+    #    ADR-0003 B6, M4-C), and no two share a workspace. Checked against the current policy file; tests never
+    #    lower the cap while workspaces are live.
     live = sorted(wid for wid, u in state["work"].items()
                   if u["kind"] == "ticket" and u.get("mutating")
                   and (u.get("workspace") or {}).get("status") == "active")
-    if len(live) > 1:
-        problems.append(f"serial cap exceeded: live mutating workspaces {live}")
+    gates_path = root / ".aew" / "policy" / "gates.yaml"
+    mutating_cap = max(1, int(((yaml.safe_load(gates_path.read_text(encoding="utf-8")) or {}).get(
+        "mutating_concurrency") or 1) if gates_path.exists() else 1))
+    if len(live) > mutating_cap:
+        problems.append(f"mutating cap {mutating_cap} exceeded: live mutating workspaces {live}")
+    paths = [state["work"][w]["workspace"]["path"] for w in live]
+    if len(set(paths)) != len(paths):
+        problems.append(f"live mutating workspaces share a path: {sorted(paths)}")
 
     # 2. Every active invocation is bound to its Ticket's *current* live workspace, with a live credential;
     #    every inactive invocation's credential is revoked.

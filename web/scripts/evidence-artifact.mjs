@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { z } from 'zod';
+import { wireSchemas, evidenceCases, evidenceSchemas } from '../src/api/preview/evidence/schema.ts';
+import { evidenceFixture } from '../src/api/preview/evidence/fixtures.ts';
+const write=process.argv.includes('--write'),sha=text=>crypto.createHash('sha256').update(text).digest('hex');
+function artifact(file,value){const text=JSON.stringify(value,null,2)+'\n';if(write)fs.writeFileSync(file,text);else if(fs.readFileSync(file,'utf8')!==text)throw new Error(`Evidence artifact drift: ${file}`);return sha(text);}
+const digest=artifact('docs/design/evidence-preview-0.1.0.json',{id:'evidence-preview',version:'0.1.0',disposition:'PROVISIONAL',routes:{base:'/api/preview/evidence/v0.1',methods:['GET','HEAD'],reference:'/references/{reference_id}',sources:'/sources',source:'/sources/{source_id}',artifacts:'/sources/{source_id}/artifacts',excerpt:'/sources/{source_id}/artifacts/{artifact_id}/excerpt',parameters:['case','evidence_id','work','reference_id','artifact_id','artifact_revision','cursor','limit=1..50']},bounds:{page:50,excerpt_utf8_bytes:16384},rules:['Canonical Evidence identity differs from reference association identity.','Resolution is bound to origin contract/case/record/item/role/Evidence/source/snapshot/visibility.','Excerpt identity includes source + artifact ID + artifact revision + cursor/range.','Validate original UTF-8 excerpt SHA-256 before caching; full artifact digest is supplied, not verified.','Raw prompts, credentials, storage paths and denied candidate identities are excluded.','Code/log presentation neutralizes ANSI, Unicode bidi and invisible formatting controls without changing hashed source.','Fixed snapshots never advance silently; missing information does not establish absence.','Knowledge Capture & Admission references canonical Evidence; it does not replace ownership.'],schemas:Object.fromEntries(Object.entries(wireSchemas).map(([key,s])=>[key,z.toJSONSchema(s)]))});
+artifact('docs/design/evidence-fixtures.manifest.json',{contract:'evidence-preview',version:'0.1.0',sha256:digest,cases:Object.fromEntries(evidenceCases.map(name=>[name,{sha256:sha(JSON.stringify(evidenceFixture(name)))}]))});
+const story=evidenceFixture();for(const source of story.sources)evidenceSchemas.EvidenceSourceResponse.parse({schema_version:'0.1.0',project_id:'aew-demo',control_revision:'42',generated_at:'2026-10-03T12:00:00Z',data:source});
+console.log('Evidence preview artifacts and fixture identities match');
+

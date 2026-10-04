@@ -1,0 +1,11 @@
+{
+  "approval": "Operator explicitly requested implementation of W05 revision 1.1 in this chat.",
+  "revision": "1.1",
+  "plan": "web/docs/design/plans/w05-evidence-inspection.md",
+  "backend_adoption": "PENDING",
+  "frontend_acceptance": "PENDING independent product-UI review",
+  "sha256": "9bbd78ed59b921fe916a9c0262afa97d9dcd4b0a015633181a0ebbc260aa8091",
+  "date": "2026-10-03",
+  "approval_quote": "PLEASE IMPLEMENT THIS PLAN:",
+  "live_integration": "NOT_CLAIMED"
+}

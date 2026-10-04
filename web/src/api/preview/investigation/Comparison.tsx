@@ -108,5 +108,3 @@ export default function Comparison() {
   return <><Link to="/runs">Back to Runs</Link><label className="filter-bar">Investigation scenario<select value={name} onChange={event => update({ investigation_case: event.target.value, source_cursor: null, packet_cursor: null, packet: null, packet_side: null })}>{investigationCases.map(c => <option key={c}>{c}</option>)}</select></label>
     {invalid ? <p role="alert">Unsupported or malformed comparison link. Historical links require an explicit supplied comparison source; no preview reads were sent.</p> : <Workspace key={`${base.generation}:${name}`} name={name} />}</>;
 }
-
-

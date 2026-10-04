@@ -1636,3 +1636,12 @@ summary {
 }
 .evidence-table button { white-space:normal; text-align:left; max-width:100%; overflow-wrap:anywhere; }
 .evidence-table :is(td,th) { overflow-wrap:anywhere; }
+
+@media (min-width:1024px) {
+  .evidence-panes .evidence-table { table-layout:fixed; width:100%; }
+  .evidence-panes .evidence-table :is(th,td) { white-space:normal; padding:8px; }
+  .evidence-panes .evidence-table :is(th,td):nth-child(1) { width:50%; }
+  .evidence-panes .evidence-table :is(th,td):nth-child(2) { width:20%; }
+  .evidence-panes .evidence-table :is(th,td):nth-child(3) { width:30%; }
+  .evidence-panes .evidence-table button { width:100%; padding:6px; }
+}

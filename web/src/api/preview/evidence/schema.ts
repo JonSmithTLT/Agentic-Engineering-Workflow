@@ -14,10 +14,11 @@ export const excerptWire = z.strictObject({ source_id: id, evidence_id: id, snap
 const envelope = <T extends z.ZodType>(data: T) => z.strictObject({ schema_version: z.literal('0.1.0'), project_id: id, control_revision: z.string().max(256), generated_at: timestamp, data });
 const page = <T extends z.ZodType>(item: T) => z.strictObject({ items: z.array(item).max(50), next_cursor: z.string().max(8192).nullable() });
 export const wireSchemas = { ReferenceResponse: envelope(association), EvidenceSourceListResponse: envelope(page(sourceSummary)), EvidenceSourceResponse: envelope(evidenceSource), ArtifactListResponse: envelope(page(artifact)), ExcerptResponse: envelope(excerptWire) };
-export const evidenceSchemas = { ...wireSchemas, ExcerptResponse: wireSchemas.ExcerptResponse.superRefine(({data:v}, ctx) => {
+export const evidenceSchemas = { ...wireSchemas, ArtifactListResponse:wireSchemas.ArtifactListResponse.superRefine(({data:v},ctx)=>{if(v.items.some(a=>a.omitted_ranges.some(r=>r.byte_end<=r.byte_start||(a.size_bytes!==null&&r.byte_end>a.size_bytes))))ctx.addIssue({code:'custom',message:'Artifact omission range mismatch'});}), ExcerptResponse: wireSchemas.ExcerptResponse.superRefine(({data:v}, ctx) => {
   if (new TextEncoder().encode(v.text).length > 16384 || v.byte_end - v.byte_start !== new TextEncoder().encode(v.text).length || v.byte_end < v.byte_start) ctx.addIssue({code:'custom',message:'Excerpt byte range/bound mismatch'});
   if (sha256(v.text) !== v.sha256) ctx.addIssue({code:'custom',message:'Excerpt integrity mismatch'});
   if ((v.line_start === null) !== (v.line_end === null) || (v.line_start !== null && v.line_end! < v.line_start)) ctx.addIssue({code:'custom',message:'Excerpt line range mismatch'});
+  if ((v.complete_value&&(v.truncated||v.byte_start!==0||v.next_cursor!==null)) || (v.next_cursor!==null&&v.next_cursor===v.cursor) || (!v.truncated&&(v.byte_start>0||v.next_cursor!==null))) ctx.addIssue({code:'custom',message:'Excerpt coverage/cursor mismatch'});
 }) };
 export type Origin = z.infer<typeof origin>;
 export type Association = z.infer<typeof association>;
@@ -25,7 +26,7 @@ export type EvidenceSource = z.infer<typeof evidenceSource>;
 export type Artifact = z.infer<typeof artifact>;
 export type Excerpt = z.infer<typeof excerptWire>;
 export function excerptIssue(v: Excerpt, s: EvidenceSource, a: Artifact, cursor: string | null) {
-  return v.source_id !== s.id || v.evidence_id !== s.evidence_id || v.snapshot_id !== s.snapshot_id || v.artifact_id !== a.id || v.artifact_revision !== a.revision || v.cursor !== cursor || (a.size_bytes !== null && v.byte_end > a.size_bytes) || a.omitted_ranges.some(r=>v.byte_start<r.byte_end&&v.byte_end>r.byte_start) ? 'Excerpt binding/range mismatch' : undefined;
+  return v.source_id !== s.id || v.evidence_id !== s.evidence_id || v.snapshot_id !== s.snapshot_id || v.artifact_id !== a.id || v.artifact_revision !== a.revision || v.cursor !== cursor || (a.size_bytes !== null && (v.byte_end > a.size_bytes||(v.complete_value&&v.byte_end!==a.size_bytes))) || a.omitted_ranges.some(r=>v.byte_start<r.byte_end&&v.byte_end>r.byte_start) ? 'Excerpt binding/range mismatch' : undefined;
 }
 export function sourceIssue(s: EvidenceSource) { return s.evidence.id !== s.evidence_id ? 'Evidence identity mismatch' : undefined; }
 export const supportedMedia = ['text/plain','text/x-code','text/x-log','text/markdown','application/json'];

@@ -9,4 +9,3 @@ const digest=artifact('docs/design/evidence-preview-0.1.0.json',{id:'evidence-pr
 artifact('docs/design/evidence-fixtures.manifest.json',{contract:'evidence-preview',version:'0.1.0',sha256:digest,cases:Object.fromEntries(evidenceCases.map(name=>[name,{sha256:sha(JSON.stringify(evidenceFixture(name)))}]))});
 const story=evidenceFixture();for(const source of story.sources)evidenceSchemas.EvidenceSourceResponse.parse({schema_version:'0.1.0',project_id:'aew-demo',control_revision:'42',generated_at:'2026-10-03T12:00:00Z',data:source});
 console.log('Evidence preview artifacts and fixture identities match');
-

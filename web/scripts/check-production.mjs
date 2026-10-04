@@ -21,4 +21,3 @@ for (const file of files('dist')) {
     throw new Error(`Production mock leakage: ${file}`);
 }
 console.log('Production build excludes fixtures and mock initialization');
-

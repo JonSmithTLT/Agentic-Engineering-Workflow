@@ -39,5 +39,3 @@ export function evidenceFixture(name = 'story', accepted: EvidenceSource['eviden
   if(name==='empty') sources.splice(0);
   return {sources,artifacts,bodies,associations:structuredClone(referenceAssociations)};
 }
-
-

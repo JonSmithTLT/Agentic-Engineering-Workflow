@@ -55,5 +55,3 @@ export function PacketInspector({ query, packetId, name, back }: { query: Source
     {!packet && !packetQuery.error && !query.error && association && <p role="status">Loading packet…</p>}
   </section>;
 }
-
-

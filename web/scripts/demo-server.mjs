@@ -78,4 +78,3 @@ const server = http.createServer((req, res) => {
 });
 const port = Number(process.env.DASHBOARD_PORT ?? 4249);
 server.listen(port, '127.0.0.1', () => console.log(`Demo HTTP fixtures (no service worker): http://127.0.0.1:${port}`));
-

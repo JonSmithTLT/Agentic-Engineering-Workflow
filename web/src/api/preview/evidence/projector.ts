@@ -40,4 +40,3 @@ export class EvidenceProjector {
     return send({items,next_cursor:offset+limit<rows.length?encodeURIComponent(JSON.stringify([scope,offset+limit])):null});
   }
 }
-

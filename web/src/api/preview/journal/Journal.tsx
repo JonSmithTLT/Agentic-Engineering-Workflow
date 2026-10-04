@@ -253,5 +253,3 @@ function TextList({ values, empty }: {
 }) {
     return values.length ? <ul>{values.map((v, i) => <li key={i}>{v}</li>)}</ul> : <p className="muted">{empty}</p>;
 }
-
-

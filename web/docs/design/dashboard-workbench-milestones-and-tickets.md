@@ -373,4 +373,3 @@ Milestone evidence includes frozen commit, contract/preview provenance, builder/
 Normal production builds must not initialize MSW or contain fixture catalogs/preview response data. Developer-only previews require explicit demo builds and labels. Approved future production surfaces must gate requests on capabilities, preserve authenticated same-origin GET/HEAD behavior, avoid credential leakage and display supported-unavailable/unsupported/unknown honestly.
 
 At each milestone boundary, report what is accepted as frontend behavior, what remains a fixture proposal, and what needs live integration. Nonblocking improvements do not silently expand scope or delay an otherwise accepted milestone. Optional features do not reopen accepted core semantics.
-

@@ -277,4 +277,3 @@ export default function Lab({ tab }: { tab: string }) {
     </div>
   );
 }
-

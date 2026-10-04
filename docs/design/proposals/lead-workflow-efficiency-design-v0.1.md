@@ -1,6 +1,6 @@
 # Lead workflow efficiency: fewer model steps per Ticket
 
-**Status:** design proposal for the operator and designer, 2026-09-29. No state-machine or product-code change is implied by this document. It follows the M3 [read-only audit](../implementation/m3-audit-findings.md) and [dogfood report](../implementation/m3-dogfood-report.md).
+**Status:** design proposal for the operator and designer, 2026-09-29. No state-machine or product-code change is implied by this document. It follows the M3 [read-only audit](../../archive/reviews/m3-audit-findings.md) and [dogfood report](../../archive/milestones/m3-dogfood-report.md).
 
 ## The cost to remove
 
@@ -8,7 +8,7 @@ The audit's 26 hardened AEW runs contain 29 Lead sessions. The median session us
 
 I re-counted the recorded command *prefixes* in those 29 sessions: 114 `work transition`, 85 `invoke create`, 58 `verify ingest`, 47 `review ingest`, and 100 `status` calls. These are not success counts: the command log lacks the `aew` exit code, and some calls were refusals or retries. They identify the interface's hotspots. A successful single-Ticket T1 run still called create, propose, accept, assign, four waits, three separately logged transitions, two role dispatches, review and verification ingests, prepare, post-integration dispatch, post-integration ingest, and publish, as well as setup and status calls.
 
-The [Knowledge Contract](../aew-knowledge-contract-v0.4.md#10-work-creation-command-contract) permits convenience aliases if they preserve the durable Ticket semantics. It also requires Lead ownership of plan acceptance, evidence ingestion, failure classification, and integration; atomic, stale-writer-resistant control updates; and reconstructible consequential transitions. [ADR-0003](../implementation/adr/0003-ticket-state-machine.md) restricts *which operation* may move each state. Neither requires a fresh model reasoning step between every deterministic operation. The opportunity is to make one Lead judgment trigger a guarded sequence of existing engine operations.
+The [Knowledge Contract](../../aew-knowledge-contract-v0.4.md#10-work-creation-command-contract) permits convenience aliases if they preserve the durable Ticket semantics. It also requires Lead ownership of plan acceptance, evidence ingestion, failure classification, and integration; atomic, stale-writer-resistant control updates; and reconstructible consequential transitions. [ADR-0003](../../implementation/adr/0003-ticket-state-machine.md) restricts *which operation* may move each state. Neither requires a fresh model reasoning step between every deterministic operation. The opportunity is to make one Lead judgment trigger a guarded sequence of existing engine operations.
 
 ## Recommended shape: explicit stage commands
 

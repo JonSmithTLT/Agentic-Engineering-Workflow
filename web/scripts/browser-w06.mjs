@@ -66,7 +66,7 @@ try{
    for(const identity of identities){
     const button=page.locator(`[data-execution-pick="${identity}"]`);await button.scrollIntoViewIfNeeded();
     assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),`${width}px ${view} ${identity} hit target`);
-    await button.click();await page.getByRole('heading',{name:identity,exact:true}).waitFor();await page.getByRole('heading',{name:'Captured execution',exact:true}).waitFor();
+    await button.click();await page.getByRole('heading',{name:identity,exact:true}).waitFor();await page.getByRole('tab',{name:'Details',exact:true}).click();await page.getByRole('heading',{name:'Captured execution',exact:true}).waitFor();
     await page.getByRole('tab',{name:'Provenance',exact:true}).click();
     assert.equal(await page.locator('.unknown:visible').count(),0,'Story has no unknown semantic values');
     await page.getByRole('button',{name:'Close detail',exact:true}).click();

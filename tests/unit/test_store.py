@@ -139,6 +139,19 @@ def test_out_of_band_edit_during_apply_fails_closed(tmp_path, monkeypatch):
     assert (tmp_path / "manifest.txt").read_text() == "hand edit\n"
 
 
+def test_an_edit_after_a_finished_apply_is_not_a_transition_in_progress(tmp_path):
+    """Area 5 F1 (P1): once a transaction's writes are all applied, a later edit of a file it staged is an ordinary
+    out-of-band edit (the pin checks report it), not "modified while a transition was being applied" on every read."""
+    store = init(tmp_path)
+    one_transaction(store)
+    (tmp_path / "manifest.txt").write_text("reviewed hand edit\n")
+    state = make_store(tmp_path).read()  # a fresh process: recovery has nothing to redo
+    assert state["revision"] == 1
+    assert (tmp_path / "manifest.txt").read_text() == "reviewed hand edit\n"
+    one_transaction(make_store(tmp_path))  # and the next transition proceeds from the edited file
+    assert check_invariants(tmp_path) == 2
+
+
 def test_write_outside_root_refused(tmp_path):
     store = init(tmp_path / "aew")
     with pytest.raises(IntegrityError):
@@ -154,3 +167,51 @@ def test_derived_views_rebuilt_after_deletion(tmp_path):
     (tmp_path / "state/CURRENT.md").unlink()
     (tmp_path / "state/log/000001.yaml").unlink()
     check_invariants(tmp_path)  # read() repairs the log and the render
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows refuses to remove an open file")
+def test_a_holder_whose_lock_file_was_removed_commits_nothing(tmp_path):
+    """Area 5 F2 (P2): deleting ``local/`` under a running process lets another process lock a new file at the same
+    path. The holder notices before it writes and refuses, so two writers never both commit a revision."""
+    store = init(tmp_path)
+    one_transaction(store)
+    before = (tmp_path / "state/control.yaml").read_bytes()
+    with store.session() as s:
+        s.state["counters"]["n"] += 1
+        s.write("records/item-x.md", "x\n")
+        (tmp_path / "local/control.lock").unlink()
+        rival = make_store(tmp_path)
+        with rival.session():  # a second process takes the lock at once: the holder's lock excludes no one now
+            pass
+        with pytest.raises(IntegrityError, match="removed or replaced"):
+            s.commit(Transition(op="bump", actor={"kind": "test"}))
+    assert (tmp_path / "state/control.yaml").read_bytes() == before
+    assert not (tmp_path / "records/item-x.md").exists()
+    assert check_invariants(tmp_path) == 1
+    one_transaction(store)  # the next session locks the file now at the path and commits normally
+    assert check_invariants(tmp_path) == 2
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows refuses to remove an open file")
+def test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file(tmp_path):
+    """P2: a process that locks a file that was removed after it opened it must not proceed on that lock."""
+    from aew.engine.lock import FileLock
+
+    path = tmp_path / "control.lock"
+    lock = FileLock(path, timeout=5)
+    opened = []
+    real_open = lock._open
+
+    def open_then_replace():  # the first open sees the old file, which is then removed and recreated
+        fh = real_open()
+        if not opened:
+            path.unlink()
+            path.write_bytes(b"")
+        opened.append(fh)
+        return fh
+
+    lock._open = open_then_replace
+    with lock:
+        assert len(opened) == 2 and lock.intact()
+        held = os.fstat(lock._fh.fileno())
+        assert (held.st_ino, held.st_dev) == (path.stat().st_ino, path.stat().st_dev)

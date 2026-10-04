@@ -22,6 +22,7 @@ and the annotations about a subject, and the set of referenced paths (for unreac
 
 from __future__ import annotations
 
+import atexit
 import errno
 import json
 import os
@@ -81,9 +82,13 @@ class HistoryIndex:
 
     # ------------------------------------------------------------------ freshness
 
-    def sync(self, root: dict[str, Any]) -> dict[str, Any]:
+    def sync(self, root: dict[str, Any], *, private_when_busy: bool = False) -> dict[str, Any]:
         """Bring the index to ``root``: ``{"mode": "current" | "ahead" | "caught_up" | "rebuilt", "added": n}``.
         ``ahead``: another process already indexed a later root that extends this one; queries then stop at ``root``.
+
+        ``private_when_busy``: when another process holds the shared index, build a private one from the history
+        instead of failing. A transaction that needs a cold fact uses this, so a derived file never fails an
+        authoritative commit (area 5 F3).
         """
         try:
             out = self._sync(root)
@@ -96,6 +101,12 @@ class HistoryIndex:
                 return out
             if isinstance(exc, OSError):
                 raise
+            if _contended(exc) and private_when_busy:  # leave the shared index to its writer
+                self._use_private_copy(copy=False)
+                out = self._sync(root)
+                self.upto = root["count"]
+                self.root = dict(root)
+                return out
             if _contended(exc):  # healthy but busy: keep it, and say so
                 raise LockTimeout(f"the history index {INDEX_REL} is busy: {exc}") from exc
             self.path.unlink(missing_ok=True)  # damaged or not a database: derived data, so start over
@@ -104,11 +115,14 @@ class HistoryIndex:
         self.root = dict(root)
         return out
 
-    def _use_private_copy(self) -> None:
+    def _use_private_copy(self, *, copy: bool = True) -> None:
         """Continue on a private copy of the index (derived data, re-verified against the history on every use), for
-        a process that may read the project but not write it: a contained run's own `aew` commands (M4-B)."""
-        private = Path(tempfile.mkdtemp(prefix="aew-history-index-")) / self.path.name
-        if self.path.exists():
+        a process that may read the project but not write it: a contained run's own `aew` commands (M4-B). Without
+        ``copy`` the private index starts empty and is built from the history (the shared file may be mid-write)."""
+        folder = tempfile.mkdtemp(prefix="aew-history-index-")
+        atexit.register(shutil.rmtree, folder, ignore_errors=True)
+        private = Path(folder) / self.path.name
+        if copy and self.path.exists():
             shutil.copy2(self.path, private)
         self.path = private
 

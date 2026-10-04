@@ -297,17 +297,47 @@
       }
     },
     "last_transition": {
-      "description": "ADR-0012: the newest committed transition, the same record as its per-revision log entry.",
-      "$ref": "urn:aew:schema:transition"
-    },
-    "outbox": {
-      "description": "ADR-0012: present from the first revision an outbox-era engine committed (`since`), where the transition hash chain starts. Older engines close the top level, so they refuse a control file with this key and can never commit over the chain without extending it (D10).",
       "type": "object",
-      "required": ["schema", "since"],
-      "additionalProperties": false,
+      "required": [
+        "revision",
+        "at",
+        "actor",
+        "op"
+      ],
       "properties": {
-        "schema": {"const": "aew/outbox/v1"},
-        "since": {"type": "integer", "minimum": 0}
+        "revision": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "object"
+        },
+        "op": {
+          "type": "string"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refs": {
+          "type": "array"
+        },
+        "txn": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
       }
     },
     "cold": {
@@ -388,10 +418,6 @@
     }
   },
   "allOf": [
-    {
-      "if": {"required": ["outbox"]},
-      "then": {"properties": {"last_transition": {"required": ["schema", "events", "event_overflow", "h"]}}}
-    },
     {
       "if": {"properties": {"schema": {"const": "aew/control/v1"}}},
       "then": {

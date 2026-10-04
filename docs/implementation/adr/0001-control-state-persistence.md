@@ -56,3 +56,29 @@ Measured in `m3-performance.md`. The design is unchanged; three implementation r
 - **Profiling.** `AEW_PROFILE=<file>` records each command's phases (lock, recover, parse, render, commit, git, scan) and counts.
 
 **Consequence, decided:** every command still costs time linear in the size of `control.yaml`, and the file grows with completed work, about 20 KB per DONE Ticket with its invocations. The operator and designer chose hot/cold control state (**ADR-0011**, 2026-09-27): terminal records move into cold records pinned by hash. That will amend this ADR's model. It is a prerequisite for M4, after M3's acceptance.
+
+## Amendment 2026-10-04 — the transition log is complete and consumable (ADR-0012, M4-D slice D1)
+
+ADR-0012 refines the Decision's last bullet. The transition log stays derived from committed state and is still
+never authoritative: `control.yaml` remains the single workflow authority. But the log is now a guarantee that
+consumers may rely on, not a by-product:
+
+- **Complete.** Every revision from the outbox's start has exactly one record. The store already repaired a missing
+  record after a crash; that is now a stated guarantee. Recovery also publishes a staged overflow sidecar.
+- **Typed.** `last_transition` carries `events`, derived by `ControlStore._commit` from the committed states, so a
+  direct `Session.commit` is covered as well as `Kernel.lead_txn`. Facts the state change cannot show are added by
+  the authoritative operation (`TxnContext.events`).
+- **Bounded, still with one commit point.**
+  - At most 64 events stay hot.
+  - A larger set is written in full to an immutable `state/log/<rev>.events.yaml`. It is staged in the redo record
+    like any other write of the transition, and named and hashed by `last_transition.event_overflow`.
+  - Nothing new is staged outside the redo record, and no event is reconstructed afterwards.
+- **Chained.** Each record's `h` commits to the previous record's `h` and, for an overflow, to the sidecar's digest
+  and count. The chain starts at the top-level `outbox.since`.
+- **The top-level `outbox` key is what makes older engines refuse the file.** Older engines close the control file's
+  top level, but `last_transition` was an open object. Without the marker, an older engine would accept an
+  outbox-era file and commit over it without extending the chain.
+- **Advisory wake.** `local/wake` changes after each new log record and each run-record write.
+
+Its own fault point is `log.overflow_unpublished`: committed, with the sidecar not yet written. The crash matrix
+covers it, and every other point now also crashes a transition with an overflow (`tests/helpers/store_model.py`).

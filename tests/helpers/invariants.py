@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from aew.engine import hierarchy as H
+from aew.engine import outbox
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control
 from aew.history.store import History
@@ -225,6 +226,43 @@ def control_violations(root: Path) -> list[str]:
     problems += m3_violations(root, state, evidence)
     # 19-23. ADR-0011 archival.
     problems += cold_problems + cold_violations(root, hot, state)
+    # 24 and 26. ADR-0012: the transition log (rule 25, event fidelity, needs the earlier states: store_model.py).
+    problems += outbox_violations(root, hot)
+    return problems
+
+
+_LOG_CHECKED: dict[str, tuple[int, str | None]] = {}  # per project: (revision verified through, its h)
+
+
+def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """24. From the revision the outbox began, every revision has exactly one logical transition, chained to the one
+    before, the newest equal to ``last_transition``. 26. A record holds at most 64 hot events, and an overflow's
+    sidecar holds exactly the set its descriptor names. Incremental: a walk checks each record once."""
+    marker = state.get("outbox")
+    if marker is None:
+        return ["24: the control state has no outbox marker"]
+    aew_root = Path(root) / ".aew"
+    key = str(aew_root.resolve())
+    through, prev_h = _LOG_CHECKED.get(key, (marker["since"] - 1 if marker["since"] else -1, None))
+    if through > state["revision"]:  # a fresh project at the same path
+        through, prev_h = (marker["since"] - 1 if marker["since"] else -1, None)
+    problems: list[str] = []
+    try:
+        for record in outbox.read_transitions(aew_root, through, state["revision"], outbox=marker, prev_h=prev_h):
+            raw = outbox._read_record(aew_root, record["revision"]) or {}
+            if len(raw.get("events") or []) > outbox.MAX_HOT_EVENTS:
+                problems.append(f"26: revision {record['revision']} holds {len(raw['events'])} hot events")
+            if (raw.get("event_overflow") is None) != (len(record["events"] or []) <= outbox.MAX_HOT_EVENTS):
+                problems.append(f"26: revision {record['revision']}: overflow present iff more than 64 events")
+            through, prev_h = record["revision"], record.get("h")
+    except Exception as exc:  # noqa: BLE001 (the oracle reports, it does not crash)
+        problems.append(f"24: {exc}")
+    if through != state["revision"]:
+        problems.append(f"24: the log stops at revision {through}, the state is at {state['revision']}")
+    elif (outbox._read_record(aew_root, through) or {}) != state["last_transition"]:
+        problems.append("24: the newest log record is not the committed last_transition")
+    if not problems:
+        _LOG_CHECKED[key] = (through, prev_h)
     return problems
 
 

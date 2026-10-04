@@ -8,6 +8,7 @@ from importlib import resources
 from typing import Any, cast
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from aew.errors import ValidationFailed
 
@@ -25,15 +26,28 @@ SCHEMAS = {
     "role": "role.schema.json",
     "role-archetype": "role-archetype.schema.json",
     "history": "history.schema.json",
+    "transition": "transition.schema.json",
+    "transition-events": "transition-events.schema.json",
 }
+
+
+def _load(name: str) -> dict[str, Any]:
+    return json.loads(resources.files(__name__).joinpath(SCHEMAS[name]).read_text(encoding="utf-8"))
+
+
+@cache
+def _registry() -> Registry:
+    """Schemas other schemas refer to by ``$id`` (the control state's ``last_transition`` is a transition record)."""
+    return Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema)) for schema in (_load(n) for n in SCHEMAS)
+        if "$id" in schema)
 
 
 @cache
 def _validator(name: str) -> Draft202012Validator:
-    text = resources.files(__name__).joinpath(SCHEMAS[name]).read_text(encoding="utf-8")
-    schema = json.loads(text)
+    schema = _load(name)
     Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
+    return Draft202012Validator(schema, registry=_registry())
 
 
 def validate(name: str, instance: Any, *, source: str) -> None:
@@ -44,7 +58,8 @@ def validate(name: str, instance: Any, *, source: str) -> None:
 @cache
 def _property_validator(name: str, prop: str) -> Draft202012Validator:
     schema = cast(dict[str, Any], _validator(name).schema)
-    return Draft202012Validator({**schema["properties"][prop], "$defs": schema.get("$defs", {})})
+    return Draft202012Validator({**schema["properties"][prop], "$defs": schema.get("$defs", {})},
+                                registry=_registry())
 
 
 def validate_property(name: str, prop: str, instance: Any, *, source: str) -> None:
@@ -56,7 +71,7 @@ def validate_property(name: str, prop: str, instance: Any, *, source: str) -> No
 @cache
 def _def_validator(name: str, definition: str) -> Draft202012Validator:
     schema = cast(dict[str, Any], _validator(name).schema)
-    return Draft202012Validator({"$ref": f"#/$defs/{definition}", "$defs": schema["$defs"]})
+    return Draft202012Validator({"$ref": f"#/$defs/{definition}", "$defs": schema["$defs"]}, registry=_registry())
 
 
 def validate_def(name: str, definition: str, instance: Any, *, source: str) -> None:

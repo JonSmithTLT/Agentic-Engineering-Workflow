@@ -27,9 +27,13 @@ Model (ADR-0001):
   anything else is an out-of-band modification and fails closed.
 * Every operation (read or write) runs under an OS advisory lock and first
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
-* The transition log ``state/log/<rev>.yaml`` and derived views (for example
-  ``state/CURRENT.md``) are rebuilt from committed state; they are never
-  authoritative.
+* The transition log ``state/log/<rev>.yaml`` is derived from committed state and
+  never authoritative, but it is complete and consumable (ADR-0012, amending
+  ADR-0001): every revision has exactly one record, carrying the typed events the
+  commit implies (bounded hot; an oversized set goes to an immutable sidecar staged
+  in the redo record) and a hash chaining it to the previous one. See
+  ``aew.engine.outbox``. Derived views (for example ``state/CURRENT.md``) are
+  rebuilt from committed state.
 * ``after_apply(state)`` runs inside the lock once a state's writes are known to
   be on disk — after redo recovery and after each commit's apply, before the
   post-commit render — so callers can load files a transition may have
@@ -54,7 +58,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import profile
-from aew.engine import faults
+from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
 from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision
 from aew.schemas import validate
@@ -98,6 +102,8 @@ class Transition:
     summary: str | None = None
     reason: str | None = None
     refs: list[str] = field(default_factory=list)
+    # Facts the state difference cannot recover, declared by the authoritative operation (ADR-0012 D2).
+    events: list[dict[str, Any]] = field(default_factory=list)
 
 
 def serialize_control(state: dict[str, Any]) -> bytes:
@@ -164,7 +170,8 @@ class Session:
                 current=self.revision,
             )
         self.committed_revision = self._store._commit(self._committed_state, self.state if state is None else state,
-                                                      self._writes, transition, self._prewritten)
+                                                      self._writes, transition, self._prewritten,
+                                                      working=self.state)
         return self.committed_revision
 
 
@@ -227,6 +234,11 @@ class ControlStore:
                 atomic_write(self._abs(rel), content)
             state = copy.deepcopy(state)
             state["revision"] = 0
+            if state.get("last_transition"):  # revision 0 starts the transition chain (ADR-0012)
+                state["outbox"] = outbox.marker({}, 0)
+                state["last_transition"] = outbox.seal(
+                    {"schema": outbox.TRANSITION_SCHEMA, **state["last_transition"], "revision": 0, "events": [],
+                     "event_overflow": None}, outbox.GENESIS_H)
             validate("control", state, source="initial control state")
             self.control_path.parent.mkdir(parents=True, exist_ok=True)
             create_exclusive(self.control_path, serialize_control(state))
@@ -241,10 +253,13 @@ class ControlStore:
         writes: list[PendingWrite],
         transition: Transition,
         prewritten: dict[str, str] | None = None,
+        *,
+        working: dict[str, Any] | None = None,
     ) -> int:
         profile.count("commit")
         with profile.phase("commit"):
-            return self._commit_unprofiled(before, after, writes, transition, prewritten or {})
+            return self._commit_unprofiled(before, after, writes, transition, prewritten or {},
+                                           after if working is None else working)
 
     def _commit_unprofiled(
         self,
@@ -253,9 +268,16 @@ class ControlStore:
         writes: list[PendingWrite],
         transition: Transition,
         prewritten: dict[str, str],
+        working: dict[str, Any],
     ) -> int:
         revision = before["revision"] + 1
         after["revision"] = revision
+        # ADR-0012: the transition's typed events, derived here so that every commit site is covered.
+        with profile.phase("outbox"):
+            events = outbox.derive_events(before, working, after) + list(transition.events)
+            hot, overflow, overflow_text = outbox.bound(revision, events)
+        if overflow is not None and overflow_text is not None:  # the complete set, staged like any other write
+            writes = [*writes, PendingWrite(overflow["path"], overflow_text, True)]
         for rel, digest in sorted(prewritten.items()):
             if sha256_file(self._abs(rel)) != digest:
                 raise IntegrityError(f"pre-written object {rel} is missing or does not hold its declared content",
@@ -287,7 +309,9 @@ class ControlStore:
             }
             if listing:  # bounded: the listing itself is in the hash-pinned redo record
                 txn_ref["prewritten"] = {"count": len(listing), "sha256": sha256_bytes(dump_yaml(listing).encode())}
-        after["last_transition"] = {
+        after["outbox"] = outbox.marker(before, revision)
+        after["last_transition"] = outbox.seal({
+            "schema": outbox.TRANSITION_SCHEMA,
             "revision": revision,
             "at": utc_now(),
             "actor": transition.actor,
@@ -296,7 +320,9 @@ class ControlStore:
             "reason": transition.reason,
             "refs": list(transition.refs),
             "txn": txn_ref,
-        }
+            "events": hot,
+            "event_overflow": overflow,
+        }, outbox.previous_h(before))
         # Validate before anything touches disk so a rejected transition leaves no trace.
         validate("control", after, source=f"control state revision {revision}")
         control_bytes = serialize_control(after)
@@ -316,6 +342,8 @@ class ControlStore:
             raise
         fsync_dir(self.control_path.parent)
         faults.hit("txn.after_replace")
+        if overflow is not None:
+            faults.hit("log.overflow_unpublished")  # committed, its sidecar not yet written: recovery publishes it
 
         self._apply(staged, inject=True, fault_after=fault_after)
         faults.hit("txn.after_apply")
@@ -411,12 +439,16 @@ class ControlStore:
 
     def _post_commit(self, state: dict[str, Any], *, inject: bool = False) -> None:
         last = state.get("last_transition")
+        wrote = False
         if last:
             log_path = self._abs(f"{LOG_DIR}/{state['revision']:06d}.yaml")
             if not log_path.exists():
                 atomic_write(log_path, dump_yaml(last))
+                wrote = True
         if inject:
             faults.hit("txn.after_log")
+        if wrote:  # a new record, committed now or repaired: wake waiters (advisory, ADR-0012 D4)
+            outbox.bump_wake(self.root, state["revision"])
         if self.renderer:
             profile.count("render")
             with profile.phase("render"):

@@ -286,6 +286,7 @@ class Lead:
         state = ctx.state
         state["counters"]["handoff"] = state["counters"].get("handoff", 0) + 1
         hid = format_id("H", state["counters"]["handoff"])
+        ctx.events.append({"kind": "handoff.recorded", "id": hid})
         in_flight = [f"{i} ({inv['role']} for {inv['work_unit']})"
                      for i, inv in sorted(state["invocations"].items()) if inv["status"] == "active"]
         meta = {

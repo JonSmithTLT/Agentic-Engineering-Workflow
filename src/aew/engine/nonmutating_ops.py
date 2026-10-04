@@ -555,6 +555,8 @@ class NonMutating:
     def evidence_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         """Lead accepts the current attempt's execute record into control state (it is not yet DONE)."""
         with self.k.lead_txn(token, expect_rev, "evidence.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "execute",
+                               "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "`aew evidence ingest`")
@@ -814,6 +816,8 @@ class NonMutating:
         """Lead ingests a review/verification of a non-mutating Ticket's accepted record."""
         op = "review.ingest" if kind == "review" else "verify.ingest"
         with self.k.lead_txn(token, expect_rev, op) as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id,
+                               "evidence_kind": "review" if kind == "review" else "verification", "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
             self._require_nm_ticket(unit, work_id, "this ingest")

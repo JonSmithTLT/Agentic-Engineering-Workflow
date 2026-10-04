@@ -348,6 +348,7 @@ class HistoryCommands:
                           **checked, "result": "fail" if problems else "pass", "problems": problems,
                           "actor": {"generation": state["lead"]["generation"]}})
         sha = History.write_record(ctx.session, rel, text)
+        ctx.events.append({"kind": "audit.recorded", "id": audit_id, "result": "fail" if problems else "pass"})
         fields = {"kind": "audit", "id": audit_id, "path": rel, "sha256": sha, "at": at, "source": "engine",
                   "links": {}}
         ctx.entries.append(fields)

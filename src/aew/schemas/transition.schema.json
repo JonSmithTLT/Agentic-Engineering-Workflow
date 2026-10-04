@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aew:schema:transition",
+  "title": "aew/transition/v1",
+  "description": "One logical transition: last_transition in control state and its per-revision log record (ADR-0012). Closed at every level; schema, events, event_overflow and h are present from the revision the outbox began (control state's `outbox.since`).",
+  "type": "object",
+  "required": [
+    "revision",
+    "at",
+    "actor",
+    "op"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "aew/transition/v1"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "at": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "object"
+    },
+    "op": {
+      "type": "string"
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "txn": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "event_overflow": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256",
+            "event_count",
+            "counts_by_kind"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^state/log/[0-9]{6,}\\.events\\.yaml$"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "event_count": {
+              "type": "integer",
+              "minimum": 65
+            },
+            "counts_by_kind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "h": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "kind": {
+              "const": "lead.generation"
+            },
+            "from": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "to": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "unit",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "kind": {
+              "const": "work.state"
+            },
+            "id": {
+              "type": "string"
+            },
+            "unit": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "from": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "work",
+            "role",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "kind": {
+              "const": "invocation.status"
+            },
+            "id": {
+              "type": "string"
+            },
+            "work": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "role": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "from": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "invocation",
+            "run"
+          ],
+          "properties": {
+            "kind": {
+              "const": "run.added"
+            },
+            "invocation": {
+              "type": "string"
+            },
+            "run": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "reason"
+          ],
+          "properties": {
+            "kind": {
+              "const": "credential.revoked"
+            },
+            "id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "from_count",
+            "to_count",
+            "head_h"
+          ],
+          "properties": {
+            "kind": {
+              "const": "history.appended"
+            },
+            "from_count": {
+              "type": "integer"
+            },
+            "to_count": {
+              "type": "integer"
+            },
+            "head_h": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "unit",
+            "state"
+          ],
+          "properties": {
+            "kind": {
+              "const": "unit.archived"
+            },
+            "id": {
+              "type": "string"
+            },
+            "unit": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "kind": {
+              "const": "queue.entry"
+            },
+            "id": {
+              "type": "string"
+            },
+            "from": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "entry",
+            "custodian"
+          ],
+          "properties": {
+            "kind": {
+              "const": "queue.lease"
+            },
+            "entry": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "custodian": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "type"
+          ],
+          "properties": {
+            "kind": {
+              "const": "decision.recorded"
+            },
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "handoff.recorded"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "work",
+            "evidence_kind",
+            "ids"
+          ],
+          "properties": {
+            "kind": {
+              "const": "evidence.ingested"
+            },
+            "work": {
+              "type": "string"
+            },
+            "evidence_kind": {
+              "type": "string"
+            },
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "result"
+          ],
+          "properties": {
+            "kind": {
+              "const": "audit.recorded"
+            },
+            "id": {
+              "type": "string"
+            },
+            "result": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

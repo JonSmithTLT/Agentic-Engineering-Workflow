@@ -34,6 +34,7 @@ FAULT_POINTS = [
     "txn.after_apply",
     "txn.after_log",
     "txn.after_render",
+    "log.overflow_unpublished",  # committed with its overflow sidecar not yet written (ADR-0012 D9)
 ]
 BEFORE_COMMIT = {"txn.before_stage", "txn.after_stage", "txn.before_replace"}
 # ADR-0011 history writes, applied after the commit point: a bundle, a sealed segment, the tail.

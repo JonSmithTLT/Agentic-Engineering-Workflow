@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-from aew import SPEC_SET, roles
+from aew import SPEC_SET
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import Kernel, TxnContext
@@ -353,23 +353,6 @@ class Engine:
         return self._k.store
 
     @property
-    def NM_PRE_REVIEW(self) -> Any:
-        return self._nm.NM_PRE_REVIEW
-
-    @property
-    def PRE_REVIEW(self) -> Any:
-        return self._gates.PRE_REVIEW
-
-    def accepted_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        return self._gates.accepted_gate_context(state, work_id)
-
-    def accepted_plan_ref(self, unit: dict[str, Any]) -> dict[str, Any] | None:
-        return self._units.accepted_plan_ref(unit)
-
-    def ancestor_plan_snapshot(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        return self._units.ancestor_plan_snapshot(state, work_id)
-
-    @property
     def authoritative_branch(self) -> Any:
         return self._k.authoritative_branch
 
@@ -389,18 +372,6 @@ class Engine:
         return self._project.authority_reject(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
                                               reason=reason)
 
-    def before_commit(self, ctx: TxnContext) -> None:
-        return self._units.before_commit(ctx)
-
-    def bind_plan_assurance(self, unit: dict[str, Any], revision: int, assurance: dict[str, list[str]] | None) -> None:
-        return self._roles.bind_plan_assurance(unit, revision, assurance)
-
-    def binding_problem(self, unit: dict[str, Any]) -> dict[str, Any] | None:
-        return self._gates.binding_problem(unit)
-
-    def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
-        return self._packs.build_pack(ctx, inv_id)
-
     def check_manifest_pin(self, state: dict[str, Any]) -> None:
         return self._k.check_manifest_pin(state)
 
@@ -411,19 +382,10 @@ class Engine:
                    Any]:
         return self._resume.checkpoint(token=token, expect_rev=expect_rev, note=note, next_action=next_action)
 
-    def children_digest(self, state: dict[str, Any], work_id: str) -> str:
-        return self._hierarchy.children_digest(state, work_id)
-
     def classify_parent_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
                                      reason: str) -> dict[str, Any]:
         return self._hierarchy.classify_parent_verification(token=token, expect_rev=expect_rev, work_id=work_id,
                                                             classification=classification, reason=reason)
-
-    def completion_sha(self, state: dict[str, Any], work_id: str) -> str | None:
-        return self._units.completion_sha(state, work_id)
-
-    def consumed_inputs(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
-        return self._inputs.consumed_inputs(state, work_id)
 
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         return self._packs.context_pack(inv_id)
@@ -431,27 +393,11 @@ class Engine:
     def context_show(self, inv_id: str) -> str:
         return self._packs.context_show(inv_id)
 
-    def contradictions(self, state: dict[str, Any]) -> list[str]:
-        return self._views.contradictions(state)
-
-    def current_snapshot(self, unit: dict[str, Any]) -> dict[str, Any] | None:
-        return self._invocations.current_snapshot(unit)
-
     def dispatch_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.dispatch_binding_problem(state, work_id)
 
-    def dispatch_commit(self, unit: dict[str, Any]) -> str | None:
-        return self._inputs.dispatch_commit(unit)
-
-    def dispatch_inputs(self, state: dict[str, Any], work_id: str, commit: str | None) -> list[dict[str, Any]]:
-        return self._inputs.dispatch_inputs(state, work_id, commit)
-
     def doctor_checks(self) -> list[dict[str, str]]:
         return self._project.doctor_checks()
-
-    def effective_role_plan(self, state: dict[str, Any], work_id: str, gc: dict[str, Any] | None = None) -> dict[str,
-                            Any]:
-        return self._roles.effective_role_plan(state, work_id, gc)
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.evidence_gate_context(state, work_id)
@@ -459,19 +405,8 @@ class Engine:
     def evidence_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         return self._nm.evidence_ingest(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id)
 
-    def execute_record_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any], kind: str,
-                               submitted: dict[str, Any]) -> dict[str, Any]:
-        return self._nm.execute_record_binding(state, inv_id, inv, kind, submitted)
-
-    def execute_record_status(self, state: dict[str, Any], work_id: str, records: dict[str, dict[str, Any]],
-                              commit: str | None) -> dict[str, Any]:
-        return self._nm.execute_record_status(state, work_id, records, commit)
-
     def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
         return self._k.execution_policy()
-
-    def expected_kinds(self, state: dict[str, Any], inv: dict[str, Any]) -> list[str]:
-        return self._harness.expected_kinds(state, inv)
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
@@ -565,9 +500,6 @@ class Engine:
     def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
         return self._inputs.input_status(state, work_id)
 
-    def inspect_workspace(self, unit: dict[str, Any]) -> dict[str, Any]:
-        return self._invocations.inspect_workspace(unit)
-
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_prepare(token=token, expect_rev=expect_rev, work_id=work_id)
 
@@ -576,9 +508,6 @@ class Engine:
 
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_reconcile(token=token, expect_rev=expect_rev, work_id=work_id)
-
-    def integration_binding(self, unit: dict[str, Any]) -> dict[str, Any]:
-        return self._gates.integration_binding(unit)
 
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         return self._harness.invocation_whoami(invocation_token=invocation_token)
@@ -654,12 +583,6 @@ class Engine:
                                     evidence_refs=evidence_refs, resulting_transition=resulting_transition,
                                     reason=reason, decided_by=decided_by, body=body)
 
-    def next_actions(self, state: dict[str, Any]) -> list[str]:
-        return self._resume.next_actions(state)
-
-    def operations_of(self, inv: dict[str, Any]) -> list[str]:
-        return self._harness.operations_of(inv)
-
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
         return self._work.plan_accept(token=token, expect_rev=expect_rev, work_id=work_id, revision=revision)
 
@@ -672,12 +595,6 @@ class Engine:
 
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)
-
-    def plan_gate_status(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        return self._gates.plan_gate_status(state, work_id)
-
-    def plan_gates(self, unit: dict[str, Any]) -> dict[str, str]:
-        return self._roles.plan_gates(unit)
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str, reason: str | None = None,
                      affected_paths: list[str] | None = None, review: list[str] | None = None,
@@ -692,15 +609,9 @@ class Engine:
     def policy(self, name: str) -> dict[str, Any]:
         return self._k.policy(name)
 
-    def policy_problems(self) -> list[str]:
-        return self._roles.policy_problems()
-
     @property
     def project_id(self) -> Any:
         return self._k.project_id
-
-    def prune_observations(self, state: dict[str, Any] | None = None) -> list[str]:
-        return self._nm.prune_observations(state)
 
     def render_resume(self, r: dict[str, Any]) -> str:
         return self._resume.render_resume(r)
@@ -708,38 +619,12 @@ class Engine:
     def render_status(self, report: dict[str, Any]) -> str:
         return self._views.render_status(report)
 
-    def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
-        return self._units.require_dispatch_binding(state, work_id)
-
-    def require_observation_intact(self, inv_id: str, inv: dict[str, Any]) -> None:
-        return self._nm.require_observation_intact(inv_id, inv)
-
-    def require_plan_binding(self, state: dict[str, Any], work_id: str) -> None:
-        return self._units.require_plan_binding(state, work_id)
-
-    def require_reported_workspace(self, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
-        return self._gates.require_reported_workspace(work_id, unit, gc)
-
-    def require_workspace_intact(self, inv_id: str, inv: dict[str, Any], workspace: Path, ws_id: str) -> None:
-        return self._gates.require_workspace_intact(inv_id, inv, workspace, ws_id)
-
-    def resolve_card(self, state: dict[str, Any], work_id: str, slot: str, *, card_id: str | None, role: str | None,
-                     gc: dict[str, Any] | None = None) -> roles.Card:
-        return self._roles.resolve_card(state, work_id, slot, card_id=card_id, role=role, gc=gc)
-
-    def resolve_plan_assurance(self, unit: dict[str, Any], *, review: list[str] | None, verify: list[str] | None,
-                               none: bool) -> dict[str, list[str]]:
-        return self._roles.resolve_plan_assurance(unit, review=review, verify=verify, none=none)
-
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._resume.resume(session)
 
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         return self._evidence.review_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
                                             evidence_id=evidence_id)
-
-    def role_catalog(self) -> roles.Catalog:
-        return self._roles.role_catalog()
 
     def role_list(self) -> dict[str, Any]:
         return self._roles.role_list()
@@ -750,19 +635,8 @@ class Engine:
     def role_validate(self, path: str | None = None) -> dict[str, Any]:
         return self._roles.role_validate(path)
 
-    def rollup(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        return self._units.rollup(state, work_id)
-
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         return self._harness.run_authority_problem(state, inv_id, run, token_id)
-
-    def run_evidence(self, work_unit: str, run: str,
-                     _cache: dict[str, list[dict[str, Any]]] | None = None) -> list[str]:
-        return self._harness.run_evidence(work_unit, run, _cache)
-
-    def run_results(self, work_unit: str, run: str,
-                    _cache: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, str | None]:
-        return self._harness.run_results(work_unit, run, _cache)
 
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
         return self._invocations.snapshot_of(path, workspace_id)
@@ -772,9 +646,6 @@ class Engine:
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
         return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)
-
-    def tree_lines(self, tree: list[dict[str, Any]]) -> list[str]:
-        return self._hierarchy.tree_lines(tree)
 
     # ---------------------------------------------------------------- history (ADR-0011)
 
@@ -806,9 +677,6 @@ class Engine:
         """A credential archived with finished work (ADR-0011 R7), for checks outside the engine (the Lead broker, a
         run's supervisor): presenting it again is stale authority, never an unknown credential."""
         return self._archive.archived_credential(state, token_id)
-
-    def unit(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        return self._units.unit(state, work_id)
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
                         reason: str) -> dict[str, Any]:
@@ -918,9 +786,6 @@ class Engine:
 
     def work_tree(self, root: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_tree(root)
-
-    def workspaces_root(self) -> Path:
-        return self._k.workspaces_root()
 
     def _require_gates(self, gc: dict[str, Any], names: list[str], *, what: str) -> None:
         return self._gates.require_gates(gc, names, what=what)

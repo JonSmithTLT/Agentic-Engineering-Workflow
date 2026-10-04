@@ -1,3 +1,4 @@
+import { ExecutionEntry } from '../../../components/ExecutionEntry';
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useReadSession, useProjection } from '../../../client/queries';
@@ -41,7 +42,7 @@ function SideHeader({ side, query, change }: { side: 'a' | 'b'; query: SourceQue
   return <section className="panel comparison-side" aria-label={`Source ${side.toUpperCase()}`}><h2>Source {side.toUpperCase()}</h2><button data-change-side={side} onClick={change}>Change {side.toUpperCase()}</button>
     {query.error && <ErrorState error={query.error} retry={() => void query.refetch()} />}
     {source ? <><p><code>{source.invocation.id}</code> · <code>{source.id}</code></p><p>{source.mode === 'FIXED' ? <>Snapshot <code>{source.snapshot_id}</code></> : 'Current source'} · <time>{source.captured_at ?? 'Capture time not supplied'}</time></p>
-      <label>Harness run {side.toUpperCase()}<select value={run} onChange={event => update({ [side + '_run']: event.target.value })}><option value="">Invocation only — no run selected</option>{source.invocation.runs.map(r => <option key={r.id} value={r.id}>{r.id}</option>)}</select></label>
+      <ExecutionEntry invocation={source.invocation.id} run={run||null}/><label>Harness run {side.toUpperCase()}<select value={run} onChange={event => update({ [side + '_run']: event.target.value })}><option value="">Invocation only — no run selected</option>{source.invocation.runs.map(r => <option key={r.id} value={r.id}>{r.id}</option>)}</select></label>
       {run && !source.invocation.runs.some(r => r.id === run) && <p role="alert">Selected harness run is not supplied for this invocation.</p>}
       <button onClick={() => void query.refetch()}>Refresh {side.toUpperCase()}</button>
       {query.error && <p role="status" className="preview-note">STALE / DISCONNECTED — displaying valid previous data.</p>}

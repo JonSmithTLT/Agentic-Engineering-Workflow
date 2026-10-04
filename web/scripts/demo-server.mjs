@@ -16,12 +16,13 @@ const { DemoProjector } = await loadProjector('src/api/mock/projector.ts');
 const { JournalProjector, previewBase } = await loadProjector('src/api/preview/journal/projector.ts');
 const { InvestigationProjector, investigationBase } = await loadProjector('src/api/preview/investigation/projector.ts');
 const { EvidenceProjector, evidenceBase } = await loadProjector('src/api/preview/evidence/projector.ts');
+const { ExecutionProjector, executionBase } = await loadProjector('src/api/preview/execution/projector.ts');
 const root = path.resolve(process.env.DASHBOARD_STATIC_ROOT ?? 'dist-demo');
 const worlds = new Map(fs.readdirSync('src/api/mock/fixtures').filter((n) => /^F\d+\.json$/.test(n)).map((n) => {
   const world = JSON.parse(fs.readFileSync('src/api/mock/fixtures/' + n, 'utf8'));
   return [world.fixture, world];
 }));
-const accepted = new Map(), journals = new Map(), investigations = new Map(), evidenceStores = new Map(), checks = new Map();
+const accepted = new Map(), journals = new Map(), investigations = new Map(), evidenceStores = new Map(), executions = new Map(), checks = new Map();
 const csp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Security-Policy', csp);
@@ -35,13 +36,14 @@ const server = http.createServer((req, res) => {
       if (!world) { res.writeHead(400); res.end(); return; }
       const investigation = url.pathname.startsWith(investigationBase + '/');
       const evidence = url.pathname.startsWith(evidenceBase + '/');
-      const preview = evidence || investigation || url.pathname.startsWith(previewBase + '/');
-      const store = evidence ? evidenceStores : investigation ? investigations : preview ? journals : accepted;
-      if (!store.has(fixture)) store.set(fixture, evidence ? new EvidenceProjector(fixture, world.responses['/evidence']?.data?.items ?? []) : investigation ? new InvestigationProjector(fixture, world.responses['/runs']?.data?.items ?? []) : preview ? new JournalProjector() : new DemoProjector(world));
+      const execution = url.pathname.startsWith(executionBase + '/');
+      const preview = execution || evidence || investigation || url.pathname.startsWith(previewBase + '/');
+      const store = execution ? executions : evidence ? evidenceStores : investigation ? investigations : preview ? journals : accepted;
+      if (!store.has(fixture)) store.set(fixture, execution ? new ExecutionProjector(fixture) : evidence ? new EvidenceProjector(fixture, world.responses['/evidence']?.data?.items ?? []) : investigation ? new InvestigationProjector(fixture, world.responses['/runs']?.data?.items ?? []) : preview ? new JournalProjector() : new DemoProjector(world));
       const countKey = JSON.stringify([fixture, req.headers['x-aew-demo-fault'], url.pathname, url.search]);
       const count = (checks.get(countKey) ?? 0) + 1; checks.set(countKey, count);
       let result;
-      if (preview && !investigation && !evidence && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
+      if (preview && !execution && !investigation && !evidence && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
       else if (!preview && fixture === 'F10') {
         const fault = req.headers['x-aew-demo-fault'];
         if (fault === 'offline') { req.socket.destroy(); return; }

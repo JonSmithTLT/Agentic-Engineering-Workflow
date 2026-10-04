@@ -214,6 +214,12 @@ class HarnessLab:
             runlog.end_supervisor(directory)
 
 
+def run_contained(lab: HarnessLab, run: str) -> bool:
+    """The run had OS filesystem containment (Linux, M4-B): a write outside its roots fails where it is made, so a test
+    whose subject is detecting that write afterwards asserts the refusal instead."""
+    return (lab.record(run).get("containment") or {}).get("filesystem") == "os_readonly_roots"
+
+
 def watch_agent_pid(lab: HarnessLab, run: str, recorded: int) -> Any:
     """A ``procs.Watch`` on a process a run's agent reported by its own pid. In a contained run (Linux, M4-B) that pid
     is local to the run's PID namespace, so it is translated through ``NSpid`` to the host pid, looking only under

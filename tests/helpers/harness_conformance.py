@@ -42,6 +42,7 @@ from fake_harness import (
     HarnessLab,
     contains_credential,
     credential_hits,
+    run_contained,
     watch_agent_pid,
 )
 from invariants import assert_control_invariants
@@ -560,6 +561,10 @@ def a_read_only_role_cannot_change_its_observation(lab, driver, tmp_path):
     driver.script(lab, "R-INV-0001-1", [{"do": "write", "files": {"calc/core.py": "# rewritten by a reader\n"}},
                                         {"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
     run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
+    if run_contained(lab, run):  # M4-B: the observation is read-only; the edit is refused and the record is valid
+        assert lab.wait(run)["status"] == "ended_with_evidence"
+        assert lab.step(run, 0)["refused"] == {"calc/core.py": "EROFS"}
+        return
     assert lab.wait(run)["status"] == "ended_without_evidence"
     assert code_of(lab.step(run, 1)) == "OBSERVATION_MUTATED"
     assert not evidence_of(lab, wid)

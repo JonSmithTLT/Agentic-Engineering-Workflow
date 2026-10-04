@@ -20,7 +20,7 @@ CONTAINMENT = "workdir_separation_only"
 CONTAINMENT_NOTE = ("workdir separation only: each run has its own workspace or observation, private harness state and "
                     "a scratch directory, but no OS-level filesystem containment. An agent's shell runs as you and can "
                     "read and write whatever your account can, so evaluate on scratch repositories until containment "
-                    "exists (docs/design/execution-workspace-and-isolation-design-v0.1.md)")
+                    "exists (docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md)")
 
 # Run status, as recorded in the local run record (telemetry, never read by a gate).
 STARTING, RUNNING = "starting", "running"

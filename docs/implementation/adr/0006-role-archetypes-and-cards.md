@@ -135,7 +135,7 @@ The M1 note "M3: skill loading by harness adapters" is resolved as follows. No a
   - A card's requested skills are therefore recorded per run as `requested`, `exposed` and `unavailable`, and the system text names the unavailable ones and tells the model to proceed without them and say so.
   - Making skills reachable is future work: the operator's skills in `docs/skills/`, resolved through the capability registry (M6), and disclosed progressively (`future-work.md` D3, F12, F13).
 - **Capabilities.** Only one ordinary capability changes the projection in M3: `documentation_lookup` opens web fetch and search; otherwise both are denied. `source_mutation` remains the implementer's alone, and maps to OpenCode's `edit`. Other capabilities stay "requested, resolution pending" until M6.
-- **Nested delegation stays closed.** OpenCode's `subagent` is denied for every role, and any session other than the run's own is recorded as `foreign_sessions`. Allowing bounded harness-native orchestration under a capability grant is designed (`docs/design/capability-discovery-and-progressive-disclosure-design-v0.1.md` §8; `future-work.md` F7, F13), not implemented.
+- **Nested delegation stays closed.** OpenCode's `subagent` is denied for every role, and any session other than the run's own is recorded as `foreign_sessions`. Allowing bounded harness-native orchestration under a capability grant is designed (`docs/design/proposals/capability-discovery-and-progressive-disclosure-design-v0.1.md` §8; `future-work.md` F7, F13), not implemented.
 
 ## Amendment 2026-09-30 — plan assurance binds the role plan (operator UAT)
 

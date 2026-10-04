@@ -1,4 +1,4 @@
-"""Findings of the designer's independent M3 audit (`docs/implementation/m3-independent-audit-2026-09-29.md`).
+"""Findings of the designer's independent M3 audit (`docs/archive/reviews/m3-independent-audit-2026-09-29.md`).
 
 Each regression was written, and seen failing, before its fix.
 """

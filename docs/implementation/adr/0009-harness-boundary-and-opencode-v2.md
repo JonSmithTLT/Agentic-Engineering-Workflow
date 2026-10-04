@@ -138,7 +138,7 @@ The supervisor owns the harness process tree independently of any harness lease.
 What M3 provides is **workdir separation**: each run has its own workspace or observation, private harness state and a scratch directory. It provides **no OS-level filesystem containment**: an agent's shell runs as the operator and can read and write whatever the operator's account can.
 - Every run record carries `containment: workdir_separation_only`, and `aew harness status` shows it.
 - `aew doctor` reports `containment` as WARN with that explanation.
-- Nothing in AEW claims more. Real containment is designed (`docs/design/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
+- Nothing in AEW claims more. Real containment is designed (`docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
 
 ### Pause points (tests)
 `AEW_PAUSE=<point>=<file>` holds a process at a named point while the file exists (`faults.pause`, next to the `AEW_FAULT` crash points):

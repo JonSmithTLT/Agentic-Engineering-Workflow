@@ -1,10 +1,10 @@
 # ADR-0011 implementation plan (with E5)
 
 - **Status:** approved by the operator (2026-10-02). **Complete** (2026-10-03): every phase is merged, P3 last (PR #24, `42239e1`); the register closed F1, E5 and the before-M4 gate.
-- **Scope:** the gate before M4. That covers [ADR-0011](adr/0011-hot-cold-control-state.md) (register F1) and E5, the Engine collaborator refactor (register E5).
+- **Scope:** the gate before M4. That covers [ADR-0011](../../implementation/adr/0011-hot-cold-control-state.md) (register F1) and E5, the Engine collaborator refactor (register E5).
 - **Inputs:**
   - ADR-0011 (final pre-implementation text, 2026-10-01);
-  - the storage investigation, [`adr-0011-storage-investigation-2026-10-01.md`](../design/adr-0011-storage-investigation-2026-10-01.md) (design "P", spike results, the operator's decisions in its §9);
+  - the storage investigation, [`adr-0011-storage-investigation-2026-10-01.md`](../../research/adr-0011-storage-investigation-2026-10-01.md) (design "P", spike results, the operator's decisions in its §9);
   - ADR-0001 (one commit point, redo staging, advisory lock).
 - **Nature:** implementation choices inside ADR-0011's "Not decided here". No designer question reopens, and ADR-0001 is not amended.
 
@@ -480,7 +480,7 @@ From P3 (A1, §7.4):
 
 ### 7.4 P3 results (2026-10-03)
 
-The data and tables are in [`eval/adr-0011/perf/README.md`](../../eval/adr-0011/perf/README.md) §5–§7. `tools/perf/adr0011_gate.py` judges a flat and a hierarchy sweep against the criteria below and prints the table; on all three platforms every row is pass or report (on Windows with the paired H2 run, `--ab`). Code measured: `16c6757`.
+The data and tables are in [`eval/adr-0011/perf/README.md`](../../../eval/adr-0011/perf/README.md) §5–§7. `tools/perf/adr0011_gate.py` judges a flat and a hierarchy sweep against the criteria below and prints the table; on all three platforms every row is pass or report (on Windows with the paired H2 run, `--ab`). Code measured: `16c6757`.
 
 **Who ran what.** With the operator's go-ahead (2026-10-02), Claude ran all three:
 - **WSL2 Ubuntu 22.04** (supplement): flat, hierarchy and cold-write series.

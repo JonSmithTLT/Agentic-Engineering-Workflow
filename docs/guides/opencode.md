@@ -118,7 +118,7 @@ aew harness config opencode --lead     # the Lead's (the same as `aew opencode -
 
 AEW provides **workdir separation only**: each run has its own workspace, private harness state and scratch directory. It does **not** contain the filesystem. An agent's shell runs as you, and can read and write anything your account can. Every run record says `containment: workdir_separation_only`, and `aew doctor` warns about it.
 
-Until real containment exists (`docs/design/execution-workspace-and-isolation-design-v0.1.md`), use AEW with models on scratch repositories and clones, not on your only copy of something that matters.
+Until real containment exists (`docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md`), use AEW with models on scratch repositories and clones, not on your only copy of something that matters.
 
 ## When something goes wrong
 

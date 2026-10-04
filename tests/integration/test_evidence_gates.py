@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import (
     SUBTRACT_PATCH,
     Role,
@@ -118,8 +117,8 @@ def test_role_separation_negatives(calc, tmp_path):
                   "--token", impl.token, "--expect-rev", str(calc.rev()))
     fail(res, "PERMISSION_DENIED", 4)
     # Engine-owned bindings cannot be supplied by a role.
-    res = impl.submit("implementation_report", {"result": "pass", "evaluated_snapshot": {"relevant_inputs_fingerprint": "x"}},
-                      expect_ok=False)
+    res = impl.submit("implementation_report",
+                      {"result": "pass", "evaluated_snapshot": {"relevant_inputs_fingerprint": "x"}}, expect_ok=False)
     fail(res, "VALIDATION_FAILED")
 
     calc.lead("work", "transition", wid, "--to", "REVIEW_PENDING")

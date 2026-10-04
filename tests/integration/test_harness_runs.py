@@ -7,7 +7,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
 from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants

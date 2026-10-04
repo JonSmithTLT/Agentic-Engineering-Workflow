@@ -16,7 +16,8 @@ def make_ticket(project, *extra: str, title: str = "Add subtract()") -> str:
 
 
 def accept_plan(project, tmp_path, wid: str, text: str = "Implement it.\n") -> None:
-    rev = project.lead("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, f"{wid}-plan.md", text))
+    rev = project.lead("plan", "propose", "--assurance", "none", wid,
+                       "--file", body_file(tmp_path, f"{wid}-plan.md", text))
     project.lead("plan", "accept", wid, "--revision", str(rev["revision_number"]))
 
 

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-
 from aewflow import assign, create_planned_ticket, implement, sample_project
 from conftest import Project, make_git_repo
 
@@ -58,7 +55,8 @@ def test_existing_authority_project_is_referenced_not_duplicated(tmp_path):
     })
     p = Project(repo)
     cands = {c["path"]: c for c in p.ok("init")["authority_candidates"]}
-    assert cands["docs/contracts/"]["suggested_class"] == "contracts" and cands["docs/contracts/"]["confidence"] == "high"
+    contracts = cands["docs/contracts/"]
+    assert contracts["suggested_class"] == "contracts" and contracts["confidence"] == "high"
     p.token = p.ok("lead", "acquire", "--expect-rev", "0")["token"]
     p.lead("authority", "accept", cands["docs/contracts/"]["id"], "--class", "contracts")
     p.lead("authority", "accept", cands["docs/adr/"]["id"], "--class", "decisions")

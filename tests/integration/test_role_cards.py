@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import (
     SUBTRACT_PATCH,
     Role,
@@ -16,6 +15,7 @@ from aewflow import (
     sample_project,
     verify,
 )
+
 from aew.util import dump_yaml
 
 TRIAGER = {
@@ -75,7 +75,8 @@ def test_catalog_lists_builtin_and_project_cards(calc):
     add_cards(calc, {**TRIAGER, "role": "rogue_lead", "extends": "lead"})
     res = calc.aew("role", "validate")
     assert res.returncode == 1 and res.json["ok"] is False
-    assert res.json["problems"] == ["roles/rogue_lead.yaml: cards cannot extend 'lead' (not a dispatchable authority class)"]
+    assert res.json["problems"] == [
+        "roles/rogue_lead.yaml: cards cannot extend 'lead' (not a dispatchable authority class)"]
     assert "rogue_lead" not in {c["id"] for c in calc.ok("role", "list")["cards"]}
 
 

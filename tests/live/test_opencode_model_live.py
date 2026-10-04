@@ -57,7 +57,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from aewflow import assign, create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab, credential_hits
 from harness_conformance import FREE_MODEL, NO_WINDOW, PROVIDER_SECRET, evidence_of
@@ -311,7 +310,8 @@ def nothing_leaked(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------------------------- rejection and rework
 
 SAFE_DIV_GOALS = ["calc.core.safe_div(7, 2) == 3.5", "calc.core.safe_div(1, 0) is None"]
-SAFE_DIV_PLAN = "1. Add safe_div(a, b) to calc/core.py: divide a by b; return None when b is 0.\n2. Add focused tests.\n"
+SAFE_DIV_PLAN = ("1. Add safe_div(a, b) to calc/core.py: divide a by b; return None when b is 0.\n"
+                 "2. Add focused tests.\n")
 # The seeded first attempt: plausible, and wrong. Floor division passes the happy-path test it came with and the unit
 # check; compared with the goals, safe_div(7, 2) returns 3, not 3.5.
 SEEDED = {

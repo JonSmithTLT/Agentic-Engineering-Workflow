@@ -180,6 +180,8 @@ class WorkUnits:
                     raise NotFound(f"no work unit {dep_id}")
                 state.setdefault("archived_refs", {})[dep_id] = {**facts, "refs": 0}
                 up = H.upstream(state, dep_id)
+                if up is None:
+                    raise NotFound(f"no work unit {dep_id}")
             if H.is_parent(up):
                 dep_kind = dep_kind or "mutating"  # conservative: descendants' integrated outputs must be in the base
             else:
@@ -321,7 +323,8 @@ class WorkCommands:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")
         joined = [s for s in scope_paths or [] if "," in s]
-        if joined:  # M3-D9: several globs given as one value would match nothing, and every change would be out of scope
+        # M3-D9: several globs given as one value would match nothing, and every change would be out of scope.
+        if joined:
             raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
                              "globs: give one glob per --scope and repeat --scope for each",
                              scope=joined)

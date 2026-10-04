@@ -122,7 +122,7 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
 class Session:
     """A locked, recovered view of control state that may commit at most once."""
 
-    def __init__(self, store: "ControlStore", state: dict[str, Any]) -> None:
+    def __init__(self, store: ControlStore, state: dict[str, Any]) -> None:
         self._store = store
         self._committed_state = state  # the store's parse: never changed (``state`` is this session's copy)
         self.state = copy.deepcopy(state)
@@ -405,8 +405,9 @@ class ControlStore:
             atomic_write(target, w["content"])
             if inject and i == 0:
                 faults.hit("txn.mid_apply")
-            if inject and fault_after and fault_after[i]:
-                faults.hit(fault_after[i])
+            point = fault_after[i] if inject and fault_after else None
+            if point:
+                faults.hit(point)
 
     def _post_commit(self, state: dict[str, Any], *, inject: bool = False) -> None:
         last = state.get("last_transition")

@@ -9,7 +9,7 @@ import re
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -53,7 +53,7 @@ def read_text_input(value: str | None) -> str:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -111,7 +111,7 @@ def dump_yaml(data: Any) -> str:
 
 def load_yaml(text: str, *, source: str = "<yaml>") -> Any:
     try:
-        return yaml.load(text, Loader=_SafeLoader)
+        return yaml.load(text, Loader=_SafeLoader)  # noqa: S506 (_SafeLoader is a SafeLoader subclass)
     except yaml.YAMLError as exc:
         raise ValidationFailed(f"{source}: invalid YAML: {exc}") from exc
 

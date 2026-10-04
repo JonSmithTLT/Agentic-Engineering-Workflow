@@ -241,3 +241,40 @@ def test_effective_models_are_distinct_and_default_variant_is_no_effort():
               {"providerID": "p", "id": "small", "variant": "default"}, None]
     assert adapter._effective(models) == [{"provider": "p", "model": "m", "effort": "high"},
                                           {"provider": "p", "model": "small", "effort": None}]
+
+
+@pytest.mark.parametrize("announced", ["http://127.0.0.1:4096", "http://127.0.0.1:4096/"])
+def test_the_server_address_is_accepted_only_on_loopback(tmp_path, announced):
+    server = _announcing_server(tmp_path, announced)
+    try:
+        assert server.url == announced
+    finally:
+        server.proc.kill()
+        server.proc.wait()
+
+
+@pytest.mark.parametrize("announced", ["http://evil.example:80", "file:///etc/passwd", "https://127.0.0.1:443",
+                                       "http://127.0.0.1.evil.example:80", "http://127.0.0.1:80/x"])
+def test_a_server_announcing_any_other_address_never_gets_the_password(tmp_path, announced):
+    """Ruff S310 review: the client sends the server password to whatever URL the server announces, so the announced
+    address must be the loopback server AEW started (http://127.0.0.1:<port>)."""
+    from aew.errors import HarnessLaunchFailed
+
+    with pytest.raises(HarnessLaunchFailed, match="not an http://127.0.0.1 address"):
+        _announcing_server(tmp_path, announced)
+
+
+def _announcing_server(tmp_path: Path, url: str) -> Any:
+    import subprocess
+
+    from aew.harness.opencode.client import Server
+
+    script = tmp_path / "announce.py"
+    script.write_text(f"import json, sys, time\nprint(json.dumps({{'url': {url!r}}}), flush=True)\ntime.sleep(30)\n")
+
+    def spawn(argv: list[str], **kwargs: Any) -> subprocess.Popen[bytes]:
+        flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+        return subprocess.Popen([sys.executable, str(script)], **kwargs, **flags)
+
+    return Server.start(spawn, ["opencode"], env={"OPENCODE_PASSWORD": "pw"}, cwd=str(tmp_path),
+                        log_path=tmp_path / "server.log", timeout=20)

@@ -1,13 +1,13 @@
 # T9 live probe 2: Codex app-server handshake, MCP spawn and the model request
 codex: codex-cli 0.160.0; aew: aew 0.1.0.dev0 (spec set aew-frozen-2026-09-25); python 3.11.13
-lab project /home/allm/.aew-test-tmp/review-t9-lab-dh_cwyy4/project; Lead seat acquired at revision 1 (credential in memory and the app-server's environment only)
+lab project <reviewer-home>/.aew-test-tmp/review-t9-lab-dh_cwyy4/project; Lead seat acquired at revision 1 (credential in memory and the app-server's environment only)
 
 ## C5
   variant: "C5"
   initialize_s: 0.53
   argv_extra: ["--disable", "multi_agent", "--disable", "code_mode_host", "-c", "features.multi_agent=false"]
   config_features: ["hooks = false", "multi_agent = false", "code_mode_host = false", "required = false"]
-  initialize: {"userAgent": "aew-review-probe/0.160.0 (Rocky Linux 8.10.0; x86_64) unknown (aew-review-probe; 0)", "codexHome": "/home/allm/.aew-test-tmp/review-t9-codex-y43cvcid/C5/codex-home", "platformFamily": "unix", "platformOs": "linux"}
+  initialize: {"userAgent": "aew-review-probe/0.160.0 (Rocky Linux 8.10.0; x86_64) unknown (aew-review-probe; 0)", "codexHome": "<reviewer-home>/.aew-test-tmp/review-t9-codex-y43cvcid/C5/codex-home", "platformFamily": "unix", "platformOs": "linux"}
   thread_start: {"sandbox": {"type": "readOnly", "networkAccess": false}, "approvalPolicy": "never", "model": "gpt-6-sol", "modelProvider": "probe", "reasoningEffort": null, "instructionSources": [], "thread_id": "01a107a5-36d2-71c0-8fb8-5e81c2afbc00", "cliVersion": "0.160.0"}
   mcp_status: {"name": "aew", "runtimeStatus": "connected", "serverInfo": {"name": "aew", "title": "AEW Lead surface", "version": "0.1.0.dev0", "description": null, "icons": null, "websiteUrl": null}, "authStatus": "unsupported", "tool_count": 12, "tool_names": ["checkpoint", "cli", "explain", "harness_status", "harness_wait", "resume", "status", "ticket_draft", "ticket_request_review", "ticket_request_verification", "ticket_start", "work_show"]}
   mcp_status_s: 0.2
@@ -26,7 +26,7 @@ lab project /home/allm/.aew-test-tmp/review-t9-lab-dh_cwyy4/project; Lead seat a
   initialize_s: 0.77
   argv_extra: ["--disable", "multi_agent", "-c", "features.tool_search_always_defer_mcp_tools=false"]
   config_features: ["hooks = false", "required = false"]
-  initialize: {"userAgent": "aew-review-probe/0.160.0 (Rocky Linux 8.10.0; x86_64) unknown (aew-review-probe; 0)", "codexHome": "/home/allm/.aew-test-tmp/review-t9-codex-y43cvcid/C8/codex-home", "platformFamily": "unix", "platformOs": "linux"}
+  initialize: {"userAgent": "aew-review-probe/0.160.0 (Rocky Linux 8.10.0; x86_64) unknown (aew-review-probe; 0)", "codexHome": "<reviewer-home>/.aew-test-tmp/review-t9-codex-y43cvcid/C8/codex-home", "platformFamily": "unix", "platformOs": "linux"}
   thread_start: {"sandbox": {"type": "readOnly", "networkAccess": false}, "approvalPolicy": "never", "model": "gpt-6-sol", "modelProvider": "probe", "reasoningEffort": null, "instructionSources": [], "thread_id": "01a107a5-40d4-7ac3-aed7-1cd5ffbc4ad9", "cliVersion": "0.160.0"}
   mcp_status: {"name": "aew", "runtimeStatus": "connected", "serverInfo": {"name": "aew", "title": "AEW Lead surface", "version": "0.1.0.dev0", "description": null, "icons": null, "websiteUrl": null}, "authStatus": "unsupported", "tool_count": 12, "tool_names": ["checkpoint", "cli", "explain", "harness_status", "harness_wait", "resume", "status", "ticket_draft", "ticket_request_review", "ticket_request_verification", "ticket_start", "work_show"]}
   mcp_status_s: 0.3

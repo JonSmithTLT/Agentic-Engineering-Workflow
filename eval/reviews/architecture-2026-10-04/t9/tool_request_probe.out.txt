@@ -1,6 +1,6 @@
 # T9 live probe 1: tool schemas in the model request, OpenCode 2.0.18, with `aew lead mcp` spawned for real
 cli: opencode v2.0.18; aew: aew 0.1.0.dev0 (spec set aew-frozen-2026-09-25); python 3.11.13
-lab project /home/allm/.aew-test-tmp/review-t9-lab-otdgngo0/project; Lead seat acquired at revision 1 (credential kept in memory only)
+lab project <reviewer-home>/.aew-test-tmp/review-t9-lab-otdgngo0/project; Lead seat acquired at revision 1 (credential kept in memory only)
 
 ## V0
   variant: "V0"
@@ -27,7 +27,7 @@ lab project /home/allm/.aew-test-tmp/review-t9-lab-otdgngo0/project; Lead seat a
   model_request_after_s: 0.5
   assistant_errors: []
   second_turn: {"tool_count": 9, "aew_tools": [], "system_bytes": 14216}
-  mcp_processes: ["22049 /home/allm/aew-review/venv/bin/python3.11 /home/allm/aew-review/venv/bin/aew lead mcp"]
+  mcp_processes: ["22049 <reviewer-home>/aew-review/venv/bin/python3.11 <reviewer-home>/aew-review/venv/bin/aew lead mcp"]
   request: {"path": "/v1/responses", "bytes": 23436, "auth_present": true, "api": "responses", "tool_count": 9, "tools_bytes": 8928, "tool_names": ["glob", "grep", "question", "read", "shell", "skill", "webfetch", "websearch", "execute"], "aew_tools": [], "system_bytes": 14216, "model": "gpt-6-sol", "requests_seen": 4}
   server_log_tail: []
 
@@ -42,7 +42,7 @@ lab project /home/allm/.aew-test-tmp/review-t9-lab-otdgngo0/project; Lead seat a
   model_request_after_s: 0.5
   assistant_errors: []
   second_turn: {"tool_count": 9, "aew_tools": [], "system_bytes": 14216}
-  mcp_processes: ["22089 /home/allm/aew-review/venv/bin/python3.11 /home/allm/aew-review/venv/bin/aew lead mcp"]
+  mcp_processes: ["22089 <reviewer-home>/aew-review/venv/bin/python3.11 <reviewer-home>/aew-review/venv/bin/aew lead mcp"]
   request: {"path": "/v1/responses", "bytes": 23436, "auth_present": true, "api": "responses", "tool_count": 9, "tools_bytes": 8928, "tool_names": ["glob", "grep", "question", "read", "shell", "skill", "webfetch", "websearch", "execute"], "aew_tools": [], "system_bytes": 14216, "model": "gpt-6-sol", "requests_seen": 4}
   server_log_tail: []
 
@@ -57,7 +57,7 @@ lab project /home/allm/.aew-test-tmp/review-t9-lab-otdgngo0/project; Lead seat a
   model_request_after_s: 0.5
   assistant_errors: []
   second_turn: {"tool_count": 9, "aew_tools": [], "system_bytes": 13698}
-  mcp_processes: ["22136 /home/allm/aew-review/venv/bin/python3.11 /home/allm/aew-review/venv/bin/aew lead mcp"]
+  mcp_processes: ["22136 <reviewer-home>/aew-review/venv/bin/python3.11 <reviewer-home>/aew-review/venv/bin/aew lead mcp"]
   request: {"path": "/v1/responses", "bytes": 22927, "auth_present": true, "api": "responses", "tool_count": 9, "tools_bytes": 8928, "tool_names": ["glob", "grep", "question", "read", "shell", "skill", "webfetch", "websearch", "execute"], "aew_tools": [], "system_bytes": 13698, "model": "gpt-6-sol", "requests_seen": 4}
   server_log_tail: []
 

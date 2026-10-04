@@ -1,1 +1,0 @@
-VENDORED = True

@@ -31,7 +31,7 @@ actor:
   kind: lead
   session_label: probe
   generation: 1
-  token_id: tk_867b4ec44c1b94aa
+  token_id: tk_<redacted>
 op: work.create
 summary: 'created ticket T-0001: T0'
 reason: null

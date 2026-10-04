@@ -1,5 +1,5 @@
 # T6 network containment probe, part 2: OpenCode 2.0.18 serve
-cli /home/allm/opencode-2.0.18/opt/OpenCode/resources/opencode-cli; version: opencode v2.0.18
+cli <reviewer-home>/opencode-2.0.18/opt/OpenCode/resources/opencode-cli; version: opencode v2.0.18
 config: {"$schema": "https://opencode.ai/config.json", "autoupdate": false, "share": "disabled", "lsp": false, "formatter": false}
 
 ## A1: shared network, strace -f -e connect, fresh XDG state, 45 s catalog wait

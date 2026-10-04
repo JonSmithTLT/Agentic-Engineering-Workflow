@@ -86,3 +86,18 @@ The review found that the normal-path checks above did not hold across recovery 
   - Publish phase 1 and pre-CAS finalization now re-evaluate every effective obligation **at the accepted (COMMIT_READY) snapshot**. The fingerprint comes from the gated snapshot, and guardrail triggers from the committed Ticket diff, so later workspace edits cannot change the answer.
   - When finalization finds an unmet obligation or an unbound validation while the ref is still H, it **withdraws** the publish intent back to `validated` and reports the reason. The Ticket is never held in `publishing`, where state changes are refused, over something the Lead must act on.
   - Only a Ticket whose integration record is still valid can publish; `prepare` refuses non-mutating Tickets.
+
+## Amendment 2026-10-04 — independent review of integration and publication
+
+- **A reconcile after the CAS keeps a later commit.** When the ref already contains the candidate M and has moved on (the operator committed on top), a path whose index and working copy hold exactly the current HEAD's entry is settled by that commit and left as it is. M stays in the lineage. The result lists those paths (`worktree_sync.settled_by_later_commit`), so the operator can check that the later commit kept what the integration changed. A refusal after the CAS says to stash the local work or restore the paths to the published commit, never to commit it.
+- **A failed CAS is classified by re-reading the ref.** `stale_candidate` is recorded only when the ref moved. A failure with the ref unmoved (for example a leftover `main.lock`) is a git error: the record stays `publishing`, and `aew integrate reconcile` publishes once the cause is gone.
+- **A lost integration worktree is recoverable.**
+  - Publish refuses with `GATE_UNSATISFIED`, naming `aew integrate prepare`.
+  - `prepare` retires a candidate whose worktree is gone and builds a new one.
+  - git run in a directory that no longer exists is a `GitError`, never a traceback.
+- **Case-only renames** (`Foo.txt` to `foo.txt`) are refused at `prepare` on a case-insensitive filesystem. There the two names are one file, and the authoritative worktree could never be synced. A rename in two steps, or a case-sensitive checkout, integrates normally.
+- **A merge that fails without a conflict** (a hook, a lock, a missing commit) is a `GitError`, not a conflict with no paths.
+- **What the sync guarantees, precisely:**
+  - The authoritative branch must be checked out at the repository root, or nowhere. `update-ref` also moves a branch checked out in another worktree of the repository, and that worktree is not synced.
+  - "Nothing is overwritten" means nothing present when the paths were classified. An edit made between classification and `git checkout` of the integrated paths is not protected, because the filesystem gives no exclusive hold.
+- **After an inconclusive post-integration verification** (`validation_inconclusive`), the next step is `aew integrate prepare` (a new candidate), then its verification. `aew resume` says so.

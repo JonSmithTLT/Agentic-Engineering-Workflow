@@ -79,11 +79,30 @@ def merge_candidate(repo_root: Path, int_path: Path, ticket_commit: str, message
     proc = git.git("merge", "--no-ff", "--no-edit", "-m", message, ticket_commit, cwd=int_path, check=False,
                    env=git.identity_env(repo_root))
     if proc.returncode != 0:
-        conflicts = git.out("diff", "--name-only", "--diff-filter=U", cwd=int_path)
+        conflicts = [p for p in git.out("diff", "--name-only", "--diff-filter=U", cwd=int_path).splitlines() if p]
         git.git("merge", "--abort", cwd=int_path, check=False)
-        return {"conflict": True, "paths": [p for p in conflicts.splitlines() if p],
-                "stderr": proc.stderr.decode("utf-8", "replace")[-2000:]}
+        stderr = proc.stderr.decode("utf-8", "replace")[-2000:]
+        if not conflicts:  # git failed for another reason (a hook, a lock, disk): a failure, not a conflict
+            raise GitError(f"merging {ticket_commit[:12]} into the integration candidate failed without a conflict",
+                           stderr=stderr.strip())
+        return {"conflict": True, "paths": conflicts, "stderr": stderr}
     return {"conflict": False, "commit": git.rev_parse("HEAD", cwd=int_path)}
+
+
+def case_only_renames(repo_root: Path, paths: list[str]) -> list[list[str]]:
+    """Groups of ``paths`` that differ only by letter case, when ``repo_root`` is on a case-insensitive filesystem
+    (where they name one file): ``[]`` otherwise (area 4 F4)."""
+    groups: dict[str, list[str]] = {}
+    for p in paths:
+        groups.setdefault(p.casefold(), []).append(p)
+    clashes = [sorted(g) for g in groups.values() if len(g) > 1]
+    return clashes if clashes and _case_insensitive(repo_root) else []
+
+
+def _case_insensitive(repo_root: Path) -> bool:
+    probe = repo_root / ".git"
+    flipped = repo_root / ".GIT"
+    return probe.exists() and flipped.exists()
 
 
 def changed_between(repo_root: Path, a: str, b: str) -> list[str]:
@@ -103,9 +122,14 @@ def cas_publish(repo_root: Path, ref: str, new: str, expected_old: str, message:
     proc = git.git("update-ref", "-m", message, ref, new, expected_old, cwd=repo_root, check=False)
     if proc.returncode != 0:
         current = git.rev_parse(ref, cwd=repo_root)
+        stderr = proc.stderr.decode("utf-8", "replace").strip()
+        if current == expected_old:  # the ref did not move (a leftover ref lock, a disk error): the candidate stands
+            raise GitError(f"could not update {ref}, which has not moved: {stderr or 'git update-ref failed'}. "
+                           "Fix the cause (for example remove a stale ref lock left by a killed git process), then "
+                           "publish again", ref=ref, current=current, stderr=stderr)
         raise StaleCandidate(
             "the authoritative ref moved since the candidate was built; rebuild and revalidate",
-            ref=ref, expected=expected_old, current=current, stderr=proc.stderr.decode("utf-8", "replace").strip())
+            ref=ref, expected=expected_old, current=current, stderr=stderr)
 
 
 # ---------------------------------------------------------------------- entry-level state
@@ -318,18 +342,35 @@ def _prune_empty_parents(repo_root: Path, path: Path) -> None:
         parent = parent.parent
 
 
-def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, on_first=None) -> dict[str, Any]:
+def _superseded(repo_root: Path, head: str | None, new: str, st: _PathStates, paths: list[str]) -> list[str]:
+    """Paths a later commit on the ref (``head``, which contains ``new``) already settled: the index and working copy
+    hold exactly ``head``'s entry, which differs from ``new``'s. ``new`` stays in the lineage; whether the later
+    commit kept its change on those paths is the later commit's business, so they are reported, never rewritten."""
+    if not head or head == new:
+        return []
+    later = tree_entries(repo_root, head, paths)
+    return [p for p in paths
+            if later[p] != st.new[p] and st.index[p] == later[p] and st.fs.matches(st.worktree[p], later[p])]
+
+
+def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, head: str | None = None,
+                  on_first=None) -> dict[str, Any]:
     """Force exactly ``paths`` to ``new`` in the authoritative index and working copy (idempotent).
 
     Every path is classified first; if any index entry or working copy belongs to neither ``base``
-    nor ``new``, nothing is written and :class:`IntegrityError` names the paths.
+    nor ``new``, nothing is written and :class:`IntegrityError` names the paths. ``head``: the ref's current commit
+    when it already contains ``new`` (a reconcile after the CAS); a path that already holds ``head``'s entry was
+    settled by that later commit and is left as it is.
     """
     st = _states(repo_root, base, new, paths)
+    settled = _superseded(repo_root, head, new, st, paths)
+    paths = [p for p in paths if p not in set(settled)]
     problems = _classify_for_sync(st, paths)
     if problems:
         raise IntegrityError(
-            "refusing to overwrite local work in the authoritative worktree on paths this integration changes; "
-            "commit/stash it (and clear index flags), then run `aew integrate reconcile`",
+            f"{new[:12]} is already published, and the authoritative worktree holds local work on paths it changes; "
+            "nothing was overwritten. Stash that work (git stash), or restore the paths to the published commit "
+            f"(git checkout {new[:12]} -- <paths>), then run `aew integrate reconcile`",
             paths=dict(sorted(problems.items())[:50]))
     removals = [p for p in paths if not _is_file(st.new[p])
                 and (_is_file(st.index[p]) or _is_file(st.worktree[p]))]
@@ -361,4 +402,7 @@ def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, on_
     stuck = [p for p in paths if not _converged(final, p)]
     if stuck:
         raise GitError("authoritative worktree did not converge to the integrated commit", paths=stuck[:50])
-    return {"synced": len(removals) + len(updates), "paths": len(paths)}
+    out: dict[str, Any] = {"synced": len(removals) + len(updates), "paths": len(paths) + len(settled)}
+    if settled:  # check that the later commit kept what the integration changed on them
+        out["settled_by_later_commit"] = {"commit": head, "paths": settled[:50], "count": len(settled)}
+    return out

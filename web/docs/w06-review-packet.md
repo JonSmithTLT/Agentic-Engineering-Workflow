@@ -1,6 +1,6 @@
 # W06 independent review packet
 
-Frontend fixture acceptance is **CHANGES REQUESTED; F1/F2 re-review pending**. The independent report is preserved in `web/docs/w06-review-main-line.md`; corrections and the harmless-read assessment are recorded in `web/docs/w06-review-corrections.md`. W05's merged acceptance is preserved. Backend/live adoption remains blocked on accepted T3 event/outbox design and Engine-owned projections; G7/F7 requires an explicit adapter. No Engine work records were created.
+Frontend fixture acceptance is **ACCEPTED** by the independent reviewer on 2026-10-04, against correction source `55c48ec5054a4b6830722978b36bfc4e0d55ff60`. The re-review is preserved in `web/docs/w06-re-review-55c48ec.md`; the original report remains in `web/docs/w06-review-main-line.md`, with corrections and N3's accepted deferral in `web/docs/w06-review-corrections.md`. The reviewer independently rebuilt the source, verified byte-identical demo output, checked phone/zoom tables in both themes and reran the original investigation. W05's merged acceptance is preserved. Backend/live adoption remains blocked on accepted T3 event/outbox design and Engine-owned projections; G7/F7 requires an explicit adapter. No Engine work records were created.
 
 Review the immutable runtime commit recorded in `web/docs/w06-evidence/result.json`. The subsequent evidence commit changes documentation only. The approved revision 1.1 plan is `web/docs/design/plans/w06-execution-investigation.md`; its factual operator approval and digest are recorded in `w06-operator-approval.json`.
 

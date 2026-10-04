@@ -1,6 +1,6 @@
 # W06 independent-review corrections
 
-The supplied independent review is preserved in `web/docs/w06-review-main-line.md`. Its disposition is **CHANGES REQUESTED**, against runtime `d15bc135f23340b7fe4e1f8039290410383d2be0`. Re-review remains pending; implementer verification cannot change that disposition.
+The original independent review is preserved in `web/docs/w06-review-main-line.md`. Its **CHANGES REQUESTED** disposition against runtime `d15bc135f23340b7fe4e1f8039290410383d2be0` is superseded by the **ACCEPTED** independent re-review of correction source `55c48ec`, preserved in `web/docs/w06-re-review-55c48ec.md`. This is frontend fixture acceptance only.
 
 Final correction source: `55c48ec5054a4b6830722978b36bfc4e0d55ff60`. Presentation changes are in `9cd4188`; subsequent commits correct the regression driver's preserved-tab handling and ensure the restored table is fully loaded before geometry checks and screenshots.
 
@@ -20,8 +20,8 @@ The accepted dashboard provider owns `/overview` on its existing cadence indepen
 
 ## Re-review
 
-Using the corrected committed-source preview, repeat F2 at 390px and the 720px CSS layout used for 200% zoom: select every Events and Fanout table entry, read the wrapped relationship text, and check both themes. Repeat F1 in story provenance and confirm the unknown fixture still warns. Evidence in `web/docs/w06-evidence/` records implementer checks only. No independent acceptance, backend adoption or live integration is claimed.
+The reviewer completed F2 at 390px and the 720px CSS layout used for 200% zoom in both themes, selecting every story Events/Fanout and cycles Fanout entry and checking hit targets, clipping, overlap and overflow. F1 was checked across every story event/execution; the unknown fixture still warns. N1/N2/N4 are fixed and N3's deferral was accepted. All 24 desktop step files and the phone round trip from the first review passed. See `web/docs/w06-re-review-55c48ec.md` for the independent record; `web/docs/w06-evidence/` contains implementer verification. Backend adoption and live integration remain unclaimed.
 
 ## Committed-source verification
 
-Clean detached commit `55c48ec5054a4b6830722978b36bfc4e0d55ff60` passed the pinned offline gate (164 tests/19 files), W01–W05 and HTTP-demo regressions, 22 W06 groups, the strict premium audit, CI path probes and freeze-script syntax. Complete source/build hashes remained unchanged afterward. The new table screenshots show fully loaded restored pages. Superseded diagnostic runs are not acceptance evidence. Independent F1/F2 re-review remains pending.
+Clean detached commit `55c48ec5054a4b6830722978b36bfc4e0d55ff60` passed the pinned offline gate (164 tests/19 files), W01–W05 and HTTP-demo regressions, 22 W06 groups, the strict premium audit, CI path probes and freeze-script syntax. Complete source/build hashes remained unchanged afterward. The new table screenshots show fully loaded restored pages. Superseded diagnostic runs are not acceptance evidence. The independent reviewer rebuilt this exact commit with the pinned gate and verified byte-identical demo output before acceptance.

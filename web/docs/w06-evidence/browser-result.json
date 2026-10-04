@@ -153,5 +153,5 @@
       "fixture_events": 189
     }
   ],
-  "independent_review": "PENDING; implementer automation is not independent acceptance."
+  "independent_review": "ACCEPTED separately in web/docs/w06-re-review-55c48ec.md; implementer automation is not independent acceptance."
 }

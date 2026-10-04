@@ -40,3 +40,7 @@ All three concrete review corrections are implemented and verified. Subsequent o
 ## Independent review follow-up
 
 The operator supplied the independent changes-requested review of d15bc13. F1/F2 and nits N1/N2/N4 were corrected and verified from clean committed source `55c48ec5054a4b6830722978b36bfc4e0d55ff60`; N3 retains the separately owned discovery/bound read contexts and accepted overview cadence. See `web/docs/w06-review-main-line.md` and `web/docs/w06-review-corrections.md`. The independent disposition is unchanged until re-review. No backend/live acceptance is claimed.
+
+## Independent frontend acceptance
+
+The operator supplied the independent re-review on 2026-10-04. Correction source 55c48ec is ACCEPTED for frontend fixtures, following the reviewer's pinned rebuild, byte-identical demo verification, narrow/zoom table checks in both themes and full first-review regressions. F1/F2 and N1/N2/N4 are resolved; N3's deferral is accepted. The record is preserved in web/docs/w06-re-review-55c48ec.md. Backend adoption and live integration remain blocked separately. No runtime changed for this acceptance-record update.

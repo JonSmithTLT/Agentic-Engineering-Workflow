@@ -275,12 +275,12 @@ export function DetailView<T>({
           <>
             {presentation === 'default' && (
               <div className="entity-actions">
-              <CopyCli kind={name === 'runs' ? 'invocation' : name} id={id} />
-              {name === 'evidence' && (
-                <p className="scope-note">
-                  This AEW CLI has no read-only evidence show command.
-                </p>
-              )}
+                <CopyCli kind={name === 'runs' ? 'invocation' : name} id={id} />
+                {name === 'evidence' && (
+                  <p className="scope-note">
+                    This AEW CLI has no read-only evidence show command.
+                  </p>
+                )}
               </div>
             )}
             {presentation === 'work-summary' &&

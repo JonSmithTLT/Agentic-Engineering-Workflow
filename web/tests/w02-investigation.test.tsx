@@ -112,12 +112,12 @@ describe('W02 investigation composed behavior', () => {
       expect(location).toContain('parent=S-0001');
       expect(location).toContain('work_pane=results');
       expect(location).not.toContain('state=');
-      expect(document.activeElement).toBe(within(results).getByRole('heading', { name: 'Work', exact: true }));
+      expect(document.activeElement).toBe(within(results).getByRole('heading', { name: 'Work' }));
       expect(mounted.paths.some(path => path.includes('work_pane'))).toBe(false);
       mounted.rendered.unmount(); mounted.client.clear();
       mount(<WorkPage />, location);
       await screen.findByRole('region', { name: 'Investigation results' });
-      fireEvent.click(await screen.findByRole('link', { name: 'Validate projection consistency', exact: true }));
+      fireEvent.click(await screen.findByRole('link', { name: 'Validate projection consistency' }));
       await screen.findByRole('region', { name: 'Selected record detail' });
       expect(screen.getByLabelText('Location').textContent).toContain('work_pane=detail');
     } finally { vi.unstubAllGlobals(); }

@@ -134,8 +134,9 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "and minimum descendant class still apply to its children. Say in the plan why you chose the class.",
         "",
         "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it "
-        "matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and a quarter of "
-        "the tree; the gates policy's `class0` can change both bounds); a goal (`--goal`) and an acceptance check "
+        "matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of "
+        "40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal "
+        "(`--goal`) and an acceptance check "
         "that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared "
         "acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no "
         "acceptance input inside the scope; no protected path in the scope; no review "

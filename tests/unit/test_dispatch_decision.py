@@ -125,8 +125,7 @@ def test_every_reason_code_is_registered_and_unknown_codes_are_refused():
 
 # ---------------------------------------------------------------- the pure assurance checks
 
-FILES = ["calc/core.py", "tests/test_core.py", "tests/data/input.json", "vendor/lib.py", "calc/crypto.py",
-         *(f"docs/page{i}.md" for i in range(20))]  # a tree large enough that a three-file scope is bounded (D2)
+FILES = ["calc/core.py", "tests/test_core.py", "tests/data/input.json", "vendor/lib.py", "calc/crypto.py"]
 GUARDRAILS = {"protected_paths": ["vendor/**"],
               "review_triggers": [{"name": "security", "paths": ["calc/crypto*.py"]}]}
 CHECKS = {"checks": {"unit": {"configured": True, "command": ["pytest"]}, "manual": {"configured": False}}}
@@ -181,18 +180,28 @@ def subject_codes(scope, files=FILES, gates=None):
 
 def test_class0_bounded_subject_is_measured_not_listed():
     """D2 (area 3 F2): a glob whose first segment is `**` is never bounded, and a scope over more than 50 tracked
-    files or a quarter of the tree is refused, with the measure in the refusal; both bounds come from policy."""
+    files is refused; in a tree of at least 40 tracked files, so is one over a quarter of it. The measure is in the
+    refusal; every bound comes from policy (operator, 2026-10-03 and 2026-10-04)."""
     assert subject_codes(("**/*.py",)) and subject_codes(("./**/x",))  # whatever they match today
-    assert subject_codes(("docs/**",))  # 20 of 25 files: more than a quarter of the tree
-    [wide] = subject_codes(("docs/**",))
-    assert wide["details"]["subject"]["matched"] == 20 and wide["details"]["subject"]["tracked"] == 25
-    assert "20 of 25" in wide["message"]
+    tree = [f"lib/m{i}.py" for i in range(30)] + [f"docs/p{i}.md" for i in range(70)]  # 100 tracked files
+    [wide] = subject_codes(("lib/**",), files=tree)  # 30 of 100: more than a quarter
+    assert wide["details"]["subject"]["matched"] == 30 and wide["details"]["subject"]["tracked"] == 100
+    assert "30 of 100" in wide["message"]
+    assert not subject_codes(("lib/m1*.py",), files=tree)  # 11 of 100
+    assert not subject_codes(("lib/**",), files=tree, gates={"class0": {"max_scope_fraction": 0.5}})
     big = [f"src/m{i}.py" for i in range(60)] + [f"other/f{i}.txt" for i in range(400)]
     assert subject_codes(("src/**",), files=big)  # 60 files: over the 50-file bound, though only 13% of the tree
-    assert not subject_codes(("src/m1*.py",), files=big)  # 11 files
-    assert not subject_codes(("docs/**",), gates={"class0": {"max_scope_fraction": 1.0}})
     assert not subject_codes(("src/**",), files=big, gates={"class0": {"max_scope_files": 100}})
-    assert A.subject_measure(["src/**"], big)["bounded"] is False
+
+
+def test_a_small_tree_can_be_a_class0_subject_whatever_share_of_it_the_scope_covers():
+    """D2, refined (operator, 2026-10-04): small repositories and utilities are where Class 0 work is most common, so
+    below 40 tracked files the quarter-of-the-tree bound does not apply. The 50-file and `**` rules still do."""
+    small = ["calc/core.py", "calc/__init__.py", "tests/test_core.py", "README.md", "vendor/lib.py"]
+    assert not subject_codes(("calc/**", "tests/**"), files=small)  # 3 of 5
+    assert A.subject_measure(["calc/**"], small)["fraction_applies"] is False
+    assert subject_codes(("**/*.py",), files=small)
+    assert subject_codes(("calc/**",), files=small, gates={"class0": {"fraction_min_tree_files": 5}})
 
 
 def test_an_inherited_elevated_obligation_has_its_own_class0_refusal():

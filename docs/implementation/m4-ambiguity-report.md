@@ -144,7 +144,10 @@ Found by reading the code at the baseline, so that the plan builds on what exist
 - **Verification:**
   - **CI (Linux):** bubblewrap installed, with Ubuntu's AppArmor user-namespace restriction lifted in the setup action. Every harness suite runs contained, plus `tests/integration/test_containment.py` and `tests/unit/test_containment_layout.py`.
   - **Rocky 8 (SELinux enforcing):** the same suites, then one full run.
-  - **Operator-assisted, still to run on the Rocky 8 host:** the live OpenCode lane under the real per-run layout, and the user-namespaces-disabled fail-closed check.
+  - **Operator-assisted, on the Rocky 8 host (2026-10-03):**
+    - The live OpenCode lane passed contained, under the real per-run layout: OpenCode 2.0.18 with free models, 23 passed and 1 skipped by design (`effective_override`, not drivable live). One test's probe called `python`, which EL8 does not have; it now falls back to `python3`.
+    - With `user.max_user_namespaces=0`, a launch ended `launch_failed` with `CONTAINMENT_UNAVAILABLE` and no harness process; `allow_weaker` launched with the weaker label and its reason; `doctor` reported FAIL.
+    - OpenCode 2.0.22 (the current Desktop build) is refused at launch, `HARNESS_INCOMPATIBLE`: it appends a default `browser: deny` rule after AEW's, and the adapter requires AEW's rules last. That refusal is correct as the check stands; a meaning-based check (rules OpenCode appends after AEW's may only deny) is planned separately.
 
 ### 2.5 Workspaces for N > 1 (M4-C; F3, the concurrency part)
 - The engine reads `mutating_concurrency`. Live mutating workspaces are at most the policy cap, enforced as a `DispatchDecision` guard.

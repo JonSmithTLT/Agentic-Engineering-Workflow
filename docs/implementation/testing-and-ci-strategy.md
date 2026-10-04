@@ -106,8 +106,9 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 - **The lab's sync and script directories** are declared writable roots in the lab's execution policy. A contained run sees a private `/tmp`, while pytest's `tmp_path` lives under `/tmp`.
 - **Once per phase, a full run on the Rocky 8 host** (SELinux enforcing, kernel 4.18) from a frozen worktree. CI's Ubuntu kernel is not the target kernel.
 - **Operator-assisted, on that host:**
-  - the live OpenCode lane under the real per-run layout;
+  - the live OpenCode lane under the real per-run layout. OpenCode V2 ships on Linux only inside the Desktop package, which installs the current version; for the pinned version, extract `opencode-cli` from that version's package (`rpm2cpio`, no root) and point `AEW_OPENCODE_BIN` at it;
   - the user-namespaces-disabled check (`sysctl user.max_user_namespaces=0`, then restored), which must refuse launches.
+  - Last run: 2026-10-03, both passed (`m4-ambiguity-report.md`, "M4-B as built").
 
 ### Failure and merge-blocking policy
 

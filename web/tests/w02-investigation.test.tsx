@@ -98,6 +98,61 @@ const source = {
   etag: '"one"',
 };
 describe('W02 investigation composed behavior', () => {
+  it('reveals phone child-filter results, retains the selected parent and restores results links', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query.includes('max-width'), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    try {
+      const mounted = mount(<WorkPage />, '/work?selected=S-0001&state=BLOCKED');
+      await screen.findByRole('link', { name: 'Inspect children' });
+      fireEvent.click(screen.getByRole('link', { name: 'Inspect children' }));
+      const results = await screen.findByRole('region', { name: 'Investigation results' });
+      await within(results).findByText(/outside this loaded results page or filter/);
+      const location = screen.getByLabelText('Location').textContent!;
+      expect(location).toContain('selected=S-0001');
+      expect(location).toContain('parent=S-0001');
+      expect(location).toContain('work_pane=results');
+      expect(location).not.toContain('state=');
+      await waitFor(() => expect(document.activeElement).toBe(within(results).getByRole('heading', { name: 'Work' })));
+      expect(mounted.paths.some(path => path.includes('work_pane'))).toBe(false);
+      mounted.rendered.unmount(); mounted.client.clear();
+      mount(<WorkPage />, location);
+      await screen.findByRole('region', { name: 'Investigation results' });
+      const child = await screen.findByRole('link', { name: 'Validate projection consistency' });
+      fireEvent.click(child);
+      await screen.findByRole('region', { name: 'Selected record detail' });
+      expect(screen.getByLabelText('Location').textContent).toContain('work_pane=detail');
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Validate projection consistency' })));
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      await waitFor(() => expect(document.activeElement).toBe(child));
+      fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Validate projection consistency' })));
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('leads Work with its supplied content and retains metadata without duplicate selected-target copying', async () => {
+    mount(<WorkPage />);
+    const heading = await screen.findByRole('heading', { name: work.data.title });
+    const inspection = screen.getByRole('region', { name: 'Inspect T-0001' });
+    expect(heading.compareDocumentPosition(inspection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Selected record detail' })).getAllByRole('button', { name: 'Copy read-only CLI for T-0001' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Copy dashboard link' })).toHaveLength(1);
+    const disclosure = screen.getByText('Source and browser metadata').closest('details')!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(screen.getByText('Source and browser metadata'));
+    expect(disclosure.open).toBe(true);
+    expect(screen.getByRole('region', { name: 'Source provenance' }).textContent).toContain('Project');
+    expect(screen.getByRole('region', { name: 'Browser observations' }).textContent).toContain('not backend health');
+  });
+  it('preserves direct Work copying and rejects unsupported pane links before dependent reads', async () => {
+    const direct = mount(<WorkPage />, '/work/T-0001');
+    await screen.findByRole('heading', { name: work.data.title });
+    expect(screen.getAllByRole('button', { name: 'Copy read-only CLI for T-0001' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Copy dashboard link' })).toHaveLength(1);
+    direct.rendered.unmount(); direct.client.clear();
+    const bad = mount(<WorkPage />, '/work?selected=T-0001&work_pane=other');
+    await screen.findByText(/Unsupported presentation value/);
+    expect(bad.paths.some(path => path.includes('/work'))).toBe(false);
+    expect(dashboardCopyLink('/work', '?selected=S-0001&work_pane=results&cookie=secret', 'https://local.example')).toBe('https://local.example/work?selected=S-0001&work_pane=results');
+  });
   it('keeps mounted results, restores URL panels with Back/Forward, and adds no Why request', async () => {
     const { paths } = mount(<WorkPage />);
     await screen.findByRole('heading', { name: work.data.title });

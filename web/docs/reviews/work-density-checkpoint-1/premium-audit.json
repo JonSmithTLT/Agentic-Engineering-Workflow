@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "web",
+  "mode": "strict",
+  "findings": [],
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "violations": 0,
+    "unresolved": 0,
+    "total": 0
+  },
+  "note": "Project-root path normalized to repository-relative; frozen-source auditor exited 0."
+}

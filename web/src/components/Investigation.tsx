@@ -93,7 +93,7 @@ export function PresentationGuard({ children }: { children: ReactNode }) {
     : params.has('selected') &&
         !identity.safeParse(params.get('selected')).success
       ? 'Locally malformed identifier. No projection request was sent.'
-      : (params.has('inspector') &&
+      : (params.has('work_pane') && !['results', 'detail'].includes(params.get('work_pane')!)) || (params.has('inspector') &&
             !['why', 'relations'].includes(params.get('inspector')!)) ||
           !inspectionFieldValid(params.get('field'))
         ? 'Unsupported presentation value. No projection request was sent.'
@@ -341,12 +341,16 @@ export function RecordInspection({
   source,
   fallbackId,
   failed = false,
+  presentation = 'default',
+  copyDashboard = true,
 }: {
   kind: EntityKind;
   record: unknown;
   source: Source;
   fallbackId?: string;
   failed?: boolean;
+  presentation?: 'default' | 'work-summary';
+  copyDashboard?: boolean;
 }) {
   const controls = useContext(InspectorContext),
     [params] = useSearchParams();
@@ -384,9 +388,14 @@ export function RecordInspection({
             Inspect relations
           </button>
         )}
-        <CopyDashboardLink />
+        {copyDashboard && <CopyDashboardLink />}
       </div>
-      <SourceStrip source={source} failed={failed} />
+      {presentation === 'work-summary' ? (
+        <details>
+          <summary>Source and browser metadata</summary>
+          <SourceStrip source={source} failed={failed} />
+        </details>
+      ) : <SourceStrip source={source} failed={failed} />}
     </section>
   );
 }

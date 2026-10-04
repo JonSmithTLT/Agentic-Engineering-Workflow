@@ -1,0 +1,84 @@
+{
+  "baseline_commit": "da46807d4fb35ec742f042425c347cd480ba8f65",
+  "samples": [
+    {
+      "label": "Frozen W05 artifact page",
+      "population": 126,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 1663,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_bytes": 30700,
+      "rows_after": 50,
+      "dom_after": 459
+    },
+    {
+      "label": "Frozen W05 artifact page",
+      "population": 126,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 1439,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_bytes": 30700,
+      "rows_after": 50,
+      "dom_after": 459
+    },
+    {
+      "label": "Frozen W05 artifact page",
+      "population": 126,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 1444,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_bytes": 30700,
+      "rows_after": 50,
+      "dom_after": 459
+    },
+    {
+      "label": "W06 recorded event page",
+      "population": 189,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 933,
+      "rows": 50,
+      "dom_nodes": 671,
+      "api_requests": 6,
+      "api_bytes": 56286,
+      "rows_after": 50,
+      "dom_after": 671
+    },
+    {
+      "label": "W06 recorded event page",
+      "population": 189,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 943,
+      "rows": 50,
+      "dom_nodes": 671,
+      "api_requests": 6,
+      "api_bytes": 56286,
+      "rows_after": 50,
+      "dom_after": 671
+    },
+    {
+      "label": "W06 recorded event page",
+      "population": 189,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 951,
+      "rows": 50,
+      "dom_nodes": 671,
+      "api_requests": 6,
+      "api_bytes": 56286,
+      "rows_after": 50,
+      "dom_after": 671
+    }
+  ],
+  "caveat": "Different workflows and fixture populations; one warmup and two warm samples. Bounded pages and request observations, not an improvement or timing SLA. Active result/detail/receipt queries are retired on identity/page changes; fanout holds at most24 nodes."
+}

@@ -1,0 +1,214 @@
+{
+  "source_commit": "032a316dcb8a70cbaf91abce45306d383d5705e1",
+  "source_tree": "cdb5c0036f7819a69ce0e9aa6bc0a649f6e798cc",
+  "offline_gate": "PASS",
+  "unit_tests": 167,
+  "unit_files": 19,
+  "browser_regressions": "W01-W06 and HTTP demo PASS",
+  "suite_results": {
+    "playwright-w01": {
+      "result": "PASS",
+      "groups": 16
+    },
+    "playwright-w02": {
+      "result": "PASS",
+      "groups": 11
+    },
+    "playwright-w03": {
+      "result": "PASS",
+      "groups": 12
+    },
+    "playwright-http-demo": {
+      "result": "PASS",
+      "groups": 5
+    },
+    "playwright-w04": {
+      "result": "PASS",
+      "groups": 22
+    },
+    "playwright-w05": {
+      "result": "PASS",
+      "groups": 25
+    },
+    "playwright-w06": {
+      "result": "PASS",
+      "groups": 22
+    }
+  },
+  "static_audit": "PASS; zero findings",
+  "source_clean_after_browser": true,
+  "build_unchanged_after_browser": true,
+  "independent_review": "PENDING",
+  "files": [
+    {
+      "file": "browser-http-demo.log",
+      "sha256": "3e5a7c4e01657da105f8aef5a96ec9d9c124fc7e295e2f5c6bd68eb21d2e4d9c",
+      "bytes": 394
+    },
+    {
+      "file": "browser-w02.log",
+      "sha256": "8613d58d2d04a9b5f43ffa7e0a71976fccdc4a3fc174b4c68bfa41126a723dd7",
+      "bytes": 776
+    },
+    {
+      "file": "browser-w03.log",
+      "sha256": "171c59b3cc14cac7d4d6579dc1ca648966992074d76194ec2119574615015d4b",
+      "bytes": 646
+    },
+    {
+      "file": "browser-w04.log",
+      "sha256": "1cdc73323252ded26a3a85f0254e107e6e6fe26132bda605a80f581eb35a1833",
+      "bytes": 1192
+    },
+    {
+      "file": "browser-w05.log",
+      "sha256": "af6babfc541b92a1b12f8ed1537176aa9871d668d0a69df2f8043e1501e01b47",
+      "bytes": 1903
+    },
+    {
+      "file": "browser-w06.log",
+      "sha256": "2d6d8fd80f7a3ad3347ca8d49671affc4847ed2e3efc2d983ef22011551d093f",
+      "bytes": 1896
+    },
+    {
+      "file": "ci-browser.log",
+      "sha256": "adb9f4450bf90b71d2f48baca33f2d9d7193e0d9f73bbea96e1a20ba600bde2c",
+      "bytes": 1016
+    },
+    {
+      "file": "desktop-row-focus.jpg",
+      "sha256": "84f034221f420f253a26585ccc623b894489baec22e61834a26702bae1b12c42",
+      "bytes": 91107
+    },
+    {
+      "file": "dist-demo.after-browser.SHA256SUMS",
+      "sha256": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a",
+      "bytes": 3169
+    },
+    {
+      "file": "dist-demo.SHA256SUMS",
+      "sha256": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a",
+      "bytes": 3169
+    },
+    {
+      "file": "dist-demo.verified.log",
+      "sha256": "12142bf80f4f9c81c9f87b74c690cb6944c051cfbb130dad0919f9c39a219a11",
+      "bytes": 1123
+    },
+    {
+      "file": "dist.after-browser.SHA256SUMS",
+      "sha256": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+      "bytes": 346
+    },
+    {
+      "file": "dist.SHA256SUMS",
+      "sha256": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+      "bytes": 346
+    },
+    {
+      "file": "dist.verified.log",
+      "sha256": "94b86e2f919b5e838ece04c2a3aa2d6aa2bfc51a91ed41a405e969ac39c0b14d",
+      "bytes": 98
+    },
+    {
+      "file": "http-work-density-phone-back-focus.png",
+      "sha256": "0bbd2546fb146cc05b9025568a26a9edc0c3b36291fc4e852c6b0c4aea517fb9",
+      "bytes": 49736
+    },
+    {
+      "file": "http-work-density-phone-detail-focus.png",
+      "sha256": "0fff2c4d601ec2477c9b8108c234cd133656aff97536151173a46ec598b990d9",
+      "bytes": 54969
+    },
+    {
+      "file": "inherited-recorder-measurements.json",
+      "sha256": "9dc57d061a8c09badf751aef23ba2b97278d7f07deee1ae1e981dc727d45b6c1",
+      "bytes": 2115
+    },
+    {
+      "file": "measure-w06.log",
+      "sha256": "d34818c9edeb44c40459bad6688e808afa60f9495dbdb9b7b800a4c0ad7c76bf",
+      "bytes": 1170
+    },
+    {
+      "file": "offline-gate.log",
+      "sha256": "6e65ae05d03b60c0974564a6280f04297f064bcef234eb0b50a6d510c5653f36",
+      "bytes": 11216
+    },
+    {
+      "file": "phone-back.jpg",
+      "sha256": "6ead0519a1418087146e03815b689a9759ebf625710a4a47ce1dade922c3d60a",
+      "bytes": 35860
+    },
+    {
+      "file": "phone-detail.jpg",
+      "sha256": "fa127a601cbd907f82473df555640f057b1070e4dc7ec28fd6b518952f8190d3",
+      "bytes": 37183
+    },
+    {
+      "file": "playwright-http-demo-result.json",
+      "sha256": "a4bc30aba728f57cdf4c9bbdd25a4ae1ac0b40bdacd3715300553aa3bfe089df",
+      "bytes": 773
+    },
+    {
+      "file": "playwright-w01-result.json",
+      "sha256": "36c53a94bd15d2792334bc988c77c27a030959650b07fa55db113c1a6441c0bd",
+      "bytes": 2743
+    },
+    {
+      "file": "playwright-w02-result.json",
+      "sha256": "6117bcab0f6c89059c309a9ea207011d3e4473e6f9e1c264329ff9764ac71be4",
+      "bytes": 128481
+    },
+    {
+      "file": "playwright-w03-result.json",
+      "sha256": "81589814c8a84c1d3206d0b10c4aea8ca05454581b034a4c1336cbd2d7c54915",
+      "bytes": 3487
+    },
+    {
+      "file": "playwright-w04-result.json",
+      "sha256": "4213c92e438bfe6eac3e356aa8a7a14acc37cadd70ef6d13bdff1a60bb6e3fb1",
+      "bytes": 3798
+    },
+    {
+      "file": "playwright-w05-result.json",
+      "sha256": "b9de6204cedd69b664cd2840afd2e3a8bea9e418d9ca616305ec27d722e83fa2",
+      "bytes": 4380
+    },
+    {
+      "file": "playwright-w06-result.json",
+      "sha256": "1a34659c6f5c2d4d8c46574108efa9feb5cb0b43ff6cce82899127fe31182b40",
+      "bytes": 4134
+    },
+    {
+      "file": "premium-audit.json",
+      "sha256": "ac5e48c71f007cd6540258681cbfea1f5dc9a7faf09518fccafc2807a8fd7fdb",
+      "bytes": 298
+    },
+    {
+      "file": "provenance.json",
+      "sha256": "656d4cc9ab4f24949e075dce2d07fc2db44d071ca271ce4536dd405efbda891a",
+      "bytes": 1320
+    },
+    {
+      "file": "work-density-1440.png",
+      "sha256": "88a2ad5ed83d8c476b40506ba867d6082156cd131339523efe5448b3dfff1772",
+      "bytes": 220128
+    },
+    {
+      "file": "work-density-390.png",
+      "sha256": "40641aff3dd7d57650c178bc8e150a72857d2f81471206196a0b229210fe5727",
+      "bytes": 116964
+    },
+    {
+      "file": "work-density-phone-back-focus.png",
+      "sha256": "cf648c9bd2523ea3da16af3cf4e97c065832ca26e92e70aa650d876d1fb63c40",
+      "bytes": 92198
+    },
+    {
+      "file": "work-density-phone-detail-focus.png",
+      "sha256": "40641aff3dd7d57650c178bc8e150a72857d2f81471206196a0b229210fe5727",
+      "bytes": 116964
+    }
+  ]
+}

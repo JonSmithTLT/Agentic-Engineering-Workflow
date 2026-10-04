@@ -1,6 +1,6 @@
 # M3 triage of the companion design review (2026-09-28)
 
-**Input:** the companion design review integration bundle of 2026-09-28, now in `docs/design/` (`README-review-integration-2026-09-28.md` and the documents it lists), read in its stated order:
+**Input:** the companion design review integration bundle of 2026-09-28, now in `docs/design/` (`review-integration-bundle-2026-09-28.md` and the documents it lists), read in its stated order:
 
 1. `failure-class-registry.md`
 2. `invariant-index.md`

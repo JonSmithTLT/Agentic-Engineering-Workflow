@@ -29,7 +29,7 @@ from aewflow import (
     unit_check_command,
 )
 from conftest import IS_WINDOWS, clean_env, run_aew
-from fake_harness import AGENT, IMPL_REPORT, HarnessLab, contains_credential, credential_hits
+from fake_harness import AGENT, IMPL_REPORT, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, procs, runlog
@@ -54,7 +54,7 @@ def lab(tmp_path):
 @pytest.fixture
 def sync(tmp_path):
     d = tmp_path / "sync"
-    d.mkdir()
+    d.mkdir(exist_ok=True)  # HarnessLab already made it (a writable root for contained runs)
     return d
 
 
@@ -209,7 +209,7 @@ def test_supervisor_crash_takes_the_whole_harness_tree_with_it(lab, tmp_path, sy
                                         {"do": "pid", "path": str(sync / "agent")}, touch(sync / "ready"),
                                         wait(sync / "never", 300)])
     lab.until(lambda: (sync / "ready").exists(), what="agent ready")
-    agent, orphan = procs.Watch(int((sync / "agent").read_text())), procs.Watch(int((sync / "orphan").read_text()))
+    agent, orphan = (watch_agent_pid(lab, R1, int((sync / n).read_text())) for n in ("agent", "orphan"))
     assert agent.alive() and orphan.alive()
     procs.kill_pid(lab.record(R1)["supervisor_pid"])  # the supervisor dies abruptly: no cleanup code runs
     lab.until(lambda: not agent.alive() and not orphan.alive(), 30, "harness tree killed by the OS")
@@ -491,7 +491,9 @@ def test_model_controlled_child_processes_inherit_no_secret(lab, tmp_path, sync)
         assert "sk-provider-secret-do-not-leak" not in blob and "AEW_LEAD_TOKEN" not in blob
     assert set(child) >= {"AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_RUN"}  # the bridge, and nothing more
     parent = lab.step(R1, 1)
-    if sys.platform.startswith("linux"):  # the supervisor is non-dumpable: same-user processes cannot read it
+    if contained(lab, R1):  # M4-B: the supervisor is outside the run's PID namespace; the parent is the sandbox's
+        assert not parent.get("readable") or not (parent["has_credential"] or parent["has_lead_var"]), parent
+    elif sys.platform.startswith("linux"):  # the supervisor is non-dumpable: same-user processes cannot read it
         if os.geteuid() != 0:
             assert parent["readable"] is False, parent
         assert not parent.get("readable") or not (parent["has_credential"] or parent["has_lead_var"]), parent
@@ -522,7 +524,10 @@ def test_run_a_cannot_act_as_run_b(lab, tmp_path, sync):
     assert lab.wait("R-INV-0002-1")["status"] == "ended_without_evidence"
     step = lambda i: lab.step("R-INV-0002-1", i)  # noqa: E731
     assert step(0)["error"]["code"] == "USAGE" and step(1)["error"]["code"] == "USAGE"
-    assert (step(2)["ok"], step(2)["code"]) == (False, "PERMISSION_DENIED")
+    # Uncontained, B's socket is reachable and refuses A's key. Contained (M4-B), B's socket lies in a /tmp this run
+    # cannot see, so there is nothing to connect to.
+    want = "STALE_AUTHORITY" if contained(lab, "R-INV-0002-1") else "PERMISSION_DENIED"
+    assert (step(2)["ok"], step(2)["code"]) == (False, want), step(2)
     who = step(3)["stdout_json"]
     assert (who["invocation"], who["run"], who["work_unit"]) == (a["invocation"], "R-INV-0002-1", wid_a)
     assert error_code(step(4)) == "PERMISSION_DENIED"
@@ -574,6 +579,11 @@ def implemented(lab, tmp_path):
     return wid, out
 
 
+def contained(lab, run: str) -> bool:
+    """The run had OS filesystem containment (Linux, M4-B): a write outside its roots fails where it is made."""
+    return (lab.record(run).get("containment") or {}).get("filesystem") == "os_readonly_roots"
+
+
 def details(step: dict) -> dict:
     return ((step.get("stderr_json") or {}).get("error") or {}).get("details") or {}
 
@@ -585,6 +595,12 @@ def test_a_reviewer_cannot_mutate_source(lab, tmp_path):
     lab.script("R-INV-0002-1", [{"do": "write", "files": TAMPER},
                                 {"do": "submit", "kind": "review", "meta": REVIEW_PASS}])
     run = lab.lead("invoke", "create", wid, "--role", "reviewer", "--launch")["launch"]["run"]
+    if contained(lab, run):  # M4-B: the reviewer's source is read-only, so the edit never happens
+        assert lab.wait(run)["status"] == "ended_with_evidence"  # a review of the unchanged code is a valid review
+        assert lab.step(run, 0) == {"wrote": [], "refused": {"calc/core.py": "EROFS"}}
+        assert lab.lead_res("invoke", "create", wid, "--role", "reviewer").returncode == 0
+        assert_control_invariants(lab.project)
+        return
     assert lab.wait(run)["status"] == "ended_without_evidence"
     refused = lab.step(run, 1)
     assert error_code(refused) == "WORKSPACE_MUTATED" and details(refused)["changed"] == ["calc/core.py"]
@@ -607,6 +623,13 @@ def test_a_verifier_cannot_mutate_source(lab, tmp_path):
     lab.script("R-INV-0003-1", [{"do": "write", "files": TAMPER}, {"do": "check", "id": "unit"},
                                 {"do": "submit", "kind": "verification", "meta": verification}])
     run = lab.lead("invoke", "create", wid, "--role", "verifier", "--launch")["launch"]["run"]
+    if contained(lab, run):  # M4-B: the verifier's source is read-only; its check and verification are of intact code
+        assert lab.wait(run)["status"] == "ended_with_evidence"
+        assert lab.step(run, 0) == {"wrote": [], "refused": {"calc/core.py": "EROFS"}}
+        check = next(e for e in evidence_of(lab, wid, run) if e["kind"] == "check_result")
+        assert check["method"]["containment"] == "os_readonly_roots" and check["check"]["mutated_inputs"] is False
+        assert_control_invariants(lab.project)
+        return
     assert lab.wait(run)["status"] == "ended_without_evidence"
     for i in (1, 2):
         assert error_code(lab.step(run, i)) == "WORKSPACE_MUTATED", lab.step(run, i)
@@ -743,7 +766,11 @@ def test_forged_run_records_and_harness_success_move_nothing(lab, tmp_path):
                     {"do": "exit", "code": 0}])
     lab.lead("harness", "launch", out["invocation"])
     assert lab.wait(R2)["status"] == "ended_without_evidence"
-    assert lab.record(R1)["status"] == "ended_with_evidence"  # the forgery is on disk ...
+    if contained(lab, R2):  # M4-B: other runs' directories are hidden; the forgery lands in a private tmpfs
+        assert lab.record(R1)["status"] == "ended_without_evidence"
+        assert not runlog.run_dir(lab.aew_root, "R-INV-0007-1").exists()
+    else:
+        assert lab.record(R1)["status"] == "ended_with_evidence"  # the forgery is on disk ...
     runs = lab.ok("harness", "status")["runs"]
     assert [r["run"] for r in runs] == [R1, R2]  # ... a run that never existed is not listed ...
     assert runs[0]["evidence"] == [] and lab.ok("harness", "wait", R1)["evidence"] == []  # ... evidence: the store

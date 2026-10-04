@@ -99,6 +99,16 @@ class Kernel:
         except Exception as exc:  # surfaced by the ``manifest`` property
             self._manifest, self._manifest_error = None, exc
         self._manifest_seen = self._authority_files_identity()
+        git.trust_drivers(self.trusted_git_drivers())
+
+    def trusted_git_drivers(self) -> list[str]:
+        """The git drivers the execution policy trusts. Nothing is trusted when it cannot be read (fail safe: AEW's
+        git then runs no configured program at all)."""
+        try:
+            policy, _ = X.load(self.aew_root, self._manifest) if self._manifest else (None, None)
+        except Exception:  # an invalid policy is reported where it is used; it trusts nothing here
+            policy = None
+        return list(((policy or {}).get("containment") or {}).get("trusted_git_drivers") or [])
 
     def _authority_files_identity(self) -> tuple[Any, ...]:
         """Cheap identity of control.yaml and project.yaml (mtime, size, inode). Both are only ever

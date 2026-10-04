@@ -49,7 +49,8 @@ def channel(name: str) -> Iterator[None]:
 
 # --------------------------------------------------------------------------------------------- the registry
 
-MUTATION = ("protected.overlap", "assurance.triggers", "class0.eligible")  # new in M4-A; evaluated after the rest
+# New in M4-A (git.drivers: the M4-B review), evaluated after the rest; every one reports, none stops the others.
+MUTATION = ("protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers")
 
 
 class Entrypoint(NamedTuple):
@@ -68,20 +69,20 @@ ENTRYPOINTS: dict[str, Entrypoint] = {e.name: e for e in (
                "READY -> ASSIGNED for a mutating Ticket: a mutation workspace and an implementer"),
     Entrypoint("work.dispatch", "cli", ("work", "dispatch"),
                ("nm.kind", "transition.assign", "source.commit", "readiness", "plan.binding", "dependencies",
-                "inputs.current", "card.executor", "cap.non_mutating"),
+                "inputs.current", "card.executor", "cap.non_mutating", "git.drivers"),
                "READY -> ASSIGNED for a non-mutating Ticket: an executor and its observation"),
     Entrypoint("work.redispatch", "cli", ("work", "redispatch"),
                ("nm.kind", "redispatch.state", "source.commit", "plan.binding", "dependencies", "inputs.current",
-                "card.executor", "cap.non_mutating"),
+                "card.executor", "cap.non_mutating", "git.drivers"),
                "a non-mutating Ticket's next attempt, superseding the current one"),
     Entrypoint("invoke.create.mutating", "cli", ("invoke", "create"),
                ("invoke.slot", "card.slot", "inputs.current", "workspace.live", *MUTATION),
                "an implementer, reviewer or verifier for a mutating Ticket (or its integration candidate)"),
     Entrypoint("invoke.create.non_mutating", "cli", ("invoke", "create"),
-               ("nm.invoke",),
+               ("nm.invoke", "git.drivers"),
                "a reviewer or verifier of a non-mutating Ticket's record"),
     Entrypoint("invoke.create.parent", "cli", ("invoke", "create"),
-               ("parent.acceptance", "card.parent", "dependencies.parent", "inputs.current"),
+               ("parent.acceptance", "card.parent", "dependencies.parent", "inputs.current", "git.drivers"),
                "a reviewer or verifier of a Story's or Epic's acceptance"),
     Entrypoint("harness.launch", "cli", ("harness", "launch"),
                ("launch.launchable", "launch.pack", "launch.not_live", *MUTATION),

@@ -30,6 +30,10 @@ REASONS: dict[str, Reason] = {
     "NOT_FOUND": Reason("a unit, card or invocation the dispatch names does not exist"),
     "USAGE": Reason("the dispatch request is malformed"),
     "VALIDATION_FAILED": Reason("a policy or card the dispatch needs is invalid"),
+    # Host git safety (M4-B review): AEW's git runs no untrusted configured program; a base that needs one is refused.
+    "GIT_DRIVER_UNTRUSTED": Reason(
+        "the dispatch base assigns a git filter driver that execution policy does not trust: AEW will not run it on "
+        "agent-written files, and without it would read and commit those files differently"),
     # Protected conditions (plan assurance v0.4 §10).
     "PROTECTED_CONDITION_OVERLAP": Reason(
         "a protected path lies inside the Ticket's mutation scope: the scope grants a change the policy forbids",

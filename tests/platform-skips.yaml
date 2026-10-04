@@ -15,6 +15,114 @@ skipped:
       needs POSIX symlinks. Covered on Linux.
     tests/regression/test_review_2026_09_26.py::test_sync_handles_executable_bit_only_change: >-
       reviewer probe M6; needs a filemode-aware (POSIX) checkout. Covered on Linux.
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[absolute_path]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[another_worktree]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[dotdot]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[mkdir]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[python_open]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[rename_out]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[shell_redirect]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[symlink]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[temp_outside_scratch]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_role_can_still_write_its_own_roots: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_another_runs_harness_state_is_invisible: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[project]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[tmp]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[aew_tmp]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[runs]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[home]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[workspaces]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_an_operator_root_that_reaches_what_containment_protects_is_refused[python]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_a_narrow_operator_root_is_accepted_and_the_layout_stays_contained: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run[control_state]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run[host_tmp]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run[sibling_run]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_a_reviewer_cannot_write_its_workspace_but_can_write_scratch: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_real_git_metadata_is_immutable_from_inside: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_role_packs_git_commands_work_on_the_private_index_and_store: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_establish_labels_a_contained_run_truthfully: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_killing_the_tree_ends_every_process_even_one_that_left_the_group[setsid]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_killing_the_tree_ends_every_process_even_one_that_left_the_group[double_fork]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_host_pid_reads_the_runs_namespace_level_and_never_guesses: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_sigkill_of_bubblewrap_ends_the_namespace: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_sigkill_of_the_owner_ends_the_contained_tree: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_a_check_runs_inside_the_runs_layout: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
+      reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
+      memory there instead: ADR-0009 residual). Covered on Linux.
   linux: {}
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

@@ -22,9 +22,13 @@ and the annotations about a subject, and the set of referenced paths (for unreac
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import re
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -83,7 +87,15 @@ class HistoryIndex:
         """
         try:
             out = self._sync(root)
-        except sqlite3.DatabaseError as exc:
+        except (sqlite3.DatabaseError, OSError) as exc:
+            if _read_only(exc, self.path):  # a read-only view of the project (a contained run, M4-B)
+                self._use_private_copy()
+                out = self._sync(root)
+                self.upto = root["count"]
+                self.root = dict(root)
+                return out
+            if isinstance(exc, OSError):
+                raise
             if _contended(exc):  # healthy but busy: keep it, and say so
                 raise LockTimeout(f"the history index {INDEX_REL} is busy: {exc}") from exc
             self.path.unlink(missing_ok=True)  # damaged or not a database: derived data, so start over
@@ -91,6 +103,14 @@ class HistoryIndex:
         self.upto = root["count"]
         self.root = dict(root)
         return out
+
+    def _use_private_copy(self) -> None:
+        """Continue on a private copy of the index (derived data, re-verified against the history on every use), for
+        a process that may read the project but not write it: a contained run's own `aew` commands (M4-B)."""
+        private = Path(tempfile.mkdtemp(prefix="aew-history-index-")) / self.path.name
+        if self.path.exists():
+            shutil.copy2(self.path, private)
+        self.path = private
 
     def _rebuild(self) -> None:
         """Start over from the history the synced root pins (the index disagreed with it)."""
@@ -296,6 +316,16 @@ class HistoryIndex:
             return True
         self._rebuild()
         return False
+
+
+def _read_only(exc: BaseException, path: Path) -> bool:
+    """The index cannot be written here because the filesystem (or its directory) is read-only."""
+    if isinstance(exc, OSError):
+        return exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM)
+    text = str(exc).lower()
+    if "readonly database" in text or "read-only" in text:
+        return True
+    return "unable to open database file" in text and not os.access(path.parent, os.W_OK)
 
 
 def _contended(exc: sqlite3.DatabaseError) -> bool:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -86,7 +87,8 @@ def test_a_revived_superseded_session_has_no_aew_authority(tmp_path):
         driver.script(lab, "R-INV-0001-2", [{"do": "exit", "code": 0}])
         lab.lead("harness", "launch", inv)
         lab.wait("R-INV-0001-2", timeout=300)
-        probe = "python -c \"import os; print('ENDPOINT=' + str(os.environ.get('AEW_AGENT_ENDPOINT')))\""
+        python = "python" if shutil.which("python") else "python3"  # EL8 has only python3
+        probe = f"{python} -c \"import os; print('ENDPOINT=' + str(os.environ.get('AEW_AGENT_ENDPOINT')))\""
         assert "ENDPOINT=None" in _shell_in_revived_session(lab, run, probe, {})  # not persisted by V2
         coords = {k: old[k] for k in ("AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "PATH")}
         out = _shell_in_revived_session(lab, run, "aew whoami", coords)

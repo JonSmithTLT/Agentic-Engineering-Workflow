@@ -135,10 +135,12 @@ The supervisor owns the harness process tree independently of any harness lease.
 - OpenCode's `--stdio` lease is used but not relied on.
 
 ### Containment label (`AEW-INV-ISO-001`; companion review B2)
+*Superseded on Linux by the M4-B amendment below: Linux runs are contained, and every run records a structured label. Windows still has exactly what this section describes.*
+
 What M3 provides is **workdir separation**: each run has its own workspace or observation, private harness state and a scratch directory. It provides **no OS-level filesystem containment**: an agent's shell runs as the operator and can read and write whatever the operator's account can.
 - Every run record carries `containment: workdir_separation_only`, and `aew harness status` shows it.
 - `aew doctor` reports `containment` as WARN with that explanation.
-- Nothing in AEW claims more. Real containment is designed (`docs/design/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
+- Nothing in AEW claims more. Real containment is designed (`docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
 
 ### Pause points (tests)
 `AEW_PAUSE=<point>=<file>` holds a process at a named point while the file exists (`faults.pause`, next to the `AEW_FAULT` crash points):
@@ -281,3 +283,97 @@ Nothing beat during that. When it took longer than the 10 s staleness limit, `ae
 
 - **Fix.** The supervisor beats from a background thread while it ends, as it already did while the harness starts. The thread stops once the final record is written. It also stops after at most `TERMINATE_S` + 60 s, so a supervisor stuck while ending still goes stale and is reported `lost`.
 - **Regression.** `test_a_run_that_takes_long_to_end_is_not_reported_lost` in `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.finishing`. It returned `lost` before the fix.
+
+## Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux (M4-B; F2, E13)
+
+M4-B closes register items F2 (real filesystem containment, the gate before any real-repository dogfood) and E13 (POSIX process ownership). It builds the design approved in `m4-ambiguity-report.md` §2.4, with the designer's correction: the real git metadata is never writable by the agent. The probes behind it are in `docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md`. It was verified on Rocky Linux 8.10 (kernel 4.18, SELinux enforcing, bubblewrap 0.4.0).
+
+### What F2 claims, exactly
+- **Filesystem integrity.** A contained process can write only its role's writable roots. Every other write fails at the OS (`EROFS`), and the host is unchanged.
+- **Not confidentiality.** The host stays readable, apart from the masked secrets and other runs' directories (below). `os_readonly_roots` must never be read or reported as "the sandbox hides the host".
+- **Not network isolation.** The network namespace is shared: the harness server listens on `127.0.0.1`, and the provider is remote. Every label says `network: not_provided`.
+
+### The sandbox (`src/aew/harness/containment/`)
+- **One `Layout` per run, from its role** (`layout.py`). The role-to-layout table is exhaustive: an archetype without an entry (the Lead, or a new archetype nobody classified) has no layout, and its launch is refused. Write access exists only for an implementer in a Ticket scope.
+- **Bind order is part of the layout:**
+  1. The host root, read-only, with private `/dev`, `/proc` and `/tmp`; private PID, IPC and UTS namespaces; `--die-with-parent`.
+  2. The project, read-only, so it stays visible wherever it lives.
+  3. An empty tmpfs over the directory holding every run, so one run never reads another's harness state. That state is where OpenCode keeps a run's session environment, its bridge key included.
+  4. The writable roots: the implementer's Ticket source; this run's scratch, harness state and private git state; and any directory the operator's policy adds.
+  5. Read-only re-binds that a broad writable root can never reopen:
+     - the repository's git metadata: the common `.git`, the worktree's `.git/worktrees/<id>/` and the workspace's `.git` pointer file;
+     - a reader's workspace;
+     - the bridge directory;
+     - the interpreter behind `aew`.
+  6. Secret masks, by type:
+     - a directory gets an empty tmpfs: `~/.ssh`, `~/.gnupg`, `~/.aws`, agent tools' own sign-in stores such as `~/.local/share/opencode`, `~/.codex` and `~/.claude`, and others;
+     - a file gets an empty read-only file: `~/.netrc`, `~/.git-credentials` and others. Not `/dev/null`, because SELinux refuses a device node bound over a home file.
+- **The choke point is the process tree.** `ProcessTree(layout=...)` wraps every spawn of a contained tree in bubblewrap. An adapter keeps calling `tree.spawn(argv)` and cannot start an uncontained process; a tree that requires containment and has none refuses to spawn. The supervisor builds the run's tree only after the layout passed its self-test, before the adapter is loaded.
+- **Checks run in the same layout** (`policy/checks.py`), through their own contained tree. The supervisor holds each check's tree while it runs: the run ending kills it, and a check cut short by the run's end records nothing.
+- **A killed tree starts nothing more** (independent review, 2026-10-04). `ProcessTree.kill()` closes the tree, and spawn and kill are atomic, so "killed, then started" cannot happen. A run's checks are registered in `procs.CheckTrees`: ending the run marks it ended and kills every registered tree under one lock, a check registered after that is killed on arrival, and the run waits (bounded) for its checks to return before it retires its private git state and records its end.
+- **The bridge socket always lives under `/tmp`**, whatever `TMPDIR` says. Each sandbox has a private `/tmp`, so no sandbox sees another run's socket. The run's own socket directory is bound in read-only; connecting to a socket needs no write access.
+
+### AEW's own git runs no configured program (independent review, 2026-10-04)
+- **The gap:** AEW's host-side git reads and commits the files an agent wrote: the evaluated snapshot's `git add -A`, the prepare-time commit (`status`, `add`, `commit`), the reviewer's diff, integration merges. Git runs programs its configuration names while doing so: clean, smudge and process filters, external diff and textconv drivers, merge drivers, hooks (`prepare-commit-msg` and `post-commit` run even with `--no-verify`), fsmonitor and signing. The configuration is read-only to a contained agent, but a configured command can point at a script in the workspace, which the agent can edit. AEW would then run agent-controlled code outside every sandbox.
+- **The rule:** every AEW git call (`workspace/git.py`) switches those programs off. Every filter, diff and merge driver in the effective configuration gets an empty command (a merge driver becomes `false`, so a custom merge is a conflict for the Lead); `core.hooksPath` points at an empty directory private to the process; fsmonitor and signing are off; `diff`, `log` and `show` run with `--no-ext-diff --no-textconv`. The driver list is cached per directory and configuration environment, and re-read when any input of the last read changes: every file git read, every include target (even an empty or missing one), the system, global, repository and worktree files, and the worktree's `HEAD` (for `includeIf "onbranch:..."`); a read whose inputs were not all known beforehand, or with an include that cannot be resolved, is not cached.
+- **Trusted drivers:** `containment.trusted_git_drivers` in the execution policy names drivers AEW's git may run: an installed program agents cannot modify, such as git-lfs. Nothing is trusted by default.
+- **Refused, not silently different:** a dispatch whose base assigns, in its committed `.gitattributes` or the repository's `info/attributes`, a filter that configuration defines and policy does not trust is refused with `GIT_DRIVER_UNTRUSTED` (the `git.drivers` guard, on every dispatch route). Without the filter AEW would snapshot and commit those files differently from the project's git. The refusal names the driver, the patterns it applies to, its commands and the file defining them, and both ways forward: trust an installed program, or move a repository script out of reach first. `aew doctor` (`git-drivers`) lists every configured driver and whether AEW runs it, and warns when a trusted one runs a program by a relative path.
+- **Tests:** `tests/regression/test_m4b_review.py`: a repository whose configuration routes files through every kind of program, each running a workspace script the agent edits; under plain git they run, under AEW's git none does, and the commit holds the agent's bytes. Also trust, a configuration change while AEW runs, the refusal's text and the dispatch refusal.
+
+### Run-private git state (the designer's correction)
+- **The agent's git uses private state.** It gets a private index (seeded from the real one at launch) and a private object store, with the real objects as alternates. The agent's environment sets `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY` and `GIT_ALTERNATE_OBJECT_DIRECTORIES`. `status`, `diff`, `add` and `hash-object` work.
+- **The real metadata is read-only.** That covers `HEAD`, the index, refs, `commondir`, `gitdir` and AEW's workspace marker, so `commit`, `checkout --detach`, `branch`, `update-ref` and `stash` fail. AEW stays the only actor that can change repository metadata, so its host-side operations always act on an identity the agent could not alter (the confused-deputy risk).
+- **Staging is private scratch.** The work product is the content of the working tree, which AEW commits. Nothing real refers to a private object, so nothing is imported, the engine needs no alternates, and `fsck` stays clean. The private state is removed when the run ends.
+- **The implementer's context pack says so:** leave the change as files, and never commit, branch, stash or move `HEAD`.
+
+### Fail-closed launch (`containment` in the execution policy)
+- **`mode: required`** (the default on Linux):
+  - The supervisor builds the layout and runs the **launch self-test on that exact layout** (`probe.py`) before any harness process exists.
+  - A probe inside the sandbox appends to an existing sentinel next to the workspace, creates a sibling there, and creates a file in every writable root. It also asks `access(W_OK)` of every protected path, which a read-only mount refuses without changing anything: the real git metadata, the project's `.aew`, and two markers the host places for the probe only, in the host's temporary directory and in a sibling run's directory.
+  - **What the self-test vouches for:** the layout AEW assembled, probed at those points. It is a regression guard against bind-order mistakes and the known ways out, not a proof about every path; what an operator adds is checked separately (`writable`, below).
+  - The host then checks the outcome itself.
+  - Any failure, a missing bubblewrap, or disabled user namespaces ends the run `launch_failed`, with `CONTAINMENT_UNAVAILABLE` and the reason. No harness process starts.
+- **`mode: allow_weaker`:** the run launches labelled `workdir_separation_only`, with the reason recorded.
+- **`writable`** adds directories every contained run may write (for example a shared build cache), recorded on each run's label. A root that equals, contains or lies under what containment protects is refused at launch, naming what it would expose and what to list instead (independent review, 2026-10-04): the project's `.aew`, the git directories, the runs directory, this run's bridge directory, the Python environment, a masked secret, or the workspaces root (contains only). For the shared temporary directory, containing it, or reaching one of AEW's own `aew-*` directories in it, is refused; a directory such as `/tmp/cache` is not. **`hide`** masks further secrets.
+- **Other platforms:** Windows always runs labelled `workdir_separation_only` (below). On any other platform without containment, an explicit `mode: required` refuses the launch and `doctor` reports FAIL; without it, runs launch labelled weaker.
+
+### Labels
+- **Every run record's `containment` is an object** with:
+  - `filesystem`: `os_readonly_roots` or `workdir_separation_only`;
+  - `process_ownership`: `pid_namespace`, `process_group` or `job_object`;
+  - `network: not_provided`;
+  - `mechanism`: `bubblewrap <version>`;
+  - the self-test result and the layout.
+- **Old records:** a record from before M4-B (the string `workdir_separation_only`) reads as exactly that.
+- **Where it shows:** `aew harness status` shows the label, and a check result's `method.containment` says where the check ran.
+- **`aew doctor`** builds and self-tests a sandbox live:
+  - PASS when contained;
+  - FAIL when the policy requires containment and it is unavailable;
+  - WARN under `allow_weaker`;
+  - on Windows, WARN with the note above.
+
+### Process ownership (E13)
+- **The recorded pid is bubblewrap's host pid.** It leads the process group, so the sentinel, `killpg` and `same_process` keep working.
+- **Killing it ends the PID namespace**, including a descendant that called `setsid`. The POSIX residual above is closed for contained runs.
+- **A pid a contained agent reports is namespace-local.** `procs.host_pid(ns_pid, under=<bwrap pid>)` translates it through `/proc/<pid>/status` `NSpid`, looking only under the run's own bubblewrap processes, and reads it at the run's namespace level, so a process the agent started in a further nested sandbox is placed correctly. A pid nothing under the run has raises `LookupError`: it is never taken for a host pid (independent review, 2026-10-04).
+
+### Residual risk added by this amendment (documented, not closed)
+**The harness server's environment is readable from the agent's shell.**
+- **Why:** the agent's own environment carries no provider secret and no server password, as above. But the harness server is the agent shell's parent, runs as the same user, and shares its PID namespace whether or not the run is contained. So its environment (the provider key the policy names, and the server password) is one read of `/proc/<parent>/environ` away. No AEW credential is ever there.
+- **Status:** closing this needs the server outside the agent's user or namespace. Until then it is stated here, and `test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell` asserts it. The day it stops being true, that test fails and this paragraph changes.
+- **To investigate:** using OpenCode's stored authentication in the run's private data directory, instead of environment variables.
+- **Secret masks are computed at launch.** A secret file or directory created on the host while a run is live is readable from it until the run ends; the next launch masks it.
+
+Windows keeps the M3 model: workdir separation, a job object, and the same-UID residual above. Real-repository dogfood runs on Linux only, by process (`m4-ambiguity-report.md`, M4-B4).
+
+### Tests
+- **`tests/integration/test_containment.py`** (Linux) covers:
+  - the isolation design's §12 escapes, one per test: absolute path, `..`, symlink, rename, `mkdir`, a temp file outside scratch, Python `open()`, a shell redirect, and another worktree. Each is refused by the OS, and the host stays byte-identical;
+  - the confused-deputy attempts on the git metadata, and run-private git;
+  - secrets and another run's harness state being invisible;
+  - the self-test, against a writable root laid over the host and against an unprotected `.git` pointer;
+  - fail-closed launch without bubblewrap;
+  - teardown after `setsid`, a double fork, `SIGKILL` of bubblewrap and `SIGKILL` of the owner;
+  - a check running inside the layout.
+- **`tests/unit/test_containment_layout.py`:** bind order, the exhaustive role table, masks by type and labels.
+- **The existing harness suites run contained on Linux.** CI installs bubblewrap, and the setup action lifts Ubuntu's AppArmor restriction on unprivileged user namespaces. Tests whose subject was the uncontained behaviour now assert both: uncontained, a reviewer's edit is detected afterwards (`WORKSPACE_MUTATED`); contained, it is refused where it is made.

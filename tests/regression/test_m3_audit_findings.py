@@ -1,4 +1,4 @@
-"""Findings of the M3 read-only audit (`docs/implementation/m3-audit-findings.md`) that change code.
+"""Findings of the M3 read-only audit (`docs/archive/reviews/m3-audit-findings.md`) that change code.
 
 Each regression was written, and seen failing, before its fix. X1 and X2 came from the dogfood and live with its
 findings (`test_m3_dogfood_findings.py`).

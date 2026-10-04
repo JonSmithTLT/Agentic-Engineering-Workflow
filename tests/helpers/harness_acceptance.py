@@ -23,7 +23,7 @@ from typing import Any
 import yaml
 from aewflow import SUBTRACT_PATCH, create_planned_ticket
 from conftest import git
-from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits
+from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits, run_contained
 from harness_conformance import (
     PROVIDER_SECRET,
     Driver,
@@ -407,9 +407,14 @@ def at16_isolated_review(lab: HarnessLab, driver: Driver, tmp_path: Path) -> Non
             "resolved_findings": []}}}])
     lab.lead("invoke", "create", WID, "--role", "reviewer", "--launch")
     assert lab.wait(rev1)["status"] == "ended_with_evidence"
-    refused = lab.step(rev1, 4)
-    assert code_of(refused) == "WORKSPACE_MUTATED" and "calc/core.py" in refused["stderr"], refused
-    [review1] = evidence_of(lab, WID, rev1)
+    if run_contained(lab, rev1):  # M4-B: the reviewer's source is read-only, so its edit is refused where it is made
+        assert lab.step(rev1, 3)["refused"] == {"calc/core.py": "EROFS"}
+        assert lab.step(rev1, 5)["refused"] == {"calc/core.py": "EROFS"}
+        review1 = next(e for e in evidence_of(lab, WID, rev1) if e["review"]["disposition"] == "changes_required")
+    else:  # uncontained, the edit happens and the review of edited code is refused
+        refused = lab.step(rev1, 4)
+        assert code_of(refused) == "WORKSPACE_MUTATED" and "calc/core.py" in refused["stderr"], refused
+        [review1] = evidence_of(lab, WID, rev1)
     assert review1["review"]["disposition"] == "changes_required"
     assert review1["evaluated_snapshot"]["relevant_inputs_fingerprint"] == \
         report["evaluated_snapshot"]["relevant_inputs_fingerprint"]

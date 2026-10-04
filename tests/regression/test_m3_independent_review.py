@@ -61,6 +61,15 @@ def _events(lab, run):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
 
 
+def _never_acted_on(lab, writer: str, victim: str, name: str) -> None:
+    """Uncontained, the file lands in the victim's request directory and its supervisor refuses it. Contained (Linux,
+    M4-B), other runs' directories are hidden from the writer, so the file never reaches the host at all."""
+    if (lab.record(writer).get("containment") or {}).get("filesystem") == "os_readonly_roots":
+        assert not (runlog.run_dir(lab.aew_root, victim) / "requests" / name).exists()
+    else:
+        _refused(lab, victim, name)
+
+
 def test_an_agent_cannot_stop_another_run_by_writing_a_request_file(lab, tmp_path):
     other = _victim_and_other(lab, tmp_path)
     path = runlog.run_dir(lab.aew_root, "R-INV-0001-1") / "requests" / "agent-written.json"
@@ -69,7 +78,7 @@ def test_an_agent_cannot_stop_another_run_by_writing_a_request_file(lab, tmp_pat
     revision = lab.project.rev()
     lab.lead("work", "dispatch", other, "--launch")
     lab.wait("R-INV-0002-1")
-    _refused(lab, "R-INV-0001-1", "agent-written.json")
+    _never_acted_on(lab, "R-INV-0002-1", "R-INV-0001-1", "agent-written.json")
     assert lab.record("R-INV-0001-1")["status"] == "running"
     assert lab.project.rev() == revision + 1  # the dispatch alone
     assert_control_invariants(lab.project)
@@ -83,7 +92,7 @@ def test_an_agent_cannot_send_a_prompt_to_another_run_by_writing_a_request_file(
                [{"do": "write", "files": {str(victim_dir / "requests" / "agent-written.json"): forged}}])
     lab.lead("work", "dispatch", other, "--launch")
     lab.wait("R-INV-0002-1")
-    _refused(lab, "R-INV-0001-1", "agent-written.json")
+    _never_acted_on(lab, "R-INV-0002-1", "R-INV-0001-1", "agent-written.json")
     assert not (victim_dir / "harness" / "inbox.jsonl").exists()
     # The Lead's own message is delivered.
     lab.ok("harness", "send", "R-INV-0001-1", "--text", "Lead message", "--token", lab.project.token)

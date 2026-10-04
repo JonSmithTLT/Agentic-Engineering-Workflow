@@ -125,7 +125,8 @@ def test_every_reason_code_is_registered_and_unknown_codes_are_refused():
 
 # ---------------------------------------------------------------- the pure assurance checks
 
-FILES = ["calc/core.py", "tests/test_core.py", "tests/data/input.json", "vendor/lib.py", "calc/crypto.py"]
+FILES = ["calc/core.py", "tests/test_core.py", "tests/data/input.json", "vendor/lib.py", "calc/crypto.py",
+         *(f"docs/page{i}.md" for i in range(20))]  # a tree large enough that a three-file scope is bounded (D2)
 GUARDRAILS = {"protected_paths": ["vendor/**"],
               "review_triggers": [{"name": "security", "paths": ["calc/crypto*.py"]}]}
 CHECKS = {"checks": {"unit": {"configured": True, "command": ["pytest"]}, "manual": {"configured": False}}}
@@ -170,6 +171,28 @@ def test_each_class0_condition_refuses_on_its_own(change, code):
     found = A.class0_blockers(meta=meta(**change), files=FILES, guardrails=GUARDRAILS, checks=CHECKS, triggers=[],
                               lint=[])
     assert [b["code"] for b in found] == (code if isinstance(code, list) else [code])
+
+
+def subject_codes(scope, files=FILES, gates=None):
+    found = A.class0_blockers(meta=meta(scope=scope), files=files, guardrails={}, checks=CHECKS, triggers=[],
+                              lint=[], gates=gates)
+    return [b for b in found if b["code"] == "CLASS0_SUBJECT_UNBOUNDED"]
+
+
+def test_class0_bounded_subject_is_measured_not_listed():
+    """D2 (area 3 F2): a glob whose first segment is `**` is never bounded, and a scope over more than 50 tracked
+    files or a quarter of the tree is refused, with the measure in the refusal; both bounds come from policy."""
+    assert subject_codes(("**/*.py",)) and subject_codes(("./**/x",))  # whatever they match today
+    assert subject_codes(("docs/**",))  # 20 of 25 files: more than a quarter of the tree
+    [wide] = subject_codes(("docs/**",))
+    assert wide["details"]["subject"]["matched"] == 20 and wide["details"]["subject"]["tracked"] == 25
+    assert "20 of 25" in wide["message"]
+    big = [f"src/m{i}.py" for i in range(60)] + [f"other/f{i}.txt" for i in range(400)]
+    assert subject_codes(("src/**",), files=big)  # 60 files: over the 50-file bound, though only 13% of the tree
+    assert not subject_codes(("src/m1*.py",), files=big)  # 11 files
+    assert not subject_codes(("docs/**",), gates={"class0": {"max_scope_fraction": 1.0}})
+    assert not subject_codes(("src/**",), files=big, gates={"class0": {"max_scope_files": 100}})
+    assert A.subject_measure(["src/**"], big)["bounded"] is False
 
 
 def test_an_inherited_elevated_obligation_has_its_own_class0_refusal():

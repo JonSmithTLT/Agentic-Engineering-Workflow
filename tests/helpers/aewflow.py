@@ -103,7 +103,9 @@ CLASS0_ELIGIBLE = ("--acceptance-check", "unit", "--class0-assert", "transformat
 
 
 def create_planned_ticket(p: Project, tmp_path: Path, *, title: str = "Add subtract()", cls: int = 1,
-                          scope: tuple[str, ...] = ("calc/**", "tests/**"), extra: tuple[str, ...] = ()) -> str:
+                          scope: tuple[str, ...] | None = None, extra: tuple[str, ...] = ()) -> str:
+    if scope is None:  # Class 0 needs a bounded subject: here 1 of the fixture's 5 tracked files (M4-A, D2)
+        scope = ("calc/core.py", "tests/test_subtract.py") if cls == 0 else ("calc/**", "tests/**")
     args = ["work", "create", "ticket", "--title", title, "--class", str(cls),
             "--goal", "calc.core.subtract(5, 3) == 2 through the public module",
             "--contract", "changes stay within calc/ and tests/; vendored code untouched",

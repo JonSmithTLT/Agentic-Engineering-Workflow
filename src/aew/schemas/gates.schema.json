@@ -119,6 +119,15 @@
         "max_full_age_days": {"type": "number", "minimum": 0}
       }
     },
+    "class0": {
+      "description": "Class 0's bounded subject (M4-A amendment section 2): a scope is unbounded when a glob's first segment is `**`, or when it matches more than max_scope_files tracked files or more than max_scope_fraction of them. Built-in defaults: 50 files, 0.25.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_scope_files": {"type": "integer", "minimum": 1},
+        "max_scope_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      }
+    },
     "non_mutating_concurrency": {
       "type": [
         "integer",

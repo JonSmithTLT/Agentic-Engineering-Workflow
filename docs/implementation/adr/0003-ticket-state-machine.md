@@ -85,3 +85,8 @@ The M1 rows are unchanged, and the table-driven test still pins exactly one `via
   A parent's phase is derived, so losing a parent reviewer or verifier leaves a gate missing and interrupts nothing.
 - **Attempts are explicit.** A new attempt starts only through `work redispatch`, which is a recorded decision. Reconciling an INTERRUPTED non-mutating Ticket records an inspection of the attempt (executor, its status, records submitted); it never ingests or accepts anything.
 - **Parents never use this table.** `work transition <Story|Epic>` stays refused (M1 test unchanged). Parent state is derived (ADR-0007); the Lead acts through `work close` and `work cancel`.
+
+## Amendment 2026-10-04 — the cap is the policy's (M4-C)
+
+The serial cap of B6 becomes the policy's cap. A mutating Ticket counts while it holds a live workspace, whatever its state (as amended in M2); the number allowed is `gates.yaml` `mutating_concurrency`, default 1. M4-A read the value but clamped it to 1. The cap governs **admission**: lowering it never makes admitted work illegal, the live workspaces drain, and no new mutating workspace is admitted until occupancy is below the new cap (operator, 2026-10-04). Each Ticket has its own worktree, and integration stays serialized through ADR-0004, so nothing else in the state machine changes.
+

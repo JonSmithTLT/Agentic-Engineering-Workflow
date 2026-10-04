@@ -1,3 +1,5 @@
+import { EvidenceReference } from '../evidence/Reference';
+import { journalDigest } from '../evidence/fixtures';
 import { useEffect, useRef, type ComponentType } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { InvestigationWorkspace } from '../../../components/InvestigationWorkspace';
@@ -75,11 +77,11 @@ function Reference({ reference }: {
     }
     return <span><code>{reference.id}</code>{reference.title ? ` · ${reference.title}` : ''} <small>({reference.kind}; supplied reference, no lookup interface)</small></span>;
 }
-function ReferenceList({ values, empty }: {
+function ReferenceList({ values, empty, evidenceOrigin }: {
     values: JournalReference[];
-    empty: string;
+    empty: string; evidenceOrigin?: {case:string;record_id:string;role:string};
 }) {
-    return values.length ? <ul className="journal-references">{values.map((r, i) => <li key={i}><Reference reference={r}/></li>)}</ul> : <p className="muted">{empty}</p>;
+    return values.length ? <ul className="journal-references">{values.map((r, i) => <li key={i}>{evidenceOrigin && r.kind === "evidence_reference" ? <EvidenceReference origin={{contract:journalDigest,...evidenceOrigin,item_id:null,kind:r.kind,evidence_id:r.id,source_id:null,snapshot_id:null,visibility_scope:"fictional-authorized"}}><code>{r.id}</code>{r.title && r.title !== r.id && <> · {r.title}</>}</EvidenceReference> : <Reference reference={r}/>}</li>)}</ul> : <p className="muted">{empty}</p>;
 }
 function EntryLink({ entry }: {
     entry: JournalEntry;
@@ -169,6 +171,9 @@ function JournalDetail({ id, name, shown, panel }: {
     useEffect(() => {
         if (!shown || !r)
             return;
+        // A returning evidence reference owns restoration after the pane is visible.
+        if (document.activeElement?.getAttribute('data-evidence-reference'))
+            return;
         if (fromResults.current && !window.matchMedia('(max-width: 1023px)').matches)
             return;
         const frame = requestAnimationFrame(() => {
@@ -212,8 +217,8 @@ function JournalDetail({ id, name, shown, panel }: {
       <h3>Limitations</h3><TextList values={r.limitations} empty="No limitations supplied."/>
     </section>
     <section id="journal-panel-evidence" role="tabpanel" aria-labelledby="journal-tab-evidence" hidden={panel !== 'evidence'}>
-      <h3>Supporting evidence</h3><ReferenceList values={r.supporting_evidence} empty="No supporting evidence references supplied."/>
-      <h3>Opposing evidence</h3><ReferenceList values={r.opposing_evidence} empty="No opposing evidence references supplied."/>
+      <h3>Supporting evidence</h3><ReferenceList values={r.supporting_evidence} evidenceOrigin={{case:name,record_id:r.id,role:"supporting"}} empty="No supporting evidence references supplied."/>
+      <h3>Opposing evidence</h3><ReferenceList values={r.opposing_evidence} evidenceOrigin={{case:name,record_id:r.id,role:"opposing"}} empty="No opposing evidence references supplied."/>
       <p className="scope-note">These roles are supplied. References do not independently establish acceptance or applicability.</p>
     </section>
     <section id="journal-panel-provenance" role="tabpanel" aria-labelledby="journal-tab-provenance" hidden={panel !== 'provenance'}>
@@ -244,7 +249,7 @@ function JournalDetail({ id, name, shown, panel }: {
 }
 function TextList({ values, empty }: {
     values: string[];
-    empty: string;
+    empty: string; evidenceOrigin?: {case:string;record_id:string;role:string};
 }) {
     return values.length ? <ul>{values.map((v, i) => <li key={i}>{v}</li>)}</ul> : <p className="muted">{empty}</p>;
 }

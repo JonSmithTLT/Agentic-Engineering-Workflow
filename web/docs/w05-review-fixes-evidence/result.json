@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-04",
+  "source_commit": "e875e81b417738dfaa9a43990ebfd330db795094",
+  "reviewed_baseline": "405c83644abaf8dd3820c5659f304308af1f04ac",
+  "preview_sha256": "2957999ca557a07abde3148afbc2168cb7a44961b96ba4514c5a8ea4daf40463",
+  "fixture_manifest_sha256": "661c88832be0cd4bab0bfdca2a05d13106dce9f2190396ec7ad60cd182783447",
+  "offline_gate": {
+    "result": "PASS",
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "network": "none",
+    "tests": 150,
+    "test_files": 17,
+    "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "command": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> bash web/scripts/offline-gate.sh",
+    "checks": "Artifact checks, accepted type generation unchanged, typecheck, lint, unit/component tests, production exclusion and both builds",
+    "source": "Separate clean detached checkout of e875e81, verified before and after build and browser suite"
+  },
+  "browser": {
+    "result": "PASS",
+    "groups": 25,
+    "command": "W05_BROWSER_OUTPUT=output/playwright-w05-review-fixes CHROMIUM_PATH=<pinned wrapper> node scripts/browser-w05.mjs",
+    "coverage": "Entire W05 suite plus canonical story results, selected-artifact arrow/Home/End tab focus, explicit pick focus, shared alert and missing-identity status; desktop/phone and worker/HTTP",
+    "source": "Executed from the same committed checkout, serving its newly produced dist-demo through both adapters"
+  },
+  "premium_audit": "PASS; zero findings",
+  "original_independent_review": "web/docs/w05-independent-review/w05-review-main-line.md",
+  "corrections": "web/docs/w05-review-fixes.md",
+  "frontend_acceptance": "ACCEPT at e875e81; independent reviewer condition fulfilled by this clean committed-source evidence regeneration",
+  "backend_adoption": "PENDING",
+  "live_integration": "NOT_CLAIMED",
+  "ci": "PR head c23e342 green; new evidence/tooling head requires CI rerun",
+  "build_provenance": "web/docs/w05-review-fixes-evidence/build-provenance.json",
+  "evidence_replacement": "Supersedes the prior working-tree correction evidence whose commit attribution was invalid. Product acceptance is the independent reviewer disposition, not this automation.",
+  "commands": {
+    "build": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> bash web/scripts/freeze-committed-build.sh e875e81b417738dfaa9a43990ebfd330db795094",
+    "browser": "Within the emitted checkout: CHROMIUM_PATH=<pinned Chromium> <pinned Node 22> scripts/browser-w05.mjs",
+    "repeatable_combined_procedure": "PATH=/snap/bin:$PATH SPT_FRONTEND_IMAGE=<builder> PINNED_NODE22=<absolute pinned Node> CHROMIUM_PATH=<absolute pinned Chromium> bash web/scripts/freeze-w05-evidence.sh e875e81b417738dfaa9a43990ebfd330db795094",
+    "verification": "Clean git status; sha256sum -c on production and demo build manifests after the browser run"
+  }
+}

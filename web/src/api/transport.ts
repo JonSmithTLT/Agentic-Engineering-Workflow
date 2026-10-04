@@ -56,6 +56,10 @@ export class ReadTransport {
   clearRepresentations() {
     this.cache.clear();
   }
+  /** Bounded readers can discard an obsolete page without retiring metadata. */
+  forget(route: string) {
+    this.cache.delete(JSON.stringify([this.context.key(route), route]));
+  }
   constructor(
     private request: typeof fetch = (input, init) => {
       if (import.meta.env.MODE === 'demo' && document.querySelector('meta[name="aew-demo-transport"]')?.getAttribute('content') === 'http') {

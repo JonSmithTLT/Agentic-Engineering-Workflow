@@ -1,0 +1,78 @@
+{
+  "baseline_commit": "211e29c168171201fcce124795b11a22a13b64d7",
+  "samples": [
+    {
+      "label": "W04 baseline source chooser",
+      "dataset_population": 1003,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 451,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W04 baseline source chooser",
+      "dataset_population": 1003,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 282,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W04 baseline source chooser",
+      "dataset_population": 1003,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 288,
+      "rows": 50,
+      "dom_nodes": 1032,
+      "api_requests": 4,
+      "api_response_bytes": 29669,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W05 artifact associations",
+      "dataset_population": 126,
+      "sample": 0,
+      "warmup": true,
+      "render_ready_ms": 901,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_response_bytes": 30700,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W05 artifact associations",
+      "dataset_population": 126,
+      "sample": 1,
+      "warmup": false,
+      "render_ready_ms": 903,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_response_bytes": 30700,
+      "rows_after_paging": 50
+    },
+    {
+      "label": "W05 artifact associations",
+      "dataset_population": 126,
+      "sample": 2,
+      "warmup": false,
+      "render_ready_ms": 919,
+      "rows": 50,
+      "dom_nodes": 459,
+      "api_requests": 6,
+      "api_response_bytes": 30700,
+      "rows_after_paging": 50
+    }
+  ],
+  "caveat": "One warmup and two warm samples per surface; different datasets and workflows. These establish bounded rendering/requests, not a speed improvement or SLA. CHROMIUM_PATH override used when supplied."
+}

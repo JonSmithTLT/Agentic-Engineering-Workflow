@@ -1,3 +1,5 @@
+import { evidenceContract } from '../../preview/evidence/registration';
+import { EvidenceProjector,evidenceBase } from '../../preview/evidence/projector';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { acceptedContract } from '../../registry';
 import { journalContract } from '../../preview/journal/registration';
@@ -26,7 +28,7 @@ export default function Lab({ tab }: { tab: string }) {
   const [seed, setSeed] = useState(replay?.seed ?? 1);
   const [model, setModel] = useState('OverviewResponse');
   const [contractId, setContractId] = useState('dashboard-api');
-  const contract = contractId === 'investigation-preview' ? investigationContract : contractId === 'journal-preview' ? journalContract : acceptedContract;
+  const contract = contractId === 'evidence-preview' ? evidenceContract : contractId === 'investigation-preview' ? investigationContract : contractId === 'journal-preview' ? journalContract : acceptedContract;
   const [text, setText] = useState('');
   const [result, setResult] = useState<ReturnType<typeof validateInput>>();
   const [message, setMessage] = useState('');
@@ -176,9 +178,9 @@ export default function Lab({ tab }: { tab: string }) {
       ) : (
         <>
           <h3>Contract Playground</h3>
-          <label>Contract <select value={contractId} onChange={(e) => { const next = e.target.value === 'investigation-preview' ? investigationContract : e.target.value === 'journal-preview' ? journalContract : acceptedContract; setContractId(next.id); setModel(Object.keys(next.parsers)[0]); setText(''); setResult(undefined); }}><option value="dashboard-api">Accepted API 0.1.2</option><option value="journal-preview">Journal preview 0.1.0 PROVISIONAL</option><option value="investigation-preview">Investigation preview 0.1.0 PROVISIONAL</option></select></label>
+          <label>Contract <select value={contractId} onChange={(e) => { const next = e.target.value === 'evidence-preview' ? evidenceContract : e.target.value === 'investigation-preview' ? investigationContract : e.target.value === 'journal-preview' ? journalContract : acceptedContract; setContractId(next.id); setModel(Object.keys(next.parsers)[0]); setText(''); setResult(undefined); }}><option value="dashboard-api">Accepted API 0.1.2</option><option value="journal-preview">Journal preview 0.1.0 PROVISIONAL</option><option value="investigation-preview">Investigation preview 0.1.0 PROVISIONAL</option><option value="evidence-preview">Evidence inspection preview 0.1.0 PROVISIONAL</option></select></label>
           <p>
-            {contract.id === 'dashboard-api' ? 'Accepted API' : contract.id === 'journal-preview' ? 'Journal preview' : 'Investigation preview'} {contract.version} ·{' '}
+            {contract.id === 'dashboard-api' ? 'Accepted API' : contract.id === 'journal-preview' ? 'Journal preview' : contract.id === 'evidence-preview' ? 'Evidence inspection preview' : 'Investigation preview'} {contract.version} ·{' '}
             {contract.disposition}. Shape acceptance is separate from
             semantic support and backend approval.
           </p>
@@ -202,7 +204,8 @@ export default function Lab({ tab }: { tab: string }) {
           </label>
           <button
             onClick={() => {
-              if (contract.id === 'investigation-preview') { const fixture = investigationFixture(); const value = model === 'ComparisonSourceResponse' ? fixture.sources[1] : model === 'PacketResponse' ? fixture.packets[1] : model === 'PacketItemListResponse' ? { items: fixture.items.filter(i => i.packet_id === 'PKT-Retry'), next_cursor: null } : { items: fixture.sources.map(s => ({ id: s.id, invocation_id: s.invocation.id, work: s.invocation.work, status: s.invocation.status, mode: s.mode, snapshot_id: s.snapshot_id, captured_at: s.captured_at, visibility_scope: s.visibility_scope })), next_cursor: null }; setText(JSON.stringify(investigationEnvelope(value), null, 2)); setResult(undefined); return; }
+              if (contract.id === 'evidence-preview') { const route = model === 'ReferenceResponse' ? '/references/REF-J05-CLANGD-E871' : model === 'EvidenceSourceResponse' ? '/sources/ES-Removal' : model === 'ArtifactListResponse' ? '/sources/ES-Removal/artifacts' : model === 'ExcerptResponse' ? '/sources/ES-Removal/artifacts/ART-Removal/excerpt?artifact_revision=1' : '/sources'; const value = new EvidenceProjector().read(new URL(evidenceBase+route,'http://demo.invalid')); setText(JSON.stringify(value.body,null,2));setResult(undefined);return; }
+               if (contract.id === 'investigation-preview') { const fixture = investigationFixture(); const value = model === 'ComparisonSourceResponse' ? fixture.sources[1] : model === 'PacketResponse' ? fixture.packets[1] : model === 'PacketItemListResponse' ? { items: fixture.items.filter(i => i.packet_id === 'PKT-Retry'), next_cursor: null } : { items: fixture.sources.map(s => ({ id: s.id, invocation_id: s.invocation.id, work: s.invocation.work, status: s.invocation.status, mode: s.mode, snapshot_id: s.snapshot_id, captured_at: s.captured_at, visibility_scope: s.visibility_scope })), next_cursor: null }; setText(JSON.stringify(investigationEnvelope(value), null, 2)); setResult(undefined); return; }
               if (contract.id === 'journal-preview') { setText(JSON.stringify(journalEnvelope(model === 'JournalResponse' ? story[4] : { items: story, next_cursor: null, components: ['parser'], kinds: [...new Set(story.map((r) => r.kind))] }), null, 2)); setResult(undefined); return; }
               const world = selectedWorld();
               const route = Object.entries(world.models).find(

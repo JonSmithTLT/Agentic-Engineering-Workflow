@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
 
 from aew.harness import bridge, lead_broker
+from aew.harness.procs import pid_alive
 
 SECRET = "sk-provider-secret-must-not-reach-the-agent"
 
@@ -96,11 +98,13 @@ def test_the_lead_harness_acts_through_the_bridge_and_never_holds_the_credential
                                 "--non-mutating", "--goal", "document calc", "--scope", "calc/**"]},
         {"do": "aew", "args": ["status", "--json"]},
         {"do": "scan", "out": str(sync / "hits"), "roots": [str(lab.root), str(tmp_path)]},
+        {"do": "read_parent_environ", "pid": "gppid"},
         {"do": "read_parent_environ", "pid": "ppid"},
     ])
     assert res.returncode == 0, res.stderr
-    if sys.platform.startswith("linux") and os.geteuid() != 0:  # the credential holder is non-dumpable
-        assert steps[5]["readable"] is False, steps[5]
+    if sys.platform.startswith("linux") and os.geteuid() != 0:
+        assert steps[5]["readable"] is False, steps[5]  # the credential holder (the broker) is non-dumpable
+        assert steps[6]["readable"] and not steps[6]["has_credential"] and not steps[6]["has_lead_var"], steps[6]
     assert res.json["exit"] == 0 and res.json["seat"] == "held by your AEW_LEAD_TOKEN"
     assert steps[2]["exit"] == 0 and steps[2]["stdout_json"]["id"] == "T-0001"
     env, child = json.loads((sync / "env").read_text()), json.loads((sync / "child").read_text())
@@ -125,9 +129,11 @@ def test_the_lead_bridge_refuses_what_would_put_a_credential_in_the_session(lab,
         {"do": "lead", "args": ["checkpoint", "--next", "x", "--token", "{FORGED_CREDENTIAL}"]},
         {"do": "bridge_payload", "bridge": "lead", "request": {"op": "lead.cli", "args": {
             "argv": ["lead", "show"], "cwd": str(lab.root), "stdin": ""}}},
+        {"do": "aew", "args": ["--print-credential", "lead", "show"]},  # a credential never goes onto this stdout
     ])
     assert res.returncode == 0, res.stderr
     assert [code(steps[i]) for i in range(4)] == ["USAGE", "USAGE", "USAGE", "PERMISSION_DENIED"]
+    assert code(steps[7]) == "USAGE" and "--print-credential" in steps[7]["stderr"]
     launched = steps[4]["stdout_json"]
     assert steps[4]["exit"] == 0 and "invocation_token" not in launched and not contains_credential(steps[4]["stdout"])
     assert code(steps[5]) == "PERMISSION_DENIED"   # a forged credential runs locally and is rejected
@@ -263,3 +269,74 @@ def test_both_bridges_hold_the_same_custody_properties(lab, tmp_path, sync, monk
     assert getattr(closed.value, "code", None) == "STALE_AUTHORITY"
     # 4. no credential in any file (also asserted over the whole tmp tree by the fixture)
     assert not credential_hits(tmp_path)
+
+
+# ---------------------------------------------------------------------------------------------- session custody
+
+def vacant_project(tmp_path: Path) -> Project:
+    p = Project(make_git_repo(tmp_path / "vacant", {"README.md": "# v\n", "calc/core.py": "x = 1\n"}))
+    p.ok("init", "--project-id", "vacant")
+    return p
+
+
+def test_a_process_the_lead_harness_leaves_behind_ends_before_the_seat_is_released(tmp_path, sync):
+    """Nothing the Lead's harness starts outlives the session, even detached; the seat is released only after that,
+    so a leftover process can never take it."""
+    p = vacant_project(tmp_path)
+    lab = HarnessLab.create(p, tmp_path)
+    pidfile, go, out = sync / "lingerer.pid", sync / "go", sync / "lingerer.out"
+    try:
+        res, steps = session(lab, "linger", [{"do": "spawn_lingerer", "pidfile": str(pidfile), "go": str(go),
+                                              "out": str(out), "args": ["--print-credential", "-C", str(p.root), "lead",
+                                                                        "acquire", "--expect-rev", "0"]}],
+                             acquire=True, token=False)
+        assert res.returncode == 0, res.stderr
+        assert res.json["processes"] == "clean" and res.json["seat"] == "released", res.json
+        assert not pid_alive(int(pidfile.read_text(encoding="utf-8")))
+        go.touch()
+        time.sleep(3)
+        assert not out.exists(), out.read_text(encoding="utf-8")
+        assert p.ok("lead", "show")["status"] == "vacant"
+    finally:
+        lab.cleanup()
+    assert not credential_hits(tmp_path)
+
+
+def test_a_credential_is_never_issued_onto_a_captured_stdout(tmp_path):
+    """With no terminal and no `--print-credential` a credential-issuing command is refused before it issues
+    anything; a script that keeps the credential safe opts in."""
+    p = vacant_project(tmp_path)
+    kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
+    res = subprocess.run([sys.executable, "-m", "aew", "-C", str(p.root), "lead", "acquire", "--expect-rev",
+                          str(p.rev())], env=clean_env(), capture_output=True, text=True, encoding="utf-8",
+                         stdin=subprocess.DEVNULL, timeout=180, **kwargs)
+    assert res.returncode != 0 and '"USAGE"' in res.stderr and "your terminal" in res.stderr, res.stderr
+    assert not contains_credential(res.stdout + res.stderr)
+    assert p.ok("lead", "show")["status"] == "vacant"
+    assert contains_credential(p.ok("lead", "acquire", "--expect-rev", str(p.rev()))["token"])  # run_aew opts in
+
+
+def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
+    """A pending handoff does not end Lead authority: the engine refuses requests meanwhile, and once the handoff is
+    cancelled the same session works again."""
+    from aew.engine.api import Engine
+
+    proc, transcript = start_session(lab, "pending", [
+        {"do": "touch", "path": str(sync / "ready")},
+        {"do": "wait_file", "path": str(sync / "go"), "timeout": 120},
+        {"do": "lead", "args": ["checkpoint", "--next", "during the offer"]},
+        {"do": "touch", "path": str(sync / "tried")},
+        {"do": "wait_file", "path": str(sync / "go2"), "timeout": 120},
+        {"do": "lead", "args": ["checkpoint", "--next", "after the cancel"]}])
+    lab.until((sync / "ready").exists, what="Lead session ready")
+    Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token, expect_rev=lab.project.rev())
+    (sync / "go").touch()
+    lab.until((sync / "tried").exists, what="a request during the offer")
+    time.sleep(3 * lead_broker.POLL_S)  # the session's watchdog has seen the pending handoff
+    Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token, expect_rev=lab.project.rev())
+    (sync / "go2").touch()
+    out, err = proc.communicate(timeout=120)
+    steps = _steps(transcript)
+    assert code(steps[2]) == "PERMISSION_DENIED" and "handoff is pending" in steps[2]["stderr"], steps[2]
+    assert steps[5]["exit"] == 0, steps[5]
+    assert json.loads(out)["superseded"] is None, err

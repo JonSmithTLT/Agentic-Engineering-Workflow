@@ -60,7 +60,7 @@ from typing import Any
 from aew import profile
 from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
-from aew.errors import AEWError, IntegrityError, ProjectNotFound, StaleRevision
+from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision
 from aew.schemas import validate
 from aew.util import (
     atomic_write,
@@ -125,6 +125,28 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
     return state
 
 
+def _applied_marker(revision: int) -> str:
+    """Written once a committed transaction's staged writes are all in place: recovery then has nothing to redo."""
+    return f"{TXN_DIR}/{revision:06d}.applied"
+
+
+def _require_dispatched(before: dict[str, Any], after: dict[str, Any]) -> None:
+    """No commit creates an invocation or a harness run without the dispatch decision that admitted it (M4-A).
+
+    The dispatch commit check (``Dispatch.finalize``) admits each new one and records its decision on it; it runs as a
+    Lead transaction finalizer. This makes the rule structural: whatever path commits, a new invocation or run with
+    no recorded decision is refused here (area 3 note 1)."""
+    old_invs = before.get("invocations") or {}
+    for inv_id, inv in (after.get("invocations") or {}).items():
+        old = old_invs.get(inv_id)
+        if old is None and "dispatch" not in inv:
+            raise DispatchUndecided(f"{inv_id} would be committed without a dispatch decision", invocation=inv_id)
+        for run in (inv.get("runs") or [])[len((old or {}).get("runs") or []):]:
+            if "dispatch" not in run:
+                raise DispatchUndecided(f"run {run.get('run')} of {inv_id} would be committed without a dispatch "
+                                        "decision", invocation=inv_id, run=run.get("run"))
+
+
 class Session:
     """A locked, recovered view of control state that may commit at most once."""
 
@@ -169,9 +191,10 @@ class Session:
                 expected=expect_rev,
                 current=self.revision,
             )
-        self.committed_revision = self._store._commit(self._committed_state, self.state if state is None else state,
-                                                      self._writes, transition, self._prewritten,
-                                                      working=self.state)
+        after = self.state if state is None else state
+        _require_dispatched(self._committed_state, after)
+        self.committed_revision = self._store._commit(self._committed_state, after, self._writes, transition,
+                                                      self._prewritten, working=self.state)
         return self.committed_revision
 
 
@@ -184,6 +207,7 @@ class ControlStore:
         self.after_apply = after_apply
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
+        self._lock: FileLock | None = None  # the control lock this process holds for the open session
 
     # ------------------------------------------------------------------ paths
 
@@ -205,12 +229,14 @@ class ControlStore:
 
     @contextmanager
     def session(self) -> Iterator[Session]:
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout) as lock:
             self.held += 1
+            outer, self._lock = self._lock, lock
             try:
                 state = self._recover()
                 yield Session(self, state)
             finally:
+                self._lock = outer
                 self.held -= 1
 
     def read(self) -> dict[str, Any]:
@@ -327,6 +353,10 @@ class ControlStore:
         validate("control", after, source=f"control state revision {revision}")
         control_bytes = serialize_control(after)
 
+        if self._lock is not None and not self._lock.intact():
+            raise IntegrityError(f"the control lock {LOCK_REL} was removed or replaced while this process held it, so "
+                                 "another process may hold it too; nothing was written. Retry the command (and do "
+                                 "not delete .aew/local while AEW is running)", path=LOCK_REL)
         faults.hit("txn.before_stage")
         if txn_ref:
             atomic_write(self._abs(txn_ref["path"]), txn_bytes)
@@ -346,6 +376,8 @@ class ControlStore:
             faults.hit("log.overflow_unpublished")  # committed, its sidecar not yet written: recovery publishes it
 
         self._apply(staged, inject=True, fault_after=fault_after)
+        if txn_ref:
+            self._mark_applied(revision)
         faults.hit("txn.after_apply")
         if self.after_apply:
             self.after_apply(after)
@@ -381,23 +413,29 @@ class ControlStore:
         state = self._load()
         revision = state["revision"]
         txn_dir = self._abs(TXN_DIR)
-        # Discard staged transactions that never committed.
+        # Discard staged transactions that never committed (and any marker beyond the committed revision).
         if txn_dir.exists():
-            for f in txn_dir.glob("*.yaml"):
+            for f in [*txn_dir.glob("*.yaml"), *txn_dir.glob("*.applied")]:
                 if f.stem.isdigit() and int(f.stem) > revision:
                     f.unlink()
         txn_ref = (state.get("last_transition") or {}).get("txn")
-        if txn_ref:
+        # Roll forward only a transaction whose apply did not finish. Once it finished, a staged file that differs
+        # is a later out-of-band edit, which the pin checks report, not an interrupted transition (area 5 F1).
+        if txn_ref and not self._abs(_applied_marker(revision)).exists():
             self._apply(self._load_txn(txn_ref))
+            self._mark_applied(revision)
         if self.after_apply:
             self.after_apply(state)
         self._post_commit(state)
-        # The last committed transaction is fully applied; older redo records are spent.
+        # The last committed transaction is fully applied; older redo records and their markers are spent.
         if txn_dir.exists():
-            for f in txn_dir.glob("*.yaml"):
+            for f in [*txn_dir.glob("*.yaml"), *txn_dir.glob("*.applied")]:
                 if f.stem.isdigit() and int(f.stem) < revision:
                     f.unlink()
         return state
+
+    def _mark_applied(self, revision: int) -> None:
+        atomic_write(self._abs(_applied_marker(revision)), "")
 
     def _load_txn(self, txn_ref: dict[str, Any]) -> list[dict[str, Any]]:
         path = self._abs(txn_ref["path"])

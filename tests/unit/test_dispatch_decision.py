@@ -173,6 +173,38 @@ def test_each_class0_condition_refuses_on_its_own(change, code):
     assert [b["code"] for b in found] == (code if isinstance(code, list) else [code])
 
 
+def subject_codes(scope, files=FILES, gates=None):
+    found = A.class0_blockers(meta=meta(scope=scope), files=files, guardrails={}, checks=CHECKS, triggers=[],
+                              lint=[], gates=gates)
+    return [b for b in found if b["code"] == "CLASS0_SUBJECT_UNBOUNDED"]
+
+
+def test_class0_bounded_subject_is_measured_not_listed():
+    """D2 (area 3 F2): a glob whose first segment is `**` is never bounded, and a scope over more than 50 tracked
+    files is refused; in a tree of at least 40 tracked files, so is one over a quarter of it. The measure is in the
+    refusal; every bound comes from policy (operator, 2026-10-03 and 2026-10-04)."""
+    assert subject_codes(("**/*.py",)) and subject_codes(("./**/x",))  # whatever they match today
+    tree = [f"lib/m{i}.py" for i in range(30)] + [f"docs/p{i}.md" for i in range(70)]  # 100 tracked files
+    [wide] = subject_codes(("lib/**",), files=tree)  # 30 of 100: more than a quarter
+    assert wide["details"]["subject"]["matched"] == 30 and wide["details"]["subject"]["tracked"] == 100
+    assert "30 of 100" in wide["message"]
+    assert not subject_codes(("lib/m1*.py",), files=tree)  # 11 of 100
+    assert not subject_codes(("lib/**",), files=tree, gates={"class0": {"max_scope_fraction": 0.5}})
+    big = [f"src/m{i}.py" for i in range(60)] + [f"other/f{i}.txt" for i in range(400)]
+    assert subject_codes(("src/**",), files=big)  # 60 files: over the 50-file bound, though only 13% of the tree
+    assert not subject_codes(("src/**",), files=big, gates={"class0": {"max_scope_files": 100}})
+
+
+def test_a_small_tree_can_be_a_class0_subject_whatever_share_of_it_the_scope_covers():
+    """D2, refined (operator, 2026-10-04): small repositories and utilities are where Class 0 work is most common, so
+    below 40 tracked files the quarter-of-the-tree bound does not apply. The 50-file and `**` rules still do."""
+    small = ["calc/core.py", "calc/__init__.py", "tests/test_core.py", "README.md", "vendor/lib.py"]
+    assert not subject_codes(("calc/**", "tests/**"), files=small)  # 3 of 5
+    assert A.subject_measure(["calc/**"], small)["fraction_applies"] is False
+    assert subject_codes(("**/*.py",), files=small)
+    assert subject_codes(("calc/**",), files=small, gates={"class0": {"fraction_min_tree_files": 5}})
+
+
 def test_an_inherited_elevated_obligation_has_its_own_class0_refusal():
     found = A.class0_blockers(meta=meta(), files=FILES, guardrails=GUARDRAILS, checks=CHECKS,
                               triggers=[{"code": "INHERITED_ELEVATED_OBLIGATION", "floor": 2, "gates": []}], lint=[])

@@ -99,7 +99,8 @@ def error_code(result: dict) -> str | None:
 
 def spawn_aew(lab, *args: str, env: dict | None = None) -> subprocess.Popen:
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
-    return subprocess.Popen([sys.executable, "-m", "aew", "-C", str(lab.root), *args],
+    printing = [] if (env or {}).get("AEW_LEAD_BROKER") else ["--print-credential"]  # no terminal here
+    return subprocess.Popen([sys.executable, "-m", "aew", *printing, "-C", str(lab.root), *args],
                             env=clean_env({**lab.env, **(env or {})}), stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", **kwargs)
 
@@ -709,8 +710,8 @@ def test_an_investigator_cannot_obtain_implementer_authority(lab, tmp_path):
     assert lab.wait(run)["status"] == "ended_with_evidence"
     who = lab.step(run, 0)["stdout_json"]
     assert who["role"] == "investigator" and "submit.implementation_report" not in who["operations"]
-    assert [error_code(lab.step(run, i)) for i in range(1, 5)] == ["PERMISSION_DENIED", "USAGE", "USAGE",
-                                                                    "PERMISSION_DENIED"]
+    # `lead acquire` issues a credential and the agent has no terminal: refused before anything is issued (ADR-0009)
+    assert [error_code(lab.step(run, i)) for i in range(1, 5)] == ["PERMISSION_DENIED", "USAGE", "USAGE", "USAGE"]
     assert control(lab, target)["state"] == "READY" and not control(lab, target).get("implementer_invocation")
     assert [e["kind"] for e in evidence_of(lab, wid)] == ["discovery_record"]
     assert_control_invariants(lab.project)

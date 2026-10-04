@@ -319,6 +319,11 @@ class WorkCommands:
         if (acceptance_checks or acceptance_inputs) and kind != "ticket":
             raise UsageError("acceptance checks and inputs belong to a Ticket; a Story's or Epic's acceptance is its "
                              "children and its own gates")
+        if acceptance_checks and kind == "ticket" and mutating is False:
+            raise UsageError(
+                "--acceptance-check gates a mutating Ticket's change (Class 0 amendment, section 9 item 4); a "
+                "non-mutating Ticket changes no source, so the check would be recorded and never run. State what its "
+                "evidence must show in --goal or --contract instead", acceptance_checks=acceptance_checks)
         if class0_assertions and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")

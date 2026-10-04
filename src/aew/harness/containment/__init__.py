@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from aew.errors import ContainmentUnavailable
+from aew.errors import AEWError, ContainmentUnavailable
 from aew.harness.containment.layout import Layout, bwrap_argv, for_run, retire_private_git
 
 __all__ = ["Layout", "bwrap_argv", "for_run", "retire_private_git", "establish", "label", "normalize", "mode",
@@ -123,12 +123,16 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
         root = Path(tmp)
         (root / "ws").mkdir()
         try:
+            # A real (empty) repository: the probe then checks the shape a run gets, git metadata protection included.
+            from aew.workspace import git
+
+            git.git("init", "-q", cwd=root / "ws")
             layout = for_run(role="reviewer", scope="ticket", workspace=str(root / "ws"), run_dir=root / "run",
                              scratch=str(root / "run" / "scratch"), bridge_dir=None,
                              policy=(policy or {}).get("containment") or {})
             test = probe.self_test(layout, sentinel_dir=root, sibling_dir=root)
             problem = None if test["ok"] else test["reason"]
-        except ContainmentUnavailable as exc:
+        except AEWError as exc:  # ContainmentUnavailable, or the throwaway repository could not be made
             layout, problem = None, exc.message
     if problem is None and layout is not None:
         return "PASS", (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "

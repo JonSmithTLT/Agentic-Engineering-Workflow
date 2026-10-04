@@ -1,6 +1,6 @@
 # M3 control-plane measurements (steps 7 and 8)
 
-Raw output of `tools/perf/control_plane.py run --sizes 50,500,3000 --reps 3`, summarized in `docs/implementation/m3-performance.md`:
+Raw output of `tools/perf/control_plane.py run --sizes 50,500,3000 --reps 3`, summarized in `docs/archive/milestones/m3-performance.md`:
 
 - `before.json`: the code as of step 6 (pure-Python YAML, per-unit `git rev-parse`, no parse reuse).
 - `after.json`: the step-7 fixes.

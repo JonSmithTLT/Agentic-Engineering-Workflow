@@ -14,7 +14,7 @@ from aew.engine import guide
 from aew.engine import transitions as T
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 
-DOC = Path(__file__).resolve().parents[2] / "docs" / "implementation" / "lead-guide.md"
+DOC = Path(__file__).resolve().parents[2] / "docs" / "guides" / "lead-guide.md"
 CONFIGURED = {"checks": {"unit": {"configured": True, "command": ["{python}", "-m", "pytest"]}}}
 
 
@@ -70,6 +70,6 @@ def test_the_guide_follows_the_post_integration_policy_and_names_unconfigured_ch
 
 
 def test_the_committed_lead_guide_matches_what_aew_renders_for_its_defaults():
-    """docs/implementation/lead-guide.md is the guide for a project on AEW's default policy (`aew init`). It is
+    """docs/guides/lead-guide.md is the guide for a project on AEW's default policy (`aew init`). It is
     generated, never edited: if this fails, regenerate it from `guide.render(DEFAULT_GATES, DEFAULT_CHECKS)`."""
     assert guide.render(DEFAULT_GATES, DEFAULT_CHECKS) in DOC.read_text(encoding="utf-8")

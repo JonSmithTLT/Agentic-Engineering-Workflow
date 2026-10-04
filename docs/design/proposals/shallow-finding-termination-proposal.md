@@ -1,7 +1,7 @@
 # Shallow finding termination: design proposal (F17)
 
 - **Version:** v0.2, 2026-10-01. A proposal, not adopted design. The designer and a second reviewer reviewed v0.1 the same day. Their decisions are in §10 and §11 and are folded into the text.
-- **Status:** phase 1, an evaluation baseline, comes before any implementation (designer). Tracked as [`future-work.md`](future-work.md) F17, which absorbs U2.
+- **Status:** phase 1, an evaluation baseline, comes before any implementation (designer). Tracked as [`future-work.md`](../../implementation/future-work.md) F17, which absorbs U2.
 - **The pattern** (designer and operator, 2026-10-01; provisional name `SHALLOW_FINDING_TERMINATION`): a role discovers a relevant observation, claim, anomaly, capability or boundary condition. It then closes its assignment without tracing it far enough to establish whether it has a consequential effect. This is a candidate for the failure-class registry, which the designer owns.
 - **Goal:** when AEW encounters a consequential clue, it reliably determines whether the clue leads somewhere important before declaring the work complete. Longer reviews are not the goal.
 

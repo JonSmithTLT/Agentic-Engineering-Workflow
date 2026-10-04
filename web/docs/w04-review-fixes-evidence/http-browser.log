@@ -1,0 +1,4 @@
+PASS desktop HTTP investigation, selection, legend, focus and graph
+PASS phone HTTP investigation, selection, legend, focus and graph
+PASS HTTP fixture switching, accepted Records, large paging and conditional reads
+PASS desktop keyboard position survives stream and table selections on a 50-entry page

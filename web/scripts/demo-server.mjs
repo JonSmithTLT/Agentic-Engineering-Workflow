@@ -14,12 +14,13 @@ async function loadProjector(file) {
 }
 const { DemoProjector } = await loadProjector('src/api/mock/projector.ts');
 const { JournalProjector, previewBase } = await loadProjector('src/api/preview/journal/projector.ts');
+const { InvestigationProjector, investigationBase } = await loadProjector('src/api/preview/investigation/projector.ts');
 const root = path.resolve(process.env.DASHBOARD_STATIC_ROOT ?? 'dist-demo');
 const worlds = new Map(fs.readdirSync('src/api/mock/fixtures').filter((n) => /^F\d+\.json$/.test(n)).map((n) => {
   const world = JSON.parse(fs.readFileSync('src/api/mock/fixtures/' + n, 'utf8'));
   return [world.fixture, world];
 }));
-const accepted = new Map(), journals = new Map(), checks = new Map();
+const accepted = new Map(), journals = new Map(), investigations = new Map(), checks = new Map();
 const csp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Security-Policy', csp);
@@ -31,13 +32,14 @@ const server = http.createServer((req, res) => {
     if (url.pathname.startsWith('/api/')) {
       const fixture = req.headers['x-aew-demo-fixture'] ?? 'F1', world = worlds.get(fixture);
       if (!world) { res.writeHead(400); res.end(); return; }
-      const preview = url.pathname.startsWith(previewBase + '/');
-      const store = preview ? journals : accepted;
-      if (!store.has(fixture)) store.set(fixture, preview ? new JournalProjector() : new DemoProjector(world));
+      const investigation = url.pathname.startsWith(investigationBase + '/');
+      const preview = investigation || url.pathname.startsWith(previewBase + '/');
+      const store = investigation ? investigations : preview ? journals : accepted;
+      if (!store.has(fixture)) store.set(fixture, investigation ? new InvestigationProjector(fixture, world.responses['/runs']?.data?.items ?? []) : preview ? new JournalProjector() : new DemoProjector(world));
       const countKey = JSON.stringify([fixture, req.headers['x-aew-demo-fault'], url.pathname, url.search]);
       const count = (checks.get(countKey) ?? 0) + 1; checks.set(countKey, count);
       let result;
-      if (preview && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
+      if (preview && !investigation && url.searchParams.get('case') === 'refresh-error' && count > 1) result = {status: 500};
       else if (!preview && fixture === 'F10') {
         const fault = req.headers['x-aew-demo-fault'];
         if (fault === 'offline') { req.socket.destroy(); return; }

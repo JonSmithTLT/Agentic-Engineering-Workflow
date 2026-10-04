@@ -79,6 +79,7 @@ jobs:
           git diff --exit-code -- src/api/types.ts
           npm run check:scenario
           node --experimental-strip-types scripts/journal-artifact.mjs
+          node --experimental-strip-types scripts/investigation-artifact.mjs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
@@ -95,6 +96,7 @@ jobs:
           node scripts/browser-w02.mjs
           node scripts/browser-w03.mjs
           node scripts/browser-http-demo.mjs
+          node scripts/browser-w04.mjs
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -104,6 +106,7 @@ jobs:
             web/output/playwright-w02/
             web/output/playwright-w03/
             web/output/playwright-http-demo/
+            web/output/playwright-w04/
           if-no-files-found: ignore
           retention-days: 14
 

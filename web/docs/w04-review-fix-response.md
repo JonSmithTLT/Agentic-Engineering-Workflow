@@ -1,0 +1,13 @@
+# W04 response to independent review
+
+The main-line reviewer recorded **changes required (minor)** against source2f271c0, with three findings. Their original record is preserved without edits in `web/docs/w04-review-main-line.md`. Frontend fixture acceptance remains pending their re-check; backend adoption and live integration remain pending separately.
+
+1. Receipts now state: “Missing receipts mean the event is unknown in this projection; they do not establish that it did not occur.” Each stage retains its exact missing-receipt text. Preparation, acknowledgment, citation and evaluated benefit remain independent supplied records; none establishes attention, influence or causal improvement.
+2. Back to comparison now restores the originating packet control in the layout phase, waits for its rendered row rather than falling back prematurely, and ensures the control is visible below the sticky header. Browser Back from a Journal reference restores its originating link and scroll position using only presentation state in the departing history entry; it stores no payload or authority claim. The browser suite checks desktop and phone focus/visibility after three seconds, through both adapters, and checks Journal return focus.
+3. Chooser rows now show supplied summary excerpts of at most512characters, with explicit truncation. The provisional source-summary schema and canonical digest were updated consistently; accepted API, generated types, Journal preview and dependency lock remain unchanged. Denied summaries are null. Phone rows stack labeled cells while retaining explicit table/row/cell semantics. No invocation details are prefetched to build these summaries.
+
+Re-check the three findings at the existing worker-free preview on port4249. Full instructions remain in `web/docs/w04-review-packet.md`. Fresh implementer evidence is in `web/docs/w04-review-fixes-evidence/result.json`; it supports but does not replace independent acceptance. The prior evidence remains a factual record of the original freeze.
+
+## Independent re-check
+
+The main-line reviewer recorded ACCEPT against source2808149 after verifying findings1–3 on desktop and phone. They verified packet-return focus and scroll after three seconds, Journal round-trip restoration, missing-receipt uncertainty, and supplied summaries in the responsive chooser. See their appended record in `web/docs/w04-review-main-line.md`. This confirms frontend fixture acceptance only; backend adoption/live integration remain pending. Original frozen evidence retains the disposition at its generation time. CI and operator merge remain separate gates.

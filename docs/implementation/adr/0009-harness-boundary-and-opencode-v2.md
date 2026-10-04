@@ -291,7 +291,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 ### What F2 claims, exactly
 - **Filesystem integrity.** A contained process can write only its role's writable roots. Every other write fails at the OS (`EROFS`), and the host is unchanged.
 - **Not confidentiality.** The host stays readable, apart from the masked secrets and other runs' directories (below). `os_readonly_roots` must never be read or reported as "the sandbox hides the host".
-- **Not network isolation.** The network namespace is shared: the harness server listens on `127.0.0.1`, and the provider is remote. Every label says `network: not_provided`.
+- **Not network isolation.** The network namespace is shared: the harness server listens on `127.0.0.1`, and the provider is remote. Labels say so: `network: shared` on Linux (the run shares the host network namespace) and `not_provided` on Windows, where AEW cannot characterize it (network containment design v0.2 §3.1; network containment itself is F28).
 
 ### The sandbox (`src/aew/harness/containment/`)
 - **One `Layout` per run, from its role** (`layout.py`). The role-to-layout table is exhaustive: an archetype without an entry (the Lead, or a new archetype nobody classified) has no layout, and its launch is refused. Write access exists only for an implementer in a Ticket scope.
@@ -341,7 +341,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **Every run record's `containment` is an object** with:
   - `filesystem`: `os_readonly_roots` or `workdir_separation_only`;
   - `process_ownership`: `pid_namespace`, `process_group` or `job_object`;
-  - `network: not_provided`;
+  - `network`: `shared` on Linux, `not_provided` on Windows (until F28 adds `proxy_only` and `isolated`);
   - `mechanism`: `bubblewrap <version>`;
   - the self-test result and the layout.
 - **Old records:** a record from before M4-B (the string `workdir_separation_only`) reads as exactly that.

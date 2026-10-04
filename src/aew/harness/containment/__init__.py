@@ -23,17 +23,24 @@ from aew.errors import AEWError, ContainmentUnavailable
 from aew.harness.containment.layout import Layout, bwrap_argv, for_run, retire_private_git
 
 __all__ = ["Layout", "bwrap_argv", "for_run", "retire_private_git", "establish", "label", "normalize", "mode",
-           "supported", "REQUIRED", "ALLOW_WEAKER", "CONTAINED", "WORKDIR_ONLY"]
+           "network", "supported", "REQUIRED", "ALLOW_WEAKER", "CONTAINED", "WORKDIR_ONLY"]
 
 REQUIRED, ALLOW_WEAKER = "required", "allow_weaker"
 CONTAINED = "os_readonly_roots"          # OS-enforced: only the layout's writable roots can be written
 WORKDIR_ONLY = "workdir_separation_only"  # separate directories, nothing enforced
-NOT_PROVIDED = "not_provided"
+SHARED = "shared"              # the run shares the host network namespace: topology, not a guarantee
+NOT_PROVIDED = "not_provided"  # AEW cannot characterize the run's network on this platform
 
 
 def supported() -> bool:
     """Whether this platform can contain runs at all (Linux, through bubblewrap)."""
     return sys.platform.startswith("linux")
+
+
+def network() -> str:
+    """The network label (network containment design v0.2, section 3.1). Linux runs share the host network
+    namespace, contained or not, until F28 gives them their own; elsewhere AEW cannot say."""
+    return NOT_PROVIDED if sys.platform == "win32" else SHARED
 
 
 def mode(policy: dict[str, Any] | None) -> str:
@@ -56,7 +63,7 @@ def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str,
     else:
         ownership = "job_object" if sys.platform == "win32" else "process_group"
     out: dict[str, Any] = {"filesystem": CONTAINED if contained else WORKDIR_ONLY,
-                           "process_ownership": ownership, "network": NOT_PROVIDED, "mechanism": mechanism}
+                           "process_ownership": ownership, "network": network(), "mechanism": mechanism}
     if self_test is not None:
         out["self_test"] = self_test
     if layout is not None:
@@ -72,7 +79,7 @@ def normalize(value: Any) -> dict[str, Any]:
     if isinstance(value, dict) and value.get("filesystem"):
         return value
     return {"filesystem": WORKDIR_ONLY, "process_ownership": "job_object" if sys.platform == "win32"
-            else "process_group", "network": NOT_PROVIDED, "mechanism": None}
+            else "process_group", "network": network(), "mechanism": None}
 
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,

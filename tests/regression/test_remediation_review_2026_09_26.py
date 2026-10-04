@@ -3,7 +3,7 @@
 Provenance: AEW-M1-review-2026-09-26/remediation-review/REPORT.md and test_neighbor_paths.py
 (reviewed revision e7e723c). The probe bodies below are the reviewer's, unchanged; each asserts
 the SAFE behavior. Findings still open are marked xfail(strict=True); the commit fixing each one
-removes its marker (see docs/implementation/review-response-2026-09-26.md, re-review section).
+removes its marker (see docs/archive/reviews/review-response-2026-09-26.md, re-review section).
 """
 from pathlib import Path
 

@@ -44,7 +44,7 @@
 
   It also motivated the companion review's hardening **B1**: authored text now travels as data. Its failure class stopped occurring after the fix.
 - **The Lead's guide (F16) is what ended the trial and error** (amendments A4 and A5, §6.5). Without it, Leads made 20 refused commands and 16 `--help` lookups in 6 runs; with it, 1 and 6 in 12. It also moved every Ticket to Class 1: without it, T1's Leads chose Class 0, at half the cost. All 18 runs passed.
-- **A Ticket's scope cannot change** once the Ticket exists, so a Lead's scope mistake costs the whole Ticket and its correct implementation (§6.6, the second such case). The designer has since adopted Ticket revisions (`docs/design/ticket-revision-amendment-review-2026-09-30.md`).
+- **A Ticket's scope cannot change** once the Ticket exists, so a Lead's scope mistake costs the whole Ticket and its correct implementation (§6.6, the second such case). The designer has since adopted Ticket revisions (`docs/archive/reviews/ticket-revision-amendment-review-2026-09-30.md`).
 - **Verdict for the designer.** On small, well-specified tasks that a single model already solves, AEW adds cost and time and no correctness. Its value, as measured here, is durability, independent review and traceability. The tasks were too easy to show a quality difference: both models solved all of them unaided. A fair test of AEW's quality claim needs harder, longer work (§11).
 
 ## 2. What ran
@@ -346,7 +346,7 @@ About USD 0.07 was spent on runs that measured less than intended (the two untri
 4. **Class choice.** Every Lead chose Class 1 or 2 for a one-line fix. That fits fail-closed classification (F6), and it is the ceremony cost the designer is choosing.
    - **Update (2026-09-30, §6.5):** the Workflow Contract's own class definitions, as the guide presents them, are what lead to Class 1. With them, every Ticket in 12 runs was Class 1 (apart from four Class 0 choices where the guide was read on demand). Without them, both T1 Leads chose Class 0. "Mechanical" and "routine engineering" decide it (Q10).
 5. **Evidence for P2 and P3** (supersession lineage; fail-closed `verify classify`). In run 1 the Lead classified a verifier-found plan defect correctly, as the heavier `PLAN_OR_DESIGN_DEFECT`, without any rule forcing it.
-6. **Ticket revisions.** Twice a scope mistake cost a Ticket and its correct implementation (M3-D9 and §6.6), because a scope cannot change once the Ticket exists. The designer adopted Ticket revisions on 2026-09-30 (`docs/design/ticket-revision-amendment-review-2026-09-30.md`, decisions D1 to D7).
+6. **Ticket revisions.** Twice a scope mistake cost a Ticket and its correct implementation (M3-D9 and §6.6), because a scope cannot change once the Ticket exists. The designer adopted Ticket revisions on 2026-09-30 (`docs/archive/reviews/ticket-revision-amendment-review-2026-09-30.md`, decisions D1 to D7).
 
 ## 13. Reproduce
 

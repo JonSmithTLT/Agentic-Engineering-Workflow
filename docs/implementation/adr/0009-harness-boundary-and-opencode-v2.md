@@ -140,7 +140,7 @@ The supervisor owns the harness process tree independently of any harness lease.
 What M3 provides is **workdir separation**: each run has its own workspace or observation, private harness state and a scratch directory. It provides **no OS-level filesystem containment**: an agent's shell runs as the operator and can read and write whatever the operator's account can.
 - Every run record carries `containment: workdir_separation_only`, and `aew harness status` shows it.
 - `aew doctor` reports `containment` as WARN with that explanation.
-- Nothing in AEW claims more. Real containment is designed (`docs/design/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
+- Nothing in AEW claims more. Real containment is designed (`docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md`) and gates real-repository dogfood and internal alpha (`future-work.md` §1, F2).
 
 ### Pause points (tests)
 `AEW_PAUSE=<point>=<file>` holds a process at a named point while the file exists (`faults.pause`, next to the `AEW_FAULT` crash points):
@@ -286,7 +286,7 @@ Nothing beat during that. When it took longer than the 10 s staleness limit, `ae
 
 ## Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux (M4-B; F2, E13)
 
-M4-B closes register items F2 (real filesystem containment, the gate before any real-repository dogfood) and E13 (POSIX process ownership). It builds the design approved in `m4-ambiguity-report.md` §2.4, with the designer's correction: the real git metadata is never writable by the agent. The probes behind it are in `docs/design/containment-and-process-ownership-rocky8-research-2026-10-01.md`. It was verified on Rocky Linux 8.10 (kernel 4.18, SELinux enforcing, bubblewrap 0.4.0).
+M4-B closes register items F2 (real filesystem containment, the gate before any real-repository dogfood) and E13 (POSIX process ownership). It builds the design approved in `m4-ambiguity-report.md` §2.4, with the designer's correction: the real git metadata is never writable by the agent. The probes behind it are in `docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md`. It was verified on Rocky Linux 8.10 (kernel 4.18, SELinux enforcing, bubblewrap 0.4.0).
 
 ### What F2 claims, exactly
 - **Filesystem integrity.** A contained process can write only its role's writable roots. Every other write fails at the OS (`EROFS`), and the host is unchanged.

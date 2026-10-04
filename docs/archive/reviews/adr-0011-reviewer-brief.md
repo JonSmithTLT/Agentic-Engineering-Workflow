@@ -2,7 +2,7 @@
 
 **For:** the independent reviewer of ADR-0011 (hot and cold control state) and E5, the gate before M4 (implementation plan §7.2).
 **Code:** `main` after PRs #15 (E5), #17 (P2a), #18 (P2b), #20 (P2c) and #21 (P2d), plus this P3 branch. The pre-implementation baseline is `0eb8ecf`. **Frozen specs:** unchanged.
-**Governing texts:** [ADR-0011](adr/0011-hot-cold-control-state.md), the [implementation plan](adr-0011-implementation-plan.md) (R1–R8 in §2, each phase's "as built" in §6, P3's results in §7.4), [ADR-0001](adr/0001-control-state-persistence.md).
+**Governing texts:** [ADR-0011](../../implementation/adr/0011-hot-cold-control-state.md), the [implementation plan](../milestones/adr-0011-implementation-plan.md) (R1–R8 in §2, each phase's "as built" in §6, P3's results in §7.4), [ADR-0001](../../implementation/adr/0001-control-state-persistence.md).
 
 Each P2 PR had its own independent review, and their fixes are merged. This review is of the whole, as ADR-0011 asks: the store is the authority, so the brief starts with what changed in ADR-0001's model.
 

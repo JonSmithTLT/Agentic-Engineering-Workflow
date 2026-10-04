@@ -800,6 +800,8 @@ class EvidenceCommands:
 
     def _ingest_ticket_review(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "review.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "review",
+                               "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if unit["state"] != "REVIEW_PENDING":
@@ -856,6 +858,8 @@ class EvidenceCommands:
     def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str,
                                     evidence_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
+                               "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
             ev = self.gates.find_evidence(work_id, evidence_id)

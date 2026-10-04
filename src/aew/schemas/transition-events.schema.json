@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "aew/transition-events/v1",
+  "description": "The complete event list of a transition whose events exceed the hot bound (ADR-0012 D2): immutable, staged with the transition, named and hashed by its event_overflow.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "revision",
+    "events"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aew/transition-events/v1"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "events": {
+      "type": "array",
+      "minItems": 65,
+      "items": {
+        "$ref": "urn:aew:schema:transition#/$defs/event"
+      }
+    }
+  }
+}

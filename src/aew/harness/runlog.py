@@ -56,6 +56,12 @@ def read_record(directory: Path) -> dict[str, Any] | None:
 def write_record(directory: Path, record: dict[str, Any]) -> None:
     record["updated_at"] = utc_now()
     atomic_write(directory / "run.json", K.redact(json.dumps(record, indent=1, sort_keys=True, default=str)) + "\n")
+    # A changed run record wakes waiters (ADR-0012 D4; advisory). ``directory`` is <aew root>/local/harness/runs/<run>.
+    aew_root = directory.parents[len(Path(RUNS_REL).parts)]
+    if directory.parent == aew_root / RUNS_REL:
+        from aew.engine.outbox import bump_wake
+
+        bump_wake(aew_root)
 
 
 def beat(directory: Path) -> None:

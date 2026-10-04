@@ -66,6 +66,9 @@ class TxnContext:
     after_commit: list[Callable[[], None]] = field(default_factory=list)
     # History annotations this transition adds about archived units (a move), appended by the archival finalizer.
     annotations: list[dict[str, Any]] = field(default_factory=list)
+    # Facts this transition declares that its state change cannot show (ADR-0012 D2: a decision recorded, evidence
+    # ingested, a handoff or an audit written). Only the operation itself appends them.
+    events: list[dict[str, Any]] = field(default_factory=list)
     # Other history entries this transition adds (an audit record, already staged), appended by the archival
     # finalizer first and in one append with everything else: a transaction appends to the history exactly once.
     entries: list[dict[str, Any]] = field(default_factory=list)
@@ -258,7 +261,8 @@ class Kernel:
             ctx = TxnContext(session=s, actor=actor)
             yield ctx
             self.finalizers.run(ctx)
-            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs),
+            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
+                                events=ctx.events),
                      expect_rev=expect_rev, state=ctx.commit_state)
             for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
                 try:
@@ -301,4 +305,5 @@ class Kernel:
         path = f"decisions/{decision_id}.md"
         ctx.session.write(path, record.render())
         ctx.refs.append(path)
+        ctx.events.append({"kind": "decision.recorded", "id": decision_id, "type": decision_type})
         return decision_id

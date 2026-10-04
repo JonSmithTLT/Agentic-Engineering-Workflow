@@ -36,6 +36,20 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).history_list(kind=a.kind, since=a.since, until=a.until,
                                                             limit=a.limit))
 
+    q = hsub.add_parser("log", help="committed transitions after a revision, with their typed events (the cursor is "
+                                    "the revision; pass the returned `next` as the next --since)")
+    q.add_argument("--since", type=int, required=True, metavar="REVISION",
+                   help="return transitions after this revision (0 for all)")
+    q.add_argument("--kind", action="append", metavar="KIND",
+                   help="only transitions with an event of this kind, narrowed to them (repeatable), e.g. work.state")
+    q.add_argument("--follow", action="store_true",
+                   help="wait for a transition after --since when there is none yet (up to --timeout)")
+    q.add_argument("--timeout", type=float, default=30.0, help="seconds --follow waits (default 30)")
+    q.add_argument("--limit", type=int, default=500, help="at most this many revisions per call (default 500)")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).history_log(since=a.since, kinds=a.kind, follow=a.follow,
+                                                           timeout=a.timeout, limit=a.limit))
+
     q = hsub.add_parser("links", help="follow the provenance and reference links recorded from and to a record")
     q.add_argument("record_id")
     q.add_argument("--depth", type=int, default=1, help="how many steps to follow (1-3)")

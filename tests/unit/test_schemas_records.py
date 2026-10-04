@@ -125,7 +125,8 @@ def test_the_v2_only_keys_are_defined_once():
     from aew.engine.base import V1, V2, V2_ONLY_KEYS, as_v1
 
     schema = json.loads(resources.files("aew.schemas").joinpath("control.schema.json").read_text(encoding="utf-8"))
-    [v1_rule] = [r for r in schema["allOf"] if r["if"]["properties"]["schema"]["const"] == V1]
+    [v1_rule] = [r for r in schema["allOf"]
+                 if ((r["if"].get("properties") or {}).get("schema") or {}).get("const") == V1]
     refused = {key for alt in v1_rule["then"]["not"]["anyOf"] for key in alt["required"]}
     assert refused == set(V2_ONLY_KEYS)
     assert set(V2_ONLY_KEYS) <= set(schema["properties"])

@@ -208,6 +208,8 @@ class Hierarchy:
         """Lead ingests a review/verification of a Story or Epic's acceptance."""
         op = "review.ingest" if kind == "review" else "verify.ingest"
         with self.k.lead_txn(token, expect_rev, op) as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id,
+                               "evidence_kind": "review" if kind == "review" else "verification", "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if unit["state"] != "ACCEPTANCE_PENDING":

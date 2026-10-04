@@ -29,7 +29,7 @@ The request was intentionally broad:
 
 > Perform a DEEP comprehensive code review.
 
-### Observed behavior
+### Observed behavior — Incident A
 
 GPT-5.4 used a subagent-heavy code-review workflow.
 
@@ -174,7 +174,7 @@ The target project is a large full-stack repository with more than one million f
 
 Other real work repositories may have similarly high filesystem/setup cost.
 
-### Observed behavior
+### Observed behavior — Incident B
 
 The isolation/worktree behavior made GSD effectively unusable on the target repository.
 

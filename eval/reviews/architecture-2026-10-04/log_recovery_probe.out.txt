@@ -1,0 +1,12 @@
+
+[txn.after_replace] exit=86 revision 13 -> 14; log/000014 exists before recovery: False; txn record exists: True
+  after one read: log/000014 exists: True; ticket file applied: True
+  log record == last_transition: True
+  log files 15 == revision+1 15: True
+
+[txn.after_apply] exit=86 revision 14 -> 15; log/000015 exists before recovery: False; txn record exists: True
+  after one read: log/000015 exists: True; ticket file applied: True
+  log record == last_transition: True
+  log files 16 == revision+1 16: True
+
+OK: the derived transition log is complete after recovery at both fault points.

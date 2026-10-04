@@ -1,0 +1,34 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_superseded_plan_integration_report_cannot_validate_new_candidate _____
+
+tmp_path = PosixPath('/tmp/pytest-of-jon/pytest-30/test_superseded_plan_integrati0')
+
+    def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_path):
+        p = sample_project(tmp_path)
+        wid, impl = to_commit_ready(p, tmp_path)
+        old = p.lead('integrate', 'prepare', wid)['integration']
+        old_report = verify(p, wid, scope='integration')  # submitted for v1, NOT ingested
+        p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'new acceptance requirements')
+        plan = tmp_path / 'plan-v2.md'
+        plan.write_text('Reassess the existing implementation against revised acceptance requirements.\n')
+        p.lead('plan', 'propose', wid, '--file', str(plan), '--reason', 'new acceptance requirements')
+        p.lead('plan', 'accept', wid, '--revision', '2')
+        to_verified(p, tmp_path, wid=wid)
+        p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')
+        new = p.lead('integrate', 'prepare', wid)['integration']
+        assert old['workspace_id'] != new['workspace_id']
+        assert old['candidate_snapshot']['relevant_inputs_fingerprint'] == new['candidate_snapshot']['relevant_inputs_fingerprint']
+        result = p.aew('verify', 'ingest', wid, '--evidence', old_report, '--token', p.token, '--expect-rev', str(p.rev()))
+        publication = p.lead('integrate', 'publish', wid) if result.returncode == 0 else None
+>       assert result.returncode != 0, (
+            'Old-plan evidence from a revoked invocation validated and published the replacement candidate',
+            old['binding'], new['binding'], result.stdout, publication)
+E       AssertionError: ('Old-plan evidence from a revoked invocation validated and published the replacement candidate', {'plan': {'revision'...ok': True, 'work_id': 'T-0001', 'state': 'DONE', 'integrated_commit': 'a2c7e0580e8c12e677710ea2a5a7d26827b7deff', ...})
+E       assert 0 != 0
+E        +  where 0 = CLIResult(returncode=0, stdout='{\n  "ok": true,\n  "work_id": "T-0001",\n  "scope": "integration",\n  "result": "pass",\n  "transition": null,\n  "pending_verifications": {},\n  "revision": 29\n}\n', stderr='').returncode
+
+/mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py:73: AssertionError
+=========================== short test summary info ============================
+FAILED ../../mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/remediation-review/test_neighbor_paths.py::test_superseded_plan_integration_report_cannot_validate_new_candidate
+1 failed, 5 deselected in 19.60s

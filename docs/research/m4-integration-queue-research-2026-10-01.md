@@ -1,6 +1,6 @@
 # Research: integration queues for M4 (mutating concurrency above 1)
 
-- **Status:** research input for M4's plan, not governing. §7 records the designer's disposition and §7.1 its follow-up dispositions (2026-10-01), which M4's plan adopts; §1 to §6 are unchanged.
+- **Status:** research input for M4's plan, not governing. §7 records the designer's disposition and §7.1 its follow-up dispositions (2026-10-01), which M4's plan adopts; §1 to §6 are unchanged. Since 2026-10-05 the governing copy of §7 and §7.1 is the decision record [`decisions-2026-10-01-containment-and-integration-queue.md`](../design/decisions-2026-10-01-containment-and-integration-queue.md) §2; they stay here as the record of what was asked.
 - **Date:** 2026-10-01.
 - **Feeds:** `future-work.md` F10 (integration queue and merge revalidation, M4), F3 (workspace strategy), E1 (`harness wait` on any of several runs) and D4 (deterministic integration checks). Also WC §8.1, §13 and §11.5's rule that "merge/conflict resolution and the integrated revision are new evidence-producing events; project policy determines which … checks, review findings, and verification steps must be rerun."
 - **Builds on:** ADR-0004 (validate a merged candidate M = H + Ticket, then publish by `update-ref <branch> M H`; a moved ref makes the candidate stale, so rebuild and revalidate).

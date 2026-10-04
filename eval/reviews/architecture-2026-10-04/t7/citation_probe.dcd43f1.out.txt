@@ -1,0 +1,77 @@
+root=<reviewer-home>/GitHub/AEW-reviews\architecture-dcd43f1\tree head=dcd43f1 branch=docs/restructure layout=map
+living documents: 28; research documents (reported separately): 5
+
+== LIVING: 81 explicit contract citations of 39 distinct sections in 21 documents; 363 bare �N references not judged
+most cited: KC �26 (10), WC �7.4 (6), WC �5 (6), WC �8 (4), WC �7 (4), WC �9.9 (3), KC �11 (3), WC �15.3 (3), WC �8.1 (3), WC �8.2 (3), WC �16.10 (3), WC �7.5 (2), KC �12.3 (2), WC �5.8 (2)
+WC 54, KC 27; invariants 3
+index coverage: 27 of 81 citations (33%) touch an indexed section: 18 of replaced sections, 9 of pending sections
+
+-- check 2 (replaced sections cite the amendment), naive paragraph rule: 5 pass, 13 FAIL; refined topic rule: 17 pass, 1 FAIL
+   KC �26: naive 3 pass / 7 fail; refined 9 pass / 1 fail
+   WC �7.4: naive 2 pass / 4 fail; refined 6 pass / 0 fail
+   WC �7.5: naive 0 pass / 2 fail; refined 2 pass / 0 fail
+   FAIL-naive-only docs/design/invariant-index.md:81 [WC �7.5] Plan assurance does not satisfy or replace downstream review or verification gates required by the effective class and policy (Plan Assurance �27). That is a sc
+   FAIL-naive-only docs/design/plan-assurance-and-premise-validation-design-v0.4.md:1134 [WC �7.5] During evaluation, the existing Workflow Contract �7.5 paths remain the baseline execution obligations for Classes 1�4. Hard assurance triggers add premise-sens
+   FAIL-naive-only docs/design/workflow-contract-amendment-class0-2026-10-01.md:99 [WC �7.4] 3. **Reclassification is a recorded decision.** Raising a class (WC �7.4: "classification may increase whenever evidence exposes additional risk") records the p
+   FAIL-naive-only docs/guides/acceptance.md:3 [KC �26] The scenarios from the M1 plan (�6), the M2 plan (�6 step 9), the M3 plan (�5 step 6) and KC �26 are tagged `@pytest.mark.acceptance("<id>")`:
+   FAIL-naive-only docs/guides/acceptance.md:24 [KC �26] | KC �26 | Existing-authority project: sources are referenced, not duplicated | `test_resume.py::test_existing_authority_project_is_referenced_not_duplicated` |
+   FAIL docs/guides/acceptance.md:33 [KC �26] | AT-9 | KC �26 parent risk policy propagation. A Class-3 Story with a Story-level mandatory security review: its locally Class-0 Ticket keeps class 0, inherits
+   FAIL-naive-only docs/guides/acceptance.md:34 [KC �26] | AT-10 | KC �26 Ticket promotion. A running Ticket's implementation report shows hidden cross-component ambiguity. The Lead promotes it to a Story under the sa
+   FAIL-naive-only docs/guides/acceptance.md:35 [KC �26] | AT-11 | KC �26 fresh-session reconstruction with an active Epic. The Lead session is destroyed mid-investigation and `.aew/local` is deleted. `aew resume` rec
+   FAIL-naive-only docs/guides/acceptance.md:37 [KC �26] | AT-13 | Backlog representability (generic, SPT-shaped). An Epic of Stories mixing investigation, research, planning and implementation Tickets, with external 
+   FAIL-naive-only docs/guides/lead-guide.md:15 [WC �7.4] A risk class is about the change's surface and ambiguity, not its size (WC �7.4). A class sets the minimum ceremony; it is not a statement of how careful you ar
+   FAIL-naive-only docs/guides/lead-guide.md:23 [WC �7.4] Rules (WC �7.4): classify each unit by its own change surface, ambiguity and risk. A class may go up whenever evidence exposes more risk; lowering it needs a re
+   FAIL-naive-only docs/implementation/adr/0007-epic-story-hierarchy.md:36 [WC �7.4] - Effective obligations are computed by the existing `effective_obligations` with the path table selected by unit type. A unit's own `mandatory_gates` apply to 
+   FAIL-naive-only docs/implementation/testing-and-ci-strategy.md:23 [KC �26] | `acceptance` | marker `acceptance(id)` | AT-1..AT-17 and KC �26 scenarios through the real CLI and real git; M3's AT-14..AT-17 through real supervisors and ha
+
+-- check 3 (pending sections cited as settled): 1 hedged, 8 cited as settled
+   WC �7: 1 hedged / 3 settled
+   WC �8: 0 hedged / 4 settled
+   WC �invariant 7: 0 hedged / 1 settled
+   SETTLED docs/implementation/adr/0002-evaluated-snapshot-fingerprint.md:4 [WC �invariant 7] - **Spec basis:** WC �9.9, invariant 7; KC �11, �26 (validation staleness)
+   SETTLED docs/implementation/adr/0003-ticket-state-machine.md:4 [WC �8] - **Spec basis:** WC �8 ("a typical Ticket state model" plus mandatory transition rules); ambiguity report B1�B6
+   SETTLED docs/implementation/adr/0004-controlled-integration.md:4 [WC �8] - **Spec basis:** WC �8, �8.1, �13, invariants 4 and 6; KC �9.5; decision D-op-2; plan review �2
+   SETTLED docs/implementation/adr/0006-role-archetypes-and-cards.md:8 [WC �7] - WC �7: review and verification are gates, not synthetic Tickets.
+   SETTLED docs/implementation/adr/0006-role-archetypes-and-cards.md:126 [WC �7] - **Specialist remains a card modifier.** Substantial audit work, such as a security audit or a performance characterization, is a non-mutating Ticket executed 
+   SETTLED docs/implementation/adr/0007-epic-story-hierarchy.md:5 [WC �7] - WC �7: work hierarchy, local risk, inherited non-waivable gates, minimum-descendant floor.
+   SETTLED docs/implementation/adr/0007-epic-story-hierarchy.md:6 [WC �8] - WC �8: parent state derived; only the Lead closes a Story or Epic; children complete does not prove acceptance.
+   SETTLED docs/implementation/adr/0007-epic-story-hierarchy.md:40 [WC �8] - **Parent acceptance is a downstream assignment of the parent's dependencies** (operator decision after the M2 re-review, 2026-09-27; WC �8: a dependency is sa
+
+-- citations per document
+    11 docs/implementation/adr/0006-role-archetypes-and-cards.md
+    10 docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
+     8 docs/implementation/adr/0007-epic-story-hierarchy.md
+     6 docs/guides/acceptance.md
+     6 docs/implementation/adr/0008-non-mutating-tickets.md
+     6 docs/implementation/adr/0010-execution-profiles.md
+     4 docs/implementation/adr/0002-evaluated-snapshot-fingerprint.md
+     4 docs/implementation/adr/0011-hot-cold-control-state.md
+     3 docs/design/plan-assurance-and-premise-validation-design-v0.4.md
+     3 docs/implementation/adr/0004-controlled-integration.md
+     3 docs/implementation/future-work.md
+     2 docs/design/workflow-contract-amendment-class0-2026-10-01.md
+     2 docs/guides/lead-guide.md
+     2 docs/implementation/adr/0001-control-state-persistence.md
+     2 docs/implementation/adr/0003-ticket-state-machine.md
+     2 docs/implementation/adr/0005-authority-credentials-operator.md
+     2 docs/implementation/harness-conformance.md
+     2 docs/implementation/implementation-status.md
+     1 docs/design/invariant-index.md
+     1 docs/implementation/m4-ambiguity-report.md
+     1 docs/implementation/testing-and-ci-strategy.md
+
+== RESEARCH: 13 explicit contract citations of 11 distinct sections in 3 documents; 81 bare �N references not judged
+most cited: WC �invariant 10 (3), WC �invariant 13 (1), WC �invariant 14 (1), WC �invariant 12 (1), WC �invariant 9 (1), WC �invariant 11 (1), WC �invariant 7 (1), WC �invariant 8 (1), WC �8.1 (1), WC �9.11 (1), WC �11.5 (1)
+WC 13, KC 0; invariants 10
+index coverage: 1 of 13 citations (8%) touch an indexed section: 0 of replaced sections, 1 of pending sections
+
+-- check 2 (replaced sections cite the amendment), naive paragraph rule: 0 pass, 0 FAIL; refined topic rule: 0 pass, 0 FAIL
+
+-- check 3 (pending sections cited as settled): 0 hedged, 1 cited as settled
+   WC �invariant 7: 0 hedged / 1 settled
+   SETTLED docs/research/adr-0011-storage-investigation-2026-10-01.md:135 [WC �invariant 7] - ADR-0011 invariant 7 (final text): **one Lead transaction on a quiescent project**. No live harness runs are allowed, so a slow migration cannot produce false
+
+-- citations per document
+     8 docs/research/adr-0011-storage-investigation-2026-10-01.md
+     3 docs/research/m4-integration-queue-research-2026-10-01.md
+     2 docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md

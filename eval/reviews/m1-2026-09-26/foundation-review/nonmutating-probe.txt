@@ -1,0 +1,47 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy __
+
+tmp_path = PosixPath('/tmp/pytest-of-jon/pytest-48/test_non_mutating_ticket_canno0')
+
+    def test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy(tmp_path):
+        from aewflow import create_planned_ticket, assign, to_verified
+        p = sample_project(tmp_path)
+        holder = create_planned_ticket(p, tmp_path, title='Legitimate mutation slot holder')
+        assign(p, holder)
+        wid = create_planned_ticket(p, tmp_path, title='Evidence-only work', extra=('--non-mutating',))
+        # M1 may reject assignment of this unsupported path, or enforce evidence-only behavior.
+        result = p.aew('work', 'assign', wid, '--token', p.token, '--expect-rev', str(p.rev()))
+        if result.returncode:
+            return
+        from aewflow import Role, implement, review, verify
+        impl = Role(p, result.json['invocation_token'], Path(result.json['workspace']['path']))
+        p.lead('work', 'transition', wid, '--to', 'RUNNING')
+        implement(impl)
+        p.lead('work', 'transition', wid, '--to', 'REVIEW_PENDING')
+        report = review(p, wid)
+        p.lead('review', 'ingest', wid, '--evidence', report)
+        p.lead('work', 'transition', wid, '--to', 'VERIFY_PENDING')
+        report = verify(p, wid)
+        p.lead('verify', 'ingest', wid, '--evidence', report)
+        p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')
+        prepare_and_validate(p, wid)
+        published = p.lead('integrate', 'publish', wid)
+        assert p.ok('work', 'show', holder)['control']['workspace']['status'] == 'active'
+>       assert 'def subtract' not in (p.root / 'calc/core.py').read_text(), (
+            'Evidence-only Ticket mutated and published source while another mutation workspace was active', published)
+E       AssertionError: ('Evidence-only Ticket mutated and published source while another mutation workspace was active', {'ok': True, 'work_id': 'T-0002', 'state': 'DONE', 'integrated_commit': 'fe921ec46a6cec3ec76004d1dfba1ce858f27120', ...})
+E       assert 'def subtract' not in 'def add(a, ...turn a - b\n'
+E         
+E         'def subtract' is contained here:
+E           def add(a, b):
+E               return a + b
+E           
+E           
+E           def subtract(a, b):
+E               return a - b
+
+/mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/foundation-review/test_foundation_probes.py:69: AssertionError
+=========================== short test summary info ============================
+FAILED ../../mnt/c/users/jon smith/documents/github/AEW-M1-review-2026-09-26/foundation-review/test_foundation_probes.py::test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy
+1 failed, 3 deselected in 13.28s

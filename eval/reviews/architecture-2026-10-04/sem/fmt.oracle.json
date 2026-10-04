@@ -1,0 +1,2312 @@
+{
+ "project": "fmt",
+ "commit": "0c9fce2",
+ "totals": {
+  "def_nm": 62865,
+  "def_nm_weak": 59972,
+  "def_extracted": 36051,
+  "def_missing": 485,
+  "def_extra": 31145,
+  "def_missing_template_inst": 37197,
+  "def_missing_library": 17759,
+  "def_missing_ctor_dtor": 2518,
+  "def_extra_internal": 8,
+  "def_extra_inline": 29789,
+  "linkage_disagree": 0,
+  "call_virtual_sites": 1257,
+  "call_objdump_direct_edges": 164387,
+  "call_extracted_direct_edges": 67351,
+  "call_agree": 14582,
+  "call_missing": 145405,
+  "call_extra": 5022,
+  "call_objdump_indirect_sites": 1418,
+  "call_extracted_indirect_sites": 72898,
+  "undef_nm": 3514,
+  "undef_unexplained": 1781,
+  "inc_mm": 15918,
+  "inc_missing": 86,
+  "inc_extra": 48,
+  "mac_dM": 177733,
+  "mac_extracted": 262516,
+  "mac_extracted_distinct": 187563,
+  "tus": 49
+ },
+ "samples": {
+  "def_missing": [
+   [
+    "src/format.cc",
+    "fmt::v11::detail::add_compare(fmt::v11::detail::bigint const&, fmt::v11::detail::bigint co"
+   ],
+   [
+    "src/format.cc",
+    "fmt::v11::detail::add_compare(fmt::v11::detail::bigint const&, fmt::v11::detail::bigint co"
+   ],
+   [
+    "src/os.cc",
+    "fmt::v11::getpagesize()::$_0::operator()() const"
+   ],
+   [
+    "src/os.cc",
+    "fmt::v11::buffered_file::close()::$_0::operator()() const"
+   ],
+   [
+    "test/args-test.cc",
+    "fmt::v11::detail::dynamic_arg_list::operator=(fmt::v11::detail::dynamic_arg_list&&)"
+   ],
+   [
+    "test/base-test.cc",
+    "testing::Cardinality::operator=(testing::Cardinality const&)"
+   ],
+   [
+    "test/base-test.cc",
+    "buffer_test_append_partial_Test::TestBody()::$_0::operator()(unsigned long) const"
+   ],
+   [
+    "test/chrono-test.cc",
+    "guard variable for fmt::v11::detail::get_classic_locale()::locale"
+   ]
+  ],
+  "def_extra": [
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1110format_intC1Ei",
+    "EXTERNAL"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1110format_intC1Ej",
+    "EXTERNAL"
+   ],
+   [
+    "src/os.cc",
+    "_ZN3fmt3v1110format_intC1Ei",
+    "EXTERNAL"
+   ],
+   [
+    "src/os.cc",
+    "_ZN3fmt3v1110format_intC1Ej",
+    "EXTERNAL"
+   ],
+   [
+    "test/test-main.cc",
+    "AddTestPattern",
+    "EXTERNAL"
+   ],
+   [
+    "test/test-main.cc",
+    "AddTestSuiteInstantiation",
+    "EXTERNAL"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "Action<F>",
+    "EXTERNAL"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "ActionInterface<F>",
+    "EXTERNAL"
+   ]
+  ],
+  "linkage_disagree": [],
+  "call_missing": [
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1110vformat_toIRNS0_14basic_appenderIcEETnNSt9enable_ifIXsr6detail18is_output_iteratorINSt9remove_cvINSt16remove_referenceIT_E4typeEE4typeEcEE5valueEiE4typeELi0EEESC_OS8_NS0_17basic_string_viewIcEENS0_17basic_format_argsINS0_7contextEEE",
+    "_ZN3fmt3v116detail10get_bufferIcNS0_14basic_appenderIcEETnNSt9enable_ifIXsr18is_buffer_appenderIT0_EE5valueEiE4typeELi0EEERNS1_6bufferIT_EES6_"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_errorCI2St13runtime_errorEPKc",
+    "_ZNSt13runtime_errorC2EPKc"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_errorD0Ev",
+    "_ZN3fmt3v1112format_errorD2Ev"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_errorD2Ev",
+    "_ZNSt13runtime_errorD2Ev"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_facetISt6localeEC2ERS2_",
+    "_Unwind_Resume"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_facetISt6localeED0Ev",
+    "_ZN3fmt3v1112format_facetISt6localeED2Ev"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_facetISt6localeED2Ev",
+    "_ZNSt6locale5facetD2Ev"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112format_specsC2Ev",
+    "_ZN3fmt3v116detail6fill_tC2Ev"
+   ]
+  ],
+  "call_extra": [
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1112report_errorEPKc",
+    "_ZN3fmt3v1112format_errorCI1St13runtime_errorEPKc"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1113vsystem_errorEiNS0_17basic_string_viewIcEENS0_17basic_format_argsINS0_7contextEEE",
+    "_ZN3fmt3v1117basic_format_argsINS0_7contextEEC1ERKS3_"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1115vprint_bufferedEP8_IO_FILENS0_17basic_string_viewIcEENS0_17basic_format_argsINS0_7contextEEE",
+    "_ZN3fmt3v1117basic_format_argsINS0_7contextEEC1ERKS3_"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v1119format_system_errorERNS0_6detail6bufferIcEEiPKc",
+    "_ZN3fmt3v1114basic_appenderIcEC1ERNS0_6detail6bufferIcEE"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v116detail11add_compareERKNS1_6bigintES4_S4_",
+    "_ZNK3fmt3v116detail6bigintixEi"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v116detail11countl_zeroEj",
+    "_ZN3fmt3v116detail20countl_zero_fallbackIjEEiT_"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v116detail11countl_zeroEm",
+    "_ZN3fmt3v116detail20countl_zero_fallbackImEEiT_"
+   ],
+   [
+    "src/format.cc",
+    "_ZN3fmt3v116detail11find_escapeEPKcS3_",
+    "_ZN3fmt3v1117basic_string_viewIcEC1EPKcm"
+   ]
+  ],
+  "undefined_unexplained": [
+   [
+    "src/format.cc",
+    "_Unwind_Resume"
+   ],
+   [
+    "src/format.cc",
+    "_ZNKSt13runtime_error4whatEv"
+   ],
+   [
+    "src/os.cc",
+    "_Unwind_Resume"
+   ],
+   [
+    "src/os.cc",
+    "_ZN3fmt3v1113vsystem_errorEiNS0_17basic_string_viewIcEENS0_17basic_format_argsINS0_7contextEEE"
+   ],
+   [
+    "test/test-main.cc",
+    "_ZSt17__throw_bad_allocv"
+   ],
+   [
+    "test/test-main.cc",
+    "_ZSt20__throw_length_errorPKc"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "_Unwind_Resume"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "_ZN3fmt3v1113vsystem_errorEiNS0_17basic_string_viewIcEENS0_17basic_format_argsINS0_7contextEEE"
+   ]
+  ],
+  "include_missing": [
+   [
+    "src/os.cc",
+    "format-inl.h"
+   ],
+   [
+    "src/os.cc",
+    "algorithm"
+   ],
+   [
+    "test/test-main.cc",
+    "tsan_interface.h"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "tsan_interface.h"
+   ],
+   [
+    "test/args-test.cc",
+    "tsan_interface.h"
+   ],
+   [
+    "test/base-test.cc",
+    "tsan_interface.h"
+   ],
+   [
+    "test/assert-test.cc",
+    "tsan_interface.h"
+   ],
+   [
+    "test/chrono-test.cc",
+    "tsan_interface.h"
+   ]
+  ],
+  "include_extra": [
+   [
+    "test/gtest-extra.cc",
+    "format-inl.h"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "climits"
+   ],
+   [
+    "test/util.cc",
+    "format-inl.h"
+   ],
+   [
+    "test/util.cc",
+    "algorithm"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "format-inl.h"
+   ],
+   [
+    "test/gtest-extra.cc",
+    "climits"
+   ],
+   [
+    "test/util.cc",
+    "format-inl.h"
+   ],
+   [
+    "test/util.cc",
+    "algorithm"
+   ]
+  ],
+  "macro_missing": [],
+  "macro_extra": []
+ },
+ "per_tu": [
+  {
+   "file": "src/format.cc",
+   "definitions": {
+    "nm": 927,
+    "nm_weak": 897,
+    "extracted": 294,
+    "missing_plain": 7,
+    "missing_template_instantiation": 690,
+    "missing_library_or_rtti": 111,
+    "extra": 186,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 163,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2590,
+    "extracted_direct_edges": 619,
+    "agree": 196,
+    "missing": 2348,
+    "extra": 90,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 905
+   },
+   "undefined": {
+    "nm": 62,
+    "explained_by_extraction": 15,
+    "compiler_runtime": 10,
+    "unexplained": 37
+   },
+   "includes": {
+    "mm": 240,
+    "extracted": 240,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2455,
+    "extracted_definitions_visible": 3616,
+    "extracted_names_distinct": 2605
+   }
+  },
+  {
+   "file": "src/os.cc",
+   "definitions": {
+    "nm": 106,
+    "nm_weak": 36,
+    "extracted": 279,
+    "missing_plain": 10,
+    "missing_template_instantiation": 57,
+    "missing_library_or_rtti": 3,
+    "extra": 255,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 217,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 242,
+    "extracted_direct_edges": 584,
+    "agree": 44,
+    "missing": 138,
+    "extra": 81,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 833
+   },
+   "undefined": {
+    "nm": 30,
+    "explained_by_extraction": 17,
+    "compiler_runtime": 6,
+    "unexplained": 7
+   },
+   "includes": {
+    "mm": 270,
+    "extracted": 224,
+    "missing": 46,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3141,
+    "extracted_definitions_visible": 4075,
+    "extracted_names_distinct": 3049
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5024,
+    "extracted_names_distinct": 3435
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 63,
+    "nm_weak": 55,
+    "extracted": 961,
+    "missing_plain": 0,
+    "missing_template_instantiation": 2,
+    "missing_library_or_rtti": 48,
+    "extra": 953,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 912,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 146,
+    "extracted_direct_edges": 1487,
+    "agree": 16,
+    "missing": 117,
+    "extra": 14,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 2083
+   },
+   "undefined": {
+    "nm": 34,
+    "explained_by_extraction": 12,
+    "compiler_runtime": 7,
+    "unexplained": 15
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 360,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6208,
+    "extracted_names_distinct": 4493
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 8,
+    "nm_weak": 5,
+    "extracted": 266,
+    "missing_plain": 0,
+    "missing_template_instantiation": 3,
+    "missing_library_or_rtti": 0,
+    "extra": 262,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 224,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 26,
+    "extracted_direct_edges": 472,
+    "agree": 13,
+    "missing": 11,
+    "extra": 4,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 836
+   },
+   "undefined": {
+    "nm": 20,
+    "explained_by_extraction": 11,
+    "compiler_runtime": 3,
+    "unexplained": 6
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 244,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3765,
+    "extracted_names_distinct": 2807
+   }
+  },
+  {
+   "file": "test/args-test.cc",
+   "definitions": {
+    "nm": 920,
+    "nm_weak": 895,
+    "extracted": 677,
+    "missing_plain": 1,
+    "missing_template_instantiation": 262,
+    "missing_library_or_rtti": 575,
+    "extra": 645,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 606,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1761,
+    "extracted_direct_edges": 1180,
+    "agree": 136,
+    "missing": 1563,
+    "extra": 47,
+    "objdump_indirect_sites": 6,
+    "extracted_indirect_sites": 1223
+   },
+   "undefined": {
+    "nm": 50,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 6,
+    "unexplained": 25
+   },
+   "includes": {
+    "mm": 348,
+    "extracted": 347,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3666,
+    "extracted_definitions_visible": 5572,
+    "extracted_names_distinct": 3888
+   }
+  },
+  {
+   "file": "test/base-test.cc",
+   "definitions": {
+    "nm": 6906,
+    "nm_weak": 6785,
+    "extracted": 976,
+    "missing_plain": 5,
+    "missing_template_instantiation": 3514,
+    "missing_library_or_rtti": 3100,
+    "extra": 853,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 843,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 15053,
+    "extracted_direct_edges": 1590,
+    "agree": 411,
+    "missing": 14192,
+    "extra": 153,
+    "objdump_indirect_sites": 252,
+    "extracted_indirect_sites": 1573
+   },
+   "undefined": {
+    "nm": 147,
+    "explained_by_extraction": 55,
+    "compiler_runtime": 11,
+    "unexplained": 81
+   },
+   "includes": {
+    "mm": 355,
+    "extracted": 354,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4077,
+    "extracted_definitions_visible": 6090,
+    "extracted_names_distinct": 4309
+   }
+  },
+  {
+   "file": "test/assert-test.cc",
+   "definitions": {
+    "nm": 298,
+    "nm_weak": 293,
+    "extracted": 512,
+    "missing_plain": 0,
+    "missing_template_instantiation": 52,
+    "missing_library_or_rtti": 205,
+    "extra": 492,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 485,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 435,
+    "extracted_direct_edges": 668,
+    "agree": 36,
+    "missing": 373,
+    "extra": 8,
+    "objdump_indirect_sites": 23,
+    "extracted_indirect_sites": 622
+   },
+   "undefined": {
+    "nm": 54,
+    "explained_by_extraction": 25,
+    "compiler_runtime": 5,
+    "unexplained": 24
+   },
+   "includes": {
+    "mm": 321,
+    "extracted": 320,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3433,
+    "extracted_definitions_visible": 5209,
+    "extracted_names_distinct": 3620
+   }
+  },
+  {
+   "file": "test/chrono-test.cc",
+   "definitions": {
+    "nm": 5659,
+    "nm_weak": 5585,
+    "extracted": 1216,
+    "missing_plain": 15,
+    "missing_template_instantiation": 4386,
+    "missing_library_or_rtti": 942,
+    "extra": 1034,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 1003,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 17774,
+    "extracted_direct_edges": 2678,
+    "agree": 698,
+    "missing": 16380,
+    "extra": 422,
+    "objdump_indirect_sites": 153,
+    "extracted_indirect_sites": 2459
+   },
+   "undefined": {
+    "nm": 125,
+    "explained_by_extraction": 49,
+    "compiler_runtime": 12,
+    "unexplained": 64
+   },
+   "includes": {
+    "mm": 372,
+    "extracted": 371,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4282,
+    "extracted_definitions_visible": 6367,
+    "extracted_names_distinct": 4523
+   }
+  },
+  {
+   "file": "test/color-test.cc",
+   "definitions": {
+    "nm": 581,
+    "nm_weak": 574,
+    "extracted": 992,
+    "missing_plain": 0,
+    "missing_template_instantiation": 379,
+    "missing_library_or_rtti": 124,
+    "extra": 942,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 906,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1232,
+    "extracted_direct_edges": 1591,
+    "agree": 97,
+    "missing": 1117,
+    "extra": 63,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 2114
+   },
+   "undefined": {
+    "nm": 56,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 3,
+    "unexplained": 27
+   },
+   "includes": {
+    "mm": 362,
+    "extracted": 361,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4261,
+    "extracted_definitions_visible": 6235,
+    "extracted_names_distinct": 4494
+   }
+  },
+  {
+   "file": "test/gtest-extra-test.cc",
+   "definitions": {
+    "nm": 668,
+    "nm_weak": 612,
+    "extracted": 1034,
+    "missing_plain": 0,
+    "missing_template_instantiation": 291,
+    "missing_library_or_rtti": 247,
+    "extra": 988,
+    "extra_internal_linkage": 1,
+    "extra_inline_or_templated_unused": 947,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2298,
+    "extracted_direct_edges": 2028,
+    "agree": 542,
+    "missing": 1662,
+    "extra": 51,
+    "objdump_indirect_sites": 76,
+    "extracted_indirect_sites": 2159
+   },
+   "undefined": {
+    "nm": 90,
+    "explained_by_extraction": 42,
+    "compiler_runtime": 7,
+    "unexplained": 41
+   },
+   "includes": {
+    "mm": 369,
+    "extracted": 368,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4274,
+    "extracted_definitions_visible": 6227,
+    "extracted_names_distinct": 4511
+   }
+  },
+  {
+   "file": "test/format-test.cc",
+   "definitions": {
+    "nm": 5583,
+    "nm_weak": 5241,
+    "extracted": 1383,
+    "missing_plain": 23,
+    "missing_template_instantiation": 3028,
+    "missing_library_or_rtti": 1785,
+    "extra": 1074,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 1054,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 14788,
+    "extracted_direct_edges": 4234,
+    "agree": 2201,
+    "missing": 12161,
+    "extra": 769,
+    "objdump_indirect_sites": 361,
+    "extracted_indirect_sites": 2455
+   },
+   "undefined": {
+    "nm": 202,
+    "explained_by_extraction": 88,
+    "compiler_runtime": 13,
+    "unexplained": 101
+   },
+   "includes": {
+    "mm": 386,
+    "extracted": 385,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4301,
+    "extracted_definitions_visible": 6492,
+    "extracted_names_distinct": 4546
+   }
+  },
+  {
+   "file": "test/format-impl-test.cc",
+   "definitions": {
+    "nm": 1651,
+    "nm_weak": 1594,
+    "extracted": 1109,
+    "missing_plain": 12,
+    "missing_template_instantiation": 1101,
+    "missing_library_or_rtti": 285,
+    "extra": 956,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 921,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4587,
+    "extracted_direct_edges": 1951,
+    "agree": 451,
+    "missing": 4052,
+    "extra": 120,
+    "objdump_indirect_sites": 11,
+    "extracted_indirect_sites": 2192
+   },
+   "undefined": {
+    "nm": 88,
+    "explained_by_extraction": 30,
+    "compiler_runtime": 11,
+    "unexplained": 47
+   },
+   "includes": {
+    "mm": 370,
+    "extracted": 369,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4266,
+    "extracted_definitions_visible": 6266,
+    "extracted_names_distinct": 4503
+   }
+  },
+  {
+   "file": "test/header-only-test.cc",
+   "definitions": {
+    "nm": 931,
+    "nm_weak": 927,
+    "extracted": 844,
+    "missing_plain": 12,
+    "missing_template_instantiation": 656,
+    "missing_library_or_rtti": 134,
+    "extra": 735,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 700,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2495,
+    "extracted_direct_edges": 1494,
+    "agree": 171,
+    "missing": 2292,
+    "extra": 54,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 1614
+   },
+   "undefined": {
+    "nm": 68,
+    "explained_by_extraction": 24,
+    "compiler_runtime": 9,
+    "unexplained": 35
+   },
+   "includes": {
+    "mm": 364,
+    "extracted": 363,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3696,
+    "extracted_definitions_visible": 5815,
+    "extracted_names_distinct": 3931
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5025,
+    "extracted_names_distinct": 3436
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 879,
+    "nm_weak": 870,
+    "extracted": 1019,
+    "missing_plain": 12,
+    "missing_template_instantiation": 637,
+    "missing_library_or_rtti": 111,
+    "extra": 915,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 879,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2460,
+    "extracted_direct_edges": 1676,
+    "agree": 174,
+    "missing": 2248,
+    "extra": 71,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 2162
+   },
+   "undefined": {
+    "nm": 61,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 10,
+    "unexplained": 32
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 362,
+    "missing": 1,
+    "extra": 2
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6212,
+    "extracted_names_distinct": 4497
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 892,
+    "nm_weak": 888,
+    "extracted": 324,
+    "missing_plain": 13,
+    "missing_template_instantiation": 656,
+    "missing_library_or_rtti": 107,
+    "extra": 220,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 190,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2479,
+    "extracted_direct_edges": 661,
+    "agree": 185,
+    "missing": 2257,
+    "extra": 73,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 915
+   },
+   "undefined": {
+    "nm": 64,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 10,
+    "unexplained": 34
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 254,
+    "missing": 0,
+    "extra": 10
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3841,
+    "extracted_names_distinct": 2835
+   }
+  },
+  {
+   "file": "src/os.cc",
+   "definitions": {
+    "nm": 977,
+    "nm_weak": 906,
+    "extracted": 337,
+    "missing_plain": 22,
+    "missing_template_instantiation": 702,
+    "missing_library_or_rtti": 107,
+    "extra": 213,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 184,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2705,
+    "extracted_direct_edges": 773,
+    "agree": 221,
+    "missing": 2381,
+    "extra": 150,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 912
+   },
+   "undefined": {
+    "nm": 67,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 10,
+    "unexplained": 31
+   },
+   "includes": {
+    "mm": 270,
+    "extracted": 270,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3141,
+    "extracted_definitions_visible": 4379,
+    "extracted_names_distinct": 3293
+   }
+  },
+  {
+   "file": "test/ostream-test.cc",
+   "definitions": {
+    "nm": 1686,
+    "nm_weak": 1614,
+    "extracted": 1182,
+    "missing_plain": 17,
+    "missing_template_instantiation": 820,
+    "missing_library_or_rtti": 648,
+    "extra": 1070,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 1038,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3602,
+    "extracted_direct_edges": 2039,
+    "agree": 268,
+    "missing": 3251,
+    "extra": 99,
+    "objdump_indirect_sites": 44,
+    "extracted_indirect_sites": 2604
+   },
+   "undefined": {
+    "nm": 154,
+    "explained_by_extraction": 56,
+    "compiler_runtime": 10,
+    "unexplained": 88
+   },
+   "includes": {
+    "mm": 379,
+    "extracted": 378,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4290,
+    "extracted_definitions_visible": 6448,
+    "extracted_names_distinct": 4533
+   }
+  },
+  {
+   "file": "test/compile-test.cc",
+   "definitions": {
+    "nm": 2282,
+    "nm_weak": 2116,
+    "extracted": 1162,
+    "missing_plain": 75,
+    "missing_template_instantiation": 1584,
+    "missing_library_or_rtti": 387,
+    "extra": 1004,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 977,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6008,
+    "extracted_direct_edges": 2044,
+    "agree": 318,
+    "missing": 5553,
+    "extra": 155,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 2568
+   },
+   "undefined": {
+    "nm": 119,
+    "explained_by_extraction": 45,
+    "compiler_runtime": 11,
+    "unexplained": 63
+   },
+   "includes": {
+    "mm": 367,
+    "extracted": 366,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4275,
+    "extracted_definitions_visible": 6291,
+    "extracted_names_distinct": 4513
+   }
+  },
+  {
+   "file": "test/compile-fp-test.cc",
+   "definitions": {
+    "nm": 4,
+    "nm_weak": 3,
+    "extracted": 991,
+    "missing_plain": 0,
+    "missing_template_instantiation": 2,
+    "missing_library_or_rtti": 2,
+    "extra": 991,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 929,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1,
+    "extracted_direct_edges": 1633,
+    "agree": 0,
+    "missing": 1,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 2284
+   },
+   "undefined": {
+    "nm": 1,
+    "explained_by_extraction": 0,
+    "compiler_runtime": 0,
+    "unexplained": 1
+   },
+   "includes": {
+    "mm": 357,
+    "extracted": 356,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4104,
+    "extracted_definitions_visible": 5994,
+    "extracted_names_distinct": 4337
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5025,
+    "extracted_names_distinct": 3436
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 879,
+    "nm_weak": 870,
+    "extracted": 1019,
+    "missing_plain": 12,
+    "missing_template_instantiation": 637,
+    "missing_library_or_rtti": 111,
+    "extra": 915,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 879,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2460,
+    "extracted_direct_edges": 1676,
+    "agree": 174,
+    "missing": 2248,
+    "extra": 71,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 2162
+   },
+   "undefined": {
+    "nm": 61,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 10,
+    "unexplained": 32
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 362,
+    "missing": 1,
+    "extra": 2
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6212,
+    "extracted_names_distinct": 4497
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 892,
+    "nm_weak": 888,
+    "extracted": 324,
+    "missing_plain": 13,
+    "missing_template_instantiation": 656,
+    "missing_library_or_rtti": 107,
+    "extra": 220,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 190,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2479,
+    "extracted_direct_edges": 661,
+    "agree": 185,
+    "missing": 2257,
+    "extra": 73,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 915
+   },
+   "undefined": {
+    "nm": 64,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 10,
+    "unexplained": 34
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 254,
+    "missing": 0,
+    "extra": 10
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3841,
+    "extracted_names_distinct": 2835
+   }
+  },
+  {
+   "file": "src/os.cc",
+   "definitions": {
+    "nm": 977,
+    "nm_weak": 906,
+    "extracted": 337,
+    "missing_plain": 22,
+    "missing_template_instantiation": 702,
+    "missing_library_or_rtti": 107,
+    "extra": 213,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 184,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2705,
+    "extracted_direct_edges": 773,
+    "agree": 221,
+    "missing": 2381,
+    "extra": 150,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 912
+   },
+   "undefined": {
+    "nm": 67,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 10,
+    "unexplained": 31
+   },
+   "includes": {
+    "mm": 270,
+    "extracted": 270,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3141,
+    "extracted_definitions_visible": 4379,
+    "extracted_names_distinct": 3293
+   }
+  },
+  {
+   "file": "test/printf-test.cc",
+   "definitions": {
+    "nm": 2775,
+    "nm_weak": 2697,
+    "extracted": 1120,
+    "missing_plain": 6,
+    "missing_template_instantiation": 2126,
+    "missing_library_or_rtti": 394,
+    "extra": 1001,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 971,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 9632,
+    "extracted_direct_edges": 2303,
+    "agree": 758,
+    "missing": 8782,
+    "extra": 119,
+    "objdump_indirect_sites": 59,
+    "extracted_indirect_sites": 2450
+   },
+   "undefined": {
+    "nm": 103,
+    "explained_by_extraction": 43,
+    "compiler_runtime": 9,
+    "unexplained": 51
+   },
+   "includes": {
+    "mm": 374,
+    "extracted": 372,
+    "missing": 2,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4277,
+    "extracted_definitions_visible": 6209,
+    "extracted_names_distinct": 4515
+   }
+  },
+  {
+   "file": "test/ranges-test.cc",
+   "definitions": {
+    "nm": 2872,
+    "nm_weak": 2776,
+    "extracted": 773,
+    "missing_plain": 9,
+    "missing_template_instantiation": 1440,
+    "missing_library_or_rtti": 1147,
+    "extra": 641,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 617,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 6380,
+    "extracted_direct_edges": 1538,
+    "agree": 493,
+    "missing": 5770,
+    "extra": 194,
+    "objdump_indirect_sites": 5,
+    "extracted_indirect_sites": 1244
+   },
+   "undefined": {
+    "nm": 79,
+    "explained_by_extraction": 31,
+    "compiler_runtime": 9,
+    "unexplained": 39
+   },
+   "includes": {
+    "mm": 363,
+    "extracted": 361,
+    "missing": 2,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3690,
+    "extracted_definitions_visible": 5715,
+    "extracted_names_distinct": 3925
+   }
+  },
+  {
+   "file": "test/ranges-odr-test.cc",
+   "definitions": {
+    "nm": 370,
+    "nm_weak": 367,
+    "extracted": 637,
+    "missing_plain": 1,
+    "missing_template_instantiation": 221,
+    "missing_library_or_rtti": 107,
+    "extra": 608,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 575,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 692,
+    "extracted_direct_edges": 1011,
+    "agree": 19,
+    "missing": 664,
+    "extra": 8,
+    "objdump_indirect_sites": 2,
+    "extracted_indirect_sites": 1226
+   },
+   "undefined": {
+    "nm": 46,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 3,
+    "unexplained": 23
+   },
+   "includes": {
+    "mm": 348,
+    "extracted": 347,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3667,
+    "extracted_definitions_visible": 5581,
+    "extracted_names_distinct": 3890
+   }
+  },
+  {
+   "file": "test/scan-test.cc",
+   "definitions": {
+    "nm": 1698,
+    "nm_weak": 1624,
+    "extracted": 1120,
+    "missing_plain": 15,
+    "missing_template_instantiation": 1023,
+    "missing_library_or_rtti": 424,
+    "extra": 952,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 916,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4262,
+    "extracted_direct_edges": 2031,
+    "agree": 446,
+    "missing": 3729,
+    "extra": 124,
+    "objdump_indirect_sites": 26,
+    "extracted_indirect_sites": 2223
+   },
+   "undefined": {
+    "nm": 102,
+    "explained_by_extraction": 38,
+    "compiler_runtime": 11,
+    "unexplained": 53
+   },
+   "includes": {
+    "mm": 369,
+    "extracted": 368,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4270,
+    "extracted_definitions_visible": 6344,
+    "extracted_names_distinct": 4507
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5026,
+    "extracted_names_distinct": 3437
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 879,
+    "nm_weak": 870,
+    "extracted": 1019,
+    "missing_plain": 12,
+    "missing_template_instantiation": 637,
+    "missing_library_or_rtti": 111,
+    "extra": 915,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 879,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2460,
+    "extracted_direct_edges": 1676,
+    "agree": 174,
+    "missing": 2248,
+    "extra": 71,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 2162
+   },
+   "undefined": {
+    "nm": 61,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 10,
+    "unexplained": 32
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 362,
+    "missing": 1,
+    "extra": 2
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6213,
+    "extracted_names_distinct": 4498
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 892,
+    "nm_weak": 888,
+    "extracted": 324,
+    "missing_plain": 13,
+    "missing_template_instantiation": 656,
+    "missing_library_or_rtti": 107,
+    "extra": 220,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 190,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2479,
+    "extracted_direct_edges": 661,
+    "agree": 185,
+    "missing": 2257,
+    "extra": 73,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 915
+   },
+   "undefined": {
+    "nm": 64,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 10,
+    "unexplained": 34
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 254,
+    "missing": 0,
+    "extra": 10
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3842,
+    "extracted_names_distinct": 2836
+   }
+  },
+  {
+   "file": "src/os.cc",
+   "definitions": {
+    "nm": 977,
+    "nm_weak": 906,
+    "extracted": 337,
+    "missing_plain": 22,
+    "missing_template_instantiation": 702,
+    "missing_library_or_rtti": 107,
+    "extra": 213,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 184,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2705,
+    "extracted_direct_edges": 773,
+    "agree": 221,
+    "missing": 2381,
+    "extra": 150,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 912
+   },
+   "undefined": {
+    "nm": 67,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 10,
+    "unexplained": 31
+   },
+   "includes": {
+    "mm": 270,
+    "extracted": 270,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3141,
+    "extracted_definitions_visible": 4380,
+    "extracted_names_distinct": 3294
+   }
+  },
+  {
+   "file": "test/std-test.cc",
+   "definitions": {
+    "nm": 2402,
+    "nm_weak": 2329,
+    "extracted": 1173,
+    "missing_plain": 10,
+    "missing_template_instantiation": 1134,
+    "missing_library_or_rtti": 1068,
+    "extra": 1069,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 1041,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 5009,
+    "extracted_direct_edges": 2090,
+    "agree": 326,
+    "missing": 4554,
+    "extra": 143,
+    "objdump_indirect_sites": 25,
+    "extracted_indirect_sites": 2497
+   },
+   "undefined": {
+    "nm": 113,
+    "explained_by_extraction": 39,
+    "compiler_runtime": 9,
+    "unexplained": 65
+   },
+   "includes": {
+    "mm": 386,
+    "extracted": 383,
+    "missing": 3,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4308,
+    "extracted_definitions_visible": 6469,
+    "extracted_names_distinct": 4559
+   }
+  },
+  {
+   "file": "test/unicode-test.cc",
+   "definitions": {
+    "nm": 1440,
+    "nm_weak": 1434,
+    "extracted": 1171,
+    "missing_plain": 19,
+    "missing_template_instantiation": 886,
+    "missing_library_or_rtti": 325,
+    "extra": 999,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 968,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 3643,
+    "extracted_direct_edges": 1965,
+    "agree": 235,
+    "missing": 3319,
+    "extra": 90,
+    "objdump_indirect_sites": 23,
+    "extracted_indirect_sites": 2492
+   },
+   "undefined": {
+    "nm": 130,
+    "explained_by_extraction": 38,
+    "compiler_runtime": 16,
+    "unexplained": 76
+   },
+   "includes": {
+    "mm": 373,
+    "extracted": 372,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4275,
+    "extracted_definitions_visible": 6361,
+    "extracted_names_distinct": 4516
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5025,
+    "extracted_names_distinct": 3436
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 879,
+    "nm_weak": 870,
+    "extracted": 1019,
+    "missing_plain": 12,
+    "missing_template_instantiation": 637,
+    "missing_library_or_rtti": 111,
+    "extra": 915,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 879,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2460,
+    "extracted_direct_edges": 1676,
+    "agree": 174,
+    "missing": 2248,
+    "extra": 71,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 2162
+   },
+   "undefined": {
+    "nm": 61,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 10,
+    "unexplained": 32
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 362,
+    "missing": 1,
+    "extra": 2
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6212,
+    "extracted_names_distinct": 4497
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 892,
+    "nm_weak": 888,
+    "extracted": 324,
+    "missing_plain": 13,
+    "missing_template_instantiation": 656,
+    "missing_library_or_rtti": 107,
+    "extra": 220,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 190,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2479,
+    "extracted_direct_edges": 661,
+    "agree": 185,
+    "missing": 2257,
+    "extra": 73,
+    "objdump_indirect_sites": 7,
+    "extracted_indirect_sites": 915
+   },
+   "undefined": {
+    "nm": 64,
+    "explained_by_extraction": 20,
+    "compiler_runtime": 10,
+    "unexplained": 34
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 254,
+    "missing": 0,
+    "extra": 10
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3841,
+    "extracted_names_distinct": 2835
+   }
+  },
+  {
+   "file": "src/os.cc",
+   "definitions": {
+    "nm": 977,
+    "nm_weak": 906,
+    "extracted": 337,
+    "missing_plain": 22,
+    "missing_template_instantiation": 702,
+    "missing_library_or_rtti": 107,
+    "extra": 213,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 184,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2705,
+    "extracted_direct_edges": 773,
+    "agree": 221,
+    "missing": 2381,
+    "extra": 150,
+    "objdump_indirect_sites": 8,
+    "extracted_indirect_sites": 912
+   },
+   "undefined": {
+    "nm": 67,
+    "explained_by_extraction": 26,
+    "compiler_runtime": 10,
+    "unexplained": 31
+   },
+   "includes": {
+    "mm": 270,
+    "extracted": 270,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3141,
+    "extracted_definitions_visible": 4379,
+    "extracted_names_distinct": 3293
+   }
+  },
+  {
+   "file": "test/xchar-test.cc",
+   "definitions": {
+    "nm": 3917,
+    "nm_weak": 3837,
+    "extracted": 1274,
+    "missing_plain": 17,
+    "missing_template_instantiation": 2580,
+    "missing_library_or_rtti": 967,
+    "extra": 1063,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 1034,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 10325,
+    "extracted_direct_edges": 2378,
+    "agree": 518,
+    "missing": 9567,
+    "extra": 215,
+    "objdump_indirect_sites": 29,
+    "extracted_indirect_sites": 2610
+   },
+   "undefined": {
+    "nm": 186,
+    "explained_by_extraction": 59,
+    "compiler_runtime": 14,
+    "unexplained": 113
+   },
+   "includes": {
+    "mm": 395,
+    "extracted": 392,
+    "missing": 3,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4320,
+    "extracted_definitions_visible": 6401,
+    "extracted_names_distinct": 4575
+   }
+  },
+  {
+   "file": "test/enforce-checks-test.cc",
+   "definitions": {
+    "nm": 1581,
+    "nm_weak": 1540,
+    "extracted": 428,
+    "missing_plain": 20,
+    "missing_template_instantiation": 1208,
+    "missing_library_or_rtti": 233,
+    "extra": 330,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 303,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 4276,
+    "extracted_direct_edges": 860,
+    "agree": 153,
+    "missing": 4021,
+    "extra": 83,
+    "objdump_indirect_sites": 11,
+    "extracted_indirect_sites": 1325
+   },
+   "undefined": {
+    "nm": 95,
+    "explained_by_extraction": 19,
+    "compiler_runtime": 11,
+    "unexplained": 65
+   },
+   "includes": {
+    "mm": 268,
+    "extracted": 268,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2501,
+    "extracted_definitions_visible": 4040,
+    "extracted_names_distinct": 2683
+   }
+  },
+  {
+   "file": "test/perf-sanity.cc",
+   "definitions": {
+    "nm": 40,
+    "nm_weak": 39,
+    "extracted": 237,
+    "missing_plain": 0,
+    "missing_template_instantiation": 20,
+    "missing_library_or_rtti": 16,
+    "extra": 234,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 198,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 57,
+    "extracted_direct_edges": 443,
+    "agree": 7,
+    "missing": 48,
+    "extra": 5,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 826
+   },
+   "undefined": {
+    "nm": 13,
+    "explained_by_extraction": 3,
+    "compiler_runtime": 2,
+    "unexplained": 8
+   },
+   "includes": {
+    "mm": 224,
+    "extracted": 224,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2447,
+    "extracted_definitions_visible": 3864,
+    "extracted_names_distinct": 2606
+   }
+  },
+  {
+   "file": "test/posix-mock-test.cc",
+   "definitions": {
+    "nm": 714,
+    "nm_weak": 592,
+    "extracted": 1054,
+    "missing_plain": 10,
+    "missing_template_instantiation": 303,
+    "missing_library_or_rtti": 257,
+    "extra": 983,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 942,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 1912,
+    "extracted_direct_edges": 1929,
+    "agree": 351,
+    "missing": 1427,
+    "extra": 116,
+    "objdump_indirect_sites": 18,
+    "extracted_indirect_sites": 2101
+   },
+   "undefined": {
+    "nm": 94,
+    "explained_by_extraction": 47,
+    "compiler_runtime": 8,
+    "unexplained": 39
+   },
+   "includes": {
+    "mm": 376,
+    "extracted": 375,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4300,
+    "extracted_definitions_visible": 6226,
+    "extracted_names_distinct": 4537
+   }
+  },
+  {
+   "file": "src/format.cc",
+   "definitions": {
+    "nm": 927,
+    "nm_weak": 897,
+    "extracted": 294,
+    "missing_plain": 7,
+    "missing_template_instantiation": 690,
+    "missing_library_or_rtti": 111,
+    "extra": 186,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 163,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2590,
+    "extracted_direct_edges": 619,
+    "agree": 196,
+    "missing": 2348,
+    "extra": 90,
+    "objdump_indirect_sites": 9,
+    "extracted_indirect_sites": 905
+   },
+   "undefined": {
+    "nm": 62,
+    "explained_by_extraction": 15,
+    "compiler_runtime": 10,
+    "unexplained": 37
+   },
+   "includes": {
+    "mm": 240,
+    "extracted": 240,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2455,
+    "extracted_definitions_visible": 3618,
+    "extracted_names_distinct": 2607
+   }
+  },
+  {
+   "file": "test/test-main.cc",
+   "definitions": {
+    "nm": 38,
+    "nm_weak": 37,
+    "extracted": 407,
+    "missing_plain": 0,
+    "missing_template_instantiation": 0,
+    "missing_library_or_rtti": 36,
+    "extra": 405,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 405,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 74,
+    "extracted_direct_edges": 573,
+    "agree": 5,
+    "missing": 64,
+    "extra": 0,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 352
+   },
+   "undefined": {
+    "nm": 17,
+    "explained_by_extraction": 5,
+    "compiler_runtime": 3,
+    "unexplained": 9
+   },
+   "includes": {
+    "mm": 312,
+    "extracted": 311,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 3255,
+    "extracted_definitions_visible": 5024,
+    "extracted_names_distinct": 3435
+   }
+  },
+  {
+   "file": "test/gtest-extra.cc",
+   "definitions": {
+    "nm": 63,
+    "nm_weak": 55,
+    "extracted": 961,
+    "missing_plain": 0,
+    "missing_template_instantiation": 2,
+    "missing_library_or_rtti": 48,
+    "extra": 953,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 912,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 146,
+    "extracted_direct_edges": 1487,
+    "agree": 16,
+    "missing": 117,
+    "extra": 14,
+    "objdump_indirect_sites": 1,
+    "extracted_indirect_sites": 2083
+   },
+   "undefined": {
+    "nm": 34,
+    "explained_by_extraction": 12,
+    "compiler_runtime": 7,
+    "unexplained": 15
+   },
+   "includes": {
+    "mm": 361,
+    "extracted": 360,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4260,
+    "extracted_definitions_visible": 6208,
+    "extracted_names_distinct": 4493
+   }
+  },
+  {
+   "file": "test/util.cc",
+   "definitions": {
+    "nm": 8,
+    "nm_weak": 5,
+    "extracted": 266,
+    "missing_plain": 0,
+    "missing_template_instantiation": 3,
+    "missing_library_or_rtti": 0,
+    "extra": 262,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 224,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 26,
+    "extracted_direct_edges": 472,
+    "agree": 13,
+    "missing": 11,
+    "extra": 4,
+    "objdump_indirect_sites": 0,
+    "extracted_indirect_sites": 836
+   },
+   "undefined": {
+    "nm": 20,
+    "explained_by_extraction": 11,
+    "compiler_runtime": 3,
+    "unexplained": 6
+   },
+   "includes": {
+    "mm": 244,
+    "extracted": 244,
+    "missing": 0,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 2662,
+    "extracted_definitions_visible": 3765,
+    "extracted_names_distinct": 2807
+   }
+  },
+  {
+   "file": "test/os-test.cc",
+   "definitions": {
+    "nm": 932,
+    "nm_weak": 838,
+    "extracted": 1098,
+    "missing_plain": 0,
+    "missing_template_instantiation": 333,
+    "missing_library_or_rtti": 377,
+    "extra": 1024,
+    "extra_internal_linkage": 0,
+    "extra_inline_or_templated_unused": 983,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 2826,
+    "extracted_direct_edges": 2096,
+    "agree": 583,
+    "missing": 2159,
+    "extra": 87,
+    "objdump_indirect_sites": 16,
+    "extracted_indirect_sites": 2099
+   },
+   "undefined": {
+    "nm": 91,
+    "explained_by_extraction": 51,
+    "compiler_runtime": 5,
+    "unexplained": 35
+   },
+   "includes": {
+    "mm": 368,
+    "extracted": 367,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4269,
+    "extracted_definitions_visible": 6256,
+    "extracted_names_distinct": 4506
+   }
+  },
+  {
+   "file": "test/gtest/gmock-gtest-all.cc",
+   "definitions": {
+    "nm": 3633,
+    "nm_weak": 2832,
+    "extracted": 1405,
+    "missing_plain": 6,
+    "missing_template_instantiation": 421,
+    "missing_library_or_rtti": 2173,
+    "extra": 578,
+    "extra_internal_linkage": 7,
+    "extra_inline_or_templated_unused": 575,
+    "linkage_disagreements": 0
+   },
+   "calls": {
+    "objdump_direct_edges": 8553,
+    "extracted_direct_edges": 3959,
+    "agree": 2520,
+    "missing": 5750,
+    "extra": 424,
+    "objdump_indirect_sites": 149,
+    "extracted_indirect_sites": 1389
+   },
+   "undefined": {
+    "nm": 176,
+    "explained_by_extraction": 108,
+    "compiler_runtime": 16,
+    "unexplained": 52
+   },
+   "includes": {
+    "mm": 392,
+    "extracted": 391,
+    "missing": 1,
+    "extra": 0
+   },
+   "macros": {
+    "dM": 4807,
+    "extracted_definitions_visible": 6909,
+    "extracted_names_distinct": 5057
+   }
+  }
+ ]
+}

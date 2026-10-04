@@ -1,0 +1,47 @@
+# T4 knowledge manifest probe (tree dcd43f1, in-memory schema widening only)
+baseline: 3 archived units, root count 3
+
+## Q1: what refuses a `case` entry today
+refused by: history entry 4: does not match history#entry
+  kind: 'case' is not one of ['unit', 'annotation', 'audit', 'lead']
+nothing else in manifest.py / store.py / index.py names a kind: the enum (and ENTRY_KINDS for `history list --kind`) is the only gate
+
+## Q2: with the enum widened, append / chain / verify / index on unchanged code
+appended 3 knowledge entries in one commit; root count 6
+verify(records=True): ok=True entries=6 records=6 problems=[]
+index.sync: {'mode': 'rebuilt', 'added': 6}
+by_id(K-0001): [(4, 'case')]
+list(kind=case): ['K-0001']
+linked(derived_from, E-0001): ['K-0001']
+linked(subject, T-0001): ['K-0001']
+links(K-0001): [{'from': 'K-0001', 'rel': 'derived_from', 'to': 'E-0001'}, {'from': 'K-0001', 'rel': 'job', 'to': 'KR-0001'}, {'from': 'K-0001', 'rel': 'subject', 'to': 'T-0001'}, {'from': 'K-0001', 'rel': 'subject', 'to': 'component:calc.core'}, {'from': 'KD-0001', 'rel': 'admitted', 'to': 'K-0001'}, {'from': 'KR-0001', 'rel': 'produced', 'to': 'K-0001'}]
+
+## Q3: which queries are kind-bound
+annotations('K-0001') (kind='annotation' only): []  <- dispositions invisible
+a kind-free about(subject) query finds: [('disposition', 'KD-0001', 'admitted')]
+finding: the index needs `about(subject, kinds=None)`; `annotations()` becomes a special case. The entry's `subject`/`rel` columns already carry what a disposition needs (schema unchanged)
+
+## Q4: orphaned knowledge records and RECORD_GLOBS
+unreferenced() with an orphan under knowledge/: []  <- not seen
+with RECORD_GLOBS += knowledge/**/*.yaml: ['knowledge/cases/K-9999/v1.yaml']
+
+## Q5: cost at 3,000 cases (one case + one disposition per capture job, 50 jobs per commit)
+root count 6006 (23 sealed segments); 60 commits of 100 records: median 977 ms, p95 1099 ms, first 840 ms, last-sorted 1261 ms; total 86.6 s
+record sizes: case+disposition for one job = 965 bytes
+full verify(records=True): ok=True entries=6006 records=6006 in 1.91 s = 0.32 ms/record (investigation: ~3 ms per 20 KB bundle)
+chain-only verify: 0.68 s
+index rebuild from manifest: {'mode': 'rebuilt', 'added': 6006} in 0.91 s
+by_id(K-1500): 1 entry in 36.3 ms (authenticated against the chain)
+linked(subject, T-0002): 1000 cases in 770 ms (authenticates every returned entry: cost scales with the result, as the investigation says it may)
+
+## Q6: FTS5 over record bodies, as a derived table in the same local/ index
+sqlite 3.45.3; fts5 compiled in: True
+indexed 6003 record bodies in 1.79 s (walk + read + insert)
+  MATCH 'regenerated AND fixture': 3001 hits, top 20 in 2.7 ms
+  MATCH '"check unit failed"': 3001 hits, top 20 in 3.0 ms
+  MATCH 'ROLE_ATTESTED': 3001 hits, top 20 in 3.9 ms
+  MATCH '"calc.core"': 3001 hits, top 20 in 3.7 ms
+  MATCH 'fixture NOT regenerated': 0 hits, top 20 in 0.5 ms
+local/history.sqlite with entries + links + fts: 10164 KB for 6006 entries
+
+fts rows are locators like every other index row: a hit's id goes through by_id() -> authenticate() -> record() before anything is shown, so a tampered fts body can hide a record, never invent one (P3-1 rule).

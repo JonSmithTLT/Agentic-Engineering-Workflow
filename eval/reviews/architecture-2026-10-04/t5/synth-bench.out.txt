@@ -1,0 +1,12 @@
+files= 10,000  build    3.2s | ls-tree      30 ms | diff --name-status      6 ms | diff ADR-only      4 ms | structural map (no imports)     280 ms, 18,431 bytes
+rm: cannot remove '<reviewer-home>/.aew-test-tmp/review-synth/synth-10000/.git/objects': Directory not empty
+Traceback (most recent call last):
+  File "<reviewer-home>/aew-review/sem/synthetic_repo_bench.py", line 92, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "<reviewer-home>/aew-review/sem/synthetic_repo_bench.py", line 87, in main
+    subprocess.run(["rm", "-rf", str(root)], check=True)
+  File "/usr/lib64/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['rm', '-rf', '<reviewer-home>/.aew-test-tmp/review-synth/synth-10000']' returned non-zero exit status 1.
+files=100,000  build   33.4s | ls-tree     286 ms | diff --name-status     18 ms | diff ADR-only     17 ms | structural map (no imports)    2085 ms, 162,266 bytes

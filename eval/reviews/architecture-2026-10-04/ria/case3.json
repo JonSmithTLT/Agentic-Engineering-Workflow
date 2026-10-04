@@ -1,0 +1,240 @@
+{
+ "case": "one dispatch predicate (M4-A)",
+ "requirement": "One dispatch predicate (DispatchDecision) on every dispatch route; Class 0 eligibility enforced at dispatch; acceptance checks gate completion.",
+ "base": "4cc8bd8",
+ "commits": [
+  "a149563",
+  "6746033"
+ ],
+ "index": {
+  "python_files": 169,
+  "symbols": 2402
+ },
+ "analysis": {
+  "seed_symbols": [
+   "Assignment",
+   "Assignment.__init__",
+   "Assignment._mutating_slots_in_use",
+   "Assignment.work_assign",
+   "Engine.dispatch_binding_problem",
+   "Engine.dispatch_commit",
+   "Engine.dispatch_inputs",
+   "Engine.launch_dispatched",
+   "Engine.require_dispatch_binding",
+   "Engine.work_assign",
+   "Engine.work_dispatch",
+   "Engine.work_redispatch",
+   "Harness.launch_dispatched",
+   "Inputs.dispatch_commit",
+   "Inputs.dispatch_inputs",
+   "InputsPort.dispatch_inputs",
+   "NonMutating.dispatch_observer",
+   "NonMutating.work_dispatch",
+   "NonMutating.work_redispatch",
+   "NonMutatingPort.dispatch_observer",
+   "WorkUnits.dispatch_binding_problem",
+   "WorkUnits.require_dispatch_binding",
+   "WorkUnitsPort.dispatch_binding_problem",
+   "WorkUnitsPort.require_dispatch_binding",
+   "_dispatch",
+   "dispatch_binding",
+   "dispatch_binding_problem"
+  ],
+  "seed_files": [
+   "src/aew/cli/work_commands.py",
+   "src/aew/engine/api.py",
+   "src/aew/engine/dependencies.py",
+   "src/aew/engine/harness_ops.py",
+   "src/aew/engine/nonmutating_ops.py",
+   "src/aew/engine/ports.py",
+   "src/aew/engine/work_ops.py",
+   "src/aew/engine/workspace_ops.py"
+  ],
+  "seed_ops": {
+   "work.dispatch": [
+    "src/aew/engine/nonmutating_ops.py"
+   ],
+   "work.redispatch": [
+    "src/aew/engine/nonmutating_ops.py"
+   ],
+   "work.assign": [
+    "src/aew/engine/workspace_ops.py"
+   ]
+  },
+  "r1_symbols": 80,
+  "r1_files": [
+   "src/aew/cli/commands.py",
+   "src/aew/engine/base.py",
+   "src/aew/engine/context_ops.py",
+   "src/aew/engine/evidence_ops.py",
+   "src/aew/engine/freshness.py",
+   "src/aew/engine/hierarchy_ops.py",
+   "src/aew/engine/resume_ops.py",
+   "src/aew/engine/role_ops.py",
+   "src/aew/errors.py",
+   "src/aew/harness/opencode/adapter.py",
+   "src/aew/harness/opencode/client.py",
+   "src/aew/knowledge/records.py",
+   "src/aew/util.py",
+   "src/aew/workspace/worktrees.py"
+  ],
+  "test_files": [
+   "tests/conftest.py",
+   "tests/helpers/aewflow.py",
+   "tests/helpers/fake_opencode.py",
+   "tests/helpers/harness_conformance.py",
+   "tests/helpers/lanes.py",
+   "tests/integration/test_engine_dispatch.py",
+   "tests/integration/test_workspaces.py",
+   "tests/regression/test_composition_walk.py",
+   "tests/regression/test_hierarchy_walk.py",
+   "tests/regression/test_m2_compositions.py",
+   "tests/regression/test_m3_dogfood_findings.py",
+   "tests/regression/test_m3_harness_adversarial.py",
+   "tests/regression/test_m3_independent_audit.py",
+   "tests/regression/test_m3_intent_ingress.py",
+   "tests/unit/test_engine_composition.py",
+   "tests/unit/test_execution_policy.py",
+   "tests/unit/test_harness_units.py",
+   "tests/unit/test_lanes.py",
+   "tests/unit/test_opencode_units.py",
+   "tests/unit/test_schemas_records.py",
+   "tests/unit/test_transitions.py"
+  ],
+  "constraints": {
+   "oracle_rules": [
+    "problems.append(f\"{wid} ({u['state']}) was dispatched with dependencies {sorted(recorded, key=str)} but \"",
+    "problems.append(f\"{wid} closed on {gate} report {ev_id}, dispatched under dependencies \""
+   ],
+   "schema_keys": {
+    "src/aew/schemas/control.schema.json": [
+     "risk_class"
+    ],
+    "src/aew/schemas/role-archetype.schema.json": [
+     "dispatch_status",
+     "dispatchable"
+    ],
+    "src/aew/schemas/work-unit.schema.json": [
+     "initial_risk_class"
+    ]
+   },
+   "adr_mentions": {
+    "0008-non-mutating-tickets.md": 14,
+    "0006-role-archetypes-and-cards.md": 13,
+    "0003-ticket-state-machine.md": 12,
+    "0007-epic-story-hierarchy.md": 12,
+    "0009-harness-boundary-and-opencode-v2.md": 10,
+    "0010-execution-profiles.md": 6,
+    "0004-controlled-integration.md": 5,
+    "0005-authority-credentials-operator.md": 2,
+    "0011-hot-cold-control-state.md": 1
+   },
+   "error_codes": []
+  }
+ },
+ "scores": {
+  "src: seeds only": {
+   "predicted": 8,
+   "truth": 24,
+   "hit": 7,
+   "recall": 0.29,
+   "precision": 0.88,
+   "missed": [
+    "src/aew/cli/main.py",
+    "src/aew/engine/base.py",
+    "src/aew/engine/evidence_ops.py",
+    "src/aew/engine/gates.py",
+    "src/aew/engine/guide.py",
+    "src/aew/engine/hierarchy_ops.py",
+    "src/aew/engine/integration_ops.py",
+    "src/aew/engine/lock.py",
+    "src/aew/engine/store.py",
+    "src/aew/errors.py",
+    "src/aew/harness/bridge.py",
+    "src/aew/harness/lead_broker.py",
+    "src/aew/harness/procs.py",
+    "src/aew/knowledge/records.py",
+    "src/aew/operator.py",
+    "src/aew/policy/guardrails.py",
+    "src/aew/util.py"
+   ],
+   "extra": [
+    "src/aew/engine/dependencies.py"
+   ]
+  },
+  "src: seeds + radius 1": {
+   "predicted": 22,
+   "truth": 24,
+   "hit": 13,
+   "recall": 0.54,
+   "precision": 0.59,
+   "missed": [
+    "src/aew/cli/main.py",
+    "src/aew/engine/gates.py",
+    "src/aew/engine/guide.py",
+    "src/aew/engine/integration_ops.py",
+    "src/aew/engine/lock.py",
+    "src/aew/engine/store.py",
+    "src/aew/harness/bridge.py",
+    "src/aew/harness/lead_broker.py",
+    "src/aew/harness/procs.py",
+    "src/aew/operator.py",
+    "src/aew/policy/guardrails.py"
+   ],
+   "extra": [
+    "src/aew/cli/commands.py",
+    "src/aew/engine/context_ops.py",
+    "src/aew/engine/dependencies.py",
+    "src/aew/engine/freshness.py",
+    "src/aew/engine/resume_ops.py",
+    "src/aew/engine/role_ops.py",
+    "src/aew/harness/opencode/adapter.py",
+    "src/aew/harness/opencode/client.py",
+    "src/aew/workspace/worktrees.py"
+   ]
+  },
+  "tests: named symbols": {
+   "predicted": 21,
+   "truth": 5,
+   "hit": 3,
+   "recall": 0.6,
+   "precision": 0.14,
+   "missed": [
+    "tests/acceptance/test_at8_at13_hierarchy.py",
+    "tests/unit/test_guide.py"
+   ],
+   "extra": [
+    "tests/conftest.py",
+    "tests/helpers/fake_opencode.py",
+    "tests/helpers/harness_conformance.py",
+    "tests/helpers/lanes.py",
+    "tests/integration/test_engine_dispatch.py",
+    "tests/integration/test_workspaces.py",
+    "tests/regression/test_composition_walk.py",
+    "tests/regression/test_hierarchy_walk.py",
+    "tests/regression/test_m2_compositions.py",
+    "tests/regression/test_m3_dogfood_findings.py",
+    "tests/regression/test_m3_independent_audit.py",
+    "tests/regression/test_m3_intent_ingress.py",
+    "tests/unit/test_execution_policy.py",
+    "tests/unit/test_harness_units.py",
+    "tests/unit/test_lanes.py",
+    "tests/unit/test_opencode_units.py",
+    "tests/unit/test_schemas_records.py",
+    "tests/unit/test_transitions.py"
+   ]
+  }
+ },
+ "created_files": [
+  "src/aew/engine/assurance.py",
+  "src/aew/engine/assurance_ops.py",
+  "src/aew/engine/dispatch.py",
+  "src/aew/engine/primitives.py",
+  "src/aew/engine/reasons.py",
+  "tests/integration/test_dispatch_conformance.py",
+  "tests/regression/test_m4_dispatch.py",
+  "tests/unit/test_dispatch_decision.py",
+  "tests/unit/test_dispatch_registry_and_commit_check.py",
+  "tests/unit/test_doctor.py"
+ ]
+}

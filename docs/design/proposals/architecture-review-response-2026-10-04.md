@@ -1,7 +1,7 @@
 # AEW architecture review response and disposition
 
 **Date:** 2026-10-04  
-**Status:** Proposed designer/operator response for joint review; not governing until accepted  
+**Status:** Proposed designer/operator response for joint review; not governing until accepted. The lead developer's review requested in §15 is delivered ([developer review](../../archive/reviews/architecture-review-2026-10-04/developer-review.md), 2026-10-04: CONCUR WITH MODIFICATION); its three differences with this response and the frozen typed-surface design were reconciled by the designer on 2026-10-05 (register item Q13: MCP stays the first transport, I1 and I2 are built, the outbox sequencing is the accepted ADR-0012 and M4-D split); acceptance and the promotion of this response's decisions to their homes remain Q13.  
 **Source review:** [`architecture-review-2026-10-04.md`](../../archive/reviews/architecture-review-2026-10-04.md) — *AEW architecture review, ground up* (delivered as `REVIEW.md`; this response calls it that)  
 **Purpose:** Convert the wide-ranging architecture review into controlled project input without turning the review itself into a replacement roadmap or design authority.
 
@@ -665,6 +665,9 @@ Do **not** copy REVIEW.md §8 wholesale into the roadmap.
 The following items are allowed to affect near-term sequencing because they are shared primitives or gates:
 
 ### M4-B/C immediate corrections
+
+*Status (2026-10-05): I1 and I2 were built in M4-B (requirements ledger ARR-13, ARR-14; developer review §4).*
+
 - I1 writable-root validation;
 - I2 host-PID correctness;
 - other accepted M4-B review fixes already in scope.

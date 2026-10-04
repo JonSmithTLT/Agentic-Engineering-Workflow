@@ -1,0 +1,33 @@
+{
+  "target": "c5f7e8ac793a278db74207cc171133e0ade8dbbc",
+  "base": "abb9096b3b91f8ec92a9d2beed478aa7cac89833",
+  "review": "/mnt/c/users/jon smith/documents/github/AEW-P2d-review-c5f7e8a-1adc83",
+  "changed_files": [
+    "docs/implementation/adr-0011-implementation-plan.md",
+    "docs/implementation/implementation-status.md",
+    "docs/implementation/quickstart.md",
+    "src/aew/cli/commands.py",
+    "src/aew/engine/api.py",
+    "src/aew/engine/archive_ops.py",
+    "src/aew/engine/base.py",
+    "src/aew/engine/hierarchy_ops.py",
+    "src/aew/engine/migrate_ops.py",
+    "src/aew/engine/ports.py",
+    "src/aew/engine/resume_ops.py",
+    "src/aew/errors.py",
+    "src/aew/schemas/control.schema.json",
+    "src/aew/snapshot/fingerprint.py",
+    "tests/integration/test_archival.py",
+    "tests/integration/test_migration.py",
+    "tests/regression/test_m3_control_plane_scale.py",
+    "tests/unit/test_engine_composition.py",
+    "tools/perf/control_plane.py"
+  ],
+  "rebased_target": "1d79d19c880c091b7e07df531733fb4577e73b8e",
+  "rebased_base": "c62be57a08f97c3e15d52a722b8aab700b5b365e",
+  "target_tree": "06bf5714b99c7b35e6ec70580aeeb637bc7e625c",
+  "base_tree": "4075caa9f4e3ade27e043f226b3ad51a01d19845",
+  "pr": 21,
+  "verified_changed_file_count": 19,
+  "changed_file_mismatches": []
+}

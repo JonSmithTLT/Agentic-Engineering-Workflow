@@ -1,4 +1,5 @@
 import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
+import { ComparisonEntry } from '../components/ComparisonEntry';
 import { useSearchParams } from 'react-router-dom';
 import {
   CollectionView,
@@ -106,6 +107,7 @@ export function RunDetailPage({
           <div className="page-heading">
             <div>
               <h1>{r.id}</h1>
+              <ComparisonEntry invocation={r.id} />
               <p>
                 <SemanticValue value={r.role} known={invocationRoles} /> ·{' '}
                 <EntityAnchor entity={r.work} />

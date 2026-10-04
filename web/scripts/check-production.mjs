@@ -11,6 +11,7 @@ function files(dir) {
 }
 for (const file of files('dist')) {
   const text = fs.readFileSync(file, 'utf8');
+  if (/investigation-preview|\/api\/preview\/investigation|SRC-Removal|PKT-Retry|No delivery receipt supplied|Compare invocations/.test(text)) throw new Error(`Production investigation leakage: ${file}`);
   if (
     /aew-demo-transport|X-AEW-Demo-Fixture|journal-preview|\/api\/preview\/journal|FUTURE_JOURNAL_KIND|CLANGD-E871|Journal scenario|Explore bounded origin graph|journal-fixtures|W01_REPLAY_CATALOG|Manual replay|Contract Playground|scenario-config|mockServiceWorker|setupWorker|Demo data|project:demo\/aew|aew-demo|FUTURE_WORK_STATE|attacker\.invalid|Mock Service Worker/.test(
       text,

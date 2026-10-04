@@ -1,0 +1,12 @@
+{
+  "milestone": "W04",
+  "live_integration": "NOT_CLAIMED",
+  "backend_adoption": "PENDING",
+  "revision": "1.0",
+  "frontend_acceptance": "PENDING_INDEPENDENT_REVIEW",
+  "evidence": "Human explicitly requested PLEASE IMPLEMENT THIS PLAN: W04 revision 1.0, with its complete specification.",
+  "plan": "web/docs/design/plans/w04-comparison-context.md",
+  "date": "2026-10-03",
+  "operator_approval": "APPROVED",
+  "sha256": "74baf7b4a110d5fb0baab9bd6daa6f7eb3d0730f6248e74a050f4070ace649e7"
+}

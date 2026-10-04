@@ -1,4 +1,5 @@
 import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
+import { ComparisonEntry } from '../components/ComparisonEntry';
 import { DetailView, Reasons } from '../components/ProjectionViews';
 import { useState } from 'react';
 import { useSearchParams, Link, useLocation } from 'react-router-dom';
@@ -264,6 +265,7 @@ export function WorkDetailPage({
                 known={['epic', 'story', 'ticket']}
               />
               <h1>{work.title}</h1>
+              <ComparisonEntry work={work.id} />
               <CopyCli kind="work" id={work.id} />
             </div>
             <SemanticValue

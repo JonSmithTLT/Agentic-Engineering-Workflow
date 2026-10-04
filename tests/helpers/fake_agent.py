@@ -176,9 +176,11 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         shell = run(["cmd", "/c", "set"] if sys.platform == "win32" else ["env"])
         Path(s["shell_path"]).write_text(shell["stdout"], encoding="utf-8")
         return {"child_exit": out["exit"], "shell_exit": shell["exit"]}
-    if do == "read_parent_environ":  # Linux: try to read the supervisor's initial environment
-        pid = os.getppid() if s["pid"] == "ppid" else s["pid"]
+    if do == "read_parent_environ":  # Linux: try to read the supervisor's (or the Lead broker's) initial environment
+        pid = os.getppid() if s["pid"] in ("ppid", "gppid") else s["pid"]
         try:
+            if s["pid"] == "gppid":  # a Lead session's harness runs under its reaper; the broker is one level up
+                pid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
             data = Path(f"/proc/{pid}/environ").read_bytes().decode("latin-1")
             present = {item.split("=", 1)[0] for item in data.split("\x00") if "=" in item}
             return {"readable": True, "has_credential": bool(__import__("re").search(CRED, data)),
@@ -214,6 +216,20 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         kw: dict[str, Any] = {"creationflags": NO_WINDOW | 0x00000200} if sys.platform == "win32" else {}
         subprocess.Popen([sys.executable, "-c", code, s["pidfile"]], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+        wait_file(s["pidfile"], 30)
+        return {}
+    if do == "spawn_lingerer":  # a detached process that waits for the session to end, then tries to act on its own
+        code = ("import json, os, subprocess, sys, time\n"
+                "open(sys.argv[1], 'w').write(str(os.getpid()))\n"
+                "while not os.path.exists(sys.argv[2]): time.sleep(0.05)\n"
+                "env = {k: v for k, v in os.environ.items() if not k.startswith('AEW_LEAD_BROKER')}\n"
+                "r = subprocess.run(json.loads(sys.argv[3]), env=env, capture_output=True, text=True)\n"
+                "open(sys.argv[4], 'w').write(r.stdout + r.stderr)\n")
+        detached: dict[str, Any] = ({"creationflags": NO_WINDOW | 0x00000200} if sys.platform == "win32"
+                                    else {"start_new_session": True})  # its own process group or session
+        subprocess.Popen([sys.executable, "-c", code, s["pidfile"], s["go"], json.dumps([*aew_argv(), *s["args"]]),
+                          s["out"]], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         **detached)
         wait_file(s["pidfile"], 30)
         return {}
     if do == "cwd":

@@ -48,18 +48,13 @@ if TYPE_CHECKING:
     from aew.engine.ports import ArchivePort, ContextPacksPort, DispatchPort, GatesPort, InvocationsPort
 
 # Never handed to a supervisor (and therefore never to a harness or an agent).
-SCRUBBED_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
-                "AEW_RUN", "AEW_WORK_UNIT", "AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")
+SCRUBBED_ENV = K.CREDENTIAL_ENV
 ACK_WAIT_S = float(os.environ.get("AEW_LAUNCH_ACK_S", "90"))
 
 
 def supervisor_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """The launching process's environment minus every credential-bearing variable."""
-    env = dict(os.environ if base is None else base)
-    for key in list(env):
-        if key.upper() in SCRUBBED_ENV or K.CREDENTIAL_RE.search(env[key] or ""):
-            del env[key]
-    return env
+    return K.scrub_credentials(dict(os.environ if base is None else base))
 
 
 class Harness:

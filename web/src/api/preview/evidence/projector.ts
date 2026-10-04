@@ -1,3 +1,4 @@
+import { inspectionAssociations } from './associations';
 import { evidenceFixture } from './fixtures';
 import { evidenceCases, type EvidenceSource } from './schema';
 import { sha256 } from './digest';
@@ -15,6 +16,7 @@ export class EvidenceProjector {
     const n=(this.counts.get(url.href)??0)+1;this.counts.set(url.href,n);
     if(['refresh-error','stale'].includes(name)&&n>(/^\/sources\/[^/]+$/.test(route)?2:1))return {status:500};
     const f=evidenceFixture(name,this.accepted),send=(data:unknown)=>({status:200,body:evidenceEnvelope(data,project,revision)});
+    f.associations=structuredClone(inspectionAssociations);
     const rm=/^\/references\/([^/]+)$/.exec(route);
     if(rm){const a=f.associations.find(a=>a.reference_id===rm[1]);return a?send(a):{status:404};}
     const m=/^\/sources\/([^/]+)(?:\/artifacts(?:\/([^/]+)\/excerpt)?)?$/.exec(route);

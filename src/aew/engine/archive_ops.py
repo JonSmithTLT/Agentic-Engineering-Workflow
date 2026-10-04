@@ -47,6 +47,7 @@ ANNOTATION_SCHEMA = "aew/annotation/v1"
 LEAD_SCHEMA = "aew/lead-archive/v1"
 LEAD_KINDS = frozenset({"lead", "handoff_offer"})
 RECENT = 20
+BUSY_WAIT_IN_TXN_S = 2.0  # how long a transaction waits on a busy history index before building a private one
 ACC_MOD = 2 ** 256
 
 
@@ -639,9 +640,12 @@ class Archive:
             # are unchanged (any write to the file changes its size or time, and every result is still authenticated).
             if self._synced and self._synced[0] == key and self._synced[1] == self._index_stat():
                 return self._synced[2]
-            index = HistoryIndex(self.k.aew_root)
+            # Inside the control lock, never wait long on the derived index: a busy one is replaced by a private
+            # index built from the history, so an authoritative commit does not fail on it (area 5 F3).
+            inside = bool(self.k.store.held)
+            index = HistoryIndex(self.k.aew_root, **({"timeout": BUSY_WAIT_IN_TXN_S} if inside else {}))
             try:
-                index.sync(root)
+                index.sync(root, private_when_busy=inside)
                 self._synced = (key, self._index_stat(), index)
                 return index
             except IntegrityError:

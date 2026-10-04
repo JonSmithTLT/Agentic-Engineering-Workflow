@@ -67,8 +67,11 @@ def run_aew(*args: str, cwd: Path | None = None, env: dict[str, str] | None = No
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
         kwargs["start_new_session"] = True
+    # No terminal here, so a credential a command issues comes back on stdout only with --print-credential (refused,
+    # and not needed, inside a Lead session).
+    printing = [] if (env or {}).get("AEW_LEAD_BROKER") else ["--print-credential"]
     proc = subprocess.run(
-        [sys.executable, "-m", "aew", *args],
+        [sys.executable, "-m", "aew", *printing, *args],
         cwd=cwd,
         env=clean_env(env),
         input=input,

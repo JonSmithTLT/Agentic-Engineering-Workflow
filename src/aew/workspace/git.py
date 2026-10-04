@@ -21,6 +21,7 @@ from typing import Any
 
 from aew import profile
 from aew.errors import GitError
+from aew.harness.contract import scrub_credentials
 
 AEW_IDENTITY = {"name": "AEW Engine", "email": "aew-engine@invalid"}
 
@@ -99,7 +100,7 @@ def configured_drivers(cwd: Path, env: dict[str, str] | None = None) -> list[dic
     system, global, repository and worktree files, and the worktree's HEAD (an ``includeIf "onbranch:..."`` follows
     it). A read whose inputs were not all known before it ran is not cached, and neither is one with an include this
     cannot resolve: the next call reads again (M4-B review)."""
-    full = {**os.environ, **(env or {}), "LC_ALL": "C"}
+    full = {**scrub_credentials(dict(os.environ)), **(env or {}), "LC_ALL": "C"}
     key = f"{cwd}\0{_config_env_key(full)}"
     cached = _drivers.get(key)
     if cached is not None and cached["signature"] is not None and _signature(cached["files"]) == cached["signature"]:
@@ -161,7 +162,10 @@ def git(
     check: bool = True,
     input: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    full_env = dict(os.environ)
+    if not Path(cwd).is_dir():  # a worktree removed outside AEW: an AEW error, not a traceback (area 4 F3)
+        raise GitError(f"git {args[0] if args else ''}: the directory {cwd} does not exist (removed outside AEW?)",
+                       cwd=str(cwd))
+    full_env = scrub_credentials(dict(os.environ))  # git and its hooks never see an AEW credential (ADR-0009)
     full_env["GIT_TERMINAL_PROMPT"] = "0"
     full_env["LC_ALL"] = "C"
     if env:

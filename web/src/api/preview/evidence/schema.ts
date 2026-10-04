@@ -4,7 +4,7 @@ import { evidence, entityRef, timestamp, id } from '../../schema.ts';
 // @ts-expect-error Explicit extension supports the pinned artifact runner.
 import { sha256 } from './digest.ts';
 const digest = z.string().regex(/^[a-f0-9]{64}$/), meta = z.string().max(512).nullable();
-export const evidenceCases = ['story','large','missing','partial','denied','not-found','historical-unavailable','unknown','malformed','hash-mismatch','binding-mismatch','refresh-error','stale','hostile','empty'] as const;
+export const evidenceCases = ['story','large','missing','partial','denied','not-found','historical-unavailable','unknown','unsupported','malformed','hash-mismatch','binding-mismatch','refresh-error','stale','hostile','empty'] as const;
 export const origin = z.strictObject({ contract: digest, case: id, record_id: id, item_id: id.nullable(), kind: z.string().max(64), role: z.string().max(64), evidence_id: id, source_id: id.nullable(), snapshot_id: id.nullable(), visibility_scope: id });
 export const association = z.strictObject({ reference_id: id, origin, source_ids: z.array(id).max(50), complete: z.boolean() });
 export const sourceSummary = z.strictObject({ id, evidence_id: id, snapshot_id: id, captured_at: timestamp, visibility_scope: id, source_revision: meta, work: entityRef });

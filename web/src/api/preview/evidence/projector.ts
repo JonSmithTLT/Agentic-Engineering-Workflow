@@ -13,7 +13,7 @@ export class EvidenceProjector {
     if(name==='not-found')return {status:404};
     if(name==='historical-unavailable'&&route!=='/sources')return {status:410};
     const n=(this.counts.get(url.href)??0)+1;this.counts.set(url.href,n);
-    if(['refresh-error','stale'].includes(name)&&n>1)return {status:500};
+    if(['refresh-error','stale'].includes(name)&&n>(/^\/sources\/[^/]+$/.test(route)?2:1))return {status:500};
     const f=evidenceFixture(name,this.accepted),send=(data:unknown)=>({status:200,body:evidenceEnvelope(data,project,revision)});
     const rm=/^\/references\/([^/]+)$/.exec(route);
     if(rm){const a=f.associations.find(a=>a.reference_id===rm[1]);return a?send(a):{status:404};}

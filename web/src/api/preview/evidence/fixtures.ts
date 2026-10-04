@@ -11,7 +11,8 @@ export const referenceAssociations: Association[] = [
   ...[['Removal','CLANGD-E871','ES-Removal'],['Retry','CLANGD-E875','ES-Discovery'],['Later','CLANGD-E875','ES-Discovery']].map(([label,evidence_id,source]) => ({reference_id:`REF-INV-${label}`,origin:{contract:investigationDigest,case:'story',record_id:`CLANGD-INV-${label}`,item_id:null,kind:'evidence_reference',role:'invocation_evidence',evidence_id,source_id:`SRC-${label}`,snapshot_id:`SNAP-${label}`,visibility_scope:'fictional-authorized'},source_ids:[source],complete:true})),
   {reference_id:'REF-J05-E875-Historical',origin:{contract:journalDigest,case:'history-fixture',record_id:'J-05',item_id:null,kind:'evidence_reference',role:'supporting',evidence_id:'CLANGD-E875',source_id:null,snapshot_id:'SNAP-Old',visibility_scope:'historical-authorized'},source_ids:['ES-Discovery-Old'],complete:true},
 ];
-export function findAssociation(expected: Origin) { return referenceAssociations.find(a => JSON.stringify(a.origin) === JSON.stringify(expected)); }
+export function sameOrigin(a: Origin,b: Origin) { return Object.keys(a).length===Object.keys(b).length && Object.entries(a).every(([key,value])=>b[key as keyof Origin]===value); }
+export function findAssociation(expected: Origin) { return referenceAssociations.find(a => sameOrigin(a.origin,expected)); }
 export function evidenceFixture(name = 'story', accepted: EvidenceSource['evidence'][] = []) {
   const sources: EvidenceSource[] = [], artifacts: Artifact[] = [], bodies: Record<string,string> = {};
   const add = (label:string, eid:string, claim:string, text:string, media='text/x-log') => {
@@ -31,6 +32,8 @@ export function evidenceFixture(name = 'story', accepted: EvidenceSource['eviden
   if(name==='missing') artifacts.splice(0);
   if(name==='partial') {sources[0].artifacts_complete=false;artifacts[0].availability='UNAVAILABLE';artifacts[0].explanation=null;}
   if(name==='unknown') {artifacts[0].availability='FUTURE_AVAILABILITY';artifacts[0].media_type='future/media';}
+  if(name==='unsupported') artifacts[0].media_type='application/pdf';
+  if(name==='stale') sources[0].evidence.currentness='STALE';
   if(name==='malformed') (sources[0].evidence as unknown as Record<string,unknown>).raw_prompt='excluded';
   if(name==='binding-mismatch') artifacts[0].evidence_id='WRONG-EVIDENCE';
   if(name==='empty') sources.splice(0);

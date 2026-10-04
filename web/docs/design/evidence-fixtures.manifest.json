@@ -27,6 +27,9 @@
     "unknown": {
       "sha256": "e96fa2b58f2dd15291f6fc01dc47ab7ede89848ccc9d9551f3adfd64b3e612fd"
     },
+    "unsupported": {
+      "sha256": "d02539bd5517f3e379476b9b95b480574f517f32ea507d2081b837f7813f4faf"
+    },
     "malformed": {
       "sha256": "2ef6ecd01a63bd4ba959a706f0af36c8ee53151fdf883a8370317315ab45109e"
     },
@@ -40,7 +43,7 @@
       "sha256": "69a793a4c99232bc86a0825f1f6d17f8f9ff91347b0c98b265b0928fe3525809"
     },
     "stale": {
-      "sha256": "69a793a4c99232bc86a0825f1f6d17f8f9ff91347b0c98b265b0928fe3525809"
+      "sha256": "cb160a1c8810bf2c25f89c356f8ab80038efdcb5453a5655cc65f62c72b1fdea"
     },
     "hostile": {
       "sha256": "5f9ca3005d4588e42612c62a74b3dce053723fc7d61c99a9e92c0f7bcff62c92"

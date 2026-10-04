@@ -271,7 +271,8 @@ def aew_env(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 def aew(repo: Path, *args: str, env: dict[str, str] | None = None, stdin: str | None = None,
         timeout: float = 300) -> Any:
-    res = subprocess.run([sys.executable, "-m", "aew", "-C", str(repo), *args], capture_output=True, text=True,
+    res = subprocess.run([sys.executable, "-m", "aew", "--print-credential", "-C", str(repo), *args],
+                         capture_output=True, text=True,
                          encoding="utf-8", env=aew_env(env), input=stdin, timeout=timeout,
                          stdin=None if stdin is not None else subprocess.DEVNULL, **NO_WINDOW)
     if res.returncode != 0:

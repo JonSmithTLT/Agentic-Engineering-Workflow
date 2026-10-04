@@ -580,5 +580,6 @@ def an_agent_cannot_perform_lead_operations(lab, driver, tmp_path):
     rev = lab.project.rev()
     lab.wait(run)
     codes = [code_of(lab.step(run, i)) for i in range(3)]
-    assert codes == ["USAGE", "PERMISSION_DENIED", "PERMISSION_DENIED"], codes
+    # `lead acquire` issues a credential, and an agent has no terminal for it: refused before anything is issued
+    assert codes == ["USAGE", "PERMISSION_DENIED", "USAGE"], codes
     assert lab.project.rev() == rev

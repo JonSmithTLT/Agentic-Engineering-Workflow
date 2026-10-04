@@ -60,3 +60,7 @@ On desktop and phone, use only the product UI:
 - Exercise light/dark, long/unknown/archived/empty/error states, keyboard, narrow phone and actual 200% zoom. Confirm concealed detail reads stop and Result/Detail switching retains accepted revalidation behavior.
 
 Record steps, IDs, findings and disposition. Implementer checks and green CI do not substitute for this review. All future API and Knowledge design changes remain outside this improvement.
+
+## Independent review received
+
+The supplied main-line review is preserved in `web/docs/reviews/work-density-checkpoint-1-independent-review.md`: **CHANGES REQUESTED**, confined to phone Results → Detail focus/scroll (F1) and off-screen Results focus after browser Back (F2). Its independent pinned rebuild passed and matched the original build byte for byte. All other covered reviewer tasks held; its listed coverage limits remain explicit. Corrections and their exact-source verification are recorded separately; independent re-review remains pending.

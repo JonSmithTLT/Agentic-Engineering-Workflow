@@ -131,6 +131,34 @@ try {
       assert.equal(await page.locator('.workspace-selection').getAttribute('role'), 'status');
     }
   });
+  await check('phone Work child selection and history restore visible focus without a service worker', {width:390, height:844}, async page => {
+    await page.goto(base + '/work?fixture=F1&selected=S-0001');
+    await page.getByRole('link', {name:'Inspect children',exact:true}).click();
+    const results = page.getByRole('region', {name:'Investigation results',exact:true});
+    const child = results.getByRole('link', {name:'Validate projection consistency',exact:true});
+    await child.waitFor();
+    await page.evaluate(() => window.scrollTo(0,652));
+    await child.focus(); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
+    const visibleFocus = () => page.evaluate(() => {
+      const rect = document.activeElement.getBoundingClientRect();
+      return rect.top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && rect.bottom <= innerHeight;
+    });
+    assert(await visibleFocus(), 'Detail heading is visible after selecting a child from scrolled Results');
+    await page.screenshot({path:`${out}/work-density-phone-detail-focus.png`});
+    await page.goBack();
+    await page.waitForFunction(() => document.activeElement?.tagName === 'A' && document.activeElement?.textContent === 'Validate projection consistency');
+    assert(await visibleFocus(), 'Back restores the visible child link after native history scroll restoration');
+    await page.screenshot({path:`${out}/work-density-phone-back-focus.png`});
+    await page.goForward();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
+    assert(await visibleFocus());
+    await page.getByRole('button', {name:'Results',exact:true}).click();
+    await page.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement?.textContent === 'Work');
+    await page.getByRole('button', {name:'Detail',exact:true}).click();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
+    assert(await visibleFocus(), 'Switching back to the same selected detail also restores visible heading focus');
+  });
   fs.writeFileSync(`${out}/result.json`, JSON.stringify({checks, service_workers: 'BLOCKED', browser: browser.version(), independent_review: 'fixing-diff re-check pending'}, null, 2) + '\n');
 } finally {
   if (browser) await browser.close(); server.kill('SIGTERM'); fs.closeSync(log);

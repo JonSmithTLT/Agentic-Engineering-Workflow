@@ -518,6 +518,27 @@ try {
       await page.getByRole('link', {name:'Validate projection consistency',exact:true}).click();
       await detail.getByRole('heading', {name:'Validate projection consistency',exact:true}).waitFor();
       assert.equal(new URL(page.url()).searchParams.get('work_pane'), 'detail');
+      if (viewport.width < 1024) {
+        const heading = detail.getByRole('heading', {name:'Validate projection consistency',exact:true});
+        await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
+        assert(await heading.evaluate(el => {
+          const top = el.getBoundingClientRect().top;
+          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < innerHeight;
+        }), 'Phone selection focuses the visible record heading below the header');
+        await shot('work-density-phone-detail-focus');
+        await page.goBack();
+        const child = page.getByRole('region', {name:'Investigation results',exact:true}).getByRole('link', {name:'Validate projection consistency',exact:true});
+        await page.waitForFunction(() => document.activeElement?.textContent === 'Validate projection consistency' && document.activeElement?.tagName === 'A');
+        assert(await child.evaluate(el => {
+          const top = el.getBoundingClientRect().top;
+          return top >= (document.querySelector('.project-header')?.getBoundingClientRect().bottom ?? 0) && top < innerHeight;
+        }), 'Back restores focus to the visible selected Results link');
+        await shot('work-density-phone-back-focus');
+        await page.goForward();
+        await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');
+      } else {
+        assert(await page.getByRole('link', {name:'Validate projection consistency',exact:true}).evaluate(el => el === document.activeElement), 'Desktop selection retains row focus');
+      }
       await shot('work-density-' + viewport.width);
     }
     assert(!requests.some(r => new URL(r.url).pathname.startsWith('/api/') && new URL(r.url).searchParams.has('work_pane')));

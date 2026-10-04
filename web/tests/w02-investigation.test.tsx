@@ -112,14 +112,20 @@ describe('W02 investigation composed behavior', () => {
       expect(location).toContain('parent=S-0001');
       expect(location).toContain('work_pane=results');
       expect(location).not.toContain('state=');
-      expect(document.activeElement).toBe(within(results).getByRole('heading', { name: 'Work' }));
+      await waitFor(() => expect(document.activeElement).toBe(within(results).getByRole('heading', { name: 'Work' })));
       expect(mounted.paths.some(path => path.includes('work_pane'))).toBe(false);
       mounted.rendered.unmount(); mounted.client.clear();
       mount(<WorkPage />, location);
       await screen.findByRole('region', { name: 'Investigation results' });
-      fireEvent.click(await screen.findByRole('link', { name: 'Validate projection consistency' }));
+      const child = await screen.findByRole('link', { name: 'Validate projection consistency' });
+      fireEvent.click(child);
       await screen.findByRole('region', { name: 'Selected record detail' });
       expect(screen.getByLabelText('Location').textContent).toContain('work_pane=detail');
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Validate projection consistency' })));
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      await waitFor(() => expect(document.activeElement).toBe(child));
+      fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Validate projection consistency' })));
     } finally { vi.unstubAllGlobals(); }
   });
   it('leads Work with its supplied content and retains metadata without duplicate selected-target copying', async () => {

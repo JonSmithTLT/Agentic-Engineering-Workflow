@@ -51,6 +51,8 @@ Work's explicit `work-summary` DetailView variant renders supplied identity/cont
 
 Work phone pane state uses allowlisted `work_pane=results|detail`; it is presentation only and never enters workRoute. Inspect children selects Results, preserves parent selection, and focuses the results heading below the shared header. Copied/reloaded links restore the pane. Work entity links from an explicitly selected pane return to Detail, including selecting the same record. Loaded-page/filter absence is labeled separately from unavailable detail. No API, paging, graph or polling policy changes.
 
+Phone Results selection and explicit Detail switching focus the matching loaded record heading below the sticky header. Browser Back restores the originating Results link when it remains loaded; otherwise the visible Results heading is the fallback. Focus restoration waits for history scroll restoration and asynchronous detail loading, is cancelled on navigation, and does not repeat on refresh. Desktop Results selection preserves row focus.
+
 ## Recorded execution interaction/state ledger
 
 Stacked execution table cells use natural height and wrapping, matching the Evidence/source-chooser phone tables. Every table selection remains reachable by pointer and keyboard at narrow/zoomed widths. Recorder Controls activity is copied/reloaded through `execution_control_tab`; other disclosed hosts own independent activity state. Direct packet return clears inspector-only packet parameters.

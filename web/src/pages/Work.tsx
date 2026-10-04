@@ -69,7 +69,7 @@ function WorkResultsPage() {
     <>
       <div className="page-heading">
         <div>
-          <h1>Work</h1>
+          <h1 tabIndex={-1}>Work</h1>
           <p>Inspect active work and recent finished records.</p>
         </div>
       </div>
@@ -270,7 +270,7 @@ export function WorkDetailPage({
                 value={work.kind}
                 known={['epic', 'story', 'ticket']}
               />
-              <h1>{work.title}</h1>
+              <h1 tabIndex={-1} data-work-heading={work.id}>{work.title}</h1>
               <ComparisonEntry work={work.id} />
               <CopyCli kind="work" id={work.id} />
             </div>

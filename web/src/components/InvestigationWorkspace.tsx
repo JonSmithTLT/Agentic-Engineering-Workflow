@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigationType, useSearchParams } from 'react-router-dom';
 import { CopyDashboardLink } from './CopyDashboardLink';
 import { focusBelowHeader } from './InvestigationTabs';
 const WorkspaceContext = createContext<string | null>(null);
@@ -36,6 +36,9 @@ export function InvestigationWorkspace({
     [pane, setPane] = useState('results');
   const heading = useRef<HTMLHeadingElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const resultLink = useRef<HTMLAnchorElement | null>(null);
+  const navigationType = useNavigationType();
   const workPane = collection === 'work' ? params.get('work_pane') : null;
   const activePane =
     workPane === 'results' || workPane === 'detail' ? workPane : pane;
@@ -49,14 +52,44 @@ export function InvestigationWorkspace({
       });
   }
   useEffect(() => {
-    if (workPane === 'results') {
-      const target = resultsRef.current?.querySelector<HTMLElement>('h1');
-      if (target) {
-        target.tabIndex = -1;
-        focusBelowHeader(target);
+    if (collection !== 'work') return;
+    const showingResults = workPane === 'results';
+    if (!showingResults && (!narrow || !selected || activePane !== 'detail')) return;
+    const root = showingResults ? resultsRef.current : detailRef.current;
+    if (!root) return;
+    let cancelled = false;
+    let frame = 0;
+    let scheduled = false;
+    function target() {
+      if (showingResults) {
+        const link = resultLink.current;
+        return navigationType === 'POP' && link?.isConnected && root!.contains(link)
+          ? link : root!.querySelector<HTMLElement>('h1');
       }
+      return [...root!.querySelectorAll<HTMLElement>('[data-work-heading]')]
+        .find(element => element.dataset.workHeading === selected) ?? null;
     }
-  }, [workPane]);
+    const schedule = () => {
+      if (scheduled || !target()) return;
+      scheduled = true;
+      // History restores document scroll after the route update. Wait for that
+      // restoration before bringing the actual focus target below the header.
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (!cancelled) focusBelowHeader(target());
+          observer.disconnect();
+        });
+      });
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-work-heading'] });
+    schedule(); // Detail may already be cached; otherwise wait for its heading.
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [collection, workPane, selected, narrow, activePane, navigationType]);
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 1023px)');
     if (!media) return;
@@ -120,6 +153,11 @@ export function InvestigationWorkspace({
       >
         <section
           ref={resultsRef}
+          onClickCapture={event => {
+            if (collection !== 'work') return;
+            const link = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
+            if (link && new URL(link.href).searchParams.has('selected')) resultLink.current = link;
+          }}
           className="investigation-results"
           hidden={narrow && selected !== '' && activePane === 'detail'}
           aria-label="Investigation results"
@@ -128,6 +166,7 @@ export function InvestigationWorkspace({
         </section>
         {selected && (
           <section
+            ref={detailRef}
             className="investigation-detail"
             hidden={narrow && activePane === 'results'}
             aria-label="Selected record detail"

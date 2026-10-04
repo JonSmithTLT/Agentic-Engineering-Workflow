@@ -46,19 +46,27 @@ def trusted_drivers() -> frozenset[str]:
     return _trusted
 
 
-def _config_files(cwd: Path, origins: Iterable[str]) -> list[str]:
-    """The configuration files that can define a driver at ``cwd``: the repository's and worktree's, the global and
-    system ones, and every file the last read named (includes)."""
-    home = Path.home()
-    xdg = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
-    files = [os.environ.get("GIT_CONFIG_GLOBAL") or str(home / ".gitconfig"), str(xdg / "git" / "config"),
-             os.environ.get("GIT_CONFIG_SYSTEM") or "/etc/gitconfig", *origins]
+# The environment git reads configuration from: part of the cache key (a call may carry its own GIT_CONFIG_*).
+_CONFIG_ENV = ("HOME", "USERPROFILE", "XDG_CONFIG_HOME", "PREFIX", "GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE")
+INCLUDE_KEY = re.compile(r"^(include|includeif\..*)\.path$", re.IGNORECASE)
+
+
+def _config_env_key(env: dict[str, str]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((k, v) for k, v in env.items() if k in _CONFIG_ENV or k.startswith("GIT_CONFIG")))
+
+
+def _base_files(cwd: Path, env: dict[str, str]) -> list[str]:
+    """The configuration files git reads whatever they contain: system, global, repository and worktree."""
+    home = Path(env.get("HOME") or Path.home())
+    xdg = Path(env.get("XDG_CONFIG_HOME") or home / ".config")
+    files = [env.get("GIT_CONFIG_GLOBAL") or str(home / ".gitconfig"), str(xdg / "git" / "config"),
+             env.get("GIT_CONFIG_SYSTEM") or "/etc/gitconfig"]
     proc = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-dir"], cwd=cwd,
-                          capture_output=True, env={**os.environ, "LC_ALL": "C"})
+                          capture_output=True, env=env)
     if proc.returncode == 0:
         common, gitdir = (proc.stdout.decode("utf-8", "replace").splitlines() + ["", ""])[:2]
-        files += [str(Path(common) / "config"), str(Path(gitdir) / "config.worktree")]
-    return sorted(set(files))
+        files += [str(Path(common) / "config"), str(Path(gitdir) / "config.worktree"), str(Path(gitdir) / "HEAD")]
+    return files
 
 
 def _signature(files: list[str]) -> tuple[Any, ...]:
@@ -66,37 +74,66 @@ def _signature(files: list[str]) -> tuple[Any, ...]:
     for f in files:
         try:
             st = os.stat(f)
-            out.append((f, st.st_mtime_ns, st.st_size))
+            out.append((f, st.st_mtime_ns, st.st_size, st.st_ino))
         except OSError:
             out.append((f, None))
     return tuple(out)
 
 
-def configured_drivers(cwd: Path) -> list[dict[str, str]]:
+def _include_target(value: str, origin: Path, env: dict[str, str]) -> str | None:
+    """Where an include points (git's rules: ``~/`` is home, a relative path is relative to the including file's
+    directory). None when it cannot be resolved here (``%(prefix)/``): the caller then never caches."""
+    if "%(" in value:
+        return None
+    if value.startswith("~/") or value == "~":
+        return str(Path(env.get("HOME") or Path.home()) / value[2:])
+    path = Path(value)
+    return str(path if path.is_absolute() else origin.parent / path)
+
+
+def configured_drivers(cwd: Path, env: dict[str, str] | None = None) -> list[dict[str, str]]:
     """Every filter, diff and merge driver key in the effective configuration at ``cwd``, with the file defining it.
-    Read again whenever one of the configuration files changes (a few ``stat`` calls per git call)."""
-    key = str(cwd)
+
+    Cached per directory and configuration environment, and re-read whenever any input of the last read changes:
+    every file git read (whatever keys it holds), every include's target (even one that is empty or missing), the
+    system, global, repository and worktree files, and the worktree's HEAD (an ``includeIf "onbranch:..."`` follows
+    it). A read whose inputs were not all known before it ran is not cached, and neither is one with an include this
+    cannot resolve: the next call reads again (M4-B review)."""
+    full = {**os.environ, **(env or {}), "LC_ALL": "C"}
+    key = f"{cwd}\0{_config_env_key(full)}"
     cached = _drivers.get(key)
-    if cached is not None and _signature(cached["files"]) == cached["signature"]:
+    if cached is not None and cached["signature"] is not None and _signature(cached["files"]) == cached["signature"]:
         return cached["found"]
     try:
-        files = _config_files(cwd, cached["files"] if cached else [])
-        before = _signature(files)  # taken before reading, so a change made during the read is seen next time
-        proc = subprocess.run(["git", "config", "--show-origin", "-z", "--get-regexp", r"^(filter|diff|merge)\."],
-                              cwd=cwd, capture_output=True, env={**os.environ, "LC_ALL": "C"})
+        known = sorted(set(_base_files(cwd, full)) | set(cached["files"] if cached else []))
+        before = _signature(known)  # taken before reading, so a change made during the read is seen next time
+        proc = subprocess.run(["git", "config", "--list", "--show-origin", "-z"], cwd=cwd, capture_output=True,
+                              env=full)
     except OSError:  # not a directory (yet): git itself reports it
         return []
-    found = []
+    found: list[dict[str, str]] = []
+    needed: set[str] = set()
+    resolvable = True
     items = proc.stdout.decode("utf-8", "replace").split("\0") if proc.returncode == 0 else []
     for origin, entry in zip(items[0::2], items[1::2], strict=False):
         name, _, value = entry.partition("\n")
+        raw = origin.removeprefix("file:")
+        where = Path(raw) if Path(raw).is_absolute() else cwd / raw  # the repository's own config is relative
+        if origin.startswith("file:"):
+            needed.add(str(where))
+        if INCLUDE_KEY.match(name):
+            target = _include_target(value, where, full)
+            if target is None:
+                resolvable = False
+            else:
+                needed.add(target)
         m = DRIVER_KEY.match(name)
         if m:
-            where = Path(origin.removeprefix("file:"))  # the repository's own config is reported relative to cwd
             found.append({"kind": m.group(1), "driver": m.group(2), "key": m.group(3), "config": name,
-                          "value": value, "origin": (where if where.is_absolute() else cwd / where).as_posix()})
-    added = sorted({d["origin"] for d in found} - set(files))  # an include named for the first time
-    _drivers[key] = {"found": found, "files": files + added, "signature": before + _signature(added)}
+                          "value": value, "origin": where.as_posix()})
+    complete = resolvable and proc.returncode == 0 and needed <= set(known)
+    _drivers[key] = {"found": found, "files": sorted(set(known) | needed),
+                     "signature": before if complete else None}
     return found
 
 
@@ -109,11 +146,11 @@ def _hooks_off() -> str:
     return _no_hooks
 
 
-def safe_config(cwd: Path) -> list[str]:
+def safe_config(cwd: Path, env: dict[str, str] | None = None) -> list[str]:
     """``-c`` arguments that keep git from running any configured program but the trusted drivers."""
     pairs = [("core.fsmonitor", "false"), ("core.hooksPath", _hooks_off()), ("diff.external", ""),
              ("commit.gpgSign", "false"), ("tag.gpgSign", "false")]
-    pairs += [(d["config"], NEUTRAL[d["key"]]) for d in configured_drivers(cwd) if d["driver"] not in _trusted]
+    pairs += [(d["config"], NEUTRAL[d["key"]]) for d in configured_drivers(cwd, env) if d["driver"] not in _trusted]
     return [arg for k, v in pairs for arg in ("-c", f"{k}={v}")]
 
 
@@ -134,7 +171,7 @@ def git(
     if args and args[0] in DIFF_COMMANDS:
         args = (args[0], "--no-ext-diff", "--no-textconv", *args[1:])
     with profile.phase("git"):
-        proc = subprocess.run(["git", *safe_config(cwd), *args], cwd=cwd, env=full_env, capture_output=True,
+        proc = subprocess.run(["git", *safe_config(cwd, env), *args], cwd=cwd, env=full_env, capture_output=True,
                               input=input)
     if check and proc.returncode != 0:
         raise GitError(

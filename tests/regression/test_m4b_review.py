@@ -135,6 +135,85 @@ def test_a_driver_configured_while_aew_runs_is_switched_off_at_once(tmp_path):
     assert not marks.exists()
 
 
+class Late:
+    """A repository whose ``*.dat`` files name filter ``late``, defined nowhere yet; ``arm`` defines it later in a
+    given configuration file, with a command that leaves a marker if it ever runs."""
+
+    def __init__(self, root: Path) -> None:
+        self.repo = root / "repo"
+        self.repo.mkdir()
+        self.marker = root / "ran"
+        plain_git("init", "-q", "-b", "main", cwd=self.repo)
+        (self.repo / ".gitattributes").write_text("*.dat filter=late\n", encoding="utf-8", newline="\n")
+        (self.repo / "a.dat").write_text("one\n", encoding="utf-8", newline="\n")
+        plain_git("add", "-A", cwd=self.repo)
+        plain_git("commit", "-qm", "base", cwd=self.repo)
+
+    def arm(self, config: Path, section: str = "filter \"late\"") -> None:
+        with config.open("a", encoding="utf-8", newline="\n") as f:
+            # In a config file an unquoted ';' starts a comment: the value is quoted, and \" keeps the inner quotes
+            # (the marker path may contain a space).
+            f.write(f'[{section}]\n\tclean = "sh -c \'touch \\"{self.marker.as_posix()}\\"; cat\'"\n')
+
+    def snapshot(self, **env: str) -> None:
+        (self.repo / "a.dat").write_text("changed\n", encoding="utf-8", newline="\n")
+        F.working_tree_id(self.repo) if not env else git.git("add", "-A", cwd=self.repo, env=env)
+
+
+@pytest.fixture
+def late(tmp_path):
+    git.trust_drivers(())
+    return Late(tmp_path)
+
+
+def test_a_driver_added_to_an_include_that_defined_none_is_switched_off(late, tmp_path):
+    """Second review of R-P1: the cache watched an include only once it defined a driver."""
+    inc = tmp_path / "extra.cfg"
+    inc.write_text("[core]\n\tautocrlf = false\n", encoding="utf-8", newline="\n")
+    plain_git("config", "include.path", str(inc), cwd=late.repo)
+    late.snapshot()  # AEW has read the configuration, and the include defined no driver
+    late.arm(inc)
+    late.snapshot()
+    assert not late.marker.exists()
+
+
+def test_a_driver_in_an_include_that_did_not_exist_yet_is_switched_off(late, tmp_path):
+    inc = tmp_path / "missing.cfg"  # named, but absent when AEW reads
+    plain_git("config", "include.path", "../../missing.cfg", cwd=late.repo)  # relative to .git/config
+    late.snapshot()
+    late.arm(inc)
+    late.snapshot()
+    assert not late.marker.exists()
+
+
+def test_a_driver_in_a_nested_include_added_later_is_switched_off(late, tmp_path):
+    outer, inner = tmp_path / "outer.cfg", tmp_path / "inner.cfg"
+    outer.write_text("", encoding="utf-8")
+    plain_git("config", "include.path", str(outer), cwd=late.repo)
+    late.snapshot()
+    outer.write_text(f"[include]\n\tpath = {inner.as_posix()}\n", encoding="utf-8", newline="\n")
+    late.arm(inner)
+    late.snapshot()
+    assert not late.marker.exists()
+
+
+def test_a_driver_that_applies_only_on_another_branch_is_switched_off_after_a_switch(late, tmp_path):
+    side = tmp_path / "side.cfg"
+    late.arm(side)
+    plain_git("config", "includeIf.onbranch:side.path", str(side), cwd=late.repo)
+    late.snapshot()  # on main the include does not apply
+    plain_git("stash", "-q", cwd=late.repo)
+    plain_git("checkout", "-q", "-b", "side", cwd=late.repo)  # now it does; no configuration file changed
+    late.snapshot()
+    assert not late.marker.exists()
+
+
+def test_a_driver_defined_in_the_calls_own_environment_is_switched_off(late):
+    late.snapshot(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="filter.late.clean",
+                  GIT_CONFIG_VALUE_0=f"sh -c 'touch \"{late.marker.as_posix()}\"; cat'")
+    assert not late.marker.exists()
+
+
 def test_a_base_that_needs_an_untrusted_filter_is_described_with_the_way_forward(hostile):
     found = git.untrusted_filters(hostile.repo, hostile.base)
     assert [f["driver"] for f in found] == ["p", "x"]

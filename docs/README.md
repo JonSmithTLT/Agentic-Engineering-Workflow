@@ -91,7 +91,7 @@ the decision sections named above. Everything in [`archive/`](archive/) is a fin
 [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D) ·
 [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b)
 
-**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (provisional; the dashboard itself lives in `web/`).
+**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.2; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. Start at the [web documentation index](../web/docs/README.md) for development, verification, design and review archives.
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 

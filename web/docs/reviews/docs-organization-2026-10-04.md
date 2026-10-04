@@ -1,0 +1,11 @@
+# Documentation organization — 2026-10-04
+
+Purpose: documentation maintenance, not runtime or independent frontend acceptance.
+
+The inventory found 495 tracked documentation/evidence files, with current instructions mixed into completed milestones and core history. 388 files were relocated. Eight unsigned Markdown documents received navigation-link repairs; 486 existing files retained their bytes, including every signed plan, canonical artifact, JSON, log, image and active review bundle. The current HTTP guide was refreshed to include all implemented preview adapters. Private untracked handoffs were excluded and preserved.
+
+Current guides, concepts, reference, design, active reviews and completed archives now have explicit indexes. New material covers development, verification/freeze, independent review, architecture, integration boundaries, current status, documentation lifecycle and a review template. A machine-readable relocation catalog preserves old-path lookup and hashes. The checker protects retained evidence and catches broken local file links and unregistered tracked docs; remote URLs and anchors are outside its scope.
+
+Research and structure rationale are in [the documentation policy](../how-to/documentation.md). Existing preview/accepted wire contracts, generated types and dependency lock are unchanged. The W02 measurement helper's baseline path follows its relocated historical file; no application UI is changed.
+
+Validation: the pinned Node 22 offline gate passed contract/preview artifacts, generated-type drift, documentation hashes/links, typecheck, lint, 167 tests across 19 files, production exclusion and both builds. Negative probes correctly rejected a broken file link and an altered archived report; files were restored before final validation. Script syntax and Git diff checks passed. No application source, accepted API, existing preview artifacts or dependency-lock changes are included. CI remains a separate gate; this is documentation maintenance evidence, not a new UI review.

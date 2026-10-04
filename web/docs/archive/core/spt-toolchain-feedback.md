@@ -188,7 +188,7 @@ Same immutable carrier, cache, frontend lock and separately staged Playwright
 1.59.1/Chromium 1217; no dependencies or image repair. Empty-modules offline gate
 passes installation, API/lab generated-artifact checks, typecheck, lint, 101 tests
 and separate normal/demo builds. Fifteen compiled-browser groups and the local CI
-launcher pass. See [frozen W01 packet](w01-review-packet.md) and its retained logs.
+launcher pass. See [frozen W01 packet](../milestones/w01/w01-review-packet.md) and its retained logs.
 These are downstream frontend checks; full-carrier acceptance remains the original
 prerequisite evidence.
 
@@ -265,7 +265,7 @@ bootstrap requests bypass mocking and return 404. Independent scenarios and
 large-world measurements now receive isolated browser contexts, with measurement
 pages included in strict error monitoring and failure capture. The exact upstream
 race remains intermittent; a controlled negative baseline proves the original
-observer omission and the repaired failure path. See [CI repair](w02-ci-repair.md).
+observer omission and the repaired failure path. See [CI repair](../milestones/w02/w02-ci-repair.md).
 
 Same immutable carrier/cache/lock/browser identities; offline 117-test gate and
 all 16 W01 + 10 W02 browser groups pass, including exact Node22 browser runs.

@@ -15,6 +15,8 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``server`` knobs: ``catalog_delay_s`` (counted from the first catalog request, not from server start, so a
 slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
 ``ignore_config`` (load no configured agent), ``agent_override`` (fields that differ from the projection),
+``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
+``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
 ``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
@@ -291,6 +293,8 @@ class FakeOpenCode:
         for entry in self.knobs.get("openapi_drop") or []:
             method, path = entry.split(" ", 1)
             spec["paths"].get(path, {}).pop(method.lower(), None)
+        if "stored_credentials" in self.knobs:  # 2.0.22's credential store
+            spec["paths"]["/api/credential"] = {"get": {"operationId": "credential.list"}}
         return spec
 
     def agents(self) -> list[dict[str, Any]]:
@@ -311,6 +315,7 @@ class FakeOpenCode:
                     + list(agent.get("permissions") or [])}
             if name == "aew":
                 info.update(self.knobs.get("agent_override") or {})
+                info["permissions"] = info["permissions"] + list(self.knobs.get("appended_rules") or [])
             out.append(info)
         return out
 
@@ -332,6 +337,8 @@ class FakeOpenCode:
             return self.session_route(method, s, m.group(2) or "", query, body)
         if (method, path) == ("GET", "/openapi.json"):
             return 200, self.spec()
+        if (method, path) == ("GET", "/api/credential") and "stored_credentials" in self.knobs:
+            return 200, {"data": self.knobs["stored_credentials"]}
         if (method, path) == ("GET", "/api/info"):
             return 200, {"version": self.knobs.get("version") or "2.0.18", "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}

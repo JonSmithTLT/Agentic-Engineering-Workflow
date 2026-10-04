@@ -158,13 +158,14 @@ Found by reading the code at the baseline, so that the plan builds on what exist
 ### 2.5 Workspaces for N > 1 (M4-C; F3, the concurrency part)
 - The engine reads `mutating_concurrency`. Live mutating workspaces are at most the policy cap, enforced as a `DispatchDecision` guard.
 - The role-sensitive workspaces of §2.4. Workspace paths stay short on Windows (spike fact 4).
-- **`AEW-INV-ISO-004`, implemented:** an invocation-bound serialization lock for shared mutable steps, such as syncing a published commit into the authoritative checkout. A stale owner is reconciled before release.
+- **`AEW-INV-ISO-004`** (moved to M4-D, operator 2026-10-04; see "M4-C as built"): an invocation-bound serialization lock for shared mutable steps, such as syncing a published commit into the authoritative checkout. A stale owner is reconciled before release.
 - **That lock is serialization only, never eligibility or authority.** Holding it never makes an operation legal; `DispatchDecision` alone decides legality, so the lock cannot become a second integration-authority path. A test proves that holding the lock without an ALLOW changes nothing. The wording is proposed to the designer for the invariant index, which the designer owns.
 - Repository-scale workspace benchmarks (isolation §13) stay a selection gate for project defaults. M4 records worktree setup and cleanup cost at concurrency 1, 2 and 4 on the sample and AEW repositories, not on a large monorepo.
 
 ### M4-C as built (2026-10-04)
 - **The cap is the policy's.** `cap.mutating` reads `gates.yaml` `mutating_concurrency` (default 1) with no clamp. The refusal (`CONCURRENCY_LIMIT`) names the cap and the Tickets holding live workspaces. Each mutating Ticket works in its own worktree (`<workspaces.root>/<T>-<attempt>`), and integration stays the serialized, CAS-published path of ADR-0004. A later candidate is built on the head its predecessors moved, and two Tickets that change the same lines conflict at `prepare`, with nothing published.
-- **Oracle rule 1** now reads: live mutating workspaces never exceed the policy cap, and no two share a path. **Correction to §4:** its proposed second clause ("every live one is bound to an active invocation") does not hold. A COMMIT_READY or INTERRUPTED Ticket keeps its workspace with no active invocation, which the walks showed. Binding stays where it was: rule 2 binds every active invocation to its Ticket's current live workspace.
+- **The cap is an admission rule, not a state invariant** (operator, 2026-10-04). Lowering `mutating_concurrency` (say from 4 to 1) never makes admitted work illegal: the live workspaces keep working and drain, and `cap.mutating` refuses new mutating workspaces until occupancy is below the new cap. Valid running work is never cancelled because the operator tightened future concurrency.
+- **Oracle rule 1** now reads: no two live mutating workspaces share a path. The cap is checked where it applies, at admission, by the guard (`test_workspaces.py`: cap 4, four live, lowered to 1, the four stay legal, new assignments refused while draining, admission resumes below the cap). **Correction to §4:** its proposed second clause ("every live one is bound to an active invocation") does not hold. A COMMIT_READY or INTERRUPTED Ticket keeps its workspace with no active invocation, which the walks showed. The implication runs the other way: rule 2 binds every active invocation to its Ticket's current live workspace.
 - **Short paths.** Workspace names were already short. A path git rejects as too long (spike fact 4) is now a `GitError` naming the path, its length, and what to change: `workspaces.root`, or long-path support.
 - **Cost** (`tools/perf/workspaces.py`, Windows, median of 3; setting up and cleaning up one workspace at each level):
 
@@ -174,7 +175,7 @@ Found by reading the code at the baseline, so that the plan builds on what exist
   | AEW (`ce794fb`) | 930 | 1.08 to 1.11 s | 0.30 s | 1.43, 2.82, 5.79 s |
 
   The per-workspace cost does not change with concurrency. Totals grow linearly, because assignments are sequential. The repository-scale benchmark stays a selection gate (isolation §13).
-- **`AEW-INV-ISO-004` is not built here (a question for the operator).** M4-C's shared mutable step, syncing a published commit into the authoritative checkout, already runs inside the control-state lock, held from the CAS through DONE (ADR-0004). So no M4-C operation needs a second lock. The lock's first consumer is M4-D's lease, whose custodian (M4-B10) and control-state schema (M4-B7, downgrade safety) are still to be decided. Building it now would fix its record shape and its stale-owner rule before either is known. **Proposed:** build ISO-004 with the lease in M4-D, keeping "serialization only, never eligibility" (M4-B6) and its test (holding the lock without an ALLOW changes nothing). M4-C's exit criterion for ISO-004 moves to M4-D.
+- **`AEW-INV-ISO-004` moves to M4-D** (operator, 2026-10-04). M4-C's shared mutable step, syncing a published commit into the authoritative checkout, already runs inside the control-state lock, held from the CAS through DONE (ADR-0004), so no M4-C operation needs a second lock. The lease is the first thing that gives the lock a real custodian and lifetime (M4-B10, M4-B7); building it here would freeze M4-D's semantics early. It lands with the lease, keeping "serialization only, never eligibility" (M4-B6) and its test (holding the lock without an ALLOW changes nothing).
 
 ### 2.6 The integration queue and lease (M4-D; F10)
 
@@ -262,7 +263,7 @@ Stages refuse with `STALE_POLICY` on policy drift. A replacement Lead explicitly
 
 ## 4. Compatibility with M1 to M3 and ADR-0011
 
-- **One declared, non-additive oracle change.** Rule 1 ("at most one live mutating workspace") becomes "live mutating workspaces ≤ the policy cap, and every live one is bound to an active invocation". The four tests that assert the serial cap change, with the reason recorded in each. With the default policy (cap 1) every M1 to M3 behaviour is unchanged, and the full suite proves it.
+- **One declared, non-additive oracle change.** Rule 1 ("at most one live mutating workspace") becomes "live mutating workspaces ≤ the policy cap, and every live one is bound to an active invocation". *(As built in M4-C, revised: the cap is an admission rule enforced by the guard, and the rule is path uniqueness; the second clause does not hold. See "M4-C as built".)* The four tests that assert the serial cap change, with the reason recorded in each. With the default policy (cap 1) every M1 to M3 behaviour is unchanged, and the full suite proves it.
 - **Everything else is additive:** new oracle rules for the queue and lease (§6), new guards inside `DispatchDecision`, new commands.
 - **Existing refusals keep their codes** (`CONCURRENCY_LIMIT`, `STALE_CANDIDATE`, `STALE_REVISION`, …). New ones are added to the registry.
 - **The default policy keeps today's behaviour.** `mutating_concurrency: 1`, `post_integration.validation: verifier`. Concurrency is opt-in per project.
@@ -308,24 +309,24 @@ Every open entry whose *When* names M4 or an earlier gate, every M4 candidate, a
 
 ### R.2 M4-C start: entries added since M4 began (milestone-start rule)
 
-The register gained entries after the M4 triage above: from the architecture review and its proposed response (Q13), and from the four independent area reviews of M4-A and M4-B. Each is marked here for the operator to ratify. **Proposed** marks a disposition the response itself leaves to Q13.
+The register gained entries after the M4 triage above: from the architecture review and its proposed response (Q13), and from the four independent area reviews of M4-A and M4-B. Each is marked for the operator to ratify. **Proposed** marks a disposition the response itself leaves to Q13. Rows were updated after the operator's review of this phase (2026-10-04) against design decisions made since: E18, F23, F24, F25, E21, Q13, E30 and ISO-004.
 
 | Entry | Disposition | Phase or reason |
 |---|---|---|
 | F3 (the concurrency part) | **In scope** | M4-C: this phase |
 | F21 the M6b knowledge system | **Deferred** | M6b. The response affirms the drafts as the direction; its storage and identity questions are D-AR4 |
 | F22 project maps | **Deferred** | After M4, or a bounded deterministic slice in M4-G/H if it does not put approved scope at risk (response §12). Not an M4 gate |
-| F23 pre-internal-alpha hardening | **Deferred** | Pre-internal-alpha; the response's §14 says no design work yet |
-| F24 a second harness adapter | **Deferred** | M5, or earlier if OpenCode drift blocks operation (G4) |
-| F25 the cost and usage ledger | **Deferred** (proposed) | With the evaluation component (D-AR1, F19), its first consumer. The lead developer's review argues against building it before then |
+| F23 pre-internal-alpha hardening | **Deferred** (implementation) | Implementation stays pre-internal-alpha. Network-containment research (architecture thread T6) is active now and informs it |
+| F24 a second harness adapter | **Deferred** (production adapter) | M5, or earlier if OpenCode drift blocks operation (G4). OpenCode/Codex integration research (thread T9) is active now |
+| F25 the cost and usage ledger | **In scope, before M4-H** | With the evaluation component (thread T2, F19), its first consumer, and available before M4-H's evaluation |
 | F26 minimal skill delivery | **Deferred** | Needs design or a probe (response §7); M6a |
 | F27 dogfood AEW on AEW | **Deferred** | A strategic goal once containment, real-repository and integration conditions hold |
-| Q13 accept the review response | **Open** (not M4 scope) | The lead developer's review is written; the designer decides, then promotes decisions to their homes |
+| Q13 accept the review response | **In design-authority reconciliation** (not M4 scope) | The lead developer's review is delivered; the designer is reconciling it, then promotes decisions to their homes |
 | E17 OpenCode upgrades | **In progress** | Part 1 (meaning comparison, stored-credential check) in its own PR; part 2 (2.0.22 on the live lane, `TESTED_VERSIONS`) needs the operator's binary and provider key |
-| E18 transaction outbox | **In scope, in part** (proposed) | M4-D: the wake signal and the log's completeness guarantee, which wait-any (E1) needs. Typed events, sealing and the chain with their first consumer (the lead developer's review, point 4) |
+| E18 transaction outbox | **In scope** | M4-D, the full design: ADR-0012 (frozen) makes the transaction log the outbox, with typed events, complete overflow handling, sealing and a hash chain |
 | E19 amendment index | **In scope** (proposed) | M4-G: the machine-readable index now; the consolidated WC/KC re-freeze after M4 |
 | E20 `--json` on read commands | **In scope** | M4-E/F, with F15 and D-AR2 |
-| E21 `aew init` proposes the test command | **In scope** (proposed) | M4-G (Lead UX) |
+| E21 `aew init` proposes the test command | **In scope** (proposed) | M4-G, informed by the bootstrap and install UX work (thread T10), not designed on its own |
 | E22 heartbeat `doctor` check | **Deferred** | On measured need: large-host re-parse bounds first |
 | E23 Windows coverage | **In scope** (proposed) | M4-G |
 | E24 typed record models | **Deferred** | Unscheduled; no runtime dependency, no consumer yet |
@@ -334,13 +335,13 @@ The register gained entries after the M4 triage above: from the architecture rev
 | E27 OpenTelemetry-shaped spans | **Deferred** | A probe, only with a concrete consumer and an air-gap-safe retention plan |
 | E28 structured `check.run` results | **In scope** | M4-E, with F15 and D-AR2 |
 | E29 context-pack budget order | **In scope** (proposed) | M4-G: a pack-generator invariant, before any recall exists |
-| E30 the register as structured data | **Open** | The designer's call (Q13) |
+| E30 the register as structured data | **Deferred** | Until a real machine consumer justifies structured-register work |
 | Area 2, T6 (custody check independent of card operations) | **In scope** | A small PR alongside M4-C |
 | Area 2, T8 (streaming credential scan) | **Deferred** | A register E-item, on measured need |
 | Area 3, D9 and area 4, I9 (an in-process `Engine` test driver) | **Deferred** | A register E-item (efficiency); one driver serves both |
 | Area 4, I6 (the sync classifier under concurrent publishers; bounded lock hold for large publishes) | **In scope** | M4-D's plan: publication stays serialized under the control lock in M4-C, so one publisher at a time still holds |
 | Area 4, I8 (`_interrupt_invocations` through `set_state`; `doctor` lists orphan worktrees) | **In scope** (proposed) | M4-G (hardening) |
-| `AEW-INV-ISO-004` lock | **Question for the operator** | See "M4-C as built": no M4-C operation needs it, and its first consumer is M4-D's lease |
+| `AEW-INV-ISO-004` lock | **Moved to M4-D** (operator, 2026-10-04) | No M4-C operation needs it; it lands with the lease, its first consumer (see "M4-C as built") |
 
 ## 5. Phases
 
@@ -350,8 +351,8 @@ One PR per phase, each with its own tests, the local lanes green on Windows and 
 |---|---|---|
 | **M4-A** Foundation | §2.1 to §2.3, E2 | Every entrypoint in the declared dispatch-entrypoint registry, CLI and internal (harness launch and relaunch, `--launch`, the Lead broker), reaches `DispatchDecision`, proven by the conformance test. The CLI enumeration proves no CLI dispatch command bypasses the registry; query equals execution, per migrated route; no cached ALLOW (a seeded revision change between query and execute refuses); reason-code registry; `PrimitiveSpec` for the integration primitives; protected-condition, Class 0 and plan-lint regressions from v0.4 §31; the cap as a guard reading policy, default 1; full suite unchanged |
 | **M4-B** Containment (Linux) | §2.4 | Isolation §12 list fails at the OS level; E13 passes with `NSpid` translation; fingerprint and `prepare` hold with the private store; the launch self-test fails closed; the research §6 probes pass on a **real Rocky 8 kernel** (needs a Rocky 8 host, see "Remaining open items"); guarantee labels truthful on both platforms, network `NOT PROVIDED` |
-| **M4-C** Workspaces N > 1 | §2.5 | Two and four concurrent mutating Tickets on the scripted drivers; the oracle with the new rule 1; ISO-004 lock tests (stale owner reconciled; the lock without an ALLOW moves nothing); worktree setup and cleanup costs recorded |
-| **M4-D** Queue engine | §2.6 to §2.9 | Records, transitions and oracle rules for the queue and lease; every §7.1 disposition as a regression (lease owner, a live custodian across acquire to release (M4-B10), dead custodian, no timeout release, one rebuild, second move to disposition, conflict to the Lead, no head-of-line blocking, retirement with archival); fault points inside the lease transitions killed by real processes; downgrade test (the baseline engine refuses an M4 control file); D4 path; wait-any |
+| **M4-C** Workspaces N > 1 | §2.5 | Two and four concurrent mutating Tickets on the scripted drivers; the oracle with the new rule 1; the cap as an admission rule (lowering it drains, never evicts); worktree setup and cleanup costs recorded |
+| **M4-D** Queue engine | §2.6 to §2.9 | Records, transitions and oracle rules for the queue and lease; every §7.1 disposition as a regression (lease owner, a live custodian across acquire to release (M4-B10), dead custodian, no timeout release, one rebuild, second move to disposition, conflict to the Lead, no head-of-line blocking, retirement with archival); fault points inside the lease transitions killed by real processes; downgrade test (the baseline engine refuses an M4 control file); D4 path; wait-any; ISO-004 lock tests (stale owner reconciled; the lock without an ALLOW moves nothing; moved from M4-C) |
 | *(gate)* | The designer promotes F15 v0.4 | Governing text merged |
 | **M4-E** Stages | §2.10 | Stage and primitive equivalence; mixed-mode walks; seeded policy drift; `PUBLISH_IF_CLEAN` across exactly one head-move rebuild; `VALIDATE_ONLY`; takeover with an active stage |
 | **M4-F** Queue UX | §2.11 | `integrate next`; the queue in `status`, `resume` and the guide; `lead-guide.md` regenerated |
@@ -367,13 +368,13 @@ One PR per phase, each with its own tests, the local lanes green on Windows and 
 | Query equals execution; no cached ALLOW | `tests/regression/test_m4_dispatch.py` |
 | The lease has a live custodian from acquire to release | `tests/integration/test_queue.py` |
 | A valid 304 keeps the cached envelope; any envelope or revision change returns 200 | `tests/integration/test_dashboard_api.py` |
-| Live mutating workspaces ≤ policy cap (rule 1, revised) | `tests/helpers/invariants.py` |
+| No two live mutating workspaces share a path (rule 1, revised); the cap is enforced at admission, and lowering it drains | `tests/helpers/invariants.py`, `tests/integration/test_workspaces.py` |
 | At most one lease; its owner is a live entry; its custodian is an active invocation or reconciliation is pending (new rule) | `invariants.py`, `tests/integration/test_queue.py` |
 | No publication without the lease, a current ALLOW and validation bound to the current head (new rule) | `invariants.py`, `tests/regression/test_m4_queue_walk.py` (seeded adversarial walk, like the M1 to M3 walks) |
 | Queue state never grants eligibility | `test_queue.py` |
 | One automatic rebuild; the second goes to disposition | `test_queue.py` |
 | A conflict makes a new attempt; snapshot proof does not carry | `tests/regression/test_m4_invalidation.py` |
-| ISO-004 is serialization only | `tests/integration/test_workspaces.py` |
+| ISO-004 is serialization only (M4-D) | `tests/integration/test_queue.py` |
 | Containment (Linux) | `tests/live/` and a new `containment` marker, run on Rocky 8 and WSL; never on Windows |
 | Downgrade safety | `tests/regression/test_m4_schema_downgrade.py` |
 | F20.3 security | `tests/integration/test_dashboard_session.py` (each negative case) |

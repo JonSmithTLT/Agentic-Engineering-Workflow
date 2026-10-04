@@ -190,3 +190,27 @@ def test_a_workspace_path_too_long_for_git_is_named_as_such(tmp_path, monkeypatc
     monkeypatch.setattr(worktrees.git, "git", other)
     with pytest.raises(GitError, match="failed"):
         worktrees._add(tmp_path, tmp_path / "x", "--detach", "x", "nope")
+
+
+def test_lowering_the_cap_drains_admitted_work_and_only_gates_new_admissions(tmp_path):
+    """M4-C (operator, 2026-10-04): the cap is an admission rule. Lowered from 4 to 1 while four workspaces are live,
+    the four stay legal and keep working; a new assignment is refused until occupancy is below the new cap, then
+    admission resumes."""
+    from aewflow import assign, create_planned_ticket, implement, sample_project
+    from invariants import assert_control_invariants
+
+    p = sample_project(tmp_path)
+    _concurrency(p, 4)
+    tickets = [create_planned_ticket(p, tmp_path, title=f"Add op{i}") for i in range(4)]
+    roles = [assign(p, wid) for wid in tickets]
+    _concurrency(p, 1)
+    assert_control_invariants(p)  # nothing illegal happened: work admitted under cap 4 stays admitted
+    implement(roles[0], _own_change(0))  # and it keeps working
+    newcomer = create_planned_ticket(p, tmp_path, title="Arrives after the cap was lowered")
+    for wid in tickets:  # drain: refused at 4, 3, 2 and 1 live workspaces (the new cap is 1)
+        res = p.aew("work", "assign", newcomer, "--token", p.token, "--expect-rev", str(p.rev()))
+        assert res.error["code"] == "CONCURRENCY_LIMIT" and res.error["details"]["cap"] == 1, res.stderr
+        p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "draining after the cap was lowered")
+        assert_control_invariants(p)
+    p.lead("work", "assign", newcomer)  # below the cap again: admission resumes
+    assert_control_invariants(p)

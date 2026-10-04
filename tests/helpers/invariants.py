@@ -136,17 +136,13 @@ def control_violations(root: Path) -> list[str]:
     problems: list[str] = []
     evidence: dict[str, dict[str, dict[str, Any]]] = {}
 
-    # 1. Mutation is capped: live mutating workspaces never exceed the policy's `mutating_concurrency` (default 1;
-    #    ADR-0003 B6, M4-C), and no two share a workspace. Checked against the current policy file; tests never
-    #    lower the cap while workspaces are live.
+    # 1. Live mutating workspaces never share a path. The policy cap (`mutating_concurrency`) is an admission rule,
+    #    enforced by the `cap.mutating` dispatch guard, not an invariant of the state: lowering the cap never makes
+    #    work already admitted illegal; it drains, and nothing new is admitted until occupancy is below the new cap
+    #    (operator, 2026-10-04). The admission side is tested in test_workspaces.py.
     live = sorted(wid for wid, u in state["work"].items()
                   if u["kind"] == "ticket" and u.get("mutating")
                   and (u.get("workspace") or {}).get("status") == "active")
-    gates_path = root / ".aew" / "policy" / "gates.yaml"
-    mutating_cap = max(1, int(((yaml.safe_load(gates_path.read_text(encoding="utf-8")) or {}).get(
-        "mutating_concurrency") or 1) if gates_path.exists() else 1))
-    if len(live) > mutating_cap:
-        problems.append(f"mutating cap {mutating_cap} exceeded: live mutating workspaces {live}")
     paths = [state["work"][w]["workspace"]["path"] for w in live]
     if len(set(paths)) != len(paths):
         problems.append(f"live mutating workspaces share a path: {sorted(paths)}")

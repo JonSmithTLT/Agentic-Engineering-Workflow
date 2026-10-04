@@ -88,5 +88,5 @@ The M1 rows are unchanged, and the table-driven test still pins exactly one `via
 
 ## Amendment 2026-10-04 — the cap is the policy's (M4-C)
 
-The serial cap of B6 becomes the policy's cap. A mutating Ticket counts while it holds a live workspace, whatever its state (as amended in M2); the number allowed is `gates.yaml` `mutating_concurrency`, default 1. M4-A read the value but clamped it to 1. Each Ticket has its own worktree, and integration stays serialized through ADR-0004, so nothing else in the state machine changes.
+The serial cap of B6 becomes the policy's cap. A mutating Ticket counts while it holds a live workspace, whatever its state (as amended in M2); the number allowed is `gates.yaml` `mutating_concurrency`, default 1. M4-A read the value but clamped it to 1. The cap governs **admission**: lowering it never makes admitted work illegal, the live workspaces drain, and no new mutating workspace is admitted until occupancy is below the new cap (operator, 2026-10-04). Each Ticket has its own worktree, and integration stays serialized through ADR-0004, so nothing else in the state machine changes.
 

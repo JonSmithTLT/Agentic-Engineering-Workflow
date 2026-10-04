@@ -1,5 +1,6 @@
 import { InvestigationWorkspace } from '../components/InvestigationWorkspace';
 import { ComparisonEntry } from '../components/ComparisonEntry';
+import { ExecutionEntry } from '../components/ExecutionEntry';
 import { EvidenceEntry } from '../components/EvidenceEntry';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -35,6 +36,7 @@ export function RunsPage() {
 }
 function RunsResultsPage() {
   return (
+    <><ExecutionEntry />
     <CollectionView
       name="runs"
       title="Runs"
@@ -87,7 +89,7 @@ function RunsResultsPage() {
           </table>
         </div>
       )}
-    </CollectionView>
+    </CollectionView></>
   );
 }
 export function RunDetailPage({
@@ -109,6 +111,7 @@ export function RunDetailPage({
             <div>
               <h1>{r.id}</h1>
               <ComparisonEntry invocation={r.id} />
+              <ExecutionEntry invocation={r.id} displayed={displayed} />
               <p>
                 <SemanticValue value={r.role} known={invocationRoles} /> ·{' '}
                 <EntityAnchor entity={r.work} />

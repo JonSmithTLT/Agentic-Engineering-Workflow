@@ -29,7 +29,7 @@ function PacketItems({ packet, reader, name, selection, visibility }: { visibili
       {query.error && <p role="status">STALE / DISCONNECTED — showing valid prior item page.</p>}</> : !query.error && !issue && <p role="status">Loading packet items…</p>}
   </>;
 }
-export function PacketInspector({ query, packetId, name, back }: { query: SourceQuery; packetId: string; name: string; back: () => void }) {
+export function PacketInspector({ query, packetId, name, back, backLabel = "Back to comparison" }: { backLabel?:string; query: SourceQuery; packetId: string; name: string; back: () => void }) {
   const location = useLocation(), returningReference = useRef(returnPosition(location.state));
   const { params, update } = useControls(), source = query.data?.value.data, tab = params.get('packet_tab') ?? 'contents';
   const association = source?.packets.find(p => p.id === packetId);
@@ -39,7 +39,7 @@ export function PacketInspector({ query, packetId, name, back }: { query: Source
   const packet = packetQuery.data?.value.data, issue = packet && source ? packetBindingIssue(packet, source) : undefined;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { if (packet && !issue && !returningReference.current) focusBelowHeader(heading.current); }, [packetId, !!packet, issue]);
-  return <section className="packet-inspector"><button onClick={back}>Back to comparison</button><h2 ref={heading} tabIndex={-1}>Context packet {packetId}</h2>
+  return <section className="packet-inspector"><button onClick={back}>{backLabel}</button><h2 ref={heading} tabIndex={-1}>Context packet {packetId}</h2>
     {query.error && <ErrorState error={query.error} retry={() => void query.refetch()} />}
     {source && !association && <p role="alert">Packet is not supplied for this source. No packet request sent.</p>}
     {(packetQuery.error || issue) && <ErrorState error={issue ? new Error(issue) : packetQuery.error} retry={() => void packetQuery.refetch()} />}

@@ -14,13 +14,12 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from aewflow import (
     APPLY_PATCH,
     assign,
     create_planned_ticket,
-    integrate,
     implement,
+    integrate,
     redispatch_implementer,
     review,
     sample_project,

@@ -751,6 +751,7 @@ class Archive:
         if doc is None:
             return None
         unit = self.archived_unit(state, work_id)
+        assert unit is not None  # its bundle exists, so it was archived
         work = {**state["work"], work_id: unit}
         parent = unit.get("parent")
         while parent and parent not in work:  # a hot unit never has an archived ancestor, so this stops at hot work

@@ -25,9 +25,9 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
+from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.dependencies import dependency_blockers, effective_edge_set, readiness_blockers
 from aew.engine.seams import GATE_CONTEXT, INGEST, INVOKE, NON_MUTATING, GuardRegistration, KindRegistration
 from aew.errors import (
     AEWError,
@@ -254,7 +254,8 @@ class NonMutating:
             snap = self.invocations.snapshot_of(ws["path"], ws["workspace_id"])
             snapshot = dict(snap)
             if children_digest is not None:
-                snapshot["relevant_inputs_fingerprint"] = f"{snap['relevant_inputs_fingerprint']}+children:{children_digest}"
+                snapshot["relevant_inputs_fingerprint"] = (f"{snap['relevant_inputs_fingerprint']}"
+                                                           f"+children:{children_digest}")
             got, token = self.invocations.new_invocation(ctx, card.archetype, work_id, scope=scope,
                                                          workspace=ws["path"],
                                               workspace_id=ws["workspace_id"], snapshot=snapshot, card=card)
@@ -565,7 +566,8 @@ class NonMutating:
             problems: dict[str, Any] = {}
             if ev["kind"] != execution.get("expected_kind"):
                 problems["kind"] = {"record": ev["kind"], "expected": execution.get("expected_kind")}
-            if ev["producer"]["invocation"] != execution.get("invocation") or ev.get("attempt") != execution.get("attempt"):
+            if (ev["producer"]["invocation"] != execution.get("invocation")
+                    or ev.get("attempt") != execution.get("attempt")):
                 problems["attempt"] = {"record_attempt": ev.get("attempt"), "current_attempt": execution.get("attempt")}
             if inv.get("status") != "active" or execution.get("ended"):
                 problems["executor"] = f"the attempt's executor is {inv.get('status')}; its records are history"
@@ -776,7 +778,6 @@ class NonMutating:
         """Review/verify invocations for a non-mutating Ticket, bound to the record they evaluate."""
         with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
-            state = ctx.state
             decision = self.dispatch.decide_in(ctx, "invoke.create.non_mutating", work_id, role=role, card_id=card,
                                                scope=scope)
             chosen, record, ev = decision.facts["card"], decision.facts["record"], decision.facts["evidence"]

@@ -9,9 +9,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from aewflow import (SUBTRACT_PATCH, assign, create_planned_ticket, implement, integrate, prepare_and_validate,
-                     redispatch_implementer, review, sample_project, to_commit_ready, verify)
+from aewflow import (
+    SUBTRACT_PATCH,
+    assign,
+    create_planned_ticket,
+    implement,
+    integrate,
+    prepare_and_validate,
+    redispatch_implementer,
+    review,
+    sample_project,
+    to_commit_ready,
+    verify,
+)
 from conftest import git
 from invariants import assert_control_invariants
 
@@ -388,10 +398,10 @@ def test_retiring_a_candidate_ends_its_verifiers_write_authority(tmp_path):
 def test_reports_are_written_only_for_a_live_workspace(tmp_path, kind):
     """M2 residual, defense in depth: review/verification submission is bound to the invocation's live
     workspace even if its credential were somehow still valid (simulated legacy state)."""
+    from aewflow import Role
+
     from aew.engine.api import Engine
     from aew.engine.store import Transition
-    from aewflow import Role
-    from aew.util import dump_yaml
 
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)

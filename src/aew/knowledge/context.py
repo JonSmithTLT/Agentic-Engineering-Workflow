@@ -21,7 +21,8 @@ from typing import Any
 from aew.roles import AUTHORITY_SENSITIVE_CAPABILITIES
 from aew.util import dump_yaml
 
-TOKEN_PLACEHOLDER = "<AEW_INVOCATION_TOKEN: supplied by the Lead in the spawn prompt; never written to disk>"
+# A placeholder, not a credential.
+TOKEN_PLACEHOLDER = "<AEW_INVOCATION_TOKEN: supplied by the Lead in the spawn prompt; never written to disk>"  # noqa: S105
 
 OUTPUT_TEMPLATES = {
     "implementer": ("implementation_report", {
@@ -192,7 +193,7 @@ def _launch_contract(p: PackInputs) -> list[str]:
         f"- Workspace: `{p.workspace}`",
         f"- Evaluated snapshot: base `{snap.get('base_revision')}`, inputs `{snap['relevant_inputs_fingerprint']}`,"
         f" workspace `{snap['workspace_id']}`",
-        f"- Accepted plan: " + (f"v{p.plan['accepted']} (sha256 {p.plan['sha256'][:12]}…)" if p.plan else "none"),
+        "- Accepted plan: " + (f"v{p.plan['accepted']} (sha256 {p.plan['sha256'][:12]}…)" if p.plan else "none"),
         *([f"- Attempt {p.attempt}: you must produce exactly one **{p.expected_kind}**; the workspace is a read-only "
            "observation of the authoritative source (any change to it refuses your submission)"]
           if p.expected_kind else []),
@@ -252,8 +253,8 @@ def _launch_contract(p: PackInputs) -> list[str]:
                            "a review is submitted; do not fix anything yourself"])
     elif p.role == "verifier":
         lines += _bullets(["each acceptance criterion is demonstrated by evidence you produced",
-                           "goal-backwards and contract claims are both reported" if p.scope in {"ticket", "observation",
-                                                                                                 "parent"}
+                           "goal-backwards and contract claims are both reported"
+                           if p.scope in {"ticket", "observation", "parent"}
                            else "post-integration checks are re-run on the integrated candidate",
                            "failures are reported with evidence; the Lead decides what happens next"])
     return lines

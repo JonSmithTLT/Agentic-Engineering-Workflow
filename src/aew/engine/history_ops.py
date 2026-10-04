@@ -21,10 +21,9 @@ from __future__ import annotations
 import calendar
 import copy
 import functools
+import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
-
-import sqlite3
 
 from aew.engine import faults
 from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
@@ -231,8 +230,9 @@ class HistoryCommands:
                 ref = {"id": record_id, "kind": "evidence", "entry_seq": entry["seq"], "held_by": entry["id"],
                        "sha256": ev_ref["sha256"], "source": evidence_source(meta)}
             else:
-                raise UsageError(f"{record_id} is an archived {'invocation' if held_as == 'invocations' else 'credential'}"
-                                 f"; load the unit that holds it ({entry['id']}) or one of its evidence records")
+                held = "invocation" if held_as == "invocations" else "credential"
+                raise UsageError(f"{record_id} is an archived {held}; load the unit that holds it ({entry['id']}) or "
+                                 "one of its evidence records")
             ref.update(reason=reason, loaded_at=utc_now(), generation=state["lead"]["generation"])
             refs.append(ref)
             ctx.refs.append(f"history:{record_id}@{ref['sha256']}")
@@ -404,7 +404,8 @@ class HistoryCommands:
         if backlog > policy["max_unverified_entries"]:
             over.append(f"{backlog} unverified history entries (policy: at most {policy['max_unverified_entries']})")
         if age_h > policy["max_unverified_age_hours"]:
-            over.append(f"the oldest unverified entry is {age_h} h old (policy: {policy['max_unverified_age_hours']} h)")
+            over.append(f"the oldest unverified entry is {age_h} h old "
+                        f"(policy: {policy['max_unverified_age_hours']} h)")
         full_age_d = round((now - _epoch(last_full["at"])) / 86400, 1) if last_full else None
         if root["count"]:
             # Never fully verified: due once the history itself is older than the threshold, not at its first entry.

@@ -352,7 +352,9 @@ def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, on_
         after = worktree_entries(repo_root, updates)
         for p in updates:
             want, have = st.new[p], after[p]
-            if _is_file(have) and want[0] in {"100644", "100755"} and have[0] != want[0]:
+            if want is None or have is None or not _is_file(have):
+                continue
+            if want[0] in {"100644", "100755"} and have[0] != want[0]:
                 mode = (repo_root / p).stat().st_mode
                 os.chmod(repo_root / p, mode | 0o111 if want[0] == "100755" else mode & ~0o111)
     final = _states(repo_root, base, new, paths)

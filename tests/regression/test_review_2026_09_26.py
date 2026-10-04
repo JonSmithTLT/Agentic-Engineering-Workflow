@@ -7,13 +7,22 @@ behavior. Findings still open are marked xfail(strict=True) and the marker is
 removed by the commit that fixes the finding (see
 docs/implementation/review-response-2026-09-26.md).
 """
-from pathlib import Path
 import pytest
+from aewflow import (
+    SUBTRACT_PATCH,
+    assign,
+    create_planned_ticket,
+    implement,
+    prepare_and_validate,
+    redispatch_implementer,
+    review,
+    sample_project,
+    to_commit_ready,
+    to_verified,
+    verify,
+)
 from conftest import IS_WINDOWS, Project, git, make_git_repo
-from aewflow import (SUBTRACT_PATCH, Role, assign, create_planned_ticket,
-                     implement, prepare_and_validate, redispatch_implementer,
-                     review, sample_project, to_commit_ready, to_verified, verify)
-from aew.snapshot.fingerprint import relevant_inputs_fingerprint
+
 from aew.workspace import integration as integration_git
 
 
@@ -53,7 +62,8 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
     impl = redispatch_implementer(p, wid)
     files = dict(SUBTRACT_PATCH)
     files['calc/core.py'] += '\ndef multiply(a, b):\n    return a * b\n'
-    files['tests/test_multiply.py'] = 'from calc.core import multiply\n\ndef test_multiply():\n    assert multiply(3, 4) == 12\n'
+    files['tests/test_multiply.py'] = ('from calc.core import multiply\n\n'
+                                      'def test_multiply():\n    assert multiply(3, 4) == 12\n')
     implement(impl, files)
     p.lead('work', 'transition', wid, '--to', 'REVIEW_PENDING')
     p.lead('review', 'ingest', wid, '--evidence', review(p, wid))
@@ -61,7 +71,8 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
     p.lead('verify', 'ingest', wid, '--evidence', verify(p, wid))
     p.lead('work', 'transition', wid, '--to', 'COMMIT_READY')
     u = unit(p, wid)
-    assert u['commit_ready_snapshot']['relevant_inputs_fingerprint'] != old['candidate_snapshot']['relevant_inputs_fingerprint']
+    assert (u['commit_ready_snapshot']['relevant_inputs_fingerprint']
+            != old['candidate_snapshot']['relevant_inputs_fingerprint'])
     result = p.aew('integrate', 'publish', wid, '--token', p.token, '--expect-rev', str(p.rev()))
     if result.returncode != 0:
         assert impl.workspace.exists()
@@ -114,7 +125,7 @@ def test_sync_handles_executable_bit_only_change(tmp_path):
 def test_replanned_active_workspace_still_counts_against_serial_cap(tmp_path):
     p = sample_project(tmp_path)
     first = create_planned_ticket(p, tmp_path)
-    original = assign(p, first)
+    assign(p, first)
     replan(p, first, tmp_path)
     second = create_planned_ticket(p, tmp_path, title='Second mutating ticket')
     result = p.aew('work', 'assign', second, '--token', p.token, '--expect-rev', str(p.rev()))
@@ -212,7 +223,7 @@ def test_interruption_does_not_bypass_failure_classification(tmp_path):
     p.lead('work', 'transition', wid, '--to', 'REVIEW_PENDING')
     p.lead('review', 'ingest', wid, '--evidence', review(p, wid))
     p.lead('work', 'transition', wid, '--to', 'VERIFY_PENDING')
-    sibling = p.lead('invoke', 'create', wid, '--role', 'verifier')
+    p.lead('invoke', 'create', wid, '--role', 'verifier')
     failing = verify(p, wid, goal_result='fail')
     p.lead('verify', 'ingest', wid, '--evidence', failing)
     assert unit(p, wid)['state'] == 'VERIFICATION_FAILED'

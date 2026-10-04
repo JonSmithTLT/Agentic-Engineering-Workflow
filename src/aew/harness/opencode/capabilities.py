@@ -55,7 +55,7 @@ REQUIRED_OPERATIONS: tuple[Op, ...] = (
 # relies on: the served schema must still offer that type (through ``$ref`` and ``anyOf``/``oneOf``/``allOf``). A dotted
 # name is a property of a property. Kept complete against the adapter (independent review R2, 2026-09-30): a field
 # read only for telemetry is listed too, since health is the one place drift is caught.
-S, I, N, B, O, A = "string", "integer", "number", "boolean", "object", "array"
+S, I, N, B, O, A = "string", "integer", "number", "boolean", "object", "array"  # noqa: E741 (JSON type shorthands)
 REQUIRED_FIELDS: dict[str, dict[str, str]] = {
     "ServerInfo": {"version": S},
     "Model.Info": {"id": S, "providerID": S, "variants": A, "enabled": B},

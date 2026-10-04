@@ -165,7 +165,8 @@ class Gates:
                                 acceptance.get("inputs"))
         declared = list(acceptance.get("checks") or [])
         obligations = G.with_acceptance_checks(
-            G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"], self.roles.plan_gates(unit)),
+            G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
+                                    self.roles.plan_gates(unit)),
             declared)
         evidence, problems = E.scan(self.k.aew_root, work_id)
         plan = unit.get("plan") or {}
@@ -610,6 +611,9 @@ class EvidenceCommands:
             self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited workspace
         before = self.invocations.snapshot_of(workspace, ws_id)
         if cfg.get("builtin"):
+            if base is None:
+                raise IllegalTransition(f"{inv_id}'s workspace records no base commit, so guardrails cannot say what "
+                                        "changed")
             verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
                                   acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
@@ -749,12 +753,14 @@ class EvidenceCommands:
         claims = v.get("claims") or []
         types = {c.get("type") for c in claims}
         if v["scope"] in {"ticket", "parent"} and not {"goal_backwards", "contract"} <= types:
-            raise ValidationFailed(f"{v['scope']} verification needs both goal_backwards and contract claims (WC §11.4)")
+            raise ValidationFailed(f"{v['scope']} verification needs both goal_backwards and contract claims "
+                                   "(WC §11.4)")
         if not claims:
             raise ValidationFailed("verification needs at least one claim")
         work_id = inv["work_unit"]
         records = {e["id"]: e for e in E.scan(self.k.aew_root, work_id)[0]}
-        expected_fp = (inv.get("observation") or {}).get("fingerprint") or inv["snapshot"]["relevant_inputs_fingerprint"]
+        expected_fp = ((inv.get("observation") or {}).get("fingerprint")
+                       or inv["snapshot"]["relevant_inputs_fingerprint"])
         definitions = C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails"))
         for c in claims:
             for cid in c.get("checks", []):

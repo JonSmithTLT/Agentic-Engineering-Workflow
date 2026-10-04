@@ -2,8 +2,18 @@
 
 from __future__ import annotations
 
-from aewflow import (close_parent, complete_investigation, create_investigation, create_unit, dispatch, plan_unit,
-                     prepare_and_validate, sample_project, submit_record, to_commit_ready)
+from aewflow import (
+    close_parent,
+    complete_investigation,
+    create_investigation,
+    create_unit,
+    dispatch,
+    plan_unit,
+    prepare_and_validate,
+    sample_project,
+    submit_record,
+    to_commit_ready,
+)
 from conftest import Project
 
 

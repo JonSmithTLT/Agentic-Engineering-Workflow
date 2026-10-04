@@ -33,7 +33,7 @@ CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_SUSPENDED = 0x00000004
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
-if IS_WINDOWS:  # pragma: windows-only
+if sys.platform == "win32":  # pragma: windows-only
     import ctypes
     from ctypes import wintypes
 
@@ -118,7 +118,7 @@ class ProcessTree:
     to start anything (fail closed until the run's containment is decided)."""
 
     def __init__(self, layout: Any = None, *, require_layout: bool = False) -> None:
-        if layout is not None and IS_WINDOWS:  # pragma: windows-only
+        if layout is not None and sys.platform == "win32":  # pragma: windows-only
             raise ValueError("filesystem containment layouts are Linux-only")
         self.layout = layout
         self.require_layout = require_layout
@@ -126,7 +126,7 @@ class ProcessTree:
         self._job: Any = None
         self._pgid: int | None = None
         self._sentinel: subprocess.Popen[bytes] | None = None
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             job = _k32.CreateJobObjectW(None, None)
             if not job:
                 raise _winerr("CreateJobObject")
@@ -146,7 +146,7 @@ class ProcessTree:
             from aew.errors import ContainmentUnavailable
 
             raise ContainmentUnavailable("this process tree requires filesystem containment and has no layout")
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             flags = kwargs.pop("creationflags", 0) | CREATE_SUSPENDED | CREATE_NO_WINDOW
             proc = subprocess.Popen(argv, creationflags=flags, **kwargs)
             handle = int(proc._handle)  # type: ignore[attr-defined]
@@ -169,7 +169,7 @@ class ProcessTree:
 
     def active(self) -> int:
         """Processes still running in the tree (Windows: the job's count; POSIX: 1 if the group exists)."""
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             info = _BasicAccounting()
             if not _k32.QueryInformationJobObject(self._job, _BASIC_ACCOUNTING_INFORMATION, ctypes.byref(info),
                                                   ctypes.sizeof(info), None):
@@ -184,7 +184,7 @@ class ProcessTree:
             return 0
 
     def kill(self) -> None:
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             if self._job:
                 _k32.TerminateJobObject(self._job, 1)
             return
@@ -208,7 +208,7 @@ class ProcessTree:
         deadline = time.monotonic() + timeout_s
         while self.active() and time.monotonic() < deadline:
             time.sleep(0.02)
-        if IS_WINDOWS and self._job:  # pragma: windows-only
+        if sys.platform == "win32" and self._job:  # pragma: windows-only
             _k32.CloseHandle(self._job)  # KILL_ON_JOB_CLOSE: anything still there ends with the handle
             self._job = None
         elif self._sentinel is not None:
@@ -229,15 +229,15 @@ def harden_current_process() -> None:
         try:
             import ctypes as c
             c.CDLL(None, use_errno=True).prctl(4, 0)  # PR_SET_DUMPABLE = 0
-        except Exception:
+        except Exception:  # noqa: S110 (hardening is best effort; ADR-0009 documents the residual)
             pass
 
 
 def spawn_detached(argv: list[str], *, env: dict[str, str], cwd: str | Path | None = None,
-                   stdin: Any = None, stdout: Any = None, stderr: Any = None) -> subprocess.Popen[bytes]:
+                   stdin: Any = None, stdout: Any = None, stderr: Any = None) -> subprocess.Popen[Any]:
     """Start the run supervisor so that it outlives the launching CLI, without any visible console."""
     kwargs: dict[str, Any] = {"env": env, "cwd": cwd, "stdin": stdin, "stdout": stdout, "stderr": stderr}
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         base = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
         try:  # leave any job the launching terminal runs in, where the job allows it
             return subprocess.Popen(argv, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **kwargs)
@@ -249,7 +249,7 @@ def spawn_detached(argv: list[str], *, env: dict[str, str], cwd: str | Path | No
 def pid_alive(pid: int | None) -> bool:
     if not pid:
         return False
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         h = _k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not h:
             return False
@@ -276,7 +276,7 @@ def started_at(pid: int | None) -> float | None:
     identity together with its start time: pids are reused."""
     if not pid:
         return None
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         h = _k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not h:
             return None
@@ -349,7 +349,7 @@ class Watch:
         self.pid = pid
         self._handle: Any = None
         self._fd: int | None = None
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             self._handle = _k32.OpenProcess(_SYNCHRONIZE | _PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         elif hasattr(os, "pidfd_open"):
             try:
@@ -358,7 +358,7 @@ class Watch:
                 self._fd = None
 
     def alive(self) -> bool:
-        if IS_WINDOWS:  # pragma: windows-only
+        if sys.platform == "win32":  # pragma: windows-only
             return bool(self._handle) and _k32.WaitForSingleObject(self._handle, 0) == _WAIT_TIMEOUT
         if self._fd is not None:
             import select
@@ -366,7 +366,7 @@ class Watch:
         return pid_alive(self.pid)
 
     def close(self) -> None:
-        if IS_WINDOWS and self._handle:  # pragma: windows-only
+        if sys.platform == "win32" and self._handle:  # pragma: windows-only
             _k32.CloseHandle(self._handle)
             self._handle = None
         elif self._fd is not None:
@@ -377,7 +377,7 @@ class Watch:
 def kill_pid(pid: int | None) -> None:
     if not pid:
         return
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         h = _k32.OpenProcess(_PROCESS_TERMINATE, False, pid)
         if h:
             _k32.TerminateProcess(h, 1)
@@ -391,7 +391,7 @@ def kill_pid(pid: int | None) -> None:
 
 def suspend(pid: int) -> None:
     """Freeze a process (tests: an 'old run wakes up later')."""
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         h = _k32.OpenProcess(_PROCESS_SUSPEND_RESUME, False, pid)
         if not h:
             raise _winerr("OpenProcess")
@@ -402,7 +402,7 @@ def suspend(pid: int) -> None:
 
 
 def resume(pid: int) -> None:
-    if IS_WINDOWS:  # pragma: windows-only
+    if sys.platform == "win32":  # pragma: windows-only
         h = _k32.OpenProcess(_PROCESS_SUSPEND_RESUME, False, pid)
         if not h:
             raise _winerr("OpenProcess")

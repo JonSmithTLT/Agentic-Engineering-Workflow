@@ -280,7 +280,8 @@ def test_a_lost_damaged_or_foreign_index_is_rebuilt(store, loss):
         other = init(store.root.parent / "other")
         history = History(other.root)
         with other.session() as s:
-            root = history.append(s, read_root(other.root), [dict(fields(k, "c" * 64), id=f"X-{k}") for k in range(1, 7)])
+            root = history.append(s, read_root(other.root),
+                                  [dict(fields(k, "c" * 64), id=f"X-{k}") for k in range(1, 7)])
             s.write(ROOT_REL, dump_yaml(root), immutable=False)
             s.commit(Transition(op="x", actor={"kind": "test"}))
         HistoryIndex(other.root).sync(read_root(other.root))

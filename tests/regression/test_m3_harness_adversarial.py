@@ -20,9 +20,14 @@ import sys
 from pathlib import Path
 
 import pytest
-
-from aewflow import (DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project,
-                     unit_check_command)
+from aewflow import (
+    DISCOVERY,
+    SUBTRACT_PATCH,
+    create_investigation,
+    create_planned_ticket,
+    sample_project,
+    unit_check_command,
+)
 from conftest import IS_WINDOWS, clean_env, run_aew
 from fake_harness import AGENT, IMPL_REPORT, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
@@ -326,7 +331,7 @@ def test_rotation_racing_submissions_never_admits_evidence_after_revocation(lab,
                                         {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
     inv = out["invocation"]
     for n in range(1, 4):
-        lab.until(lambda: (sync / f"ready{n}").exists(), what=f"run {n} ready")
+        lab.until(lambda n=n: (sync / f"ready{n}").exists(), what=f"run {n} ready")
         nxt = f"R-{inv}-{n + 1}"
         lab.script(nxt, [touch(sync / f"ready{n + 1}"), wait(sync / f"go{n + 1}"),
                          {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
@@ -502,7 +507,7 @@ def test_run_a_cannot_act_as_run_b(lab, tmp_path, sync):
     b = lab.lead("work", "dispatch", wid_b, "--launch")
     lab.until(lambda: (sync / "readyB").exists(), what="B ready")
     b_endpoint = lab.record("R-INV-0001-1")["bridge"]["endpoint"]
-    report = f"---\nclaim: forged\nresult: pass\n---\nx\n"
+    report = "---\nclaim: forged\nresult: pass\n---\nx\n"
     lab.script("R-INV-0002-1", [
         {"do": "bridge_payload", "request": {"op": "submit", "args": {"kind": "discovery_record", "text": report,
                                                                        "invocation": b["invocation"]}}},

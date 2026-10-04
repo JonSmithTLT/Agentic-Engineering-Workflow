@@ -88,7 +88,7 @@ class Server:
         return self.request("POST", path, body=body if body is not None else {}, **kw)
 
     # ------------------------------------------------------------------ events
-    def subscribe(self) -> "EventStream":
+    def subscribe(self) -> EventStream:
         return EventStream(self)
 
     # ------------------------------------------------------------------ lifecycle

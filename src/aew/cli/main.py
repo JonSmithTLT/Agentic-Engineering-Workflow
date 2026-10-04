@@ -11,10 +11,10 @@ import argparse
 import json
 import os
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from aew import SPEC_SET, __version__
-from aew import profile
+from aew import SPEC_SET, __version__, profile
 from aew.cli import fields
 from aew.errors import AEWError
 
@@ -44,9 +44,11 @@ def _utf8_streams() -> None:
     # Harnesses read AEW output through pipes; on Windows a pipe defaults to the ANSI code page,
     # which cannot encode pack/status text (e.g. "→"). AEW output is always UTF-8.
     for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)  # absent when a caller replaced the stream
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):
+            if reconfigure is not None:
+                reconfigure(encoding="utf-8", errors="replace")
+        except ValueError:
             pass
 
 

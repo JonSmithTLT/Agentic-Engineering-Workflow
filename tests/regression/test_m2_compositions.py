@@ -8,9 +8,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aewflow import (APPLY_PATCH, Role, assign, complete_investigation, create_investigation, create_planned_ticket,
-                     create_unit, dispatch, implement, integrate, parent_review, parent_verify, plan_unit,
-                     prepare_and_validate, sample_project, submit_record, to_commit_ready, to_verified)
+from aewflow import (
+    APPLY_PATCH,
+    Role,
+    assign,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    create_unit,
+    dispatch,
+    implement,
+    integrate,
+    parent_review,
+    parent_verify,
+    plan_unit,
+    prepare_and_validate,
+    sample_project,
+    submit_record,
+    to_commit_ready,
+    to_verified,
+)
 from conftest import git
 from invariants import assert_control_invariants
 
@@ -160,7 +177,9 @@ def test_redispatch_supersedes_the_attempt_and_everything_it_produced(tmp_path):
     meta, _ = parse_frontmatter((p.root / ".aew" / u["completion_record"]).read_text(encoding="utf-8"))
     assert meta["accepted_record"]["id"] == e3 and e1 not in meta["basis"] and e2 not in meta["basis"]
     assert [(a["attempt"], a["record"]) for a in meta["superseded_attempts"]] == [(1, None), (2, e2)]
-    assert submit_record(Role(p, k3.token, p.root), "discovery_record", expect_ok=False).error["code"]         == "STALE_AUTHORITY"  # its observation is gone, and the credential ended with the attempt
+    # Its observation is gone, and the credential ended with the attempt.
+    late = submit_record(Role(p, k3.token, p.root), "discovery_record", expect_ok=False)
+    assert late.error["code"] == "STALE_AUTHORITY"
     assert err(p, "evidence", "ingest", wid, "--evidence", e1)["code"] == "ILLEGAL_TRANSITION"
     assert_control_invariants(p)
 
@@ -177,7 +196,8 @@ def test_a_stale_source_bound_input_blocks_dispatch_until_refreshed_or_acknowled
     implement_it = create_planned_ticket(p, tmp_path, title="Build on the survey",
                                          extra=("--depends-on", f"{survey}:evidence"))
     follow_up = create_investigation(p, tmp_path, title="Follow-up question",
-                                     extra=("--depends-on", f"{survey}:evidence", "--depends-on", f"{research}:evidence"))
+                                     extra=("--depends-on", f"{survey}:evidence",
+                                            "--depends-on", f"{research}:evidence"))
     assert show(p, implement_it)["state"] == "READY" and show(p, follow_up)["state"] == "READY"
 
     first, _ = to_commit_ready(p, tmp_path, title="Change calc first")
@@ -215,8 +235,8 @@ def test_a_stale_source_bound_input_blocks_dispatch_until_refreshed_or_acknowled
     _, dispatched = dispatch(p, follow_up)
     inputs = p.ok("invoke", "show", dispatched["invocation"])["inputs"]
     assert sorted((i["id"], i["freshness"], i["basis"]) for i in inputs) == sorted(
-        [(fresh, "CURRENT", "authoritative-source"), (p.ok("work", "show", research)["control"]["execution"]["record"]["id"],
-                                         "UNKNOWN", "external")])
+        [(fresh, "CURRENT", "authoritative-source"),
+         (p.ok("work", "show", research)["control"]["execution"]["record"]["id"], "UNKNOWN", "external")])
     assert_control_invariants(p)
 
 
@@ -321,8 +341,9 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     committed), so a green composition or walk means the rules held, not that they cannot fail."""
     import copy
 
-    from aew.engine.api import Engine
     from invariants import m2_violations, with_cold
+
+    from aew.engine.api import Engine
 
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective", cls=0)
@@ -466,7 +487,8 @@ def test_an_attempt_is_bound_to_the_dependencies_it_was_dispatched_with(tmp_path
     dispatch(p, look)
     engine = Engine.discover(p.root)
     state = engine.store.read()
-    assert engine.dispatch_binding_problem(state, change) is None and engine.dispatch_binding_problem(state, look) is None
+    assert engine.dispatch_binding_problem(state, change) is None
+    assert engine.dispatch_binding_problem(state, look) is None
     s = copy.deepcopy(state)
     s["work"][story]["depends_on"].append({"id": unfinished, "kind": "evidence"})
     for wid in (change, look):
@@ -560,8 +582,10 @@ def test_a_read_only_invocation_is_checked_for_mutation_until_its_report_is_inge
     ver = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
     unit_ev = ver.check("unit")["evidence"]
     (ver.workspace / "calc/core.py").write_text("tampered after the check\n", encoding="utf-8", newline="\n")
-    claims = [{"type": t, "claim": "holds", "result": "pass", "checks": [unit_ev]} for t in ("goal_backwards", "contract")]
-    rejected = ver.submit("verification", {"claim": "acceptance", "verification": {"scope": "parent", "claims": claims}},
+    claims = [{"type": t, "claim": "holds", "result": "pass", "checks": [unit_ev]}
+              for t in ("goal_backwards", "contract")]
+    rejected = ver.submit("verification",
+                          {"claim": "acceptance", "verification": {"scope": "parent", "claims": claims}},
                           expect_ok=False)
     assert rejected.error["code"] == "OBSERVATION_MUTATED"
     assert_control_invariants(p)
@@ -574,8 +598,9 @@ def test_parent_acceptance_is_a_downstream_assignment_of_its_dependencies(tmp_pa
     records under the ADR-0008 input rule, and their reports are bound to the dependencies they ran under."""
     import copy
 
-    from aew.engine.api import Engine
     from invariants import m2_violations, with_cold
+
+    from aew.engine.api import Engine
 
     p = sample_project(tmp_path)
     survey = create_investigation(p, tmp_path, title="Prerequisite survey")

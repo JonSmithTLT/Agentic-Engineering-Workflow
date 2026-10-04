@@ -13,9 +13,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 import fake_opencode
+import pytest
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir

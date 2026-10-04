@@ -412,7 +412,8 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
         rec = execution.get("record")
         if rec:
             ev = _evidence(root, wid).get(rec["id"])
-            if ev is None or ev["kind"] != execution.get("expected_kind") or ev.get("attempt") != execution.get("attempt"):
+            if (ev is None or ev["kind"] != execution.get("expected_kind")
+                    or ev.get("attempt") != execution.get("attempt")):
                 problems.append(f"{wid}: accepted record {rec['id']} is not the pinned output of attempt "
                                 f"{execution.get('attempt')}")
             elif execution.get("expected_kind") != EXECUTE_KIND.get(execution.get("archetype")):

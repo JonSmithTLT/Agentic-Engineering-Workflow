@@ -9,9 +9,9 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
+from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition, NotFound, PermissionDenied
 from aew.harness import contract as K
 from aew.harness import registry
@@ -24,8 +24,7 @@ from aew.workspace import worktrees
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import (ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort,
-                                  WorkUnitsPort)
+    from aew.engine.ports import ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
 
 # Isolated workspaces and the integration queue for concurrency > 1 arrive in M4-C and M4-D, so the policy's
 # ``mutating_concurrency`` is read but clamped to 1 until then (WC §8.1, §21.1; m4-ambiguity-report.md §2.5).

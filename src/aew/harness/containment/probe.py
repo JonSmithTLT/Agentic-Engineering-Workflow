@@ -79,7 +79,8 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path) -> dict[
             return result
         if done.returncode != 0:
             err = (done.stderr or "").strip().splitlines()
-            result["reason"] = f"the sandbox could not start (exit {done.returncode}): {err[-1] if err else 'no output'}"
+            last = err[-1] if err else "no output"
+            result["reason"] = f"the sandbox could not start (exit {done.returncode}): {last}"
             return result
         try:
             seen = json.loads(done.stdout.strip().splitlines()[-1])

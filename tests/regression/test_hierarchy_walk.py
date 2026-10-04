@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
+from invariants import control_violations
 
 from aew import operator
 from aew.engine import hierarchy as H
@@ -30,8 +32,6 @@ from aew.engine.api import Engine
 from aew.engine.faults import InjectedFault
 from aew.errors import AEWError
 from aew.util import dump_yaml, load_yaml
-from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
-from invariants import control_violations
 
 SEEDS = [int(s) for s in os.environ.get("AEW_HWALK_SEEDS", "7,19,31,43,59").split(",")]
 STEPS = int(os.environ.get("AEW_HWALK_STEPS", "80"))
@@ -98,7 +98,8 @@ class HierarchyWalk:
         return getattr(self.engine, method)(token=self.token, expect_rev=self.state()["revision"], **kw)
 
     def submit(self, tok: str, kind: str, meta: dict[str, Any]) -> str:
-        return self.engine.submit(invocation_token=tok, kind=kind, text=f"---\n{dump_yaml(meta)}---\nwalk\n")["evidence"]
+        text = f"---\n{dump_yaml(meta)}---\nwalk\n"
+        return self.engine.submit(invocation_token=tok, kind=kind, text=text)["evidence"]
 
     def create(self, kind: str, title: str, *, parent: str | None = None, cls: int = 1, **kw: Any) -> str:
         wid = self.lead("work_create", kind=kind, title=title, risk_class=cls, parent=parent, **kw)["id"]
@@ -107,7 +108,8 @@ class HierarchyWalk:
 
     def plan(self, wid: str, reason: str | None = None) -> None:
         self.variant += 1
-        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body=f"Walk plan {self.variant}.\n", reason=reason)["revision_number"]
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid, body=f"Walk plan {self.variant}.\n",
+                        reason=reason)["revision_number"]
         self.lead("plan_accept", work_id=wid, revision=rev)
 
     def new_ticket(self, parent: str | None, *, mutating: bool) -> str:
@@ -230,7 +232,8 @@ class HierarchyWalk:
 
     def verify(self, wid: str, scope: str = "ticket") -> None:
         u = self.unit(wid)
-        out = self.lead("invoke_create", work_id=wid, role="verifier", scope="integration" if scope == "integration" else "ticket")
+        out = self.lead("invoke_create", work_id=wid, role="verifier",
+                        scope="integration" if scope == "integration" else "ticket")
         tok = self.hold(wid, out, "verifier")
         unit_ev = self.engine.check_run(invocation_token=tok, check_id="unit")["evidence"]
         goal = "pass" if scope == "integration" or self.rng.random() < 0.85 else "fail"
@@ -289,7 +292,8 @@ class HierarchyWalk:
             self.engine.check_run(invocation_token=tok, check_id="unit")
 
     def replay(self, wid: str) -> None:
-        self.lead("evidence_ingest", work_id=wid, evidence_id=self.rng.choice([ev for w, ev in self.records if w == wid]))
+        self.lead("evidence_ingest", work_id=wid,
+                  evidence_id=self.rng.choice([ev for w, ev in self.records if w == wid]))
 
     # ------------------------------------------------------------------ structure
 
@@ -317,7 +321,8 @@ class HierarchyWalk:
         self.lead("work_move", work_id=wid, parent=self.rng.choice(targets + [None]), reason="walk move")
 
     def promote(self, wid: str) -> None:
-        self.lead("work_promote", work_id=wid, to="story", title=f"walk promoted {wid}", reason="walk: bigger than it looked")
+        self.lead("work_promote", work_id=wid, to="story", title=f"walk promoted {wid}",
+                  reason="walk: bigger than it looked")
         self.units.append(self.state()["work"][wid]["parent"])
 
     def depend(self, wid: str) -> None:

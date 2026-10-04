@@ -32,8 +32,8 @@ import sys
 import tempfile
 import threading
 from collections.abc import Callable
-from multiprocessing.connection import Client, Listener
 from multiprocessing import AuthenticationError
+from multiprocessing.connection import Client, Listener
 from typing import Any
 
 from aew import errors
@@ -191,7 +191,7 @@ class BridgeServer:
     def _wake(self) -> None:
         try:  # unblock accept() so the serving thread observes the closure
             Client(self.address, family="AF_PIPE" if IS_WINDOWS else "AF_UNIX", authkey=self.key).close()
-        except Exception:
+        except Exception:  # noqa: S110 (best effort: the serving thread may already have stopped)
             pass
         try:
             self._listener.close()
@@ -247,6 +247,8 @@ def private_address() -> tuple[str, str, str | None]:
     if IS_WINDOWS:  # pragma: windows-only
         return r"\\.\pipe\aew-bridge-" + secrets.token_hex(16), "AF_PIPE", None
     # Under /tmp, whatever TMPDIR says: each contained run has a private /tmp, so no sandbox sees another's socket.
-    directory = tempfile.mkdtemp(prefix="aew-bridge-", dir="/tmp" if os.path.isdir("/tmp") else None)
+    # mkdtemp makes a fresh, unpredictable directory (0700 below), so a shared /tmp is safe here.
+    tmp = "/tmp"  # noqa: S108
+    directory = tempfile.mkdtemp(prefix="aew-bridge-", dir=tmp if os.path.isdir(tmp) else None)
     os.chmod(directory, 0o700)
     return os.path.join(directory, "s"), "AF_UNIX", directory

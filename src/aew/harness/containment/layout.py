@@ -50,7 +50,10 @@ SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".passwor
 SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc")
 
 PRIVATE_GIT = "git"  # <run dir>/git: the run's private index and object store
-MASK_FILE = ".aew-mask"  # <run dir>/.aew-mask: the empty file bound over file secrets
+MASK_FILE = ".aew-mask"
+# Inside the sandbox /tmp is a fresh, private tmpfs: nothing else shares it, so the usual shared-/tmp risks (S108)
+# do not apply. The bridge socket lives under the host's /tmp for the same reason (bridge.private_address).
+SANDBOX_TMP = "/tmp"  # noqa: S108  # <run dir>/.aew-mask: the empty file bound over file secrets
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,7 @@ class Layout:
 def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None) -> list[str]:
     """The bubblewrap command that runs ``argv`` inside ``layout``. Only flags bubblewrap 0.4.0 (EL8) has."""
     out = [layout.bwrap, "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
-           "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+           "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", SANDBOX_TMP]
     for path in layout.visible:
         out += ["--ro-bind", path, path]
     for path in layout.hide_runs:
@@ -197,7 +200,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     if not mask.exists():
         mask.write_bytes(b"")
     mask.chmod(0o444)
-    env = {"TMPDIR": "/tmp", "XDG_CACHE_HOME": str(cache)}
+    env = {"TMPDIR": SANDBOX_TMP, "XDG_CACHE_HOME": str(cache)}
     writable = [_real(scratch), _real(harness)]
     if access == "write":
         git_root, git_env = private_git(run, ws)

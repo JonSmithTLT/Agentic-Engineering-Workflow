@@ -5,10 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aewflow import (
     APPLY_PATCH,
-    SUBTRACT_PATCH,
     create_planned_ticket,
     integrate,
     prepare_and_validate,
@@ -17,7 +15,6 @@ from aewflow import (
     to_verified,
 )
 from conftest import git
-
 
 
 @pytest.fixture
@@ -114,7 +111,7 @@ def test_dependency_requires_output_in_recorded_snapshot(calc, tmp_path):
 
 def test_moved_ref_makes_candidate_stale(calc, tmp_path):
     wid, _ = to_commit_ready(calc, tmp_path)
-    integ = prepare_and_validate(calc, wid)
+    prepare_and_validate(calc, wid)
     # A third party advances the authoritative branch after validation.
     (calc.root / "NOTES.txt").write_text("unrelated\n")
     git("add", "NOTES.txt", cwd=calc.root)

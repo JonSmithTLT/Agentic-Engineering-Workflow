@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from pathlib import Path
 
 from v2lib import PINNED_BIN, isolated_env, start_server

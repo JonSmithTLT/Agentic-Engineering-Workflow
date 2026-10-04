@@ -6,8 +6,10 @@ index-only work is never called clean (inspection, cleanup); an obligation added
 enforced at publication; an evidence-only Ticket never mutates or publishes source in M1.
 """
 from pathlib import Path
+
+from aewflow import prepare_and_validate, sample_project, to_commit_ready
 from conftest import git, make_git_repo
-from aewflow import sample_project, to_commit_ready, prepare_and_validate
+
 from aew.workspace import worktrees
 
 
@@ -45,11 +47,12 @@ def test_publish_rechecks_new_required_role_gate(tmp_path):
     gates = p.ok('gate', 'show', wid)
     assert gates['gates']['review_card:security_reviewer']['status'] == 'MISSING'
     result = p.aew('integrate', 'publish', wid, '--token', p.token, '--expect-rev', str(p.rev()))
-    assert result.returncode != 0, 'Published DONE with an unfulfilled operator-pinned review obligation: ' + result.stdout
+    assert result.returncode != 0, ('Published DONE with an unfulfilled operator-pinned review obligation: '
+                                    + result.stdout)
 
 
 def test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy(tmp_path):
-    from aewflow import create_planned_ticket, assign, to_verified
+    from aewflow import assign, create_planned_ticket
     p = sample_project(tmp_path)
     holder = create_planned_ticket(p, tmp_path, title='Legitimate mutation slot holder')
     assign(p, holder)

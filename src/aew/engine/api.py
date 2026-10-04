@@ -11,7 +11,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
@@ -208,7 +208,7 @@ class ProjectAdmin:
             if gates.get("mutating_concurrency", 1) > 1:
                 add("mutating-concurrency", "WARN",
                     "isolation/integration for concurrency > 1 is not implemented; effective value is 1")
-        except Exception:
+        except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
@@ -274,7 +274,7 @@ class Engine:
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
-    def discover(cls, start: Path) -> "Engine":
+    def discover(cls, start: Path) -> Engine:
         """The Engine of the authoritative project for ``start`` (``Kernel.locate``)."""
         return cls(*Kernel.locate(start))
 
@@ -287,7 +287,7 @@ class Engine:
         name: str | None = None,
         branch: str | None = None,
         workspaces_root: str | None = None,
-    ) -> "Engine":
+    ) -> Engine:
         repo_root = repo_root.resolve()
         top = git.toplevel(repo_root)
         if top is None or top.resolve() != repo_root:
@@ -640,7 +640,7 @@ class Engine:
         return self._lead.lead_takeover(expect_rev=expect_rev, reason=reason, session_label=session_label)
 
     def lead_txn(self, token: str, expect_rev: int | None, op: str, *, reason: str | None = None,
-                 allow_pending: bool = False, _adopting_manifest: bool = False) -> Iterator[TxnContext]:
+                 allow_pending: bool = False, _adopting_manifest: bool = False) -> AbstractContextManager[TxnContext]:
         return self._k.lead_txn(token, expect_rev, op, reason=reason, allow_pending=allow_pending,
                                 _adopting_manifest=_adopting_manifest)
 
@@ -768,8 +768,8 @@ class Engine:
                      _cache: dict[str, list[dict[str, Any]]] | None = None) -> list[str]:
         return self._harness.run_evidence(work_unit, run, _cache)
 
-    def run_results(self, work_unit: str, run: str, _cache: dict[str, list[dict[str, Any]]] | None = None) -> dict[str,
-                    str]:
+    def run_results(self, work_unit: str, run: str,
+                    _cache: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, str | None]:
         return self._harness.run_results(work_unit, run, _cache)
 
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:

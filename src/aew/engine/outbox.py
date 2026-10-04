@@ -34,7 +34,7 @@ from typing import Any
 
 from aew.errors import IntegrityError
 from aew.history.manifest import canonical_json
-from aew.util import atomic_write, dump_yaml, load_yaml, sha256_bytes
+from aew.util import dump_yaml, load_yaml, sha256_bytes
 
 TRANSITION_SCHEMA = "aew/transition/v1"
 EVENTS_SCHEMA = "aew/transition-events/v1"
@@ -224,9 +224,13 @@ def matches(record: dict[str, Any], kinds: set[str] | None) -> dict[str, Any] | 
 # ---------------------------------------------------------------------------------------------- wake (D4)
 
 def bump_wake(aew_root: Path, revision: int | None = None) -> None:
-    """Advisory: change ``local/wake``. Failure is ignored; a waiter's coarse check covers a missed wake."""
+    """Advisory: change ``local/wake``. A plain write, never fsynced: waiters only stat the file, and durability would
+    cost a commit milliseconds on Windows for nothing (ADR-0012's H2 budget). Failure is ignored; a waiter's coarse
+    check covers a missed wake."""
     try:
-        atomic_write(aew_root / WAKE_REL, f"{revision if revision is not None else '-'} {time.time_ns()}\n")
+        path = aew_root / WAKE_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{revision if revision is not None else '-'} {time.time_ns()}\n", encoding="utf-8")
     except OSError:
         pass
 

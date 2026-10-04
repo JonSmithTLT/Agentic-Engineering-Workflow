@@ -16,11 +16,15 @@ from aew.util import parse_frontmatter
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
-# A check whose process starts a child, then either hangs (and times out) or exits at once. The child waits, then
-# writes a marker: it must never get the chance, because the check's evidence is sealed when the check returns.
+# A check whose process starts a child, then either hangs (and times out) or exits at once. The child waits for the
+# test's "go" file, which the test writes only after the check has returned, then writes a marker: it must never get
+# the chance, because the check's evidence is sealed when the check returns. (Ordered by the go file, not by a delay:
+# under load a fixed delay can elapse while the check is still legitimately running.)
 PARENT = textwrap.dedent("""\
     import subprocess, sys, time
-    child = "import time, pathlib, sys; time.sleep(0.8); pathlib.Path(sys.argv[1]).write_text('child continued')"
+    child = ("import time, pathlib, sys; m = pathlib.Path(sys.argv[1]); go = m.with_name('go'); t = time.time()\\n"
+             "while not go.exists() and time.time() - t < 60: time.sleep(0.02)\\n"
+             "m.write_text('child continued')")
     subprocess.Popen([sys.executable, "-c", child, sys.argv[1]], creationflags={flags},
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(float(sys.argv[2]))
@@ -41,7 +45,8 @@ def test_a_check_leaves_no_process_behind_when_it_returns(tmp_path, parent_runs_
         assert result["exit_code"] is None and "TIMEOUT" in result["log"]
     else:
         assert result["exit_code"] == 0
-    time.sleep(1.5)  # well past the child's 0.8 s
+    (tmp_path / "go").write_text("", encoding="utf-8")  # a surviving child writes its marker now
+    time.sleep(1.5)
     assert not marker.exists(), "a process the check started outlived the check"
 
 

@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aew.engine import faults
 from aew.errors import GateUnsatisfied, NotFound
 
 BUILTIN = {"guardrails"}
@@ -62,16 +63,22 @@ def resolve(checks_policy: dict[str, Any], check_id: str) -> dict[str, Any]:
     return cfg
 
 
-def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
+def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None, layout: Any = None,
+        trees: Any = None) -> dict[str, Any]:
     """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
-    after-snapshot describes everything the check did (independent audit I2)."""
+    after-snapshot describes everything the check did (independent audit I2). With ``layout`` (a contained run's
+    sandbox) the tree starts the check inside it (M4-B). ``trees`` (a run's supervisor) holds the check's tree while it
+    runs, so the run ending ends the check."""
     from aew.harness.procs import ProcessTree
 
     command = [part.replace("{python}", sys.executable) for part in cfg["command"]]
     cwd = (workspace / cfg.get("cwd", ".")).resolve()
     timeout = cfg.get("timeout_s", DEFAULT_TIMEOUT_S)
     started = time.monotonic()
-    tree = ProcessTree()
+    tree = ProcessTree(layout=layout)
+    if trees is not None:
+        trees.add(tree)  # a run's CheckTrees: killed on arrival if the run has already ended
+    faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
     exit_code: int | None = None
     try:
         try:
@@ -90,6 +97,8 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None)
                 log = f"$ {' '.join(command)}\nTIMEOUT after {timeout}s\n{stdout or ''}\n{stderr or ''}"
     finally:
         left = tree.close()
+        if trees is not None:
+            trees.discard(tree)
     if left and exit_code is not None:
         log += "\n--- processes the check left running were ended when it returned ---\n"
     return {"exit_code": exit_code, "duration_s": round(time.monotonic() - started, 3), "log": log,

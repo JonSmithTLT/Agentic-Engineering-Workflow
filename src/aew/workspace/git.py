@@ -161,6 +161,9 @@ def git(
     check: bool = True,
     input: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
+    if not Path(cwd).is_dir():  # a worktree removed outside AEW: an AEW error, not a traceback (area 4 F3)
+        raise GitError(f"git {args[0] if args else ''}: the directory {cwd} does not exist (removed outside AEW?)",
+                       cwd=str(cwd))
     full_env = dict(os.environ)
     full_env["GIT_TERMINAL_PROMPT"] = "0"
     full_env["LC_ALL"] = "C"

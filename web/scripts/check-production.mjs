@@ -11,6 +11,7 @@ function files(dir) {
 }
 for (const file of files('dist')) {
   const text = fs.readFileSync(file, 'utf8');
+  if (/execution-preview|execution-fixtures|TRACE-Clangd|Inspect recorded execution|Supplied execution controls|Recorded investigation|\/api\/preview\/execution/.test(text)) throw new Error('Production execution preview leakage: '+file);
   if (/evidence-preview|\/api\/preview\/evidence|REF-J05-|Evidence inspection preview|Inspect evidence|Excerpt SHA-256 verified/.test(text)) throw new Error(`Production evidence preview leakage: ${file}`);
   if (/investigation-preview|\/api\/preview\/investigation|SRC-Removal|PKT-Retry|No delivery receipt supplied|Compare invocations/.test(text)) throw new Error(`Production investigation leakage: ${file}`);
   if (

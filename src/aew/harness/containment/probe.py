@@ -73,7 +73,7 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path) -> dict[
                                          if (Path(v) / ".aew").is_dir()]
     spec = {"sentinel": str(sentinel), "sibling": str(sibling), "name": name,
             "writable": list(layout.writable), "protected": [*layout.protected, *extra]}
-    result: dict[str, Any] = {"ok": False, "reason": None}
+    result: dict[str, Any] = {"ok": False, "reason": None, "probe": name}
     try:
         try:
             done = subprocess.run(bwrap_argv(layout, [sys.executable, "-I", "-c", _PAYLOAD, json.dumps(spec)]),

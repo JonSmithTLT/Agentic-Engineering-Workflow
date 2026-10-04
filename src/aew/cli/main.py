@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from aew import SPEC_SET, __version__, profile
-from aew.cli import fields
+from aew.cli import credentials, fields
 from aew.errors import AEWError
 
 Handler = Callable[[argparse.Namespace], Any]
@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     commands.register(sub)
     fields.register(parser)
+    credentials.register(parser)
     return parser
 
 
@@ -61,13 +62,17 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
         refusal = lead_broker.refuses_locally(args)
         if refusal:
             raise UsageError(refusal)
+        if args.print_credential:
+            raise UsageError("--print-credential is refused in a Lead session: a credential never goes into the "
+                             "Lead's transcript")
         if lead_broker.routes(args):
             reply = lead_broker.forward(argv, args)
             return reply["result"], reply["json"]
     from aew.engine import dispatch
 
+    credentials.before(args)  # a credential this command issues must have somewhere safe to go (ADR-0009)
     with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
-        return handler(args), getattr(args, "json", False)
+        return credentials.deliver(handler(args), args), getattr(args, "json", False)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,7 +12,8 @@ import { evidenceKinds,evidenceResults,evidenceCurrentness } from '../../vocabul
 import { dashboardCopyLink,historicalRequested } from '../../navigation';
 import { id } from '../../schema';
 import { evidenceSchemas,evidenceCases,supportedMedia,excerptIssue,type Artifact,type Association,type EvidenceSource } from './schema';
-import { referenceAssociations,sameOrigin } from './fixtures';
+import { sameOrigin } from './fixtures';
+import { inspectionAssociations,inspectionTarget } from './associations';
 import { useEvidenceReader,useEvidenceSource,useBoundedExcerpt,type SourceQuery } from './session';
 import { citation,visibleSource } from './model';
 const tabs=[{id:'record',label:'Record'},{id:'artifacts',label:'Artifacts'},{id:'provenance',label:'Provenance'}];
@@ -29,7 +30,7 @@ export default function EvidenceReader(){
     {invalid?<p role="alert">Unsupported evidence presentation or historical link. No evidence preview read was sent.</p>:<ReaderBody key={`${name}:${reference}`} name={name} sourceId={source} referenceId={reference} tab={tab}/>}</>;
 }
 function ReaderBody({name,sourceId,referenceId,tab}:{name:string;sourceId:string;referenceId:string;tab:string}){
-  const expected=referenceAssociations.find(a=>a.reference_id===referenceId),{reader,ready}=useEvidenceReader(`reference:${referenceId}:${JSON.stringify(expected?.origin??null)}`,name),{update}=useControls();
+  const expected=inspectionAssociations.find(a=>a.reference_id===referenceId),{reader,ready}=useEvidenceReader(`reference:${referenceId}:${JSON.stringify(expected?.origin??null)}`,name),{update}=useControls();
   const schema=useMemo(()=>evidenceSchemas.ReferenceResponse.superRefine(({data:a},ctx)=>{if(!expected||a.reference_id!==referenceId||!sameOrigin(a.origin,expected.origin)||a.source_ids.some(id=>!expected.source_ids.includes(id)))ctx.addIssue({code:'custom',message:'Reference association/origin binding mismatch'});}),[expected,referenceId]);
   const resolution=useProjection(`/references/${encodeURIComponent(referenceId)}?case=${encodeURIComponent(name)}`,schema,'history',ready&&!!referenceId&&!!expected,true,reader,false);
   if(referenceId&&!expected)return <p role="alert">No inspection mapping supplied for this reference association.</p>;
@@ -48,8 +49,10 @@ function SourceChooser({name,association}:{name:string;association?:Association}
     {query.error&&<ErrorState error={query.error} retry={()=>void query.refetch()}/>}{query.data?<><Note error={query.error}/><div className="table-scroll"><table className="evidence-table"><thead><tr><th>Source</th><th>Evidence</th><th>Work</th><th>Snapshot / revision</th><th>Captured UTC</th></tr></thead><tbody>{query.data.value.data.items.map(s=><tr key={s.id}><td data-label="Source"><button onClick={()=>update({evidence_source:s.id,evidence_tab:'record'})}>{s.id}</button></td><td data-label="Evidence">{s.evidence_id}</td><td data-label="Work">{s.work.id}</td><td data-label="Snapshot / revision">{s.snapshot_id} · {s.source_revision??'Not supplied'}</td><td data-label="Captured UTC">{s.captured_at}</td></tr>)}</tbody></table></div>{!query.data.value.data.items.length&&<p>No evidence sources supplied for these filters.</p>}<Pager next={query.data.value.data.next_cursor} cursorKey="evidence_source_cursor" resetKey={`${name}:${association?.reference_id}:${params.get('evidence_filter')}:${params.get('evidence_work')}`}/></>:!query.error&&<p role="status">Loading evidence sources…</p>}</section>;
 }
 function SelectedSource({name,sourceId,association,tab}:{name:string;sourceId:string;association?:Association;tab:string}){
-  const query=useEvidenceSource(name,sourceId),s=query.data?.value.data,{update}=useControls(),heading=useRef<HTMLHeadingElement>(null);
+  const target=association&&inspectionTarget(association.reference_id);
+  const query=useEvidenceSource(name,sourceId,target),s=query.data?.value.data,{update}=useControls(),heading=useRef<HTMLHeadingElement>(null);
   useEffect(()=>{if(s)focusBelowHeader(heading.current);},[!!s]);
+  if(target&&s&&(s.id!==target.source_id||s.snapshot_id!==target.snapshot_id||s.visibility_scope!==target.visibility_scope||s.evidence.bindings.producer?.invocation!==target.invocation_id||s.evidence.bindings.producer?.run!==target.run_id))return <p role="alert">Cross-preview Evidence source/snapshot/run binding mismatch.</p>;
   if(association&&s&&(s.evidence_id!==association.origin.evidence_id||!association.source_ids.includes(s.id)))return <p role="alert">Evidence source association mismatch.</p>;
   return <section><h2 ref={heading} tabIndex={-1}>{s?.evidence_id??sourceId}</h2>{query.error&&<ErrorState error={query.error} retry={()=>void query.refetch()}/>}{s?<><p><code>{s.id}</code> · <code>{s.snapshot_id}</code> · {s.source_revision??'Revision not supplied'} · captured UTC {s.captured_at}</p><Note error={query.error}/><button onClick={()=>void query.refetch()}>Refresh fixed source</button><InvestigationTabs prefix="evidence" label="Evidence reader sections" tabs={tabs} active={tab} select={id=>update({evidence_tab:id})}/><div id={`evidence-panel-${tab}`} role="tabpanel" aria-labelledby={`evidence-tab-${tab}`}>
     {tab==='record'&&<section className="panel"><p>Kind: <SemanticValue value={s.evidence.kind} known={evidenceKinds} /> · Reported result: <SemanticValue value={s.evidence.result} known={evidenceResults}/> · Currentness: <SemanticValue value={s.evidence.currentness} known={evidenceCurrentness}/></p><h3>Claim</h3><SafeContent {...s.evidence.claim}/><h3>Evidence body</h3><SafeContent {...s.evidence.body}/><h3>Findings</h3><Reasons values={s.evidence.findings}/><h3>Deviations</h3><Reasons values={s.evidence.deviations}/></section>}

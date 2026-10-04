@@ -56,3 +56,13 @@ Measured in `m3-performance.md`. The design is unchanged; three implementation r
 - **Profiling.** `AEW_PROFILE=<file>` records each command's phases (lock, recover, parse, render, commit, git, scan) and counts.
 
 **Consequence, decided:** every command still costs time linear in the size of `control.yaml`, and the file grows with completed work, about 20 KB per DONE Ticket with its invocations. The operator and designer chose hot/cold control state (**ADR-0011**, 2026-09-27): terminal records move into cold records pinned by hash. That will amend this ADR's model. It is a prerequisite for M4, after M3's acceptance.
+
+## Amendment 2026-10-04 — independent review of control-state persistence
+
+- **Applied marker.** Once a committed transaction's staged writes are all in place, the store writes `state/txn/<rev>.applied` (by commit, or by the recovery that finished it). Recovery rolls forward only a transaction without its marker. A file the last transition staged and that changes afterwards is an ordinary out-of-band edit: the pin checks report it, and `aew manifest adopt` resolves a manifest edit. Before this, every read failed with "modified outside AEW while a transition was being applied". A crash before the marker keeps the roll-forward and its fail-closed rule.
+- **The lock is the file at its path.** On POSIX, removing `local/control.lock` under a holder let a second process lock a new file at the same path. Now:
+  - a taker proceeds only when the file it locked is the file at the path (inode and device), and otherwise reopens;
+  - a holder checks the same before it stages anything, and refuses to commit when the file was removed or replaced.
+
+  Windows refuses to remove an open file. `.aew/local` is disposable only while no AEW process runs (ADR-0011).
+- **A derived index never fails a commit.** A transaction that needs a cold fact waits briefly (2 s) for a busy `local/history.sqlite`, then builds a private index from the history. Before this, it held the control lock for 30 s and failed with `LOCK_TIMEOUT`.

@@ -25,6 +25,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -215,8 +216,6 @@ class ProcessTree:
         """End every process still in the tree and wait until none runs. Returns how many were still running.
 
         For a tree whose owner is done with it (a check that returned): nothing it started may outlive it."""
-        import time
-
         with self._mu:
             self.closed = True  # nothing starts in it after its owner is done with it
         left = self.active()
@@ -272,6 +271,180 @@ class CheckTrees:
         with self._mu:
             self._drained.wait_for(lambda: not self._trees, timeout=wait_s)
             return len(self._trees)
+
+
+# Linux: the parent of an interactive session's harness. It becomes a child subreaper, so every descendant of the
+# harness that detaches (a double fork, `setsid`, `nohup ... &`) is re-parented to it instead of to init. When the
+# harness exits, or the session's process dies (its control pipe closes), it kills every descendant it has, reaps them
+# until it has none, and reports on its result pipe: "clean" (none left), "survivors" (some outlived a 10 s kill loop)
+# or "unowned" (the subreaper could not be set). It stays in the session's process group and on its terminal.
+_SESSION_REAPER = r"""
+import ctypes, os, signal, subprocess, sys, threading, time
+ctl, res = int(sys.argv[1]), int(sys.argv[2])
+signal.signal(signal.SIGINT, lambda *_: None)   # Ctrl-C is the harness's; a handler is reset in the harness at exec
+signal.signal(signal.SIGQUIT, lambda *_: None)
+owned = ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0   # PR_SET_CHILD_SUBREAPER
+lock = threading.Lock()
+
+def descendants():
+    kids = {}
+    for d in os.listdir("/proc"):
+        if d.isdigit():
+            try:
+                with open(f"/proc/{d}/stat", "rb") as f:
+                    ppid = int(f.read().decode("latin-1").rsplit(")", 1)[1].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            kids.setdefault(ppid, []).append(int(d))
+    out, todo = [], [os.getpid()]
+    while todo:
+        for c in kids.get(todo.pop(), []):
+            out.append(c)
+            todo.append(c)
+    return out
+
+def finish(code):
+    with lock:  # once: the harness's exit and the session's death may race
+        deadline, left = time.monotonic() + 10, True
+        while time.monotonic() < deadline:
+            for pid in descendants():
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            try:
+                while os.waitpid(-1, os.WNOHANG)[0] > 0:
+                    pass
+            except ChildProcessError:  # no child at all: as a subreaper, no descendant is left anywhere
+                left = False
+                break
+            time.sleep(0.02)
+        os.write(res, b"unowned" if not owned else b"survivors" if left else b"clean")
+        os._exit(code)
+
+harness = subprocess.Popen(sys.argv[3:])
+threading.Thread(target=lambda: (os.read(ctl, 1), finish(137)), daemon=True).start()
+rc = harness.wait()
+finish(rc if rc >= 0 else 128 - rc)
+"""
+
+
+def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple[int, str]:
+    """Run an interactive session's harness (the Lead's TUI, ADR-0009) on the caller's terminal or console, and own
+    every process it starts: none outlives the harness, or this process. Returns ``(exit code, ownership)``, where
+    ownership is ``"clean"`` when nothing it started is still running, ``"survivors"`` when something could not be
+    ended, and ``"unowned"`` where this platform gives no such guarantee (POSIX other than Linux).
+
+    * **Windows:** a kill-on-close job object; the harness is created suspended, assigned and resumed, and keeps the
+      caller's console (it gets a hidden one only when the caller has none, so no window ever appears).
+    * **Linux:** :data:`_SESSION_REAPER` (above) parents the harness as a child subreaper, so a descendant that
+      detaches is still found and ended. Processes started through another service (cron, ``at``, a user systemd
+      unit) are not descendants and are outside any process ownership (ADR-0009 residual).
+    """
+    if sys.platform == "win32":  # pragma: windows-only
+        job = _k32.CreateJobObjectW(None, None)
+        if not job:
+            raise _winerr("CreateJobObject")
+        try:
+            info = _ExtendedLimit()
+            info.BasicLimitInformation.LimitFlags = _KILL_ON_JOB_CLOSE
+            if not _k32.SetInformationJobObject(job, _EXTENDED_LIMIT_INFORMATION, ctypes.byref(info),
+                                                ctypes.sizeof(info)):
+                raise _winerr("SetInformationJobObject")
+            console = bool(ctypes.windll.kernel32.GetConsoleWindow())
+            proc = subprocess.Popen(argv, env=env, cwd=cwd,
+                                    creationflags=CREATE_SUSPENDED | (0 if console else CREATE_NO_WINDOW))
+            if not _k32.AssignProcessToJobObject(job, int(proc._handle)):  # type: ignore[attr-defined]
+                err = _winerr("AssignProcessToJobObject")
+                proc.kill()
+                raise err
+            _ntdll.NtResumeProcess(int(proc._handle))  # type: ignore[attr-defined]
+            try:
+                code = proc.wait()
+            finally:
+                _k32.TerminateJobObject(job, 1)
+            acct = _BasicAccounting()
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if not _k32.QueryInformationJobObject(job, _BASIC_ACCOUNTING_INFORMATION, ctypes.byref(acct),
+                                                      ctypes.sizeof(acct), None) or not acct.ActiveProcesses:
+                    break
+                time.sleep(0.02)
+            return code, "survivors" if acct.ActiveProcesses else "clean"
+        finally:
+            _k32.CloseHandle(job)  # kill-on-close: anything still in the job ends with its last handle
+    if not sys.platform.startswith("linux"):  # pragma: no cover (Linux and Windows are the supported hosts)
+        return subprocess.call(argv, env=env, cwd=cwd), "unowned"
+    ctl_r, ctl_w = os.pipe()  # pragma: posix-only
+    res_r, res_w = os.pipe()
+    try:
+        reaper = subprocess.Popen([sys.executable, "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
+                                  cwd=cwd, pass_fds=(ctl_r, res_w))
+    except BaseException:
+        for fd in (ctl_r, ctl_w, res_r, res_w):
+            os.close(fd)
+        raise
+    os.close(ctl_r)
+    os.close(res_w)
+    try:
+        code = reaper.wait()
+    finally:
+        os.close(ctl_w)  # if this process is interrupted, the reaper ends the session's processes itself
+        reaper.wait()
+        with os.fdopen(res_r, "rb") as res:
+            ownership = res.read().decode("ascii", "replace") or "survivors"
+    return code, ownership
+
+
+def process_chain(limit: int = 6) -> list[str]:
+    """This process and its ancestors, nearest first, as ``name (pid)``: shown on an operator authorization prompt so
+    that a request from an unexpected process (an agent's shell inside a harness) is recognisable. Best effort."""
+    parents: dict[int, tuple[int, str]] = {}
+    if sys.platform == "win32":  # pragma: windows-only
+        class _Entry(ctypes.Structure):
+            _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                        ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                        ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                        ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                        ("szExeFile", ctypes.c_wchar * 260)]
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+        if snap and snap != wintypes.HANDLE(-1).value:
+            try:
+                entry = _Entry()
+                entry.dwSize = ctypes.sizeof(_Entry)
+                ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+                while ok:
+                    parents[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile)
+                    ok = k32.Process32NextW(snap, ctypes.byref(entry))
+            finally:
+                k32.CloseHandle(snap)
+    elif sys.platform.startswith("linux"):  # pragma: posix-only
+        def describe(pid: int) -> tuple[int, str] | None:
+            try:
+                stat = Path(f"/proc/{pid}/stat").read_text(encoding="latin-1")
+                cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+            except OSError:
+                return None
+            return int(stat.rsplit(")", 1)[1].split()[1]), (cmd.strip() or stat[stat.find("(") + 1:stat.rfind(")")])
+
+        pid: int | None = os.getpid()
+        while pid and pid not in parents and len(parents) < limit:
+            found = describe(pid)
+            if found is None:
+                break
+            parents[pid] = found
+            pid = found[0]
+    chain, pid = [], os.getpid()
+    while pid in parents and len(chain) < limit:
+        ppid, name = parents[pid]
+        chain.append(f"{name[:80]} ({pid})")
+        if ppid == pid:
+            break
+        pid = ppid
+    return chain
 
 
 def harden_current_process() -> None:

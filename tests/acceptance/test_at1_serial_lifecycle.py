@@ -38,9 +38,9 @@ def operator_takeover(p, reason: str) -> str:
     rev = p.rev()
     if not IS_WINDOWS:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integration"))
-        from test_authority import _pty_takeover
+        from test_authority import pty_takeover_token
 
-        return _pty_takeover(p.root, rev, "lead-b")["token"]
+        return pty_takeover_token(p.root, rev, "lead-b")
     import aew.operator
     from aew.engine.api import Engine
 

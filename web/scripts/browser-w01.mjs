@@ -320,8 +320,11 @@ try {
     await page.goto(
       base + '/work/S-0001?catalog=1.0.0&recipe=conditional&fixture=F1&seed=17',
     );
-    await page.getByText('S-0001', { exact: true }).first().waitFor();
+    // The breadcrumb exists before bootstrap/detail reads finish. Verify the
+    // represented record, rather than reloading or closing an in-flight client.
+    await page.getByRole('heading', { name: 'Intent and context', exact: true }).waitFor();
     await page.reload();
+    await page.getByRole('heading', { name: 'Intent and context', exact: true }).waitFor();
     assert(new URL(page.url()).searchParams.has('recipe'));
   });
   await check(

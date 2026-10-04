@@ -287,7 +287,8 @@ def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_
                              sibling_dir=lab.root)
     assert result["ok"] is False and expected in result["reason"], result
     assert not list(lab.run.parent.glob("*.probe-run"))
-    assert not list(Path(tempfile.gettempdir()).glob(".aew-containment-probe-*"))
+    # this probe's own markers only: tests running alongside have probes of their own in the shared /tmp
+    assert not list(Path(tempfile.gettempdir()).glob(f"{result['probe']}*"))
 
 
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):

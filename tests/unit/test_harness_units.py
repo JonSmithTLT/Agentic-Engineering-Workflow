@@ -214,6 +214,19 @@ def test_rotation_reissues_the_same_scope_and_kills_the_old_credential():
     assert "rotated: R-INV-1-2" in exc.value.message
 
 
+def test_an_identity_check_ignores_a_card_that_narrows_operations():
+    """Area 2 review F7: custody and `whoami` pass `operation=None`; a card's narrowing cannot make them fail, and
+    still refuses the operations it removes. Identity itself is still checked."""
+    state, token = _state()
+    state["invocations"]["INV-1"]["allowed_operations"] = ["submit.implementation_report"]
+    assert require_invocation(state, token, None)[0] == "INV-1"
+    with pytest.raises(errors.PermissionDenied):
+        require_invocation(state, token, "context.read")
+    state["invocations"]["INV-1"]["status"] = "completed"
+    with pytest.raises(errors.StaleAuthority):
+        require_invocation(state, token, None)
+
+
 # ------------------------------------------------------------------ Lead bridge
 
 def _parse(*argv):

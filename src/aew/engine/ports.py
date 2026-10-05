@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from aew import roles
     from aew.engine.base import TxnContext
     from aew.engine.dispatch import DispatchDecision
@@ -219,8 +221,26 @@ class DispatchPort(Protocol):
     def decide_in(self, ctx: TxnContext, entrypoint: str, work_id: str, **args: Any) -> DispatchDecision: ...
 
 
+class QueuePort(Protocol):
+    """What other collaborators use of ``Queue`` (M4-D): the integration queue, its lease and its custodian."""
+
+    def sync(self, state: dict[str, Any]) -> None: ...
+
+    def grant(self, ctx: TxnContext, work_id: str) -> str | None: ...
+
+    def record_attempt(self, state: dict[str, Any], work_id: str, integration: dict[str, Any]) -> None: ...
+
+    def release(self, state: dict[str, Any], work_id: str, *, to: str, result: str,
+                detail: dict[str, Any] | None = None, custodian_status: str = "completed") -> None: ...
+
+    def require_live_lease(self, state: dict[str, Any], work_id: str, what: str) -> dict[str, Any] | None: ...
+
+    def checkout_sync_lock(self, state: dict[str, Any], *, lease: dict[str, Any] | None,
+                           work_id: str) -> AbstractContextManager[None]: ...
+
+
 class HistoryCommandsPort(Protocol):
     """What other collaborators use of ``HistoryCommands``."""
 
     def audit_backlog(self, state: dict[str, Any]) -> int | None: ...
-    def audit_status(self, state: dict[str, Any]) -> dict[str, Any] | None: ...
+    def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None: ...

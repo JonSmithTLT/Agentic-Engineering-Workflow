@@ -59,6 +59,7 @@ if TYPE_CHECKING:
         InputsPort,
         InvocationsPort,
         NonMutatingPort,
+        QueuePort,
         RolesPort,
         WorkUnitsPort,
     )
@@ -427,9 +428,10 @@ class EvidenceCommands:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, nm: NonMutatingPort,
-                 kinds: KindRegistry, archive: ArchivePort, dispatch: DispatchPort) -> None:
+                 kinds: KindRegistry, archive: ArchivePort, dispatch: DispatchPort, queue: QueuePort) -> None:
         self.k = k
         self.dispatch = dispatch
+        self.queue = queue
         self.units = units
         self.roles = roles
         self.invocations = invocations
@@ -485,6 +487,8 @@ class EvidenceCommands:
                 if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):
                     raise IllegalTransition("post-integration verification needs a prepared integration candidate")
                 self.gates.require_current_binding(unit)
+                lease = self.queue.require_live_lease(state, work_id, "post-integration verification")
+                facts["custodian"] = lease["custodian"] if lease else None  # None: a v1 project has no queue
             elif st in {"ASSIGNED", "RUNNING"}:
                 slot = "execute"
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
@@ -553,9 +557,11 @@ class EvidenceCommands:
             if archetype == "implementer":
                 unit["implementer_invocation"] = inv_id
                 state["invocations"][inv_id]["inputs"] = inputs
-            if scope == "integration":  # the candidate this invocation serves (re-review M2/R1)
+            if scope == "integration":  # the candidate this invocation serves (re-review M2/R1), under the lease
                 state["invocations"][inv_id].update(integration_attempt=unit["integration"]["attempt"],
                                                     candidate=unit["integration"]["candidate"])
+                if facts.get("custodian"):
+                    state["invocations"][inv_id]["custodian"] = facts["custodian"]
             self.packs.build_pack(ctx, inv_id)
             ctx.summary = f"{inv_id} ({chosen.id} / {archetype}, {scope}) dispatched for {work_id}"
         pack = ctx.state["invocations"][inv_id].get("pack") or {}
@@ -877,6 +883,7 @@ class EvidenceCommands:
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
                 self.gates.require_current_binding(unit)
+                self.queue.require_live_lease(state, work_id, "ingesting post-integration verification")
                 current = self.invocations.snapshot_of(integ["workspace"],
                                                        integ["workspace_id"])["relevant_inputs_fingerprint"]
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:

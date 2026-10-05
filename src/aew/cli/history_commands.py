@@ -32,9 +32,12 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--since", metavar="UTC", help="from this time, e.g. 2026-10-01T00:00:00Z")
     q.add_argument("--until", metavar="UTC", help="up to this time")
     q.add_argument("--limit", type=int, default=50, help="at most this many (default 50, maximum 1000)")
+    q.add_argument("--before", type=int, metavar="SEQ",
+                   help="only entries numbered below this sequence number: the next page after a listing whose "
+                        "oldest entry was SEQ")
     _add_json(q)
     q.set_defaults(handler=lambda a: _engine(a).history_list(kind=a.kind, since=a.since, until=a.until,
-                                                            limit=a.limit))
+                                                            limit=a.limit, before=a.before))
 
     q = hsub.add_parser("log", help="committed transitions after a revision, with their typed events (the cursor is "
                                     "the revision; pass the returned `next` as the next --since)")
@@ -49,6 +52,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_json(q)
     q.set_defaults(handler=lambda a: _engine(a).history_log(since=a.since, kinds=a.kind, follow=a.follow,
                                                            timeout=a.timeout, limit=a.limit))
+
+    q = hsub.add_parser("compact", help="seal transition-log revisions older than the 4,096-revision window into "
+                                        "256-transition segments (maintenance; never discards a transition)")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).history_compact())
 
     q = hsub.add_parser("links", help="follow the provenance and reference links recorded from and to a record")
     q.add_argument("record_id")

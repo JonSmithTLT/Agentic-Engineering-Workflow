@@ -42,6 +42,7 @@ COVERED = {
     "harness.launch": "test_launch_relaunch_and_dispatch_launch_record_their_decision",
     "dispatch.launch": "test_launch_relaunch_and_dispatch_launch_record_their_decision",
     "lead_broker.relay": "test_a_lead_session_dispatch_is_relayed_to_the_same_predicate",
+    "integrate.prepare": "test_an_integration_lease_records_the_decision_that_granted_it",
 }
 
 
@@ -73,6 +74,23 @@ def test_assign_and_invoke_for_a_mutating_ticket_record_their_decision(tmp_path)
     p.lead("invoke", "cancel", out["invocation"], "--reason", "a fresh implementer")
     again = p.lead("invoke", "create", wid, "--role", "implementer")
     admitted(p, again["invocation"], "invoke.create.mutating")
+    assert_control_invariants(p)
+
+
+def test_an_integration_lease_records_the_decision_that_granted_it(tmp_path):
+    """M4-D: the lease's custody invocation is admitted by the ``integrate.prepare`` decision of its own grant, and
+    the query equals the execution."""
+    from aewflow import to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    explained = p.ok("dispatch", "explain", wid, "--entrypoint", "integrate.prepare")
+    assert explained["allowed"] and explained["entrypoint"] == "integrate.prepare"
+    out = p.lead("integrate", "prepare", wid)
+    custodian = out["queue"]["custodian"]
+    assert custodian.startswith("IA-")
+    record = admitted(p, custodian, "integrate.prepare")
+    assert record["revision"] == explained["revision"]  # decided against the revision the query saw
     assert_control_invariants(p)
 
 

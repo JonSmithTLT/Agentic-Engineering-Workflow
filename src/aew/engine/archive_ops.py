@@ -476,7 +476,7 @@ class Archive:
     @staticmethod
     def _tokens_of(state: dict[str, Any], invocations: list[str], issued: dict[str, list[str]]) -> list[str]:
         """Every credential an invocation ever held: current, rotated (runs) and any other issued to it."""
-        out = {state["invocations"][i]["token_id"] for i in invocations}
+        out = {state["invocations"][i].get("token_id") for i in invocations} - {None}  # custodians hold none
         out.update(r["token_id"] for i in invocations for r in state["invocations"][i].get("runs") or []
                    if r.get("token_id"))
         out.update(t for i in invocations for t in issued.get(i, []))

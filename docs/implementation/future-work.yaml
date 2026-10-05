@@ -1265,4 +1265,4 @@ sections:
     Was: The Windows serial nightly `reference` job, split instead of its timeout raised (it had grown to 150 minutes)
     Closed: '2026-10-05'
     By: 'Sharded: Linux 3 and Windows 6 serial shards (`--shard k/N`), each under a 60 minute timeout, and a `reference-assurance`
-      aggregate (`check_assurance.py`, now also failing on a missing shard) that `report` waits for; PR pending'
+      aggregate (`check_assurance.py`, now also failing on a missing shard) that `report` waits for (PR #70)'

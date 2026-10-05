@@ -218,6 +218,8 @@ class ArchivePort(Protocol):
 class DispatchPort(Protocol):
     """What other collaborators use of ``Dispatch`` (M4-A): every dispatch route decides through it."""
 
+    def decide(self, state: dict[str, Any], entrypoint: str, work_id: str, **args: Any) -> DispatchDecision: ...
+
     def decide_in(self, ctx: TxnContext, entrypoint: str, work_id: str, **args: Any) -> DispatchDecision: ...
 
 
@@ -237,6 +239,12 @@ class QueuePort(Protocol):
 
     def checkout_sync_lock(self, state: dict[str, Any], *, lease: dict[str, Any] | None,
                            work_id: str) -> AbstractContextManager[None]: ...
+
+    def defer(self, state: dict[str, Any], work_id: str, *, reason: str) -> dict[str, Any]: ...
+
+    def requeue(self, state: dict[str, Any], work_id: str, *, reason: str) -> dict[str, Any]: ...
+
+    def reorder(self, state: dict[str, Any], work_id: str, *, before: str | None) -> dict[str, Any]: ...
 
 
 class HistoryCommandsPort(Protocol):

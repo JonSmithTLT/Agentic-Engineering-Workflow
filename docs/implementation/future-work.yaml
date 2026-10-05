@@ -139,8 +139,11 @@ sections:
       and binding rules; batching is out of scope for M4, not forbidden. **M4-D3 built (2026-10-05):** the queue entries,
       the lease and its `integration_attempt` custodian, FIFO among runnable entries, the dead-custodian reconcile, retirement
       with the unit, the ISO-004 checkout-sync lock and oracle rules 34 to 38 ([ADR-0004 amendment 2026-10-05](adr/0004-controlled-integration.md);
-      ADR-0003 amendment of the same date for the custody invocation). Still open in M4-D: the one automatic rebuild and
-      the Lead''s reorder, defer and dispose (D4), the `checks` validation path (D5, register D4).'
+      ADR-0003 amendment of the same date for the custody invocation). **M4-D4 built (2026-10-05):** the one automatic rebuild
+      under the same lease, custodian and place; a second move, changed legality, a conflicting or refused rebuild and an
+      inconclusive validation release the lease to AWAITING_DISPOSITION; the Lead''s `aew integrate defer`, `requeue` and
+      `reorder`; oracle rule 39 (ADR-0004 second amendment of 2026-10-05). Still open in M4-D: the `checks` validation path
+      (D5, register D4).'
   - '#': F11
     Work: Dynamic scheduler
     Source (governing): Workflow Contract; `implementation-status.md`

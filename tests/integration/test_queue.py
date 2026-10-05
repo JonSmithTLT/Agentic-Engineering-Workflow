@@ -3,7 +3,7 @@
 Each COMMIT_READY mutating Ticket has one live queue entry, served FIFO among runnable entries; at most one entry
 holds the lease, kept by an engine custody invocation (``integration_attempt``: no harness, model, role or
 credential); the post-integration verifier is its child; a dead custodian is reconciled, never timed out; the
-ISO-004 checkout-sync lock is serialization only. The oracle (rules 34-38) runs after every step.
+ISO-004 checkout-sync lock is serialization only. The oracle (rules 34-39) runs after every step.
 """
 
 from __future__ import annotations
@@ -174,19 +174,22 @@ def test_an_earlier_entry_that_cannot_integrate_now_does_not_hold_up_a_later_one
     assert_control_invariants(p)
 
 
-def test_a_stale_candidate_keeps_its_place_and_prepares_again(calc, tmp_path):
+def test_a_stale_candidate_keeps_its_place_and_its_lease(calc, tmp_path):
+    """D3 released a stale candidate's lease; D4 rebuilds it once under the same lease, in the same place
+    (test_queue_disposition.py covers the rebuild and what follows a second move)."""
     wid, _ = to_commit_ready(calc, tmp_path)
     prepare_and_validate(calc, wid)
     qid, before = entry(calc, wid)
     (calc.root / "NOTES.md").write_text("an unrelated commit\n", encoding="utf-8", newline="\n")
     git("add", "NOTES.md", cwd=calc.root)
     git("commit", "-q", "-m", "unrelated", cwd=calc.root)
-    assert refused(calc, "integrate", "publish", wid)["code"] == "STALE_CANDIDATE"
+    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    assert res.json["rebuilt"] is True
     _, after = entry(calc, wid)
-    assert after["state"] == "QUEUED" and after["seq"] == before["seq"]
-    assert after["attempts"][-1]["result"] == "stale_candidate" and control(calc)["queue"]["lease"] is None
+    assert after["state"] == "LEASED" and after["seq"] == before["seq"] and after["rebuilds_used"] == 1
     assert_control_invariants(calc)
-    integrate(calc, wid)
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration"))
+    calc.lead("integrate", "publish", wid)
     assert_control_invariants(calc)
 
 

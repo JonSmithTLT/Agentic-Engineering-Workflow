@@ -4,8 +4,9 @@ a current ALLOW and validation bound to the current head").
 The composition walk (``test_composition_walk.py``), with mutating concurrency 3 and up to four Tickets, so entries
 queue behind each other. Each Ticket changes a module of its own, and now and then ``calc/core.py`` too, so some
 candidates conflict. Added moves: preparing any COMMIT_READY Ticket out of turn, cancelling the lease's custodian,
-a commit to ``main`` from outside AEW (a stale candidate), and reconciling a lease. Every step is followed by the
-whole oracle, queue rules 34-38 included, and injected crashes are followed by a fresh engine.
+a commit to ``main`` from outside AEW (the one automatic rebuild, then AWAITING_DISPOSITION on a second move), and
+reconciling a lease; and since D4 the Lead's defer, requeue and reorder. Every step is followed by the whole oracle,
+queue rules 34-39 included, and injected crashes are followed by a fresh engine.
 
 The default is a short run; the slice's acceptance run is ``AEW_QUEUE_WALK_STEPS=500`` over the three seeds.
 """
@@ -109,6 +110,25 @@ class QueueWalk(Walk):
         for args in (("add", "OUTSIDE.md"), ("commit", "-q", "-m", f"outside {self.outside}")):
             subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, creationflags=NO_WINDOW)
 
+    def defer_entry(self, wid: str) -> None:
+        live = [e["work"] for e in self.queue()["entries"].values()
+                if e["state"] in ("QUEUED", "LEASED", "AWAITING_DISPOSITION")]
+        if live:
+            self.lead("integrate_defer", work_id=self.rng.choice(live), reason="walk: set aside")
+
+    def requeue_entry(self, wid: str) -> None:
+        waiting = [e["work"] for e in self.queue()["entries"].values()
+                   if e["state"] in ("DEFERRED", "AWAITING_DISPOSITION")]
+        if waiting:
+            self.lead("integrate_requeue", work_id=self.rng.choice(waiting), reason="walk: try again")
+
+    def reorder_entry(self, wid: str) -> None:
+        live = [e["work"] for e in self.queue()["entries"].values()]
+        if len(live) >= 2:
+            moved, ahead_of = self.rng.sample(live, 2)
+            self.lead("integrate_reorder", work_id=moved, before=None if self.rng.random() < 0.3 else ahead_of,
+                      reason="walk: reorder")
+
     # ------------------------------------------------------------------ choice
 
     def options(self, wid: str) -> list[tuple[str, float]]:
@@ -124,6 +144,11 @@ class QueueWalk(Walk):
         lease = q["lease"]
         ready = [w for w in self.tickets if (self.state()["work"].get(w) or {}).get("state") == "COMMIT_READY"]
         opts += [("second_ticket", 0.5)] + ([("prepare_any", 3)] if ready else [])
+        states = [e["state"] for e in q["entries"].values()]
+        if states:  # D4: the Lead's queue commands
+            opts += [("defer_entry", 0.4), ("reorder_entry", 0.5)]
+            if any(s in ("DEFERRED", "AWAITING_DISPOSITION") for s in states):
+                opts.append(("requeue_entry", 4))
         if lease is not None:
             opts += [("cancel_custodian", 0.4), ("outside_commit", 0.3)]
             if lease["reconcile"] is not None:

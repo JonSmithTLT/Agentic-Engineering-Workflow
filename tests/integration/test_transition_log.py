@@ -260,3 +260,51 @@ def test_f2_a_missing_pre_outbox_record_names_where_the_guarantee_begins(tmp_pat
     assert res.error["details"]["resume_since"] == start - 1
     out = log(p, "--since", str(start - 1))
     assert out["transitions"][0]["revision"] == start
+
+
+def test_f3_a_follower_does_not_take_the_control_lock_on_spurious_wakes(tmp_path):
+    """Review F3: `--follow` re-ran the store's locked read (recovery, render) on every wake, and every run-record
+    write wakes. It now stats control.yaml on a wake and reads only when the file changed: a burst of spurious wakes
+    costs no read, and a commit is still returned."""
+    import threading
+
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    store = engine._k.store
+    reads = {"n": 0}
+    original = store.read
+
+    def counted_read():
+        reads["n"] += 1
+        return original()
+
+    store.read = counted_read  # type: ignore[method-assign]
+    since = load_control(p.root)["revision"]
+    stop = threading.Event()
+
+    def spurious_wakes():
+        while not stop.is_set():
+            outbox.bump_wake(p.root / ".aew")  # what a supervisor's run-record write does
+            time.sleep(0.05)
+
+    waker = threading.Thread(target=spurious_wakes, daemon=True)
+    waker.start()
+    try:
+        out = engine.history_log(since=since, follow=True, timeout=1.5)
+    finally:
+        stop.set()
+        waker.join()
+    assert out["transitions"] == []
+    assert reads["n"] == 1, reads  # the read that found the current revision, none per wake
+
+    def commit_soon():
+        time.sleep(0.5)
+        create_planned_ticket(p, tmp_path, title="woken")
+
+    committer = threading.Thread(target=commit_soon)
+    committer.start()
+    out = engine.history_log(since=since, follow=True, timeout=30)
+    committer.join()
+    assert out["transitions"] and out["transitions"][0]["revision"] == since + 1

@@ -40,7 +40,7 @@ from typing import Any
 from aew.errors import IntegrityError, ValidationFailed
 from aew.history.manifest import canonical_json
 from aew.schemas import validate
-from aew.util import dump_yaml, load_yaml, sha256_bytes
+from aew.util import IS_WINDOWS, dump_yaml, load_yaml, sha256_bytes
 
 TRANSITION_SCHEMA = "aew/transition/v1"
 EVENTS_SCHEMA = "aew/transition-events/v1"
@@ -174,8 +174,12 @@ def read_optional(path: Path) -> bytes | None:
     retry is history reported incomplete (D3)."""
     try:
         return path.read_bytes()
-    except (FileNotFoundError, PermissionError):
+    except FileNotFoundError:
         return None
+    except PermissionError:
+        if IS_WINDOWS:  # a deletion still pending; on POSIX it is a real permissions problem, reported as such
+            return None
+        raise
 
 
 def _read_record(aew_root: Path, revision: int) -> dict[str, Any] | None:

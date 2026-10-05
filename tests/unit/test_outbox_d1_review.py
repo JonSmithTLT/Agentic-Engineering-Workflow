@@ -49,3 +49,25 @@ def test_f4_every_wake_bump_changes_the_mark_even_within_one_timestamp_tick(tmp_
         collisions += a == b
     assert collisions == 0
     assert not list((tmp_path / "local").glob(".wake.*.tmp"))
+
+
+@pytest.mark.parametrize("windows", [True, False])
+def test_pr60_item3_a_refused_read_is_absence_only_on_windows(tmp_path, monkeypatch, windows):
+    """PR #60 review item 3: on Windows a PermissionError opening a log file is a deletion still pending (sealing),
+    so the reader looks in the segment; on POSIX it is a real permissions problem and must surface as one, not as
+    'incomplete history'."""
+    from aew.engine import outbox
+
+    path = tmp_path / "000001.yaml"
+    path.write_text("revision: 1\n", encoding="utf-8")
+
+    def refused(self):
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(outbox, "IS_WINDOWS", windows, raising=False)
+    monkeypatch.setattr(Path, "read_bytes", refused)
+    if windows:
+        assert outbox.read_optional(path) is None
+    else:
+        with pytest.raises(PermissionError):
+            outbox.read_optional(path)

@@ -880,7 +880,12 @@ sections:
       section, structural tests in `test_spec_amendments.py`. Its first slice also writes the missing Ticket-revision contract
       amendment (F4). **Designer (2026-10-05):** the re-freeze also consolidates WC §15.6 with the governing typed Lead
       surface v0.2 (MCP as the first normal transport; the CLI as parity, recovery and conformance). ARV-03, retiring the
-      documents the ADRs absorbed at the re-freeze, is this row''s (operator, 2026-10-05)'
+      documents the ADRs absorbed at the re-freeze, is this row''s (operator, 2026-10-05). **The index part is done (PR
+      #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and
+      its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case; the
+      typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py`
+      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays
+      open for the Ticket-revision contract amendment (the designer''s text) and the re-freeze'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'
     Source: architecture review I3; [architecture review response](../design/architecture-review-response-2026-10-04.md)

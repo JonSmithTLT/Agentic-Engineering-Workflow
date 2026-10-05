@@ -41,6 +41,11 @@ promotion before M4-E (met 2026-10-05). What is implemented today, staged or onl
 
 When documents disagree, the earlier one wins.
 
+An unversioned citation of a contract section (`WC §7.4`, `KC §26`) means the **effective** section: the frozen text
+plus the adopted amendments that [`spec-amendments.yaml`](spec-amendments.yaml) lists for it, in adoption order. A
+citation of the frozen text as it was is version-qualified (`WC v0.7 §7.4`). `tests/unit/test_spec_amendments.py`
+checks the index, and that every citation names a real section of the frozen version.
+
 1. **The frozen specification set** `aew-frozen-2026-09-25`, pinned by tag and by `tests/test_spec_pin.py`. These four
    files never change; a change needs a migration review and a new spec set.
    - [`agent-engineering-workflow-design-v0.7.md`](agent-engineering-workflow-design-v0.7.md): the Workflow Contract (WC)
@@ -59,7 +64,7 @@ When documents disagree, the earlier one wins.
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
-5. **Cross-document indexes** (they point, they do not decide): [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
+5. **Cross-document indexes** (they point, they do not decide): [`spec-amendments.yaml`](spec-amendments.yaml): every adopted amendment to the frozen WC and KC, the sections it replaces or extends, the effective section, and the pending consolidation debt (register E19); [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
 
 Everything in [`design/proposals/`](design/proposals/) and [`research/`](research/) is input, not governing. Everything
 in [`archive/`](archive/) is a finished record. A "frozen designer decisions" section inside a proposal binds the

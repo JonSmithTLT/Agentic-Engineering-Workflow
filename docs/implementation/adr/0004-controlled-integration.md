@@ -101,3 +101,53 @@ The review found that the normal-path checks above did not hold across recovery 
   - The authoritative branch must be checked out at the repository root, or nowhere. `update-ref` also moves a branch checked out in another worktree of the repository, and that worktree is not synced.
   - "Nothing is overwritten" means nothing present when the paths were classified. An edit made between classification and `git checkout` of the integrated paths is not protected, because the filesystem gives no exclusive hold.
 - **After an inconclusive post-integration verification** (`validation_inconclusive`), the next step is `aew integrate prepare` (a new candidate), then its verification. `aew resume` says so.
+
+## Amendment 2026-10-05 — the integration queue and its lease (M4-D3)
+
+Integration is now served by a queue in control state (M4 report §2.6; the M4-D plan, approved 2026-10-04). Everything above still holds: prepare, post-integration verification, the CAS, the sync, DONE and `reconcile` are unchanged. They now also run under a lease.
+
+- **Entries.**
+  - Each COMMIT_READY mutating Ticket has one live entry in `queue.entries`: `QUEUED`, `LEASED`, `DEFERRED` or `AWAITING_DISPOSITION`.
+  - An entry has a `seq` (its FIFO position), the `commit_ready_seq` it was queued for, its attempts and its disposition.
+  - It is enqueued and retired by a transaction finalizer, so every route that changes a Ticket's state keeps the queue consistent in the same commit. The Lead's direct commits (acquire, handoff accept, takeover) call the same step.
+  - **Retirement.** A Ticket no longer COMMIT_READY (DONE, CANCELLED, back to RUNNING, VERIFICATION_FAILED, INTERRUPTED, …) retires its entry into the unit's `queue_history`, which archival moves with the unit.
+- **The lease.**
+  - At most one entry holds `queue.lease`, kept by an `integration_attempt` custody invocation (ADR-0003, amendment of today).
+  - `aew integrate prepare` grants it. Its legality is the `integrate.prepare` dispatch decision, computed afresh at every grant (M4-A), with these guards:
+    - `integrate.ticket` and `integrate.gates`: the checks prepare made before, in the same order and with the same errors;
+    - `queue.order`: FIFO among runnable entries;
+    - `queue.lease`: the lease is free, or this entry already holds it.
+  - `aew integrate publish` and post-integration verification (dispatch and ingest) run only under the Ticket's own live lease.
+  - **The lease ends:**
+    - at DONE;
+    - when the Ticket leaves COMMIT_READY;
+    - on a conflict: the entry goes to AWAITING_DISPOSITION, for the Lead;
+    - on a stale or superseded candidate: the entry goes back to QUEUED in its place, and D4 will rebuild once under the same lease instead;
+    - when `reconcile` reconciles a dead custodian.
+  - **A withdrawn publish** (an obligation unmet, nothing published) keeps the lease.
+- **Order, and no head-of-line blocking.**
+  - Runnable entries are served by `seq`. An earlier QUEUED entry whose integration is legal now goes first (`QUEUE_ORDER`).
+  - An earlier entry that cannot integrate now, or is DEFERRED or AWAITING_DISPOSITION, holds up nothing.
+  - Queue state is scheduling, never eligibility.
+- **A dead custodian is reconciled, never timed out.**
+  - A custodian ended by anything but its own lease's end (a takeover, an uncarried handoff, a cancel) marks the lease `reconcile` in the same transaction and cancels the custodian's children. Grants, publishes and verification are then refused (`LEASE_RECONCILE_REQUIRED`).
+  - `aew integrate reconcile <T>` resolves it:
+    - an interrupted publish finishes as before; a reconcile needs no live custodian;
+    - otherwise nothing was published, so the open candidate is retired and the entry returns to QUEUED in its place.
+- **`AEW-INV-ISO-004`.**
+  - Syncing a published commit into the authoritative checkout takes `local/checkout-sync.lock` in the lease custodian's name, for the bounded sync only.
+  - It is serialization only (M4-B6): it is taken after every check allowed the publish, and holding it lets nothing else happen.
+  - A holder a crash left behind is a stale owner. It is reconciled before the lock is taken again; the sync is idempotent and re-verified.
+- **Register E34.**
+  - The sync classifier accepts a path that any commit between the candidate and the ref settled (up to 256 of them), not only the head.
+  - A candidate may change at most `gates.yaml` `max_publish_paths` paths (default 2,000), refused at prepare before anything is published. A publish syncs every changed path while it holds the control lock, measured at about 4.5 to 5.5 ms a path on the Windows reference machine (`tools/perf/publish_sync.py`), so 2,000 keeps the hold near 10 s, inside the 31 s other writers wait.
+- **Schema.** `aew/control/v2`, additive (the M4-D plan §1.1). `queue` is a v2-only key, and the engine before M4-D refuses the file (`tests/regression/test_m4_schema_downgrade.py`). A v1 project has no queue and integrates as before until it is migrated.
+- **Events.** `queue.entry {id, from, to}` and `queue.lease {entry, custodian}` are derived kinds in the transition log (ADR-0012 D2). A released lease has both fields null.
+- **Oracle rules 33 to 37** (`tests/helpers/invariants.py`):
+  - 33: one live entry per COMMIT_READY mutating Ticket, positions unique;
+  - 34: at most one lease, with its custodian active or marked for reconciliation;
+  - 35: a custody invocation is the engine's, and an active one holds the lease;
+  - 36: no publish in progress without the lease;
+  - 37: integration verifiers are children of a live lease.
+
+  They hold in the seeded queue walk (`tests/regression/test_m4_queue_walk.py`).

@@ -207,6 +207,30 @@ queue:
 
 Proposal: keep `aew/control/v2` with an additive `queue` key, closed with `additionalProperties: false` at every level. An M4-D test proves the baseline engine refuses an M4 control file. If review prefers an explicit `MIGRATION_REQUIRED` refusal over a schema error for operators, v3 plus a no-op `aew migrate` step is the alternative. The safety argument is the same either way.
 
+### M4-D3 as built (2026-10-05)
+
+Built as §2.6 and the M4-D plan say, with these specifics. The ADR text is in ADR-0004's and ADR-0003's amendments of 2026-10-05.
+
+- **The custodian is a custody invocation**, `kind: integration_attempt`. It is executed by the engine and has no harness, model, role or credential. Its ids are a series of their own (`IA-0001`).
+  - The `integrate.prepare` dispatch decision admits it. That decision migrates prepare's checks into guards (`integrate.ticket`, `integrate.gates`) and adds `queue.order` and `queue.lease`.
+  - The post-integration verifier records it as `custodian`.
+- **Consistency is a transaction finalizer** (`Queue.finalize`, between the dispatch check and archival), not a set of hooks. So a Ticket that leaves COMMIT_READY by any route, including a takeover's direct INTERRUPTED write, retires its entry in the same commit. The Lead's direct commits call it explicitly.
+- **D3's answers to moved heads and conflicts, before D4:**
+  - a stale or superseded candidate releases the lease, and the entry keeps its place in QUEUED: the Lead prepares again, as before M4-D;
+  - a conflict sends the entry to AWAITING_DISPOSITION;
+  - the Lead disposes of it by returning the Ticket to RUNNING or REPLAN_REQUIRED, which retires the entry. D4's disposition commands come later.
+- **Withdrawn publish:** it keeps the lease.
+- **Projects:**
+  - **v1:** no queue; integrates as before until migrated.
+  - **v2 from before M4-D** (no `queue` key): its COMMIT_READY Tickets are enqueued by the next Lead transaction, ordered by id.
+- **E34.** The publish bound is a path-count limit (`max_publish_paths`, default 2,000), chosen after measuring. Checking each path with one `lstat` instead of four brought the sync to about 4.5 to 5.5 ms a path on Windows; git's own hashing is the rest.
+- **Tests:**
+  - `tests/integration/test_queue.py`;
+  - the conformance case for `integrate.prepare`;
+  - `tests/regression/test_m4_schema_downgrade.py`;
+  - the later-commit sync case in `test_worktree_sync.py`;
+  - the seeded walk `tests/regression/test_m4_queue_walk.py`, whose acceptance budget is 3 seeds × 500 steps.
+
 ### 2.7 What survives a head move: reuse work product, not proof (decision 4)
 - **Head moved, Ticket work product unchanged:** existing Ticket evidence may stay current if every binding it depends on is unchanged. The integration candidate is still rebuilt against the new H, integration validation always reruns, and `DispatchDecision` recomputes.
 - **Conflict resolution or changed implementation:** a new implementation attempt and fingerprint. Snapshot-bound review and verification do not carry forward, the effective gates for the Ticket's class and policy rerun, and plan/assurance applicability is recomputed from its bindings.

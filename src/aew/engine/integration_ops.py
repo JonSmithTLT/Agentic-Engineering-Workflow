@@ -43,6 +43,11 @@ if TYPE_CHECKING:
 # An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
 OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive", "validation_failed", "conflict",
                               "stale_candidate", "discarded"})
+# The default most paths one candidate may change (gates.yaml `max_publish_paths`; register E34). A publish syncs each
+# changed path into the authoritative checkout under the control lock, measured at about 4.5 to 5.5 ms a path on the
+# Windows reference machine (tools/perf/publish_sync.py), so 2,000 paths keep the hold near 10 s, well inside the
+# 31 s other writers wait for the lock.
+MAX_PUBLISH_PATHS = 2000
 # States a Ticket may enter while keeping its open integration record: still at (or interrupted in, or
 # awaiting classification of a post-integration failure for) the COMMIT_READY the candidate was built from.
 KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
@@ -199,6 +204,14 @@ class Integration:
             else:
                 candidate = merged["commit"]
                 changed = I.changed_between(self.k.repo_root, base, candidate)
+                limit = self.k.policy("gates").get("max_publish_paths") or MAX_PUBLISH_PATHS
+                if len(changed) > limit:
+                    worktrees.remove(self.k.repo_root, int_ws["path"])
+                    raise GateUnsatisfied(
+                        f"the candidate changes {len(changed)} paths, more than the {limit} one publish may sync into "
+                        "the authoritative checkout while it holds the control lock (gates.yaml `max_publish_paths`): "
+                        "split the change into smaller Tickets, or raise the limit knowing a larger publish blocks "
+                        "every other writer for longer", changed=len(changed), limit=limit)
                 meta = self.gates.record_meta(unit)
                 verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
                     "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
@@ -491,7 +504,7 @@ class Integration:
         """The lease a publish in progress runs under. Reconciling an interrupted publish needs no live custodian
         (that is what it reconciles), and a publish begun before the queue existed has no lease at all."""
         lease = Q.lease_of(state, work_id)
-        if reconciling:
+        if reconciling or not Q.queued(state):
             return lease
         if lease is None:
             raise LeaseNotHeld(f"publishing {work_id} needs its integration lease")

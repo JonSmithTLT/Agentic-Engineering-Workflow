@@ -52,6 +52,12 @@ def empty() -> dict[str, Any]:
     return {"next_seq": 1, "lease": None, "entries": {}}
 
 
+def queued(state: dict[str, Any]) -> bool:
+    """Whether integration runs through the queue: control state v2. A v1 project (ADR-0011), which the Lead migrates
+    before anything new, cannot hold the v2-only ``queue`` key, so it integrates as before M4-D."""
+    return state.get("schema") == "aew/control/v2"
+
+
 def is_custodian(inv: dict[str, Any] | None) -> bool:
     return (inv or {}).get("kind") == CUSTODIAN
 
@@ -93,7 +99,7 @@ class Queue:
     def sync(self, state: dict[str, Any]) -> None:
         """Enqueue every COMMIT_READY mutating Ticket without a live entry, retire every entry whose Ticket left
         COMMIT_READY, and mark a lease whose custodian is no longer active for reconciliation. Idempotent."""
-        if state.get("schema") != "aew/control/v2":
+        if not queued(state):
             return
         if "queue" not in state:
             if not any(_queued_ticket(u) for u in state["work"].values()):
@@ -158,6 +164,8 @@ class Queue:
     def _g_order(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         """FIFO among runnable entries: no earlier QUEUED entry whose integration is legal now. DEFERRED and
         AWAITING_DISPOSITION entries never hold up an independent one (no head-of-line blocking)."""
+        if not queued(state):
+            return None
         queue = self.view(state)
         qid, entry = next(((q, e) for q, e in queue["entries"].items() if e["work"] == work_id), (None, None))
         if entry is None:
@@ -204,10 +212,12 @@ class Queue:
 
     # ------------------------------------------------------------------ grant and release
 
-    def grant(self, ctx: TxnContext, work_id: str) -> str:
+    def grant(self, ctx: TxnContext, work_id: str) -> str | None:
         """The lease for ``work_id``'s entry (after an allowed ``integrate.prepare`` decision): its custodian. A
-        second prepare under a lease the entry already holds keeps the lease and the custodian."""
+        second prepare under a lease the entry already holds keeps the lease and the custodian. None on v1."""
         state = ctx.state
+        if not queued(state):
+            return None
         self.sync(state)
         qid, entry = entry_of(state, work_id)
         assert qid is not None and entry is not None  # the decision's queue.order guard found it
@@ -216,8 +226,9 @@ class Queue:
             if lease["entry"] != qid:
                 raise LeaseHeld("the integration lease is held by another entry", entry=lease["entry"])
             return lease["custodian"]
-        state["counters"]["invocation"] = state["counters"].get("invocation", 0) + 1
-        custodian = format_id("INV", state["counters"]["invocation"])
+        # Its own id series: a custody invocation is not a role invocation, and role invocations keep their numbering.
+        state["counters"]["integration_attempt"] = state["counters"].get("integration_attempt", 0) + 1
+        custodian = format_id("IA", state["counters"]["integration_attempt"])
         now = utc_now()
         state["invocations"][custodian] = {
             "kind": CUSTODIAN, "execution": "engine", "work_unit": work_id, "status": "active", "created_at": now,
@@ -319,7 +330,10 @@ class Queue:
 
     # ------------------------------------------------------------------ the lease's checks for publish and verify
 
-    def require_live_lease(self, state: dict[str, Any], work_id: str, what: str) -> dict[str, Any]:
+    def require_live_lease(self, state: dict[str, Any], work_id: str, what: str) -> dict[str, Any] | None:
+        """The live lease ``work_id``'s entry holds (raises when not); None on a v1 project, which has no queue."""
+        if not queued(state):
+            return None
         lease = lease_of(state, work_id)
         if lease is None:
             held = (state.get("queue") or {}).get("lease")

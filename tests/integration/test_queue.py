@@ -271,7 +271,7 @@ def test_the_checkout_sync_lock_is_serialization_only(tmp_path):
     first, second = tickets(p, tmp_path, 2)
     lock = p.root / ".aew/local/checkout-sync.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text(dump_yaml({"custodian": "INV-9999", "entry": "Q-9999", "work": second}), encoding="utf-8")
+    lock.write_text(dump_yaml({"custodian": "IA-9999", "entry": "Q-9999", "work": second}), encoding="utf-8")
     # The lock grants nothing: second is still behind first, and publishing still needs the lease.
     assert refused(p, "integrate", "prepare", second)["code"] == "QUEUE_ORDER"
     prepare_and_validate(p, first)
@@ -297,4 +297,20 @@ def test_a_project_from_before_the_queue_queues_its_commit_ready_tickets_on_the_
     assert_control_invariants(calc)  # the oracle accepts a project that has not queued anything yet
     out = calc.lead("integrate", "prepare", wid)
     assert out["queue"]["state"] == "LEASED" and out["queue"]["seq"] == 1
+    assert_control_invariants(calc)
+
+
+def test_a_candidate_changing_more_paths_than_one_publish_may_sync_is_refused_at_prepare(calc, tmp_path):
+    """Register E34 (note 9): a publish holds the control lock while it syncs every changed path, so the number of
+    paths is bounded (gates.yaml `max_publish_paths`), and a larger candidate is refused before anything is published:
+    no lease is kept and nothing is left behind."""
+    from aew.util import dump_yaml, load_yaml
+
+    gates = calc.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "max_publish_paths": 1}),
+                     encoding="utf-8", newline="\n")
+    wid, _ = to_commit_ready(calc, tmp_path, files=_own_change(1))  # two paths
+    err = refused(calc, "integrate", "prepare", wid)
+    assert err["code"] == "GATE_UNSATISFIED" and err["details"] == {"changed": 2, "limit": 1}
+    assert control(calc)["queue"]["lease"] is None and entry(calc, wid)[1]["state"] == "QUEUED"
     assert_control_invariants(calc)

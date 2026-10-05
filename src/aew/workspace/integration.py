@@ -23,6 +23,7 @@ M6). Sync is idempotent from every intermediate {H, M} state a crash can leave.
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -213,18 +214,23 @@ def worktree_entries(repo_root: Path, paths: list[str]) -> dict[str, Entry | Non
     modes: dict[str, str] = {}
     for p in paths:
         target = repo_root / p
-        if target.is_symlink():
+        try:
+            st = os.lstat(target)  # one call per path: the sync's lock hold grows with the path count (E34)
+        except (FileNotFoundError, NotADirectoryError):
+            found[p] = None
+            continue
+        if stat.S_ISLNK(st.st_mode):
             link = os.readlink(target)
             oid = git.git("hash-object", "--stdin", cwd=repo_root,
                           input=os.fsencode(link)).stdout.decode().strip()
             found[p] = (SYMLINK_MODE, oid)
-        elif target.is_dir():
+        elif stat.S_ISDIR(st.st_mode):
             found[p] = TREE
-        elif target.is_file():
+        elif stat.S_ISREG(st.st_mode):
             if "\n" in p:
                 raise IntegrityError("paths containing newlines are not supported by worktree sync", path=p)
             regular.append(p)
-            modes[p] = "100755" if target.stat().st_mode & 0o100 else "100644"
+            modes[p] = "100755" if st.st_mode & 0o100 else "100644"
         else:
             found[p] = None
     for chunk in _chunks(regular):

@@ -274,6 +274,9 @@ class Resume:
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
             status = (u.get("integration") or {}).get("status")
+            waiting = self._queue_wait(state, wid)
+            if waiting and status != "publishing":
+                return [waiting]
             return [{
                 None: "integrate: `aew integrate prepare`",
                 "discarded": "integrate: `aew integrate prepare`",
@@ -293,6 +296,26 @@ class Resume:
         if st == "ESCALATED":
             return ["record the escalation outcome and return the Ticket"]
         return []
+
+    @staticmethod
+    def _queue_wait(state: dict[str, Any], wid: str) -> str | None:
+        """What the integration queue says about this COMMIT_READY Ticket, when it is not simply its turn (M4-D)."""
+        queue = state.get("queue") or {}
+        entries, lease = queue.get("entries") or {}, queue.get("lease")
+        qid, entry = next(((q, e) for q, e in entries.items() if e["work"] == wid), (None, None))
+        if entry is None:
+            return None
+        if lease and lease["reconcile"] is not None:
+            holder = (entries.get(lease["entry"]) or {}).get("work")
+            return (f"the integration lease of {holder} lost its custodian ({lease['reconcile']['reason']}): "
+                    f"`aew integrate reconcile {holder}` first")
+        if entry["state"] == "AWAITING_DISPOSITION":
+            return (f"its queue entry {qid} awaits the Lead ({(entry.get('disposition') or {}).get('reason')}): return "
+                    "it to RUNNING for a new implementation attempt, or REPLAN_REQUIRED")
+        if lease and lease["entry"] != qid:
+            holder = (entries.get(lease["entry"]) or {}).get("work")
+            return f"queued ({qid}): {holder} holds the integration lease; integrate once it publishes or leaves"
+        return None
 
     def _plan_brief(self, u: dict[str, Any]) -> dict[str, Any] | None:
         plan = u.get("plan")

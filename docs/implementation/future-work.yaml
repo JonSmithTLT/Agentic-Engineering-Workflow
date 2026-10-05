@@ -5,7 +5,7 @@ preamble: |-
 
   **Authority:** none. This is an index, like `docs/design/invariant-index.md` (`AEW-INV-TRACE-001`). The governing texts are the design documents, contracts and ADRs it points to. When one of them changes, update this register in the same change. Never reinterpret a design from its entry here.
 
-  **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30).
+  **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30). Append a closed row anywhere in §9: `render` sorts §9 into id order, so two changes that close different entries land in different places and merge without conflict.
 
   **At each milestone start** (operator, 2026-10-01): the milestone's ambiguity report goes through this register. It covers every entry whose *When* names that milestone or a gate before it, and any other open entry that fits the milestone's scope. It marks each one as **in scope**, **deferred** (with the reason) or **closed** (naming what closed it). Items with no fixed milestone may be pulled in where they fit. The operator and designer approve that scope at plan review, with the rest of the plan.
 
@@ -23,7 +23,7 @@ preamble: |-
 
   The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's plan review ratifies or changes them.
 
-  *Last updated: 2026-10-05 (E19's index part done by PR #73: `docs/spec-amendments.yaml` and its test; the row stays open for the Ticket-revision amendment and the re-freeze). 2026-10-05 (E29 closed: the pack generator reserves context in the fixed tier order). 2026-10-05 (the dashboard main-line API design note for F20.2 to F20.6 approved with modifications by the designer and operator (its §7); `action_projection` stays UNSUPPORTED until F15.1; exact Host/Origin; no unauthenticated merged state; stronger build provenance). 2026-10-05 (the dashboard main-line API design note proposed for F20.2 to F20.6: the F20.2 to F20.6 rows point at it; F20.7, the ADR-0012 D8 event endpoint, added as Unscheduled; ledger DAB). 2026-10-05 (the lead developer's two notes on PR #57 recorded on F20 and F28). 2026-10-05 (project maps v0.4 drafted for the designer's freeze: v0.3 archived under `archive/superseded/`, F22 and F22.1 to F22.3 re-sourced, the semantic research's carried requirements marked absorbed in the ledger). 2026-10-05 (Q13 closed: the architecture review response accepted by the operator and moved to `docs/design/` as a decision record; ARV-01 to ARV-05 dispositioned onto F9, F3, F20, E30, E19, F15, F8, F19 and E35; E30 accepted as work). 2026-10-05 (the ADR amendments landed: E37's `service` credential kind in ADR-0005, ADR-0009 and ADR-0013 D9, closed to §9; F28's network-containment amendment in ADR-0009, designed, not built, F28 stays open for the implementation). 2026-10-05 (the before-M4-E gate met: the typed Lead surface v0.2 promoted to governing; F15 re-sourced to it, F15.1 to F15.3 relinked, the gate row to §9, Q13's transport part closed, E19 takes the WC §15.6 consolidation; the idea note's and the efficiency design's carried requirements marked absorbed in the ledger). 2026-10-05 (after the lead developer's and the designer's review of the consolidation: Q13's three differences resolved (MCP is the first transport, I1 and I2 are built, the outbox sequencing is the accepted ADR-0012 and M4-D split), the before-M4-E gate, F15 and F15.1 updated; E37 decided (no mandatory service-credential expiry in v1; the lead developer lands the text); F28's amendment text is the v0.2 design's §3; F22.1 notes the pending v0.4 freshness amendment; E39 added). 2026-10-05 (legacy re-ingestion: every design and research document that the ledger tracked only at register-row level is now a source with its requirements mapped section by section (WCA, PAD, FCR, INV, TIS, LWE, SFT, CDP, ISO, HIR, LOI, LCO, STI, EWL, APR, CPR, IQR, PAV; about 330 requirements); the two headingless documents stay legacy). 2026-10-05 (documentation consolidation: the independent reviews' records and probes moved into the repository (`docs/archive/reviews/`, `eval/reviews/`); the typed Lead surface v0.2, project maps v0.3, the install and bootstrap UX v0.3, the remote-integration sketch, the D9 service-identity spike and the semantic-map and project-understanding research ingested (ledger TLS, PMP, IBU, RIT, KSI, CXS, CXP, SEF, QRC, LRB, PUI); F15.1 to F15.3, F18.1 to F18.4, F22.1 to F22.3, F30, Q14 and E37 added; the before-M4-E promotion gate recorded; F20, F21, F22, F23, F24, F28, Q13, E19 and E21 updated; E38 closed; the designer's decisions of 2026-10-01 on containment and the integration queue copied into their own decision record). 2026-10-04 (ingested and adopted ADR-0012 and ADR-0013; ingested the spec amendment index v0.2 (E19), the evaluation component v0.2, network containment v0.2 and the harness-native research v0.3: E18, E1, F19, F21, F23, F24, F13 and Q12 updated, F28 and E35 added, E36 added and closed by PR #51, the knowledge-manifest prototype's lessons, every requirement in the ledger as OBX, KST, EVC, NET, HNI, SAI and KMP). 2026-10-04 (the dogfood gate's custody-hardening item closed: Lead session custody). 2026-10-04 (E31 to E34 from the independent area reviews; E17 progress). 2026-10-04 (the dogfood gate's custody-hardening item closed: Lead session custody). 2026-10-04 (ingested the M6 knowledge drafts and the architecture review with its proposed response: F21 to F27, Q13, E18 to E30, notes on F14, F15, F19, Q12, D3 and U4; every requirement tracked in the requirements ledger). 2026-10-03 (M4-B: F2 and E13 built, to §9; the dogfood gate's remaining conditions). 2026-10-03 (static checks: E7 done, to §9). 2026-10-03 (M4-A: F14's M4 first step built; E2 done, to §9). 2026-10-03 (ADR-0011 accepted: the before-M4 gate, F1 and E5 move to §9; F20.1 done by PR #26; M4's ambiguity report is next). 2026-10-03 (F20 split into F20.1 to F20.6: F20.1 now, F20.2 to F20.6 in M4; the dashboard session uses AEW's own credential system, started at the operator's terminal). 2026-10-02 (F20: the lifecycle timeline noted as a later contract addition). 2026-10-02 (F20 added: the read-only dashboard's main-line integration, its frontend core accepted and frozen). 2026-10-02 (the ADR-0011 implementation plan approved: the storage investigation confirmed with refinements R1–R8, E5 first, then ADR-0011 in P2a–P2d; F1, E5 and the before-M4 gate). 2026-10-01 (F2's Rocky 8 probes run on WSL: feasible, one engine change; F2 to early M4; what counts as scratch for Q7 and F19; F15's v0.4 direction adopted; Q3 closed: containment before any real-repository dogfood; F2 and E13 through one bubblewrap boundary; F15: the two-interaction-surfaces idea note v0.4 and the designer's decisions on `requires_disposition`, `PUBLISH_IF_CLEAN` across a rebuild and `VALIDATE_ONLY`; F10: the designer's M4 queue disposition; D4 moves to M4; F14's owner edits adopted: the Class 0 Workflow Contract amendment, plan assurance v0.4, registry and index v0.2; Q6, Q9's reconciliation and Q10 closed, F19 added; Q9's decisions closed, F14 adopted as the post-M3 direction; ADR-0011's Q1 and Q2 approved, closed; F1 needs the storage-mechanism investigation first. Post-M3 cleanup: M3 accepted; targets and §9 Closed; Q11, Q12 and F18; E14; O1 fixed. Earlier the same day: the milestone-start rule; F17, which absorbs U2, and §8, from the M3 review comparison). 2026-09-30 (§7: the operator's TUI acceptance session and the Lead's debrief; earlier the same day: F4: Ticket revisions adopted; F16 measured, and Q10's new evidence, from rubric amendments A4 and A5; O5 and E8 to E11 from A4's scope case; F16 and Q10's causes; F15, O4 and §6 from the M3 audits).*
+  *History: each row carries its own dates; the file's history is `git log -- docs/implementation/future-work.yaml`. The change log kept in this line until 2026-10-05 is archived as `docs/archive/register-changelog-to-2026-10-05.md`. Nothing in this preamble changes per entry. After every sync with main, run `python tools/register.py render`, conflict or not: a clean merge can still leave §9 unsorted and the markdown stale, which `check` (and CI) refuse. When a merge conflicts, resolve `future-work.yaml` only, then render: the markdown is derived and is never merged by hand.*
 sections:
 - number: 1
   title: Gates on the way (in order)
@@ -379,8 +379,8 @@ sections:
     Notes: 'Builds on the M3 dogfood harness (`eval/m3/dogfood/`). Q11 adds the provider research''s evaluation plan to
       it. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): F19 becomes a code component (D-AR1); deterministic
       state/context reconstruction for fixtures; model-diverse review as a probe; the knowledge corpus K01 to K28 (ledger
-      KRB-14). The component design is [evaluation component v0.2](../design/evaluation-component-design-v0.2.md)
-      (adopted by the operator and the designer 2026-10-05; ledger EVC; the review''s [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md)
+      KRB-14). The component design is [evaluation component v0.2](../design/evaluation-component-design-v0.2.md) (adopted
+      by the operator and the designer 2026-10-05; ledger EVC; the review''s [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md)
       it grew from is archived): `eval/aew_eval/` public, hidden material private, every paid attempt registered before
       launch, immutable runs with separate analyses. Its first slice (schemas, preregistration and the attempt ledger, proved
       against the M3 corpus) comes before M4-H''s preregistration. ARV-05 (operator, 2026-10-05): the probes the architecture
@@ -877,11 +877,11 @@ sections:
       amendment (F4). **Designer (2026-10-05):** the re-freeze also consolidates WC §15.6 with the governing typed Lead
       surface v0.2 (MCP as the first normal transport; the CLI as parity, recovery and conformance). ARV-03, retiring the
       documents the ADRs absorbed at the re-freeze, is this row''s (operator, 2026-10-05). **The index part is done (PR
-      #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment
-      and its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case;
-      the typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and
-      `test_spec_amendments.py` checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays open for the Ticket-revision
-      contract amendment (the designer''s text) and the re-freeze'
+      #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and
+      its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case; the
+      typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py`
+      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays
+      open for the Ticket-revision contract amendment (the designer''s text) and the re-freeze'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'
     Source: architecture review I3; [architecture review response](../design/architecture-review-response-2026-10-04.md)
@@ -945,7 +945,8 @@ sections:
     Source: architecture review §9; ARV-02
     When: '**M4 candidate**: accepted as work by the operator (2026-10-05, ARV-02)'
     Notes: The markdown stays the rendered view that the ledger's tests and readers use; a YAML source beside it, with a
-      generator and a sync test, is the mechanism
+      generator and a sync test, is the mechanism; since 2026-10-05 the register merges without colliding on merges (no
+      per-change log in the preamble; §9 in id order, enforced by `check`; the markdown re-rendered, never hand-merged)
   - '#': E31
     Work: An in-process `Engine` test driver for the non-CLI parts of the dispatch and integration flows, so those lanes
       stop paying a process per step
@@ -1107,6 +1108,37 @@ sections:
     Closed: '2026-10-01'
     By: 'The operator accepted M3 after the review fixes (PR #6; `review-response-2026-10-01.md`), without a re-review;
       merged by PR #5 (`169af1d`), tag `aew-m3-accepted-2026-10-01`'
+  - '#': Gate
+    Was: 'Before M4: ADR-0011 (hot and cold control state) implemented and accepted against H1 to H4, A1 and historical
+      access, with E5 first'
+    Closed: '2026-10-03'
+    By: 'ADR-0011''s implementation plan ([`adr-0011-implementation-plan.md`](../archive/milestones/adr-0011-implementation-plan.md)):
+      P3''s gate (H1 to H4) passed on Windows, Rocky 8.10 (WSL kernel) and Ubuntu (§7.4); the independent review''s findings
+      (P3-1, P3-2) and the re-review''s (P3-R1, P3-R2) fixed in PR #24; merged by the operator as `42239e1`'
+  - '#': Gate
+    Was: 'Before M4-E: the designer promotes the F15 direction to governing'
+    Closed: '2026-10-05'
+    By: The typed Lead surface v0.2 moved from `docs/design/proposals/` to `docs/design/` as a governing design, text unchanged
+      (the promotion PR of 2026-10-05); the idea note v0.4 stays adopted direction and governs only what the design defers
+      to it; its requirements the design carries are marked absorbed in the ledger (TIS, LWE); the design's first-transport
+      decision closes Q13's transport part; the Workflow Contract §15.6 consolidation goes to the re-freeze (E19)
+  - '#': E2
+    Was: Subprocess-aware coverage of the harness code (supervisor, bridge, broker, adapter)
+    Closed: '2026-10-03'
+    By: 'M4-A: coverage.py measures `src/aew` and every subprocess the Linux lanes start, line and branch, with the other
+      OS''s code excluded by marker; `assurance` combines the shards and holds a ratchet against `tests/coverage-baseline.json`
+      (`testing-and-ci-strategy.md` §3, "Coverage")'
+  - '#': E5
+    Was: Explicit collaborators for the Engine's hook points, instead of 13 mixins
+    Closed: '2026-10-03'
+    By: 'P1 of the ADR-0011 plan, PR #15 (`Kernel`, the collaborators, `engine/ports.py`, `engine/seams.py`), with its independent
+      review fixed in the PR'
+  - '#': E7
+    Was: Lint cleanup with a shared flake8 and pylint configuration
+    Closed: '2026-10-03'
+    By: 'The tooling phase between M4-A and M4-B, replacing flake8 and pylint as decided: Ruff (lint, bugbear, Bandit security
+      rules), Pyright (as Linux and as Windows) and pip-audit, each fixed to clean and required by `assurance` through the
+      new `static` job; Pylint is a manual, advisory run (`testing-and-ci-strategy.md`, "Static checks")'
   - '#': E8
     Was: Next actions that read the evidence (a failing report or check names `aew gate show`)
     Closed: '2026-09-30'
@@ -1123,40 +1155,6 @@ sections:
     Was: Telling the Lead how it can read the project, and that scope is fixed
     Closed: '2026-09-30'
     By: 'Done in M3; merged by PR #5'
-  - '#': O5
-    Was: The dogfood brief misstated the Lead's shell and read tools
-    Closed: '2026-09-30'
-    By: 'Brief corrected (rubric A7); merged by PR #5'
-  - '#': U2
-    Was: An investigation-review coverage contract
-    Closed: '2026-10-01'
-    By: 'Absorbed into F17 (designer; `8eac795`, PR #6)'
-  - '#': O1
-    Was: A file named `nul` failed the fingerprint with git's raw error
-    Closed: '2026-10-01'
-    By: 'The post-M3 cleanup: the snapshot refuses it by name, with the cause and the remedy (`snapshot/fingerprint.py`;
-      `tests/integration/test_fingerprint.py`)'
-  - '#': E2
-    Was: Subprocess-aware coverage of the harness code (supervisor, bridge, broker, adapter)
-    Closed: '2026-10-03'
-    By: 'M4-A: coverage.py measures `src/aew` and every subprocess the Linux lanes start, line and branch, with the other
-      OS''s code excluded by marker; `assurance` combines the shards and holds a ratchet against `tests/coverage-baseline.json`
-      (`testing-and-ci-strategy.md` §3, "Coverage")'
-  - '#': E7
-    Was: Lint cleanup with a shared flake8 and pylint configuration
-    Closed: '2026-10-03'
-    By: 'The tooling phase between M4-A and M4-B, replacing flake8 and pylint as decided: Ruff (lint, bugbear, Bandit security
-      rules), Pyright (as Linux and as Windows) and pip-audit, each fixed to clean and required by `assurance` through the
-      new `static` job; Pylint is a manual, advisory run (`testing-and-ci-strategy.md`, "Static checks")'
-  - '#': F2
-    Was: Real filesystem containment (protected writable roots, enforced by the OS)
-    Closed: '2026-10-03'
-    By: 'M4-B: a bubblewrap sandbox per run, built from the role (exhaustive table, fail closed), applied by the run''s
-      process tree to every spawn and to its checks; run-private git state with the real metadata read-only; a launch self-test
-      on the exact layout; truthful labels (filesystem integrity only; the host stays readable; network not provided). The
-      designer''s open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers
-      and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`,
-      "M4-B as built"'
   - '#': E13
     Was: POSIX process ownership (`setsid` escaped the process group)
     Closed: '2026-10-03'
@@ -1166,6 +1164,72 @@ sections:
     Was: GitHub Action majors behind (Node 20 runtimes; CodeQL Action v3 deprecated December 2026)
     Closed: '2026-10-01'
     By: 'The post-M3 cleanup: checkout v7, setup-python v7, upload-artifact v7, download-artifact v8, codeql-action v4'
+  - '#': E29
+    Was: Context packs reserve context in a fixed order (constraints; work, authority and guardrails; source and evidence;
+      then optional recall), written into the pack generator before any recall exists
+    Closed: '2026-10-05'
+    By: '`knowledge/context.py`: every section of a pack has a tier and `assemble(pack_inputs, budget)` spends a character
+      budget tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the
+      pack''s budget notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget
+      yet: wiring one in waits for a measured budget, and recall fills the last tier when it exists (PR #68)'
+  - '#': E34
+    Was: 'M4-D design inputs from the integration review: the worktree-sync classifier assumed one publisher, and a large
+      publish''s control-lock hold had no bound'
+    Closed: '2026-10-05'
+    By: 'M4-D3: the classifier accepts a path any commit between the candidate and the ref settled (up to 256); `gates.yaml`
+      `max_publish_paths` (default 2,000) refuses a larger candidate at prepare. Measured with `tools/perf/publish_sync.py`
+      on the Windows reference machine: about 4.5 to 5.5 ms a changed path after checking each path with one `lstat` instead
+      of four, so 2,000 paths hold the lock about 10 s. Batched plumbing was not needed for that bound; the remaining cost
+      is git''s own hashing of the working copy'
+  - '#': E36
+    Was: One definition of the v2-only control-state keys (the schema's v1 rule, `aew init` and the v1 test fixtures each
+      spelled the set out)
+    Closed: '2026-10-04'
+    By: 'PR #51: `engine.base.V2_ONLY_KEYS` and `as_v1`, with a test that the schema''s v1 rule refuses exactly that set;
+      source: the knowledge-manifest prototype lessons §3 (ledger KMP-02)'
+  - '#': E37
+    Was: 'The service-credential amendments: ADR-0005 gains the `service` kind (scope `{service, family, issued_by}}`, no
+      generation; Lead-issued, rotated and revoked; one live credential per principal; one closed family enforced by the
+      store as `TRANSACTION_CLOSURE`; the Lead''s custody rules; no mandatory expiry in v1); ADR-0009 gains the custody
+      sentence and an environment-trust row for `AEW_SERVICE_TOKEN`; ADR-0013 D9 names the kind, states that a service transaction
+      archives nothing, and gains oracle rule 33'
+    Closed: '2026-10-05'
+    By: The texts landed as amendments (designed, not built; the implementation is M6b's, F21); the closure rule the spike
+      called 28 is ADR-0013's rule 29, its rule 30 is ADR-0013's 33
+  - '#': E38
+    Was: The acceptance guide's AT-9 row described the frozen KC §26 case (a locally Class 0 Ticket under a Class 3 Story
+      keeps Class 0 and inherits the gate), which the Class 0 amendment §9.2 replaced and the row's own test refuses
+    Closed: '2026-10-05'
+    By: Found by the architecture review's citation test ([T7 results](../archive/reviews/architecture-review-2026-10-04/t7-citation-test-results.md)
+      §3); the row now states the amended behaviour (refused with `CLASS0_INHERITED_ELEVATED_OBLIGATION`, reclassified to
+      Class 1, the gate still required), in the documentation consolidation
+  - '#': F1
+    Was: Hot and cold control state (archival of terminal records)
+    Closed: '2026-10-03'
+    By: 'ADR-0011 implemented: P1 #15, P2a #17 (cold-store core), P2b #18 (archival), P2c #20 (history surface and audit),
+      P2d #21 (migration), P3 #24 (acceptance gate)'
+  - '#': F2
+    Was: Real filesystem containment (protected writable roots, enforced by the OS)
+    Closed: '2026-10-03'
+    By: 'M4-B: a bubblewrap sandbox per run, built from the role (exhaustive table, fail closed), applied by the run''s
+      process tree to every spawn and to its checks; run-private git state with the real metadata read-only; a launch self-test
+      on the exact layout; truthful labels (filesystem integrity only; the host stays readable; network not provided). The
+      designer''s open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers
+      and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`,
+      "M4-B as built"'
+  - '#': F20.1
+    Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
+    Closed: '2026-10-03'
+    By: 'PR #26'
+  - '#': O1
+    Was: A file named `nul` failed the fingerprint with git's raw error
+    Closed: '2026-10-01'
+    By: 'The post-M3 cleanup: the snapshot refuses it by name, with the cause and the remedy (`snapshot/fingerprint.py`;
+      `tests/integration/test_fingerprint.py`)'
+  - '#': O5
+    Was: The dogfood brief misstated the Lead's shell and read tools
+    Closed: '2026-09-30'
+    By: 'Brief corrected (rubric A7); merged by PR #5'
   - '#': Q1
     Was: The completion thresholds for ADR-0011 (H1 to H4, A1)
     Closed: '2026-10-01'
@@ -1182,16 +1246,16 @@ sections:
     By: Required for both; unprivileged bubblewrap is enough for personal dogfood once its Rocky 8 probes pass, and internal
       alpha also needs isolation performance and operability acceptance (designer; see F2 and [`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../research/containment-and-process-ownership-rocky8-research-2026-10-01.md)
       §8)
-  - '#': Q9 (decisions)
-    Was: The plan assurance design's §33 decisions and its order relative to ADR-0011 and M4
-    Closed: '2026-10-01'
-    By: Adopted as the post-M3 direction; see F14 for the decisions. It does not block M4 after ADR-0011; assurance-compatible
-      extension points and deterministic primitives land early enough that M4 creates no conflicting workflow semantics
   - '#': Q6
     Was: Whether "a goal met by changing its inputs" (O3) becomes a registry failure class
     Closed: '2026-10-01'
     By: 'Yes: `ACCEPTANCE_CONDITION_MUTATION` is canonical, with `PROTECTED_ACCEPTANCE_OVERLAP` ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md)
       §3.1). O3 stays open until F14''s fix is accepted'
+  - '#': Q9 (decisions)
+    Was: The plan assurance design's §33 decisions and its order relative to ADR-0011 and M4
+    Closed: '2026-10-01'
+    By: Adopted as the post-M3 direction; see F14 for the decisions. It does not block M4 after ADR-0011; assurance-compatible
+      extension points and deterministic primitives land early enough that M4 creates no conflicting workflow semantics
   - '#': Q9 (reconciliation)
     Was: Reconciling plan assurance's 15 candidate failure classes and its invariants with the registry and the invariant
       index
@@ -1206,27 +1270,6 @@ sections:
       semantic assertions, no active hard trigger), and a failing Class 0 request is refused with reasons, never silently
       reclassified ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md)
       §2, §3.2); the Workflow Contract amendment is adopted ([`workflow-contract-amendment-class0-2026-10-01.md`](../design/workflow-contract-amendment-class0-2026-10-01.md))
-  - '#': Gate
-    Was: 'Before M4: ADR-0011 (hot and cold control state) implemented and accepted against H1 to H4, A1 and historical
-      access, with E5 first'
-    Closed: '2026-10-03'
-    By: 'ADR-0011''s implementation plan ([`adr-0011-implementation-plan.md`](../archive/milestones/adr-0011-implementation-plan.md)):
-      P3''s gate (H1 to H4) passed on Windows, Rocky 8.10 (WSL kernel) and Ubuntu (§7.4); the independent review''s findings
-      (P3-1, P3-2) and the re-review''s (P3-R1, P3-R2) fixed in PR #24; merged by the operator as `42239e1`'
-  - '#': F1
-    Was: Hot and cold control state (archival of terminal records)
-    Closed: '2026-10-03'
-    By: 'ADR-0011 implemented: P1 #15, P2a #17 (cold-store core), P2b #18 (archival), P2c #20 (history surface and audit),
-      P2d #21 (migration), P3 #24 (acceptance gate)'
-  - '#': E5
-    Was: Explicit collaborators for the Engine's hook points, instead of 13 mixins
-    Closed: '2026-10-03'
-    By: 'P1 of the ADR-0011 plan, PR #15 (`Kernel`, the collaborators, `engine/ports.py`, `engine/seams.py`), with its independent
-      review fixed in the PR'
-  - '#': F20.1
-    Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
-    Closed: '2026-10-03'
-    By: 'PR #26'
   - '#': Q13
     Was: Accept the architecture review response after the lead developer's review; promote its decisions to their homes;
       decide the five items it did not disposition (ARV-01 to ARV-05)
@@ -1236,49 +1279,7 @@ sections:
       already have homes: ADR-0012, ADR-0013, the typed Lead surface v0.2, F21 to F27, E18 to E30. ARV-01: the review''s
       "do not build yet" list accepted (F9, F3''s sparse workspaces, F20''s write actions: on measured need); ARV-02: E30
       accepted as work; ARV-03: E19''s; ARV-04: F15 and F8; ARV-05: F19 and E35'
-  - '#': Gate
-    Was: 'Before M4-E: the designer promotes the F15 direction to governing'
-    Closed: '2026-10-05'
-    By: The typed Lead surface v0.2 moved from `docs/design/proposals/` to `docs/design/` as a governing design, text unchanged
-      (the promotion PR of 2026-10-05); the idea note v0.4 stays adopted direction and governs only what the design defers
-      to it; its requirements the design carries are marked absorbed in the ledger (TIS, LWE); the design's first-transport
-      decision closes Q13's transport part; the Workflow Contract §15.6 consolidation goes to the re-freeze (E19)
-  - '#': E37
-    Was: 'The service-credential amendments: ADR-0005 gains the `service` kind (scope `{service, family, issued_by}}`, no
-      generation; Lead-issued, rotated and revoked; one live credential per principal; one closed family enforced by the
-      store as `TRANSACTION_CLOSURE`; the Lead''s custody rules; no mandatory expiry in v1); ADR-0009 gains the custody
-      sentence and an environment-trust row for `AEW_SERVICE_TOKEN`; ADR-0013 D9 names the kind, states that a service transaction
-      archives nothing, and gains oracle rule 33'
-    Closed: '2026-10-05'
-    By: The texts landed as amendments (designed, not built; the implementation is M6b's, F21); the closure rule the spike
-      called 28 is ADR-0013's rule 29, its rule 30 is ADR-0013's 33
-  - '#': E36
-    Was: One definition of the v2-only control-state keys (the schema's v1 rule, `aew init` and the v1 test fixtures each
-      spelled the set out)
-    Closed: '2026-10-04'
-    By: 'PR #51: `engine.base.V2_ONLY_KEYS` and `as_v1`, with a test that the schema''s v1 rule refuses exactly that set;
-      source: the knowledge-manifest prototype lessons §3 (ledger KMP-02)'
-  - '#': E34
-    Was: 'M4-D design inputs from the integration review: the worktree-sync classifier assumed one publisher, and a large
-      publish''s control-lock hold had no bound'
-    Closed: '2026-10-05'
-    By: 'M4-D3: the classifier accepts a path any commit between the candidate and the ref settled (up to 256); `gates.yaml`
-      `max_publish_paths` (default 2,000) refuses a larger candidate at prepare. Measured with `tools/perf/publish_sync.py`
-      on the Windows reference machine: about 4.5 to 5.5 ms a changed path after checking each path with one `lstat` instead
-      of four, so 2,000 paths hold the lock about 10 s. Batched plumbing was not needed for that bound; the remaining cost
-      is git''s own hashing of the working copy'
-  - '#': E38
-    Was: The acceptance guide's AT-9 row described the frozen KC §26 case (a locally Class 0 Ticket under a Class 3 Story
-      keeps Class 0 and inherits the gate), which the Class 0 amendment §9.2 replaced and the row's own test refuses
-    Closed: '2026-10-05'
-    By: Found by the architecture review's citation test ([T7 results](../archive/reviews/architecture-review-2026-10-04/t7-citation-test-results.md)
-      §3); the row now states the amended behaviour (refused with `CLASS0_INHERITED_ELEVATED_OBLIGATION`, reclassified to
-      Class 1, the gate still required), in the documentation consolidation
-  - '#': E29
-    Was: Context packs reserve context in a fixed order (constraints; work, authority and guardrails; source and evidence; then
-      optional recall), written into the pack generator before any recall exists
-    Closed: '2026-10-05'
-    By: '`knowledge/context.py`: every section of a pack has a tier and `assemble(pack_inputs, budget)` spends a character budget
-      tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the pack''s budget
-      notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget yet: wiring one
-      in waits for a measured budget, and recall fills the last tier when it exists (PR #68)'
+  - '#': U2
+    Was: An investigation-review coverage contract
+    Closed: '2026-10-01'
+    By: 'Absorbed into F17 (designer; `8eac795`, PR #6)'

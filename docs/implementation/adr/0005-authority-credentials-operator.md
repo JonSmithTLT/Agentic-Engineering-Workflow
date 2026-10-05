@@ -170,7 +170,10 @@ scheme is unchanged: same form, same verifier, same record fields, same lookup. 
   cookie and redirects; no cookie, a forged, truncated, wrong-id or wrong-secret cookie is `401 SESSION_REQUIRED`;
   expiry and displacement are `401 SESSION_EXPIRED` under an injected clock; the one-time URL reused is `410` while
   the first cookie works; an expired code is `410`; a cross-site navigation does not consume the code; stopping the
-  server ends every session and removes the endpoint files; `open` with the console's code mints exactly one session,
+  server ends every session and removes the endpoint files; one server per project (a second is refused at
+  construction and again at start, under the endpoint lock), and cleanup removes only the files that server
+  published, holding the lock from the identity read through the deletions; `open` with the console's code
+  mints exactly one session,
   with a wrong code, without a terminal, after the timeout or without a server console mints nothing; `serve` and
   `open` without a terminal are refused before anything is minted; a Lead session refuses both; the secret appears in
   no file under `.aew/`, no log line and no response; `serve` at a real pseudo-terminal (POSIX, serial lane).

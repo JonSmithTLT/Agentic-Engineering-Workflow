@@ -392,6 +392,73 @@ def test_one_dashboard_server_per_project_and_cleanup_only_of_its_own_files(proj
     assert service.locate(engine.aew_root) is None
 
 
+
+def test_two_services_constructed_before_either_starts_publish_only_one(project: Project):
+    """Two `serve` commands awaiting their operators both pass the construction check; the second to start is refused
+    under the endpoint lock and releases its listener, so it can neither publish nor be stranded (lead developer's
+    review, second round)."""
+    engine = Engine.discover(project.root)
+    first = service.Service(engine, port=0, console=None)
+    second = service.Service(engine, port=0, console=None)
+    first.start()
+    try:
+        with pytest.raises(errors.UsageError, match="already running") as exc:
+            second.start()
+        assert exc.value.details["url"] == first.url
+        assert not second._thread_alive()  # noqa: SLF001
+        found = service.locate(engine.aew_root)
+        assert found and found["instance"] == first.instance
+        free = socket.socket()  # the refused service's port is released
+        free.bind(("127.0.0.1", second.port))
+        free.close()
+    finally:
+        first.stop()
+    assert service.locate(engine.aew_root) is None
+
+
+def test_cleanup_holds_the_endpoint_lock_so_a_newer_server_publishes_only_after_it(project: Project,
+                                                                                    monkeypatch: pytest.MonkeyPatch):
+    """The reviewer's interleaving: the older service has read its own identity and is about to delete; a newer
+    service starts. Without the lock it publishes in between and the older cleanup deletes its files (a live
+    listener nobody can locate). With it, the newer start waits for the cleanup and then publishes."""
+    engine = Engine.discover(project.root)
+    first = service.Service(engine, port=0, console=None)
+    second = service.Service(engine, port=0, console=None)
+    first.start()
+    identity_read, resume = threading.Event(), threading.Event()
+    real_loads = json.loads
+
+    def paused_loads(text: Any, *args: Any, **kwargs: Any) -> Any:
+        value = real_loads(text, *args, **kwargs)
+        if (threading.current_thread().name == "older-stop" and isinstance(value, dict)
+                and value.get("instance") == first.instance):
+            identity_read.set()
+            assert resume.wait(10), "cleanup was never resumed"
+        return value
+
+    monkeypatch.setattr(json, "loads", paused_loads)
+    stopper = threading.Thread(target=first.stop, name="older-stop")
+    starter = threading.Thread(target=second.start, name="newer-start")
+    try:
+        stopper.start()
+        assert identity_read.wait(10), "cleanup never read the published identity"
+        starter.start()
+        starter.join(1.0)
+        assert starter.is_alive(), "the newer start published while cleanup held the lock"
+        assert service.locate(engine.aew_root)["instance"] == first.instance  # type: ignore[index]
+    finally:
+        resume.set()
+        stopper.join(10)
+        starter.join(10)
+    assert not stopper.is_alive() and not starter.is_alive()
+    monkeypatch.undo()
+    try:
+        found = service.locate(engine.aew_root)
+        assert found and found["instance"] == second.instance and second._thread_alive()  # noqa: SLF001
+    finally:
+        second.stop()
+    assert service.locate(engine.aew_root) is None
+
 def test_an_occupied_port_fails_and_never_moves(project: Project):
     taken = socket.socket()
     taken.bind(("127.0.0.1", 0))

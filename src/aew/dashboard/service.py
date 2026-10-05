@@ -4,6 +4,11 @@
 dashboard/server.json`` records where the server is (pid, port, the control endpoint) and ``control.key`` the channel
 key, for ``aew dashboard open`` and ``status`` to find it. ``local/`` is disposable and never authority (ADR-0011
 invariant 4): the files locate a server; the operator's console authorizes.
+
+One server per project. Publication and cleanup of the endpoint files run under one per-project lock
+(``local/dashboard/endpoint.lock``): ``start`` rechecks under it that no live server is published before it writes,
+and ``stop`` holds it from reading the published identity through both deletions, so a newer server can neither be
+displaced by an older one's cleanup nor publish into the middle of it (lead developer's review).
 """
 
 from __future__ import annotations
@@ -19,7 +24,8 @@ from aew.dashboard.control import Console, ControlServer
 from aew.dashboard.server import DashboardServer
 from aew.dashboard.session import DEFAULT_HOURS, SessionTable
 from aew.engine.api import Engine
-from aew.errors import UsageError
+from aew.engine.lock import FileLock
+from aew.errors import LockTimeout, UsageError
 from aew.harness import procs
 from aew.knowledge.manifest import load_manifest
 from aew.util import atomic_write, utc_now
@@ -28,6 +34,8 @@ DEFAULT_PORT = 4280
 DIR_REL = "local/dashboard"
 SERVER_JSON_REL = f"{DIR_REL}/server.json"
 KEY_REL = f"{DIR_REL}/control.key"
+LOCK_REL = f"{DIR_REL}/endpoint.lock"  # serializes the single-server check, publication and cleanup
+LOCK_TIMEOUT_S = 30.0
 
 
 class Service:
@@ -46,9 +54,7 @@ class Service:
         # stopping either would strand the other (lead developer's review). Refused before binding or prompting.
         running = locate(engine.aew_root)
         if running is not None:
-            raise UsageError(f"a dashboard server is already running for this project at {running['url']} (pid "
-                             f"{running['pid']}); run `aew dashboard open` for a new session, or stop it first",
-                             url=running["url"], pid=running["pid"])
+            _refuse(running)
         self.instance = secrets.token_hex(8)  # this service's identity in the endpoint file: a pid is not enough
         try:
             self.server = DashboardServer(engine, authenticator=self.table, sessions=self.table, port=port,
@@ -73,11 +79,20 @@ class Service:
         return f"{self.url}/session/{code}"
 
     def start(self) -> None:
-        """Serve and record the endpoint under ``local/``. Sessions are issued separately (``issue``)."""
-        self.started_at = utc_now()
-        self.server.start()
-        self.control.start()
-        self._write_endpoint()
+        """Serve and record the endpoint under ``local/``. Sessions are issued separately (``issue``).
+
+        The single-server rule is rechecked here, under the endpoint lock: two ``serve`` commands can both pass the
+        construction check while they wait for their operators, and only the first to start may publish. The other is
+        refused and releases its listener (nothing was issued; nothing is recorded)."""
+        with self._lock():
+            running = locate(self.engine.aew_root)
+            if running is not None:
+                self.close()
+                _refuse(running)
+            self.started_at = utc_now()
+            self.server.start()
+            self.control.start()
+            self._write_endpoint()
 
     def issue(self) -> str:
         """Mint a session; its one-time URL."""
@@ -127,20 +142,34 @@ class Service:
             "project": self.project_id, "control": {"endpoint": self.control.address, "key_file": KEY_REL},
         }, indent=2) + "\n")
 
+    def _lock(self) -> FileLock:
+        return FileLock(self.engine.aew_root / LOCK_REL, timeout=LOCK_TIMEOUT_S)
+
     def _remove_endpoint(self) -> None:
-        """Remove the endpoint files only if this service published them: another service's files stay."""
+        """Remove the endpoint files only if this service published them: another service's files stay. The identity
+        read and both deletions happen under the endpoint lock, so no newer server publishes between them."""
         root = self.engine.aew_root
         try:
-            info = json.loads((root / SERVER_JSON_REL).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return  # nothing there, or not ours to judge
-        if not isinstance(info, dict) or info.get("instance") != self.instance:
-            return
-        for rel in (SERVER_JSON_REL, KEY_REL):
-            try:
-                (root / rel).unlink()
-            except OSError:
-                pass
+            with self._lock():
+                try:
+                    info = json.loads((root / SERVER_JSON_REL).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    return  # nothing there, or not ours to judge
+                if not isinstance(info, dict) or info.get("instance") != self.instance:
+                    return
+                for rel in (SERVER_JSON_REL, KEY_REL):
+                    try:
+                        (root / rel).unlink()
+                    except OSError:
+                        pass
+        except LockTimeout:
+            return  # the files stay; they name this (soon dead) pid, and a stale file is never trusted (``locate``)
+
+
+def _refuse(running: dict[str, Any]) -> None:
+    raise UsageError(f"a dashboard server is already running for this project at {running['url']} (pid "
+                     f"{running['pid']}); run `aew dashboard open` for a new session, or stop it first",
+                     url=running["url"], pid=running["pid"])
 
 
 def locate(aew_root: Path) -> dict[str, Any] | None:

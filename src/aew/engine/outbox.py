@@ -358,6 +358,14 @@ class LogView:
     def record(self, revision: int, what: str = "requested") -> dict[str, Any]:
         record = self.resolve(revision)
         if record is None:
+            if self.since is not None and revision < self.since:
+                # Completeness is guaranteed from the revision the outbox began (D1): say where that is, so a consumer
+                # that started at 0 can move on (D1 review F2). Still an error: no gap is ever skipped silently.
+                raise IntegrityError(f"the transition log has no record of revision {revision} ({what}), which is "
+                                     f"before the outbox began at revision {self.since}: the log is guaranteed "
+                                     f"complete from revision {self.since}; read with --since {self.since - 1} or "
+                                     "later", revision=revision, outbox_since=self.since,
+                                     resume_since=self.since - 1)
             raise IntegrityError(f"the transition log has no record of revision {revision} ({what}), unsealed or "
                                  "sealed: incomplete history", revision=revision)
         if record.get("revision") != revision:

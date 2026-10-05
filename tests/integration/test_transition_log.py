@@ -235,3 +235,28 @@ def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they
     assert {"kind": "decision.recorded", "id": taken["decision"], "type": "authority_transfer"} in events
     assert accepted["token"].split(".")[1] in {e["id"] for e in events if e["kind"] == "credential.revoked"}
     assert_control_invariants(p)
+
+
+# ---------------------------------------------------------------------------------------------- D1 review (M4-D2)
+
+def test_f2_a_missing_pre_outbox_record_names_where_the_guarantee_begins(tmp_path):
+    """Review F2: completeness is guaranteed from outbox.since (ADR-0012 D1). A project from before the outbox that
+    lost a pre-outbox record still fails a read from 0 (no gap is skipped), but the error names the cursor from which
+    the log is complete, and reading from there works."""
+    p = sample_project(tmp_path)
+    create_planned_ticket(p, tmp_path)
+    control = p.root / ".aew/state/control.yaml"
+    state = load_control(p.root)
+    state.pop("outbox")
+    state["last_transition"] = {k: v for k, v in state["last_transition"].items()
+                                if k not in {"schema", "events", "event_overflow", "h"}}
+    control.write_bytes(serialize_control(state))
+    (p.root / ".aew/state/log/000001.yaml").unlink()
+    create_planned_ticket(p, tmp_path, title="the first outbox-era commit")
+    start = load_control(p.root)["outbox"]["since"]
+    res = p.aew("history", "log", "--since", "0", "--json")
+    assert res.error["code"] == "INTEGRITY_ERROR"
+    assert f"guaranteed complete from revision {start}" in res.error["message"]
+    assert res.error["details"]["resume_since"] == start - 1
+    out = log(p, "--since", str(start - 1))
+    assert out["transitions"][0]["revision"] == start

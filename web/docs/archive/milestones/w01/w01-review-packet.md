@@ -22,9 +22,9 @@ Nothing was pushed; assurance and CodeQL remain the main owner's changes.
 | W01-03 | Requests/Scenarios/Contract tabs, demo-only dynamic lab, actual boundary-parser playground, bounded memory-only pasted input | `efdab07`, sticky-toolbar refinement `f6c87d3` |
 | W01-04 | Injectable clock, fourteen manual recipes, composed regression tests, browser/CSP evidence, ordinary polling verification, CI draft | `fc66ef7`, final browser captures `f6c87d3` |
 
-Approved [plan revision 1.1](design/plans/w01-foundation.md) has SHA-256
+Approved [plan revision 1.1](../../../design/plans/w01-foundation.md) has SHA-256
 `799a2cee52e1b8538becd3bf4de3a80618fc3f21290a90891a0439ce4089b825`;
-[approval record](design/plans/w01-approval.json) references the operator's explicit
+[approval record](../../../design/plans/w01-approval.json) references the operator's explicit
 implementation request. Contract acceptance, preview readiness, test success and
 independent frontend acceptance remain separate dispositions.
 
@@ -147,7 +147,7 @@ History rows. Production JavaScript totals 576238 bytes, versus 572775 at the fr
 baseline (about 0.60% growth). The existing Vite >500 kB chunk advisory remains a
 nonblocking frontend optimization item. No unbounded request/DOM growth was observed.
 
-[Backend question ledger](design/w01-backend-question-ledger.md) remains OPEN for
+[Backend question ledger](../../../reference/backend-questions/w01-backend-question-ledger.md) remains OPEN for
 bootstrap/auth-generation ownership, scopes, historical snapshots, validators and
 future preview contracts. An explicit reset entrypoint exists; the browser does
 not claim to detect arbitrary cookie/permission changes. Main-line approval is
@@ -155,14 +155,14 @@ required before future scopes or domain previews become live API semantics.
 
 ## Integration and independent review
 
-[CI handoff](design/w01-ci-integration-handoff.md) records stable job IDs
+[CI handoff](w01-ci-integration-handoff.md) records stable job IDs
 `changes`, `checks`, `result`, exact Node/npm versions and the contract checksum source
 `web/docs/c0-approval.json`. Paths include `web/**` and the shared canonical YAML.
 The draft is informational until the main owner wires it into the sole required
 **assurance** gate and adds JavaScript/TypeScript CodeQL in the F20 merge PR.
 Python lanes remain independent of Node. No branch was pushed.
 
-[SPT feedback](spt-toolchain-feedback.md) retains resolved findings and ticket-ready
+[SPT feedback](../../core/spt-toolchain-feedback.md) retains resolved findings and ticket-ready
 improvements. No new SPT blocker or cache repair was required.
 
 Main agent: independently review source commit `f6c87d3` against `7e13f34`, using

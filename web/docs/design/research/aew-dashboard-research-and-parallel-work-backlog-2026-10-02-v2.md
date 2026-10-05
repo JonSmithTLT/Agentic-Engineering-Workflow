@@ -9,7 +9,7 @@
 
 This document remains the historical v2 research review; the v3 handoff is now available. The operator approved four tightenings: separate accepted/live contracts from versioned preview schemas; start shared verification immediately; establish cache/scope isolation before comparisons; and make missing explanations plus preparation/delivery/citation/benefit distinctions explicit.
 
-The [milestone and ticket backlog](dashboard-workbench-milestones-and-tickets.md) reconciles v3 A–T, this document's D01–D25, tracked gaps, and creative experiments. It supersedes the ordering in section 8, preserves the D identifiers as source references, and records which work requires future read projections. Backlog organization does not approve any milestone implementation plan. Each plan must be reviewed and approved separately before work begins; fixture acceptance does not constitute live integration acceptance.
+The [milestone and ticket backlog](../dashboard-workbench-milestones-and-tickets.md) reconciles v3 A–T, this document's D01–D25, tracked gaps, and creative experiments. It supersedes the ordering in section 8, preserves the D identifiers as source references, and records which work requires future read projections. Backlog organization does not approve any milestone implementation plan. Each plan must be reviewed and approved separately before work begins; fixture acceptance does not constitute live integration acceptance.
 
 ## 1. Recommendation
 
@@ -369,7 +369,7 @@ Illustrative response metadata may include schema version, scope binding, snapsh
 
 ## 8. Original implementation-order recommendation
 
-**Historical ordering:** superseded by the [reconciled milestone backlog](dashboard-workbench-milestones-and-tickets.md). Retained below to preserve research context.
+**Historical ordering:** superseded by the [reconciled milestone backlog](../dashboard-workbench-milestones-and-tickets.md). Retained below to preserve research context.
 
 ### First batch: immediately useful
 D01 shell + D02 scope/revision + D03 scripted worlds + D04 local checks. Add D21 execution-guarantee fixtures and D25 seeded bad-review worlds early because both expose known failure modes cheaply. Start the Knowledge Journal using these shared components. This avoids building a polished flagship on inconsistent cache and navigation behavior.

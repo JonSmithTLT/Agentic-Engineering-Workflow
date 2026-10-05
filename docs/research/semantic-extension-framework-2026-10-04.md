@@ -58,6 +58,8 @@ Two meanings, kept apart because S1 needed both words:
 
 Shared: the artifact is a **knowledge record** in the ADR-0013 sense: immutable, content-addressed, pinned by a manifest entry of kind `reference` (the review response's "derived project knowledge with freshness/provenance, may contain K0 references"), with `source_revision`, the extractor identity, the configuration identities it covers, and its input-set digest. Many units, one artifact per (revision, extractor, configuration set); S4 explains why the artifact is *incrementally* rebuilt but *atomically* published.
 
+> **Designer's correction (2026-10-05; project maps v0.4 §4, decision 18).** Not a knowledge record in the ADR-0013 sense: a semantic artifact is an immutable, content-addressed derived project-map artifact. Its current project selection is pinned by the project-map manifest alongside the structural map, one pointer per extension. It is not K0 admission and receives no knowledge-disposition lifecycle. Its identity binds source revision, configuration set, extractor and toolchain identity, input-set digest and artifact hash. ADR-0013's `reference` is a durable reusable Knowledge identity, which a compiler-derived artifact must not become because the history manifest is a convenient integrity mechanism.
+
 What C forced: **deduplication is not an optimization, it is the artifact.** Per-TU dumps of curl's library are 134 MB; the distinct symbols are 3,866 [probe]. The artifact stores symbols once by stable identity (USR for C/C++; module-qualified name for Python), per-unit membership, and edges by identity.
 
 ### 7. Queries

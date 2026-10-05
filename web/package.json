@@ -10,6 +10,7 @@
     "dev": "vite",
     "dev:demo": "vite --mode demo",
     "generate:types": "openapi-typescript ../docs/design/dashboard-api-v1-provisional.yaml -o src/api/types.ts",
+    "check:docs": "node scripts/check-docs.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",

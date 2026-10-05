@@ -13,7 +13,9 @@ bounded ``attention`` list and ``Work.has_attention`` carry the engine facts the
 
 from __future__ import annotations
 
+import logging
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,7 @@ OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 LIMIT_DEFAULT, LIMIT_MAX = 100, 250
 OVERVIEW_WORK, OVERVIEW_RUNS, OVERVIEW_ATTENTION, OVERVIEW_ACTIVITY, OVERVIEW_RECENT = 6, 6, 6, 10, 20
 CHILDREN_MAX = 250
+LOG = logging.getLogger("aew.dashboard")
 AVAILABLE, UNAVAILABLE, UNSUPPORTED = "AVAILABLE", "UNAVAILABLE", "UNSUPPORTED"
 DECISION_ID = re.compile(r"^D-[0-9]+$")
 EVIDENCE_PRODUCER = re.compile(r"^(INV-[0-9]+)-")
@@ -96,12 +99,28 @@ def check_id(value: str) -> str:
     return value
 
 
-def check_timestamp(name: str, value: str | None) -> str | None:
+TIMESTAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,9})?Z$")
+
+
+def check_timestamp(name: str, value: str | None, *, lower_bound: bool = False) -> str | None:
+    """A UTC timestamp as the frontend sends it (``2026-10-04T00:00:00Z`` or with a fraction,
+    ``2026-10-04T00:00:00.000Z``), parsed and validated as a date, returned in the engine's whole-second form.
+
+    The engine's history entries carry whole seconds and its filters compare bounds inclusively, so a fractional bound
+    is moved to the nearest second that keeps the same entries: a lower bound (``since``) up to the next second when its
+    fraction is not zero, an upper bound (``until``) down to its own second."""
     if value is None:
         return None
-    if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", value):
+    match = TIMESTAMP_RE.fullmatch(value)
+    if not match:
         raise InvalidRequest(f"{name} must be a UTC timestamp like 2026-10-02T00:00:00Z")
-    return value
+    try:
+        moment = datetime.strptime(match.group(1), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+    except ValueError:
+        raise InvalidRequest(f"{name} is not a real date and time: {value}") from None
+    if lower_bound and match.group(2) and int(match.group(2)[1:]) > 0:
+        moment += timedelta(seconds=1)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ------------------------------------------------------------------------------------------------- the projector
@@ -141,7 +160,10 @@ class Projector:
         try:
             self.archive.index(self.state)
         except (LockTimeout, IntegrityError, OSError) as exc:
-            return UNAVAILABLE, [reason("HISTORY_INDEX_UNAVAILABLE", f"{type(exc).__name__}: {exc}")]
+            # The exception's text can name the index's storage path (a permission failure does): it goes to the
+            # server log, and the browser gets the registered reason only.
+            LOG.warning("history index unavailable: %s: %s", type(exc).__name__, exc)
+            return UNAVAILABLE, [reason("HISTORY_INDEX_UNAVAILABLE")]
         return AVAILABLE, []
 
     def capabilities_data(self) -> dict[str, Any]:
@@ -612,8 +634,8 @@ class Projector:
         index = self._index()
         if kind is not None and kind not in M.ENTRY_KINDS:
             raise InvalidRequest(f"kind must be one of {', '.join(M.ENTRY_KINDS)}")
-        check_timestamp("since", since)
-        check_timestamp("until", until)
+        since = check_timestamp("since", since, lower_bound=True)
+        until = check_timestamp("until", until)
         filters = {"kind": kind, "since": since, "until": until}
         count = int(self.state["cold"]["root"]["count"])
         if cursor is None:

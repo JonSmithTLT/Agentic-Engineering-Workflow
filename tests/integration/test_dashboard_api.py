@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -295,6 +296,33 @@ def test_history_lists_the_manifest_newest_first_with_moves_applied(world):
     assert set(unit["links"]) >= {"invocations", "tokens", "evidence", "integration_commit"}
     assert [i["kind"] for i in world.ok("/history?kind=audit", "HistoryListResponse")["data"]["items"]] == ["audit"]
     assert world.ok("/history?since=2099-01-01T00:00:00Z", "HistoryListResponse")["data"]["items"] == []
+    # the frontend's fractional timestamps select the same entries as the whole-second form (F20.2 review)
+    whole = world.ok("/history?since=2020-01-01T00:00:00Z&until=2099-01-01T00:00:00Z", "HistoryListResponse")
+    fractional = world.ok("/history?since=2020-01-01T00:00:00.000Z&until=2099-01-01T00:00:00.999Z",
+                          "HistoryListResponse")
+    assert fractional["data"]["items"] == whole["data"]["items"] == items
+
+
+def test_an_unreadable_history_index_discloses_no_storage_path(world, monkeypatch, caplog):
+    """A permission failure on the index names its path in the exception; the browser gets the registered reason
+    only, and the detail goes to the server log (F20.2 review)."""
+    from aew.engine.archive_ops import Archive
+
+    path = str(world.p.root / ".aew" / "local" / "history.sqlite")
+
+    def unreadable(self, state):
+        raise PermissionError(13, "Permission denied", path)
+
+    monkeypatch.setattr(Archive, "index", unreadable)
+    caplog.set_level(logging.WARNING, logger="aew.dashboard")
+    caps = world.ok("/capabilities", "CapabilitiesResponse")
+    assert caps["data"]["history"]["state"] == "UNAVAILABLE"
+    assert caps["data"]["history"]["reasons"] == [{"code": "HISTORY_INDEX_UNAVAILABLE",
+                                                   "message": REASONS["HISTORY_INDEX_UNAVAILABLE"]}]
+    body = world.error("/history", 403, "CAPABILITY_UNAVAILABLE")
+    for text in (json.dumps(caps), json.dumps(body)):
+        assert "history.sqlite" not in text and "local" not in text and "Permission denied" not in text
+    assert "history.sqlite" in caplog.text and "PermissionError" in caplog.text
 
 
 def test_a_history_cursor_survives_appends_and_never_expires(world):
@@ -390,6 +418,9 @@ def test_overview_is_one_coherent_read_with_bounded_lists(world):
     ("/work?bogus=1", "INVALID_REQUEST"), ("/work?limit=1&limit=2", "INVALID_REQUEST"),
     ("/work?cursor=not-a-cursor", "CURSOR_INVALID"), ("/work?parent=../x", "INVALID_REQUEST"),
     ("/history?kind=bogus", "INVALID_REQUEST"), ("/history?since=yesterday", "INVALID_REQUEST"),
+    ("/history?since=2026-02-30T00:00:00Z", "INVALID_REQUEST"),  # an impossible date (F20.2 review)
+    ("/history?until=2026-10-04T24:00:00Z", "INVALID_REQUEST"),
+    ("/history?until=2026-10-04T00:00:00", "INVALID_REQUEST"),
     ("/history?cursor=AAAA", "CURSOR_INVALID"), ("/activity?cursor=AAAA", "CURSOR_INVALID"),
     ("/work/..", "INVALID_REQUEST"), ("/runs/not%20an%20id", "INVALID_REQUEST"),
 ])

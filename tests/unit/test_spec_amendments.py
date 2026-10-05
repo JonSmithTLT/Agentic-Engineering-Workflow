@@ -3,10 +3,10 @@
 Two kinds of check. Structural: the index's schema; every path exists; only adopted documents are overlays; every
 target is a real frozen section (and named case) whose replaced text is quoted verbatim; no target is replaced twice
 without an order; the written-out `effective` resolution equals the one computed from the overlays; coverage of the
-map both ways. Citations: the refined topic rule of the T7 citation test (archived under
-`docs/archive/reviews/architecture-review-2026-10-04/`): a living paragraph that cites an overlaid section, unversioned,
-on the overlaid topic must cite the overlay. An unversioned citation means the effective section; a citation of the
-historical frozen text is version-qualified (`WC v0.7 §7.4`) and is exempt.
+map both ways. Citations: an unversioned citation (`WC §7.4`) in a living document means the effective section and
+must name a real section of the frozen base; a version-qualified citation (`WC v0.7 §7.4`) must name the frozen
+version. Nothing here reads what a paragraph says: the requirements ledger (SAI-14) keeps this test structural and
+deterministic, with no paragraph-level heuristic.
 
 The frozen files are only read; `tests/test_spec_pin.py` keeps them pinned.
 """
@@ -41,7 +41,6 @@ MORE = re.compile(r"§\s?(\d+(?:\.\d+)*)")
 DOC_NAMES = {"WC": "WC", "KC": "KC", "Workflow Contract": "WC", "Knowledge Contract": "KC"}
 FENCE = re.compile(r"^\s*(```|~~~)")
 ITEM = re.compile(r"^\s*(?:[-*+]\s|\d+\.\s|\|)")  # a list item or table row starts its own paragraph
-GENERIC_CITE = ("as amended",)
 
 
 def load_index() -> dict:
@@ -167,16 +166,15 @@ def test_the_index_has_its_schema():
     assert len(ids) == len(set(ids)), "overlay ids are unique"
     for o in INDEX["overlays"]:
         assert ID.match(o["id"]), o["id"]
-        assert set(o) == {"id", "path", "sections", "status", "adoption", "cite_as", "targets"}, o["id"]
+        assert set(o) == {"id", "path", "sections", "status", "adoption", "targets"}, o["id"]
         assert set(o["adoption"]) == {"at", "by", "evidence"}, o["id"]
         assert o["adoption"]["by"] and o["adoption"]["evidence"], o["id"]
-        assert o["targets"] and o["sections"] and o["cite_as"], o["id"]
+        assert o["targets"] and o["sections"], o["id"]
         for t in o["targets"]:
-            allowed = {"doc", "section", "case", "part", "kind", "by", "quote", "supersedes", "topic"}
+            allowed = {"doc", "section", "case", "part", "kind", "by", "quote", "supersedes"}
             assert set(t) <= allowed, (o["id"], set(t) - allowed)
             assert t["doc"] in INDEX["base"] and SECTION.match(t["section"]), (o["id"], t)
             assert t["kind"] in KINDS and t["part"] and t["by"], (o["id"], t)
-            assert all(isinstance(w, str) and w for w in t.get("topic", [])), (o["id"], t)
             if t["kind"] == "replaces":
                 assert t.get("quote"), f"{o['id']}: a replacement quotes the text it supersedes"
             else:
@@ -306,17 +304,15 @@ class Citation:
     doc: str
     version: str | None
     section: str
-    paragraph: str
 
 
 def living_documents() -> list[Path]:
     """The living set of docs/README.md: not frozen, not archived, not research, a proposal or a skill."""
-    overlays = {o["path"] for o in INDEX["overlays"]}
     found = []
     for p in sorted(DOCS.rglob("*.md")):
         rel = p.relative_to(ROOT).as_posix()
         parts = p.relative_to(DOCS).parts
-        if rel in FROZEN or rel in overlays or parts[0] in NOT_LIVING or parts[:2] == ("design", "proposals"):
+        if rel in FROZEN or parts[0] in NOT_LIVING or parts[:2] == ("design", "proposals"):
             continue
         found.append(p)
     return found
@@ -349,50 +345,15 @@ def citations(path: Path, rel: str | None = None) -> list[Citation]:
             line = start + para.count("\n", 0, m.start())
             sections = [m.group("sec"), *MORE.findall(m.group("more") or "")]
             for sec in sections:
-                found.append(Citation(rel, line, DOC_NAMES[m.group("doc")], m.group("ver"), sec, para))
+                found.append(Citation(rel, line, DOC_NAMES[m.group("doc")], m.group("ver"), sec))
     return found
 
 
 ALL_CITATIONS = [c for p in living_documents() for c in citations(p)]
 
 
-def covers(cited: str, target: str) -> bool:
-    """A citation of §7.4 or of §7.4.x is about the target §7.4; a citation of the parent §7 is not."""
-    return cited == target or cited.startswith(target + ".")
-
-
-def cites_overlay(paragraph: str, overlay: dict) -> bool:
-    low = paragraph.lower()
-    names = [Path(overlay["path"]).name, Path(overlay["path"]).stem, *overlay["cite_as"], *GENERIC_CITE]
-    return any(n.lower() in low for n in names)
-
-
-def topic_violations(found: list[Citation]) -> list[str]:
-    """One entry per citation that is on an overlaid topic but does not cite the overlay that governs that topic."""
-    by_id = {o["id"]: o for o in INDEX["overlays"]}
-    effective = resolve()
-    bad = []
-    for c in found:
-        if c.version is not None:
-            continue  # a version-qualified citation is the historical frozen text, by convention
-        missing = set()
-        for overlay in overlays_in_order():
-            for t in overlay["targets"]:
-                if t["doc"] != c.doc or not covers(c.section, t["section"]) or not t.get("topic"):
-                    continue
-                if not any(w.lower() in c.paragraph.lower() for w in t["topic"]):
-                    continue
-                head = effective[target_key(t["doc"], t["section"], t.get("case"), t["part"])]["head"]
-                current = by_id[head] if head else overlay
-                if not cites_overlay(c.paragraph, current):
-                    missing.add(current["id"])
-        if missing:
-            bad.append(f"{c.path}:{c.line}: {c.doc} §{c.section} on an overlaid topic without {sorted(missing)}")
-    return sorted(set(bad))
-
-
 def test_the_living_set_has_citations_to_check():
-    """A guard on the scanner: if the regular expression or the living set broke, the rules would pass vacuously."""
+    """A guard on the scanner: if the regular expression or the living set broke, the checks would pass vacuously."""
     sections = {(c.doc, c.section) for c in ALL_CITATIONS}
     assert len(ALL_CITATIONS) >= 60
     assert {("WC", "7.4"), ("WC", "7.5"), ("KC", "26"), ("WC", "15.6")} <= sections
@@ -407,37 +368,35 @@ KNOWN_UNRESOLVED = {
 }
 
 
-def test_citations_name_real_sections_of_a_known_version():
-    """An unversioned citation names a real (effective) section; a versioned one names the frozen base version."""
+def unresolved(found: list[Citation]) -> list[str]:
+    """Citations that name no section of the frozen base, or a contract version that is not the frozen one."""
     bad = []
     known = {doc: frozen_sections(doc) for doc in INDEX["base"]}
-    for c in ALL_CITATIONS:
+    for c in found:
         if c.version is not None and c.version != INDEX["base"][c.doc]["version"]:
             bad.append(f"{c.path}: {c.doc} v{c.version} is not the frozen version")
         elif c.section not in known[c.doc]:
             bad.append(f"{c.path}: {c.doc} §{c.section}")
-    assert sorted(bad) == sorted(KNOWN_UNRESOLVED)
+    return sorted(bad)
 
 
-def test_a_citation_of_an_overlaid_section_on_its_topic_cites_the_overlay():
-    """The refined T7 rule: only a paragraph about the overlaid text must name the overlay (or say "as amended")."""
-    assert topic_violations(ALL_CITATIONS) == []
+def test_citations_name_real_sections_of_a_known_version():
+    """An unversioned citation names a real (effective) section; a versioned one names the frozen base version."""
+    assert unresolved(ALL_CITATIONS) == sorted(KNOWN_UNRESOLVED)
 
 
 @pytest.mark.parametrize(
     ("paragraph", "expected"),
     [
-        ("- A Class 0 Ticket needs no review (WC §7.4).", 1),  # on topic, no overlay named: stale
-        ("- A Class 0 Ticket is refused unless eligible (WC §7.4, as amended).", 0),
-        ("- Classify each unit by its own change surface (WC §7.4).", 0),  # off topic: noise under the naive rule
-        ("- The frozen Class 0 bullet read: trivial (WC v0.7 §7.4).", 0),  # historical, version-qualified
-        ("- KC §26 parent risk policy propagation: the Ticket keeps Class 0.", 1),
-        ("- KC §26 parent risk policy, per `workflow-contract-amendment-class0-2026-10-01.md` §9.2.", 0),
-        ("- WC §7.5: the Class 0 path; WC §15.6: MCP is the first normal transport.", 2),
+        ("- Class 0 eligibility (WC §7.4); the Class 0 path (WC §7.5).", 0),
+        ("- The frozen Class 0 bullet (WC v0.7 §7.4); the parent-risk case (KC v0.4 §26).", 0),
+        ("- Risk classes (WC §7.9).", 1),  # no such section
+        ("- Risk classes (WC v0.6 §7.4).", 1),  # not the frozen version
+        ("- Workflow Contract §7, §8 and §99.", 1),  # a continuation is a citation too
+        ("```\nWC §99 inside fenced code is an example\n```", 0),
     ],
 )
-def test_the_topic_rule_on_examples(tmp_path, paragraph, expected):
+def test_citation_resolution_on_examples(tmp_path, paragraph, expected):
     doc = tmp_path / "example.md"
     doc.write_text(paragraph + "\n", encoding="utf-8")
-    assert len(topic_violations(citations(doc, rel="example.md"))) == expected
-
+    assert len(unresolved(citations(doc, rel="example.md"))) == expected

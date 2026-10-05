@@ -876,7 +876,7 @@ sections:
       #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment
       and its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case;
       the typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and
-      `test_spec_amendments.py` checks it and the refined topic citation rule. The row stays open for the Ticket-revision
+      `test_spec_amendments.py` checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays open for the Ticket-revision
       contract amendment (the designer''s text) and the re-freeze'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'

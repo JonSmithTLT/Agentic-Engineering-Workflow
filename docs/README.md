@@ -43,9 +43,8 @@ When documents disagree, the earlier one wins.
 
 An unversioned citation of a contract section (`WC §7.4`, `KC §26`) means the **effective** section: the frozen text
 plus the adopted amendments that [`spec-amendments.yaml`](spec-amendments.yaml) lists for it, in adoption order. A
-citation of the frozen text as it was is version-qualified (`WC v0.7 §7.4`). A paragraph that cites an amended section
-on the amended topic names the amendment (or says "as amended"); `tests/unit/test_spec_amendments.py` checks both the
-index and the citations.
+citation of the frozen text as it was is version-qualified (`WC v0.7 §7.4`). `tests/unit/test_spec_amendments.py`
+checks the index, and that every citation names a real section of the frozen version.
 
 1. **The frozen specification set** `aew-frozen-2026-09-25`, pinned by tag and by `tests/test_spec_pin.py`. These four
    files never change; a change needs a migration review and a new spec set.

@@ -1,6 +1,6 @@
 # ADR-0013 — Knowledge records live in the ADR-0011 history manifest
 
-- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). Not yet implemented. Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates the T4 probe, finalized knowledge-semantics terminology, the developer custody review, ADR-0012's finalized oracle numbering, and design-authority corrections for cursor continuity, PARTIAL jobs, audit semantics, staged-entry validation and service-principal custody.
+- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). Not yet implemented. Amended 2026-10-05: D9 names the `service` credential kind that ADR-0005's amendment of the same date defines, states that a service transaction archives nothing, and adds oracle rule 33. Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates the T4 probe, finalized knowledge-semantics terminology, the developer custody review, ADR-0012's finalized oracle numbering, and design-authority corrections for cursor continuity, PARTIAL jobs, audit semantics, staged-entry validation and service-principal custody.
 - **Resolves:** `REVIEW.md` §6.2 K1 ("storage is unplaced"), and ADR-0012's former open question 6 (where the capture worker's cursor lives). Touches K2 (the trigger), K3 (visibility), K4 (the service identity) only where storage forces a choice.
 - **Basis:** ADR-0011 (Decision; invariants 1–14; "Not decided here"); the storage investigation §3, §4, §8.1 and its refinements R1–R8; `history/{manifest,store,index}.py` and `engine/{archive_ops,history_ops}.py` at `dcd43f1`; `history.schema.json`; the three M6 knowledge drafts (capture §4, §7–§8, §12, §18–§19, §23; shared semantics §4–§7, §13, §17, §26; recall §4, §8, §12, §24); KC §5.2, §5.3, §7.4; `ADR-0012-transaction-outbox.md` D3, D5 and §8.
 - **Evidence:** `repro/knowledge_manifest_probe.py` and its output `knowledge_manifest_probe.out.txt` (run against the frozen tree through the test helpers' history workload; the schema enum widened in memory only). Numbers below are from that run on the Windows reference machine.
@@ -168,13 +168,13 @@ The principal is:
 - bound to the project;
 - explicitly enabled/revoked by operator-authorized configuration/policy;
 - independent of Lead generation, so Lead handoff/takeover does not silently stop capture;
-- represented as a **new credential kind** in the existing credential-verifier/custody architecture, not as a Lead credential nested inside the Lead seat;
+- represented as the **`service` credential kind** that ADR-0005's amendment of 2026-10-05 defines (same form and verifier; scope `{service, family, issued_by}` with no Lead generation; issued, rotated and revoked only by the Lead; one live credential per principal; no mandatory expiry in v1), not as a Lead credential nested inside the Lead seat;
 - held only by the capture/admission service process;
 - unreachable from worker shells, worker-visible environment/filesystem state, harness model context and role bridges;
 - added to ADR-0009's environment-trust inventory and credential-scrubbing/verification tests;
 - denied every operation outside its enumerated `knowledge.*` family.
 
-Exact token encoding/storage/rotation remains an ADR-0005/ADR-0009 implementation amendment, but these authority semantics are frozen here.
+Token form, issuance, rotation and custody are ADR-0005's amendment of 2026-10-05 and ADR-0009's matching custody sentence; these authority semantics are frozen here. **A service transaction archives nothing:** it runs none of the Lead transaction's finalizers (archival, and from M4-D3 the queue step, whose `queue` write lies outside the knowledge family), appends only its own history entries, ends no credential and prunes no observation; finished work waits for the next Lead commit.
 
 For policy-resolved paths, the service may publish K0 references, approved-template K1 Cases, initial/hold `knowledge_disposition` events and `capture_receipt`s when the accepted Knowledge policy resolves every consequential choice. K2/K3 remain subject to the accepted judgment boundary; K3 is never automatically admitted in M6 v1.
 
@@ -182,7 +182,7 @@ Judgment-bearing Knowledge actions are committed through the Lead/operator autho
 
 #### Runtime closure is a commit invariant
 
-Closure is enforced by the **store commit path**, not merely by a role table, finalizer convention, or test oracle. On every `knowledge_service` commit, the commit invariant verifies:
+Closure is enforced by the **store commit path** (`TRANSACTION_CLOSURE`, checked at commit before validation and before anything touches disk, by comparing the committed state with the one proposed), not merely by a role table, finalizer convention, or test oracle; oracle rule 29 is therefore an enforced property, not only a tested one. On every `knowledge_service` commit, the commit invariant verifies:
 
 - credential/principal kind;
 - allowed `knowledge.*` operation;
@@ -239,10 +239,13 @@ These expensive global checks remain off the ordinary commit path under ADR-0011
 
 ## Oracle rules (continuing finalized ADR-0012 rules 24–28)
 
+Rule numbers are owned by the ADR that introduces them, and a later ADR continues from the highest number in force: ADR-0012 owns 24 to 28, this ADR 29 to 33, and M4-D3's queue rules start at 34.
+
 29. A `knowledge_service` commit changes only explicitly permitted Knowledge/cold/counter/last-transition fields and appends only permitted Knowledge-history entry kinds; attempted mutation of work/invocation/Lead/credential domains fails before commit.
 30. Every `knowledge_disposition` targets an exact `reference`, `case` or `lesson` version that already exists in authenticated history or earlier in the same staged transaction, and its `knowledge_disposition_seq` is correct.
 31. `len(knowledge.pending) <= 20`; every listed item is a current judgment-bearing pending Knowledge candidate; overflow count is non-negative and no timeout/default resolves it.
 32. The receipt fold's `safe_through` is the largest contiguous terminally covered source position. An out-of-order terminal receipt above a gap and any PARTIAL receipt do not advance it.
+33. At most one live `service` credential per principal; every `service` credential names a principal in the code registry and exactly that principal's family, and its scope carries no Lead generation (ADR-0005, 2026-10-05).
 
 ## Completion criteria
 

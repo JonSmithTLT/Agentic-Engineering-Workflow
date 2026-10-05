@@ -125,6 +125,8 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
 
 **Post-run scan.** When a run ends, the supervisor scans the run directory for any credential string and records `credential_scan`.
 
+**Service credentials (ADR-0005, amendment 2026-10-05; built with M6b).** A harness run never receives a service credential; the Lead broker refuses `service issue` as it refuses the Lead's credential-emitting commands, and the agent environment allowlist never carries `AEW_SERVICE_TOKEN`.
+
 **Residual risk (same-UID; documented, not closed).** A same-user process can read another process's memory on Windows (no integrity-level separation), so a deliberately adversarial agent could extract the credential from the supervisor. Custody closes inheritance, printing, transcripts and files, which are the accidental and persistent exposure paths. On Linux the supervisor is **non-dumpable** (`PR_SET_DUMPABLE=0`), so its `/proc/<pid>/{mem,environ}` are unreadable by the agent; a test checks this. This is the ADR-0005 same-UID threat model; it is unchanged.
 
 ### Process ownership (`src/aew/harness/procs.py`)
@@ -341,7 +343,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **Every run record's `containment` is an object** with:
   - `filesystem`: `os_readonly_roots` or `workdir_separation_only`;
   - `process_ownership`: `pid_namespace`, `process_group` or `job_object`;
-  - `network`: `shared` on Linux, `not_provided` on Windows (until F28 adds `proxy_only` and `isolated`);
+  - `network`: `shared` on Linux, `not_provided` on Windows, until the network amendment below (2026-10-05, F28) is built; then an object whose `mode` is `proxy_only` by default on Linux, with `isolated`, the relay and the egress allowlist it defines;
   - `mechanism`: `bubblewrap <version>`;
   - the self-test result and the layout.
 - **Old records:** a record from before M4-B (the string `workdir_separation_only`) reads as exactly that.
@@ -361,6 +363,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 **The harness server's environment is readable from the agent's shell.**
 - **Why:** the agent's own environment carries no provider secret and no server password, as above. But the harness server is the agent shell's parent, runs as the same user, and shares its PID namespace whether or not the run is contained. So its environment (the provider key the policy names, and the server password) is one read of `/proc/<parent>/environ` away. No AEW credential is ever there.
 - **Status:** closing this needs the server outside the agent's user or namespace. Until then it is stated here, and `test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell` asserts it. The day it stops being true, that test fails and this paragraph changes.
+- **Narrowed by design (2026-10-05):** the network amendment below takes the provider key out of the sandbox entirely (the supervisor's relay holds it). Once F28 is built, this residual is the server password only, and the test narrows with it.
 - **To investigate:** using OpenCode's stored authentication in the run's private data directory, instead of environment variables.
 - **Secret masks are computed at launch.** A secret file or directory created on the host while a run is live is readable from it until the run ends; the next launch masks it.
 
@@ -406,6 +409,7 @@ An environment variable changes only the process that reads it. An agent control
 |---|---|---|---|
 | `AEW_LEAD_TOKEN` | any `aew` command; `aew lead session` (then removed) | the Lead credential | never in any harness or agent environment (`CREDENTIAL_ENV` is scrubbed everywhere); a forged value fails verification |
 | `AEW_INVOCATION_TOKEN` | role commands outside a run | an invocation credential | as above |
+| `AEW_SERVICE_TOKEN` (M6b) | the knowledge service's own process, outside any run | a `service` credential (ADR-0005, 2026-10-05): one closed transaction family, no Lead authority | never in any harness or agent environment (scrubbed with the other credential variables); refused by every operation outside its family and by the store at commit (`TRANSACTION_CLOSURE`); the broker refuses `service issue` |
 | `AEW_AGENT_ENDPOINT`, `AEW_AGENT_KEY`, `AEW_INVOCATION`, `AEW_RUN`, `AEW_WORK_UNIT` | the `aew` CLI inside a run | which run bridge to call, and its key | the bridge authenticates by key and holds the credential itself; contained runs cannot see another run's bridge or state |
 | `AEW_LEAD_BROKER`, `AEW_LEAD_BROKER_KEY` | the `aew` CLI inside a Lead session | route Lead commands to the broker; refuse credential-issuing commands and `--print-credential` locally | unsetting them leaves a command with no credential (refused by the engine). Credentials still go only to the terminal, the takeover prompt names the requester, and the session's processes end before an acquired seat is released |
 | `AEW_SCRATCH` | the agent | where scratch files go | no authority |
@@ -420,3 +424,122 @@ An environment variable changes only the process that reads it. An agent control
 - `tests/integration/test_authority.py` (AT-4b, Linux pty): a takeover at a real terminal shows the requester and the destination, writes the credential to the terminal, and puts `(written to your terminal)` on stdout.
 - `tests/unit/test_credential_delivery.py`: which commands issue a credential, delivery and refusal, the prompt, the process chain, and git's environment.
 - Each guard was shown to fail its test with the mechanism removed, on Windows and on Linux.
+
+## Amendment 2026-10-05 — network containment on Linux (F28; the network containment design v0.2)
+
+The M4-B amendment contains a run's filesystem and processes and leaves its network shared: `network: shared` on
+Linux (truthful topology, PR #50) and `not_provided` on Windows, with a documented residual, the provider key the
+policy names being readable from the agent's shell through the harness server's environment. This amendment adds the
+network dimension and takes the provider key out of the sandbox. Its text is the frozen
+`docs/design/proposals/network-containment-design-v0.2.md` §3 (ledger NET), probed on Rocky Linux 8.10 (kernel 4.18,
+bubblewrap 0.4.0, SELinux enforcing) with OpenCode 2.0.18
+(`docs/archive/reviews/architecture-review-2026-10-04/t6-network-containment.md`); the designer accepted the direction
+on 2026-10-04 and fixed this text on 2026-10-05. **Designed, not built:** the implementation is register F28, required
+before internal alpha and not an M4-C or M4-D blocker. Until it lands, nothing in AEW calls a Linux run
+network-contained.
+
+### What F28 claims, exactly
+- **A private network namespace.** A model-controlled run, the Lead's harness included, runs under `--unshare-net`:
+  the sandbox has `lo` only. No route exists from the run to any network; a connect to anything outside fails at the
+  OS, as a forbidden write fails with `EROFS` under F2.
+- **Provider traffic through a secretless shim to a supervisor-owned credentialing relay.** The harness's provider
+  `baseURL` points at a loopback endpoint inside the sandbox. A small AEW-owned shim, in the run's namespace and owned
+  by the run's process tree, forwards the plaintext provider-protocol bytes over a filesystem AF_UNIX socket to a
+  reverse relay the supervisor owns outside the sandbox. The relay has a fixed upstream from the execution profile,
+  strips or replaces any credential the client sent, adds the real provider credential, speaks TLS to the gateway and
+  streams the response back. The sandbox holds at most a non-secret sentinel key where an SDK syntactically needs
+  one. The relay accepts no upstream from the sandbox, so the model cannot turn it into a forwarding or SSRF oracle.
+- **Provider credentialing and generic egress are separate mechanisms** (the design's §1.1 correction). A
+  conventional HTTPS CONNECT proxy cannot add a header inside an end-to-end TLS tunnel, so the production custody
+  claim is never header injection into a CONNECT tunnel. Non-provider egress, when policy authorizes any (a
+  connected-mode catalog refresh, `models.opencode.ai:443`), goes through a separate supervisor-owned allowlist proxy
+  with a bounded `host:port` list and no provider credential. Web fetch, browser and package destinations are never
+  implied by a harness tool's existence; each needs its own authorized capability.
+- **The supervisor reaches the harness server through the same shim** (host, bound AF_UNIX socket, shim, the
+  server's loopback port; about 0.7 ms per request in the probe) where the harness lacks native unix-socket
+  transport. The ADR-0005 bridge is unchanged: a filesystem AF_UNIX socket survives the namespace, an abstract one
+  does not.
+- **Not confidentiality of traffic, and not the server password.** The relay forwards bodies as they are. The
+  harness server still runs in the run's PID namespace as the same user, so its own password stays one read of
+  `/proc/<parent>/environ` away: that residual remains open, stated in the M4-B amendment's residual paragraph and
+  narrowed to it.
+- **Not Windows.** Windows has no network namespace; its runs stay `network: not_provided` until a separate backend
+  exists.
+
+### Labels
+The containment label's `network` becomes an object:
+- `mode`: `proxy_only` (the namespace plus the credentialing relay, any further egress only through the allowlist
+  proxy), `isolated` (the namespace with loopback and control sockets only, no egress path), `shared` (the host's
+  network: truthful topology, no containment guarantee), `not_provided` (AEW cannot enforce or characterize network
+  containment on this backend or platform);
+- `provider_relay`: `configured` or `none`;
+- `egress_allow`: the `host:port` list, only when generic egress exists.
+
+Until F28 is built, Linux M4-B runs are labelled `shared` and are never retroactively described as `proxy_only`.
+Once F28 is accepted, Linux model-controlled runs default to `proxy_only` and `shared` becomes an explicit weaker
+execution-policy choice. `aew harness status` shows the mode and, for `proxy_only`, the relay and the allowlist; a
+check result's `method.containment.network` says where the check's traffic could go.
+
+### The namespace and the shim (`layout.py`, `bwrap_argv`)
+`Layout` gains a network mode and the AF_UNIX paths that mode needs; `bwrap_argv` adds `--unshare-net` for
+`proxy_only` and `isolated`. The shim runs for the run's lifetime as a sibling the supervisor's process tree owns, not
+a wrapper that `exec`s away, and provides only the endpoints configured for that run: the supervisor-to-server leg,
+the provider-relay leg and, when authorized, the generic-egress leg. It holds no provider credential, no Lead
+credential and no policy authority; ending the run ends it. Codex may use its native `unix://` app-server transport
+and omit the server leg once the pinned adapter proves it.
+
+### The credentialing relay (supervisor, outside the sandbox)
+For `proxy_only` the supervisor starts one relay per required provider or profile, or an equivalently isolated
+multiplexer with the same fixed mapping. The provider key is never copied into the harness, the server or any
+model-controlled environment or file; the relay is outside the run's PID and network namespaces and follows the
+existing credential-holder custody rules. It is provider infrastructure, not a general web proxy.
+
+### Adapters
+OpenCode: the provider `baseURL` is projected to the relay endpoint under `proxy_only`; any SDK-required key inside
+the sandbox is sentinel material; `HTTP_PROXY` and `HTTPS_PROXY` are set only for the separate egress proxy when
+such egress is authorized; `NO_PROXY` covers the server, bridge and relay loopback endpoints; the real `provider_env`
+goes only to the relay. Codex follows the same boundary; its native `features.network_proxy` or sandbox domain rules
+are optional defence in depth behind the namespace, never the credential holder or the authoritative label.
+
+### Self-test and readiness
+The launch self-test proves the boundary without a provider-specific operation: direct non-loopback egress from
+inside the sandbox fails; the bridge answers over its filesystem socket; the supervisor-to-server path through the
+shim works; a supervisor-owned local probe upstream succeeds through the relay path; an unauthorized generic-egress
+target is refused; the model-controlled environment and readable files hold no provider secret. Provider or gateway
+readiness is a separate adapter and `doctor` check against that profile's bounded health or catalog operation,
+explicit and fail-closed, never conflated with containment.
+
+### The OpenCode catalog
+Offline model availability is bounded by the binary's embedded or seeded catalog. An air-gapped release may carry a
+sanitized, checksum-pinned catalog seed produced from a clean disposable instance of the exact supported pin, never
+an operator's `opencode.db`; `aew doctor` verifies the seed's fingerprint and that the configured model appears in
+the effective catalog. An official offline-catalog mechanism in a later pin is preferred when it exists.
+
+### Project checks and the Lead
+Checks default to `network: isolated`, not to the parent run's mode. A check may request `proxy_only` or `shared`
+only where the check definition and the execution policy permit, equal to or stricter than the policy's ceiling, and
+the effective mode and allowed egress are recorded with the check's evidence. The Lead's harness is model-controlled
+execution and defaults to `proxy_only` on Linux once F28 is built: operator ownership of the TUI does not make the
+Lead's shell a safe holder of a provider credential; operator UI and attach traffic stay outside the boundary, and a
+broader Lead network capability arrives as an explicit bounded capability.
+
+### Frozen designer decisions (2026-10-04)
+1. The Linux default after F28 is `proxy_only`; `shared` is an explicit weaker policy mode. 2. The Lead is included.
+3. Checks default to `isolated`. 4. The catalog seed is accepted with the qualification above. 5. Provider
+credentialing and generic egress are separate mechanisms. 6. Network containment is a pre-internal-alpha requirement,
+not an M4-C or M4-D blocker; no internal-alpha security claim calls Linux runs network-contained before its live lane
+passes.
+
+### Costs, and what is not shown
+The supervisor-to-server path costs about 0.7 ms per request. Unmeasured, and to be proved by the implementation's
+conformance lane: a real streamed model turn through the relay against a TLS gateway (the probe's gateway was a local
+stand-in), backpressure and cancellation under long streams, IPv6 upstreams, and the shim's lifecycle details.
+slirp4netns is not needed and does not work unprivileged on EL8.
+
+### Tests (written with F28)
+`tests/integration/test_containment.py` (Linux): the namespace has `lo` only; a direct connect fails at the OS; the
+bridge answers across the namespace; the shim carries the supervisor's requests; a `proxy_only` run's server
+environment has no provider variable; the relay attaches the credential for its fixed upstream only and replaces any
+the run sent; an unauthorized egress host is refused; the self-test fails closed; a check under `isolated` reaches
+nothing. `tests/unit/test_containment_layout.py`: `--unshare-net` in `bwrap_argv`, the label object, old records read
+unchanged. The M4-B residual test narrows to the server password.

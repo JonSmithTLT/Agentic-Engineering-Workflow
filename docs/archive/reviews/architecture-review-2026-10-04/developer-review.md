@@ -3,7 +3,7 @@
 - **Date:** 2026-10-04
 - **Reviewer:** the lead developer.
 - **Reviewed:**
-  - `docs/design/proposals/architecture-review-response-2026-10-04.md`, the proposed disposition;
+  - `docs/design/architecture-review-response-2026-10-04.md`, the proposed disposition;
   - `REVIEW.md` (archived as `docs/archive/reviews/architecture-review-2026-10-04.md`);
   - the review's ADR-0012 outbox draft in this folder.
 - **Code basis:** `main` after M4-B, plus the Lead custody branch (`fix/lead-custody`, PR #40). That branch moves credential delivery into the CLI layer, which matters for question 10.

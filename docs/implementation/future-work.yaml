@@ -355,8 +355,12 @@ sections:
       point'
     Source (governing): '[install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md) §5 (air-gapped),
       §5.1 (ledger IBU-12, IBU-13); airgap research §7'
-    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment)'
-    Notes: Key custody and rotation can be a release-engineering ADR
+    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; the build follows
+      the adoption of ADR-0014)'
+    Notes: 'Key custody and rotation: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md) (proposed for operator adoption
+      2026-10-05; ledger BSG): OpenSSH signatures over a canonical JSON manifest, an independently provisioned `allowed_signers`
+      trust root, the release operator signs locally and never CI, rotation and revocation procedures, the verifier''s refusal
+      rules and the adversarial tests the build must show'
   - '#': F18.4
     Work: 'Organization launch and provider-access seams: the harness launch provider (`direct_binary`, `airgap_bundle`
       or `organization`) selecting a qualified pin that AEW independently verifies after launch; the `aew/harness-qualification/v1`
@@ -883,7 +887,12 @@ sections:
       section, structural tests in `test_spec_amendments.py`. Its first slice also writes the missing Ticket-revision contract
       amendment (F4). **Designer (2026-10-05):** the re-freeze also consolidates WC §15.6 with the governing typed Lead
       surface v0.2 (MCP as the first normal transport; the CLI as parity, recovery and conformance). ARV-03, retiring the
-      documents the ADRs absorbed at the re-freeze, is this row''s (operator, 2026-10-05)'
+      documents the ADRs absorbed at the re-freeze, is this row''s (operator, 2026-10-05). **The index part is done (PR
+      #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and
+      its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case; the
+      typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py`
+      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays
+      open for the Ticket-revision contract amendment (the designer''s text) and the re-freeze'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'
     Source: architecture review I3; [architecture review response](../design/architecture-review-response-2026-10-04.md)

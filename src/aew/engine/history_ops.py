@@ -47,6 +47,9 @@ LINKS_MAX_DEPTH, LINKS_MAX_EDGES = 3, 500
 AUDIT_ATTEMPTS = 5
 # Built-in thresholds; a project overrides any of them in the gates policy's ``history_audit`` block (plan §4).
 AUDIT_POLICY = {"max_unverified_entries": 1000, "max_unverified_age_hours": 168, "max_full_age_days": 30}
+# The code of each over-policy finding, for consumers that need more than its text (the dashboard, F20.2).
+OVER_ENTRIES, OVER_AGE, OVER_FULL = ("UNVERIFIED_ENTRIES_OVER_POLICY", "UNVERIFIED_AGE_OVER_POLICY",
+                                     "FULL_VERIFICATION_OVERDUE")
 
 
 def _epoch(stamp: str) -> int:
@@ -139,12 +142,15 @@ class HistoryCommands:
                 "record": redact(record)}
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
-                     limit: int = LIST_DEFAULT) -> dict[str, Any]:
-        """Historical records by kind and a bounded date range, newest first (invariant 12)."""
+                     limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:
+        """Historical records by kind and a bounded date range, newest first (invariant 12). ``before`` pages: only
+        entries numbered below it, so a caller walks the history page by page while it keeps growing (F20.2)."""
         if kind is not None and kind not in M.ENTRY_KINDS:
             raise UsageError(f"--kind must be one of {', '.join(M.ENTRY_KINDS)}")
         if not 1 <= limit <= LIST_MAX:
             raise UsageError(f"--limit must be between 1 and {LIST_MAX}")
+        if before is not None and before < 1:
+            raise UsageError("--before is a history sequence number, 1 or more")
         for name, stamp in (("--since", since), ("--until", until)):
             if stamp is not None:
                 try:
@@ -156,13 +162,14 @@ class HistoryCommands:
         index = self.archive.index(state)
         moves = index.moves()
         items = []
-        for e in index.list(kind=kind, since=since, until=until, limit=limit):
+        for e in index.list(kind=kind, since=since, until=until, limit=limit, before_seq=before):
             item = {k: e[k] for k in ("seq", "kind", "id", "at", "source") if k in e}
             item.update({k: e[k] for k in ("state", "unit_kind", "title", "subject", "rel") if e.get(k) is not None})
             if e["kind"] == "unit":
                 item["parent"] = moves[e["id"]] if e["id"] in moves else e.get("parent")  # moves applied
             items.append(item)
-        return {"items": items, "limit": limit, "truncated": len(items) == limit}
+        return {"items": items, "limit": limit, "truncated": len(items) == limit,
+                **({"before": before} if before is not None else {})}
 
     def history_links(self, record_id: str, *, depth: int = 1) -> dict[str, Any]:
         """The provenance and reference links recorded from and to a record, followed ``depth`` steps (bounded)."""
@@ -388,15 +395,19 @@ class HistoryCommands:
             block = {}
         return {**AUDIT_POLICY, **block}
 
-    def audit_status(self, state: dict[str, Any]) -> dict[str, Any] | None:
+    def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """The current root, the verified root, unverified additions (count and age) and the age of the last full
-        verification, judged against the policy thresholds: backlog, not an alarm (plan §4)."""
+        verification, judged against the policy thresholds: backlog, not an alarm (plan §4). ``policy``: the gates
+        policy's ``history_audit`` block, when the caller already holds it (a lock-free reader, F20.2); otherwise it
+        is read here."""
         if state.get("schema") != V2:
             return None
         cold = state["cold"]
         root, verified, last_full = cold["root"], cold.get("verified"), cold.get("last_full")
         backlog = self.audit_backlog(state) or 0
-        now, policy, over = time.time(), self._policy(), []
+        now, over = time.time(), []
+        policy = {**AUDIT_POLICY, **policy} if policy is not None else self._policy()
+        detail: list[dict[str, str]] = []  # the same findings, each with its code (F20.2)
         oldest_at = cold.get("unverified_since") if backlog else None
         if backlog and oldest_at is None:  # a v2 state from before these dates were kept: once, from the index
             first = self.archive.index(state).by_seq(root["count"] - backlog + 1)
@@ -404,9 +415,11 @@ class HistoryCommands:
         age_h = round((now - _epoch(oldest_at)) / 3600, 1) if oldest_at else 0.0
         if backlog > policy["max_unverified_entries"]:
             over.append(f"{backlog} unverified history entries (policy: at most {policy['max_unverified_entries']})")
+            detail.append({"code": OVER_ENTRIES, "message": over[-1]})
         if age_h > policy["max_unverified_age_hours"]:
             over.append(f"the oldest unverified entry is {age_h} h old "
                         f"(policy: {policy['max_unverified_age_hours']} h)")
+            detail.append({"code": OVER_AGE, "message": over[-1]})
         full_age_d = round((now - _epoch(last_full["at"])) / 86400, 1) if last_full else None
         if root["count"]:
             # Never fully verified: due once the history itself is older than the threshold, not at its first entry.
@@ -419,7 +432,8 @@ class HistoryCommands:
                 since_d = round((now - _epoch(first_at)) / 86400, 1) if first_at else 0.0
             if since_d > policy["max_full_age_days"]:
                 over.append(f"no full verification for {since_d} days (policy: {policy['max_full_age_days']} days)")
+                detail.append({"code": OVER_FULL, "message": over[-1]})
         return {"current": {"count": root["count"], "h": root["head_h"]}, "verified": verified,
                 "unverified": {"entries": backlog, "oldest_at": oldest_at, "age_hours": age_h},
                 "last_full": dict(last_full, age_days=full_age_d) if last_full else None,
-                "policy": policy, "over_policy": over}
+                "policy": policy, "over_policy": over, "over_policy_detail": detail}

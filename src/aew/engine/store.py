@@ -51,6 +51,8 @@ Model (ADR-0001):
 from __future__ import annotations
 
 import copy
+import os
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -80,6 +82,7 @@ CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
 LOCK_REL = "local/control.lock"
+READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
 AfterApply = Callable[[dict[str, Any]], None]
@@ -246,6 +249,36 @@ class ControlStore:
                 return copy.deepcopy(self._recover())
             finally:
                 self.held -= 1
+
+    def control_identity(self) -> tuple[int, int, int] | None:
+        """A cheap identity of the committed control file (mtime, size, inode), or None when there is none. The file
+        is only ever replaced atomically, so every committed change changes it: a long-lived reader stats it and reads
+        only on a change (ADR-0012 D3, invariant 4)."""
+        try:
+            st = os.stat(self.control_path)
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+    def read_committed(self) -> dict[str, Any]:
+        """The committed state as the control file holds it, **without the control lock and without recovery**: a
+        reader's view (ADR-0012 D3 and invariant 4; the dashboard, register F20.2). Under ADR-0001 the file is only
+        ever replaced atomically, so this is always one complete committed state, verified and schema-checked like
+        every parse. What a lock-free reader may observe is a committed revision whose staged record files are not
+        applied yet (the window recovery closes under the lock); such a reader treats a record that is missing or does
+        not match its pin as a stale view to report, never as something to repair. Writers and every engine command
+        keep using ``read`` and ``session``.
+
+        On Windows the writer's atomic replace and a reader's open can collide for a moment (a sharing violation,
+        ``PermissionError``); the reader retries briefly, as the writer does on its side (``replace_with_retry``)."""
+        for attempt in range(READ_RETRIES):
+            try:
+                return copy.deepcopy(self._load())
+            except PermissionError:
+                if attempt == READ_RETRIES - 1:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+        raise AssertionError("unreachable")
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.

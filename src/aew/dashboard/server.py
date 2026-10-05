@@ -4,13 +4,14 @@ GET and HEAD only, under ``/api/v1/``, bound to ``127.0.0.1``. One request is se
 the engine's read collaborators), and each request projects one lock-free snapshot. Errors are the contract's
 ``Error`` object with a registered code; an engine exception's text goes to the server log, never to the client.
 
-The server **requires an authenticator** (the enablement rule, designer 2026-10-05): F20.2 ships none for the product,
-so nothing outside a test can start a listener; F20.3 adds the operator-session authenticator and the ``aew dashboard``
-commands. Conditional requests (F20.4), the static build and the full header set (F20.5) come in their slices.
+The server **requires an authenticator** (the enablement rule, designer 2026-10-05): the product's is the operator
+session (``session.SessionTable``, F20.3), which also serves the one-time URL exchange at ``/session/<code>`` (design
+note §4.3). Conditional requests (F20.4), the static build and the full header set (F20.5) come in their slices.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -22,6 +23,7 @@ from typing import Any, Protocol
 from urllib.parse import parse_qs, urlsplit
 
 from aew.dashboard import projections as P
+from aew.dashboard import session as S
 from aew.dashboard.contract import Contract
 from aew.dashboard.cursors import CursorError
 from aew.dashboard.reader import StateReader
@@ -35,7 +37,13 @@ HOST = "127.0.0.1"
 MAX_QUERY = 2048
 SOCKET_TIMEOUT_S = 10.0
 MAX_PATH = 2048
+SESSION_PREFIX = "/session/"
 SESSION_PATH = re.compile(r"^/session/[^/?#]+")
+# The pages the one-time URL exchange answers with. They name no code and carry no data (R9).
+GONE_PAGE = ("This dashboard link was already used, has expired, or was never issued. Run `aew dashboard open` at your "
+             "terminal for a new one.")
+CROSS_SITE_PAGE = ("This dashboard link is opened by you, from the address bar, not from another page or by a "
+                   "prefetch. Paste it into the address bar of this browser; it is still valid.")
 
 
 class Authenticator(Protocol):
@@ -114,10 +122,11 @@ class DashboardServer:
     """Serves one project's projections to authenticated readers on the loopback interface."""
 
     def __init__(self, engine: Engine, *, authenticator: Authenticator, port: int = 0,
-                 validate_with: Contract | None = None) -> None:
+                 validate_with: Contract | None = None, sessions: S.SessionTable | None = None) -> None:
         self.engine = engine
         self.reader = StateReader(engine)
         self.authenticator = authenticator
+        self.sessions = sessions  # serves the one-time URL exchange; without a table `/session/` is no route
         self.contract = validate_with  # when set, every 200 body is checked before it leaves (the tests)
         self._serial = threading.Lock()
         server = self
@@ -169,7 +178,8 @@ class DashboardServer:
         self._thread.start()
 
     def stop(self) -> None:
-        self.httpd.shutdown()
+        if self._thread.is_alive():
+            self.httpd.shutdown()
         self.httpd.server_close()
         if self._thread.is_alive():
             self._thread.join(10)
@@ -178,16 +188,58 @@ class DashboardServer:
 
     def handle(self, h: BaseHTTPRequestHandler, *, head: bool) -> None:
         try:
-            status, body = self._respond(h)
+            url = urlsplit(h.path)
+            if self.sessions is not None and url.path.startswith(SESSION_PREFIX) and len(url.path) <= MAX_PATH:
+                self._exchange(h, url.path[len(SESSION_PREFIX):], head=head)
+                return
+            status, body = self._respond(h, url)
         except Refusal as r:
             status, body = r.status, r.body
         except Exception:  # never let a request kill the server; the client learns only that it failed
             LOG.exception("dashboard request failed")
             status, body = HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")
-        self._send(h, status, body, head=head)
+        extra: list[tuple[str, str]] = []
+        if status == HTTPStatus.UNAUTHORIZED and S.cookie_value(h.headers) is not None:
+            extra.append(("Set-Cookie", S.expired_cookie()))  # a dead cookie is removed from the browser (R10)
+        self._send(h, status, body, head=head, extra=extra)
 
-    def _respond(self, h: BaseHTTPRequestHandler) -> tuple[int, dict[str, Any]]:
-        url = urlsplit(h.path)
+    def _exchange(self, h: BaseHTTPRequestHandler, code: str, *, head: bool) -> None:
+        """``GET /session/<code>``: the one-time URL becomes the session cookie (R9). A HEAD never spends a code."""
+        assert self.sessions is not None
+        if S.not_a_user_navigation(h.headers):  # cross-site, or a speculative prefetch: the code is not consumed
+            self._page(h, HTTPStatus.FORBIDDEN, CROSS_SITE_PAGE, head=head)
+            return
+        got = self.sessions.exchange(code) if not head and code else None
+        if got is None:
+            self._page(h, HTTPStatus.GONE, GONE_PAGE, head=head)
+            return
+        credential, record = got
+        h.send_response(int(HTTPStatus.SEE_OTHER))
+        h.send_header("Location", "/")
+        h.send_header("Set-Cookie", self.sessions.cookie(credential, record))
+        h.send_header("Content-Length", "0")
+        for name, value in self._common_headers():
+            h.send_header(name, value)
+        h.end_headers()
+
+    def _page(self, h: BaseHTTPRequestHandler, status: int, text: str, *, head: bool) -> None:
+        page = f'<!doctype html><meta charset="utf-8"><title>AEW dashboard</title><p>{html.escape(text)}</p>\n'
+        payload = page.encode()
+        h.send_response(int(status))
+        h.send_header("Content-Type", "text/html; charset=utf-8")
+        h.send_header("Content-Length", str(len(payload)))
+        for name, value in self._common_headers():
+            h.send_header(name, value)
+        h.end_headers()
+        if not head:
+            h.wfile.write(payload)
+
+    @staticmethod
+    def _common_headers() -> list[tuple[str, str]]:
+        return [("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"),
+                ("Referrer-Policy", "no-referrer")]
+
+    def _respond(self, h: BaseHTTPRequestHandler, url: Any) -> tuple[int, dict[str, Any]]:
         if len(url.path) > MAX_PATH or len(url.query) > MAX_QUERY:
             raise Refusal(HTTPStatus.REQUEST_URI_TOO_LONG, error_body("REQUEST_TOO_LARGE"))
         if h.headers.get("Content-Length") not in (None, "0") or h.headers.get("Transfer-Encoding"):
@@ -240,14 +292,15 @@ class DashboardServer:
             out[name] = values[0]
         return out
 
-    @staticmethod
-    def _send(h: BaseHTTPRequestHandler, status: int, body: dict[str, Any], *, head: bool) -> None:
+    @classmethod
+    def _send(cls, h: BaseHTTPRequestHandler, status: int, body: dict[str, Any], *, head: bool,
+              extra: list[tuple[str, str]] | None = None) -> None:
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
         h.send_response(int(status))
         h.send_header("Content-Type", "application/json; charset=utf-8")
         h.send_header("Content-Length", str(len(payload)))
-        h.send_header("Cache-Control", "no-store")
-        h.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in cls._common_headers() + (extra or []):
+            h.send_header(name, value)
         h.end_headers()
         if not head:
             h.wfile.write(payload)

@@ -158,7 +158,7 @@ def control_violations(root: Path) -> list[str]:
                 problems.append(f"{inv_id} is {inv['status']} but its credential is not revoked")
             continue
         if inv.get("kind") == "integration_attempt":
-            continue  # an engine custody invocation: no credential, no workspace (rules 34-38)
+            continue  # an engine custody invocation: no credential, no workspace (rules 34-39)
         if tok.get("revoked_at"):
             problems.append(f"{inv_id} is active but its credential is revoked")
         unit = state["work"].get(inv["work_unit"]) or {}
@@ -237,7 +237,7 @@ def control_violations(root: Path) -> list[str]:
     problems += outbox_violations(root, hot)
     # 27. ADR-0012: sealed segments (rule 28, reader race safety, is modelled over interleavings: store_model.py).
     problems += segment_violations(Path(root) / ".aew", hot) if hot.get("outbox") else []
-    # 34-38. M4-D: the integration queue and its lease (29-33 are ADR-0013's).
+    # 34-39. M4-D: the integration queue and its lease (29-33 are ADR-0013's).
     problems += queue_violations(root, hot)
     return problems
 
@@ -308,6 +308,13 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
         if inv.get("scope") == "integration" and inv["status"] == "active":
             if lease is None or inv.get("custodian") != lease["custodian"] or lease["reconcile"] is not None:
                 problems.append(f"{inv_id} (integration verifier) is active outside a live lease")
+    # 39. M4-D4: a lease rebuilds its candidate automatically at most once, and only an entry set aside for the Lead
+    #     (DEFERRED or AWAITING_DISPOSITION) carries a disposition record.
+    for qid, e in sorted(entries.items()):
+        if e["rebuilds_used"] not in (0, 1):
+            problems.append(f"{qid} used {e['rebuilds_used']} automatic rebuilds; one is allowed")
+        if (e["disposition"] is not None) != (e["state"] in ("DEFERRED", "AWAITING_DISPOSITION")):
+            problems.append(f"{qid} is {e['state']} with disposition {e['disposition']}")
     return problems
 
 

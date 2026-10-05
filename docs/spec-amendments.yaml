@@ -1,0 +1,198 @@
+# AEW spec amendment index (aew/spec-amendments/v1): register E19, the index part.
+#
+# What this is: the machine-readable list of every ADOPTED overlay on the frozen Workflow Contract (WC) and Knowledge
+# Contract (KC) of `spec-pin.yaml`, the exact frozen sections each one replaces or extends, and the effective section
+# that results. It points; it does not repeat amendment prose and it never decides. The documents govern.
+#
+# Rules (tests/unit/test_spec_amendments.py enforces each):
+#   - Only adopted documents are overlays. A document whose status is `proposed` or `design_frozen` never is; nor is
+#     anything under docs/design/proposals/, docs/research/ or docs/archive/. `adoption.evidence` is a verbatim
+#     substring of the overlay document that carries the adoption date.
+#   - A target names a real frozen section (`section`), optionally a named case inside it (`case`) and the part of the
+#     section it touches (`part`). A `replaces` target quotes the text it supersedes (`quote`): verbatim in the frozen
+#     section, or, when it `supersedes` an earlier overlay, verbatim in that overlay's document.
+#   - Overlays apply in adoption order. Two adopted overlays that replace the same target must be ordered: the later
+#     one names the earlier in `supersedes` and is adopted no earlier. The effective text of a target is the last
+#     replacement in its chain (or the frozen base when there is none) plus every extension.
+#   - `effective` is the resolution, written out; the test recomputes it from `overlays` and fails on any difference.
+#   - Citations. An unversioned citation (`WC §7.4`) in a living document means the EFFECTIVE section. A citation of
+#     the historical frozen text is version-qualified (`WC v0.7 §7.4`). Either way a citation names a real section of
+#     the frozen version; nothing more is checked (the requirements ledger, SAI-14, keeps the test structural, with no
+#     paragraph-level heuristic).
+#   - `pending` is consolidation debt: frozen sections an adopted decision says must be amended, with no amendment
+#     written yet. It never changes the effective text. The re-freeze (E19, after M4-E) clears it.
+#   - `considered` lists every adopted amendment, decision record and ADR on the map that is NOT an overlay, with the
+#     reason, so that coverage is checked both ways.
+schema: aew/spec-amendments/v1
+base_spec_set: aew-frozen-2026-09-25
+base:
+  WC: {path: docs/agent-engineering-workflow-design-v0.7.md, version: "0.7"}
+  KC: {path: docs/aew-knowledge-contract-v0.4.md, version: "0.4"}
+
+overlays:
+  - id: class0-2026-10-01
+    path: docs/design/workflow-contract-amendment-class0-2026-10-01.md
+    sections: ["2", "3", "4", "5"]
+    status: adopted
+    adoption:
+      at: 2026-10-01
+      by: designer
+      evidence: "Adopted 2026-10-01, accepted by the designer in review"
+    targets:
+      - doc: WC
+        section: "7.4"
+        part: the Class 0 bullet
+        kind: replaces
+        by: "§2"
+        quote: "**Class 0 — trivial/mechanical:** obvious bounded change with little behavioral ambiguity."
+      - doc: WC
+        section: "7.4"
+        part: the Class 0 example
+        kind: replaces
+        by: "§3"
+        quote: "Ticket + Class 0: one obvious mechanical edit."
+      - doc: WC
+        section: "7.4"
+        part: assurance gates and triggers on classes (a new paragraph after the class list)
+        kind: extends
+        by: "§4"
+      - doc: WC
+        section: "7.5"
+        part: the Ticket / Class 0 path
+        kind: replaces
+        by: "§5"
+        quote: "**Ticket / Class 0:** Implement → focused check → complete, plus any inherited mandatory gates."
+
+  - id: class0-s9-2026-10-03
+    path: docs/design/workflow-contract-amendment-class0-2026-10-01.md
+    sections: ["9"]
+    status: adopted
+    adoption:
+      at: 2026-10-03
+      by: operator and designer
+      evidence: "Decided while implementing the predicate (operator and designer, 2026-10-03)"
+    targets:
+      - doc: WC
+        section: "7.5"
+        part: the Ticket / Class 0 path
+        kind: replaces
+        by: "§9 item 1"
+        supersedes: class0-2026-10-01
+        quote: "**Ticket / Class 0:** Class 0 eligibility verified → Implement → focused check → complete, plus any inherited mandatory gates."
+      - doc: KC
+        section: "26"
+        case: Parent risk policy propagation
+        part: the acceptance case
+        kind: replaces
+        by: "§9 item 2"
+        quote: "The Ticket should retain its local Class-0 classification while inheriting the mandatory security gate."
+      - doc: WC
+        section: "7.4"
+        part: reclassification is a recorded decision
+        kind: extends
+        by: "§9 item 3"
+      - doc: WC
+        section: "7.4"
+        part: "Class 0 eligibility in practice: enforcement scope, a measured bounded subject, acceptance checks on mutating Tickets"
+        kind: extends
+        by: "§9 items 4 to 6 (item 5's small-tree rule: operator, 2026-10-04)"
+
+  - id: typed-lead-surface-v0.2
+    path: docs/design/typed-lead-surface-design-v0.2.md
+    sections: ["1", "4", "5"]
+    status: adopted
+    adoption:
+      at: 2026-10-05
+      by: designer and operator
+      evidence: "adopted by the designer and the operator as the before-M4-E gate, 2026-10-05"
+    targets:
+      - doc: WC
+        section: "15.6"
+        part: the transports (MCP as the first normal Lead transport; the CLI as parity, recovery and conformance)
+        kind: extends
+        by: "§1, §4, §5"
+
+effective:
+  - doc: WC
+    section: "7.4"
+    parts:
+      - {part: "the Class 0 bullet", replaced_by: [class0-2026-10-01], head: class0-2026-10-01}
+      - {part: "the Class 0 example", replaced_by: [class0-2026-10-01], head: class0-2026-10-01}
+      - {part: "assurance gates and triggers on classes (a new paragraph after the class list)", extended_by: [class0-2026-10-01]}
+      - {part: "reclassification is a recorded decision", extended_by: [class0-s9-2026-10-03]}
+      - {part: "Class 0 eligibility in practice: enforcement scope, a measured bounded subject, acceptance checks on mutating Tickets", extended_by: [class0-s9-2026-10-03]}
+  - doc: WC
+    section: "7.5"
+    parts:
+      - {part: "the Ticket / Class 0 path", replaced_by: [class0-2026-10-01, class0-s9-2026-10-03], head: class0-s9-2026-10-03}
+  - doc: WC
+    section: "15.6"
+    parts:
+      - {part: "the transports (MCP as the first normal Lead transport; the CLI as parity, recovery and conformance)", extended_by: [typed-lead-surface-v0.2]}
+  - doc: KC
+    section: "26"
+    case: Parent risk policy propagation
+    parts:
+      - {part: "the acceptance case", replaced_by: [class0-s9-2026-10-03], head: class0-s9-2026-10-03}
+
+pending:
+  - id: ticket-revisions
+    reason: >-
+      Ticket revisions beside plan revisions, and evidence bound to a Ticket revision: "a spec amendment with an ADR,
+      like ADR-0002's", not yet written (register F4; E19 carries the writing to the designer)
+    decided_in: docs/archive/reviews/ticket-revision-amendment-review-2026-09-30.md
+    decided_evidence: "Knowledge Contract §12 (frozen) and WC §7/§8 and invariant 7 (frozen)"
+    register: [F4, E19]
+    targets:
+      - {doc: KC, section: "12"}
+      - {doc: WC, section: "7"}
+      - {doc: WC, section: "8"}
+      - {doc: WC, section: "23", item: 7}
+
+considered:
+  - path: docs/design/plan-assurance-and-classification-decisions-2026-10-01.md
+    reason: decision record (Q9, Q10); its WC change is the Class 0 amendment, indexed above
+  - path: docs/design/decisions-2026-10-01-containment-and-integration-queue.md
+    reason: decision record (Q3, F2, E13, F10, D4); replaces no WC/KC text
+  - path: docs/design/architecture-review-response-2026-10-04.md
+    reason: decision record (Q13); routes the review's items to the register, ADRs and designs; replaces no WC/KC text
+  - path: docs/design/plan-assurance-and-premise-validation-design-v0.4.md
+    reason: >-
+      adopted design; its own WC amendment (Phase 5, ratifying assurance predicates) is conditional on dogfood and
+      unwritten; until then it changes no WC/KC text
+  - path: docs/design/evaluation-component-design-v0.2.md
+    reason: >-
+      adopted design (F19, 2026-10-05); the evaluation instrument sits outside the engine and replaces no WC/KC
+      text; it measures the Class 0 amendment's audit sample rather than amending it
+  - path: docs/design/ticket-revision-amendment-2026-09-30.md
+    reason: amends a proposal (the hierarchy revision design), not the frozen set; its WC/KC debt is `pending` above
+  - path: docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md
+    reason: >-
+      adopted direction, not contract text; where it touches WC §15.6 the typed Lead surface v0.2 governs and is the
+      overlay above
+  - path: docs/implementation/adr/0001-control-state-persistence.md
+    reason: ADR; implements WC §5 and KC §12.3; its amendments revise its own mechanism
+  - path: docs/implementation/adr/0002-evaluated-snapshot-fingerprint.md
+    reason: ADR; implements WC §9.9 and KC §11; its amendments revise its own binding rules
+  - path: docs/implementation/adr/0003-ticket-state-machine.md
+    reason: ADR; fills the "typical Ticket state model" WC §8 leaves open; no normative text replaced
+  - path: docs/implementation/adr/0004-controlled-integration.md
+    reason: ADR; implements WC §8 and KC §9.5; its amendments revise its own mechanism
+  - path: docs/implementation/adr/0005-authority-credentials-operator.md
+    reason: ADR; implements WC §5 and KC §7.2; custody and the service credential kind add mechanism, not contract text
+  - path: docs/implementation/adr/0006-role-archetypes-and-cards.md
+    reason: ADR; implements WC §5.8 and §16.6; its amendments revise its own mechanism
+  - path: docs/implementation/adr/0007-epic-story-hierarchy.md
+    reason: ADR; states that none of its choices changes a normative rule
+  - path: docs/implementation/adr/0008-non-mutating-tickets.md
+    reason: ADR; implements WC §5.2, §8.1 and §9.3; no normative text replaced
+  - path: docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
+    reason: ADR; implements WC §16.10 and §16.12; its containment and custody amendments add mechanism, not contract text
+  - path: docs/implementation/adr/0010-execution-profiles.md
+    reason: ADR; implements WC §17 and §18; no normative text replaced
+  - path: docs/implementation/adr/0011-hot-cold-control-state.md
+    reason: ADR; states that no transition, gate, authority rule or provenance changes
+  - path: docs/implementation/adr/0012-transaction-outbox.md
+    reason: ADR; implements WC §8.2 and §15.6 and KC §12.3; no normative text replaced
+  - path: docs/implementation/adr/0013-knowledge-storage-placement.md
+    reason: ADR; places KC §5.2 project knowledge; no normative text replaced

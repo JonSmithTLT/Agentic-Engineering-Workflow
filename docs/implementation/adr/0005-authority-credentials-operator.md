@@ -1,6 +1,6 @@
 # ADR-0005 — Lead authority, credentials, and operator-authorized takeover
 
-- **Status:** Accepted (M1). Amended for M3 (2026-09-29): credential custody and rotation. Amended 2026-10-05: a fourth credential kind, `service`, for project-scoped service principals (ADR-0013 D9; designed, built with M6b).
+- **Status:** Accepted (M1). Amended for M3 (2026-09-29): credential custody and rotation. Amended 2026-10-05: a fourth credential kind, `service`, for project-scoped service principals (ADR-0013 D9; designed, built with M6b). Amended 2026-10-05: a fifth credential kind, `operator_session`, for the read-only dashboard's browser session (register F20.3; built).
 - **Spec basis:** WC §5 (single-authoritative-Lead, crash-safe authority), §6; KC §7.2, §16; decision D-op-3; plan review §1, §3
 - **Nature:** Resolves semantic gap A2 by operator decision. The mechanism is an implementation choice.
 
@@ -100,3 +100,75 @@ Windows and on Rocky 8.10, the operator takeover through a real pty included; th
   whatever layer asked, including a commit straight through `store.session()`; the credential refused everywhere
   outside its family; a cooperative handoff and an operator takeover leave the principal valid and the new Lead able
   to revoke it; the secret in no file, output or agent environment; `MIGRATION_REQUIRED` on a v1 project.
+
+## Amendment 2026-10-05 — a fifth credential kind, `operator_session`, for the read-only dashboard (F20.3)
+
+The dashboard (register F20) reuses AEW's credential system for its browser session rather than adding a second
+identity (operator, 2026-10-03). This amendment gives that session a credential; the designer approved it on
+2026-10-05 as the fifth kind: project-scoped, read-only, accepted only by the dashboard's HTTP and session boundary,
+never by an Engine mutation path, never projected into a model or worker environment, bounded by `expires_at`,
+invalidated when the serving process exits, issued only after the operator's typed-back code at a terminal. The
+scheme is unchanged: same form, same verifier, same record fields, same lookup. The design is
+[`dashboard-main-line-api-design-v0.1.md`](../../design/proposals/dashboard-main-line-api-design-v0.1.md) §4.1 to
+§4.4; the code is `src/aew/dashboard/session.py`, `control.py`, `service.py` and `src/aew/cli/dashboard_commands.py`.
+
+- **Kind.** `operator_session`, beside `lead`, `invocation`, `handoff_offer` and `service`. Same form
+  `aew1.<token_id>.<secret>`, same verifier, same `issued_at`, `issued_by_generation`, `expires_at`, `revoked_at` and
+  `revoke_reason`. `authority.mint` creates the record (it is what `issue_token` now calls); `authority.lookup`
+  verifies it (it is what the engine's own `_lookup` now delegates to).
+- **Scope `{surface, project, operations, authorized_by}`, and no generation.** `surface` is `dashboard`, `project`
+  the project id, `operations` exactly `["dashboard.read"]`, `authorized_by` `operator-tty`. The credential carries
+  no Lead generation because it grants no Lead authority: handoff and takeover revoke the `lead` and `handoff_offer`
+  kinds and leave it alone (`issued_by_generation` records the generation at issue, for provenance only). It
+  authorizes **no engine operation**: `require_lead`, `require_invocation` and `verify_offer` refuse it as they
+  refuse every foreign kind, and no transaction ever runs under it. It authenticates a browser to the local dashboard
+  server, whose every route is a read.
+- **Never in control state.** The record lives only in the memory of the `aew dashboard serve` process, in a table
+  with the token table's shape (`SessionTable`), verified by the same lookup the engine uses over its own table:
+  the same credential form, the same constant-time verifier comparison, the same expiry rule. Nothing about it is
+  written to `control.yaml`, to the history or to any file. `local/dashboard/server.json` and `control.key` hold the
+  server's endpoint and the control channel's key, never a verifier or a secret; `local/` is disposable and never
+  authority (ADR-0011).
+- **Issued only after operator authorization at a terminal.** `aew dashboard serve` authorizes with the typed-back
+  challenge code at its own controlling terminal (`operator.authorize`, as takeover does), binds `127.0.0.1` (default
+  port 4280; an occupied port is an error, never another port), then mints. `aew dashboard open` asks the running
+  server over its local control channel; the server writes a one-time code to **its own console** (naming the
+  requester the client reported) and accepts the session request only with that code typed back from the requesting
+  terminal, compared in constant time, once, within 300 s. A process without a terminal is refused at the delivery
+  rule or at `operator.ask` with `OPERATOR_AUTHORIZATION_REQUIRED`; a server without a console authorizes no `open`.
+  No flag, environment variable, stdin input, file or API parameter authorizes a session: the key file locates the
+  server and authorizes nothing.
+- **Delivered once, as a one-time URL.** The command writes `http://127.0.0.1:<port>/session/<code>` to the operator's
+  terminal (the credential delivery rules of the 2026-09-29 amendment apply: terminal only, or `--print-credential`
+  for a script; refused in a Lead session). The URL carries a single-use bootstrap code of 256 random bits, valid
+  ten minutes, not the credential. The browser exchanges it (`303 See Other` to `/`) for the `aew_session` cookie
+  (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Max-Age` to the expiry; no `Secure` on the plain-http loopback origin)
+  holding the credential; the server then keeps only the verifier. A used, expired or unknown code is `410 Gone` with
+  a page naming no code; a navigation whose `Sec-Fetch-Site` is not `none` or `same-origin`, or whose
+  `Sec-Fetch-Mode` is not `navigate`, is `403` and does not consume the code. The server logs `/session/<redacted>`
+  and sends `Referrer-Policy: no-referrer`.
+- **`expires_at` is set and enforced: the first credential kind with a real expiry.** A session lasts the configured
+  lifetime (default 24 h, `--session-hours` 1 to 168) and ends when the serving process ends, because the table ends
+  with it (`401 SESSION_REQUIRED` on the next request). An expired or displaced session is `401 SESSION_EXPIRED` with a
+  `Set-Cookie` that removes the dead cookie. The table holds at most 32 live sessions; the 33rd displaces the oldest
+  (`revoke_reason: "superseded: session limit"`). A later `aew dashboard open` issues a new session; it does not
+  extend an old one. No revoke command in v1 (designer, 2026-10-05): the operator stops the server.
+- **Custody is the operator's.** The raw secret never enters a model-controlled process: the Lead broker refuses
+  `dashboard serve` and `dashboard open` as it refuses the Lead's credential-emitting commands; no dashboard
+  environment variable exists (ADR-0009's table); the server redacts credential strings from everything it logs or
+  returns, and the control channel's status reports ids and times only.
+- **Threat model unchanged.** The credential is a browser-authentication capability inside this ADR's same-UID
+  model, not an OS boundary: a process running as the operator can read `.aew/` directly. What it adds is that no
+  other origin, tab or page can read the operator's project through the dashboard. The requester shown on the
+  serving console is what the requesting process reported about itself; the typed-back code, not that label, is the
+  authorization.
+- **Evidence:** `tests/integration/test_dashboard_session.py` (F20.3's security acceptance): the bootstrap sets the
+  cookie and redirects; no cookie, a forged, truncated, wrong-id or wrong-secret cookie is `401 SESSION_REQUIRED`;
+  expiry and displacement are `401 SESSION_EXPIRED` under an injected clock; the one-time URL reused is `410` while
+  the first cookie works; an expired code is `410`; a cross-site navigation does not consume the code; stopping the
+  server ends every session and removes the endpoint files; `open` with the console's code mints exactly one session,
+  with a wrong code, without a terminal, after the timeout or without a server console mints nothing; `serve` and
+  `open` without a terminal are refused before anything is minted; a Lead session refuses both; the secret appears in
+  no file under `.aew/`, no log line and no response; `serve` at a real pseudo-terminal (POSIX, serial lane).
+  `tests/unit/test_dashboard_session_table.py`: the table, and the kind refused by `require_lead`,
+  `require_invocation` and `verify_offer`.

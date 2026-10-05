@@ -20,7 +20,8 @@ from aew.harness import lead_broker
 # entrypoint (aew.engine.dispatch): that is how the CLI enumeration proves no CLI dispatch bypasses the registry.
 NOT_DISPATCHING = {
     "authority accept", "authority list", "authority reject", "check run", "checkpoint", "context pack",
-    "context show", "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
+    "context show", "dashboard open", "dashboard serve", "dashboard status",  # reads only (F20.3)
+    "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history links", "history list", "history log", "history load", "history reindex",
     "history show", "init",

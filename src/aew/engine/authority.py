@@ -41,21 +41,33 @@ ROLE_OPERATIONS: dict[str, frozenset[str]] = {
 }
 
 
-def issue_token(state: dict[str, Any], kind: str, scope: dict[str, Any]) -> str:
-    """Create a credential, store only its verifier, and return the secret string once."""
+# The credential kind of a read-only dashboard browser session (ADR-0005, amendment of 2026-10-05 for F20.3). It never
+# enters control state: the dashboard server keeps its records in its own table and verifies them with `lookup`.
+OPERATOR_SESSION = "operator_session"
+
+
+def mint(tokens: dict[str, Any], kind: str, scope: dict[str, Any], *, generation: int,
+         expires_at: str | None = None) -> str:
+    """Create a credential in ``tokens`` (a token table of the control state's shape), store only its verifier, and
+    return the secret string once. ``issue_token`` mints into control state; the dashboard mints into its own table."""
     token_id = "tk_" + secrets.token_hex(8)
     secret = secrets.token_urlsafe(32)
-    state["tokens"][token_id] = {
+    tokens[token_id] = {
         "kind": kind,
         "verifier": sha256_text(secret),
         "scope": scope,
         "issued_at": utc_now(),
-        "issued_by_generation": state["lead"]["generation"],
-        "expires_at": None,
+        "issued_by_generation": generation,
+        "expires_at": expires_at,
         "revoked_at": None,
         "revoke_reason": None,
     }
     return f"aew1.{token_id}.{secret}"
+
+
+def issue_token(state: dict[str, Any], kind: str, scope: dict[str, Any]) -> str:
+    """Create a credential, store only its verifier, and return the secret string once."""
+    return mint(state["tokens"], kind, scope, generation=state["lead"]["generation"])
 
 
 def rotate_invocation_token(state: dict[str, Any], inv_id: str, reason: str) -> str:
@@ -84,15 +96,20 @@ def token_id_of(token: str) -> str:
 ArchivedCredential = Callable[[dict[str, Any], str], "dict[str, Any] | None"]
 
 
-def _lookup(state: dict[str, Any], token: str,
-            archived: ArchivedCredential | None = None) -> tuple[str, dict[str, Any]]:
+def lookup(tokens: dict[str, Any], token: str, *, archived: Callable[[str], dict[str, Any] | None] | None = None,
+           now: str | None = None) -> tuple[str, dict[str, Any]]:
+    """Verify a presented credential against a token table: the form, the verifier in constant time, the expiry.
+
+    The table is control state's (``_lookup``) or the dashboard server's own (ADR-0005, 2026-10-05). ``archived``
+    finds a credential that left the table with finished work; ``now`` is the clock the expiry is judged by (the
+    current time when omitted). Revocation is the caller's check: what a revoked record means depends on its kind."""
     match = TOKEN_RE.match(token or "")
     if not match:
         raise PermissionDenied("malformed credential")
     token_id, secret = match.groups()
-    record = state["tokens"].get(token_id)
+    record = tokens.get(token_id)
     if record is None and archived is not None:
-        old = archived(state, token_id)
+        old = archived(token_id)
         if old is not None and hmac.compare_digest(old["verifier"], sha256_text(secret)):
             # Finished work keeps its credentials only in its archive: still revoked authority, never an unknown one.
             raise StaleAuthority(f"this credential belongs to finished work and was revoked: "
@@ -100,9 +117,15 @@ def _lookup(state: dict[str, Any], token: str,
                                  token_id=token_id, revoke_reason=old.get("revoke_reason"), archived=True)
     if record is None or not hmac.compare_digest(record["verifier"], sha256_text(secret)):
         raise PermissionDenied("unknown or invalid credential")
-    if record.get("expires_at") and record["expires_at"] <= utc_now():
+    if record.get("expires_at") and record["expires_at"] <= (now or utc_now()):
         raise StaleAuthority("credential expired", token_id=token_id)
     return token_id, record
+
+
+def _lookup(state: dict[str, Any], token: str,
+            archived: ArchivedCredential | None = None) -> tuple[str, dict[str, Any]]:
+    find = (lambda token_id: archived(state, token_id)) if archived is not None else None
+    return lookup(state["tokens"], token, archived=find)
 
 
 def revoke(state: dict[str, Any], token_id: str | None, reason: str) -> None:

@@ -34,15 +34,30 @@ def parse(*argv: str) -> argparse.Namespace:
                                   ["lead", "handoff", "accept", "--offer", "o", "--expect-rev", "0"],
                                   ["work", "assign", "T-0001", "--expect-rev", "0"],
                                   ["work", "dispatch", "T-0001", "--expect-rev", "0"],
-                                  ["invoke", "create", "T-0001", "--expect-rev", "0"]])
+                                  ["invoke", "create", "T-0001", "--expect-rev", "0"],
+                                  ["dashboard", "serve"], ["dashboard", "open"]])
 def test_every_command_that_issues_a_credential_is_known(argv):
     assert credentials.issues_credential(parse(*argv))
 
 
 @pytest.mark.parametrize("argv", [["status"], ["lead", "show"], ["work", "dispatch", "T-0001", "--launch",
-                                                                 "--expect-rev", "0"]])
+                                                                 "--expect-rev", "0"], ["dashboard", "status"]])
 def test_commands_that_issue_none_are_not(argv):
     assert not credentials.issues_credential(parse(*argv))
+
+
+def test_a_session_url_is_delivered_like_a_token(monkeypatch):
+    term = Terminal()
+    monkeypatch.setattr(credentials, "_open_terminal", lambda: term)
+    url = "http://127.0.0.1:4280/session/" + "c" * 43
+    out = credentials.deliver({"ok": True, "url": "http://127.0.0.1:4280", "session_url": url},
+                              parse("dashboard", "open"))
+    assert out["session_url"] == credentials.WRITTEN and out["url"] == "http://127.0.0.1:4280"
+    assert f"session_url: {url}" in term.getvalue()
+    term2 = Terminal()
+    monkeypatch.setattr(credentials, "_open_terminal", lambda: term2)
+    credentials.write_to_terminal("session_url", url)  # the long-running `serve` writes each URL itself
+    assert f"session_url: {url}" in term2.getvalue() and "keep it out of any agent's reach" in term2.getvalue()
 
 
 def test_with_no_terminal_a_credential_command_is_refused_before_it_runs(monkeypatch):

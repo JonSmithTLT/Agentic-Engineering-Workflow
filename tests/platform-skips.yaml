@@ -12,6 +12,9 @@ skipped:
     tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
       POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
       the refusal path runs and AT-1 substitutes the terminal channel in-process.
+    tests/integration/test_dashboard_session.py::test_serve_at_a_real_terminal_shows_the_challenge_and_writes_the_url: >-
+      POSIX pty operator path for `aew dashboard serve` (F20.3); a Windows console would appear on the desktop.
+      Covered on Linux; on Windows the no-terminal refusals run and the serving console is substituted in-process.
     tests/integration/test_worktree_sync.py::test_executable_bit_only_change_materializes: >-
       needs POSIX filemode semantics (core.fileMode=false on Windows). Covered on Linux.
     tests/integration/test_worktree_sync.py::test_file_symlink_transitions_sync[file_to_symlink]: >-

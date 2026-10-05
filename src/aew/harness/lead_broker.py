@@ -47,7 +47,9 @@ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin":
                                  "lead.whoami": {}}  # does this session hold Lead authority? (M3-D10)
 
 CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
-                       frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}))
+                       frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}),
+                       # the dashboard's one-time session URL (ADR-0005, 2026-10-05; F20.3)
+                       frozenset({"dashboard", "serve"}), frozenset({"dashboard", "open"}))
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
               frozenset({"invoke", "create"}))
 POLL_S = 1.0
@@ -64,8 +66,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     """Inside a Lead session, commands that would print a credential are refused before they run."""
     path = command_path(ns)
     if any(p <= path for p in CREDENTIAL_EMITTING):
-        return (f"`aew {' '.join(sorted(path))}` would put a Lead credential or offer secret into this session; "
-                "Lead acquisition, handoff, takeover and release are operator actions at the operator's own terminal")
+        return (f"`aew {' '.join(sorted(path))}` would put a Lead credential, offer secret or dashboard session URL "
+                "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
+                "operator actions at the operator's own terminal")
     return None
 
 

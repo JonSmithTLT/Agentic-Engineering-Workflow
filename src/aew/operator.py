@@ -35,21 +35,63 @@ def _code() -> str:
     return secrets.token_hex(3).upper()
 
 
-def authorize(challenge: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
-    """Block until the operator confirms at the controlling terminal, or raise."""
+def new_code() -> str:
+    """A fresh one-time confirmation code (six hex digits), as every operator challenge uses."""
+    return _code()
+
+
+def challenge(code: str, text: str, *, requested_by: str | None = None, destination: str | None = None,
+              instruction: str | None = None) -> str:
+    """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
+    back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
+    (F20.3), naming the requester that process reported and where the code is to be typed."""
     from aew.harness.procs import process_chain
 
-    code = _code()
-    prompt = (
+    who = requested_by if requested_by is not None else (" <- ".join(process_chain()) or "unknown")
+    where = destination if destination is not None else credential_destination.get()
+    typed = instruction or f"Type the confirmation code {code} and press Enter to authorize; anything else refuses."
+    return (
         "\n==== AEW OPERATOR AUTHORIZATION REQUIRED ====\n"
-        f"{challenge}\n"
-        f"  requested by   : {' <- '.join(process_chain()) or 'unknown'}\n"
-        f"  credential to  : {credential_destination.get()}\n"
+        f"{text}\n"
+        f"  requested by   : {who}\n"
+        f"  credential to  : {where}\n"
         "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
-        f"Type the confirmation code {code} and press Enter to authorize; anything else refuses.\n"
-        "> "
+        f"{typed}\n"
+        f"{RELAY_WARNING}\n"
     )
-    answer = _ask_windows(prompt, timeout) if IS_WINDOWS else _ask_posix(prompt, timeout)
+
+
+# The code is the authorization; a model that can run `aew dashboard open` from a shell with a terminal could ask the
+# human for it in chat (lead developer's review of F20.3). The prompt says so, every time.
+RELAY_WARNING = "Type it only into a terminal you opened yourself. Never give it to an agent or paste it into a chat."
+
+
+def has_terminal() -> bool:
+    """Whether this process could read an answer from its controlling terminal (the same check ``ask`` makes), so a
+    command can refuse before it causes a prompt somewhere else (``aew dashboard open`` asks the serving console for
+    a code only when it can type it back)."""
+    if sys.platform == "win32":  # pragma: windows-only
+        import ctypes
+
+        return bool(ctypes.windll.kernel32.GetConsoleWindow())
+    try:  # pragma: posix-only
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
+
+
+def ask(prompt: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:
+    """Write ``prompt`` to the controlling terminal and return the line the operator types, or raise
+    ``OperatorAuthorizationRequired`` when this process has no terminal. Never reads argv, environment or stdin."""
+    return _ask_windows(prompt, timeout) if IS_WINDOWS else _ask_posix(prompt, timeout)
+
+
+def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
+    """Block until the operator confirms at the controlling terminal, or raise."""
+    code = _code()
+    answer = ask(challenge(code, text) + "> ", timeout=timeout)
     if answer.strip().upper() != code:
         raise PermissionDenied("operator refused or mistyped the confirmation code")
     return {"authorized_by": "operator-tty", "challenge_code": code}

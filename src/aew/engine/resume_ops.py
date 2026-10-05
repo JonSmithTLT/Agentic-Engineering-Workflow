@@ -310,8 +310,12 @@ class Resume:
             return (f"the integration lease of {holder} lost its custodian ({lease['reconcile']['reason']}): "
                     f"`aew integrate reconcile {holder}` first")
         if entry["state"] == "AWAITING_DISPOSITION":
-            return (f"its queue entry {qid} awaits the Lead ({(entry.get('disposition') or {}).get('reason')}): return "
-                    "it to RUNNING for a new implementation attempt, or REPLAN_REQUIRED")
+            return (f"its queue entry {qid} awaits the Lead ({(entry.get('disposition') or {}).get('reason')}): "
+                    f"`aew integrate requeue {wid}` to try again once the cause is settled, return it to RUNNING for "
+                    "a new implementation attempt, or REPLAN_REQUIRED")
+        if entry["state"] == "DEFERRED":
+            return (f"its queue entry {qid} is deferred by the Lead: `aew integrate requeue {wid}` returns it to its "
+                    "place")
         if lease and lease["entry"] != qid:
             holder = (entries.get(lease["entry"]) or {}).get("work")
             return f"queued ({qid}): {holder} holds the integration lease; integrate once it publishes or leaves"

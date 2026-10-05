@@ -917,6 +917,11 @@ class EvidenceCommands:
                                          f"post-integration verification {evidence_id} failed", state=state)
             else:
                 unit["integration"]["status"] = "validation_inconclusive"
+                # M4-D4: an inconclusive integration validation must not hold the one lease while the Lead decides:
+                # the entry waits for disposition, so independent entries behind it integrate (no head-of-line
+                # blocking). A failed one moves the Ticket to VERIFICATION_FAILED, which retires the entry.
+                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="validation_inconclusive",
+                                   detail={"evidence": evidence_id})
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} verification {evidence_id} ({scope}) ingested: {result}"
             self.units.before_commit(ctx)

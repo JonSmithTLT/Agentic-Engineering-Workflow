@@ -59,6 +59,13 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),
                   ("integration_validation",), "authoritative_ref+control_state", "candidate", None),
     PrimitiveSpec("integrate.reconcile", MECHANICAL, (), (), (), "authoritative_ref+control_state", "candidate", None),
+    # The Lead's queue commands (M4-D4): scheduling, never eligibility; each is the Lead's disposition of an entry.
+    PrimitiveSpec("integrate.defer", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state+workspace",
+                  "expected_revision", None),
+    PrimitiveSpec("integrate.requeue", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state",
+                  "expected_revision", None),
+    PrimitiveSpec("integrate.reorder", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state",
+                  "expected_revision", None),
 )}
 
 

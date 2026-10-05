@@ -383,10 +383,13 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
-    q = hsub.add_parser("wait", help="wait until a run stops running")
-    q.add_argument("run")
+    q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does")
+    q.add_argument("run", nargs="+")
+    q.add_argument("--any", dest="any_", action="store_true",
+                   help="wait on several runs and return the first to end, with its next action")
     q.add_argument("--timeout", type=float, default=600.0)
-    q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run, timeout=a.timeout))
+    q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run if len(a.run) > 1 else a.run[0],
+                                                             timeout=a.timeout, any_=a.any_))
     q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")
     q.add_argument("--reason", required=True)
@@ -478,3 +481,24 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
         _add_lead(q)
         q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
             token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id))
+    # The Lead's queue commands (M4-D4): scheduling only, never eligibility.
+    for name, method, text in (
+        ("defer", "integrate_defer", "set a queue entry aside (gives up its lease if it holds one)"),
+        ("requeue", "integrate_requeue", "return a DEFERRED or AWAITING_DISPOSITION entry to the queue in its place"),
+    ):
+        q = isub.add_parser(name, help=text)
+        q.add_argument("work_id")
+        q.add_argument("--reason", required=True)
+        _add_lead(q)
+        q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
+            token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason))
+    q = isub.add_parser("reorder", help="move a queue entry ahead of another, or to the front")
+    q.add_argument("work_id")
+    where = q.add_mutually_exclusive_group(required=True)
+    where.add_argument("--before", metavar="WORK_ID", help="the Ticket whose entry it goes ahead of")
+    where.add_argument("--first", action="store_true", help="to the front of the queue")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).integrate_reorder(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, before=None if a.first else a.before,
+        reason=a.reason))

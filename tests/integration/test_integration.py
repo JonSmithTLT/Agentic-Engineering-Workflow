@@ -13,6 +13,7 @@ from aewflow import (
     sample_project,
     to_commit_ready,
     to_verified,
+    verify,
 )
 from conftest import git
 
@@ -110,19 +111,23 @@ def test_dependency_requires_output_in_recorded_snapshot(calc, tmp_path):
 
 
 def test_moved_ref_makes_candidate_stale(calc, tmp_path):
+    """The candidate is stale once the ref moves; under the queue (M4-D4) the first move is answered by the one
+    automatic rebuild on the new base, and validation reruns on it before anything is published."""
     wid, _ = to_commit_ready(calc, tmp_path)
-    prepare_and_validate(calc, wid)
+    old = prepare_and_validate(calc, wid)
     # A third party advances the authoritative branch after validation.
     (calc.root / "NOTES.txt").write_text("unrelated\n")
     git("add", "NOTES.txt", cwd=calc.root)
     git("commit", "-q", "-m", "third-party commit", cwd=calc.root)
     moved = main_commit(calc)
     res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
-    assert res.error["code"] == "STALE_CANDIDATE"
+    assert res.json["rebuilt"] is True and res.json["integration"]["base"] == moved
     assert main_commit(calc) == moved
-    assert state_of(calc, wid)["integration"]["status"] == "stale_candidate"
-    # Rebuild on the new base and revalidate.
-    out = integrate(calc, wid)
+    retired = state_of(calc, wid)["integration_history"][-1]
+    assert retired["candidate"] == old["candidate"] and retired["status"] == "superseded"
+    # Revalidate the rebuilt candidate, then publish it.
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration"))
+    out = calc.lead("integrate", "publish", wid)
     assert git("rev-parse", f"{out['integrated_commit']}^1", cwd=calc.root) == moved
 
 

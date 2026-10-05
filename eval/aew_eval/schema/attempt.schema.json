@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/eval-attempt/v1",
+  "title": "One line of an experiment's append-only attempt ledger (evaluation component design v0.2, sections 3 and 9)",
+  "description": "`registered` is written and synced before the first provider action; `finalized` follows once, naming the immutable result's hash. A registered attempt with no finalized line is visible as runner_lost.",
+  "type": "object",
+  "required": ["schema", "event", "experiment", "preregistration_sha256", "run_id", "at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/eval-attempt/v1"},
+    "event": {"enum": ["registered", "finalized"]},
+    "experiment": {"type": "string"},
+    "preregistration_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "run_id": {"type": "string"},
+    "at": {"type": "string"},
+    "case": {"type": "string"},
+    "arm": {"type": "string"},
+    "assignment": {
+      "type": "object", "required": ["cell", "order_index"], "additionalProperties": false,
+      "properties": {"cell": {"type": "string"}, "order_index": {"type": "integer", "minimum": 0}}
+    },
+    "requested_profile": {"type": "object"},
+    "retry_of": {"type": ["string", "null"]},
+    "result_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "validity": {"enum": ["valid", "invalid_measurement", "runner_lost", "environment_blocked"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"event": {"const": "registered"}}},
+     "then": {"required": ["case", "arm", "assignment", "requested_profile", "retry_of"]}},
+    {"if": {"properties": {"event": {"const": "finalized"}}},
+     "then": {"required": ["result_sha256", "validity"]}}
+  ]
+}

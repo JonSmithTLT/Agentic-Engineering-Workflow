@@ -45,6 +45,13 @@ EVIDENCE_PRODUCER = re.compile(r"^(INV-[0-9]+)-")
 RICH_PLAIN, RICH_MARKDOWN = "plain", "markdown"
 
 
+def _custody(inv: dict[str, Any]) -> bool:
+    """An engine custody invocation (M4-D3's ``integration_attempt``: the integration lease's custodian). It has no
+    role, harness or run, and contract 0.1.2 leaves the integration queue UNSUPPORTED, so the run projections leave
+    it out; projecting the queue is a later contract version with a renewed C0 review."""
+    return inv.get("kind") == "integration_attempt"
+
+
 class CapabilityUnavailable(AEWError):
     """A route whose capability is not AVAILABLE on this project (403)."""
 
@@ -423,7 +430,8 @@ class Projector:
     def runs_list(self, *, limit: int, cursor: str | None) -> dict[str, Any]:
         self.require("runs")
         view = self._runs_view()
-        rows = sorted(({"id": i} for i in view["invocations"]), key=lambda r: r["id"])
+        rows = sorted(({"id": i} for i, inv in view["invocations"].items() if not _custody(inv)),
+                      key=lambda r: r["id"])
         after = None
         if cursor is not None:
             after = cursors.Hot.parse(cursor, route="runs", project=self.s.project_id, filters={}, limit=limit,
@@ -440,7 +448,7 @@ class Projector:
         view = self.state
         if inv_id not in view["invocations"] and is_v2(view):
             view = self.archive.rehydrate_invocation(view, inv_id) or view
-        if inv_id not in view["invocations"]:
+        if inv_id not in view["invocations"] or _custody(view["invocations"][inv_id]):
             raise NotFound(f"no invocation {inv_id}")
         return self.envelope(self.invocation_item(inv_id, view["invocations"][inv_id], view))
 
@@ -761,7 +769,8 @@ class Projector:
         hot = sorted(self.state["work"].items(), key=lambda kv: self._updated_at(kv[1]), reverse=True)
         hot.sort(key=lambda kv: kv[0] not in self._attention_ids())  # stable: attention first, then most recent
         work = [self.work_item(wid, unit, kids=kids, with_children=False) for wid, unit in hot[:OVERVIEW_WORK]]
-        active = sorted((i, inv) for i, inv in self.state["invocations"].items() if inv["status"] == "active")
+        active = sorted((i, inv) for i, inv in self.state["invocations"].items()
+                        if inv["status"] == "active" and not _custody(inv))
         runs = [self.invocation_item(i, inv, self.state) for i, inv in active[:OVERVIEW_RUNS]]
         activity = self.activity_list(limit=OVERVIEW_ACTIVITY, cursor=None)["data"]["items"]
         recent = []

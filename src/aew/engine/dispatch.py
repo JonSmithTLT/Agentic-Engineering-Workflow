@@ -90,6 +90,10 @@ ENTRYPOINTS: dict[str, Entrypoint] = {e.name: e for e in (
     Entrypoint("harness.launch", "cli", ("harness", "launch"),
                ("launch.launchable", "launch.pack", "launch.not_live", *MUTATION),
                "a harness run for an active invocation (launch or relaunch): the credential is rotated to it"),
+    Entrypoint("integrate.prepare", "cli", ("integrate", "prepare"),
+               ("integrate.ticket", "integrate.gates", "queue.order", "queue.lease"),
+               "the integration lease for a COMMIT_READY mutating Ticket's queue entry, held by a new engine custody "
+               "invocation (`integration_attempt`, M4-D): every grant decides legality afresh"),
     Entrypoint("dispatch.launch", "internal", None, (),
                "run 1 of a dispatch made with --launch, inside that dispatch's transaction", covered_by="dispatch"),
     Entrypoint("lead_broker.relay", "internal", None, (),
@@ -309,10 +313,11 @@ class Dispatch:
                 d = self._admitting_invocation(allowed, inv, used)
                 if d is None:
                     raise DispatchUndecided(
-                        f"{inv_id} ({inv['role']}) was created for {inv['work_unit']} without a dispatch decision "
-                        "that checked it: every dispatch route must decide through a registered entrypoint, for the "
+                        f"{inv_id} ({inv.get('role') or inv.get('kind')}) was created for {inv['work_unit']} "
+                        "without a dispatch decision that checked it: every dispatch route must decide through a "
+                        "registered entrypoint, for the "
                         "role and card it creates (aew.engine.dispatch)",
-                        invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"])
+                        invocation=inv_id, work_unit=inv["work_unit"], role=inv.get("role") or inv.get("kind"))
                 used.add(id(d))
                 inv["dispatch"] = d.provenance()
             new_runs = (inv.get("runs") or [])[len((old or {}).get("runs") or []):]
@@ -335,6 +340,10 @@ class Dispatch:
                               used: set[int]) -> DispatchDecision | None:
         """The unused decision that checked this new invocation: same unit, an entrypoint that creates invocations
         (not a launch, not a wrapper), and the role, card and scope the decision's guards resolved."""
+        if inv.get("kind") == "integration_attempt":  # the lease's custodian: admitted by the grant's decision
+            return next((d for d in allowed if id(d) not in used and d.work_id == inv["work_unit"]
+                         and d.entrypoint == "integrate.prepare"
+                         and d.facts.get("queue_entry") == inv.get("queue_entry")), None)
         for d in allowed:
             if id(d) in used or d.work_id != inv["work_unit"] or d.entrypoint not in CREATES_SCOPE:
                 continue

@@ -94,6 +94,30 @@ class StaleCandidate(IllegalTransition):
     code = "STALE_CANDIDATE"
 
 
+class QueueOrder(IllegalTransition):
+    """An earlier integration queue entry can integrate now (M4-D: FIFO among runnable entries)."""
+
+    code = "QUEUE_ORDER"
+
+
+class LeaseHeld(IllegalTransition):
+    """Another queue entry holds the integration lease (M4-D)."""
+
+    code = "LEASE_HELD"
+
+
+class LeaseNotHeld(IllegalTransition):
+    """The operation runs only under the Ticket's own integration lease (M4-D)."""
+
+    code = "LEASE_NOT_HELD"
+
+
+class LeaseReconcileRequired(IllegalTransition):
+    """The integration lease lost its custodian: `aew integrate reconcile` first, never a timeout (M4-D)."""
+
+    code = "LEASE_RECONCILE_REQUIRED"
+
+
 class InputStale(IllegalTransition):
     """A consumed source-bound record no longer matches the source it would be used against (ADR-0008)."""
 

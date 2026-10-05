@@ -77,10 +77,11 @@ def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: in
     """Deterministic longest-processing-time partition into ``shards`` bins.
 
     Every nodeid lands in exactly one bin whatever the durations say; durations only affect balance.
-    Tests without a recorded duration count as the median (equal weights = round-robin by nodeid).
+    Tests without a recorded duration count as the mean of the recorded ones: the median of a suite of millisecond
+    tests is 0, which piled every new test into one shard (equal weights = round-robin by nodeid).
     """
     known = [durations[n] for n in nodeids if n in durations]
-    default = statistics.median(known) if known else 1.0
+    default = statistics.fmean(known) if known else 1.0
     weight = {n: float(durations.get(n, default)) for n in nodeids}
     bins: list[list[str]] = [[] for _ in range(shards)]
     loads = [0.0] * shards

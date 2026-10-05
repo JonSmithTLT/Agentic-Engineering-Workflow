@@ -27,7 +27,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | M4-B | OS filesystem containment and process ownership on Linux (bubblewrap) | Built |
 | M4-C | Workspaces for N > 1 concurrent mutating Tickets | Built |
 | M4-D | The integration queue and lease; the transaction outbox (ADR-0012); deterministic integration validation; wait-any; the typed surface's read-only slice (F15.1) | In progress |
-| *(gate)* | The designer promotes the F15 direction to governing (register §1, "Before M4-E") | Open |
+| *(gate)* | The F15 direction promoted to governing: the typed Lead surface v0.2 adopted (designer and operator, 2026-10-05) | Met |
 | M4-E | Stage commands on the typed surface (F15.2) | Planned |
 | M4-F | The queue's normal UX | Planned |
 | M4-G | Candidates: Lead and run UX items, the amendment index, Windows coverage, the structural map slice | Planned |
@@ -35,7 +35,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 
 **Gates on the way** ([`future-work.md`](implementation/future-work.md) §1): real-repository dogfood waited on containment
 (built in M4-B) and the custody-hardening item (closed); network containment (F28) before internal alpha; the F15
-promotion before M4-E. What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
+promotion before M4-E (met 2026-10-05). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
 
 ## What governs, in order
 
@@ -53,7 +53,8 @@ When documents disagree, the earlier one wins.
    - [`decisions-2026-10-01-containment-and-integration-queue.md`](design/decisions-2026-10-01-containment-and-integration-queue.md): containment and process ownership (Q3, F2, E13, the scratch rule), the integration queue (F10, D4)
    - [`plan-assurance-and-premise-validation-design-v0.4.md`](design/plan-assurance-and-premise-validation-design-v0.4.md): the post-M3 plan-assurance direction
    - [`ticket-revision-amendment-2026-09-30.md`](design/ticket-revision-amendment-2026-09-30.md): Ticket revisions
-   - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted; promoted to governing before M4-E (with the typed Lead surface v0.2 below)
+   - [`typed-lead-surface-design-v0.2.md`](design/typed-lead-surface-design-v0.2.md): the typed Lead surface (F15), governing since 2026-10-05: one catalog of typed actions below transport, one runner, `StageResult` and a tri-state `ActionProjection`, MCP (`aew-lead`, broker-side) as the first normal transport and the CLI as parity and recovery; its §11 sequences M4-D, M4-E and M6
+   - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
 5. **Cross-document indexes** (they point, they do not decide): [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
@@ -109,7 +110,6 @@ text is not governing.
 
 | Proposal | Register | Adoption state | Scheduled |
 |---|---|---|---|
-| [`typed-lead-surface-design-v0.2.md`](design/proposals/typed-lead-surface-design-v0.2.md) | F15, F15.1 to F15.3 | Design frozen, proposed (2026-10-04); first transport settled as MCP (designer, 2026-10-05); promotion to governing is the before-M4-E gate | M4-D (read-only slice), M4-E (stages), M6 (role server) |
 | [`evaluation-component-design-v0.2.md`](design/proposals/evaluation-component-design-v0.2.md) | F19 | Design frozen, proposed | Its first slice before M4-H's preregistration |
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
@@ -121,7 +121,7 @@ text is not governing.
 | [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | Proposed | M6b |
 | [`aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md`](design/proposals/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md) | F21 | Proposed; Arm B (guarded history recall) first | M6b |
 | [`execution-workspace-and-isolation-design-v0.1.md`](design/proposals/execution-workspace-and-isolation-design-v0.1.md) | F2 (built), F3 | Proposed; its containment part is built | Input to M4-B (built) and M4-C (built); the strategy abstraction and benchmarks remain |
-| [`lead-workflow-efficiency-design-v0.1.md`](design/proposals/lead-workflow-efficiency-design-v0.1.md) | F15 | Proposed; superseded in direction by the two-surfaces note and the typed surface v0.2 | Input to M4-E |
+| [`lead-workflow-efficiency-design-v0.1.md`](design/proposals/lead-workflow-efficiency-design-v0.1.md) | F15 | Proposed; superseded by the governing typed Lead surface v0.2 (2026-10-05; ledger LWE-01, LWE-02 and LWE-04 absorbed or superseded) | Historical input to M4-E |
 | [`hierarchy-intent-revision-and-replanning-design-v0.1.md`](design/proposals/hierarchy-intent-revision-and-replanning-design-v0.1.md) | F4, F5 | Proposed; amended by the adopted Ticket-revision amendment | Hierarchy revision milestone, unscheduled |
 | [`lead-operator-interaction-design-v0.1.md`](design/proposals/lead-operator-interaction-design-v0.1.md) | F7, F8 | Proposed | Unscheduled |
 | [`capability-discovery-and-progressive-disclosure-design-v0.1.md`](design/proposals/capability-discovery-and-progressive-disclosure-design-v0.1.md) | F13 | Proposed | M6a |

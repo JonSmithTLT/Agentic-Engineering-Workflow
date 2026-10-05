@@ -1,8 +1,9 @@
 # Dashboard main-line API: the design note for F20.2 to F20.6 (v0.1)
 
-- **Status:** **Proposed, for operator approval before any code** (2026-10-05). Register F20.2 to F20.6; ledger prefix
-  DAB. Written by the lead developer of the main AEW repository. Nothing here reopens a settled decision (§2); it lists
-  every decision the five slices still need, with a recommendation for each, and the slice plan.
+- **Status:** **Approved with modifications, being built** (designer and operator, 2026-10-05; the dispositions are
+  §7). Proposed 2026-10-05. Register F20.2 to F20.6; ledger prefix DAB. Written by the lead developer of the main AEW
+  repository. Nothing here reopens a settled decision (§2); it lists every decision the five slices needed, the
+  recommendation for each, the designer's disposition, and the slice plan.
 - **Owns:** the Python server behind the frozen dashboard frontend: the `aew.dashboard` package, `aew dashboard
   serve` and `aew dashboard open`, the operator-session credential, and the acceptance of the integrated product.
 - **Does not own:** `web/`, `web.yml` and the dashboard branches (the web agent's); contract 0.1.2 itself (any change
@@ -115,7 +116,9 @@ running server, without a flag, a file or an API call becoming the authorization
 [--session-hours 24]` calls `operator.authorize` with a challenge naming the project, the port and the lifetime
 ("START the read-only dashboard and issue a browser session"), mints the first session, and writes the one-time URL
 to the terminal through the credential delivery path (§4.3). It runs in the foreground until interrupted; on exit the
-table is cleared. It writes `.aew/local/dashboard/server.json` (`pid`, `port`, `started_at`, the control endpoint) for
+table is cleared. The default port is 4280 (designer, 2026-10-05); when it is occupied the command fails with a message
+naming the port and the `--port` flag, and never wanders to another port; `--port 0` is the explicit opt-in for an
+ephemeral port, printed in the URL. The Host and Origin checks (§4.14) use the origin actually bound. It writes `.aew/local/dashboard/server.json` (`pid`, `port`, `started_at`, the control endpoint) for
 `open` and `status` to find it; `local/` is disposable and never authority (ADR-0011 invariant 4).
 
 **R7. `open` is authorized by the serving process's terminal, not by its own.** `aew dashboard open` connects to the
@@ -371,13 +374,19 @@ Every value the contract types as a `Timestamp` is the engine's `utc_now` format
 **R18. Capability states are decided by the server from facts, and every reason has a code from one registry.**
 `overview`, `work`, `runs`, `evidence`, `knowledge`, `activity`: `AVAILABLE`. `history`, `integrity`: `AVAILABLE` on a
 v2 project whose index syncs, else `UNAVAILABLE` with `MIGRATION_REQUIRED` or `HISTORY_INDEX_UNAVAILABLE`.
-`action_projection` (which gates `/attention` in the frontend): `AVAILABLE`, served from engine facts (§4.10) until
-F15.1's `ActionProjection` exists, which then becomes the source behind the same route without a contract change.
-`queue`: `UNSUPPORTED`, reason `NOT_IN_CONTRACT_0_1_2`. `Health`: `UNHEALTHY` on a contradiction or a manifest-pin
+`action_projection` (which gates `/attention` in the frontend): **`UNSUPPORTED` until F15.1's canonical
+`ActionProjection` is its source** (designer, 2026-10-05, overriding the recommendation: no interim semantic twin built
+from a slightly different set of engine facts and swapped out later), reason `AWAITS_ACTION_PROJECTION`; `/attention`
+answers `403 CAPABILITY_UNAVAILABLE` meanwhile. The engine facts the frontend may still be shown (escalations, failed
+gates, blockers, contradictions, crashed or lost runs) reach it through `/overview`'s bounded `attention` list,
+`counts.attention` and `Work.has_attention`, which are backend-provided facts, not the action projection; if the
+designer prefers those empty too until F15.1, that is a one-line change. `queue`: `UNSUPPORTED`, reason
+`NOT_IN_CONTRACT_0_1_2`. `Health`: `UNHEALTHY` on a contradiction or a manifest-pin
 mismatch, `DEGRADED` on an over-policy audit finding or a `lost` run, else `HEALTHY`; `observed_at` is the snapshot's
 time. The codes the server can emit (`SESSION_REQUIRED`, `SESSION_EXPIRED`, `CURSOR_INVALID`, `CURSOR_EXPIRED`,
 `NOT_FOUND`, `CAPABILITY_UNAVAILABLE`, `PROJECTION_FAILED`, `HOST_NOT_ALLOWED`, `ORIGIN_NOT_ALLOWED`,
 `METHOD_NOT_ALLOWED`, `REQUEST_TOO_LARGE`, `MIGRATION_REQUIRED`, `HISTORY_INDEX_UNAVAILABLE`, `NOT_IN_CONTRACT_0_1_2`,
+`AWAITS_ACTION_PROJECTION`,
 `UNVERIFIED_ENTRIES_OVER_POLICY`, `UNVERIFIED_AGE_OVER_POLICY`, `FULL_VERIFICATION_OVERDUE`, `CONTRADICTION`,
 `RUN_LOST`, `RUN_CRASHED`, `MANIFEST_PIN_MISMATCH`, `BLOCKED_BY`) live in `aew.dashboard.reasons`, and a test checks
 that every code a response carries is registered with a message. The audit's over-policy findings get their codes from
@@ -402,20 +411,27 @@ response depends on the cookie only for `401`, and the frontend caches per route
 host from the wheelhouse, which cannot run Node. `web/dist` is a build product and is ignored by git.
 
 **R20. The production build is committed into the package, with provenance, and imported by a script the main line
-owns.** `src/aew/dashboard/static/` holds the build (`index.html`, `favicon.svg`, `assets/*`) and `BUILD.json`:
-the `web/` source commit, the contract digest the build was pinned to, the builder (the pinned offline builder the
-web agent documents), the build time, and the SHA-256 of every file. `tools/dashboard/import_build.py <dist>` copies
-a build in, refuses anything that is not a regular file under `index.html`, `favicon.svg` or `assets/`, and writes
-`BUILD.json`. A fast test checks every hash, that `index.html` references only files that exist, and that the build
-contains no demo material (the strings `check-production.mjs` forbids: the mock service worker, the demo transport
-marker, fixture initialization). The web agent produces the build from the frozen frontend commit; the main line
-imports it (§6). A rebuild of the frontend is a new import, a new `BUILD.json`, and a reviewed diff.
+owns.** `src/aew/dashboard/static/` holds the build (`index.html`, `favicon.svg`, `assets/*`) and `BUILD.json`,
+which binds at least (designer, 2026-10-05): the frontend source commit and its tree id, the contract digest the build
+was pinned to, the builder and toolchain identity (the pinned offline builder's image or version record, Node and
+npm versions), the digest of `package-lock.json` and `package.json`, the build time, and the SHA-256 of every file.
+`tools/dashboard/import_build.py <dist> --source-commit <sha>` copies a build in, refuses anything that is not a
+regular file under `index.html`, `favicon.svg` or `assets/`, and writes `BUILD.json`. A fast test checks every hash,
+that `index.html` references only files that exist, and that the build contains no demo material (the strings
+`check-production.mjs` forbids: the mock service worker, the demo transport marker, fixture initialization). **The
+main line produces the build** under WSL with the pinned builder (web agent, 2026-10-05), from a clean detached
+checkout of the **explicitly agreed frozen frontend commit** (F20 names `7c120b4`, the core freeze; the commit to build
+is agreed with the web agent and the operator before F20.5 and recorded in `BUILD.json`; the newest frontend is never
+substituted silently). Where the Node builder is available, CI rebuilds and verifies the committed output
+(`tools/dashboard/verify_build.py`: rebuild from `BUILD.json`'s commit with the recorded toolchain, compare every
+hash); that job runs where `web.yml`'s checks run and is agreed with the web agent (§6). A rebuild of the frontend is a
+new import, a new `BUILD.json`, and a reviewed diff.
 `aew dashboard serve --static DIR` serves an unpacked build instead, for the web agent's local runs against live
 state; F20.6's acceptance uses the packaged build only.
 
-*Risk to record:* a minified bundle may trip the secret scan with high-entropy strings. If it does, the operator
-decides between an allowlist entry scoped to `src/aew/dashboard/static/assets/` and reviewing each hit; the scan is
-never skipped (§7).
+*Secret scanning (designer, 2026-10-05):* a minified bundle may trip the scan with high-entropy strings. **No
+blanket allowlist of the assets directory.** A false positive is allowlisted by its exact finding (fingerprint) or
+exact generated file, with review and the rationale recorded in the PR; the scanner is never skipped.
 
 ### 4.14 CSP, security headers, Host and Origin rules, request bounds
 
@@ -433,10 +449,12 @@ browser checks pass under, so it is known to fit the build (no inline script or 
   `Cache-Control: max-age=31536000, immutable` on `/assets/*` (content-hashed file names).
 - Never a CORS header, never `Server`, never a `Set-Cookie` outside the exchange and the `401` expiry.
 
-**R22. Host and Origin.** The listener binds `127.0.0.1` only (no flag changes it). The `Host` header's host part
-must be `127.0.0.1` or `localhost` (case-insensitive, any port, so an SSH tunnel on a different local port works);
-anything else is `421 HOST_NOT_ALLOWED` before routing, which defeats DNS rebinding. If `Origin` is present it must be
-`http://127.0.0.1[:port]` or `http://localhost[:port]`, else `403 ORIGIN_NOT_ALLOWED`. On `/api/v1/`, a present
+**R22. Host and Origin: exact, against the origin actually bound** (designer, 2026-10-05). The listener binds
+`127.0.0.1` only (no flag changes it). The `Host` header must equal `127.0.0.1:<bound port>` exactly (the port as
+bound, so `--port 0` compares against the ephemeral port); anything else, `localhost` included, is `421
+HOST_NOT_ALLOWED` before routing, which defeats DNS rebinding. If `Origin` is present it must equal
+`http://127.0.0.1:<bound port>`, else `403 ORIGIN_NOT_ALLOWED`. An SSH tunnel therefore uses the same local port as
+the server's (`ssh -L 4280:127.0.0.1:4280`), which the printed URL and the `serve` banner say. On `/api/v1/`, a present
 `Sec-Fetch-Site` must be `same-origin` or `none`, else `403`. `SameSite=Strict` already keeps the cookie off every
 cross-site request; these rules make the refusal explicit and testable.
 
@@ -483,11 +501,12 @@ test of F20.3 in `serial` (as AT-4b). Windows and Linux both run everything but 
 
 ### 5.1 F20.2: the read-only API and conformance
 
-- **Files:** `src/aew/dashboard/{__init__,server,reader,projections,cursors,contract,reasons}.py`;
-  `src/aew/cli/dashboard_commands.py` (`aew dashboard serve` without a session: this slice's server answers only on
-  `127.0.0.1` and only in the test harness, so no browser can reach data before F20.3; the command stays hidden from
-  `--help` until F20.3 lands and is marked so in the code); `cli/main.py` registration; the engine edits 1, 3 and 4
-  of §4.15; `tests/unit/test_dashboard_cursors.py`, `tests/unit/test_dashboard_contract.py` (the contract loads and
+- **Enablement rule (designer, 2026-10-05):** no merged state ever serves project data unauthenticated. F20.2 lands
+  the read adapter, the projections and the server class, but **no `aew dashboard` command and no listener outside
+  the tests**: the server is started only in-process by the test suite, on an ephemeral `127.0.0.1` port, and refuses
+  to start without a session table once F20.3 adds one. `aew dashboard serve` and `open` arrive with F20.3.
+- **Files:** `src/aew/dashboard/{__init__,server,reader,projections,cursors,contract,reasons}.py`; the engine edits
+  1, 3 and 4 of §4.15; `tests/unit/test_dashboard_cursors.py`, `tests/unit/test_dashboard_contract.py` (the contract loads and
   every `*Response` schema compiles), `tests/unit/test_store_read_committed.py`, `tests/unit/test_history_index_bounds.py`;
   `tests/integration/test_dashboard_api.py` (every route, GET and HEAD, against a project built with
   `tests/helpers/aewflow.py` through the lifecycle to archival: hot and archived units, runs, evidence, decisions,
@@ -499,8 +518,9 @@ test of F20.3 in `serial` (as AT-4b). Windows and Linux both run everything but 
   reader; the web agent's Q01 to Q06 answers recorded in a note under `web/docs/reference/backend-questions/` are the
   web agent's to file: this PR puts the answers in §4.9 and the operator relays (§6).
 - **Acceptance:** every route of 0.1.2 served and validated; no response carries a path, a verifier or a credential
-  string (scan test); no request takes the control lock (the lock-held test); the contract digest asserted
-  (`68b46527…d691`) so a contract change fails the suite until the server is re-conformed.
+  string (scan test); no request takes the control lock (the lock-held test); the contract digest asserted against
+  the accepted record (`web/docs/c0-approval.json`, today `68b46527…d691`), so a contract change fails the suite until
+  the record and the server are re-conformed together (the pending header correction changes the digest, §6).
 
 ### 5.2 F20.3: the dashboard session
 
@@ -571,42 +591,70 @@ test of F20.3 in `serial` (as AT-4b). Windows and Linux both run everything but 
 Raised here, relayed by the operator; nothing in `web/` is edited by the main line.
 
 1. The contract header still says `PENDING_REVIEW` under `x-c0-review` while `c0-approval.json` and
-   `contract-version.json` say ACCEPTED (the M4 report's "before F20.2" item).
-2. F20.5 needs a production build (`npm run build`) of the frozen frontend commit, produced with the pinned builder,
-   handed over with its source commit and the contract digest, for `tools/dashboard/import_build.py`. A rebuild later
-   is a new import and a reviewed diff. Alternatively, confirm the main line may build from the merged `web/` with
-   the pinned builder under WSL.
+   `contract-version.json` say ACCEPTED (the M4 report's "before F20.2" item). **Web agent (2026-10-05):** the header
+   is stale; correcting it changes the pinned hash, so the acceptance and digest records are updated coherently,
+   preserving the original review, with the wire schemas unchanged. F20.2's conformance tests therefore read the
+   digest from the acceptance record rather than hard-coding it, and re-pin when that change lands.
+2. F20.5's production build: **the main line rebuilds under WSL with the pinned builder** (web agent, 2026-10-05),
+   from a clean detached checkout of the explicitly agreed frozen commit, retaining the production `dist/`, the source
+   tree identity and the build hashes. F20 names `7c120b4` (the core freeze, before W02 to W06 merged); **which commit
+   to build is to be agreed** with the web agent and the operator before F20.5, and is never the newest frontend by
+   default.
 3. The W01 ledger's answers are in §4.9; when the web agent is satisfied, the ledger rows can record the accepted
    artifact (this note's commit, contract 0.1.2, its digest) as resolved.
-4. F20.6 wants the compiled browser checks to run against a live authenticated server: a base URL and a session
-   cookie as inputs (or an equivalent the web agent prefers). The one-time URL exchange can be driven by the scripts
-   or the cookie handed to them; both are fine.
+4. F20.6 wants the compiled browser checks to run against a live authenticated server. **Web agent (2026-10-05):**
+   base-URL inputs exist; an authenticated live mode still needs implementing on the web side: it accepts the target
+   URL and a private session-cookie file, starts no fixture servers, keeps credentials out of the evidence, and gives
+   the fixture-specific assertions a separate live acceptance path. The demo preview contracts stay excluded from the
+   production integration. F20.6 depends on that work; the main line provides the server, the cookie file (0600, in
+   the scratch directory, never in evidence) and the acceptance record.
 5. The `/history` default order is newest first (seq descending), as `aew history list` orders; `/activity` the same
    by revision. If the frontend assumes ascending order anywhere, say so before F20.2 is reviewed.
 6. The `aew_session` cookie name is kept; `401` responses carry a JSON `Error` body (`SESSION_REQUIRED`,
    `SESSION_EXPIRED`); the frontend's "session required" state should tell the operator to run `aew dashboard open`.
-7. `action_projection` will be AVAILABLE from F20.2 with items derived from engine facts (§4.10); the queue stays
-   UNSUPPORTED with reason `NOT_IN_CONTRACT_0_1_2`.
+7. `action_projection` stays UNSUPPORTED (reason `AWAITS_ACTION_PROJECTION`) until F15.1 is its source, so the
+   Attention page shows the capability-unavailable state; `/overview`'s bounded `attention` list and `has_attention`
+   still carry engine facts (§4.11). The queue stays UNSUPPORTED with reason `NOT_IN_CONTRACT_0_1_2`.
 
-## 7. Decisions the operator is asked to make
+## 7. Decisions made (designer and operator, 2026-10-05)
 
-1. **R7, the `open` flow:** the server's console authorizes `open` (recommended), or `open` authorizes at its own
-   terminal and the server trusts the key file (simpler, weaker).
-2. **R4, no `revoke` in v1:** stopping the server is the revocation; a bounded table of 32 sessions.
-3. **R16, the D8 event endpoint:** not in F20.2; a new register row F20.7, Unscheduled, on measured need.
-4. **R20, the committed static build** with `BUILD.json` provenance, imported by a main-line script from the web
-   agent's build; and the secret-scan handling if a minified bundle trips it (an allowlist scoped to the assets
-   directory, or per-hit review; never a skipped scan).
-5. **R18, `action_projection` AVAILABLE** from engine facts before F15.1 exists, versus UNSUPPORTED until then.
-6. **The default port 4280** (4248, 4249, 4251 and 4261 are in use on the development host).
-7. **The ADR-0005 amendment text** of §4.4, landed in F20.3's PR.
-8. **The slice plan** of §5, one PR each, in order.
+The eight questions this note asked, with the designer's dispositions, relayed by the operator.
+
+1. **R7, the `open` flow: approved, the server-console challenge.** The serving process's console is the
+   authorization point; the server emits a short-lived single-use code, `open` prompts for it, the server verifies.
+   Anything under `local/` may help locate or connect to the server but is never authorization. Loopback alone is
+   insufficient because other local processes can reach it.
+2. **R4, no per-session revoke in v1: approved, with one constraint.** Server exit invalidates every session; session
+   state is process-local, never durable authority. 24 h default expiry and 32 live sessions with oldest-first
+   eviction are acceptable for a read-only local dashboard. No revocation subsystem yet.
+3. **R16, the D8 event endpoint: deferred.** Not in F20.2; F20.7, Unscheduled, on measured need. Polling is a
+   legitimate design path; the contract is not changed before there is a demonstrated consumer.
+4. **R20, the committed static build: approved, with stronger provenance and a narrow secret-scan rule.**
+   `BUILD.json` binds the frontend source commit, the contract digest, the builder and toolchain identity, the
+   lockfile and package digests and every file hash; CI rebuilds and verifies where Node is available; no blanket
+   allowlist of the assets directory, only exact findings or exact generated files with review and rationale; the
+   scanner is never skipped. The web agent's build provenance requirements (a clean detached checkout of the agreed
+   frozen commit, never the newest by default) are in §4.13 and §6.
+5. **R18, `action_projection`: UNSUPPORTED until F15.1** (the one disagreement with the recommendation). No
+   provisional projection from a different set of engine facts to be swapped later; the frontend tolerates absent
+   capabilities and never infers workflow truth. Attention facts the backend already provides may still be shown
+   (§4.11).
+6. **Default port 4280: approved.** Documented default; occupied means a useful failure and an explicit `--port`,
+   never a silent move to another port; `--port 0` is the opt-in ephemeral form; Host and Origin checks use the
+   actual bound origin, exactly (§4.14).
+7. **The ADR-0005 amendment: approved** as the fifth credential kind. Project-scoped, read-only, accepted only by the
+   dashboard HTTP and session boundary, never by Engine mutation paths, never projected into a model or worker
+   environment, bounded by `expires_at`, invalidated when the serving process exits, issued only after the R7
+   terminal challenge. A credential kind because it authenticates access to sensitive project state; zero workflow
+   authority.
+8. **The slice plan: approved**, with the enablement rule: F20.2 may land the read adapter and projection code, but
+   the user-facing server and `open` path stay disabled until F20.3's authentication lands. No merged state ever
+   routinely serves sensitive local project data unauthenticated (§5.1).
 
 ## 8. Register and ledger
 
 - Every requirement in this note is in `docs/design/requirements-ledger.yaml` under the prefix `DAB`, tracked by
   F20.2 to F20.6, F20 (the notes for the web agent) and the new F20.7 (the event endpoint).
 - The register's F20.2 to F20.5 rows gain a pointer to this note; F20.7 is added under §2 as Unscheduled.
-- After approval, the status line here changes to "approved; being built", and each slice's PR links back to the
-  section it builds. A later contract version (the event endpoint, the queue, the lifecycle timeline) is a new
+- The status line records the approval of 2026-10-05, and each slice's PR links back to the section it builds. A later contract version (the event endpoint, the queue, the lifecycle timeline) is a new
   version of the contract and a renewed C0 review, not an amendment of this note.

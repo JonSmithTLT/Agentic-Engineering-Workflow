@@ -12,6 +12,7 @@ from aew.engine.base import TxnContext
 from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.queue_ops import is_custodian
 from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition, NotFound, PermissionDenied
 from aew.harness import contract as K
 from aew.harness import registry
@@ -92,7 +93,8 @@ class Invocations:
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
-            revoke(state, inv["token_id"], f"invocation {status}")
+            if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
+                revoke(state, inv["token_id"], f"invocation {status}")
         obs = inv.get("observation")
         if obs and obs.get("status") == "active":
             obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)
@@ -101,9 +103,11 @@ class Invocations:
                         reason: str | None) -> None:
         """State hook: a unit that becomes terminal keeps no live invocation."""
         if change["to"] in transitions.TERMINAL:
-            # A finished Ticket has no assignments left: no credential outlives it (re-review walk finding).
+            # A finished Ticket has no assignments left: no credential outlives it (re-review walk finding). Its
+            # lease custodian is ended by the queue in the same transaction, as published or cancelled (M4-D).
             for inv_id in unit.get("invocations", []):
-                self.complete_invocation(state, inv_id, "cancelled")
+                if not is_custodian(state["invocations"].get(inv_id)):
+                    self.complete_invocation(state, inv_id, "cancelled")
 
     def inspect_workspace(self, unit: dict[str, Any]) -> dict[str, Any]:
         ws = unit.get("workspace")
@@ -126,7 +130,8 @@ class Invocations:
         if ws and ws.get("status") == "active":
             ws["status"] = f"released ({why})"
         for inv_id in unit.get("invocations", []):
-            self.complete_invocation(ctx.state, inv_id, "cancelled")
+            if not is_custodian(ctx.state["invocations"].get(inv_id)):  # the queue ends it (M4-D)
+                self.complete_invocation(ctx.state, inv_id, "cancelled")
 
     def require_launchable(self, state: dict[str, Any], inv_id: str, *, relaunch: bool = True) -> dict[str, Any]:
         inv = state["invocations"].get(inv_id)

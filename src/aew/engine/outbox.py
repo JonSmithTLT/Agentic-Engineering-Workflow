@@ -55,7 +55,7 @@ SEGMENT_SCHEMA = "aew/transition-segment/v1"
 
 # Event kinds (ADR-0012 D2). Derived kinds come from the committed states; declared kinds only from the operation.
 DERIVED_KINDS = ("lead.generation", "work.state", "invocation.status", "run.added", "credential.revoked",
-                 "history.appended", "unit.archived")
+                 "history.appended", "unit.archived", "queue.entry", "queue.lease")
 DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded")
 
 
@@ -102,6 +102,22 @@ def derive_events(before: dict[str, Any], working: dict[str, Any], committed: di
     for wid in archived:
         events.append({"kind": "unit.archived", "id": wid, "unit": new_work[wid].get("kind"),
                        "state": new_work[wid].get("state")})
+    events.extend(_queue_events(before.get("queue") or {}, working.get("queue") or {}))
+    return events
+
+
+def _queue_events(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
+    """M4-D: an entry's state changes (``from: null`` enqueued, ``to: null`` retired) and the lease changing hands
+    (``entry``/``custodian`` null when released). The queue holds live entries only, so this is bounded too."""
+    events: list[dict[str, Any]] = []
+    old, new = before.get("entries") or {}, after.get("entries") or {}
+    for qid in sorted(set(old) | set(new)):
+        was, now = (old.get(qid) or {}).get("state"), (new.get(qid) or {}).get("state")
+        if was != now:
+            events.append({"kind": "queue.entry", "id": qid, "from": was, "to": now})
+    old_lease, new_lease = before.get("lease") or {}, after.get("lease") or {}
+    if (old_lease.get("entry"), old_lease.get("custodian")) != (new_lease.get("entry"), new_lease.get("custodian")):
+        events.append({"kind": "queue.lease", "entry": new_lease.get("entry"), "custodian": new_lease.get("custodian")})
     return events
 
 

@@ -1,9 +1,10 @@
 """Where a credential an ``aew`` command issues goes (ADR-0009 custody).
 
 A command that issues a credential (``lead acquire``, ``lead takeover``, ``lead handoff offer`` with its offer
-secret, ``lead handoff accept``, and a dispatch without ``--launch`` with its invocation credential) writes it only to
-the controlling terminal: ``/dev/tty``, or the console on Windows. Never to standard output, which a harness, a pipe or
-a transcript may capture. The JSON result says where the credential went instead.
+secret, ``lead handoff accept``, a dispatch without ``--launch`` with its invocation credential, and ``dashboard
+serve`` and ``dashboard open`` with their one-time session URL) writes it only to the controlling terminal:
+``/dev/tty``, or the console on Windows. Never to standard output, which a harness, a pipe or a transcript may capture.
+The JSON result says where the credential went instead.
 
 A script that needs the credential on standard output passes ``aew --print-credential ...``. A Lead session refuses
 that flag. With neither a terminal nor the flag the command is refused before it runs, so no credential is ever issued
@@ -19,9 +20,11 @@ from typing import Any
 
 from aew.errors import UsageError
 
-KEYS = ("token", "offer", "invocation_token")
+KEYS = ("token", "offer", "invocation_token", "session_url")
 ISSUING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "handoff", "offer"}),
-           frozenset({"lead", "handoff", "accept"}))
+           frozenset({"lead", "handoff", "accept"}),
+           # The dashboard's one-time session URL is a credential's delivery (ADR-0005, 2026-10-05; F20.3).
+           frozenset({"dashboard", "serve"}), frozenset({"dashboard", "open"}))
 WRITTEN = "(written to your terminal)"
 
 
@@ -77,6 +80,18 @@ def deliver(result: Any, args: argparse.Namespace) -> Any:
         out.write("\n")
         out.flush()
     return {**result, **dict.fromkeys(found, WRITTEN)}
+
+
+def write_to_terminal(label: str, value: str) -> None:
+    """Write one credential to the controlling terminal, as ``deliver`` does for a command's result. The long-running
+    ``aew dashboard serve`` uses it for each session URL it issues (F20.3). Raises when this process has no terminal."""
+    out = _open_terminal()
+    if out is None:
+        raise UsageError(f"a {label} was issued but this process has no terminal to write it to")
+    with out:
+        out.write("\n==== AEW CREDENTIAL (keep it out of any agent's reach) ====\n")
+        out.write(f"{label}: {value}\n\n")
+        out.flush()
 
 
 def _open_terminal() -> Any:

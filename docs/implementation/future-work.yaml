@@ -1267,4 +1267,4 @@ sections:
     By: '`knowledge/context.py`: every section of a pack has a tier and `assemble(pack_inputs, budget)` spends a character budget
       tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the pack''s budget
       notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget yet: wiring one
-      in waits for a measured budget, and recall fills the last tier when it exists (PR pending)'
+      in waits for a measured budget, and recall fills the last tier when it exists (PR #68)'

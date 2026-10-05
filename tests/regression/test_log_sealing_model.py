@@ -311,7 +311,7 @@ def test_seeded_walk_commits_compactions_crashes_and_racing_readers(tmp_path, mo
     import os
 
     rng = random.Random(int(os.environ.get("AEW_SEAL_SEED", "20261004")))
-    base = SEG + 200
+    base = 2 * SEG - 12  # the walk's own commits (some crashed after the commit point and repaired) fill segment 1
     long_log(tmp_path, base, overflow_every=11)
     monkeypatch.setenv("AEW_FAULT_MODE", "raise")
     commit_points = ["txn.after_replace", "log.overflow_unpublished", "txn.after_log", None, None]
@@ -377,3 +377,40 @@ def test_item1_a_missing_outbox_era_record_still_stops_compaction(tmp_path):
     (tmp_path / outbox.record_path(state["outbox"]["since"] + 5)).unlink()  # in segment 1, after the chain began
     with pytest.raises(IntegrityError, match="incomplete history"):
         log_compact.compact(make_store(tmp_path), window=WINDOW)
+
+
+@pytest.mark.parametrize("point", ["txn.after_replace", "txn.after_apply"])
+def test_item5_a_repaired_record_is_sealed_and_read_back_through_its_segment(tmp_path, monkeypatch, point):
+    """PR #60 review item 5 (OBX-40, "repaired logs"): a commit that dies after its commit point but before its log
+    record is written leaves the record missing; recovery repairs it from last_transition; it is then sealed like
+    any other record, and read back through the segment it is exactly the committed transition."""
+    from aew.engine.store import CONTROL_REL, deserialize_control
+
+    long_log(tmp_path, SEG - 5)
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    monkeypatch.setenv("AEW_FAULT", point)
+    with pytest.raises(InjectedFault):
+        one_transaction(make_store(tmp_path))
+    monkeypatch.delenv("AEW_FAULT")
+    lost = SEG - 4
+    assert not (tmp_path / outbox.record_path(lost)).exists()  # committed, its record never written
+    raw = (tmp_path / CONTROL_REL).read_bytes()
+    committed = deserialize_control(raw, source=CONTROL_REL)["last_transition"]
+    assert committed["revision"] == lost and committed["event_overflow"] is not None  # an overflow, too
+    store = make_store(tmp_path)
+    store.read()  # recovery repairs the record (and publishes the staged overflow payload)
+    assert outbox._read_record(tmp_path, lost) == committed
+    while store.read()["revision"] < SEG + 2:
+        one_transaction(store)
+    result = log_compact.compact(make_store(tmp_path), window=1)
+    assert result["sealed"] == [0]
+    assert not (tmp_path / outbox.record_path(lost)).exists()
+    assert not (tmp_path / outbox.overflow_path(lost)).exists()
+    segment = outbox.load_segment(tmp_path, 0, 0, schema=True)
+    assert segment is not None and segment.record(lost) == committed
+    state = make_store(tmp_path).read()
+    [read_back] = outbox.read_transitions(tmp_path, lost - 1, lost, outbox=state["outbox"])
+    assert {k: v for k, v in read_back.items() if k != "events"} == {k: v for k, v in committed.items()
+                                                                      if k != "events"}
+    assert len(read_back["events"]) == 70  # the complete set, from the sealed payload
+    check_invariants(tmp_path, synthetic_through=SEG - 5)

@@ -23,9 +23,9 @@ M4 lets mutating Tickets run in parallel while integration stays serial: **paral
 - [`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md) §3.1, §3.2 and §3.5 ("M4's first step");
 - [`workflow-contract-amendment-class0-2026-10-01.md`](../design/workflow-contract-amendment-class0-2026-10-01.md) (adopted; enforced from M4-A);
 - containment research §8 ([`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../research/containment-and-process-ownership-rocky8-research-2026-10-01.md));
-- the F15 direction (the v0.4 idea note §14 sequence, [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](../design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md)): adopted, and promoted to governing before M4-E (§3, decision 1).
+- the F15 direction (the v0.4 idea note §14 sequence, [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](../design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md)): adopted, and promoted to governing on 2026-10-05 as the [typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) (§3, decision 1; the gate is met).
 
-**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/proposals/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/proposals/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/integration-checklist.md`.
+**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/proposals/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/proposals/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/reference/integration-checklist.md`.
 
 ---
 
@@ -221,7 +221,7 @@ Proposal: keep `aew/control/v2` with an additive `queue` key, closed with `addit
 - It returns the first run to end, with its next action.
 
 ### 2.10 Stage commands (M4-E; F15)
-Gated on the designer promoting F15 v0.4 to a governing design (decision 1). Then:
+Gated on the designer promoting F15 v0.4 to a governing design (decision 1; met 2026-10-05: the typed Lead surface v0.2 governs). Then:
 - `ActionProjection`;
 - the stage-intent journal (hot while active, cold once finished, per ADR-0011);
 - `draft`, `start`, `request-review`, `request-verification` and `submit-integration`;
@@ -250,7 +250,7 @@ Stages refuse with `STALE_POLICY` on policy drift. A replacement Lead explicitly
 | # | Topic | Decision | By |
 |---|---|---|---|
 | M4-B1 | Milestone shape | One M4 in phases A to H, one PR each, one acceptance gate (M4-H). F20.2 to F20.6 is a parallel track | Operator, 2026-10-03 |
-| M4-B2 | F15 v0.4 | Promoted to governing **before M4-E**, not before M4 begins. It gates E and F, not A to D. Order: A foundation → D queue engine through primitives → promote F15 → E stages → F queue UX | Operator/designer, 2026-10-03 |
+| M4-B2 | F15 v0.4 | Promoted to governing **before M4-E**, not before M4 begins. It gates E and F, not A to D. Order: A foundation → D queue engine through primitives → promote F15 → E stages → F queue UX. **Met 2026-10-05:** the typed Lead surface v0.2 is governing | Operator/designer, 2026-10-03 |
 | M4-B3 | F2 scope | A private object store for mutating workers. Read-only reviewer and verifier source with writable scratch/build/temp, subject to the Rocky probe, with `WORKSPACE_MUTATED` as the fallback and F2 never weakened. Network isolation out of F2, reported as NOT PROVIDED | Operator/designer, 2026-10-03 |
 | M4-B4 | Platforms | Real-repository mutating dogfood runs on Linux/Rocky only. Windows covers CI, conformance and scratch or disposable evaluation under `workdir separation only` | Operator/designer, 2026-10-03 |
 | M4-B5 | Invalidation | Reuse work product, not proof (§2.7) | Operator/designer, 2026-10-03 |
@@ -285,7 +285,7 @@ Every open entry whose *When* names M4 or an earlier gate, every M4 candidate, a
 | E1 | M4 | **In scope** | M4-D |
 | O4 | M4 | **In scope**: the wait-any part | M4-D (E1). The choreography part is F15 (M4-E) |
 | F14 | Post-M3 direction; M4 for its extension points | **In scope**: `DispatchDecision`, protected conditions, the Class 0 checker, plan lint | M4-A. Phases 1 to 4 stay Evaluation (F19). Gating dispatch on `ASSURED` needs its WC amendment (Phase 5): deferred |
-| F15 | M4 | **In scope** | Foundation in M4-A, stages in M4-E after promotion (M4-B2) |
+| F15 | M4 | **In scope** | Foundation in M4-A, stages in M4-E after promotion (M4-B2, met 2026-10-05) |
 | E2 | M4 (early reconnaissance) | **In scope** | M4-A: subprocess-aware coverage of the harness code, as evidence for where M4's tests are thin; not a gate |
 | F20 | M4 | **In scope** | F track |
 | F20.2 to F20.6 | M4 | **In scope** | F track; F20.3 with its own security acceptance (M4-B8) |
@@ -353,7 +353,7 @@ One PR per phase, each with its own tests, the local lanes green on Windows and 
 | **M4-B** Containment (Linux) | §2.4 | Isolation §12 list fails at the OS level; E13 passes with `NSpid` translation; fingerprint and `prepare` hold with the private store; the launch self-test fails closed; the research §6 probes pass on a **real Rocky 8 kernel** (needs a Rocky 8 host, see "Remaining open items"); guarantee labels truthful on both platforms, network `NOT PROVIDED` |
 | **M4-C** Workspaces N > 1 | §2.5 | Two and four concurrent mutating Tickets on the scripted drivers; the oracle with the new rule 1; the cap as an admission rule (lowering it drains, never evicts); worktree setup and cleanup costs recorded |
 | **M4-D** Queue engine | §2.6 to §2.9 | Records, transitions and oracle rules for the queue and lease; every §7.1 disposition as a regression (lease owner, a live custodian across acquire to release (M4-B10), dead custodian, no timeout release, one rebuild, second move to disposition, conflict to the Lead, no head-of-line blocking, retirement with archival); fault points inside the lease transitions killed by real processes; downgrade test (the baseline engine refuses an M4 control file); D4 path; wait-any; ISO-004 lock tests (stale owner reconciled; the lock without an ALLOW moves nothing; moved from M4-C) |
-| *(gate)* | The designer promotes F15 v0.4 | Governing text merged |
+| *(gate)* | The designer promotes F15 v0.4 | **Met 2026-10-05:** the typed Lead surface v0.2 merged as a governing design |
 | **M4-E** Stages | §2.10 | Stage and primitive equivalence; mixed-mode walks; seeded policy drift; `PUBLISH_IF_CLEAN` across exactly one head-move rebuild; `VALIDATE_ONLY`; takeover with an active stage |
 | **M4-F** Queue UX | §2.11 | `integrate next`; the queue in `status`, `resume` and the guide; `lead-guide.md` regenerated |
 | **M4-G** Candidates | U1, U8, V1, V2, V4, E12 | One regression each |

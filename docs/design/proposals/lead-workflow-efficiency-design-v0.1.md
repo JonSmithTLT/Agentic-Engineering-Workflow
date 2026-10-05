@@ -1,6 +1,6 @@
 # Lead workflow efficiency: fewer model steps per Ticket
 
-**Status:** design proposal for the operator and designer, 2026-09-29. No state-machine or product-code change is implied by this document. It follows the M3 [read-only audit](../../archive/reviews/m3-audit-findings.md) and [dogfood report](../../archive/milestones/m3-dogfood-report.md).
+**Status:** design proposal for the operator and designer, 2026-09-29; superseded by the governing [typed Lead surface v0.2](../typed-lead-surface-design-v0.2.md) (2026-10-05): its stage commands and façade are that design's catalog and runner (ledger LWE-01, LWE-02 absorbed), its pilot order that design's §11 sequencing (LWE-04); its savings target and ceiling stay the evaluation's (LWE-03, F19). No state-machine or product-code change is implied by this document. It follows the M3 [read-only audit](../../archive/reviews/m3-audit-findings.md) and [dogfood report](../../archive/milestones/m3-dogfood-report.md).
 
 ## The cost to remove
 

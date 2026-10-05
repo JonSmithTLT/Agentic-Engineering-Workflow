@@ -1,6 +1,6 @@
 # AEW Idea Note v0.4: One Engine, Two Interaction Surfaces
 
-**Status:** Non-governing idea note for discussion and review  
+**Status:** Direction adopted (designer, 2026-10-01; register F15). Since 2026-10-05 the governing text for what this note describes is the typed Lead surface v0.2 (`typed-lead-surface-design-v0.2.md`): where the two overlap, that design governs, and the requirements of this note that it carries are marked absorbed in the requirements ledger. This note still governs what the design defers to it: §16 (event-driven safety mechanics), §17 (conditional publication, with the designer's decisions of 2026-10-01) and the F17 and anomaly obligations (§6, §19). Written as a non-governing idea note for discussion and review  
 **Date:** 2026-10-01  
 **Purpose:** Refine the F15/operator-UX direction after designer, reviewer, and implementer feedback. This is intentionally not yet a formal design or contract.
 

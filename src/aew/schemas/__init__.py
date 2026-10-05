@@ -28,6 +28,7 @@ SCHEMAS = {
     "history": "history.schema.json",
     "transition": "transition.schema.json",
     "transition-events": "transition-events.schema.json",
+    "transition-segment": "transition-segment.schema.json",
 }
 
 

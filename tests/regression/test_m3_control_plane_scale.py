@@ -94,6 +94,14 @@ def test_after_migration_the_hot_state_holds_history_only_as_aggregates(tmp_path
         v1 = CP.project_footprint(t.root)
         assert v1["units"] == {"open": 20, "completed": completed} and v1["cold_bytes"] == 0
         CP.migrate(t)
+        # ADR-0012 (D1 review, process note): the migration is a mass transition. Its events exceed the hot bound,
+        # go to an overflow sidecar, and the log returns the complete set.
+        engine = CP.Engine.discover(t.root)
+        last = engine.store.read()["last_transition"]
+        assert last["op"] == "migrate" and last["event_overflow"]["event_count"] > 64
+        assert len(last["events"]) == 64 and (t.root / ".aew" / last["event_overflow"]["path"]).is_file()
+        [migration] = engine.history_log(since=last["revision"] - 1)["transitions"]
+        assert len(migration["events"]) == last["event_overflow"]["event_count"]
         hot = points[completed] = CP.project_footprint(t.root)
         assert hot["units"] == {"open": 20, "completed": 0}
         assert hot["open_bytes"] == v1["open_bytes"]  # open work is untouched

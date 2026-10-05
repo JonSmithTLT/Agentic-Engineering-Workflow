@@ -246,11 +246,15 @@ class HistoryIndex:
         return rows[0] if rows else None
 
     def list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
-             limit: int | None = None) -> list[dict[str, Any]]:
-        """Entries by kind and a date range (``at`` compares as ISO-8601 text), newest first."""
+             limit: int | None = None, max_seq: int | None = None, before_seq: int | None = None,
+             ) -> list[dict[str, Any]]:
+        """Entries by kind and a date range (``at`` compares as ISO-8601 text), newest first. ``max_seq`` pins the
+        newest entry a page may hold and ``before_seq`` excludes everything from that number up: together they page
+        a history that keeps growing without the pages shifting (register F20.2, the dashboard's pinned cursors)."""
         where: list[str] = ["seq <= ?"]
         args: list[Any] = [self._upto()]
-        for clause, value in (("kind = ?", kind), ("at >= ?", since), ("at <= ?", until)):
+        for clause, value in (("kind = ?", kind), ("at >= ?", since), ("at <= ?", until), ("seq <= ?", max_seq),
+                              ("seq < ?", before_seq)):
             if value is not None:
                 where.append(clause)
                 args.append(value)
@@ -260,7 +264,9 @@ class HistoryIndex:
             sql += " LIMIT ?"
             args.append(limit)
         return self._rows(sql, tuple(args), lambda e: (kind is None or e["kind"] == kind)
-                          and (since is None or e["at"] >= since) and (until is None or e["at"] <= until))
+                          and (since is None or e["at"] >= since) and (until is None or e["at"] <= until)
+                          and (max_seq is None or e["seq"] <= max_seq)
+                          and (before_seq is None or e["seq"] < before_seq))
 
     def units(self, state: str) -> list[dict[str, Any]]:
         """Archived unit entries in a finished state (DONE or CANCELLED), in history order."""

@@ -90,3 +90,28 @@ The M1 rows are unchanged, and the table-driven test still pins exactly one `via
 
 The serial cap of B6 becomes the policy's cap. A mutating Ticket counts while it holds a live workspace, whatever its state (as amended in M2); the number allowed is `gates.yaml` `mutating_concurrency`, default 1. M4-A read the value but clamped it to 1. The cap governs **admission**: lowering it never makes admitted work illegal, the live workspaces drain, and no new mutating workspace is admitted until occupancy is below the new cap (operator, 2026-10-04). Each Ticket has its own worktree, and integration stays serialized through ADR-0004, so nothing else in the state machine changes.
 
+
+## Amendment 2026-10-05 — engine custody invocations (M4-D3)
+
+Until now every invocation was a role invocation: a role, a credential, an execution profile, and usually a harness run. M4-D adds a second **kind** of invocation (the M4-D plan §1.2, operator 2026-10-04):
+
+```text
+invocation kind: integration_attempt
+execution: engine (non-model)
+harness: none
+model: none
+```
+
+- **What it is.** The integration queue lease's custodian. It is created in the transaction that grants the lease (`aew integrate prepare`, through the `integrate.prepare` dispatch decision, which admits it) and ended in the transaction that releases it.
+- **What it is not.** It is not a role invocation and is never modelled as one:
+  - it has no role, credential, execution profile or run;
+  - its ids are a series of their own (`IA-0001`), so role invocations keep their numbering;
+  - `integrator` may appear as a label, never as a role.
+- **Its records.** It is on its Ticket's invocation list and is archived with the Ticket. The post-integration verifier records it as `custodian`: the verifier is its child.
+- **Its statuses.** It uses the existing invocation statuses:
+  - `completed` when its lease ends normally (published, a conflict, a stale candidate);
+  - `cancelled` when its Ticket leaves COMMIT_READY or the Lead cancels it;
+  - `interrupted` by a takeover or an uncarried handoff.
+- **What does not end it.** The state hooks that cancel a Ticket's invocations (terminal states, a released workspace) leave it to the queue, which ends it in the same transaction.
+- **Death means reconciliation.** When it stops being active while its lease is held, the lease is marked for reconciliation and its children are cancelled. ADR-0004's amendment of today says what reconciliation does.
+- **No Ticket state changes.** A Ticket waits on its custodian in no phase, so losing one never makes a Ticket INTERRUPTED.

@@ -50,9 +50,10 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
                   "expected_revision", "invoke.create.parent"),
     PrimitiveSpec("harness.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
                   "expected_revision", "harness.launch"),
-    # Integration (ADR-0004), driven by the M4-D queue. Their legality checks migrate into queryable guards there.
+    # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
+    # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
-                  "control_state+workspace", "expected_revision", None),
+                  "control_state+workspace", "expected_revision", "integrate.prepare"),
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
                   ("integration_verification",), "control_state", "expected_revision", None),
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),

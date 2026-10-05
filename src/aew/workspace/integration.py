@@ -40,6 +40,9 @@ Entry = tuple[str, str]
 TREE: Entry = ("040000", "tree")
 GITLINK_MODE = "160000"
 SYMLINK_MODE = "120000"
+# How many commits between a published candidate and the current ref a reconcile looks through for paths they
+# already settled (register E34). Beyond it a path is classified against H and M only, and refused if foreign.
+LATER_COMMITS = 256
 
 
 def commit_workspace(workspace: Path, message: str) -> str:
@@ -343,14 +346,25 @@ def _prune_empty_parents(repo_root: Path, path: Path) -> None:
 
 
 def _superseded(repo_root: Path, head: str | None, new: str, st: _PathStates, paths: list[str]) -> list[str]:
-    """Paths a later commit on the ref (``head``, which contains ``new``) already settled: the index and working copy
-    hold exactly ``head``'s entry, which differs from ``new``'s. ``new`` stays in the lineage; whether the later
-    commit kept its change on those paths is the later commit's business, so they are reported, never rewritten."""
+    """Paths a later commit on the ref already settled: the index and working copy hold exactly the entry of a commit
+    between ``new`` and ``head`` (which contains ``new``), and it differs from ``new``'s. ``new`` stays in the
+    lineage; whether the later commit kept its change on those paths is its own business, so they are reported, never
+    rewritten. Any commit in between counts, not only ``head``: more than one publisher may have moved the ref since
+    (register E34, note 1), up to ``LATER_COMMITS`` of them, newest first."""
     if not head or head == new:
         return []
-    later = tree_entries(repo_root, head, paths)
-    return [p for p in paths
-            if later[p] != st.new[p] and st.index[p] == later[p] and st.fs.matches(st.worktree[p], later[p])]
+    later = git.git("rev-list", f"--max-count={LATER_COMMITS}", f"{new}..{head}", cwd=repo_root).stdout.decode().split()
+    settled: list[str] = []
+    remaining = list(paths)
+    for commit in later:
+        entries = tree_entries(repo_root, commit, remaining)
+        found = [p for p in remaining if entries[p] != st.new[p] and st.index[p] == entries[p]
+                 and st.fs.matches(st.worktree[p], entries[p])]
+        settled += found
+        remaining = [p for p in remaining if p not in set(found)]
+        if not remaining:
+            break
+    return settled
 
 
 def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, head: str | None = None,

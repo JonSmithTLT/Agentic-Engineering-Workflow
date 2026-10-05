@@ -211,3 +211,28 @@ def test_file_symlink_transitions_sync(tmp_path, direction):
     target = repo / ("calc/core.py" if direction == "file_to_symlink" else "link")
     assert target.is_symlink() == (direction == "file_to_symlink")
     assert_synced(repo, m)
+
+
+def test_a_reconcile_accepts_paths_any_later_commit_settled_not_only_the_head(tmp_path):
+    """Register E34 (note 1): after a publish, more than one commit may land on the ref before the interrupted sync is
+    reconciled. A path whose index and working copy hold the entry of a commit between the candidate and the head
+    (not the head's own) was settled by that commit: reported, never rewritten, and never mistaken for local work."""
+    repo, h, m = build(tmp_path, BASE, edit_core)
+    paths = publish(repo, h, m)  # published, and the sync was interrupted before it started
+
+    def commit_on_main(parent: str, text: str) -> str:
+        source = tmp_path / "later.py"
+        write(source, text)
+        blob = git("hash-object", "-w", str(source), cwd=repo)
+        git("update-index", "--add", "--cacheinfo", f"100644,{blob},calc/core.py", cwd=repo)
+        tree = git("write-tree", cwd=repo)
+        git("reset", "-q", cwd=repo)  # leave the authoritative index as it was
+        return git("commit-tree", tree, "-p", parent, "-m", "later", cwd=repo)
+
+    x1 = commit_on_main(m, "def add(a, b):\n    return a + b  # first later commit\n")
+    x2 = commit_on_main(x1, "def add(a, b):\n    return a + b  # second later commit\n")
+    git("update-ref", "refs/heads/main", x2, m, cwd=repo)
+    git("checkout", x1, "--", "calc/core.py", cwd=repo)  # the checkout holds the first later commit's entry
+    out = I.sync_worktree(repo, h, m, paths, head=x2)
+    assert out["settled_by_later_commit"]["paths"] == ["calc/core.py"]
+    assert (repo / "calc/core.py").read_text(encoding="utf-8").endswith("# first later commit\n")

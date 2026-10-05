@@ -32,3 +32,20 @@ def test_f1_a_malformed_event_fails_the_commit_wherever_it_falls_in_an_overflowi
     assert make_store(tmp_path).read()["revision"] == 0
     assert not list((tmp_path / "state/log").glob("*.events.yaml"))
     assert not list((tmp_path / "state").glob("txn/*.yaml"))
+
+
+def test_f4_every_wake_bump_changes_the_mark_even_within_one_timestamp_tick(tmp_path):
+    """Review F4: two bumps inside one filesystem timestamp tick left the same (mtime, inode ^ size) mark for a fifth
+    to two fifths of back-to-back pairs, so a waiter that looked between them slept until the coarse check. Each bump
+    now replaces the file, giving it a new identity."""
+    from aew.engine import outbox
+
+    collisions = 0
+    for _ in range(1000):
+        outbox.bump_wake(tmp_path, 10)
+        a = outbox.wake_mark(tmp_path)
+        outbox.bump_wake(tmp_path, 10)
+        b = outbox.wake_mark(tmp_path)
+        collisions += a == b
+    assert collisions == 0
+    assert not list((tmp_path / "local").glob(".wake.*.tmp"))

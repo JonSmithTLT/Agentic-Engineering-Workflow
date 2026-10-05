@@ -452,23 +452,32 @@ def matches(record: dict[str, Any], kinds: set[str] | None) -> dict[str, Any] | 
 # ---------------------------------------------------------------------------------------------- wake (D4)
 
 def bump_wake(aew_root: Path, revision: int | None = None) -> None:
-    """Advisory: change ``local/wake``. A plain write, never fsynced: waiters only stat the file, and durability would
-    cost a commit milliseconds on Windows for nothing (ADR-0012's H2 budget). Failure is ignored; a waiter's coarse
-    check covers a missed wake."""
+    """Advisory: change ``local/wake``. Written to a temp file and renamed over it, so every bump gives the file a new
+    identity (file id) even when two land in one timestamp tick with the same size (D1 review F4). Never fsynced:
+    waiters only stat the file, and durability would cost a commit milliseconds on Windows for nothing (ADR-0012's H2
+    budget). Failure is ignored; a waiter's coarse check covers a missed wake."""
+    tmp = None
     try:
         path = aew_root / WAKE_REL
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{revision if revision is not None else '-'} {time.time_ns()}\n", encoding="utf-8")
+        tmp = path.with_name(f".wake.{os.getpid()}.{time.time_ns()}.tmp")
+        tmp.write_text(f"{revision if revision is not None else '-'} {time.time_ns()}\n", encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
-        pass
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
-def wake_mark(aew_root: Path) -> tuple[int, int] | None:
+def wake_mark(aew_root: Path) -> tuple[int, int, int] | None:
+    """What a waiter compares: the wake file's (mtime, file id, size). Every bump changes the file id."""
     try:
         st = os.stat(aew_root / WAKE_REL)
     except OSError:
         return None
-    return st.st_mtime_ns, st.st_ino ^ st.st_size
+    return st.st_mtime_ns, st.st_ino, st.st_size
 
 
 def wait_for(check: Callable[[], Any], aew_root: Path, *, timeout: float, tick: float = 0.025,

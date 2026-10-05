@@ -231,6 +231,28 @@ Built as §2.6 and the M4-D plan say, with these specifics. The ADR text is in A
   - the later-commit sync case in `test_worktree_sync.py`;
   - the seeded walk `tests/regression/test_m4_queue_walk.py`, whose acceptance budget is 3 seeds × 500 steps.
 
+### M4-D4 as built (2026-10-05)
+
+Built as §2.6 and §2.7 say. The ADR text is ADR-0004's second amendment of 2026-10-05.
+
+- **The one automatic rebuild** happens where a moved head is found:
+  - at `integrate publish`;
+  - at `reconcile`, when a CAS never happened against a moved head.
+
+  It first proves the ref does not contain the candidate, recomputes the `integrate.prepare` decision, and rebuilds the candidate under the same lease, custodian and position (`rebuilds_used: 1`). Publish then answers `rebuilt`, and validation reruns on the new candidate. Each grant gets a fresh allowance.
+- **To the Lead (AWAITING_DISPOSITION):**
+  - a second move, changed legality, a conflict or refusal on the rebuild, or a ref that can't prove the candidate unpublished;
+  - an inconclusive post-integration validation, which no longer holds the one lease while the Lead decides.
+
+  A failed validation retires the entry through VERIFICATION_FAILED, as before. A superseded binding keeps D3's answer, back to QUEUED in its place.
+- **The Lead's commands:** `aew integrate defer`, `requeue` and `reorder`, each with a reason. They are judgment-bearing primitives (`queue_disposition`).
+  - Deferring a LEASED entry gives up the lease and retires the unpublished candidate.
+  - Requeue keeps the entry's place.
+  - Reorder renumbers the live entries with fresh positions.
+- **Oracle rule 39:** at most one rebuild per lease; a disposition record exactly on DEFERRED and AWAITING_DISPOSITION entries.
+- **Tests:** `tests/integration/test_queue_disposition.py`; D3's stale-candidate tests now expect the rebuild; the queue walk adds defer, requeue and reorder.
+- **Not here:** `aew integrate next` and the queue in `status`, `resume` and `guide` (M4-F); the `checks` validation path (D5); wait-any (D6).
+
 ### 2.7 What survives a head move: reuse work product, not proof (decision 4)
 - **Head moved, Ticket work product unchanged:** existing Ticket evidence may stay current if every binding it depends on is unchanged. The integration candidate is still rebuilt against the new H, integration validation always reruns, and `DispatchDecision` recomputes.
 - **Conflict resolution or changed implementation:** a new implementation attempt and fingerprint. Snapshot-bound review and verification do not carry forward, the effective gates for the Ticket's class and policy rerun, and plan/assurance applicability is recomputed from its bindings.
@@ -243,6 +265,20 @@ Built as §2.6 and the M4-D plan say, with these specifics. The ADR text is in A
 ### 2.9 Wait-any (M4-D; E1, the wait-any part of O4)
 - `aew harness wait --any R1 R2 …`, woken through a per-project wake file instead of 0.2 s polling (ADR-0012 D4 decided the file: `local/wake`, bumped by the store after each commit's log record and by the supervisor after each run-record write; built in M4-D slice D1). Polling remains the fallback.
 - It returns the first run to end, with its next action.
+
+### M4-D6 as built (2026-10-05)
+
+- **`aew harness wait R1 R2 … --any`** returns the first run to end, with its next action and the runs still running. Several runs without `--any` are refused, which leaves room for an `--all`; the single-run form is unchanged.
+- **Waking:** the 0.2 s poll is gone. The wait blocks on `local/wake` (a stat every 25 ms, a coarse re-check every 2 s) through `outbox.wait_for`, the same loop as `history log --follow`.
+- **Two lanes on each wake (ADR-0012 D5):**
+  - the runs' own records: did one end;
+  - committed control state: did an invocation one of the runs serves stop being active, cancelled, interrupted by a takeover or completed. Such a result carries `ended_by: {lane: control, why}`.
+- **No parse between commits:** control state is parsed only when `control.yaml`'s identity changed. A wait parses nothing between commits, however often the wake file changes (OBX-38).
+- **Wake latency** (`tools/perf/wake_latency.py`, two processes, 60 commits, Windows reference machine):
+  - median 42.2 ms from the start of the commit (p90 47.6 ms), within the 50 ms budget;
+  - median 13.3 ms from the commit's return.
+  - The Rocky 8 measurement is still owed (OBX-37).
+- **Tests:** `tests/integration/test_harness_wait_any.py`: the first to end, a control-side end, the refusals and the timeout shape, the parse count under spurious wakes and under a commit; and, from the independent review: an invocation already ended when the wait starts (the initial snapshot is examined), a commit between the initial read and its identity (the identity is taken first), and `still_running` naming only runs live in both lanes.
 
 ### 2.10 Stage commands (M4-E; F15)
 Gated on the designer promoting F15 v0.4 to a governing design (decision 1; met 2026-10-05: the typed Lead surface v0.2 governs). Then:

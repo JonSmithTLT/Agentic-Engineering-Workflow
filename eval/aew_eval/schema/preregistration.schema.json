@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/eval-prereg/v1",
+  "title": "A preregistration (evaluation component design v0.2, section 4)",
+  "description": "Frozen before the first paid run: everything that decides what a run means. `prereg.freeze` fills assignment.order, frozen_at, frozen_by and canonical_sha256; a frozen record is never edited (a material change is a new experiment id).",
+  "type": "object",
+  "required": ["schema", "experiment", "question", "arms", "cases", "profiles", "runs_per_cell", "assignment",
+               "primary_measure", "metrics", "validity_rules", "stopping_rule", "scoring", "held_out",
+               "exposure_policy", "amendment_policy"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/eval-prereg/v1"},
+    "experiment": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "question": {"type": "string", "minLength": 1},
+    "arms": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "description", "config"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+          "kind": {"enum": ["aew", "raw", "scripted"]},
+          "description": {"type": "string"},
+          "config": {"type": "object"}
+        }
+      }
+    },
+    "cases": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "family", "sha256", "hidden_sha256", "control_of"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+          "family": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "hidden_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+          "control_of": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "required": ["roles", "budget_usd"],
+      "additionalProperties": false,
+      "properties": {
+        "roles": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
+        "budget_usd": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "runs_per_cell": {"type": "integer", "minimum": 1},
+    "assignment": {
+      "type": "object",
+      "required": ["method", "seed"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"enum": ["randomized_blocked", "counterbalanced", "fixed"]},
+        "seed": {"type": "integer"},
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["order_index", "cell", "case", "arm", "repetition"],
+            "additionalProperties": false,
+            "properties": {
+              "order_index": {"type": "integer", "minimum": 0},
+              "cell": {"type": "string"},
+              "case": {"type": "string"},
+              "arm": {"type": "string"},
+              "repetition": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "primary_measure": {"type": "string", "minLength": 1},
+    "secondary_measures": {"type": "array", "items": {"type": "string"}},
+    "thresholds": {"type": "object"},
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name", "version"], "additionalProperties": false,
+        "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
+      }
+    },
+    "validity_rules": {
+      "type": "object",
+      "required": ["infrastructure_invalid", "counted_failures", "retry_policy", "missing_result_policy"],
+      "additionalProperties": false,
+      "properties": {
+        "infrastructure_invalid": {"type": "array", "items": {"type": "string"}},
+        "counted_failures": {"type": "array", "items": {"type": "string"}},
+        "retry_policy": {
+          "type": "object", "required": ["max_retries", "allowed_for"], "additionalProperties": false,
+          "properties": {
+            "max_retries": {"type": "integer", "minimum": 0},
+            "allowed_for": {"type": "array",
+                            "items": {"enum": ["invalid_measurement", "runner_lost", "environment_blocked"]}}
+          }
+        },
+        "missing_result_policy": {"type": "string"}
+      }
+    },
+    "stopping_rule": {"type": "string", "minLength": 1},
+    "scoring": {
+      "type": "object",
+      "required": ["hidden_channel", "who_scores", "blinding", "adjudication_policy"],
+      "additionalProperties": false,
+      "properties": {
+        "hidden_channel": {"type": "string"},
+        "who_scores": {"enum": ["automated", "model", "operator", "mixed"]},
+        "blinding": {"enum": ["arm_hidden", "not_possible"]},
+        "adjudication_policy": {"type": "string"},
+        "rubric_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "held_out": {"type": "array", "items": {"type": "string"}},
+    "exposure_policy": {"type": "string"},
+    "amendment_policy": {"type": "string"},
+    "frozen_at": {"type": "string"},
+    "frozen_by": {"type": "string"},
+    "canonical_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

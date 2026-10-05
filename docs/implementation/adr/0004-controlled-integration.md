@@ -153,3 +153,37 @@ Integration is now served by a queue in control state (M4 report §2.6; the M4-D
   - 38: integration verifiers are children of a live lease.
 
   They hold in the seeded queue walk (`tests/regression/test_m4_queue_walk.py`).
+
+## Amendment 2026-10-05 (2) — what survives a head move, and the Lead's queue commands (M4-D4)
+
+D3's answers to a moved head (the lease released, the entry back to QUEUED) are replaced by the M4 report's §2.6 and §2.7. Everything else in the D3 amendment holds.
+
+- **The one automatic rebuild.**
+  - When `aew integrate publish` finds the authoritative head moved under its candidate, or `reconcile` finds a CAS that never happened against a moved head, the engine:
+    1. proves nothing was published: the ref does not contain the candidate;
+    2. recomputes legality as a grant would: the `integrate.prepare` decision, recorded;
+    3. rebuilds the candidate on the new head, under the same lease, custodian and queue position. There is no release, no new `seq` and no new `commit_ready_seq`. The entry's `rebuilds_used` becomes 1.
+  - The Ticket's work product and Ticket-scope evidence are reused, because their bindings are unchanged.
+  - The integration candidate and its validation are not reused: publish answers `rebuilt`, and post-integration validation reruns on the new candidate before it can publish.
+  - Each grant starts with a fresh allowance of one rebuild.
+- **When the entry goes to the Lead instead.** The lease is released to AWAITING_DISPOSITION, with the reason recorded in `disposition`, when:
+  - the head moves again after the rebuild (`head_moved_again`);
+  - legality changed on the moved head (`legality_changed`, naming the blocking conditions);
+  - the rebuild conflicts (`conflict`) or is refused at admission (`refused`);
+  - the ref can't prove the candidate unpublished (`not_provably_unpublished`);
+  - post-integration validation is inconclusive (`validation_inconclusive`).
+  
+  A failed validation still moves the Ticket to VERIFICATION_FAILED, which retires the entry. A superseded binding (an earlier COMMIT_READY or plan) is not a head move: the entry keeps its place in QUEUED, as in D3.
+- **A reconcile under a dead custodian never rebuilds.** Nothing was published, so the entry returns to its place, as D3 reconciles a dead custodian.
+- **The Lead's queue commands.** They are scheduling, never eligibility, and each records its reason in the transaction:
+  - `aew integrate defer <T> --reason`: QUEUED, AWAITING_DISPOSITION or LEASED to DEFERRED.
+    - A LEASED entry gives up its lease: the custodian completes, and the open candidate, which nothing published, is retired.
+    - A publish in progress, or a lease awaiting reconciliation, is refused.
+  - `aew integrate requeue <T> --reason`: DEFERRED or AWAITING_DISPOSITION back to QUEUED, in its own place (`seq` kept).
+  - `aew integrate reorder <T> (--before <T2> | --first) --reason`: the live entries are renumbered in the new order with fresh, never reused, positions.
+  - The three are declared judgment-bearing primitives (`queue_disposition`).
+  - Preparing a DEFERRED or AWAITING_DISPOSITION entry is refused until it is requeued.
+- **Oracle rule 39:** a live entry has used at most one automatic rebuild, and only a DEFERRED or AWAITING_DISPOSITION entry carries a disposition record.
+- **Tests:**
+  - `tests/integration/test_queue_disposition.py` covers the rebuild, the second move, the conflicting rebuild, reconcile's rebuild after a crash before the CAS, inconclusive validation, defer, defer of a leased entry, reorder and the refusals;
+  - the queue walk adds defer, requeue and reorder.

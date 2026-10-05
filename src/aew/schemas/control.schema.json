@@ -190,14 +190,29 @@
       "additionalProperties": {
         "type": "object",
         "required": [
-          "role",
           "work_unit",
           "status",
-          "token_id",
           "created_at",
           "generation"
         ],
+        "if": {"required": ["kind"]},
+        "then": {
+          "required": ["kind", "execution", "queue_entry"],
+          "not": {"anyOf": [{"required": ["role"]}, {"required": ["token_id"]}, {"required": ["execution_profile"]},
+                            {"required": ["runs"]}, {"required": ["custodian"]}]}
+        },
+        "else": {"required": ["role", "token_id"]},
         "properties": {
+          "kind": {
+            "description": "Absent for a role invocation. `integration_attempt` (M4-D, ADR-0003 amendment): the integration queue lease's custody invocation, executed by the engine with no harness, model, role or credential.",
+            "enum": ["integration_attempt"]
+          },
+          "execution": {"enum": ["engine"]},
+          "queue_entry": {"type": "string"},
+          "custodian": {
+            "description": "A role invocation dispatched under a queue lease (the post-integration verifier): the integration-attempt invocation it is a child of (M4-D).",
+            "type": "string"
+          },
           "role": {
             "enum": [
               "implementer",
@@ -385,6 +400,17 @@
           "path": {"type": "string"}
         }
       }
+    },
+    "queue": {
+      "description": "M4-D: the integration queue. One live entry per COMMIT_READY mutating Ticket, served FIFO by `seq`; at most one lease, held by a LEASED entry and kept by an `integration_attempt` custodian invocation. Queue state is scheduling, never eligibility. A retired entry leaves the hot queue for its unit's `queue_history` in the same transaction.",
+      "type": "object",
+      "required": ["next_seq", "lease", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "next_seq": {"type": "integer", "minimum": 1},
+        "lease": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/queue_lease"}]},
+        "entries": {"type": "object", "additionalProperties": {"$ref": "#/$defs/queue_entry"}}
+      }
     }
   },
   "allOf": [
@@ -401,7 +427,8 @@
             {"required": ["recent"]},
             {"required": ["archived_refs"]},
             {"required": ["retained_workspaces"]},
-            {"required": ["retired_observations"]}
+            {"required": ["retired_observations"]},
+            {"required": ["queue"]}
           ]
         }
       }
@@ -412,6 +439,60 @@
     }
   ],
   "$defs": {
+    "queue_lease": {
+      "type": "object",
+      "required": ["entry", "custodian", "generation", "granted_at", "reconcile"],
+      "additionalProperties": false,
+      "properties": {
+        "entry": {"type": "string"},
+        "custodian": {"type": "string"},
+        "generation": {"type": "integer"},
+        "granted_at": {"type": "string"},
+        "reconcile": {
+          "description": "Set when the custodian died (a takeover, an uncarried handoff, a cancel): the lease is reconciled by `aew integrate reconcile`, never released by a timeout.",
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["reason", "at"], "additionalProperties": false,
+             "properties": {"reason": {"type": "string"}, "at": {"type": "string"}}}
+          ]
+        }
+      }
+    },
+    "queue_attempt": {
+      "type": "object",
+      "required": ["custodian", "granted_at", "base", "candidate", "result", "ended_at"],
+      "additionalProperties": false,
+      "properties": {
+        "custodian": {"type": "string"},
+        "granted_at": {"type": "string"},
+        "integration_attempt": {"type": ["integer", "null"]},
+        "base": {"type": ["string", "null"]},
+        "candidate": {"type": ["string", "null"]},
+        "result": {"type": ["string", "null"]},
+        "ended_at": {"type": ["string", "null"]}
+      }
+    },
+    "queue_entry": {
+      "type": "object",
+      "required": ["work", "seq", "state", "commit_ready_seq", "enqueued_at", "attempts", "rebuilds_used", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "work": {"type": "string"},
+        "seq": {"type": "integer", "minimum": 1},
+        "state": {"enum": ["QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION"]},
+        "commit_ready_seq": {"type": "integer", "minimum": 0},
+        "enqueued_at": {"type": "string"},
+        "attempts": {"type": "array", "items": {"$ref": "#/$defs/queue_attempt"}},
+        "rebuilds_used": {"type": "integer", "minimum": 0},
+        "disposition": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["reason", "at"], "additionalProperties": false,
+             "properties": {"reason": {"type": "string"}, "at": {"type": "string"}, "detail": {"type": "object"}}}
+          ]
+        }
+      }
+    },
     "history_root": {
       "type": "object",
       "required": ["count", "head_h", "sealed_head"],

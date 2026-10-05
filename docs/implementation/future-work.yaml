@@ -136,7 +136,11 @@ sections:
       on a moved head while holding the lease, after proving no publication; DEFERRED and AWAITING_DISPOSITION are queue
       states that never grant eligibility; a conflict resolution is a new implementation attempt whose gates rerun; a plain
       head move does not by itself invalidate unchanged Ticket-scope evidence, which stays subject to the normal admissibility
-      and binding rules; batching is out of scope for M4, not forbidden.'
+      and binding rules; batching is out of scope for M4, not forbidden. **M4-D3 built (2026-10-05):** the queue entries,
+      the lease and its `integration_attempt` custodian, FIFO among runnable entries, the dead-custodian reconcile, retirement
+      with the unit, the ISO-004 checkout-sync lock and oracle rules 34 to 38 ([ADR-0004 amendment 2026-10-05](adr/0004-controlled-integration.md);
+      ADR-0003 amendment of the same date for the custody invocation). Still open in M4-D: the one automatic rebuild and
+      the Lead''s reorder, defer and dispose (D4), the `checks` validation path (D5, register D4).'
   - '#': F11
     Work: Dynamic scheduler
     Source (governing): Workflow Contract; `implementation-status.md`
@@ -957,14 +961,6 @@ sections:
     Source: independent review of authority and custody, note 5, 2026-10-03
     When: '**On measured need**'
     Notes: OpenCode's databases grow large
-  - '#': E34
-    Work: 'M4-D design inputs from the integration review: the worktree-sync classifier assumes one publisher, so under
-      concurrent integration it must admit entries from any commit between the candidate and the ref; and the control-lock
-      hold time of a large publish needs a bound (a path-count limit or batched git plumbing; about 4.6 ms per changed path
-      today)'
-    Source: independent review of integration and publication, notes 1 and 9, 2026-10-03
-    When: '**M4-D** (its plan)'
-    Notes: Publication stays serialized under the control lock until M4-D
   - '#': E35
     Work: 'OpenCode support qualification and adapter seams: `codemode: false` on the Lead''s AEW MCP server, with readiness
       checked through the broker (a missing server fails the Lead closed, never a session without AEW''s control surface);
@@ -1257,6 +1253,15 @@ sections:
     Closed: '2026-10-04'
     By: 'PR #51: `engine.base.V2_ONLY_KEYS` and `as_v1`, with a test that the schema''s v1 rule refuses exactly that set;
       source: the knowledge-manifest prototype lessons §3 (ledger KMP-02)'
+  - '#': E34
+    Was: 'M4-D design inputs from the integration review: the worktree-sync classifier assumed one publisher, and a large
+      publish''s control-lock hold had no bound'
+    Closed: '2026-10-05'
+    By: 'M4-D3: the classifier accepts a path any commit between the candidate and the ref settled (up to 256); `gates.yaml`
+      `max_publish_paths` (default 2,000) refuses a larger candidate at prepare. Measured with `tools/perf/publish_sync.py`
+      on the Windows reference machine: about 4.5 to 5.5 ms a changed path after checking each path with one `lstat` instead
+      of four, so 2,000 paths hold the lock about 10 s. Batched plumbing was not needed for that bound; the remaining cost
+      is git''s own hashing of the working copy'
   - '#': E38
     Was: The acceptance guide's AT-9 row described the frozen KC §26 case (a locally Class 0 Ticket under a Class 3 Story
       keeps Class 0 and inherits the gate), which the Class 0 amendment §9.2 replaced and the row's own test refuses

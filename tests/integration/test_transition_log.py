@@ -235,3 +235,76 @@ def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they
     assert {"kind": "decision.recorded", "id": taken["decision"], "type": "authority_transfer"} in events
     assert accepted["token"].split(".")[1] in {e["id"] for e in events if e["kind"] == "credential.revoked"}
     assert_control_invariants(p)
+
+
+# ---------------------------------------------------------------------------------------------- D1 review (M4-D2)
+
+def test_f2_a_missing_pre_outbox_record_names_where_the_guarantee_begins(tmp_path):
+    """Review F2: completeness is guaranteed from outbox.since (ADR-0012 D1). A project from before the outbox that
+    lost a pre-outbox record still fails a read from 0 (no gap is skipped), but the error names the cursor from which
+    the log is complete, and reading from there works."""
+    p = sample_project(tmp_path)
+    create_planned_ticket(p, tmp_path)
+    control = p.root / ".aew/state/control.yaml"
+    state = load_control(p.root)
+    state.pop("outbox")
+    state["last_transition"] = {k: v for k, v in state["last_transition"].items()
+                                if k not in {"schema", "events", "event_overflow", "h"}}
+    control.write_bytes(serialize_control(state))
+    (p.root / ".aew/state/log/000001.yaml").unlink()
+    create_planned_ticket(p, tmp_path, title="the first outbox-era commit")
+    start = load_control(p.root)["outbox"]["since"]
+    res = p.aew("history", "log", "--since", "0", "--json")
+    assert res.error["code"] == "INTEGRITY_ERROR"
+    assert f"guaranteed complete from revision {start}" in res.error["message"]
+    assert res.error["details"]["resume_since"] == start - 1
+    out = log(p, "--since", str(start - 1))
+    assert out["transitions"][0]["revision"] == start
+
+
+def test_f3_a_follower_does_not_take_the_control_lock_on_spurious_wakes(tmp_path):
+    """Review F3: `--follow` re-ran the store's locked read (recovery, render) on every wake, and every run-record
+    write wakes. It now stats control.yaml on a wake and reads only when the file changed: a burst of spurious wakes
+    costs no read, and a commit is still returned."""
+    import threading
+
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    store = engine._k.store
+    reads = {"n": 0}
+    original = store.read
+
+    def counted_read():
+        reads["n"] += 1
+        return original()
+
+    store.read = counted_read  # type: ignore[method-assign]
+    since = load_control(p.root)["revision"]
+    stop = threading.Event()
+
+    def spurious_wakes():
+        while not stop.is_set():
+            outbox.bump_wake(p.root / ".aew")  # what a supervisor's run-record write does
+            time.sleep(0.05)
+
+    waker = threading.Thread(target=spurious_wakes, daemon=True)
+    waker.start()
+    try:
+        out = engine.history_log(since=since, follow=True, timeout=1.5)
+    finally:
+        stop.set()
+        waker.join()
+    assert out["transitions"] == []
+    assert reads["n"] == 1, reads  # the read that found the current revision, none per wake
+
+    def commit_soon():
+        time.sleep(0.5)
+        create_planned_ticket(p, tmp_path, title="woken")
+
+    committer = threading.Thread(target=commit_soon)
+    committer.start()
+    out = engine.history_log(since=since, follow=True, timeout=30)
+    committer.join()
+    assert out["transitions"] and out["transitions"][0]["revision"] == since + 1

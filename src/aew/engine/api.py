@@ -249,6 +249,8 @@ class ProjectAdmin:
                 "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
+        from aew.engine import log_compact
+        add("transition-log", *log_compact.window_status(self.k.aew_root, state["revision"]))  # ADR-0012 D6
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
@@ -717,12 +719,23 @@ class Engine:
         if unknown:
             raise UsageError(f"unknown event kind(s) {unknown}: one of "
                              f"{', '.join(outbox.DERIVED_KINDS + outbox.DECLARED_KINDS)}")
+        seen = self._control_identity()  # before the read: a commit in between changes it, and is then noticed
         state = self._k.store.read()
         if since > state["revision"]:
             raise UsageError(f"--since {since} is after the current revision {state['revision']}")
         if follow and since == state["revision"]:
-            state = outbox.wait_for(lambda: (s := self._k.store.read())["revision"] > since and s,
-                                    self._k.aew_root, timeout=timeout) or state
+            def committed() -> dict[str, Any] | None:
+                """Lock-free until control.yaml itself changed (ADR-0012 D3: the authority file's identity, not a
+                locked read per wake; D1 review F3). Every commit replaces the file, so its identity changes."""
+                nonlocal seen
+                now = self._control_identity()
+                if now == seen:
+                    return None
+                seen = now
+                s = self._k.store.read()
+                return s if s["revision"] > since else None
+
+            state = outbox.wait_for(committed, self._k.aew_root, timeout=timeout) or state
         through = min(state["revision"], since + limit)
         wanted = set(kinds or []) or None
         found = []
@@ -736,6 +749,24 @@ class Engine:
                 found.append(narrowed)
         return {"ok": True, "since": since, "through": through, "revision": state["revision"], "next": through,
                 "transitions": found}
+
+    def _control_identity(self) -> tuple[int, int, int] | None:
+        """``control.yaml``'s identity (mtime, size, file id): a commit replaces the file, so it changes."""
+        import os
+
+        try:
+            st = os.stat(self._k.store.control_path)
+        except OSError:
+            return None
+        return st.st_mtime_ns, st.st_size, st.st_ino
+
+    def history_compact(self) -> dict[str, Any]:
+        """Seal the transition log's revisions older than its 4,096-revision window into 256-transition segments
+        (ADR-0012 D6). Maintenance, off the commit path: it changes the log's physical representation only, never a
+        logical transition, and needs no Lead credential (``aew.engine.log_compact``)."""
+        from aew.engine import log_compact
+
+        return log_compact.compact(self._k.store)
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = 50, before: int | None = None) -> dict[str, Any]:

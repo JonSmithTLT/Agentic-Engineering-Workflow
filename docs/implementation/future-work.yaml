@@ -851,7 +851,11 @@ sections:
       `aew history log --since R` with the revision as the cursor, an advisory wake file, a 4,096-revision window sealed
       into 256-transition segments and never discarded, a hash chain. It meets the lead developer''s review: an oversized
       transaction''s full event list goes to an immutable staged sidecar that `last_transition` names and hashes. Ships
-      with M4-D''s schema decision (D10)'
+      with M4-D''s schema decision (D10). **Status (2026-10-05):** partly built. Slice D1 (PR #53): typed events, the overflow
+      sidecar, `aew history log` and its reader, the wake file, the hash chain. Slice D2 (PR #60): sealing into segments
+      and `aew history compact`, doctor''s window check, readers that resolve sealed segments, oracle rules 27 and 28, the
+      git-cost measurement, and the fixes from the independent review of D1. The consumers (E1''s wait-any, the dashboard
+      endpoint, capture, the scheduler) and the `queue.*` kinds remain'
   - '#': E19
     Work: A machine-readable amendment index beside `spec-pin.yaml` (each amendment, the sections it replaces, adoption
       date, a test that citing texts cite the amendment); after M4 a consolidated WC/KC re-freeze that also retires documents

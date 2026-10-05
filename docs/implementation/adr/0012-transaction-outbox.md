@@ -1,6 +1,6 @@
 # ADR-0012 — The transaction outbox: the transition log, typed, complete and consumed
 
-- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). Not yet implemented. Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates architecture-review, developer, and design-authority corrections for overflow completeness, sealing/read races, hash coverage, command naming, and consumer semantics.
+- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). **Partly built.** M4-D slice D1 (PR #53) built the typed events derived in the store (D2), the hot bound with the staged overflow sidecar, `aew history log` and its lockless reader (D3), the advisory wake file (D4), the hash chain (D7), the `log.overflow_unpublished` fault point (D9) and the downgrade marker (D10), with oracle rules 24 to 26. Slice D2 added sealing and compaction (D6: `aew history compact`, 256-transition segments behind the 4,096-revision window, doctor's window check), the reader's resolution of sealed segments (D3), the `log.seal.*` fault points (D9) and oracle rules 27 and 28, and fixed the independent review of D1. Still to build: the consumers of D8 (wait-any, the dashboard endpoint, capture, the scheduler) and the `queue.*` kinds (M4-D). Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates architecture-review, developer, and design-authority corrections for overflow completeness, sealing/read races, hash coverage, command naming, and consumer semantics.
 - **Spec basis:**
   - WC §5, the crash-safe control-authority rule (v0.7 line 246, inside §5.1, as ADR-0001 cites it), and WC §8.2, checkpoint and crash semantics: a transition "either leaves the previous valid state intact or publishes the complete new valid state".
   - WC §15.6: "CLI and MCP must never implement separate state authorities"; a consumer of events is a reader, never a second authority.
@@ -40,7 +40,7 @@ So the outbox exists in all but four respects: the record says what operation ra
 
 ### D1. Completeness is a stated guarantee
 
-For every revision `r <= revision`, there is exactly one **logical transition record** for `r`. Its current physical representation is one of:
+For every revision `r <= revision` from the revision the outbox began (`outbox.since` in control state), there is exactly one **logical transition record** for `r`. (Clarified 2026-10-05 after the independent review of slice D1: records from before the outbox were, under ADR-0001's old wording, never authoritative and nothing protected them; the chain and this guarantee start at `outbox.since`. A reader that reaches a missing record before it fails, naming the cursor from which the log is complete.) Its current physical representation is one of:
 
 - an unsealed `state/log/<r>.yaml` transition record, with an optional immutable overflow payload `state/log/<r>.events.yaml`; or
 - a sealed-segment representation containing the same logical transition and any overflow payload.
@@ -62,15 +62,15 @@ Derived kinds, by comparing hot collections (bounded by active complexity under 
 | Kind | Fields | From |
 |---|---|---|
 | `lead.generation` | `from, to` | `lead.generation` |
-| `work.state` | `id, kind, from, to` | `work[*].state` (a unit created: `from: null`) |
+| `work.state` | `id, unit, from, to` | `work[*].state` (a unit created: `from: null`) |
 | `invocation.status` | `id, work, role, from, to` | `invocations[*].status` |
 | `run.added` | `invocation, run` | `invocations[*].runs` |
 | `credential.revoked` | `id, reason` | `tokens[*].revoked_at` |
 | `history.appended` | `from_count, to_count, head_h` | `cold.root` |
-| `unit.archived` | `id, kind, state` | `recent` (new entries) |
+| `unit.archived` | `id, unit, state` | `recent` (new entries) |
 | `queue.entry`, `queue.lease` (M4-D) | `id, from, to` / `entry, custodian` | `queue.*` |
 
-Operation-declared kinds are appended through `TxnContext.events` for facts the state diff cannot recover precisely, including `decision.recorded {id, type}`, `handoff.recorded {id}`, `evidence.ingested {work, kind, ids}`, and `audit.recorded {id, result}`. Operation-declared events are data supplied by the authoritative Engine operation; they do not allow callers or consumers to invent events independently.
+Operation-declared kinds are appended through `TxnContext.events` for facts the state diff cannot recover precisely, including `decision.recorded {id, type}`, `handoff.recorded {id}`, `evidence.ingested {work, evidence_kind, ids}`, and `audit.recorded {id, result}`. (Field names as built: `kind` is the event's own kind, so the unit's kind is `unit` in `work.state` and `unit.archived`, and the evidence's kind is `evidence_kind` in `evidence.ingested`; `transition.schema.json` is the authority.) Operation-declared events are data supplied by the authoritative Engine operation; they do not allow callers or consumers to invent events independently.
 
 The existing `op`, `actor`, `summary`, `reason`, and `refs` remain. `refs` continues to name durable files written by the transition.
 
@@ -153,7 +153,7 @@ The supervisor's `run.json` and `events.jsonl` (`local/harness/runs/<run>/`) are
 The transition history is the durable record of committed transition provenance by revision. It is never discarded.
 
 - `LOG_WINDOW` is **4,096 revisions** for v1.
-- Records older than the window are sealed in groups of 256 logical transitions into `state/log/seg-NNNNNN.yaml`.
+- Records older than the window are sealed in groups of 256 logical transitions into `state/log/seg-NNNNNN.yaml`. NNNNNN is the segment index; the segment holds revisions `NNNNNN*256` to `NNNNNN*256 + 255` (the name is not a revision).
 - A segment contains each bounded transition record and, for any overflow transition, the complete overflow event payload (or an equivalently hashed segment-local representation). The segment verifier recomputes the overflow digest/count from the sealed payload and requires it to match the transition's committed descriptor.
 - The segment is written create-if-absent, fsynced, re-read, schema-validated, and hash-verified before any per-revision transition file or overflow sidecar is removed.
 - Pruning is idempotent. A crash may leave only unsealed files, or both a valid segment and some/all equivalent unsealed files; it must never leave neither logical representation.

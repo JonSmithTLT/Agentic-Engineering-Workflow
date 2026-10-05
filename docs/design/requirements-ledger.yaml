@@ -192,8 +192,8 @@ sources:
       "Alternatives considered": rejected alternatives (OpenPGP, Sigstore, a raw envelope, signing the tar, CI signing, a bundle-only verifier) with the reasons; the chosen mechanism is D1
       "Consequences and limits": consequences of D1 to D9 and the threat model's boundary; no new requirement
   - prefix: EVC
-    path: docs/design/proposals/evaluation-component-design-v0.2.md
-    role: proposal
+    path: docs/design/evaluation-component-design-v0.2.md
+    role: adopted-design
     carried:
       "Frozen designer decisions": [EVC-11, EVC-12, EVC-15, EVC-21]
   - prefix: NET

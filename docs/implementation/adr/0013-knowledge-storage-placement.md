@@ -174,7 +174,7 @@ The principal is:
 - added to ADR-0009's environment-trust inventory and credential-scrubbing/verification tests;
 - denied every operation outside its enumerated `knowledge.*` family.
 
-Token form, issuance, rotation and custody are ADR-0005's amendment of 2026-10-05 and ADR-0009's matching custody sentence; these authority semantics are frozen here. **A service transaction archives nothing:** it runs without the archival finalizer, appends only its own history entries, ends no credential and prunes no observation; finished work waits for the next Lead commit.
+Token form, issuance, rotation and custody are ADR-0005's amendment of 2026-10-05 and ADR-0009's matching custody sentence; these authority semantics are frozen here. **A service transaction archives nothing:** it runs none of the Lead transaction's finalizers (archival, and from M4-D3 the queue step, whose `queue` write lies outside the knowledge family), appends only its own history entries, ends no credential and prunes no observation; finished work waits for the next Lead commit.
 
 For policy-resolved paths, the service may publish K0 references, approved-template K1 Cases, initial/hold `knowledge_disposition` events and `capture_receipt`s when the accepted Knowledge policy resolves every consequential choice. K2/K3 remain subject to the accepted judgment boundary; K3 is never automatically admitted in M6 v1.
 
@@ -238,6 +238,8 @@ These expensive global checks remain off the ordinary commit path under ADR-0011
 21. **Provenance is not meaning.** Coarse `source=engine` and `ENGINE_OBSERVED_*` provenance never by themselves establish semantic correctness, oracle adequacy or default serving.
 
 ## Oracle rules (continuing finalized ADR-0012 rules 24–28)
+
+Rule numbers are owned by the ADR that introduces them, and a later ADR continues from the highest number in force: ADR-0012 owns 24 to 28, this ADR 29 to 33, and M4-D3's queue rules start at 34.
 
 29. A `knowledge_service` commit changes only explicitly permitted Knowledge/cold/counter/last-transition fields and appends only permitted Knowledge-history entry kinds; attempted mutation of work/invocation/Lead/credential domains fails before commit.
 30. Every `knowledge_disposition` targets an exact `reference`, `case` or `lesson` version that already exists in authenticated history or earlier in the same staged transaction, and its `knowledge_disposition_seq` is correct.

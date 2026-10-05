@@ -77,8 +77,10 @@ Windows and on Rocky 8.10, the operator takeover through a real pty included; th
   rather than trusting the caller, a bug in a higher-level operation or a hostile call site reaching `Session.commit`
   fails the same way as a command-layer attempt. ADR-0013's oracle rule 29 (the closed service transaction) is
   thereby an enforced property, not only a tested one.
-- **A service transaction archives nothing.** It runs with the archival finalizer disabled: it appends its own
-  history entries and archives no unit, ends no credential and prunes no observation. Finished work waits for the
+- **A service transaction archives nothing.** It runs none of the Lead transaction's finalizers (archival, and
+  from M4-D3 the queue step, which may write `queue` on a project created before the queue existed, a write outside
+  the knowledge family that the store would refuse): it appends its own history entries and archives no unit, ends no
+  credential and prunes no observation. Finished work waits for the
   next Lead commit, so a service commit is never mistakable for the Lead's in effect.
 - **Custody is the Lead's.** No raw service credential enters a model-controlled process. The Lead broker refuses
   `service issue` as it refuses the Lead's credential-emitting commands (ADR-0009); the agent environment allowlist

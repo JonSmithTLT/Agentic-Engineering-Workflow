@@ -134,6 +134,7 @@ text is not governing.
 | [`AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`](design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md) | F9 | Frozen at v0.1 | Revisit on dogfood evidence |
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
+| [`cost-usage-ledger-design-v0.1.md`](design/proposals/cost-usage-ledger-design-v0.1.md) | F25, U4 | Proposed (2026-10-05; its §8 asks eight decisions): one normalized usage record per run copied into control state at the Lead's next transaction, trust labels, a project-owned price table with the derived cost computed at read, roll-ups as projections, the Lead session's own line, `aew usage` | G7's accepted ledger, before any budget enforcement; the build after M4-D's open PRs |
 
 ## Research and investigations ([`research/`](research/))
 

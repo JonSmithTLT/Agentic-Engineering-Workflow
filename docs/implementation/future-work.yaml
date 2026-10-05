@@ -599,8 +599,12 @@ sections:
     Source (governing): architecture review G7, F-D; [architecture review response](../design/architecture-review-response-2026-10-04.md)
       (accepted 2026-10-05)
     Belongs to or gated by: '**M4 candidate** (M4-G, if bounded). Budget enforcement in `DispatchDecision` stays with F7/M5
-      after calibration'
-    Notes: Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built
+      after calibration. The build waits for M4-D''s #60 and #65 (the design note §6)'
+    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **Design note (proposed
+      2026-10-05, its §8 asks eight decisions):** [cost-usage-ledger-design-v0.1.md](../design/proposals/cost-usage-ledger-design-v0.1.md)
+      (ledger CUL): one normalized usage record per run, copied into control state at the Lead''s next transaction on the
+      invocation; trust labels; a project-owned price table with the derived cost computed at read; roll-ups as projections;
+      the Lead session''s own line; aew usage show, runs and lead'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'

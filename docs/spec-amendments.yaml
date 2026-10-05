@@ -196,3 +196,6 @@ considered:
     reason: ADR; implements WC §8.2 and §15.6 and KC §12.3; no normative text replaced
   - path: docs/implementation/adr/0013-knowledge-storage-placement.md
     reason: ADR; places KC §5.2 project knowledge; no normative text replaced
+  - path: docs/implementation/adr/0014-release-signing-air-gap-bundle.md
+    reason: ADR (proposed); release signing for the air-gap bundle (F18.3), a release-engineering mechanism; no WC/KC
+      text replaced

@@ -135,6 +135,11 @@
         "null"
       ],
       "minimum": 1
+    },
+    "max_publish_paths": {
+      "description": "The most paths one integration candidate may change (register E34). A publish syncs every changed path into the authoritative checkout while it holds the control lock, at a few milliseconds a path, so a larger change is refused at prepare, before anything is published. Default 2000.",
+      "type": ["integer", "null"],
+      "minimum": 1
     }
   }
 }

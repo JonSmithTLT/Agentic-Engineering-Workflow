@@ -257,6 +257,14 @@ def test_runs_list_the_invocations_of_hot_and_recently_finished_work(world):
     world.error("/runs/INV-9999", 404, "NOT_FOUND")
 
 
+def test_the_integration_lease_custodian_is_not_a_run(world):
+    """M4-D3's custody invocation (``IA-…``, no role, harness or run) held the integrated Ticket's lease. Contract 0.1.2
+    leaves the queue UNSUPPORTED, so the run projections leave it out rather than invent a role for it."""
+    assert not [i for i in world.ok("/runs", "InvocationListResponse")["data"]["items"] if i["id"].startswith("IA-")]
+    assert not [r for r in world.ok("/overview", "OverviewResponse")["data"]["runs"] if r["id"].startswith("IA-")]
+    world.error("/runs/IA-0001", 404, "NOT_FOUND")
+
+
 def test_evidence_of_hot_and_archived_work(world):
     archived = world.ok(f"/evidence?work={world.ids['done']}", "EvidenceListResponse")["data"]["items"]
     kinds = {i["kind"] for i in archived}

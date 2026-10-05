@@ -6,7 +6,7 @@
 
 ## Approved planning constraints — 2026-10-03
 
-The operator approved the four tightenings below and authorized backlog organization. This approves the constraints, not individual milestone implementation plans. The [milestone and ticket backlog](dashboard-workbench-milestones-and-tickets.md) now governs sequencing and coverage; sections A–T remain the feature requirements. Plan each milestone separately and obtain operator approval of its exact plan revision before implementing it.
+The operator approved the four tightenings below and authorized backlog organization. This approves the constraints, not individual milestone implementation plans. The [milestone and ticket backlog](../dashboard-workbench-milestones-and-tickets.md) now governs sequencing and coverage; sections A–T remain the feature requirements. Plan each milestone separately and obtain operator approval of its exact plan revision before implementing it.
 
 1. **Accepted API versus preview schemas.** Preserve accepted contract `0.1.2` and its recorded digest. Fields absent from it belong to separate versioned preview contracts with runtime validation, matching fixtures, and visible demo labeling. Exclude preview fixtures, handlers, and unsupported preview behavior from normal production builds. A working preview does not amend the live API: live wire shapes require main-line review and explicit acceptance. Reuse existing parsers where applicable without weakening them to accommodate speculative fields.
 2. **Verification begins with the foundation.** Scenario Lab and Contract Playground share one fixture catalog, transport controls, real boundary parsers, and replay harness. Accessibility, hostile-display/CSP checks, refresh regression, and scope isolation begin in the first milestone and continue in every relevant ticket. They are not end-of-backlog cleanup.
@@ -1050,7 +1050,7 @@ Architecture review questions:
 
 ## 8. Milestone sequencing and approval
 
-Use the [milestone and ticket backlog](dashboard-workbench-milestones-and-tickets.md). It consolidates this handoff and research D01–D25 without treating the whole backlog as one sprint:
+Use the [milestone and ticket backlog](../dashboard-workbench-milestones-and-tickets.md). It consolidates this handoff and research D01–D25 without treating the whole backlog as one sprint:
 
 1. W01: preview contracts, scope isolation, Scenario Lab/Contract Playground, regression foundation.
 2. W02: shared investigation shell, Why, provenance, and navigation.

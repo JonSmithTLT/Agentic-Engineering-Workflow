@@ -100,7 +100,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 Amendments still to be written into ADRs, tracked by the register: network containment labels and the credential
 relay into ADR-0009 (F28); the `service` credential kind into ADR-0005, ADR-0009 and ADR-0013 D9 (E37).
 
-**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (provisional; the dashboard itself lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its engine-side integration is register F20).
+**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.2; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20.
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 

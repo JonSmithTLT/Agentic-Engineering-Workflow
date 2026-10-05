@@ -25,7 +25,7 @@ M4 lets mutating Tickets run in parallel while integration stays serial: **paral
 - containment research §8 ([`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../research/containment-and-process-ownership-rocky8-research-2026-10-01.md));
 - the F15 direction (the v0.4 idea note §14 sequence, [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](../design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md)): adopted, and promoted to governing on 2026-10-05 as the [typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) (§3, decision 1; the gate is met).
 
-**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/proposals/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/proposals/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/integration-checklist.md`.
+**Not governing (inputs):** [`execution-workspace-and-isolation-design-v0.1.md`](../design/proposals/execution-workspace-and-isolation-design-v0.1.md) (proposed), [`lead-workflow-efficiency-design-v0.1.md`](../design/proposals/lead-workflow-efficiency-design-v0.1.md), the dashboard contract 0.1.2 and `web/docs/reference/integration-checklist.md`.
 
 ---
 

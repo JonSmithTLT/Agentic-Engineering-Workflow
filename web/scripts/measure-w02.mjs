@@ -11,7 +11,7 @@ const root = baseline
 const port = '4213',
   out =
     process.env.W02_MEASURE_OUT ??
-    'docs/w02-evidence/baseline-performance.json';
+    'docs/archive/milestones/w02/w02-evidence/baseline-performance.json';
 const child = spawn(
   process.execPath,
   [

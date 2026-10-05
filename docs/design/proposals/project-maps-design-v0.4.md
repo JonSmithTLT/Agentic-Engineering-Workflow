@@ -1,6 +1,6 @@
 # T5 — Project maps: deterministic structural core, listing-bound freshness and the semantic-extension contract (v0.4)
 
-- **Status:** **Proposed consolidation for the designer's freeze**, 2026-10-05. Not governing; v0.3 (design frozen, proposed, 2026-10-04) governs until the designer adopts this version. v0.4 changes v0.3 in exactly the ways the designer asked for when the research round closed (2026-10-05): the freshness rule narrows to what the probe showed the map depends on (§3), and the semantic-extension layer becomes a contract consolidated from the review's research notes (§6), with the C++ additions that the contract check required. §0 lists every change; §9 keeps v0.3's fifteen decisions, one amended; §10 is what the research asks the designer to freeze; §11 is what stays open at the freeze.
+- **Status:** **Proposed consolidation for the designer's freeze**, 2026-10-05. Not governing; v0.3 (design frozen, proposed, 2026-10-04) governs until the designer adopts this version. v0.4 changes v0.3 in exactly the ways the designer asked for when the research round closed (2026-10-05): the freshness rule narrows to what the probe showed the map depends on (§3), and the semantic-extension layer becomes a contract consolidated from the review's research notes (§6), with the C++ additions that the contract check required; the designer's decision of 2026-10-05 on where semantic artefacts are pinned (§4, decision 18) closes the one storage question the research left open. §0 lists every change; §9 keeps v0.3's fifteen decisions, one amended; §10 is what the research asks the designer to freeze; §11 is what stays open at the freeze.
 - **Basis:** v0.3 (`docs/archive/superseded/project-maps-design-v0.3.md`); the T5 probe (`docs/archive/reviews/architecture-review-2026-10-04/t5-codebase-map-probe-results.md`: `ls-tree`, listing-bound freshness); the semantic research in `docs/research/`: the C extraction investigation (CXS), the C++ contract check (CXP), the semantic-extension framework S2 to S5 (SEF), the query-routing note §7 (QRC), the large-repository benchmark (LRB) and the project-understanding note §8 and §10 (PUI); KC §8.2 to §8.5 and §13; ADR-0008 and `engine/freshness.py`; ADR-0011 (derived indexes are locators, never vouchers); ADR-0012 (a scheduled extraction is a job with a receipt); ADR-0013 (where a derived record may be pinned).
 - **Facts from the probes, not re-derived:** the structural map of AEW is 0.1 s and 3.5 KB and byte-identical across checkouts once it reads the commit's tree; a listing-plus-config rule would have kept it CURRENT through 21 of the last 30 commits instead of 0 of 30; at 100,000 files the generator takes 2.1 s and 162 KB with no sharding; libclang under the compile database reproduces the compiler's definitions, linkage and includes at 100% and direct call edges at 99.4 to 99.5%, with every discrepancy in named categories; fmt's C++ build emits 62,865 text symbols of which 59,972 are weak, and 59% of them have no AST definition cursor.
 
@@ -13,6 +13,7 @@
 | §2 record | the generator reads the commit object | unchanged, plus a conformance test: the map of a commit does not depend on the branch checked out | `ls-files` produced different maps of the same commit in two checkouts (T5 probe §3) |
 | §6.1 contract | a per-extension capability, inputs, coverage and limitations envelope | the shared contract: fact kinds with tiers, the unit as the translation unit, per-unit input sets and freshness, mandatory toolchain identity, two coverages, deduplicated identity, generated limitations, and the C++ additions (`instances[]`, `dependent`, `virtual`, `overrides`, `source: codegen`) | S2 shaped it from C and S1b checked it against C++ with no language-specific hack (SEF, CXP §4) |
 | §6.2 C/C++ first | priority and substrate | plus what the probes established: the three tiers and the exact boundary, the oracle, the codegen-adjacent edge extractor C++ needs | CXS §2, §3; CXP §3 |
+| §4, §6.4 pinning | (implicit) | semantic artefacts are pinned per extension by the project-map manifest beside the structural map, never as ADR-0013 `reference` records | the framework note drifted toward a K0 `reference`; a compiler-derived call or index artifact must not become K0 because the history manifest is a convenient integrity mechanism (designer, 2026-10-05) |
 | §6.4 storage | immutable derived artefacts, explicit composition | plus the derived rebuildable index and the scheduled first extraction | LRB §2, §3 |
 | §6.5 query surface | (packs §8 only) | the typed `map.*` surface, radius 1 free and radius 2 budgeted, the boundary sentence, disclosure levels | SEF S3; QRC §7; designer 2026-10-05 (PUI §10, decision 2) |
 | §6.6 incremental freshness | (extension freshness "from its inputs") | per-unit invalidation scopes, the dependency index first, atomic publication | SEF S4 |
@@ -134,6 +135,29 @@ codebase_map:
 
 The map file is immutable. Moving the pointer is an attributable project-state transaction, visible in control, history and the outbox. Historical maps remain immutable artifacts addressable through the historical project revision and artifact hash; T5 requires no ADR-0013 `reference` id and no `knowledge_disposition`.
 
+Semantic artefacts (§6) are pinned by the same mechanism, one pointer per extension, never as ADR-0013 `reference` records (designer, 2026-10-05): ADR-0013 gives `reference` the K0 meaning of a durable reusable Knowledge identity, and a compiler-derived call or index artifact must not become K0 because the history manifest is a convenient integrity mechanism. The layout and the manifest, conceptually:
+
+```text
+.aew/knowledge/maps/
+    structural/<content-addressed artifact>
+    semantic/c/<content-addressed artifact>
+    semantic/cpp/<content-addressed artifact>
+    semantic/python/<...>
+```
+
+```yaml
+semantic_maps:
+  c_cpp:
+    path: .aew/knowledge/maps/semantic/<extension>/<content-addressed-name>.yaml
+    sha256: ...
+    source_revision: ...
+    extractor_identity: ...
+    configuration_set_digest: ...
+    input_set_digest: ...
+```
+
+A pointer means "the semantic extension currently selected for this project and capability": not admission, not truth, no knowledge-disposition lifecycle. Each extension has its own pointer, never one monolithic `semantic_map`, because extensions have independent freshness, coverage, extractor identities and failure domains (decisions 14 and 15), even where C and C++ share one extractor implementation. A semantic artifact is a reproducible cache: its identity binds source revision, configuration set, extractor and toolchain identity, input-set digest and artifact hash, so it can be regenerated from them and needs none of the lifecycle semantics of Cases, Lessons or dispositions. If an audited record that artifact X was selected at project revision Y is wanted, a normal control or history event records the selection; that still does not make X Knowledge.
+
 This avoids two authority mistakes: a deterministic cache does not become a reusable semantic Knowledge claim because it is useful context; and selecting an investigator-authored architecture reference does not launder role-attested prose into engine-observed fact. If ADR-0013 later gains a generic derived-artifact history kind, map artifacts may be indexed through it as storage convenience only.
 
 ## 5. The architecture map
@@ -243,7 +267,7 @@ Python, TypeScript, Go and others add their own extractors when an AEW use case 
 
 ### 6.4 Storage, composition and the derived index
 
-Semantic-extension artefacts are immutable derived artefacts associated with the structural map, the source tree and their semantic inputs, stored and pointed at like the structural map (§4): a content-addressed file under the project's maps directory and an attributable manifest pointer, not a K0 admission (§11 names the one open storage question). Composition is explicit:
+Semantic-extension artefacts are immutable derived artefacts associated with the structural map, the source tree and their semantic inputs, stored and pointed at like the structural map (§4): a content-addressed file under the project's maps directory and one attributable manifest pointer per extension, not a K0 admission and never an ADR-0013 `reference` record (decision 18). Composition is explicit:
 
 ```text
 structural map
@@ -340,7 +364,7 @@ Each carries its own freshness. Their consumer is the deterministic impact surfa
 
 ## 9. Frozen designer decisions
 
-Decisions 1 to 15 are v0.3's (2026-10-04), carried unchanged except decision 4, amended on 2026-10-05; decisions 16 and 17 are the designer's of 2026-10-05.
+Decisions 1 to 15 are v0.3's (2026-10-04), carried unchanged except decision 4, amended on 2026-10-05; decisions 16 to 18 are the designer's of 2026-10-05.
 
 1. **First map at init:** T10 wins. `aew init` may generate a deterministic preview automatically, but adopting the project map pointer occurs only through the attributable bootstrap proposal and apply, or a later explicit map generation.
 2. **No import graph in v1.** The structural map addresses the scope-navigation failure with far less semantic risk; a graph extractor earns its complexity in F19 and is separately versioned and qualified.
@@ -359,6 +383,7 @@ Decisions 1 to 15 are v0.3's (2026-10-04), carried unchanged except decision 4, 
 15. **Language schemas may differ.** Python imports, C/C++ translation units, TypeScript project references and Go packages are not forced into one graph model.
 16. **Radius 1 by default; radius 2 only when explicitly requested and budgeted** (2026-10-05).
 17. **The research round is closed** (2026-10-05): T5 plus the semantic research consolidate into this version and the contract of §6.1; the C++ production extractor is an implementation item with its own oracle, not a research question; project understanding uses existing KC machinery, and the impact surface is a later design that feeds existing Plan Assurance.
+18. **Semantic artefacts are pinned by the project-map manifest, one pointer per extension** (2026-10-05): immutable, content-addressed derived project-map artefacts whose identity binds source revision, configuration set, extractor and toolchain identity, input-set digest and artifact hash; never ADR-0013 K0 `reference` records; no monolithic `semantic_map` pointer; selection history, if wanted, is a normal control or history event.
 
 ## 10. Proposed for the contract freeze
 
@@ -375,9 +400,8 @@ What the research asks the designer to confirm or edit when adopting this versio
 ## 11. Open at the freeze
 
 1. **The extractor for v1.** Python bindings over libclang (zero new toolchain; sufficient to tens of thousands of C units with parallelism; 5 s per unit for C++) or a small C++ tool against libclang (fast; one more build artifact). The data says bindings for C, codegen for C++ edges; the choice is the implementer's unless the designer wants it fixed.
-2. **Where the semantic artifact is pinned.** This version stores it like the structural map, a content-addressed file under the project's maps directory with an attributable manifest pointer, consistent with decision 7; the framework note proposed an ADR-0013 `reference` entry. The two differ in whether a derived artifact appears in the knowledge manifest's chain; if ADR-0013 gains a generic derived-artifact kind, both are satisfied.
-3. **Semantic facts in packs beyond L0 and the declared subject symbols**, after F19's first measurement (§7).
-4. **The `directories` role table's width** (§2): widen for the SPT repository's eight unknowns, as a new ruleset version, or leave it to the architecture map.
+2. **Semantic facts in packs beyond L0 and the declared subject symbols**, after F19's first measurement (§7).
+3. **The `directories` role table's width** (§2): widen for the SPT repository's eight unknowns, as a new ruleset version, or leave it to the architecture map.
 
 ## 12. Evidence
 

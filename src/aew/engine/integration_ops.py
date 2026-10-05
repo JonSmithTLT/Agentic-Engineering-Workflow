@@ -134,8 +134,11 @@ class Integration:
         if integ.get("status") == "publishing":
             raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
         lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+        # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the
+        # queue existed (an upgraded project): prepare replaces it under fresh checks and custody, never adopts it.
+        unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
         if (integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None
-                and not lost):
+                and not lost and not unleased):
             raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
 
     def _require_gated(self, state: dict[str, Any], work_id: str) -> None:
@@ -150,19 +153,49 @@ class Integration:
             raise GateUnsatisfied("the workspace changed after COMMIT_READY; return it to RUNNING and revalidate",
                                   gated=gated, current=current)
 
+    def _admission_refusal(self, unit: dict[str, Any], changed: list[str]) -> GateUnsatisfied | None:
+        """Why a merged candidate may not be admitted, or None: the publish path bound (register E34), protected
+        paths, and case-only renames this checkout cannot hold."""
+        limit = self.k.policy("gates").get("max_publish_paths") or MAX_PUBLISH_PATHS
+        if len(changed) > limit:
+            return GateUnsatisfied(
+                f"the candidate changes {len(changed)} paths, more than the {limit} one publish may sync into "
+                "the authoritative checkout while it holds the control lock (gates.yaml `max_publish_paths`): "
+                "split the change into smaller Tickets, or raise the limit knowing a larger publish blocks "
+                "every other writer for longer", changed=len(changed), limit=limit)
+        meta = self.gates.record_meta(unit)
+        verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
+            "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
+        protected = [v for v in verdict["violations"] if v["rule"] != "outside_ticket_scope"]
+        if protected:
+            return GateUnsatisfied("the integrated change touches protected paths", violations=protected)
+        clashes = I.case_only_renames(self.k.repo_root, changed)
+        if clashes:
+            return GateUnsatisfied(
+                "the change renames paths only by letter case, which this checkout's case-insensitive "
+                "filesystem cannot hold side by side, so the authoritative worktree could never be synced. "
+                "Rename in two steps (to a different name, then to the target), or integrate on a "
+                "case-sensitive filesystem", paths=clashes[:50])
+        return None
+
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         conflict: dict[str, Any] | None = None
+        refused: GateUnsatisfied | None = None
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
             self.queue.sync(state)
             # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian.
             decision = self.dispatch.decide_in(ctx, "integrate.prepare", work_id)
+            unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
             self.queue.grant(ctx, work_id)
             unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
             if integ:
                 lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
-                why = "its integration worktree is gone" if lost else "replaced by a new candidate"
+                why = ("its integration worktree is gone" if lost
+                       else "prepared before the integration queue, so no lease held it; replaced under the queue"
+                       if unleased and integ.get("status") in {"prepared", "validated"}
+                       else "replaced by a new candidate")
                 self._retire_integration(state, unit, f"{why} (was {integ.get('status')})")
             gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
             ws = unit["workspace"]
@@ -192,6 +225,8 @@ class Integration:
             record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                       "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
                       "binding": self.gates.integration_binding(unit)}
+            candidate: str = merged.get("commit") or ""
+            changed: list[str] = []
             if merged["conflict"]:
                 worktrees.remove(self.k.repo_root, int_ws["path"])
                 conflict = {"paths": merged["paths"]}
@@ -202,31 +237,20 @@ class Integration:
                                    detail={"paths": merged["paths"][:50]})
                 ctx.summary = f"{work_id} integration conflict on {merged['paths']}"
             else:
-                candidate = merged["commit"]
                 changed = I.changed_between(self.k.repo_root, base, candidate)
-                limit = self.k.policy("gates").get("max_publish_paths") or MAX_PUBLISH_PATHS
-                if len(changed) > limit:
+                refused = self._admission_refusal(unit, changed)
+                if refused is not None and not Q.queued(state):
                     worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise GateUnsatisfied(
-                        f"the candidate changes {len(changed)} paths, more than the {limit} one publish may sync into "
-                        "the authoritative checkout while it holds the control lock (gates.yaml `max_publish_paths`): "
-                        "split the change into smaller Tickets, or raise the limit knowing a larger publish blocks "
-                        "every other writer for longer", changed=len(changed), limit=limit)
-                meta = self.gates.record_meta(unit)
-                verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
-                    "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
-                protected = [v for v in verdict["violations"] if v["rule"] != "outside_ticket_scope"]
-                if protected:
-                    worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise GateUnsatisfied("the integrated change touches protected paths", violations=protected)
-                clashes = I.case_only_renames(self.k.repo_root, changed)
-                if clashes:
-                    worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise GateUnsatisfied(
-                        "the change renames paths only by letter case, which this checkout's case-insensitive "
-                        "filesystem cannot hold side by side, so the authoritative worktree could never be synced. "
-                        "Rename in two steps (to a different name, then to the target), or integrate on a "
-                        "case-sensitive filesystem", paths=clashes[:50])
+                    raise refused  # v1: no queue entry to hold the refusal, so nothing is committed
+            if refused is not None:
+                # Like a conflict, a refused candidate is the Lead's to settle: the lease is released and the entry
+                # waits for disposition, committed, so it never holds up an independent entry behind it (FIFO).
+                worktrees.remove(self.k.repo_root, int_ws["path"])
+                self.queue.record_attempt(state, work_id, {**record, "status": "refused"})
+                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="refused",
+                                   detail={"code": refused.code, "reason": refused.message})
+                ctx.summary = f"{work_id} integration candidate refused at admission: {refused.message}"
+            elif not merged["conflict"]:
                 snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
                 unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
                                        "candidate_snapshot": snap, "changed_paths": changed}
@@ -234,6 +258,11 @@ class Integration:
                 ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
             self.units.before_commit(ctx)
         self._prune_retired_candidates(unit)
+        if refused is not None:
+            refused.details.update(queue=self._queue_brief(ctx.state, work_id), revision=ctx.session.committed_revision,
+                                   next="the entry waits for disposition: change the Ticket (return it to RUNNING, "
+                                        "which retires the entry) or the policy, then make it COMMIT_READY again")
+            raise refused
         result = {"ok": conflict is None, "work_id": work_id, "integration": unit["integration"],
                   "queue": self._queue_brief(ctx.state, work_id), "dispatch": decision.to_dict(),
                   "revision": ctx.session.committed_revision}

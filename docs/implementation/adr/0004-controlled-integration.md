@@ -122,6 +122,7 @@ Integration is now served by a queue in control state (M4 report §2.6; the M4-D
     - at DONE;
     - when the Ticket leaves COMMIT_READY;
     - on a conflict: the entry goes to AWAITING_DISPOSITION, for the Lead;
+    - on a candidate refused at admission (the `max_publish_paths` bound, protected paths, a case-only rename): the same, committed with the refusal's code, and the error is then returned. A refusal that rolled back would leave the entry QUEUED and runnable, so it would hold up every independent entry behind it;
     - on a stale or superseded candidate: the entry goes back to QUEUED in its place, and D4 will rebuild once under the same lease instead;
     - when `reconcile` reconciles a dead custodian.
   - **A withdrawn publish** (an obligation unmet, nothing published) keeps the lease.
@@ -129,6 +130,7 @@ Integration is now served by a queue in control state (M4 report §2.6; the M4-D
   - Runnable entries are served by `seq`. An earlier QUEUED entry whose integration is legal now goes first (`QUEUE_ORDER`).
   - An earlier entry that cannot integrate now, or is DEFERRED or AWAITING_DISPOSITION, holds up nothing.
   - Queue state is scheduling, never eligibility.
+- **A candidate from before the queue.** A project upgraded with an open candidate (`prepared` or `validated`) that no lease holds is enqueued like any COMMIT_READY Ticket. Its candidate is never adopted: `aew integrate prepare` retires it and builds a new one under a lease, so the post-integration checks rerun under fresh custody. An interrupted `publishing` candidate finishes through `reconcile`, which needs no lease.
 - **A dead custodian is reconciled, never timed out.**
   - A custodian ended by anything but its own lease's end (a takeover, an uncarried handoff, a cancel) marks the lease `reconcile` in the same transaction and cancels the custodian's children. Grants, publishes and verification are then refused (`LEASE_RECONCILE_REQUIRED`).
   - `aew integrate reconcile <T>` resolves it:
@@ -139,7 +141,7 @@ Integration is now served by a queue in control state (M4 report §2.6; the M4-D
   - It is serialization only (M4-B6): it is taken after every check allowed the publish, and holding it lets nothing else happen.
   - A holder a crash left behind is a stale owner. It is reconciled before the lock is taken again; the sync is idempotent and re-verified.
 - **Register E34.**
-  - The sync classifier accepts a path that any commit between the candidate and the ref settled (up to 256 of them), not only the head.
+  - The sync classifier accepts a path that any commit between the candidate and the ref settled (up to 256 of them), not only the head. It reads that range once (`git log --raw` against every parent) and considers only paths whose index differs from the candidate, so its cost under the control lock does not multiply by the number of later commits.
   - A candidate may change at most `gates.yaml` `max_publish_paths` paths (default 2,000), refused at prepare before anything is published. A publish syncs every changed path while it holds the control lock, measured at about 4.5 to 5.5 ms a path on the Windows reference machine (`tools/perf/publish_sync.py`), so 2,000 keeps the hold near 10 s, inside the 31 s other writers wait.
 - **Schema.** `aew/control/v2`, additive (the M4-D plan §1.1). `queue` is a v2-only key, and the engine before M4-D refuses the file (`tests/regression/test_m4_schema_downgrade.py`). A v1 project has no queue and integrates as before until it is migrated.
 - **Events.** `queue.entry {id, from, to}` and `queue.lease {entry, custodian}` are derived kinds in the transition log (ADR-0012 D2). A released lease has both fields null.

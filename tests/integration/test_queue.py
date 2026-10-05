@@ -303,14 +303,74 @@ def test_a_project_from_before_the_queue_queues_its_commit_ready_tickets_on_the_
 def test_a_candidate_changing_more_paths_than_one_publish_may_sync_is_refused_at_prepare(calc, tmp_path):
     """Register E34 (note 9): a publish holds the control lock while it syncs every changed path, so the number of
     paths is bounded (gates.yaml `max_publish_paths`), and a larger candidate is refused before anything is published:
-    no lease is kept and nothing is left behind."""
-    from aew.util import dump_yaml, load_yaml
-
-    gates = calc.root / ".aew/policy/gates.yaml"
-    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "max_publish_paths": 1}),
-                     encoding="utf-8", newline="\n")
+    no lease is kept, and the entry waits for the Lead's disposition (committed, so the queue knows)."""
+    _max_publish_paths(calc, 1)
     wid, _ = to_commit_ready(calc, tmp_path, files=_own_change(1))  # two paths
     err = refused(calc, "integrate", "prepare", wid)
-    assert err["code"] == "GATE_UNSATISFIED" and err["details"] == {"changed": 2, "limit": 1}
-    assert control(calc)["queue"]["lease"] is None and entry(calc, wid)[1]["state"] == "QUEUED"
+    assert err["code"] == "GATE_UNSATISFIED" and err["details"]["changed"] == 2 and err["details"]["limit"] == 1
+    assert err["details"]["queue"]["state"] == "AWAITING_DISPOSITION"
+    _, e = entry(calc, wid)
+    assert control(calc)["queue"]["lease"] is None and e["state"] == "AWAITING_DISPOSITION"
+    assert e["disposition"]["reason"] == "refused" and e["disposition"]["detail"]["code"] == "GATE_UNSATISFIED"
+    assert e["attempts"][-1]["result"] == "refused" and control(calc)["work"][wid]["integration"] is None
+    assert_control_invariants(calc)
+
+
+def _max_publish_paths(p, n):
+    from aew.util import dump_yaml, load_yaml
+
+    gates = p.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "max_publish_paths": n}),
+                     encoding="utf-8", newline="\n")
+
+
+def test_a_candidate_refused_at_admission_never_holds_up_an_independent_entry(tmp_path):
+    """Independent review of PR #65: a refusal found only after the merge (the publish path bound, protected paths,
+    case-only renames) used to roll back and leave the entry QUEUED and still "runnable", so FIFO refused every later
+    independent entry with QUEUE_ORDER. The refusal now commits the entry to AWAITING_DISPOSITION."""
+    p = sample_project(tmp_path)
+    _concurrency(p, 2)
+    _max_publish_paths(p, 1)
+    big = create_planned_ticket(p, tmp_path, title="Add op1 and its test")
+    small = create_planned_ticket(p, tmp_path, title="Add op9")
+    to_commit_ready(p, tmp_path, wid=big, files=_own_change(1))  # two paths
+    to_commit_ready(p, tmp_path, wid=small, files={"calc/op9.py": "def op9():\n    return 9\n"})
+    assert refused(p, "integrate", "prepare", big)["code"] == "GATE_UNSATISFIED"
+    integrate(p, small)  # was QUEUE_ORDER: "big ... can integrate now"
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("status", ["prepared", "validated"])
+def test_a_candidate_prepared_before_the_queue_existed_is_replaced_under_it(calc, tmp_path, status):
+    """Independent review of PR #65: a project upgraded with an open candidate (prepared, or validated) that no lease
+    holds gets a QUEUED entry, but prepare refused the open candidate and verification and publication need the lease,
+    so the accepted work was stranded. Prepare now retires the unleased candidate and builds a new one under a lease:
+    fresh checks and custody, never adoption."""
+    from aew.engine.store import serialize_control
+
+    wid, _ = to_commit_ready(calc, tmp_path)
+    if status == "prepared":
+        calc.lead("integrate", "prepare", wid)
+    else:
+        prepare_and_validate(calc, wid)
+    # What the pre-queue engine wrote: the same candidate, with no queue, no lease and no custodian.
+    state = control(calc)
+    assert state["work"][wid]["integration"]["status"] == status
+    custodian = state["queue"]["lease"]["custodian"]
+    state.pop("queue")
+    state["counters"].pop("queue_entry", None)
+    state["invocations"][custodian]["status"] = "completed"
+    for inv in state["invocations"].values():
+        if inv.get("custodian") == custodian and inv["status"] == "active":
+            inv["status"] = "completed"
+    (calc.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    assert refused(calc, "integrate", "publish", wid)["code"] == "LEASE_NOT_HELD"
+    assert entry(calc, wid) == (None, None)  # the refusal committed nothing; the next Lead commit enqueues it
+    out = calc.lead("integrate", "prepare", wid)
+    assert out["queue"]["state"] == "LEASED" and out["integration"]["status"] == "prepared"
+    retired = control(calc)["work"][wid]["integration_history"][-1]
+    assert "before the integration queue" in retired["retired"]["reason"]
+    assert_control_invariants(calc)
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration"))
+    assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
     assert_control_invariants(calc)

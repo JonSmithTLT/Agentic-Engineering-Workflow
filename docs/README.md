@@ -79,6 +79,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 |---|---|
 | [`implementation-status.md`](implementation/implementation-status.md) | Implemented, staged or designed, capability by capability |
 | [`future-work.md`](implementation/future-work.md) | The register: every deferred item, its gate and its milestone. The one place work is tracked; the ledger points into it |
+| [`future-work.yaml`](implementation/future-work.yaml) | The register's source (E30): the same preamble, sections and rows as structured data. `future-work.md` is rendered from it by `tools/register.py`; `tests/unit/test_register.py` keeps the two identical |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
@@ -198,6 +199,9 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
   research note or a proposal; a research note that received one points at the record.
 - Work is tracked in one place, the register ([`future-work.md`](implementation/future-work.md)): a design's work items
   are its rows, a review's findings are its rows, and a closed item moves to §9 with what closed it.
+- The register is edited as data: change [`future-work.yaml`](implementation/future-work.yaml), then run
+  `python tools/register.py render`; the markdown is the view and `tests/unit/test_register.py` fails when it drifts.
+  Every open row's target column starts with one bold target from the register's own table.
 - When a milestone finishes, its plan, reports and review responses move to `archive/`. An independent review's record
   moves to `archive/reviews/` and its probes to `eval/reviews/` when the review is delivered.
 - `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this page.

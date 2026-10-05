@@ -60,3 +60,15 @@ def extend_log(aew_root: Path, to_revision: int, *, overflow_every: int = 0) -> 
             state["counters"]["n"] = to_revision  # the store model's counter follows its revision
         control.write_bytes(serialize_control(state))
     return state
+
+
+def strip_outbox(aew_root: Path) -> int:
+    """Make the control state look like one from before ADR-0012 (no ``outbox`` marker, a bare ``last_transition``),
+    so the next commit starts the chain at the revision after it. Returns the current revision."""
+    control = aew_root / CONTROL_REL
+    state = deserialize_control(control.read_bytes(), source=str(control))
+    state.pop("outbox")
+    state["last_transition"] = {k: v for k, v in state["last_transition"].items()
+                                if k not in {"schema", "events", "event_overflow", "h"}}
+    control.write_bytes(serialize_control(state))
+    return state["revision"]

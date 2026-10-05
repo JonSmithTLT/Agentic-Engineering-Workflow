@@ -334,3 +334,46 @@ def test_seeded_walk_commits_compactions_crashes_and_racing_readers(tmp_path, mo
             pass
         monkeypatch.delenv("AEW_FAULT", raising=False)
         check_invariants(tmp_path, synthetic_through=base)
+
+
+# ---------------------------------------------------------------------------------------------- review of PR #60
+
+def pre_outbox_log(root: Path, *, pre: int = 300, to: int = 3 * SEG + 20) -> dict:
+    """A log whose first ``pre + 1`` revisions are from before the outbox: the chain starts at ``pre + 1``."""
+    from log_fixture import strip_outbox
+
+    init(root)
+    extend_log(root, pre)
+    strip_outbox(root)
+    one_transaction(make_store(root))  # the first outbox-era commit
+    return extend_log(root, to, overflow_every=37)
+
+
+def test_item1_a_missing_pre_outbox_record_skips_its_segment_and_compaction_goes_on(tmp_path):
+    """A record from before the outbox was never protected (ADR-0012 D1): its loss makes only its own segment
+    unsealable. Later segments still seal, the reader still reads from the guarantee's start, and the window counts
+    from the newest sealed segment."""
+    state = pre_outbox_log(tmp_path)
+    since = state["outbox"]["since"]
+    assert since == 301
+    (tmp_path / outbox.record_path(17)).unlink()
+    result = log_compact.compact(make_store(tmp_path), window=WINDOW)
+    assert result["sealed"] == [1, 2]
+    assert [(u["segment"], u["revision"]) for u in result["unsealable"]] == [(0, 17)]
+    assert "before the outbox began" in result["unsealable"][0]["reason"]
+    assert result["segments"] == 2 and result["unsealed"] == state["revision"] + 1 - 3 * SEG
+    assert (tmp_path / outbox.record_path(18)).exists()  # segment 0 stays unsealed
+    # across the sealed boundary from the guarantee's start; segment 1 holds both pre- and outbox-era records
+    records = list(outbox.read_transitions(tmp_path, since - 1, state["revision"], outbox=state["outbox"]))
+    assert [r["revision"] for r in records] == list(range(since, state["revision"] + 1))
+    assert outbox_violations(tmp_path, state) == []
+    assert log_compact.window_status(tmp_path, state["revision"])[0] == "PASS"
+    again = log_compact.compact(make_store(tmp_path), window=WINDOW)  # reported again, never fatal
+    assert again["sealed"] == [] and [u["segment"] for u in again["unsealable"]] == [0]
+
+
+def test_item1_a_missing_outbox_era_record_still_stops_compaction(tmp_path):
+    state = pre_outbox_log(tmp_path)
+    (tmp_path / outbox.record_path(state["outbox"]["since"] + 5)).unlink()  # in segment 1, after the chain began
+    with pytest.raises(IntegrityError, match="incomplete history"):
+        log_compact.compact(make_store(tmp_path), window=WINDOW)

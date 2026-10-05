@@ -139,15 +139,18 @@ def outbox_violations(root: Path, state: dict[str, Any], *, expected=None, synth
 
 
 def segment_violations(root: Path, state: dict[str, Any]) -> list[str]:
-    """27. Segment fidelity: segments are contiguous from segment 0, each holds exactly 256 logical transitions that
-    pass its schemas, every overflow payload is preserved and digest-verified, and the chain continues unchanged
-    across every segment boundary. 24 (the coexistence half): an unsealed copy still present beside its segment is
-    equivalent to the sealed one."""
+    """27. Segment fidelity: segments are contiguous from segment 0 except where a segment from before the outbox
+    could not be sealed (a pre-outbox record is missing or invalid: ``log_compact.Unsealable``), each holds exactly 256
+    logical transitions that pass its schemas, every overflow payload is preserved and digest-verified, and the chain
+    continues unchanged across every segment boundary. 24 (the coexistence half): an unsealed copy still present beside
+    its segment is equivalent to the sealed one."""
     problems: list[str] = []
     since = state["outbox"]["since"]
     listing = log_compact.scan(root)
-    if sorted(listing.segments) != list(range(len(listing.segments))):
-        problems.append(f"27: the sealed segments {sorted(listing.segments)} are not contiguous from segment 0")
+    for gap in sorted(set(range(max(listing.segments, default=-1))) - listing.segments):
+        span = range(gap * outbox.SEGMENT_SIZE, (gap + 1) * outbox.SEGMENT_SIZE)
+        if not any(r < since and r not in listing.records for r in span) and not all(r < since for r in span):
+            problems.append(f"27: segment {gap} is missing below a sealed one, and nothing makes it unsealable")
     view = outbox.LogView(root, since, retries=0)
     for index in sorted(listing.segments):
         try:

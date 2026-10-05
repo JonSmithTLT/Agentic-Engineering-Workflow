@@ -176,3 +176,27 @@ def test_a_lockless_reader_races_a_compaction_in_another_process_without_a_false
     assert outbox_violations(tmp_path, state) == []
     if os.environ.get("AEW_VERBOSE_RACES"):
         print(f"{reads} complete reads during the compaction")
+
+
+# ---------------------------------------------------------------------------------------------- review of PR #60
+
+def test_item1_a_project_that_lost_a_pre_outbox_record_still_compacts(tmp_path):
+    """A project from before the outbox lost revision 1's record. Compaction skips only segment 0 and reports it,
+    seals segment 1, doctor passes, and `history log` from the guarantee's start reads across the sealed boundary."""
+    from log_fixture import strip_outbox
+
+    p = sample_project(tmp_path)
+    create_planned_ticket(p, tmp_path)
+    strip_outbox(p.root / ".aew")
+    (p.root / ".aew/state/log/000001.yaml").unlink()
+    create_planned_ticket(p, tmp_path, title="the first outbox-era commit")
+    since = load_control(p.root)["outbox"]["since"]
+    extend_log(p.root / ".aew", LONG, overflow_every=97)
+    out = p.ok("history", "compact", "--json")
+    assert out["sealed"] == [1] and [(u["segment"], u["revision"]) for u in out["unsealable"]] == [(0, 1)]
+    assert (p.root / ".aew/state/log/seg-000001.yaml").exists()
+    check = doctor_log_check(p)
+    assert check["status"] == "PASS", check
+    page = log(p, "--since", str(since - 1), "--limit", "600")
+    assert [t["revision"] for t in page["transitions"]] == list(range(since, since + 600))
+    assert p.aew("history", "log", "--since", "0", "--json").error["details"]["resume_since"] == since - 1

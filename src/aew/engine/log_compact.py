@@ -8,9 +8,11 @@ record exactly as its file did and the exact bytes of every overflow payload, an
 
 One segment, in this order (:func:`seal_steps`):
 
-1. **Build** from the unsealed files only (no segment exists yet, so every record and overflow payload must be there,
-   or sealing stops with an incomplete-history error: it never invents a record). The chain and every overflow digest
-   and count are verified before anything is written.
+1. **Build** from the unsealed files only (no segment exists yet, so every record and overflow payload must be there:
+   it never invents a record). The chain and every overflow digest and count are verified before anything is written.
+   A record missing from the outbox era (at or after ``outbox.since``) is incomplete history and stops compaction. A
+   record missing, or not a valid transition, from before the outbox began was never protected (ADR-0012 D1), so its
+   segment is skipped and reported as unsealable, its files stay unsealed, and compaction continues with the next one.
 2. **Publish** create-if-absent (a temp file fsynced, then an atomic no-overwrite rename). Fault point
    ``log.seal.after_segment``: the segment is durable and every unsealed file is still present.
 3. **Re-read** the segment from disk and verify it completely: schema, position, the chain through it, its link to the
@@ -58,7 +60,8 @@ from aew.engine.outbox import (
     verify_segment,
 )
 from aew.engine.store import LOCK_REL, ControlStore
-from aew.errors import IntegrityError, UsageError
+from aew.errors import IntegrityError, UsageError, ValidationFailed
+from aew.schemas import validate
 from aew.util import create_exclusive, dump_yaml, load_yaml
 
 _RECORD = re.compile(r"^([0-9]{6,})\.yaml$")
@@ -102,12 +105,18 @@ def scan(aew_root: Path) -> Listing:
     return listing
 
 
-def sealed_prefix(aew_root: Path) -> int:
-    """How many consecutive segments from segment 0 exist (a stat each, no parse: cheap enough for doctor)."""
-    index = 0
-    while (aew_root / segment_path(index)).is_file():
-        index += 1
-    return index
+def sealed_state(aew_root: Path, revision: int) -> tuple[int, int]:
+    """``(sealed segments, unsealed window)`` from one directory scan, no parse: cheap enough for doctor. The window
+    is the revisions after the newest sealed segment. Segments are sealed in order, so a gap below it is a segment
+    that could not be sealed (:class:`Unsealable`), which no compaction will shrink and the window does not count."""
+    segments = scan(aew_root).segments
+    sealed_through = (max(segments) + 1) * SEGMENT_SIZE if segments else 0
+    return len(segments), revision + 1 - sealed_through
+
+
+class Unsealable(IntegrityError):
+    """A segment that cannot be sealed because a record from before the outbox began is missing or invalid. Nothing
+    protected those records (ADR-0012 D1), so this is reported and the segment skipped, never a reason to stop."""
 
 
 def build_segment(aew_root: Path, index: int, since: int) -> str:
@@ -119,9 +128,19 @@ def build_segment(aew_root: Path, index: int, since: int) -> str:
     payloads: dict[str, str] = {}
     for revision in range(first, first + SEGMENT_SIZE):
         record = _read_record(aew_root, revision)
+        if record is None and revision < since:
+            raise Unsealable(f"{record_path(revision)} is missing; it is from before the outbox began at revision "
+                             f"{since}", segment=index, revision=revision)
         if record is None:
             raise IntegrityError(f"cannot seal {segment_path(index)}: {record_path(revision)} is missing, and no "
                                  "segment holds it: incomplete history", revision=revision)
+        if revision < since:  # no chain vouches for it: its schema must, or the published segment would not verify
+            try:
+                validate("transition", record, source=record_path(revision))
+            except ValidationFailed as exc:
+                raise Unsealable(f"{record_path(revision)} is not a valid transition record; it is from before the "
+                                 f"outbox began at revision {since}", segment=index, revision=revision,
+                                 violations=exc.details.get("violations")) from None
         records.append(record)
         overflow = record.get("event_overflow")
         if overflow is not None:
@@ -218,35 +237,38 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
     marker = state.get("outbox")
     revision = state["revision"]
     if marker is None:
-        return {"ok": True, "revision": revision, "window": window, "sealed": [], "resumed": [], "pruned": 0,
-                "pending": [], "unsealed": revision + 1, "note": "no outbox yet: nothing is sealed before the "
-                "transition chain starts (the next commit starts it)"}
+        return {"ok": True, "revision": revision, "window": window, "sealed": [], "resumed": [], "unsealable": [],
+                "pruned": 0, "pending": [], "unsealed": revision + 1, "note": "no outbox yet: nothing is sealed "
+                "before the transition chain starts (the next commit starts it)"}
     since = marker["since"]
     listing = scan(store.root)
     sealed: list[int] = []
     resumed: list[int] = []
+    unsealable: list[dict[str, Any]] = []
     pruned = 0
     pending: list[str] = []
     for index in range(eligible_segments(revision, window)):
         exists = index in listing.segments
         if exists and not listing.leftovers(index):
             continue
-        with FileLock(store.root / LOCK_REL, timeout=store.lock_timeout):
-            for step in seal_steps(store.root, index, since):
-                if step["step"] == "pruned":
-                    pruned += 1
-                    pending += step["pending"]
+        try:
+            with FileLock(store.root / LOCK_REL, timeout=store.lock_timeout):
+                for step in seal_steps(store.root, index, since):
+                    if step["step"] == "pruned":
+                        pruned += 1
+                        pending += step["pending"]
+        except Unsealable as exc:
+            unsealable.append({"segment": index, "revision": exc.details.get("revision"), "reason": exc.message})
+            continue
         (resumed if exists else sealed).append(index)
-    prefix = sealed_prefix(store.root)
+    count, unsealed = sealed_state(store.root, revision)
     return {"ok": True, "revision": revision, "window": window, "sealed": sealed, "resumed": resumed,
-            "pruned": pruned, "pending": pending, "segments": prefix,
-            "unsealed": revision + 1 - prefix * SEGMENT_SIZE}
+            "unsealable": unsealable, "pruned": pruned, "pending": pending, "segments": count, "unsealed": unsealed}
 
 
 def window_status(aew_root: Path, revision: int) -> tuple[str, str]:
     """``aew doctor``'s check (D6): WARN when the unsealed window exceeds ``LOG_WINDOW + SEGMENT_SIZE`` revisions."""
-    segments = sealed_prefix(aew_root)
-    unsealed = revision + 1 - segments * SEGMENT_SIZE
+    segments, unsealed = sealed_state(aew_root, revision)
     detail = (f"{segments} sealed segment(s); {unsealed} revision(s) unsealed (window {LOG_WINDOW}, sealed "
               f"{SEGMENT_SIZE} at a time)")
     if unsealed > LOG_WINDOW + SEGMENT_SIZE:

@@ -5,6 +5,7 @@ For every required platform it proves, from the lane reports written by ``pytest
 
 * every job collected the same test set;
 * every collected test ran exactly once across all lanes and shards;
+* every shard of a sharded lane reported (a dropped shard is a problem even before its tests show as missing);
 * no session failed (including the isolation guard) and no test failed or errored;
 * the skipped tests are exactly the pinned platform skips (``tests/platform-skips.yaml``);
 * no xfail/xpass occurred unless pinned there.
@@ -51,6 +52,25 @@ def _label(r: dict[str, Any]) -> str:
     return f"{r['platform']}/{r.get('lane') or 'all'}" + (f" shard {r['shard']}" if r.get("shard") else "")
 
 
+def shard_gaps(group: list[dict[str, Any]]) -> list[str]:
+    """Shards that are missing or disagree about the shard count, per lane (``k/N`` specs from the reports)."""
+    specs: dict[str | None, list[str]] = defaultdict(list)
+    for r in group:
+        if r.get("shard"):
+            specs[r.get("lane")].append(r["shard"])
+    gaps = []
+    for lane, listed in sorted(specs.items(), key=lambda kv: kv[0] or ""):
+        parsed = [tuple(int(x) for x in spec.split("/")) for spec in listed]
+        counts = sorted({n for _, n in parsed})
+        name = lane or "all"
+        if len(counts) > 1:
+            gaps.append(f"{name}: shard reports disagree on the shard count ({', '.join(sorted(listed))})")
+            continue
+        gaps += [f"{name}: shard {k}/{counts[0]} has no report (its job did not run, failed to start or did not upload)"
+                 for k in range(1, counts[0] + 1) if k not in {k for k, _ in parsed}]
+    return gaps
+
+
 def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
           required: list[str]) -> tuple[list[str], dict[str, Any]]:
     """Return (problems, per-platform facts). No problems means the platform's assurance envelope is complete."""
@@ -65,6 +85,7 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
     for platform, group in sorted(by_platform.items()):
         pinned_skips = (expectations.get("skipped") or {}).get(platform) or {}
         pinned_xfail = (expectations.get("xfail") or {}).get(platform) or {}
+        problems += [f"{platform}: {gap}" for gap in shard_gaps(group)]
         collected_sets = {frozenset(r["collected"]) for r in group}
         if len(collected_sets) > 1:
             sizes = ", ".join(f"{_label(r)}={len(r['collected'])}" for r in group)

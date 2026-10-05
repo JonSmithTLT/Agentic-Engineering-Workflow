@@ -17,17 +17,27 @@ env:
 
 jobs:
   reference:
-    # The whole suite serially: no xdist, no shards. Re-proves daily that parallel lanes change no outcome,
-    # and its lane reports refresh tests/durations.json (tools/ci/update_durations.py).
-    name: reference serial (${{ matrix.os }})
+    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome, and its lane
+    # reports refresh tests/durations.json (tools/ci/update_durations.py). The suite is split into duration-balanced
+    # shards (tests/helpers/lanes.py, `--shard k/N`), each well inside the job timeout; `reference-assurance` below
+    # proves the shards together ran every collected test exactly once. Grow `of` when a shard nears 45 minutes,
+    # never the timeout (E26).
+    name: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python: "3.11"}
-          - {os: windows-latest, python: "3.13"}
+          - {os: ubuntu-latest, python: "3.11", shard: 1, of: 3}
+          - {os: ubuntu-latest, python: "3.11", shard: 2, of: 3}
+          - {os: ubuntu-latest, python: "3.11", shard: 3, of: 3}
+          - {os: windows-latest, python: "3.13", shard: 1, of: 6}
+          - {os: windows-latest, python: "3.13", shard: 2, of: 6}
+          - {os: windows-latest, python: "3.13", shard: 3, of: 6}
+          - {os: windows-latest, python: "3.13", shard: 4, of: 6}
+          - {os: windows-latest, python: "3.13", shard: 5, of: 6}
+          - {os: windows-latest, python: "3.13", shard: 6, of: 6}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150  # Windows took ~76 min before M3; the suite has grown ~1.5x since
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,13 +48,42 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
-          --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}.json"
+          --shard ${{ matrix.shard }}/${{ matrix.of }}
+          --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: nightly-reference-${{ runner.os }}
+          name: nightly-reference-${{ runner.os }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/nightly-reports/
           retention-days: 30
+
+  reference-assurance:
+    # The unsharded reference run's guarantee, rebuilt from its shards: every shard reported, every collected test
+    # ran exactly once and passed (pinned platform skips excepted). A shard that did not run, did not upload or
+    # failed fails this job, so a dropped shard can never read as a green nightly.
+    needs: [reference]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "PyYAML>=6.0"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nightly-reference-*
+          path: reference-reports
+      - name: Every collected test ran exactly once across the shards
+        run: >-
+          python tools/ci/check_assurance.py reference-reports --skips tests/platform-skips.yaml
+          --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
+      - name: Every shard job succeeded
+        if: always()
+        run: |
+          echo "reference=${{ needs.reference.result }}"
+          test "${{ needs.reference.result }}" = success
 
   walk-extended:
     # Rotating seeds (derived from the run number and printed for reproduction), longer walks, more crashes.
@@ -157,7 +196,7 @@ jobs:
         run: python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial
 
   report:
-    needs: [reference, walk-extended, race-repeat, crash-extended, matrix-extra]
+    needs: [reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:

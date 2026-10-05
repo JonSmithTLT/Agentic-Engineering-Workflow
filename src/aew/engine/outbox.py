@@ -459,12 +459,17 @@ def bump_wake(aew_root: Path, revision: int | None = None) -> None:
     """Advisory: change ``local/wake``. Written to a temp file and renamed over it, so every bump gives the file a new
     identity (file id) even when two land in one timestamp tick with the same size (D1 review F4). Never fsynced:
     waiters only stat the file, and durability would cost a commit milliseconds on Windows for nothing (ADR-0012's H2
-    budget). Failure is ignored; a waiter's coarse check covers a missed wake."""
+    budget). Failure is ignored; a waiter's coarse check covers a missed wake.
+
+    The temp file has one fixed name per process (``local/.wake.<pid>.tmp``), so a process that dies between the
+    write and the rename leaves at most one behind, and the next process with that pid reuses it. Two threads of one
+    process bumping at once may race on it; the loser's rename fails and is ignored, and the winner's rename has
+    already changed the mark."""
     tmp = None
     try:
         path = aew_root / WAKE_REL
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f".wake.{os.getpid()}.{time.time_ns()}.tmp")
+        tmp = path.with_name(f".wake.{os.getpid()}.tmp")
         tmp.write_text(f"{revision if revision is not None else '-'} {time.time_ns()}\n", encoding="utf-8")
         os.replace(tmp, path)
     except OSError:

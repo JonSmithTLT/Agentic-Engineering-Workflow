@@ -71,3 +71,25 @@ def test_pr60_item3_a_refused_read_is_absence_only_on_windows(tmp_path, monkeypa
     else:
         with pytest.raises(PermissionError):
             outbox.read_optional(path)
+
+
+def test_pr60_item4_a_crash_mid_bump_leaves_at_most_one_temp_file_per_process(tmp_path, monkeypatch):
+    """PR #60 review item 4: `local/` is not swept by recovery, so a bump that dies between writing its temp file and
+    renaming it must not leave a new leftover each time: the temp name is fixed per process."""
+    import os
+
+    from aew.engine import outbox
+    from aew.engine.faults import InjectedFault
+
+    def crash(src, dst):
+        raise InjectedFault("between the write and the rename")
+
+    monkeypatch.setattr(os, "replace", crash)
+    for _ in range(3):
+        with pytest.raises(InjectedFault):
+            outbox.bump_wake(tmp_path, 1)
+    monkeypatch.undo()
+    assert [p.name for p in (tmp_path / "local").glob(".wake.*.tmp")] == [f".wake.{os.getpid()}.tmp"]
+    outbox.bump_wake(tmp_path, 2)  # the next bump reuses it and leaves none
+    assert not list((tmp_path / "local").glob(".wake.*.tmp"))
+    assert (tmp_path / "local/wake").read_text(encoding="utf-8").startswith("2 ")

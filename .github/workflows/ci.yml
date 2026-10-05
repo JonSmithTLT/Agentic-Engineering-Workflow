@@ -48,15 +48,14 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
-      - name: Coverage for this Linux job (E2; strategy §3, Coverage)
-        if: runner.os == 'Linux'
+      - name: Coverage for this job (E2, E23; strategy §3, Coverage)
         shell: bash
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
-          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
+          python -m coverage run -m pytest
           -q -p no:cacheprovider -p no:xdist --lane fast
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
@@ -71,7 +70,7 @@ jobs:
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Linux'
+        if: always()
         with:
           name: coverage-core-${{ runner.os }}
           path: ${{ runner.temp }}/coverage/
@@ -107,15 +106,14 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
-      - name: Coverage for this Linux job (E2; strategy §3, Coverage)
-        if: runner.os == 'Linux'
+      - name: Coverage for this job (E2, E23; strategy §3, Coverage)
         shell: bash
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
-          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
+          python -m coverage run -m pytest
           -q -p no:cacheprovider --durations=15
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
@@ -126,7 +124,7 @@ jobs:
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Linux'
+        if: always()
         with:
           name: coverage-${{ matrix.lane }}-${{ matrix.shard }}-${{ runner.os }}
           path: ${{ runner.temp }}/coverage/
@@ -195,10 +193,10 @@ jobs:
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
           --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
-      - name: Coverage holds its baseline (line and branch, Linux lanes; E2)
+      - name: Coverage holds its baseline (line and branch, Linux and Windows lanes combined; E2, E23)
         run: >-
           python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
-          --summary "$GITHUB_STEP_SUMMARY"
+          --require Linux,Windows --summary "$GITHUB_STEP_SUMMARY"
       - name: Every test job succeeded
         if: always()
         run: |

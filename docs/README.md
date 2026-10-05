@@ -97,8 +97,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D, first slice PR #53) ·
 [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b)
 
-Amendments still to be written into ADRs, tracked by the register: network containment labels and the credential
-relay into ADR-0009 (F28); the `service` credential kind into ADR-0005, ADR-0009 and ADR-0013 D9 (E37).
+Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.2; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20.
 

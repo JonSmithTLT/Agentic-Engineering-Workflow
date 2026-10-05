@@ -379,8 +379,8 @@ sections:
     Notes: 'Builds on the M3 dogfood harness (`eval/m3/dogfood/`). Q11 adds the provider research''s evaluation plan to
       it. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): F19 becomes a code component (D-AR1); deterministic
       state/context reconstruction for fixtures; model-diverse review as a probe; the knowledge corpus K01 to K28 (ledger
-      KRB-14). The component design is [evaluation component v0.2](../design/proposals/evaluation-component-design-v0.2.md)
-      (design frozen, proposed; ledger EVC; the review''s [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md)
+      KRB-14). The component design is [evaluation component v0.2](../design/evaluation-component-design-v0.2.md)
+      (adopted by the operator and the designer 2026-10-05; ledger EVC; the review''s [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md)
       it grew from is archived): `eval/aew_eval/` public, hidden material private, every paid attempt registered before
       launch, immutable runs with separate analyses. Its first slice (schemas, preregistration and the attempt ledger, proved
       against the M3 corpus) comes before M4-H''s preregistration. ARV-05 (operator, 2026-10-05): the probes the architecture

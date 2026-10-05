@@ -4,7 +4,7 @@
 
 - Source freeze: `0e64b31b892a43b05560e13ba0944ad80482269f`, `feat/aew-dashboard-w02`.
 - Integration/diff base: fetched `main` at `2e0bf40cfeb49e0ef02a7a16d47ee2b2cb393ac5` (PR #26). W02 began at approved W01 `ab6ab98`, checkpointed at `3872c2c`, then consumed main in merge `7f06be5` without conflicts. Original/main checkouts and Engine tests were untouched. Subsequent documentation/evidence commits do not alter frontend source.
-- Approved [plan 1.1](design/plans/w02-workspace.md), SHA-256 `64a89abbc9ea4ecd753d81c6cff9f403ef2e13f61cd013af310db6e7efe1ec4d`. [Approval record](design/plans/w02-approval.json) includes the operator's implementation authorization and later main/CI steering.
+- Approved [plan 1.1](../../../design/plans/w02-workspace.md), SHA-256 `64a89abbc9ea4ecd753d81c6cff9f403ef2e13f61cd013af310db6e7efe1ec4d`. [Approval record](../../../design/plans/w02-approval.json) includes the operator's implementation authorization and later main/CI steering.
 - Accepted API 0.1.2, SHA-256 `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`; canonical YAML, generated types and runtime schemas unchanged.
 - Frontend lock SHA-256 `3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2`; no packages added or dependency changes.
 
@@ -65,7 +65,7 @@ Historical harness failures are retained with traces: graph pan assertion target
 
 Main PR #26 completed the frontend merge/assurance wiring. W02 consumes it. The only CI change authored here is in `web.yml`: run W02 compiled-browser checks alongside W01 and retain both failure-evidence directories. Stable job names, `workflow_call`/manual triggers, contents-read permission, fail-closed changes detection and the single assurance gate remain intact. No W02 edits to `ci.yml`, CodeQL or Python/Engine sources relative to merged main. Branch is local and has not been pushed; future PR targets main.
 
-Remaining integration dependencies link the existing [backend question ledger](design/w01-backend-question-ledger.md) and main registry F20: authoritative session resets, authorization before delivery, supported scopes/snapshots, full-envelope validators, server CSP/security/static serving and live acceptance. W02 does not duplicate their tickets or resolve them using fixtures. No Journal/context/Why preview schema was introduced.
+Remaining integration dependencies link the existing [backend question ledger](../../../reference/backend-questions/w01-backend-question-ledger.md) and main registry F20: authoritative session resets, authorization before delivery, supported scopes/snapshots, full-envelope validators, server CSP/security/static serving and live acceptance. W02 does not duplicate their tickets or resolve them using fixtures. No Journal/context/Why preview schema was introduced.
 
 The main AEW reviewer should inspect the frozen code diff independently and distinguish implementer execution evidence from any tests they rerun. Record the review next to this packet, disposition findings, then explicitly accept W02 frontend behavior. Test success alone does not grant acceptance.
 

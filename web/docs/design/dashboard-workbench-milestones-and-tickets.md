@@ -7,9 +7,9 @@
 
 Sources:
 
-- [Frontend handoff v3](aew-dashboard-api-waiting-work-and-m6-preview-handoff-v3.md): A–T and sections 5–7.
-- [Research addendum v2](aew-dashboard-research-and-parallel-work-backlog-2026-10-02-v2.md): D01–D25 and six creative experiments.
-- [Accepted contract record](../c0-approval.json), [frontend verification lessons](../frontend-verification-lessons.md), and existing optional frontend work.
+- [Frontend handoff v3](proposals/aew-dashboard-api-waiting-work-and-m6-preview-handoff-v3.md): A–T and sections 5–7.
+- [Research addendum v2](research/aew-dashboard-research-and-parallel-work-backlog-2026-10-02-v2.md): D01–D25 and six creative experiments.
+- [Accepted contract record](../c0-approval.json), [frontend verification lessons](../concepts/frontend-verification-lessons.md), and existing optional frontend work.
 
 This is the sequencing/ownership index. Source documents retain detailed product requirements; the four approved constraints and this reconciliation supersede conflicting ordering. Tickets are scoped planning units, not delivery-time estimates. Inspect the current optional implementation when planning to avoid rebuilding existing features.
 

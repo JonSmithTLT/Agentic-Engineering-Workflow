@@ -5,7 +5,7 @@ Claude recorded ACCEPT on 2026-10-03 in the main-line review; see
 [acceptance record](w01-acceptance.json).
 
 Review return: Claude's [W01 AMEND (minor)](w01-review-main-line.md) and
-[optional tools ACCEPT with OT-1](optional-tools-review-main-line.md), both dated
+[optional tools ACCEPT with OT-1](../../core/optional-tools-review-main-line.md), both dated
 2026-10-03. These were static reviews; execution results below are frontend
 implementer evidence, not independently rerun reviewer evidence.
 
@@ -71,7 +71,7 @@ traces remain under ignored `web/output/playwright-w01-review-failed-iteration/`
 The SPT carrier intentionally has no Git, observed when the new scratch-repository
 probe was first placed in its application unit suite. Probes were moved to the
 host/standard-runner CI lane; the immutable offline application gate remains unchanged.
-See [SPT feedback](spt-toolchain-feedback.md), SPT-UI-010. This is a tool prerequisite
+See [SPT feedback](../../core/spt-toolchain-feedback.md), SPT-UI-010. This is a tool prerequisite
 observation, not a reason to rebuild the carrier. No Engine suite was invoked.
 
 Accepted API 0.1.2 YAML, generated types, runtime schema and dependency lock are

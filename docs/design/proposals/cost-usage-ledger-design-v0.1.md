@@ -283,7 +283,8 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
 - **Slice 2 (after #60 and #65):** the three copy paths, each shown to copy exactly once and to write an `absent`
   record for a run without a usage record; **a usage copy derives no event** (the transition's typed events are
   empty for that invocation: no `run.added`, no `invocation.status`) and ADR-0012's oracle rules 24 to 26 hold across
-  it, with a wait-any consumer blocked on the wake file not woken by it; **the size bound**: a record over 2 KiB or
+  it, with a wait-any consumer woken by its commit (every commit bumps the wake file) still waiting and returning
+  nothing for it; **the size bound**: a record over 2 KiB or
   with a ninth distinct `effective` entry is refused by the schema and the invariants, and
   `tools/perf/control_plane.py` gains the usage copy in its series with H2 re-measured at 20 open and 3,000 completed
   units with every open run carrying a 2 KiB record (at most 10 ms derivation plus hash per commit, the ADR-0011

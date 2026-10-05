@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -56,9 +58,12 @@ def frozen(**over) -> dict:
 
 
 def result(f: dict, line: dict, *, validity: str = "valid") -> dict:
+    case = next(c for c in f["cases"] if c["id"] == line["case"])
+    arm = next(a for a in f["arms"] if a["id"] == line["arm"])
     return {"schema": "aew/eval-run/v1", "experiment": f["experiment"], "preregistration_sha256": f["canonical_sha256"],
-            "run_id": line["run_id"], "case": {"id": line["case"], "sha256": H, "hidden_sha256": None},
-            "arm": {"id": line["arm"], "kind": line["arm"], "config_sha256": None},
+            "run_id": line["run_id"],
+            "case": {"id": line["case"], "sha256": case["sha256"], "hidden_sha256": case["hidden_sha256"]},
+            "arm": {"id": line["arm"], "kind": arm["kind"], "config_sha256": sha256_of(arm["config"])},
             "profile": {"requested": line["requested_profile"], "observed": [], "mismatch": False},
             "aew": {}, "harness": {}, "environment": {},
             "assignment": {**line["assignment"], "randomization_seed": f["assignment"]["seed"]},
@@ -206,6 +211,129 @@ def test_a_result_must_match_its_registration(tmp_path):
         ledger.finalize(wrong)
     with pytest.raises(Invalid, match="eval-run"):
         ledger.finalize({**result(f, line), "validity": None})  # only a mapped historical record may lack one
+
+
+@pytest.mark.parametrize("field, mangle", [
+    ("assignment order", lambda r: r["assignment"].update(order_index=999)),
+    ("randomization seed", lambda r: r["assignment"].update(randomization_seed=999)),
+    ("requested profile", lambda r: r["profile"].update(requested={"lead": "other/model#high"})),
+    ("case fixture hash", lambda r: r["case"].update(sha256="d" * 64)),
+    ("case oracle hash", lambda r: r["case"].update(hidden_sha256="e" * 64)),
+    ("arm configuration hash", lambda r: r["arm"].update(config_sha256="f" * 64)),
+])
+def test_a_result_contradicting_its_pinned_metadata_is_refused(tmp_path, field, mangle):
+    """Independent review of #75: beyond the ids and cell, a result must agree with its registration (order,
+    requested profile) and the frozen experiment (seed, case and oracle hashes, arm configuration)."""
+    f = frozen()
+    ledger = AttemptLedger(tmp_path, f)
+    line = ledger.register(run_id="demo/r1", cell=f["assignment"]["order"][0]["cell"],
+                           requested_profile={"lead": "provider/model#medium"})
+    wrong = result(f, line)
+    mangle(wrong)
+    with pytest.raises(Invalid, match=field):
+        ledger.finalize(wrong)
+    observed = result(f, line)
+    observed["profile"].update(observed=[{"lead": "provider/model-2026#medium"}], mismatch=True)
+    ledger.finalize(observed)  # what was observed is free to differ from what was requested
+    assert ledger.verify() == []
+
+
+def test_concurrent_registrations_of_one_cell_admit_exactly_one(tmp_path):
+    """Independent review of #75: the read-check-append is one locked transaction, across processes."""
+    f = frozen()
+    path = tmp_path / "prereg.yaml"
+    prereg.dump(f, path)
+    cell = f["assignment"]["order"][0]["cell"]
+    script = (
+        "import sys, time\n"
+        f"sys.path.insert(0, {str(ROOT / 'eval')!r})\n"
+        "from pathlib import Path\n"
+        "from aew_eval import prereg\n"
+        "from aew_eval.ledger import AttemptLedger\n"
+        "from aew_eval.schemas import Invalid\n"
+        f"f = prereg.load(Path({str(path)!r}))\n"
+        f"while not Path({str(tmp_path / 'go')!r}).exists():\n"
+        "    time.sleep(0.001)\n"
+        "try:\n"
+        f"    AttemptLedger(Path({str(tmp_path / 'exp')!r}), f).register(run_id='demo/' + sys.argv[1], "
+        f"cell={cell!r}, requested_profile={{}})\n"
+        "    print('registered')\n"
+        "except Invalid:\n"
+        "    print('refused')\n")
+    procs = [subprocess.Popen([sys.executable, "-c", script, f"r{i}"], stdout=subprocess.PIPE, text=True,
+                              creationflags=NO_WINDOW) for i in range(6)]
+    time.sleep(1.0)
+    (tmp_path / "go").write_text("", encoding="utf-8")
+    outcomes = sorted(p.communicate(timeout=120)[0].strip() for p in procs)
+    assert outcomes == ["refused"] * 5 + ["registered"], outcomes
+    assert len(AttemptLedger(tmp_path / "exp", f).attempts()) == 1
+
+
+def test_an_inconsistent_ledger_is_refused_on_reading(tmp_path):
+    f = frozen()
+    ledger = AttemptLedger(tmp_path, f)
+    line = ledger.register(run_id="demo/r1", cell=f["assignment"]["order"][0]["cell"], requested_profile={})
+    text = (tmp_path / "attempts.jsonl").read_text(encoding="utf-8")
+    twice = json.dumps({**line, "run_id": "demo/r2"}, sort_keys=True) + "\n"
+    (tmp_path / "attempts.jsonl").write_text(text + twice, encoding="utf-8", newline="\n")
+    with pytest.raises(Invalid, match="two first attempts"):
+        ledger.status()
+    (tmp_path / "attempts.jsonl").write_text(text + text, encoding="utf-8", newline="\n")
+    with pytest.raises(Invalid, match="registered twice"):
+        ledger.status()
+
+
+def test_a_short_write_completes_and_a_failed_append_leaves_a_repairable_tail(tmp_path, monkeypatch):
+    """Independent review of #75: os.write may write fewer bytes than asked. A write that makes progress is
+    finished; one that stops raises, so the caller takes no provider action, and its torn tail is ignored by readers
+    and truncated by the next append."""
+    from aew_eval import ledger as L
+
+    f = frozen()
+    ledger = AttemptLedger(tmp_path, f)
+    real = os.write
+
+    def short(fd, data):
+        return real(fd, bytes(data[:20]))
+
+    monkeypatch.setattr(L.os, "write", short)
+    first = ledger.register(run_id="demo/r1", cell=f["assignment"]["order"][0]["cell"], requested_profile={})
+    assert ledger.attempts()["demo/r1"].registered == first  # 20 bytes at a time, but every byte
+    calls = []
+
+    def stops(fd, data):
+        calls.append(1)
+        if len(calls) > 1:
+            raise OSError(28, "No space left on device")
+        return real(fd, bytes(data[:20]))
+
+    monkeypatch.setattr(L.os, "write", stops)
+    with pytest.raises(OSError):
+        ledger.register(run_id="demo/r2", cell=f["assignment"]["order"][1]["cell"], requested_profile={})
+    assert not (tmp_path / "attempts.jsonl").read_bytes().endswith(b"\n")  # the torn tail is there...
+    assert ledger.status() == {"demo/r1": "runner_lost"}  # ...and readers ignore it
+    monkeypatch.setattr(L.os, "write", real)
+    ledger.register(run_id="demo/r2", cell=f["assignment"]["order"][1]["cell"], requested_profile={})
+    assert ledger.status() == {"demo/r1": "runner_lost", "demo/r2": "runner_lost"}
+    assert all(json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text(encoding="utf-8").splitlines())
+
+
+def test_a_finalize_interrupted_after_publishing_is_completed_by_the_same_record(tmp_path, monkeypatch):
+    f = frozen()
+    ledger = AttemptLedger(tmp_path, f)
+    line = ledger.register(run_id="demo/r1", cell=f["assignment"]["order"][0]["cell"], requested_profile={})
+    rec = result(f, line)
+    monkeypatch.setattr(ledger, "_append", lambda _line: (_ for _ in ()).throw(OSError("crash")))
+    with pytest.raises(OSError):
+        ledger.finalize(rec)
+    monkeypatch.undo()
+    assert ledger.status() == {"demo/r1": "runner_lost"} and (tmp_path / "runs/r1.json").is_file()
+    other = result(f, line, validity="invalid_measurement")
+    with pytest.raises(Invalid, match="differs from this result"):
+        ledger.finalize(other)
+    ledger.finalize(rec)
+    assert ledger.status() == {"demo/r1": "valid"} and ledger.verify() == []
+    assert not list((tmp_path / "runs").glob(".*partial"))
 
 
 def test_a_retry_is_linked_and_allowed_only_by_the_frozen_policy(tmp_path):

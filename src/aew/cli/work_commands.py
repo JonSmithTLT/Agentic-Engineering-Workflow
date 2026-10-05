@@ -383,10 +383,13 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
-    q = hsub.add_parser("wait", help="wait until a run stops running")
-    q.add_argument("run")
+    q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does")
+    q.add_argument("run", nargs="+")
+    q.add_argument("--any", dest="any_", action="store_true",
+                   help="wait on several runs and return the first to end, with its next action")
     q.add_argument("--timeout", type=float, default=600.0)
-    q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run, timeout=a.timeout))
+    q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run if len(a.run) > 1 else a.run[0],
+                                                             timeout=a.timeout, any_=a.any_))
     q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")
     q.add_argument("--reason", required=True)

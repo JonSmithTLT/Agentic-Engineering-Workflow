@@ -93,6 +93,30 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
     details = res.error["details"]
     assert res.error["code"] == "PERMISSION_DENIED" and len(details["active_invocations"]) == 1
     assert f"interrupts the active invocation(s) {details['active_invocations'][0]}" in res.error["message"]
+    assert details["interrupted_work"] == [wid] and "aew resume" in res.error["message"]
+
+
+def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leaves(tmp_path):
+    """The advice follows the takeover's outcome (independent review of #78). An active integration verifier on a
+    prepared candidate: the takeover interrupts the Ticket, which retires its entry and lease, so there is nothing to
+    reconcile. A validated candidate with no active role invocation: the lease survives its dead custodian and is
+    reconciled."""
+    from aewflow import prepare_and_validate, sample_project, to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    res = p.aew("lead", "acquire", "--expect-rev", str(p.rev()))
+    assert res.error["details"]["interrupted_work"] == [wid], res.error
+    assert "integrate reconcile" not in res.error["message"] and "aew resume" in res.error["message"]
+
+    q = sample_project(tmp_path / "validated")
+    wid2, _ = to_commit_ready(q, tmp_path / "validated")
+    prepare_and_validate(q, wid2)
+    res = q.aew("lead", "acquire", "--expect-rev", str(q.rev()))
+    assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
+    assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):

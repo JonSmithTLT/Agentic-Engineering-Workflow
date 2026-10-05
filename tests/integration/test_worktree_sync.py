@@ -211,3 +211,73 @@ def test_file_symlink_transitions_sync(tmp_path, direction):
     target = repo / ("calc/core.py" if direction == "file_to_symlink" else "link")
     assert target.is_symlink() == (direction == "file_to_symlink")
     assert_synced(repo, m)
+
+
+def test_a_reconcile_accepts_paths_any_later_commit_settled_not_only_the_head(tmp_path):
+    """Register E34 (note 1): after a publish, more than one commit may land on the ref before the interrupted sync is
+    reconciled. A path whose index and working copy hold the entry of a commit between the candidate and the head
+    (not the head's own) was settled by that commit: reported, never rewritten, and never mistaken for local work."""
+    repo, h, m = build(tmp_path, BASE, edit_core)
+    paths = publish(repo, h, m)  # published, and the sync was interrupted before it started
+
+    def commit_on_main(parent: str, text: str) -> str:
+        source = tmp_path / "later.py"
+        write(source, text)
+        blob = git("hash-object", "-w", str(source), cwd=repo)
+        git("update-index", "--add", "--cacheinfo", f"100644,{blob},calc/core.py", cwd=repo)
+        tree = git("write-tree", cwd=repo)
+        git("reset", "-q", cwd=repo)  # leave the authoritative index as it was
+        return git("commit-tree", tree, "-p", parent, "-m", "later", cwd=repo)
+
+    x1 = commit_on_main(m, "def add(a, b):\n    return a + b  # first later commit\n")
+    x2 = commit_on_main(x1, "def add(a, b):\n    return a + b  # second later commit\n")
+    git("update-ref", "refs/heads/main", x2, m, cwd=repo)
+    git("checkout", x1, "--", "calc/core.py", cwd=repo)  # the checkout holds the first later commit's entry
+    out = I.sync_worktree(repo, h, m, paths, head=x2)
+    assert out["settled_by_later_commit"]["paths"] == ["calc/core.py"]
+    assert (repo / "calc/core.py").read_text(encoding="utf-8").endswith("# first later commit\n")
+
+
+def test_the_later_commit_classifier_reads_the_range_once_whatever_its_length(tmp_path, monkeypatch):
+    """Independent review of PR #65: the classifier runs under the control lock, and it used to read the tree of every
+    later commit for every unresolved path (2,000 paths and 256 commits took 84 s on Windows). An interrupted sync whose
+    checkout still holds H, behind later commits that never touched those paths, is now one ``git log`` over the
+    range, and nothing counts as settled."""
+    files = {f"pkg/m{i:03d}.py": f"V = {i}\n" for i in range(300)}
+    repo, h, m = build(tmp_path, {**BASE, **files},
+                       lambda r: [write(r / p, t.replace("V", "W")) for p, t in files.items()])
+    paths = publish(repo, h, m)
+    tree = git("rev-parse", f"{m}^{{tree}}", cwd=repo)
+    head = m
+    for i in range(40):  # later commits that leave every candidate path as M has it
+        head = git("commit-tree", tree, "-p", head, "-m", f"later {i}", cwd=repo)
+    git("update-ref", "refs/heads/main", head, m, cwd=repo)
+    calls: list[str] = []
+    real = I.git.git
+
+    def counting(*args, **kw):
+        calls.append(args[0])
+        return real(*args, **kw)
+
+    st = I._states(repo, h, m, paths)
+    monkeypatch.setattr(I.git, "git", counting)
+    assert I._superseded(repo, head, m, st, paths) == []
+    assert calls == ["log"]
+    monkeypatch.undo()
+    I.sync_worktree(repo, h, m, paths, head=head)
+    assert git("status", "--porcelain", cwd=repo) == ""
+
+
+def test_a_path_a_later_commit_deleted_is_settled_by_it(tmp_path):
+    """The range read records deletions too: a candidate path a later commit removed, absent from the checkout, was
+    settled by that commit and is left absent."""
+    repo, h, m = build(tmp_path, BASE, edit_core)
+    paths = publish(repo, h, m)
+    git("rm", "-q", "-f", "calc/core.py", cwd=repo)
+    tree = git("write-tree", cwd=repo)
+    later = git("commit-tree", tree, "-p", m, "-m", "drop core", cwd=repo)
+    head = git("commit-tree", tree, "-p", later, "-m", "unrelated", cwd=repo)
+    git("update-ref", "refs/heads/main", head, m, cwd=repo)
+    out = I.sync_worktree(repo, h, m, paths, head=head)
+    assert out["settled_by_later_commit"]["paths"] == ["calc/core.py"]
+    assert not (repo / "calc/core.py").exists()

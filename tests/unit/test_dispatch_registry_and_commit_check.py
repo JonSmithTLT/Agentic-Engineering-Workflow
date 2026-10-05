@@ -48,7 +48,10 @@ def test_an_entrypoint_guard_without_an_implementation_is_a_composition_error():
 
 def test_every_entrypoint_that_creates_an_invocation_declares_the_scope_it_creates():
     """Admission binds the new invocation's scope (PR #32 review, P2): a new creating entrypoint must say which."""
-    creating = {n for n, e in ENTRYPOINTS.items() if not e.covered_by and n != "harness.launch"}
+    # harness.launch creates a run, not an invocation; integrate.prepare creates the lease's engine custody
+    # invocation, which has no scope or role and is admitted by its own rule (M4-D).
+    creating = {n for n, e in ENTRYPOINTS.items() if not e.covered_by and n not in {"harness.launch",
+                                                                                    "integrate.prepare"}}
     assert set(CREATES_SCOPE) == creating
     assert {s for s in CREATES_SCOPE.values() if s} <= {"ticket", "observation", "parent"}
 

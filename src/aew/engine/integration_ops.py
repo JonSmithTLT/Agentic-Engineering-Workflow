@@ -16,7 +16,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, transitions
-from aew.errors import GateUnsatisfied, GitError, IllegalTransition, IntegrityError, StaleCandidate
+from aew.engine import queue_ops as Q
+from aew.engine.dispatch import GuardRegistration as DispatchGuard
+from aew.engine.dispatch import checked
+from aew.errors import (
+    GateUnsatisfied,
+    GitError,
+    IllegalTransition,
+    IntegrityError,
+    LeaseNotHeld,
+    LeaseReconcileRequired,
+    StaleCandidate,
+)
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -26,12 +37,17 @@ from aew.workspace import integration as I
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import GatesPort, InvocationsPort, WorkUnitsPort
+    from aew.engine.ports import DispatchPort, GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
 
 
 # An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
 OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive", "validation_failed", "conflict",
                               "stale_candidate", "discarded"})
+# The default most paths one candidate may change (gates.yaml `max_publish_paths`; register E34). A publish syncs each
+# changed path into the authoritative checkout under the control lock, measured at about 4.5 to 5.5 ms a path on the
+# Windows reference machine (tools/perf/publish_sync.py), so 2,000 paths keep the hold near 10 s, well inside the
+# 31 s other writers wait for the lock.
+MAX_PUBLISH_PATHS = 2000
 # States a Ticket may enter while keeping its open integration record: still at (or interrupted in, or
 # awaiting classification of a post-integration failure for) the COMMIT_READY the candidate was built from.
 KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
@@ -40,11 +56,14 @@ KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICAT
 class Integration:
     """Lead-controlled integration: prepare -> post-integration verification -> publish (CAS) -> DONE."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort, invocations: InvocationsPort, gates: GatesPort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, invocations: InvocationsPort, gates: GatesPort,
+                 dispatch: DispatchPort, queue: QueuePort) -> None:
         self.k = k
         self.units = units
         self.invocations = invocations
         self.gates = gates
+        self.dispatch = dispatch
+        self.queue = queue
 
     def _ref(self) -> str:
         return f"refs/heads/{self.k.authoritative_branch}"
@@ -88,35 +107,97 @@ class Integration:
             if path and path != live and Path(path).exists():
                 worktrees.remove(self.k.repo_root, path)
 
+    # ---- the dispatch guards of ``integrate.prepare`` (M4-D): the checks prepare made before the queue, in order
+
+    def dispatch_guards(self) -> list[DispatchGuard]:
+        return [DispatchGuard("integrate.ticket", self._g_ticket), DispatchGuard("integrate.gates", self._g_gates)]
+
+    def _g_ticket(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        return checked(lambda: self._require_integrable(state, work_id))
+
+    def _g_gates(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        return checked(lambda: self._require_gated(state, work_id))
+
+    def require_legal(self, state: dict[str, Any], work_id: str) -> None:
+        """Whether ``work_id``'s integration could be prepared now, apart from the queue (raises when not)."""
+        self._require_integrable(state, work_id)
+        self._require_gated(state, work_id)
+
+    def _require_integrable(self, state: dict[str, Any], work_id: str) -> None:
+        unit = self.units.unit(state, work_id)
+        if unit["state"] != "COMMIT_READY":
+            raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
+        if not unit.get("mutating"):
+            raise IllegalTransition(f"{work_id} is a non-mutating (evidence-only) Ticket; "
+                                    "it never integrates source")
+        integ = unit.get("integration") or {}
+        if integ.get("status") == "publishing":
+            raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
+        lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+        # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the
+        # queue existed (an upgraded project): prepare replaces it under fresh checks and custody, never adopts it.
+        unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
+        if (integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None
+                and not lost and not unleased):
+            raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
+
+    def _require_gated(self, state: dict[str, Any], work_id: str) -> None:
+        unit = self.units.unit(state, work_id)
+        gc = self.gates.gate_context(state, work_id)
+        self.gates.require_gates(gc, gc["obligations"]["gates"], what="integration")
+        if gc["open_required_findings"]:
+            raise GateUnsatisfied("mandatory review findings are unresolved")
+        gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
+        current = gc["snapshot"]["relevant_inputs_fingerprint"]
+        if gated != current:
+            raise GateUnsatisfied("the workspace changed after COMMIT_READY; return it to RUNNING and revalidate",
+                                  gated=gated, current=current)
+
+    def _admission_refusal(self, unit: dict[str, Any], changed: list[str]) -> GateUnsatisfied | None:
+        """Why a merged candidate may not be admitted, or None: the publish path bound (register E34), protected
+        paths, and case-only renames this checkout cannot hold."""
+        limit = self.k.policy("gates").get("max_publish_paths") or MAX_PUBLISH_PATHS
+        if len(changed) > limit:
+            return GateUnsatisfied(
+                f"the candidate changes {len(changed)} paths, more than the {limit} one publish may sync into "
+                "the authoritative checkout while it holds the control lock (gates.yaml `max_publish_paths`): "
+                "split the change into smaller Tickets, or raise the limit knowing a larger publish blocks "
+                "every other writer for longer", changed=len(changed), limit=limit)
+        meta = self.gates.record_meta(unit)
+        verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
+            "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
+        protected = [v for v in verdict["violations"] if v["rule"] != "outside_ticket_scope"]
+        if protected:
+            return GateUnsatisfied("the integrated change touches protected paths", violations=protected)
+        clashes = I.case_only_renames(self.k.repo_root, changed)
+        if clashes:
+            return GateUnsatisfied(
+                "the change renames paths only by letter case, which this checkout's case-insensitive "
+                "filesystem cannot hold side by side, so the authoritative worktree could never be synced. "
+                "Rename in two steps (to a different name, then to the target), or integrate on a "
+                "case-sensitive filesystem", paths=clashes[:50])
+        return None
+
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         conflict: dict[str, Any] | None = None
+        refused: GateUnsatisfied | None = None
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
+            self.queue.sync(state)
+            # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian.
+            decision = self.dispatch.decide_in(ctx, "integrate.prepare", work_id)
+            unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
+            self.queue.grant(ctx, work_id)
             unit = self.units.unit(state, work_id)
-            if unit["state"] != "COMMIT_READY":
-                raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
-            if not unit.get("mutating"):
-                raise IllegalTransition(f"{work_id} is a non-mutating (evidence-only) Ticket; "
-                                        "it never integrates source")
             integ = unit.get("integration") or {}
-            if integ.get("status") == "publishing":
-                raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
-            lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
-            if (integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None
-                    and not lost):
-                raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
             if integ:
-                why = "its integration worktree is gone" if lost else "replaced by a new candidate"
+                lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+                why = ("its integration worktree is gone" if lost
+                       else "prepared before the integration queue, so no lease held it; replaced under the queue"
+                       if unleased and integ.get("status") in {"prepared", "validated"}
+                       else "replaced by a new candidate")
                 self._retire_integration(state, unit, f"{why} (was {integ.get('status')})")
-            gc = self.gates.gate_context(state, work_id)
-            self.gates.require_gates(gc, gc["obligations"]["gates"], what="integration")
-            if gc["open_required_findings"]:
-                raise GateUnsatisfied("mandatory review findings are unresolved")
             gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
-            current = gc["snapshot"]["relevant_inputs_fingerprint"]
-            if gated != current:
-                raise GateUnsatisfied("the workspace changed after COMMIT_READY; return it to RUNNING and revalidate",
-                                      gated=gated, current=current)
             ws = unit["workspace"]
             ws_path = Path(ws["path"])
             ticket_commit = I.commit_workspace(ws_path, f"aew({work_id}): {unit['title']}")
@@ -144,40 +225,59 @@ class Integration:
             record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                       "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
                       "binding": self.gates.integration_binding(unit)}
+            candidate: str = merged.get("commit") or ""
+            changed: list[str] = []
             if merged["conflict"]:
                 worktrees.remove(self.k.repo_root, int_ws["path"])
                 conflict = {"paths": merged["paths"]}
                 unit["integration"] = {**record, "status": "conflict", "conflict_paths": merged["paths"]}
+                # A conflict releases the lease and returns the entry to the Lead; it is never auto-resolved.
+                self.queue.record_attempt(state, work_id, unit["integration"])
+                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="conflict",
+                                   detail={"paths": merged["paths"][:50]})
                 ctx.summary = f"{work_id} integration conflict on {merged['paths']}"
             else:
-                candidate = merged["commit"]
                 changed = I.changed_between(self.k.repo_root, base, candidate)
-                meta = self.gates.record_meta(unit)
-                verdict = GR.evaluate(changed, self.k.policy("guardrails"), list((meta.get("scope") or {}).get(
-                    "paths") or []), (meta.get("acceptance") or {}).get("inputs"))
-                protected = [v for v in verdict["violations"] if v["rule"] != "outside_ticket_scope"]
-                if protected:
+                refused = self._admission_refusal(unit, changed)
+                if refused is not None and not Q.queued(state):
                     worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise GateUnsatisfied("the integrated change touches protected paths", violations=protected)
-                clashes = I.case_only_renames(self.k.repo_root, changed)
-                if clashes:
-                    worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise GateUnsatisfied(
-                        "the change renames paths only by letter case, which this checkout's case-insensitive "
-                        "filesystem cannot hold side by side, so the authoritative worktree could never be synced. "
-                        "Rename in two steps (to a different name, then to the target), or integrate on a "
-                        "case-sensitive filesystem", paths=clashes[:50])
+                    raise refused  # v1: no queue entry to hold the refusal, so nothing is committed
+            if refused is not None:
+                # Like a conflict, a refused candidate is the Lead's to settle: the lease is released and the entry
+                # waits for disposition, committed, so it never holds up an independent entry behind it (FIFO).
+                worktrees.remove(self.k.repo_root, int_ws["path"])
+                self.queue.record_attempt(state, work_id, {**record, "status": "refused"})
+                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="refused",
+                                   detail={"code": refused.code, "reason": refused.message})
+                ctx.summary = f"{work_id} integration candidate refused at admission: {refused.message}"
+            elif not merged["conflict"]:
                 snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
                 unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
                                        "candidate_snapshot": snap, "changed_paths": changed}
+                self.queue.record_attempt(state, work_id, unit["integration"])
                 ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
             self.units.before_commit(ctx)
         self._prune_retired_candidates(unit)
+        if refused is not None:
+            refused.details.update(queue=self._queue_brief(ctx.state, work_id), revision=ctx.session.committed_revision,
+                                   next="the entry waits for disposition: change the Ticket (return it to RUNNING, "
+                                        "which retires the entry) or the policy, then make it COMMIT_READY again")
+            raise refused
         result = {"ok": conflict is None, "work_id": work_id, "integration": unit["integration"],
+                  "queue": self._queue_brief(ctx.state, work_id), "dispatch": decision.to_dict(),
                   "revision": ctx.session.committed_revision}
         if conflict:
             result["next"] = "resolve by returning the Ticket to RUNNING (rebase) or REPLAN_REQUIRED"
         return result
+
+    @staticmethod
+    def _queue_brief(state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        qid, entry = Q.entry_of(state, work_id)
+        if qid is None or entry is None:
+            return None
+        lease = (state.get("queue") or {}).get("lease")
+        return {"entry": qid, "state": entry["state"], "seq": entry["seq"],
+                "custodian": lease["custodian"] if lease and lease["entry"] == qid else None}
 
     def _post_integration_ok(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
         policy = self.k.policy("gates")["post_integration"]
@@ -244,15 +344,20 @@ class Integration:
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
+            self.queue.sync(ctx.state)
+            self.queue.require_live_lease(ctx.state, work_id, "publishing")
             superseded = self.gates.binding_problem(unit)
             current = self.k.authoritative_commit()
             if superseded:
                 self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
+                self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
                 stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
             elif current != integ["base"]:
                 integ["status"] = "stale_candidate"
+                # D3: the entry keeps its place and the Lead prepares again (D4 rebuilds once under the same lease).
+                self.queue.release(ctx.state, work_id, to="QUEUED", result="stale_candidate")
                 stale = {"expected": integ["base"], "current": current}
                 ctx.summary = f"{work_id} candidate stale: authoritative ref moved"
             else:
@@ -273,7 +378,8 @@ class Integration:
         assert committed is not None  # the transaction above committed
         return self._finish_publish(token, committed, work_id)
 
-    def _finish_publish(self, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def _finish_publish(self, token: str, expect_rev: int, work_id: str, *,
+                        reconciling: bool = False) -> dict[str, Any]:
         """CAS, worktree sync and DONE as ONE Lead transaction (review 2026-09-26 M1).
 
         Authority, the expected control revision and the manifest pin are all verified under the
@@ -291,6 +397,8 @@ class Integration:
             integ = unit.get("integration") or {}
             if integ.get("status") != "publishing":
                 raise IllegalTransition(f"{work_id} is not publishing (integration {integ.get('status')})")
+            self.queue.sync(ctx.state)
+            lease = self._publishing_lease(ctx.state, work_id, reconciling)
             ref, base, candidate = self._ref(), integ["base"], integ["candidate"]
             applies = I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch)
             current = git.rev_parse(ref, cwd=self.k.repo_root)
@@ -326,6 +434,7 @@ class Integration:
             if stale:
                 if unit.get("integration") is not None:
                     integ["status"] = "stale_candidate"
+                self.queue.release(ctx.state, work_id, to="QUEUED", result="stale_candidate")
                 ctx.op = "integrate.stale"
                 ctx.summary = f"{work_id} candidate stale"
             elif withdrawn:
@@ -334,12 +443,15 @@ class Integration:
                 faults.hit("integrate.after_cas")
                 sync = {"status": "not_applicable (authoritative branch not checked out here)"}
                 if applies:
-                    try:
-                        sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],
-                                               head=current if cas == "already_published" else None,
-                                               on_first=lambda: faults.hit("integrate.mid_sync"))
-                    except IntegrityError as exc:
-                        raise IntegrityError(exc.message, published=candidate, ref=ref, **exc.details) from None
+                    # AEW-INV-ISO-004: syncing into the shared checkout is serialized by a lock held for this bounded
+                    # step only, in the lease custodian's name. It grants nothing (M4-B6).
+                    with self.queue.checkout_sync_lock(ctx.state, lease=lease, work_id=work_id):
+                        try:
+                            sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],
+                                                   head=current if cas == "already_published" else None,
+                                                   on_first=lambda: faults.hit("integrate.mid_sync"))
+                        except IntegrityError as exc:
+                            raise IntegrityError(exc.message, published=candidate, ref=ref, **exc.details) from None
                     sync["status"] = "synced"
                 faults.hit("integrate.before_done")
                 transitions.check(unit["state"], "DONE", "integrate.publish")
@@ -417,6 +529,41 @@ class Integration:
                 f"of the integrated snapshot.\n")
         return render_frontmatter(meta, body)
 
+    def _publishing_lease(self, state: dict[str, Any], work_id: str, reconciling: bool) -> dict[str, Any] | None:
+        """The lease a publish in progress runs under. Reconciling an interrupted publish needs no live custodian
+        (that is what it reconciles), and a publish begun before the queue existed has no lease at all."""
+        lease = Q.lease_of(state, work_id)
+        if reconciling or not Q.queued(state):
+            return lease
+        if lease is None:
+            raise LeaseNotHeld(f"publishing {work_id} needs its integration lease")
+        if lease["reconcile"] is not None:
+            raise LeaseReconcileRequired(
+                f"{work_id}'s integration lease lost its custodian ({lease['reconcile']['reason']}): run `aew "
+                f"integrate reconcile {work_id}`", entry=lease["entry"])
+        return lease
+
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        """Resume an interrupted publish by inspecting git: CAS pending, already done, or stale."""
-        return self._finish_publish(token, expect_rev, work_id)
+        """Resume an interrupted publish by inspecting git: CAS pending, already done, or stale. A lease whose
+        custodian died, with no publish in progress, is reconciled instead: nothing was published, so its open
+        candidate is retired and the entry returns to the queue in its place (M4-D: never a timeout)."""
+        state = self.k.store.read()
+        unit = state["work"].get(work_id) or {}
+        lease = Q.lease_of(state, work_id)
+        if (unit.get("integration") or {}).get("status") == "publishing" or not (lease and lease["reconcile"]):
+            return self._finish_publish(token, expect_rev, work_id, reconciling=True)
+        with self.k.lead_txn(token, expect_rev, "integrate.reconcile") as ctx:
+            unit = self.units.unit(ctx.state, work_id)
+            lease = Q.lease_of(ctx.state, work_id)
+            if lease is None or lease["reconcile"] is None or \
+                    (unit.get("integration") or {}).get("status") == "publishing":
+                raise IllegalTransition(f"{work_id}'s integration changed while reconciling; run it again")
+            why = lease["reconcile"]["reason"]
+            if (unit.get("integration") or {}).get("status") in OPEN_INTEGRATION:
+                self._retire_integration(ctx.state, unit, f"its lease's custodian died ({why})")
+            self.queue.release(ctx.state, work_id, to="QUEUED", result=f"reconciled: {why}")
+            ctx.summary = f"{work_id} integration lease reconciled ({why}); the entry keeps its place in the queue"
+            self.units.before_commit(ctx)
+        self._prune_retired_candidates(unit)
+        return {"ok": True, "work_id": work_id, "reconciled": "lease", "reason": why,
+                "queue": self._queue_brief(ctx.state, work_id), "revision": ctx.session.committed_revision}

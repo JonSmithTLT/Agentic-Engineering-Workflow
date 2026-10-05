@@ -18,8 +18,9 @@ not interpretation; a row's id is its first cell and its target is read from the
 Merges. Two changes to the register collide only where they touch the same lines, so the file keeps nothing that
 every change edits: the preamble carries no per-change log (the history is ``git log`` on the YAML; each row carries
 its own dates), and §Closed is kept in id order rather than closing order, so two changes that close different
-entries insert at different places. When a merge does conflict, resolve the YAML only and run ``render``: the
-markdown is derived and is never merged by hand.
+entries insert at different places. After every sync with main run ``render``, conflict or not: a clean merge can
+still leave §Closed unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict,
+resolve the YAML only and run ``render``: the markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
@@ -156,8 +157,8 @@ def closed_order(section: dict[str, Any]) -> list[dict[str, Any]]:
     """§Closed as it is kept: the ``Gate`` rows first, in the order they closed, then every id in natural order. A row
     closed today lands next to its neighbours by id, not at the end where every other change also appends."""
     gates = [r for r in section["rows"] if next(iter(r.values())) == "Gate"]
-    closed_col = section["columns"][2] if len(section["columns"]) > 2 else None
-    gates.sort(key=lambda r: r.get(closed_col, "") if closed_col else "")
+    if "Closed" in section["columns"]:
+        gates.sort(key=lambda r: r["Closed"])
     others = sorted((r for r in section["rows"] if next(iter(r.values())) != "Gate"),
                     key=lambda r: id_key(next(iter(r.values()))))
     return gates + others

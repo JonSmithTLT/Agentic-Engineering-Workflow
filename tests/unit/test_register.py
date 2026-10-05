@@ -84,3 +84,23 @@ def test_a_change_log_in_the_preamble_is_reported():
     data = copy.deepcopy(DATA)
     data["preamble"] += "\n\n*Last updated: 2026-10-05 (something).*"
     assert any("change log" in p for p in register.problems(data))
+
+
+def test_gate_rows_sort_by_the_column_named_closed_wherever_it_is():
+    section = {"title": "Closed", "columns": ["#", "By", "Closed", "Was"], "rows": [
+        {"#": "Gate", "By": "b", "Closed": "2026-10-05", "Was": "later"},
+        {"#": "E2", "By": "b", "Closed": "2026-10-03", "Was": "x"},
+        {"#": "Gate", "By": "b", "Closed": "2026-10-01", "Was": "earlier"},
+    ]}
+    assert [r["Was"] for r in register.closed_order(section)] == ["earlier", "later", "x"]
+
+
+def test_a_clean_merge_that_leaves_closed_unsorted_is_still_caught():
+    """Two branches that each appended a closed row merge without conflict, unsorted and with a stale markdown; only
+    `check` (and CI) catch that, so `render` runs after every sync, not only after a conflict."""
+    data = copy.deepcopy(DATA)
+    section = next(s for s in data["sections"] if s["title"].startswith("Closed"))
+    section["rows"] += [{c: ("U0" if c == "#" else "x") for c in section["columns"]},
+                        {c: ("E0" if c == "#" else "x") for c in section["columns"]}]
+    assert register.dump(data) != register.dump(register.normalize(copy.deepcopy(data)))
+    assert any("not in id order" in p for p in register.problems(data))

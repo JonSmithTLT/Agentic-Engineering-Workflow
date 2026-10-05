@@ -209,8 +209,10 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
   Every open row's target column starts with one bold target from the register's own table.
 - The register merges: its preamble carries no per-change log (the history is `git log` on the YAML and each row's
   own dates; the log to 2026-10-05 is [archived](archive/register-changelog-to-2026-10-05.md)), and §9 *Closed* is kept in id
-  order, which `render` applies and `check` enforces, so append a closed row anywhere. When a merge conflicts,
-  resolve `future-work.yaml` only, then run `render`: the markdown is derived and is never merged by hand.
+  order, which `render` applies and `check` enforces, so append a closed row anywhere. After every sync with main,
+  run `render`, conflict or not: a clean merge can still leave §9 unsorted and the markdown stale, which `check` and
+  CI refuse. When a merge conflicts, resolve `future-work.yaml` only, then run `render`: the markdown is derived and
+  is never merged by hand.
 - When a milestone finishes, its plan, reports and review responses move to `archive/`. An independent review's record
   moves to `archive/reviews/` and its probes to `eval/reviews/` when the review is delivered.
 - `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this page.

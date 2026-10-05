@@ -22,7 +22,7 @@
 
 The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's plan review ratifies or changes them.
 
-*History: each row carries its own dates; the file's history is `git log -- docs/implementation/future-work.yaml`. The change log kept in this line until 2026-10-05 is archived as `docs/archive/register-changelog-to-2026-10-05.md`. Nothing in this preamble changes per entry. When a merge conflicts, resolve `future-work.yaml` only and run `python tools/register.py render`: the markdown is derived and is never merged by hand.*
+*History: each row carries its own dates; the file's history is `git log -- docs/implementation/future-work.yaml`. The change log kept in this line until 2026-10-05 is archived as `docs/archive/register-changelog-to-2026-10-05.md`. Nothing in this preamble changes per entry. After every sync with main, run `python tools/register.py render`, conflict or not: a clean merge can still leave §9 unsorted and the markdown stale, which `check` (and CI) refuse. When a merge conflicts, resolve `future-work.yaml` only, then render: the markdown is derived and is never merged by hand.*
 
 ## 1. Gates on the way (in order)
 

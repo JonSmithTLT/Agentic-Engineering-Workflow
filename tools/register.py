@@ -6,14 +6,20 @@ mapping from column name to cell text. ``docs/implementation/future-work.md`` is
 the YAML by this tool and kept identical to it by ``tests/unit/test_register.py``. Readers, the ledger's tests and the
 dashboard keep reading the markdown; triage tooling reads the YAML.
 
-    python tools/register.py render            # rewrite future-work.md from future-work.yaml
-    python tools/register.py check             # exit 1 if future-work.md is not what the YAML renders
+    python tools/register.py render            # normalize the YAML (§Closed in id order), rewrite future-work.md
+    python tools/register.py check             # exit 1 if either file is not what render would write
     python tools/register.py import            # one-time: parse future-work.md into future-work.yaml
     python tools/register.py summary           # open rows by section and target
 
 The markdown is plain GitHub tables, one per section, with optional prose before the table. A cell never contains a
 literal ``|`` (the table would break), so cells split on it. Rows are kept exactly as written: the YAML holds text,
 not interpretation; a row's id is its first cell and its target is read from the column named in ``target_column``.
+
+Merges. Two changes to the register collide only where they touch the same lines, so the file keeps nothing that
+every change edits: the preamble carries no per-change log (the history is ``git log`` on the YAML; each row carries
+its own dates), and §Closed is kept in id order rather than closing order, so two changes that close different
+entries insert at different places. When a merge does conflict, resolve the YAML only and run ``render``: the
+markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
@@ -37,6 +43,8 @@ TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|M4|M5|M6|Hierarchy revision|M4 candid
                        r"On measured need|Unscheduled)")
 SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
 ID_RE = re.compile(r"^[A-Z][0-9]+(?:\.[0-9]+)?$")
+ID_KEY_RE = re.compile(r"^([A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
+CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
 
 
 class _Dumper(yaml.SafeDumper):
@@ -132,6 +140,37 @@ def dump(data: dict[str, Any]) -> str:
     return yaml.dump(data, Dumper=_Dumper, sort_keys=False, allow_unicode=True, width=118)
 
 
+# ------------------------------------------------------------------------------------------------------- order
+
+def id_key(value: str) -> tuple[Any, ...]:
+    """The natural order of a row id: its letters, then each numeric part as a number, then any suffix. So ``E8`` <
+    ``E10``, ``F20`` < ``F20.1`` < ``F20.2``, and ``Q9 (decisions)`` sorts with ``Q9``."""
+    m = ID_KEY_RE.match(value)
+    if m is None:
+        return (1, value)
+    parts = tuple(int(x) for x in m.group(3).split(".") if x)
+    return (0, m.group(1), int(m.group(2)), parts, value[m.end():])
+
+
+def closed_order(section: dict[str, Any]) -> list[dict[str, Any]]:
+    """§Closed as it is kept: the ``Gate`` rows first, in the order they closed, then every id in natural order. A row
+    closed today lands next to its neighbours by id, not at the end where every other change also appends."""
+    gates = [r for r in section["rows"] if next(iter(r.values())) == "Gate"]
+    closed_col = section["columns"][2] if len(section["columns"]) > 2 else None
+    gates.sort(key=lambda r: r.get(closed_col, "") if closed_col else "")
+    others = sorted((r for r in section["rows"] if next(iter(r.values())) != "Gate"),
+                    key=lambda r: id_key(next(iter(r.values()))))
+    return gates + others
+
+
+def normalize(data: dict[str, Any]) -> dict[str, Any]:
+    """The data as ``render`` writes it: every Closed section in ``closed_order``."""
+    for section in data["sections"]:
+        if section["title"].startswith("Closed"):
+            section["rows"] = closed_order(section)
+    return data
+
+
 # ------------------------------------------------------------------------------------------------------- queries
 
 def rows(data: dict[str, Any], *, open_only: bool = True) -> list[dict[str, Any]]:
@@ -157,6 +196,13 @@ def problems(data: dict[str, Any]) -> list[str]:
     for r in rows(data):
         if r["section"] not in (1, 4) and r["target"] is None:
             out.append(f"§{r['section']} {r['id'] or '?'}: its target column does not start with a bold target")
+    for section in data["sections"]:
+        if section["title"].startswith("Closed") and section["rows"] != closed_order(section):
+            out.append(f"§{section['number']} {section['title']} is not in id order (run `python tools/register.py "
+                       "render`): rows appended in closing order collide on every merge")
+    if CHANGELOG_RE.search(data["preamble"]):
+        out.append("the preamble carries a 'Last updated' change log: every change edits that line, so every pair of "
+                   "changes conflicts; the history is `git log` on the YAML and each row's own dates")
     return out
 
 
@@ -187,8 +233,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"imported {sum(len(s['rows']) for s in data['sections'])} rows into {YAML.relative_to(ROOT)}")
         return 0
-    data = load()
+    data = normalize(load())
     if args.command == "render":
+        text = dump(data)
+        if text != YAML.read_text(encoding="utf-8"):
+            YAML.write_text(text, encoding="utf-8", newline="\n")
+            print(f"normalized {YAML.relative_to(ROOT)}")
         MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
         print(f"rendered {MD.relative_to(ROOT)}")
         return 0
@@ -198,6 +248,9 @@ def main(argv: list[str] | None = None) -> int:
             print("problem:", p)
         return 0
     ok = render_markdown(data) == MD.read_text(encoding="utf-8")
+    if dump(data) != YAML.read_text(encoding="utf-8"):
+        ok = False
+        print(f"{YAML.relative_to(ROOT)} is not normalized (§Closed in id order, canonical layout)")
     print("in sync" if ok else f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders; run "
           "`python tools/register.py render`")
     return 0 if ok else 1

@@ -738,8 +738,8 @@ class Engine:
                 "transitions": found}
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
-                     limit: int = 50) -> dict[str, Any]:
-        return self._history.history_list(kind=kind, since=since, until=until, limit=limit)
+                     limit: int = 50, before: int | None = None) -> dict[str, Any]:
+        return self._history.history_list(kind=kind, since=since, until=until, limit=limit, before=before)
 
     def history_links(self, record_id: str, *, depth: int = 1) -> dict[str, Any]:
         return self._history.history_links(record_id, depth=depth)
@@ -757,6 +757,27 @@ class Engine:
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)
+
+    # ---------------------------------------------------------------- read collaborators (the dashboard, F20.2)
+    # The dashboard projects committed state through the same collaborators every command reads with; it never
+    # mutates, and it reads the state itself lock-free (``ControlStore.read_committed``).
+
+    @property
+    def archive(self) -> Archive:
+        return self._archive
+
+    @property
+    def units(self) -> WorkUnits:
+        return self._units
+
+    def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        return self._history.audit_status(state, policy=policy)
+
+    def contradictions(self, state: dict[str, Any]) -> list[str]:
+        return self._views.contradictions(state)
+
+    def next_actions(self, state: dict[str, Any]) -> list[str]:
+        return self._resume.next_actions(state)
 
     def archived_credential(self, state: dict[str, Any], token_id: str) -> dict[str, Any] | None:
         """A credential archived with finished work (ADR-0011 R7), for checks outside the engine (the Lead broker, a

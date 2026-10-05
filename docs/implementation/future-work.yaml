@@ -381,7 +381,13 @@ sections:
       launch, immutable runs with separate analyses. Its first slice (schemas, preregistration and the attempt ledger, proved
       against the M3 corpus) comes before M4-H''s preregistration. ARV-05 (operator, 2026-10-05): the probes the architecture
       review could not run (gateway features such as tool search, structured output and caching; recall performance on the
-      target hardware) are evaluation items here.'
+      target hardware) are evaluation items here. **Adopted** by the operator and the designer (2026-10-05). **Slice 1 built
+      (2026-10-05):** `eval/aew_eval/` with the four schemas (`aew/eval-case/v1`, `aew/eval-prereg/v1`, `aew/eval-attempt/v1`,
+      `aew/eval-run/v1`), `prereg.py` (freeze: consistency, the seeded schedule, the canonical hash; refusal of a run whose
+      material inputs changed), the append-only attempt ledger (registered and synced before any provider action, a result
+      finalized once, a killed runner visible as `runner_lost`, retries only under the frozen policy) and the deterministic
+      mapping of all 68 M3 records (`compat.py`), proved in `tests/unit/test_eval_instrument.py`. Next: the runner and
+      fixtures by generalizing `dogfood.py`, then the hidden-evaluator channel (design §8).'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve

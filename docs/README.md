@@ -60,6 +60,7 @@ checks the index, and that every citation names a real section of the frozen ver
    - [`plan-assurance-and-premise-validation-design-v0.4.md`](design/plan-assurance-and-premise-validation-design-v0.4.md): the post-M3 plan-assurance direction
    - [`ticket-revision-amendment-2026-09-30.md`](design/ticket-revision-amendment-2026-09-30.md): Ticket revisions
    - [`typed-lead-surface-design-v0.2.md`](design/typed-lead-surface-design-v0.2.md): the typed Lead surface (F15), governing since 2026-10-05: one catalog of typed actions below transport, one runner, `StageResult` and a tri-state `ActionProjection`, MCP (`aew-lead`, broker-side) as the first normal transport and the CLI as parity and recovery; its §11 sequences M4-D, M4-E and M6
+   - [`evaluation-component-design-v0.2.md`](design/evaluation-component-design-v0.2.md): the shared evaluation instrument (F19), adopted 2026-10-05: preregistration, the append-only attempt ledger, immutable runs, the hidden-evaluator channel; evaluation-only, never workflow authority; its first slice comes before M4-H's preregistration
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
@@ -116,7 +117,6 @@ text is not governing.
 
 | Proposal | Register | Adoption state | Scheduled |
 |---|---|---|---|
-| [`evaluation-component-design-v0.2.md`](design/proposals/evaluation-component-design-v0.2.md) | F19 | Design frozen, proposed | Its first slice before M4-H's preregistration |
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
 | [`project-maps-design-v0.4.md`](design/proposals/project-maps-design-v0.4.md) | F22, F22.1 to F22.3 | Proposed consolidation for the designer's freeze (2026-10-05): listing-bound freshness and the semantic-extension contract; v0.3 governs until adopted | Structural slice an M4 candidate; semantic extension with M6 |

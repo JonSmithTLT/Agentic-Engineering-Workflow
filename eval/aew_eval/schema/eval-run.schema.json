@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/eval-run/v1",
+  "title": "One paid/model run's immutable result (evaluation component design v0.2, section 3)",
+  "description": "A run belongs to exactly one preregistration and is one sample however many metrics it informs. A historical aew/dogfood-run/v1 record maps here with `legacy` holding the original record unchanged; only such a record may lack a preregistration and a validity verdict, because none existed when it was made.",
+  "type": "object",
+  "required": ["schema", "experiment", "preregistration_sha256", "run_id", "case", "arm", "profile", "aew", "harness",
+               "environment", "assignment", "validity", "started_at", "ended_at", "wall_s", "limits", "outcome",
+               "aew_facts", "cost", "notes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/eval-run/v1"},
+    "experiment": {"type": "string", "minLength": 1},
+    "preregistration_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "case": {
+      "type": "object", "required": ["id", "sha256", "hidden_sha256"], "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "hidden_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "arm": {
+      "type": "object", "required": ["id", "kind", "config_sha256"], "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"enum": ["aew", "raw", "scripted"]},
+        "config_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "profile": {
+      "type": "object", "required": ["requested", "observed", "mismatch"], "additionalProperties": false,
+      "properties": {
+        "requested": {"type": "object"},
+        "observed": {"type": "array", "items": {"type": "object"}},
+        "mismatch": {"type": ["boolean", "null"]}
+      }
+    },
+    "aew": {"type": "object"},
+    "harness": {"type": "object"},
+    "environment": {"type": "object"},
+    "assignment": {
+      "type": ["object", "null"],
+      "required": ["cell", "order_index", "randomization_seed"],
+      "additionalProperties": false,
+      "properties": {
+        "cell": {"type": "string"}, "order_index": {"type": "integer", "minimum": 0},
+        "randomization_seed": {"type": "integer"}
+      }
+    },
+    "validity": {
+      "type": ["object", "null"],
+      "required": ["status", "reason_code"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["valid", "invalid_measurement", "runner_lost", "environment_blocked"]},
+        "reason_code": {"type": ["string", "null"]}
+      }
+    },
+    "started_at": {"type": ["string", "null"]},
+    "ended_at": {"type": ["string", "null"]},
+    "wall_s": {"type": ["number", "null"]},
+    "limits": {"type": "object"},
+    "outcome": {"type": "object"},
+    "aew_facts": {"type": "object"},
+    "cost": {"type": "object"},
+    "notes": {"type": ["string", "null"]},
+    "legacy": {
+      "type": "object", "required": ["schema", "sha256", "record"], "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "aew/dogfood-run/v1"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "record": {"type": "object"}
+      }
+    }
+  },
+  "if": {"not": {"required": ["legacy"]}},
+  "then": {
+    "properties": {
+      "preregistration_sha256": {"type": "string"},
+      "validity": {"type": "object"},
+      "assignment": {"type": "object"}
+    }
+  }
+}

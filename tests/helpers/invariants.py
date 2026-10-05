@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from store_model import segment_violations  # a sibling helper: rule 27 over sealed segments
 
 from aew.engine import hierarchy as H
 from aew.engine import outbox
@@ -232,6 +233,8 @@ def control_violations(root: Path) -> list[str]:
     problems += cold_problems + cold_violations(root, hot, state)
     # 24 and 26. ADR-0012: the transition log (rule 25, event fidelity, needs the earlier states: store_model.py).
     problems += outbox_violations(root, hot)
+    # 27. ADR-0012: sealed segments (rule 28, reader race safety, is modelled over interleavings: store_model.py).
+    problems += segment_violations(Path(root) / ".aew", hot) if hot.get("outbox") else []
     return problems
 
 
@@ -241,7 +244,9 @@ _LOG_CHECKED: dict[str, tuple[int, str | None]] = {}  # per project: (revision v
 def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
     """24. From the revision the outbox began, every revision has exactly one logical transition, chained to the one
     before, the newest equal to ``last_transition``. 26. A record holds at most 64 hot events, and an overflow's
-    sidecar holds exactly the set its descriptor names. Incremental: a walk checks each record once."""
+    sidecar holds exactly the set its descriptor names. Each revision resolves from either physical representation
+    (D3: unsealed, else its sealed segment, equivalent where both exist). Incremental: a walk checks each record
+    once."""
     marker = state.get("outbox")
     if marker is None:
         return ["24: the control state has no outbox marker"]
@@ -251,9 +256,10 @@ def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
     if through > state["revision"]:  # a fresh project at the same path
         through, prev_h = (marker["since"] - 1 if marker["since"] else -1, None)
     problems: list[str] = []
+    view = outbox.LogView(aew_root, marker["since"], retries=0)
     try:
         for record in outbox.read_transitions(aew_root, through, state["revision"], outbox=marker, prev_h=prev_h):
-            raw = outbox._read_record(aew_root, record["revision"]) or {}
+            raw = view.resolve(record["revision"]) or {}
             if len(raw.get("events") or []) > outbox.MAX_HOT_EVENTS:
                 problems.append(f"26: revision {record['revision']} holds {len(raw['events'])} hot events")
             if (raw.get("event_overflow") is None) != (len(record["events"] or []) <= outbox.MAX_HOT_EVENTS):
@@ -263,7 +269,7 @@ def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
         problems.append(f"24: {exc}")
     if through != state["revision"]:
         problems.append(f"24: the log stops at revision {through}, the state is at {state['revision']}")
-    elif (outbox._read_record(aew_root, through) or {}) != state["last_transition"]:
+    elif (view.resolve(through) or {}) != state["last_transition"]:
         problems.append("24: the newest log record is not the committed last_transition")
     if not problems:
         _LOG_CHECKED[key] = (through, prev_h)

@@ -24,7 +24,7 @@ NOT_DISPATCHING = {
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
     "history reindex", "history show", "init",
-    "integrate prepare", "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "lead acquire",
+    "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
@@ -56,7 +56,8 @@ def test_every_cli_command_is_a_registered_dispatch_or_classified_as_not_dispatc
 
 def test_the_lead_broker_requires_launch_for_exactly_the_dispatches_that_print_a_credential():
     broker = {tuple(sorted(p)) for p in lead_broker.DISPATCHES}
-    printing = {tuple(sorted(p)) for p in CLI_DISPATCHES if p != ("harness", "launch")}  # launch prints none
+    # launch prints none; integrate prepare's custodian holds no credential at all (M4-D)
+    printing = {tuple(sorted(p)) for p in CLI_DISPATCHES if p not in {("harness", "launch"), ("integrate", "prepare")}}
     assert broker == printing
 
 
@@ -75,7 +76,7 @@ def test_entrypoints_are_declared_with_an_owner_for_every_guard(tmp_path):
 def test_the_dispatch_finalizer_runs_before_archival(tmp_path):
     engine = Engine(tmp_path, tmp_path / ".aew")
     steps = [f"{type(s.__self__).__name__}.{s.__func__.__name__}" for s in engine._k.finalizers.steps]
-    assert steps == ["Dispatch.finalize", "Archive.finalize"]
+    assert steps == ["Dispatch.finalize", "Queue.finalize", "Archive.finalize"]
 
 
 # ---------------------------------------------------------------- the decision

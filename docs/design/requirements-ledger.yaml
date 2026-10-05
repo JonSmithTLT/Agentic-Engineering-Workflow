@@ -184,8 +184,8 @@ sources:
     carried:
       "Frozen designer decisions": [KST-19, KST-02, KST-23, KST-14, KST-13, KST-12, KST-09, KST-18]
   - prefix: EVC
-    path: docs/design/proposals/evaluation-component-design-v0.2.md
-    role: proposal
+    path: docs/design/evaluation-component-design-v0.2.md
+    role: adopted-design
     carried:
       "Frozen designer decisions": [EVC-11, EVC-12, EVC-15, EVC-21]
   - prefix: NET

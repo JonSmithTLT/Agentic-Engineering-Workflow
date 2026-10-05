@@ -27,6 +27,11 @@ REASONS: dict[str, Reason] = {
     "GATE_UNSATISFIED": Reason("a binding or gate the dispatch needs is not current"),
     "PERMISSION_DENIED": Reason("the dispatch is not permitted for this unit or invocation"),
     "RUN_LIVE": Reason("the invocation's latest run may still be running"),
+    # The integration queue (M4-D): scheduling only. None of them grants anything; each only refuses.
+    "QUEUE_ORDER": Reason("an earlier integration queue entry can integrate now (FIFO among runnable entries)"),
+    "LEASE_HELD": Reason("another queue entry holds the integration lease"),
+    "LEASE_NOT_HELD": Reason("the operation runs only under the Ticket's own integration lease"),
+    "LEASE_RECONCILE_REQUIRED": Reason("the integration lease lost its custodian and must be reconciled first"),
     "NOT_FOUND": Reason("a unit, card or invocation the dispatch names does not exist"),
     "USAGE": Reason("the dispatch request is malformed"),
     "VALIDATION_FAILED": Reason("a policy or card the dispatch needs is invalid"),

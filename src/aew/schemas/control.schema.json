@@ -469,7 +469,12 @@
         "base": {"type": ["string", "null"]},
         "candidate": {"type": ["string", "null"]},
         "result": {"type": ["string", "null"]},
-        "ended_at": {"type": ["string", "null"]}
+        "ended_at": {"type": ["string", "null"]},
+        "rebuild_admission": {
+          "type": "object",
+          "description": "M4-D4: the fresh integrate.prepare decision that admitted this attempt's one automatic rebuild (its provenance, dependency and policy digests, and the move it answered). The custodian keeps the grant's decision.",
+          "required": ["entrypoint", "revision", "decision", "dependency_digests", "rebuild"]
+        }
       }
     },
     "queue_entry": {

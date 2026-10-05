@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from aew.engine import faults
+from aew.engine import faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -352,29 +352,104 @@ class Harness:
             return inv_id, inv
         raise NotFound(f"no run {run}")
 
-    def harness_wait(self, run: str, *, timeout: float = 600.0) -> dict[str, Any]:
-        """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost).
+    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False) -> dict[str, Any]:
+        """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
+        and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
+
+        Woken by the advisory wake file (``local/wake``: bumped after every commit and every run-record write), with
+        a coarse re-check every 2 s instead of the old 0.2 s poll. Each check reads two lanes (ADR-0012 D5): the runs'
+        own records (did one end), and committed control state (did an invocation that a run serves stop being
+        active: cancelled, interrupted by a takeover, completed). The control state is parsed only when
+        ``control.yaml`` changed since the last check, so a wait parses nothing between commits (OBX-38).
 
         A run launched moments ago whose supervisor has not written its first record yet is possibly live, as
         the launch preconditions treat it: it is waited on, not reported unconfirmed at once (found by CI)."""
-        _, inv = self._find_run(self.k.store.read(), run)
-        launched_at = next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None)
-        directory = runlog.run_dir(self.k.aew_root, run)
-        deadline = time.monotonic() + timeout
-        while True:
-            status, record = runlog.observed_status(directory)
-            if not runlog.possibly_live(status, launched_at):
-                out = {"run": run, "status": status, "reason": (record or {}).get("reason"),
-                       "evidence": self.run_evidence(inv["work_unit"], run),
-                       "results": self.run_results(inv["work_unit"], run), "timed_out": False}
-                # the run's next action, as `aew status` gives it
-                action = next((h["action"] for h in self.harness_resume(self.k.store.read()) if h["run"] == run), None)
-                if action:
-                    out["next_action"] = action
-                return out
-            if time.monotonic() >= deadline:
-                return {"run": run, "status": status, "timed_out": True}
-            time.sleep(0.2)
+        names = [runs] if isinstance(runs, str) else list(runs)
+        if not names:
+            raise UsageError("name the run(s) to wait on")
+        if len(set(names)) != len(names):
+            raise UsageError("a run is named twice")
+        if len(names) > 1 and not any_:
+            raise UsageError("waiting on several runs needs --any: it returns the first of them to end")
+        # The identity is taken before the read it stands for: a commit between the two then shows as a change and
+        # costs one more parse, instead of being taken as already seen without its snapshot being examined.
+        seen = self._control_identity()
+        state = self.k.store.read()
+        targets: dict[str, tuple[str, dict[str, Any], str | None]] = {}
+        for run in names:
+            inv_id, inv = self._find_run(state, run)
+            targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
+        unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
+
+        def control_end(fresh: dict[str, Any], run: str) -> str | None:
+            inv_id = targets[run][0]
+            inv = fresh["invocations"].get(inv_id)
+            status = inv["status"] if inv is not None else "archived"
+            return None if status == "active" else f"invocation {inv_id} is {status}"
+
+        def ended_by_control(fresh: dict[str, Any]) -> tuple[str, str] | None:
+            for run in targets:
+                why = control_end(fresh, run)
+                if why is not None:
+                    return run, why
+            return None
+
+        def check() -> tuple[str, str, dict[str, Any] | None, str | None] | None:
+            nonlocal seen, unexamined
+            for run, (_inv_id, _inv, launched) in targets.items():
+                status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+                if not runlog.possibly_live(status, launched):
+                    return run, status, record, None
+            fresh, unexamined = unexamined, None
+            if fresh is None:
+                now = self._control_identity()
+                if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
+                    seen = now
+                    fresh = self.k.store.read()
+            if fresh is not None:
+                ended = ended_by_control(fresh)
+                if ended is not None:
+                    status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
+                    return ended[0], status, record, ended[1]
+            return None
+
+        found = outbox.wait_for(check, self.k.aew_root, timeout=timeout)
+        if not found:
+            statuses = {r: runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0] for r in names}
+            if len(names) == 1:
+                return {"run": names[0], "status": statuses[names[0]], "timed_out": True}
+            return {"runs": statuses, "timed_out": True}
+        run, status, record, control = found
+        inv = targets[run][1]
+        out: dict[str, Any] = {"run": run, "status": status, "reason": (record or {}).get("reason"),
+                               "evidence": self.run_evidence(inv["work_unit"], run),
+                               "results": self.run_results(inv["work_unit"], run), "timed_out": False}
+        if control is not None:
+            out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
+        # The wait is over, so the control state is read once more, now: the run-record lane can return before a
+        # commit since the last examined snapshot was looked at, and both the other runs' liveness and the next
+        # action are answered from the state as it is (independent review of #79).
+        current = self.k.store.read()
+        if len(names) > 1:
+            # Only the runs observed live in both lanes: a run whose record ended, or whose invocation the control
+            # state shows ended, is not still running.
+            out["still_running"] = sorted(
+                r for r in names if r != run
+                and runlog.possibly_live(runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0], targets[r][2])
+                and control_end(current, r) is None)
+        # the run's next action, as `aew status` gives it
+        action = next((h["action"] for h in self.harness_resume(current) if h["run"] == run), None)
+        if action:
+            out["next_action"] = action
+        return out
+
+    def _control_identity(self) -> tuple[int, int, int] | None:
+        """``control.yaml``'s identity (mtime, file id, size): every commit replaces the file, so it changes."""
+        try:
+            st = os.stat(self.k.store.control_path)
+        except OSError:
+            return None
+        return st.st_mtime_ns, st.st_ino, st.st_size
 
     @staticmethod
     def _record_request(entry: dict[str, Any], kind: str, payload: dict[str, Any]) -> tuple[str, str]:

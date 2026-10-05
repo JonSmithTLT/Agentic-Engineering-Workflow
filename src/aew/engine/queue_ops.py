@@ -175,8 +175,9 @@ class Queue:
             why = (entry.get("disposition") or {}).get("reason")
             return blocker_from(IllegalTransition(
                 f"{work_id}'s queue entry {qid} is {entry['state']}" + (f" ({why})" if why else "")
-                + ": the Lead disposes of it first (return the Ticket to RUNNING for a new implementation attempt, "
-                "or REPLAN_REQUIRED)", entry=qid, state=entry["state"]))
+                + f": the Lead disposes of it first (`aew integrate requeue {work_id}` once the cause is settled, the "
+                "Ticket back to RUNNING for a new implementation attempt, or REPLAN_REQUIRED)", entry=qid,
+                state=entry["state"]))
         if entry["state"] == "LEASED":
             return None
         for other_id, other in sorted(queue["entries"].items(), key=lambda kv: kv[1]["seq"]):
@@ -237,6 +238,7 @@ class Queue:
         state["queue"]["lease"] = {"entry": qid, "custodian": custodian, "generation": state["lead"]["generation"],
                                    "granted_at": now, "reconcile": None}
         entry["state"] = "LEASED"
+        entry["rebuilds_used"] = 0  # M4-D4: one automatic rebuild per lease
         entry["attempts"].append({"custodian": custodian, "granted_at": now, "integration_attempt": None,
                                   "base": None, "candidate": None, "result": None, "ended_at": None})
         ctx.refs.append(f"invocation:{custodian}")
@@ -261,6 +263,64 @@ class Queue:
         entry["state"] = to
         entry["disposition"] = {"reason": result, "at": utc_now(), **({"detail": detail} if detail else {})} \
             if to == "AWAITING_DISPOSITION" else None
+
+    # ------------------------------------------------------------------ the Lead's queue commands (M4-D4)
+
+    def _live_entry(self, state: dict[str, Any], work_id: str) -> tuple[str, dict[str, Any]]:
+        qid, entry = entry_of(state, work_id) if queued(state) else (None, None)
+        if qid is None or entry is None:
+            raise IllegalTransition(f"{work_id} has no integration queue entry: only a COMMIT_READY mutating Ticket "
+                                    "of a v2 project is queued")
+        return qid, entry
+
+    def defer(self, state: dict[str, Any], work_id: str, *, reason: str) -> dict[str, Any]:
+        """Set the entry aside (QUEUED, AWAITING_DISPOSITION or LEASED to DEFERRED). Scheduling only: the Ticket stays
+        COMMIT_READY. A LEASED entry gives up its lease (its custodian completes); the caller retires the open
+        candidate first. A publish in progress or a lease awaiting reconciliation is refused."""
+        qid, entry = self._live_entry(state, work_id)
+        was = entry["state"]
+        if was == "DEFERRED":
+            raise IllegalTransition(f"{work_id}'s queue entry {qid} is already DEFERRED")
+        if was == "LEASED":
+            lease = state["queue"]["lease"]
+            if lease["reconcile"] is not None:
+                raise LeaseReconcileRequired(f"{work_id}'s lease lost its custodian ({lease['reconcile']['reason']}): "
+                                             f"run `aew integrate reconcile {work_id}` first", entry=qid)
+            self._end_lease(state, entry, result="deferred", custodian_status="completed")
+        entry["state"] = "DEFERRED"
+        entry["disposition"] = {"reason": "deferred", "at": utc_now(), "detail": {"by_lead": reason, "was": was}}
+        return {"entry": qid, "from": was, "to": "DEFERRED"}
+
+    def requeue(self, state: dict[str, Any], work_id: str, *, reason: str) -> dict[str, Any]:
+        """Return a DEFERRED or AWAITING_DISPOSITION entry to QUEUED in its own place (its ``seq`` is kept)."""
+        qid, entry = self._live_entry(state, work_id)
+        was = entry["state"]
+        if was not in ("DEFERRED", "AWAITING_DISPOSITION"):
+            raise IllegalTransition(f"{work_id}'s queue entry {qid} is {was}; only a DEFERRED or AWAITING_DISPOSITION "
+                                    "entry is requeued")
+        entry["state"] = "QUEUED"
+        entry["disposition"] = None  # the reason is the transaction's (``lead_txn`` records it)
+        return {"entry": qid, "from": was, "to": "QUEUED", "reason": reason}
+
+    def reorder(self, state: dict[str, Any], work_id: str, *, before: str | None) -> dict[str, Any]:
+        """Move the entry ahead of ``before``'s entry (or first, when None). Positions are renumbered in the new order
+        from fresh, never reused, numbers, so they stay unique and issued (oracle rule 34)."""
+        qid, _ = self._live_entry(state, work_id)
+        queue = state["queue"]
+        order = [q for q, _ in sorted(queue["entries"].items(), key=lambda kv: kv[1]["seq"]) if q != qid]
+        if before is None:
+            order.insert(0, qid)
+        else:
+            target, _ = self._live_entry(state, before)
+            if target == qid:
+                raise IllegalTransition(f"{work_id} cannot be placed before itself")
+            order.insert(order.index(target), qid)
+        old = {q: queue["entries"][q]["seq"] for q in order}
+        for q in order:
+            queue["entries"][q]["seq"] = queue["next_seq"]
+            queue["next_seq"] += 1
+        return {"entry": qid, "order": [queue["entries"][q]["work"] for q in order],
+                "renumbered": {q: [old[q], queue["entries"][q]["seq"]] for q in order}}
 
     def _end_lease(self, state: dict[str, Any], entry: dict[str, Any], *, result: str, custodian_status: str) -> None:
         lease = state["queue"]["lease"]

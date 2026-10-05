@@ -351,26 +351,54 @@ def _prune_empty_parents(repo_root: Path, path: Path) -> None:
         parent = parent.parent
 
 
+def later_entries(repo_root: Path, new: str, head: str, paths: set[str]) -> dict[str, set[Entry | None]]:
+    """Every entry a commit between ``new`` and ``head`` (up to ``LATER_COMMITS``) gave one of ``paths``, from one
+    ``git log --raw`` over the range: each change a commit made, against every parent (``-m``), records the entry it
+    left. An entry a later commit holds without changing it was recorded where it last changed, or is ``new``'s own.
+    ``None`` is a deletion, ``TREE`` a path that became a directory. One subprocess, whatever the path count."""
+    raw = git.git("log", "--raw", "-z", "-m", "--no-renames", "--no-abbrev", "--format=",
+                  f"--max-count={LATER_COMMITS}", f"{new}..{head}", cwd=repo_root).stdout.decode("utf-8")
+    found: dict[str, set[Entry | None]] = {}
+    tokens = raw.split("\x00")
+    i = 0
+    while i < len(tokens):
+        meta = tokens[i].lstrip("\n")
+        if not meta.startswith(":") or i + 1 >= len(tokens):
+            i += 1
+            continue
+        _, dst_mode, _, dst_oid, _ = meta[1:].split(" ", 4)
+        path = tokens[i + 1]
+        i += 2
+        entry = None if set(dst_mode) == {"0"} else (dst_mode, dst_oid)
+        if path in paths:
+            found.setdefault(path, set()).add(entry)
+        if entry is not None:  # a file created under a candidate path means that path became a directory
+            parts = path.split("/")
+            for n in range(1, len(parts)):
+                parent = "/".join(parts[:n])
+                if parent in paths:
+                    found.setdefault(parent, set()).add(TREE)
+    return found
+
+
 def _superseded(repo_root: Path, head: str | None, new: str, st: _PathStates, paths: list[str]) -> list[str]:
     """Paths a later commit on the ref already settled: the index and working copy hold exactly the entry of a commit
     between ``new`` and ``head`` (which contains ``new``), and it differs from ``new``'s. ``new`` stays in the
     lineage; whether the later commit kept its change on those paths is its own business, so they are reported, never
     rewritten. Any commit in between counts, not only ``head``: more than one publisher may have moved the ref since
-    (register E34, note 1), up to ``LATER_COMMITS`` of them, newest first."""
+    (register E34, note 1), up to ``LATER_COMMITS`` of them.
+
+    Only a path whose index differs from ``new`` can have been settled later, and only by an entry some later commit
+    recorded (:func:`later_entries`), so the work is one ``git log`` over the range, never a tree read per commit and
+    path: this runs while the control lock is held (independent review of PR #65)."""
     if not head or head == new:
         return []
-    later = git.git("rev-list", f"--max-count={LATER_COMMITS}", f"{new}..{head}", cwd=repo_root).stdout.decode().split()
-    settled: list[str] = []
-    remaining = list(paths)
-    for commit in later:
-        entries = tree_entries(repo_root, commit, remaining)
-        found = [p for p in remaining if entries[p] != st.new[p] and st.index[p] == entries[p]
-                 and st.fs.matches(st.worktree[p], entries[p])]
-        settled += found
-        remaining = [p for p in remaining if p not in set(found)]
-        if not remaining:
-            break
-    return settled
+    open_paths = {p for p in paths if st.index[p] != st.new[p]}
+    if not open_paths:
+        return []
+    seen = later_entries(repo_root, new, head, open_paths)
+    return [p for p in paths if p in open_paths and st.index[p] in seen.get(p, ())
+            and st.fs.matches(st.worktree[p], st.index[p])]
 
 
 def sync_worktree(repo_root: Path, base: str, new: str, paths: list[str], *, head: str | None = None,

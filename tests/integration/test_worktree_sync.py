@@ -236,3 +236,48 @@ def test_a_reconcile_accepts_paths_any_later_commit_settled_not_only_the_head(tm
     out = I.sync_worktree(repo, h, m, paths, head=x2)
     assert out["settled_by_later_commit"]["paths"] == ["calc/core.py"]
     assert (repo / "calc/core.py").read_text(encoding="utf-8").endswith("# first later commit\n")
+
+
+def test_the_later_commit_classifier_reads_the_range_once_whatever_its_length(tmp_path, monkeypatch):
+    """Independent review of PR #65: the classifier runs under the control lock, and it used to read the tree of every
+    later commit for every unresolved path (2,000 paths and 256 commits took 84 s on Windows). An interrupted sync whose
+    checkout still holds H, behind later commits that never touched those paths, is now one ``git log`` over the
+    range, and nothing counts as settled."""
+    files = {f"pkg/m{i:03d}.py": f"V = {i}\n" for i in range(300)}
+    repo, h, m = build(tmp_path, {**BASE, **files},
+                       lambda r: [write(r / p, t.replace("V", "W")) for p, t in files.items()])
+    paths = publish(repo, h, m)
+    tree = git("rev-parse", f"{m}^{{tree}}", cwd=repo)
+    head = m
+    for i in range(40):  # later commits that leave every candidate path as M has it
+        head = git("commit-tree", tree, "-p", head, "-m", f"later {i}", cwd=repo)
+    git("update-ref", "refs/heads/main", head, m, cwd=repo)
+    calls: list[str] = []
+    real = I.git.git
+
+    def counting(*args, **kw):
+        calls.append(args[0])
+        return real(*args, **kw)
+
+    st = I._states(repo, h, m, paths)
+    monkeypatch.setattr(I.git, "git", counting)
+    assert I._superseded(repo, head, m, st, paths) == []
+    assert calls == ["log"]
+    monkeypatch.undo()
+    I.sync_worktree(repo, h, m, paths, head=head)
+    assert git("status", "--porcelain", cwd=repo) == ""
+
+
+def test_a_path_a_later_commit_deleted_is_settled_by_it(tmp_path):
+    """The range read records deletions too: a candidate path a later commit removed, absent from the checkout, was
+    settled by that commit and is left absent."""
+    repo, h, m = build(tmp_path, BASE, edit_core)
+    paths = publish(repo, h, m)
+    git("rm", "-q", "-f", "calc/core.py", cwd=repo)
+    tree = git("write-tree", cwd=repo)
+    later = git("commit-tree", tree, "-p", m, "-m", "drop core", cwd=repo)
+    head = git("commit-tree", tree, "-p", later, "-m", "unrelated", cwd=repo)
+    git("update-ref", "refs/heads/main", head, m, cwd=repo)
+    out = I.sync_worktree(repo, h, m, paths, head=head)
+    assert out["settled_by_later_commit"]["paths"] == ["calc/core.py"]
+    assert not (repo / "calc/core.py").exists()

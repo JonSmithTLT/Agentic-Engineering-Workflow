@@ -153,7 +153,7 @@ The supervisor's `run.json` and `events.jsonl` (`local/harness/runs/<run>/`) are
 The transition history is the durable record of committed transition provenance by revision. It is never discarded.
 
 - `LOG_WINDOW` is **4,096 revisions** for v1.
-- Records older than the window are sealed in groups of 256 logical transitions into `state/log/seg-NNNNNN.yaml`.
+- Records older than the window are sealed in groups of 256 logical transitions into `state/log/seg-NNNNNN.yaml`. NNNNNN is the segment index; the segment holds revisions `NNNNNN*256` to `NNNNNN*256 + 255` (the name is not a revision).
 - A segment contains each bounded transition record and, for any overflow transition, the complete overflow event payload (or an equivalently hashed segment-local representation). The segment verifier recomputes the overflow digest/count from the sealed payload and requires it to match the transition's committed descriptor.
 - The segment is written create-if-absent, fsynced, re-read, schema-validated, and hash-verified before any per-revision transition file or overflow sidecar is removed.
 - Pruning is idempotent. A crash may leave only unsealed files, or both a valid segment and some/all equivalent unsealed files; it must never leave neither logical representation.

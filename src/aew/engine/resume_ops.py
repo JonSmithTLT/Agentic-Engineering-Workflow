@@ -342,7 +342,8 @@ class Resume:
                     role_plan={k: v for k, v in self.roles.effective_role_plan(state, wid, gc)["effective"].items()},
                     workspace={k: u["workspace"][k] for k in ("id", "path", "base_commit", "status")}
                     if u.get("workspace") else None,
-                    active_invocations=[{"id": i, "role": state["invocations"][i]["role"],
+                    active_invocations=[{"id": i, "role": state["invocations"][i].get("role")
+                                         or state["invocations"][i].get("kind"),
                                          "card": (state["invocations"][i].get("card") or {}).get("id")}
                                         for i in u.get("invocations", [])
                                         if state["invocations"][i]["status"] == "active"],

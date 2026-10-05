@@ -32,7 +32,7 @@ from aew.engine.seams import (
 ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
                       "_nm", "_hierarchy", "_evidence", "_integration", "_harness", "_lead", "_views", "_resume",
-                      "_project", "_archive", "_history", "_migration", "_dispatch", "_assurance")
+                      "_project", "_archive", "_history", "_migration", "_dispatch", "_assurance", "_queue")
 
 
 @pytest.fixture
@@ -262,6 +262,8 @@ def test_unit_kinds():
 
 def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine):
     assert isinstance(engine._k.finalizers, seams.TxnFinalizers)
-    # M4-A: no invocation or run commits without a dispatch decision; then ADR-0011 R6 archival.
-    assert [named(step) for step in engine._k.finalizers.steps] == ["Dispatch.finalize", "Archive.finalize"]
+    # M4-A: no invocation or run commits without a dispatch decision; M4-D: the queue follows its Tickets (before
+    # archival, so a retired entry leaves with its unit); then ADR-0011 R6 archival.
+    assert [named(step) for step in engine._k.finalizers.steps] == ["Dispatch.finalize", "Queue.finalize",
+                                                                     "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7

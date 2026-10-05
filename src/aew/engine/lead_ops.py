@@ -28,7 +28,7 @@ from aew.util import render_frontmatter, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort
+    from aew.engine.ports import ArchivePort, QueuePort
 
 ACTIVE_INVOCATION_STATES = {"active"}
 # The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
@@ -47,9 +47,10 @@ PHASE_DRIVERS = {
 class Lead:
     """Lead authority lifecycle: acquire, handoff, takeover, release, handoff records."""
 
-    def __init__(self, k: Kernel, *, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, archive: ArchivePort, queue: QueuePort) -> None:
         self.k = k
         self.archive = archive
+        self.queue = queue
 
     def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
         lead = state["lead"]
@@ -73,12 +74,12 @@ class Lead:
             # reviewer/verifier of its accepted record; all of them work in observation scope.
             waits = {"ASSIGNED": NON_MUTATING_EXECUTORS, "RUNNING": NON_MUTATING_EXECUTORS,
                      "REVIEW_PENDING": {"reviewer"}, "VERIFY_PENDING": {"verifier"}}.get(unit["state"], set())
-            if inv["role"] not in waits or inv.get("scope") != "observation":
+            if inv.get("role") not in waits or inv.get("scope") != "observation":
                 return False
-            return inv["role"] not in NON_MUTATING_EXECUTORS or \
+            return inv.get("role") not in NON_MUTATING_EXECUTORS or \
                 inv.get("attempt") == (unit.get("execution") or {}).get("attempt")
         driver = PHASE_DRIVERS.get(unit["state"])
-        if driver != (inv["role"], inv.get("scope") or "ticket"):
+        if driver != (inv.get("role"), inv.get("scope") or "ticket"):
             return False
         return unit["state"] != "COMMIT_READY" or (unit.get("integration") or {}).get("status") == "prepared"
 
@@ -94,14 +95,15 @@ class Lead:
             if inv["status"] not in ACTIVE_INVOCATION_STATES or inv_id in keep:
                 continue
             inv["status"] = "interrupted"
-            revoke(state, inv["token_id"], reason)
+            if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
+                revoke(state, inv["token_id"], reason)
             if (inv.get("observation") or {}).get("status") == "active":
                 inv["observation"]["status"] = "retired"  # the attempt ends; its worktree is pruned later
             interrupted.append(inv_id)
             unit = state["work"].get(inv["work_unit"])
             if not unit:
                 continue
-            note = f"invocation {inv_id} ({inv['role']}) interrupted: {reason}"
+            note = f"invocation {inv_id} ({inv.get('role') or inv.get('kind')}) interrupted: {reason}"
             if self._phase_waits_on(unit, inv):
                 unit.setdefault("history", []).append(
                     {"from": unit["state"], "to": "INTERRUPTED", "at": utc_now(), "reason": note})
@@ -145,6 +147,7 @@ class Lead:
             token = self._new_lead(s.state, session_label)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
+            self.queue.sync(s.state)
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.acquire", actor=actor,
                                       summary=f"Lead authority acquired (generation {s.state['lead']['generation']})"),
@@ -202,7 +205,8 @@ class Lead:
                 inv = state["invocations"][inv_id]
                 if inv["status"] == "active":
                     inv["generation"] = new_gen
-                    state["tokens"][inv["token_id"]]["scope"]["generation"] = new_gen
+                    if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
+                        state["tokens"][inv["token_id"]]["scope"]["generation"] = new_gen
             interrupted = self._interrupt_invocations(state, "not carried across Lead handoff", keep=carry)
             actor = {"kind": "session", "session_label": session_label, "generation": new_gen}
             ctx = TxnContext(session=s, actor=actor)
@@ -214,6 +218,7 @@ class Lead:
                 reason=f"handoff record {handoff['record']}",
                 evidence_refs=[handoff["record"]],
             )
+            self.queue.sync(s.state)  # a custodian the handoff did not carry is dead: its lease awaits reconcile
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.handoff.accept", actor=actor,
                                       summary=f"Lead authority transferred by handoff ({decision})",
@@ -262,6 +267,7 @@ class Lead:
                 reason=reason,
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
+            self.queue.sync(s.state)  # the takeover ended every custodian: their leases await reconcile
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.takeover", actor=actor, reason=reason,
                                       summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs,
@@ -288,7 +294,7 @@ class Lead:
         state["counters"]["handoff"] = state["counters"].get("handoff", 0) + 1
         hid = format_id("H", state["counters"]["handoff"])
         ctx.events.append({"kind": "handoff.recorded", "id": hid})
-        in_flight = [f"{i} ({inv['role']} for {inv['work_unit']})"
+        in_flight = [f"{i} ({inv.get('role') or inv.get('kind')} for {inv['work_unit']})"
                      for i, inv in sorted(state["invocations"].items()) if inv["status"] == "active"]
         meta = {
             "schema": "aew/handoff/v1",

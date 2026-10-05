@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from aew import roles
     from aew.engine.base import TxnContext
     from aew.engine.dispatch import DispatchDecision
@@ -217,6 +219,24 @@ class DispatchPort(Protocol):
     """What other collaborators use of ``Dispatch`` (M4-A): every dispatch route decides through it."""
 
     def decide_in(self, ctx: TxnContext, entrypoint: str, work_id: str, **args: Any) -> DispatchDecision: ...
+
+
+class QueuePort(Protocol):
+    """What other collaborators use of ``Queue`` (M4-D): the integration queue, its lease and its custodian."""
+
+    def sync(self, state: dict[str, Any]) -> None: ...
+
+    def grant(self, ctx: TxnContext, work_id: str) -> str: ...
+
+    def record_attempt(self, state: dict[str, Any], work_id: str, integration: dict[str, Any]) -> None: ...
+
+    def release(self, state: dict[str, Any], work_id: str, *, to: str, result: str,
+                detail: dict[str, Any] | None = None, custodian_status: str = "completed") -> None: ...
+
+    def require_live_lease(self, state: dict[str, Any], work_id: str, what: str) -> dict[str, Any]: ...
+
+    def checkout_sync_lock(self, state: dict[str, Any], *, lease: dict[str, Any] | None,
+                           work_id: str) -> AbstractContextManager[None]: ...
 
 
 class HistoryCommandsPort(Protocol):

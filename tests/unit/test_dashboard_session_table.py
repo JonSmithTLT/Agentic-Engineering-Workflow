@@ -157,12 +157,19 @@ def test_clear_ends_every_session_and_pending_code():
         t.verify(credential)
 
 
-def test_expired_records_are_purged_and_the_lifetime_is_bounded():
+def test_expired_records_stay_through_the_grace_then_are_purged_and_the_lifetime_is_bounded():
     t, clock, _ = table(hours=1)
+    credential, _ = t.exchange(t.mint())  # type: ignore[misc]
+    clock.now = "2026-10-05T13:00:01Z"  # expired a second ago
     t.mint()
-    clock.now = "2026-10-05T13:00:01Z"
+    assert len(t.tokens) == 2  # kept: an expired cookie is answered "expired", not "unknown"
+    with pytest.raises(StaleAuthority, match="expired"):
+        t.verify(credential)
+    clock.now = "2026-10-12T13:00:02Z"  # a second past the grace
     t.mint()
-    assert len(t.tokens) == 1
+    assert len(t.tokens) == 2  # the first record is gone; the second mint of 10-05 is kept (expired, within grace)
+    with pytest.raises(PermissionDenied, match="unknown"):
+        t.verify(credential)
     for hours in (0, 169):
         with pytest.raises(ValueError):
             S.SessionTable("proj", hours=hours)
@@ -176,6 +183,12 @@ def test_cross_site_fetch_metadata_is_refused_and_user_navigation_is_not():
     assert S.cross_site(headers(Sec_Fetch_Site="same-site"))
     assert S.cross_site(headers(Sec_Fetch_Site="none", Sec_Fetch_Mode="cors"))
     assert S.cross_site(headers(Sec_Fetch_Mode="no-cors"))
+    # a speculative prefetch is not the user's navigation either (lead developer's review)
+    assert S.prefetch(headers(Sec_Purpose="prefetch")) and S.prefetch(headers(Purpose="prefetch"))
+    assert S.prefetch(headers(Sec_Purpose="prefetch;anonymous-client-ip"))
+    assert not S.prefetch(headers()) and not S.prefetch(headers(Sec_Purpose="navigate"))
+    assert S.not_a_user_navigation(headers(Sec_Purpose="prefetch"))
+    assert not S.not_a_user_navigation(headers(Sec_Fetch_Site="none", Sec_Fetch_Mode="navigate"))
 
 
 # ---------------------------------------------------------------------------------------------- the engine edits
@@ -237,6 +250,7 @@ def test_the_challenge_prompt_carries_the_code_the_requester_and_the_destination
                                destination="the requesting terminal")
     assert "START the dashboard" in shown and "requested by   : aew (7) <- bash (1)" in shown
     assert "credential to  : the requesting terminal" in shown and "confirmation code ABC123" in shown
+    assert "Never give it to an agent or paste it into a chat" in shown  # on every challenge, takeover's included
     assert re.fullmatch(r"[0-9A-F]{6}", operator.new_code())
     opened = control.open_prompt("aew (9)")
     assert "aew dashboard serve" in opened and "Type it here" in opened and opened.endswith("> ")

@@ -214,10 +214,13 @@ def test_an_expired_session_is_401_session_expired_by_the_injected_clock(dash: D
     status, headers, body = dash.api("/project", credential)
     assert status == 401 and body["code"] == "SESSION_EXPIRED", body
     assert headers["set-cookie"] == S.expired_cookie()
-    dash.svc.issue()  # the next minting purges expired records
-    dash.clock.offset = timedelta()
+    dash.svc.issue()  # a later minting keeps the expired record (the grace period), so the answer stays "expired"
     status, _, body = dash.api("/project", credential)
-    assert status == 401 and body["code"] == "SESSION_REQUIRED"  # purged: now unknown, even with the clock back
+    assert status == 401 and body["code"] == "SESSION_EXPIRED", body
+    dash.clock.offset = timedelta(hours=2, seconds=1) + S.EXPIRED_GRACE + timedelta(seconds=1)
+    dash.svc.issue()  # beyond the grace the record is purged: now the cookie is unknown
+    status, _, body = dash.api("/project", credential)
+    assert status == 401 and body["code"] == "SESSION_REQUIRED", body
 
 
 def test_a_displaced_session_is_401_session_expired(dash: Dash):
@@ -267,7 +270,9 @@ def test_a_cross_site_navigation_is_refused_without_consuming_the_code(dash: Das
     for hdrs in ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"},
                  {"Sec-Fetch-Site": "same-site"},
                  {"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "cors"},
-                 {"Sec-Fetch-Mode": "no-cors"}):
+                 {"Sec-Fetch-Mode": "no-cors"},
+                 {"Sec-Purpose": "prefetch"},  # a speculative prefetch must not spend the code
+                 {"Purpose": "prefetch", "Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate"}):
         status, headers, body = dash.exchange(url, headers=hdrs)
         assert status == 403 and "set-cookie" not in headers, hdrs
         assert "address bar" in body.decode() and url.rsplit("/", 1)[1] not in body.decode()
@@ -333,8 +338,21 @@ def test_a_stale_endpoint_file_names_no_server(project: Project, tmp_path: Path)
     assert service.locate(root) is None
     res = project.aew("dashboard", "status")
     assert res.returncode == 0 and res.json == {"running": False, "start": "aew dashboard serve"}
+    # the real command with no terminal refuses before it looks for a server at all (the terminal check comes first)
     res = project.aew("dashboard", "open")
-    assert res.error["code"] == "NOT_FOUND" and "aew dashboard serve" in res.error["message"]
+    assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and "terminal" in res.error["message"], res.error
+    # with a terminal (substituted), the stale file is not trusted and the answer names the start command
+    from aew import operator as op
+    from aew.cli import dashboard_commands as dc
+    from aew.cli.main import build_parser
+
+    original = op.has_terminal
+    op.has_terminal = lambda: True
+    try:
+        with pytest.raises(errors.NotFound, match="aew dashboard serve"):
+            dc._open(build_parser().parse_args(["-C", str(project.root), "dashboard", "open"]))  # noqa: SLF001
+    finally:
+        op.has_terminal = original
 
 
 def test_an_occupied_port_fails_and_never_moves(project: Project):
@@ -366,6 +384,7 @@ def test_open_mints_exactly_one_session_with_the_code_from_the_servers_console(d
     result = control.request_session(found["endpoint"], found["key"], ask=ask, requester="aew (1) <- test (0)")
     assert len(dash.svc.table.live()) == before + 1
     assert "requested by   : aew (1) <- test (0)" in dash.console.text and "aew dashboard open" in dash.console.text
+    assert "Never give it to an agent or paste it into a chat" in dash.console.text  # the relay warning, every time
     assert not CODE_RE.search(seen[0]) and "aew dashboard serve" in seen[0]  # the code is never on this side
     assert result["expires_at"] == dash.svc.table.newest()["expires_at"]
     status, headers, _ = dash.exchange(result["session_url"])
@@ -400,11 +419,11 @@ def test_open_without_a_terminal_is_refused_before_anything_is_minted(dash: Dash
     code, error = raw_aew(dash.p.root, "dashboard", "open")
     assert code == 2 and error["code"] == "USAGE" and "your terminal" in error["message"], error
     assert dash.svc.control.opened == 0 and dash.console.text == console_before  # no challenge was even shown
-    # and with --print-credential (what the test runner adds): it connects, the console shows the challenge, and the
-    # requester has no terminal to answer at, so nothing is minted
+    # and with --print-credential (what the test runner adds): the command checks its own terminal before it contacts
+    # the server, so the operator's console never shows a challenge nobody can answer (lead developer's review)
     res = dash.p.aew("dashboard", "open")
     assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.error
-    assert dash.svc.table.live() == [] and dash.svc.control.opened == 0 and "confirmation code" in dash.console.text
+    assert dash.svc.table.live() == [] and dash.svc.control.opened == 0 and dash.console.text == console_before
 
 
 def test_open_times_out_and_one_challenge_at_a_time(dash: Dash):

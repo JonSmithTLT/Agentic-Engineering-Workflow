@@ -42,8 +42,8 @@ SESSION_PATH = re.compile(r"^/session/[^/?#]+")
 # The pages the one-time URL exchange answers with. They name no code and carry no data (R9).
 GONE_PAGE = ("This dashboard link was already used, has expired, or was never issued. Run `aew dashboard open` at your "
              "terminal for a new one.")
-CROSS_SITE_PAGE = ("This dashboard link is opened by you, from the address bar, not from another page. Paste it into "
-                   "the address bar of this browser; it is still valid.")
+CROSS_SITE_PAGE = ("This dashboard link is opened by you, from the address bar, not from another page or by a "
+                   "prefetch. Paste it into the address bar of this browser; it is still valid.")
 
 
 class Authenticator(Protocol):
@@ -206,8 +206,8 @@ class DashboardServer:
     def _exchange(self, h: BaseHTTPRequestHandler, code: str, *, head: bool) -> None:
         """``GET /session/<code>``: the one-time URL becomes the session cookie (R9). A HEAD never spends a code."""
         assert self.sessions is not None
-        if S.cross_site(h.headers):
-            self._page(h, HTTPStatus.FORBIDDEN, CROSS_SITE_PAGE, head=head)  # the code is not consumed
+        if S.not_a_user_navigation(h.headers):  # cross-site, or a speculative prefetch: the code is not consumed
+            self._page(h, HTTPStatus.FORBIDDEN, CROSS_SITE_PAGE, head=head)
             return
         got = self.sessions.exchange(code) if not head and code else None
         if got is None:

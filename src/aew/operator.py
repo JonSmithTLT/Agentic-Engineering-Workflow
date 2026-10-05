@@ -57,7 +57,29 @@ def challenge(code: str, text: str, *, requested_by: str | None = None, destinat
         f"  credential to  : {where}\n"
         "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
         f"{typed}\n"
+        f"{RELAY_WARNING}\n"
     )
+
+
+# The code is the authorization; a model that can run `aew dashboard open` from a shell with a terminal could ask the
+# human for it in chat (lead developer's review of F20.3). The prompt says so, every time.
+RELAY_WARNING = "Type it only into a terminal you opened yourself. Never give it to an agent or paste it into a chat."
+
+
+def has_terminal() -> bool:
+    """Whether this process could read an answer from its controlling terminal (the same check ``ask`` makes), so a
+    command can refuse before it causes a prompt somewhere else (``aew dashboard open`` asks the serving console for
+    a code only when it can type it back)."""
+    if sys.platform == "win32":  # pragma: windows-only
+        import ctypes
+
+        return bool(ctypes.windll.kernel32.GetConsoleWindow())
+    try:  # pragma: posix-only
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
 
 
 def ask(prompt: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:

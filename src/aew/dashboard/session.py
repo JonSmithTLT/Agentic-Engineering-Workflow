@@ -29,6 +29,9 @@ DEFAULT_HOURS = 24
 MIN_HOURS, MAX_HOURS = 1, 168
 MAX_SESSIONS = 32
 CODE_TTL_S = 600.0
+# An expired record is kept this long so a stale cookie is answered SESSION_EXPIRED (the engine's "credential
+# expired"), not SESSION_REQUIRED as an unknown id would be (lead developer's review of F20.3).
+EXPIRED_GRACE = timedelta(days=7)
 SUPERSEDED = "superseded: session limit"
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SCOPE_OPERATIONS = ["dashboard.read"]
@@ -65,6 +68,20 @@ def cross_site(headers: Any) -> bool:
         return True
     mode = headers.get("Sec-Fetch-Mode")
     return mode is not None and mode.strip().lower() != "navigate"
+
+
+def prefetch(headers: Any) -> bool:
+    """A speculative fetch (`Sec-Purpose: prefetch`, or the older `Purpose: prefetch`) must not spend the one-time
+    code: refused without consuming it, and the real navigation that follows succeeds."""
+    for name in ("Sec-Purpose", "Purpose", "X-Purpose", "X-Moz"):
+        value = headers.get(name)
+        if value is not None and "prefetch" in value.lower():
+            return True
+    return False
+
+
+def not_a_user_navigation(headers: Any) -> bool:
+    return cross_site(headers) or prefetch(headers)
 
 
 class SessionTable:
@@ -173,8 +190,9 @@ class SessionTable:
         return record["revoked_at"] is None and record["expires_at"] > now
 
     def _purge(self, now: str) -> None:
-        for tid in [t for t, r in self.tokens.items() if r["expires_at"] <= now]:
-            del self.tokens[tid]
+        cutoff = (parse_time(now) - EXPIRED_GRACE).strftime(TIME_FORMAT)
+        for tid in [t for t, r in self.tokens.items() if r["expires_at"] <= cutoff]:
+            del self.tokens[tid]  # expired long enough ago that SESSION_EXPIRED no longer needs the record
         tick = self.monotonic()
         for code in [c for c, (_cred, tid, deadline) in self._pending.items()
                      if deadline <= tick or tid not in self.tokens]:

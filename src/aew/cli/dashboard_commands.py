@@ -93,6 +93,12 @@ def _serve(a: argparse.Namespace) -> None:
 
 def _open(a: argparse.Namespace) -> dict[str, Any]:
     engine = _engine(a)
+    if not operator.has_terminal():
+        # Refused before the server is contacted: a requester that cannot type the code back must never put a
+        # challenge on the operator's console (lead developer's review).
+        raise OperatorAuthorizationRequired(
+            "`aew dashboard open` reads the confirmation code from your terminal, and this process has none (a "
+            "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
     found = service.locate(engine.aew_root)
     if found is None:
         raise NotFound("no dashboard server is running for this project; start one with `aew dashboard serve`")

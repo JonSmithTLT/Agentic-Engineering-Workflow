@@ -135,9 +135,12 @@ scheme is unchanged: same form, same verifier, same record fields, same lookup. 
   server over its local control channel; the server writes a one-time code to **its own console** (naming the
   requester the client reported) and accepts the session request only with that code typed back from the requesting
   terminal, compared in constant time, once, within 300 s. A process without a terminal is refused at the delivery
-  rule or at `operator.ask` with `OPERATOR_AUTHORIZATION_REQUIRED`; a server without a console authorizes no `open`.
-  No flag, environment variable, stdin input, file or API parameter authorizes a session: the key file locates the
-  server and authorizes nothing.
+  rule, or by `open`'s own terminal check **before it contacts the server**, so a requester that cannot type the code
+  back never puts a challenge on the operator's console; a server without a console authorizes no `open`. Every
+  challenge prompt (takeover's included) says: type the code only into a terminal you opened yourself, never give it
+  to an agent or paste it into a chat, because the code is the authorization and a model with a shell could ask for
+  it. No flag, environment variable, stdin input, file or API parameter authorizes a session: the key file locates
+  the server and authorizes nothing.
 - **Delivered once, as a one-time URL.** The command writes `http://127.0.0.1:<port>/session/<code>` to the operator's
   terminal (the credential delivery rules of the 2026-09-29 amendment apply: terminal only, or `--print-credential`
   for a script; refused in a Lead session). The URL carries a single-use bootstrap code of 256 random bits, valid
@@ -145,12 +148,13 @@ scheme is unchanged: same form, same verifier, same record fields, same lookup. 
   (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Max-Age` to the expiry; no `Secure` on the plain-http loopback origin)
   holding the credential; the server then keeps only the verifier. A used, expired or unknown code is `410 Gone` with
   a page naming no code; a navigation whose `Sec-Fetch-Site` is not `none` or `same-origin`, or whose
-  `Sec-Fetch-Mode` is not `navigate`, is `403` and does not consume the code. The server logs `/session/<redacted>`
-  and sends `Referrer-Policy: no-referrer`.
+  `Sec-Fetch-Mode` is not `navigate`, or that is a speculative prefetch (`Sec-Purpose` or `Purpose: prefetch`), is
+  `403` and does not consume the code. The server logs `/session/<redacted>` and sends `Referrer-Policy: no-referrer`.
 - **`expires_at` is set and enforced: the first credential kind with a real expiry.** A session lasts the configured
   lifetime (default 24 h, `--session-hours` 1 to 168) and ends when the serving process ends, because the table ends
   with it (`401 SESSION_REQUIRED` on the next request). An expired or displaced session is `401 SESSION_EXPIRED` with a
-  `Set-Cookie` that removes the dead cookie. The table holds at most 32 live sessions; the 33rd displaces the oldest
+  `Set-Cookie` that removes the dead cookie; the expired record is kept seven days so that answer stays "expired"
+  rather than becoming "unknown" when later mintings purge the table. The table holds at most 32 live sessions; the 33rd displaces the oldest
   (`revoke_reason: "superseded: session limit"`). A later `aew dashboard open` issues a new session; it does not
   extend an old one. No revoke command in v1 (designer, 2026-10-05): the operator stops the server.
 - **Custody is the operator's.** The raw secret never enters a model-controlled process: the Lead broker refuses

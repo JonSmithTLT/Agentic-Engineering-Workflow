@@ -5,7 +5,7 @@ The composition walk (``test_composition_walk.py``), with mutating concurrency 3
 queue behind each other. Each Ticket changes a module of its own, and now and then ``calc/core.py`` too, so some
 candidates conflict. Added moves: preparing any COMMIT_READY Ticket out of turn, cancelling the lease's custodian,
 a commit to ``main`` from outside AEW (a stale candidate), and reconciling a lease. Every step is followed by the
-whole oracle, queue rules 33-37 included, and injected crashes are followed by a fresh engine.
+whole oracle, queue rules 34-38 included, and injected crashes are followed by a fresh engine.
 
 The default is a short run; the slice's acceptance run is ``AEW_QUEUE_WALK_STEPS=500`` over the three seeds.
 """

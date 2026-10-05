@@ -3,7 +3,7 @@
 Each COMMIT_READY mutating Ticket has one live queue entry, served FIFO among runnable entries; at most one entry
 holds the lease, kept by an engine custody invocation (``integration_attempt``: no harness, model, role or
 credential); the post-integration verifier is its child; a dead custodian is reconciled, never timed out; the
-ISO-004 checkout-sync lock is serialization only. The oracle (rules 33-37) runs after every step.
+ISO-004 checkout-sync lock is serialization only. The oracle (rules 34-38) runs after every step.
 """
 
 from __future__ import annotations

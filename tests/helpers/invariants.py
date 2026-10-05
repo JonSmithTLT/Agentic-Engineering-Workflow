@@ -157,7 +157,7 @@ def control_violations(root: Path) -> list[str]:
                 problems.append(f"{inv_id} is {inv['status']} but its credential is not revoked")
             continue
         if inv.get("kind") == "integration_attempt":
-            continue  # an engine custody invocation: no credential, no workspace (rules 33-37)
+            continue  # an engine custody invocation: no credential, no workspace (rules 34-38)
         if tok.get("revoked_at"):
             problems.append(f"{inv_id} is active but its credential is revoked")
         unit = state["work"].get(inv["work_unit"]) or {}
@@ -234,7 +234,7 @@ def control_violations(root: Path) -> list[str]:
     problems += cold_problems + cold_violations(root, hot, state)
     # 24 and 26. ADR-0012: the transition log (rule 25, event fidelity, needs the earlier states: store_model.py).
     problems += outbox_violations(root, hot)
-    # 33-37. M4-D: the integration queue and its lease.
+    # 34-38. M4-D: the integration queue and its lease (29-33 are ADR-0013's).
     problems += queue_violations(root, hot)
     return problems
 
@@ -251,7 +251,7 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
             problems.append(f"custody invocations {sorted(custodians)} exist without an integration queue")
         return problems
     entries, lease = queue["entries"], queue["lease"]
-    # 33. One live entry per COMMIT_READY mutating Ticket, and only for one; FIFO positions are unique and issued.
+    # 34. One live entry per COMMIT_READY mutating Ticket, and only for one; FIFO positions are unique and issued.
     queued = sorted(w for w, u in work.items()
                     if u["kind"] == "ticket" and u.get("mutating") and u["state"] == "COMMIT_READY")
     by_work: dict[str, list[str]] = {}
@@ -266,7 +266,7 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
     seqs = [e["seq"] for e in entries.values()]
     if len(set(seqs)) != len(seqs) or any(s >= queue["next_seq"] for s in seqs):
         problems.append(f"queue positions are not unique issued numbers: {sorted(seqs)} (next {queue['next_seq']})")
-    # 34. At most one lease, held by the one LEASED entry; its custodian is that entry's custody invocation, active
+    # 35. At most one lease, held by the one LEASED entry; its custodian is that entry's custody invocation, active
     #     or marked for reconciliation (never released by a timeout).
     leased = sorted(q for q, e in entries.items() if e["state"] == "LEASED")
     if (lease is None and leased) or (lease is not None and leased != [lease["entry"]]):
@@ -280,7 +280,7 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
         if cust.get("status") != "active" and lease["reconcile"] is None:
             problems.append(f"the lease's custodian {lease['custodian']} is {cust.get('status')} and the lease is not "
                             "marked for reconciliation")
-    # 35. A custody invocation is the engine's: no role, credential, harness or run; an active one is the lease's
+    # 36. A custody invocation is the engine's: no role, credential, harness or run; an active one is the lease's
     #     custodian, of the current Lead generation; it is on its Ticket's invocation list.
     for inv_id, inv in sorted(custodians.items()):
         if any(k in inv for k in ("role", "token_id", "execution_profile", "runs")) or inv.get("execution") != "engine":
@@ -293,13 +293,13 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
         unit = work.get(inv["work_unit"])
         if unit is not None and inv_id not in unit.get("invocations", []):
             problems.append(f"{inv_id} is not on {inv['work_unit']}'s invocation list")
-    # 36. No publication without the lease: a publish in progress belongs to the lease holder (its custodian may
+    # 37. No publication without the lease: a publish in progress belongs to the lease holder (its custodian may
     #     have died since: the lease then awaits reconciliation, which finishes the publish first).
     for wid, u in sorted(work.items()):
         if (u.get("integration") or {}).get("status") == "publishing":
             if lease is None or (entries.get(lease["entry"]) or {}).get("work") != wid:
                 problems.append(f"{wid} is publishing without the integration lease")
-    # 37. Post-integration verification runs under the lease: every active integration-scope invocation is a child of
+    # 38. Post-integration verification runs under the lease: every active integration-scope invocation is a child of
     #     the live lease's custodian.
     for inv_id, inv in sorted(invocations.items()):
         if inv.get("scope") == "integration" and inv["status"] == "active":

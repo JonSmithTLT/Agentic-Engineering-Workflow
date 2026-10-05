@@ -143,11 +143,11 @@ Integration is now served by a queue in control state (M4 report §2.6; the M4-D
   - A candidate may change at most `gates.yaml` `max_publish_paths` paths (default 2,000), refused at prepare before anything is published. A publish syncs every changed path while it holds the control lock, measured at about 4.5 to 5.5 ms a path on the Windows reference machine (`tools/perf/publish_sync.py`), so 2,000 keeps the hold near 10 s, inside the 31 s other writers wait.
 - **Schema.** `aew/control/v2`, additive (the M4-D plan §1.1). `queue` is a v2-only key, and the engine before M4-D refuses the file (`tests/regression/test_m4_schema_downgrade.py`). A v1 project has no queue and integrates as before until it is migrated.
 - **Events.** `queue.entry {id, from, to}` and `queue.lease {entry, custodian}` are derived kinds in the transition log (ADR-0012 D2). A released lease has both fields null.
-- **Oracle rules 33 to 37** (`tests/helpers/invariants.py`):
-  - 33: one live entry per COMMIT_READY mutating Ticket, positions unique;
-  - 34: at most one lease, with its custodian active or marked for reconciliation;
-  - 35: a custody invocation is the engine's, and an active one holds the lease;
-  - 36: no publish in progress without the lease;
-  - 37: integration verifiers are children of a live lease.
+- **Oracle rules 34 to 38** (`tests/helpers/invariants.py`; 24 to 28 are ADR-0012's, 29 to 33 ADR-0013's):
+  - 34: one live entry per COMMIT_READY mutating Ticket, positions unique;
+  - 35: at most one lease, with its custodian active or marked for reconciliation;
+  - 36: a custody invocation is the engine's, and an active one holds the lease;
+  - 37: no publish in progress without the lease;
+  - 38: integration verifiers are children of a live lease.
 
   They hold in the seeded queue walk (`tests/regression/test_m4_queue_walk.py`).

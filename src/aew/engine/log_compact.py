@@ -26,9 +26,19 @@ A crash therefore leaves only unsealed files (before 2), or a valid segment and 
 files (after 2): never neither. Re-running verifies an existing segment and resumes pruning.
 
 Compaction is never on the commit path: only ``aew history compact`` (or, later, a maintenance service calling
-:func:`compact`) runs it. It holds the control lock for one segment at a time, which serializes it against writers'
-recovery (that removes stray temp files in ``state/log``) and against another compactor; lockless readers stay correct
-under any interleaving through the reader protocol (``outbox.LogView``), not through the lock.
+:func:`compact`) runs it. It takes the control lock **only around the publish** (step 2): ``create_exclusive`` writes a
+``.seg-*.tmp`` file in ``state/log`` first, and every writer's recovery sweeps ``.*.tmp`` files there under that lock,
+so without it a commit could delete the temp file mid-publish. Build, the full re-read and the prune run without the
+lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:
+
+* their inputs are immutable: published records, sidecars and segments are never rewritten, and a writer writes only
+  the newest revision's record (a commit, or recovery repairing it), which ``window >= 1`` keeps out of every eligible
+  segment, so no writer touches the files a compactor reads or removes;
+* a second compactor is harmless: the publish is create-if-absent (the loser verifies the winner's segment), and the
+  verification and the prune are idempotent (a file already removed is not an error).
+
+Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through
+the lock.
 """
 
 from __future__ import annotations
@@ -36,7 +46,8 @@ from __future__ import annotations
 import os
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -197,14 +208,17 @@ def verify_against_unsealed(aew_root: Path, segment: Segment, since: int) -> Non
                                  f"{rel} disagree", revision=revision, path=rel)
 
 
-def seal_steps(aew_root: Path, index: int, since: int) -> Iterator[dict[str, Any]]:
+def seal_steps(aew_root: Path, index: int, since: int,
+               publish_lock: Callable[[], AbstractContextManager[Any]] = nullcontext) -> Iterator[dict[str, Any]]:
     """Seal segment ``index`` and prune its unsealed files, yielding after each durable step (so tests can interleave
-    a lockless reader with every intermediate state). See the module docstring for the order."""
+    a lockless reader with every intermediate state). ``publish_lock`` is held around the publish only (the control
+    lock, from :func:`compact`). See the module docstring for the order and why the rest needs no lock."""
     rel = segment_path(index)
     if not (aew_root / rel).is_file():
         text = build_segment(aew_root, index, since)
         try:
-            create_exclusive(aew_root / rel, text)
+            with publish_lock():
+                create_exclusive(aew_root / rel, text)
         except IntegrityError:
             if not (aew_root / rel).is_file():
                 raise
@@ -251,12 +265,14 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
         exists = index in listing.segments
         if exists and not listing.leftovers(index):
             continue
+        def control_lock() -> FileLock:
+            return FileLock(store.root / LOCK_REL, timeout=store.lock_timeout)
+
         try:
-            with FileLock(store.root / LOCK_REL, timeout=store.lock_timeout):
-                for step in seal_steps(store.root, index, since):
-                    if step["step"] == "pruned":
-                        pruned += 1
-                        pending += step["pending"]
+            for step in seal_steps(store.root, index, since, control_lock):
+                if step["step"] == "pruned":
+                    pruned += 1
+                    pending += step["pending"]
         except Unsealable as exc:
             unsealable.append({"segment": index, "revision": exc.details.get("revision"), "reason": exc.message})
             continue

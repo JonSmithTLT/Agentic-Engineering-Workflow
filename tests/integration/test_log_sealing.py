@@ -200,3 +200,33 @@ def test_item1_a_project_that_lost_a_pre_outbox_record_still_compacts(tmp_path):
     page = log(p, "--since", str(since - 1), "--limit", "600")
     assert [t["revision"] for t in page["transitions"]] == list(range(since, since + 600))
     assert p.aew("history", "log", "--since", "0", "--json").error["details"]["resume_since"] == since - 1
+
+
+@pytest.mark.serial
+def test_item2_a_commit_does_not_wait_for_a_compactor_paused_after_publishing(tmp_path):
+    """Review item 2: the compactor holds the control lock only around the publish, so a commit made while it is
+    held right after publishing a segment (and before it re-reads, verifies and prunes) completes at once."""
+    from store_model import one_transaction, render
+
+    from aew.engine.store import ControlStore
+
+    init(tmp_path)
+    state = extend_log(tmp_path, 2 * SEG + 30, overflow_every=13)
+    hold = tmp_path.parent / "hold-item2"
+    hold.write_text("")
+    proc = run_compactor(tmp_path, 8, {"AEW_PAUSE": f"log.seal.after_segment={hold}"})
+    try:
+        deadline = time.monotonic() + 60
+        while not Path(f"{hold}.reached").exists():
+            assert proc.poll() is None and time.monotonic() < deadline, proc.stderr.read() if proc.stderr else ""
+            time.sleep(0.05)
+        started = time.monotonic()
+        revision = one_transaction(ControlStore(tmp_path, renderer=render, lock_timeout=10))
+        assert time.monotonic() - started < 5
+        assert revision == state["revision"] + 1
+    finally:
+        hold.unlink()
+    out, err = proc.communicate(timeout=120)
+    assert proc.returncode == 0, err
+    assert json.loads(out)["sealed"] == [0, 1]
+    assert outbox_violations(tmp_path, ControlStore(tmp_path, renderer=render).read()) == []

@@ -82,7 +82,7 @@ with optional `valid-after="YYYYMMDD"` and `valid-before="YYYYMMDD"` options, an
 
 `tools/release/verify_bundle.py` is a single standard-library-only Python 3.11 module, also importable after installation (`aew.release.verify`) for `aew doctor --bundle`. It is transferred with the trust root through the organization's own channel and pinned there like the trust root is; the copy inside the bundle is never the one that runs first. Its steps, in this order, and nothing from the archive is parsed, extracted or executed before step 5 succeeds:
 
-1. **Trust root.** Refuse unless the `allowed_signers` path (and `revoked_keys`, if given) is readable, owned by the invoking user or root, not writable by group or others, and lists only `ssh-ed25519` keys (`TRUST_ROOT`).
+1. **Trust root.** Refuse unless the `allowed_signers` path (and `revoked_keys`, if given) is readable, owned by the invoking user or root, not writable by group or others, and lists only `ssh-ed25519` keys whose encodings pass D9's rules 2 and 3 (`TRUST_ROOT`). The ownership and mode checks are POSIX checks: the verifying host is a Rocky or other Linux host, the bundle's only target; on another platform the verifier refuses to run rather than skip them.
 2. **Archive shape.** Open the tar read-only as an uncompressed tar (`r:`; compressed tars are refused: fewer decoders in the trusted path, and the bundle is large anyway). Enumerate members **without extracting**. Bounds: at most 10,000 members, declared sizes summing to at most 8 GiB, member names at most 255 bytes (`BUNDLE_BOUNDS`).
 3. **Member rules**, each member: a regular file or a directory and nothing else (symbolic links, hard links, devices, FIFOs and GNU sparse or long-name extension records are refused: `BUNDLE_TYPE`); a relative path whose components contain no `..`, no `.`, no empty component, no NUL, no backslash, no control character and no leading `/`, and that does not change under `os.path.normpath` (`BUNDLE_TRAVERSAL`); no duplicate names, compared case-insensitively as well, so a case-insensitive staging filesystem cannot merge two members (`BUNDLE_DUPLICATE`).
 4. **The two root files.** Exactly one `aew-bundle.json` (at most 4 MiB) and one `aew-bundle.json.sig` (at most 16 KiB) at the archive root; both are read into memory from the archive (`BUNDLE_SHAPE`).
@@ -101,9 +101,55 @@ Any refusal removes the staging directory, leaves nothing else on disk, names it
 - `aew doctor --bundle <staging> --json` re-runs the verifier (D7) and emits the acceptance record: `verification.json`'s content, the ABI and platform checks, `bwrap` and user namespaces, the harness pin and schema fixture, and the no-hidden-fetch result. The record names the signing key's fingerprint, so a later advisory (D6) can be matched to hosts.
 - Tool upgrade and project migration stay separate, as IBU-12 says; the acceptance record is per tool environment, and a project's `aew migrate --plan` does not read it.
 
-### D9. Interoperability: the verifier agrees with OpenSSH in both directions
+### D9. The Ed25519 strictness rules, and how the verifier is kept in agreement with OpenSSH
 
-Because the verifier implements the format itself, the build proves it agrees with OpenSSH: every signature `ssh-keygen -Y sign` produces for the test corpus verifies in AEW's verifier, and every signature AEW's verifier accepts is accepted by `ssh-keygen -Y verify` with the same `allowed_signers` file on a host that has `-Y` (CI's runners do), and the refusals agree (another namespace, a tampered byte, a key missing from the trust root, a revoked key, an expired validity window). The Ed25519 arithmetic is tested against RFC 8032 §7.1's vectors, including the ones with non-canonical encodings a lax implementation accepts. Verification handles no secret, so constant-time behaviour is not required of it; the signing side is OpenSSH's. Should a future verifying host carry an OpenSSH with `-Y`, the organization may cross-check with it, but AEW's path does not change.
+A hand-written verifier is only as trustworthy as the rules it is tested against. RFC 8032 §7.1's five vectors are all
+valid signatures and cannot tell a strict verifier from a lax one, so the rules are stated here and each is tested
+(§"What the build must show").
+
+**The verifier's rules**, applied to a signature `(R, S)` over `A` (the trust root's key) and the signed data of D1:
+
+1. **S is canonical.** `S` is the little-endian integer of the last 32 bytes; refuse unless `0 ≤ S < L`
+   (`L = 2^252 + 27742317777372353535851937790883648493`, RFC 8032 §5.1.7). This is the full bound, not only the top
+   three bits, so no second `S' = S + L` verifies: signatures are not malleable.
+2. **R and A are canonical point encodings.** Decoding follows RFC 8032 §5.1.3 and refuses: an encoded `y ≥ p`
+   (`p = 2^255 − 19`); an `x` that cannot be recovered (the square root does not exist); and `x = 0` with the sign bit
+   set (the two encodings of a point with `x = 0` are not both accepted). The trust root's key is decoded by the same
+   rule when the `allowed_signers` file is parsed, so a non-canonical key is refused before any signature is read.
+3. **Small-order points are refused.** A key `A` of order dividing 8 (the identity and the seven other torsion points)
+   would let unrelated signatures verify, and an honest `R = rB` has prime order; both are refused, in the trust root
+   and in the signature. This is stricter than ref10-derived verifiers, deliberately.
+4. **The equation is cofactorless, compared on encodings.** `k = SHA-512(R ‖ A ‖ signed_data) mod L`; compute
+   `R' = [S]B − [k]A` and accept only if `encode(R')` equals the 32 bytes of `R` as received (after rule 2 has shown
+   they are canonical). No multiplication by the cofactor, no comparison of decoded points.
+5. **Everything else is refused**: a signature that is not 64 bytes, an envelope whose hash algorithm is not `sha512`,
+   a key blob that is not `ssh-ed25519` of 32 bytes.
+
+The test corpus has three parts, and the verifier carries no option that relaxes any rule:
+
+- **Raw Ed25519 edge cases, in AEW's verifier alone**, with the expected outcome of each case fixed by the rules
+  above: Project Wycheproof's Ed25519 vectors (`eddsa_test.json`: valid signatures, `S ≥ L` and other malleability
+  cases, non-canonical `R`, truncated and padded signatures, wrong lengths) and the twelve vectors of "Taming the
+  many EdDSAs" (Chalkias, Garillot, Nikolaenko, 2020), which separate verifiers by exactly rules 1 to 4 (small-order
+  `A`, small-order `R`, non-canonical encodings, cofactored versus cofactorless). The expected result per vector is
+  written into the test, derived from the rules, not from what any implementation says.
+- **Honest sshsig signatures, both verifiers, must agree exactly**: a corpus signed with `ssh-keygen -Y sign` on a
+  CI runner (several keys, several namespaces, messages from empty to multi-megabyte) verifies in AEW's verifier,
+  and every signature AEW accepts is accepted by `ssh-keygen -Y verify` with the same `allowed_signers`; the honest
+  refusals agree too (another namespace, a tampered message byte, a key missing from the trust root, a revoked key,
+  an expired validity window, a wrong principal).
+- **Malformed sshsig envelopes, both verifiers, AEW never looser**: from each honest signature the tests derive
+  `S + L` (the malleable twin), `S` with its high bits set, `R` with `y + p`, `R` replaced by a small-order point,
+  a trust-root key with `y + p`, a trust-root key of small order, and a truncated signature; each is fed to both
+  verifiers. The rule is **AEW accepts ⊆ OpenSSH accepts**: AEW must refuse everything OpenSSH refuses, and may refuse
+  more. Every case where OpenSSH accepts and AEW refuses is listed in the evidence with the OpenSSH version that
+  produced it, so the deliberate strictness of rules 1 to 3 is measured, not assumed. (OpenSSH's own Ed25519 code
+  descends from the SUPERCOP ref10 implementation; whether a given version checks the full `S < L` bound is exactly
+  what this part records rather than presumes.)
+
+Verification handles no secret, so constant-time behaviour is not required of it; the signing side is OpenSSH's.
+Should a future verifying host carry an OpenSSH with `-Y`, the organization may cross-check with it; AEW's path does
+not change.
 
 ## Alternatives considered
 
@@ -133,7 +179,7 @@ Because the verifier implements the format itself, the build proves it agrees wi
 ## What the build must show (F18.3)
 
 - **An adversarial-archive test per refusal rule of D7**, each archive built by the tests themselves: `..` and absolute paths, a path that normalizes differently, backslashes, NUL and control characters, a symbolic link, a hard link, a device, a FIFO, a sparse member, a duplicate name, a case-insensitive duplicate, an unlisted member, a listed member that is missing, a size one byte short and one byte long, a hash mismatch, a type mismatch, a mode not in the enumeration, a manifest with an unknown key, a manifest changed by one byte, a signature by another key, a signature by the right key in another namespace, a revoked key, a trust root writable by others, a trust root listing an RSA key, a compressed tar, and member-count and total-size bounds exceeded. Each must fail with its named code, extract nothing, and leave no staging directory.
-- **The signature verifier:** RFC 8032 §7.1 vectors pass; the interoperability corpus of D9 agrees with `ssh-keygen` in both directions, acceptances and refusals; a malformed envelope (wrong magic, version 2, an RSA key blob, `sha256`, truncated fields, trailing bytes) is refused; a malformed `allowed_signers` entry (unknown option, a second key type, a missing namespace) is refused.
+- **The signature verifier:** RFC 8032 §7.1's vectors pass (correctness); D9's raw edge-case corpora (Wycheproof's Ed25519 vectors and the twelve "Taming the many EdDSAs" vectors) each produce the outcome D9's rules 1 to 5 fix, with one test per rule showing a case refused by that rule alone; the honest sshsig corpus agrees with `ssh-keygen -Y verify` exactly, acceptances and refusals; the malformed-envelope corpus satisfies "AEW accepts ⊆ OpenSSH accepts" with every stricter-than-OpenSSH case listed in the evidence with the OpenSSH version; a malformed envelope (wrong magic, version 2, an RSA key blob, `sha256`, truncated fields, trailing bytes) is refused; a malformed `allowed_signers` entry (unknown option, a second key type, a missing namespace, a non-canonical or small-order key) is refused.
 - **Determinism:** two builds of the same commit produce identical manifest and tar digests, on Linux CI and on the Rocky 8 host.
 - **The signing command's refusals:** under `CI`, with a key inside the repository, and with a manifest whose digest differs from the build's.
 - **Rotation:** a trust root with two keys verifies bundles signed by either during the overlap; a rotation statement verifies under both keys in its own namespace; a revoked key fails whatever `allowed_signers` says.

@@ -114,7 +114,7 @@ text is not governing.
 | [`evaluation-component-design-v0.2.md`](design/proposals/evaluation-component-design-v0.2.md) | F19 | Design frozen, proposed | Its first slice before M4-H's preregistration |
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
-| [`project-maps-design-v0.3.md`](design/proposals/project-maps-design-v0.3.md) | F22, F22.1 to F22.3 | Design frozen, proposed (2026-10-04) | Structural slice an M4 candidate; semantic extension with M6 |
+| [`project-maps-design-v0.4.md`](design/proposals/project-maps-design-v0.4.md) | F22, F22.1 to F22.3 | Proposed consolidation for the designer's freeze (2026-10-05): listing-bound freshness and the semantic-extension contract; v0.3 governs until adopted | Structural slice an M4 candidate; semantic extension with M6 |
 | [`install-bootstrap-ux-design-v0.3.md`](design/proposals/install-bootstrap-ux-design-v0.3.md) | F18, F18.1 to F18.4, E21 | Design frozen, proposed (2026-10-04); host topology waits for Q12 | Unscheduled |
 | [`remote-integration-target-sketch-2026-10-04.md`](design/proposals/remote-integration-target-sketch-2026-10-04.md) | F23, Q14 | Sketch, waiting on the designer's scope question (Q14) | Deferred until a team repository requires it; M4-D must not foreclose it |
 | [`aew-knowledge-capture-admission-design-v0.4.md`](design/proposals/aew-knowledge-capture-admission-design-v0.4.md) | F21 | Proposed, for joint review with the two below | M6b |
@@ -180,7 +180,9 @@ ADR-0011 [implementation plan](archive/milestones/adr-0011-implementation-plan.m
 
 **Superseded** ([`archive/superseded/`](archive/superseded/)):
 [plan assurance v0.3](archive/superseded/plan-assurance-and-premise-validation-design-v0.3.md), replaced by
-[v0.4](design/plan-assurance-and-premise-validation-design-v0.4.md)
+[v0.4](design/plan-assurance-and-premise-validation-design-v0.4.md);
+[project maps v0.3](archive/superseded/project-maps-design-v0.3.md), design frozen 2026-10-04 and governing until the
+designer adopts [v0.4](design/proposals/project-maps-design-v0.4.md) (proposed 2026-10-05)
 
 ## Skills
 

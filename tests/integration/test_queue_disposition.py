@@ -109,6 +109,31 @@ def test_the_first_head_move_rebuilds_once_under_the_same_lease_custodian_and_pl
     assert_control_invariants(calc)
 
 
+def test_the_rebuild_records_its_own_fresh_decision_and_the_custodian_keeps_the_grants(calc, tmp_path):
+    """ADR-0004: the rebuild's fresh integrate.prepare decision is retained, on the attempt and on the rebuilt
+    candidate, with its revision and its dependency and policy digests; the custodian's grant decision is unchanged
+    (independent review of #77: Dispatch.finalize records only on what a transaction creates, and a rebuild creates
+    neither an invocation nor a run)."""
+    wid, _ = to_commit_ready(calc, tmp_path)
+    prepare_and_validate(calc, wid)
+    custodian = control(calc)["queue"]["lease"]["custodian"]
+    grant = control(calc)["invocations"][custodian]["dispatch"]
+    head = outside_commit(calc)
+    assert run(calc, "integrate", "publish", wid).json["rebuilt"] is True
+    state = control(calc)  # read back from disk
+    assert state["invocations"][custodian]["dispatch"] == grant
+    _, after = entry(calc, wid)
+    admission = after["attempts"][-1]["rebuild_admission"]
+    assert admission == state["work"][wid]["integration"]["admission"]
+    assert admission["entrypoint"] == "integrate.prepare" and admission["rebuild"] is True
+    assert admission["revision"] > grant["revision"] and admission["decision"] != grant["decision"]
+    assert admission["head"] == head and set(admission["dependency_digests"]["policy"]) == {"gates", "guardrails",
+                                                                                            "checks"}
+    assert_control_invariants(calc)
+    validate_and_publish(calc, wid)
+    assert_control_invariants(calc)
+
+
 def test_a_second_head_move_waits_for_the_lead_and_requeue_returns_it_to_its_place(calc, tmp_path):
     wid, _ = to_commit_ready(calc, tmp_path)
     prepare_and_validate(calc, wid)

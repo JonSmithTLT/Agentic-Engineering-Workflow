@@ -180,7 +180,7 @@ class Integration:
         return None
 
     def _build_candidate(self, ctx: Any, work_id: str, *, unleased: bool = False,
-                         retire_why: str = "replaced by a new candidate"
+                         retire_why: str = "replaced by a new candidate", admission: dict[str, Any] | None = None
                          ) -> tuple[dict[str, Any], dict[str, Any] | None, GateUnsatisfied | None]:
         """Retire any open candidate and build a new one on the current authoritative head, under the lease the
         entry holds (prepare, and D4's one automatic rebuild). Returns the unit, the conflict (None if the merge was
@@ -226,6 +226,8 @@ class Integration:
         record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                   "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
                   "binding": self.gates.integration_binding(unit)}
+        if admission is not None:  # a rebuild's own decision; a granted build's is on its custodian
+            record["admission"] = admission
         candidate: str = merged.get("commit") or ""
         changed: list[str] = []
         if merged["conflict"]:
@@ -440,8 +442,15 @@ class Integration:
             return dispose("legality_changed", blocking=[b.message for b in decision.blocking])
         ctx.dispatch_decisions.append(decision)
         entry["rebuilds_used"] += 1
+        # The rebuild keeps its custodian, so Dispatch.finalize (which records a decision on what it creates) has
+        # nowhere to put this one: it is retained here, on the attempt and on the rebuilt candidate, set once and
+        # never overwritten, while the custodian keeps the grant's (ADR-0004: the fresh decision is recorded).
+        admission = {**decision.provenance(), "dependency_digests": dict(decision.dependency_digests),
+                     "rebuild": True, "moved_from": base, "head": current}
+        entry["attempts"][-1]["rebuild_admission"] = admission
         _, conflict, refused = self._build_candidate(
-            ctx, work_id, retire_why="the authoritative head moved; rebuilt once under the same lease (M4-D4)")
+            ctx, work_id, retire_why="the authoritative head moved; rebuilt once under the same lease (M4-D4)",
+            admission=admission)
         if conflict is not None:
             return {"outcome": "disposition", "why": "conflict", "expected": base, "current": current, **conflict}
         if refused is not None:

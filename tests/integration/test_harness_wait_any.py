@@ -204,3 +204,31 @@ def test_still_running_names_only_runs_observed_live(lab, tmp_path):
     lab.wait(RB)
     out = lab.ok("harness", "wait", RA, RB, "--any", "--timeout", "10")
     assert out["run"] in (RA, RB) and not out["timed_out"] and out["still_running"] == [], out
+
+
+def test_still_running_reflects_a_commit_the_record_lane_returned_before(lab, tmp_path, monkeypatch):
+    """One run's record has ended, so the first check returns from the record lane without examining control state;
+    the other run's invocation was cancelled by a commit right after the waiter's initial read. still_running must
+    not name it (independent review of #79, second pass)."""
+    release = held(lab, tmp_path, RA, RB)
+    release[RA].write_text("go", encoding="utf-8")
+    lab.wait(RA)
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RB)
+    real = engine.store.read
+    calls = []
+
+    def read(*a, **k):
+        snapshot = real(*a, **k)
+        if not calls:  # the initial read: RB's invocation is cancelled right after it
+            lab.lead("invoke", "cancel", "INV-0002", "--reason", "no longer needed")
+        calls.append(1)
+        return snapshot
+
+    monkeypatch.setattr(engine.store, "read", read)
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30)
+    assert out["run"] == RA and "ended_by" not in out, out  # returned by the record lane
+    assert out["still_running"] == [], out
+    monkeypatch.undo()
+    release[RB].write_text("go", encoding="utf-8")
+    lab.wait(RB)

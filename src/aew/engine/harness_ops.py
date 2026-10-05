@@ -379,7 +379,6 @@ class Harness:
         for run in names:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
-        latest = state  # the newest control snapshot examined
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
 
         def control_end(fresh: dict[str, Any], run: str) -> str | None:
@@ -396,7 +395,7 @@ class Harness:
             return None
 
         def check() -> tuple[str, str, dict[str, Any] | None, str | None] | None:
-            nonlocal seen, latest, unexamined
+            nonlocal seen, unexamined
             for run, (_inv_id, _inv, launched) in targets.items():
                 status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
                 if not runlog.possibly_live(status, launched):
@@ -408,7 +407,6 @@ class Harness:
                     seen = now
                     fresh = self.k.store.read()
             if fresh is not None:
-                latest = fresh
                 ended = ended_by_control(fresh)
                 if ended is not None:
                     status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
@@ -428,15 +426,19 @@ class Harness:
                                "results": self.run_results(inv["work_unit"], run), "timed_out": False}
         if control is not None:
             out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
+        # The wait is over, so the control state is read once more, now: the run-record lane can return before a
+        # commit since the last examined snapshot was looked at, and both the other runs' liveness and the next
+        # action are answered from the state as it is (independent review of #79).
+        current = self.k.store.read()
         if len(names) > 1:
-            # Only the runs observed live in both lanes: a run whose record ended, or whose invocation the newest
-            # examined snapshot shows ended, is not still running.
+            # Only the runs observed live in both lanes: a run whose record ended, or whose invocation the control
+            # state shows ended, is not still running.
             out["still_running"] = sorted(
                 r for r in names if r != run
                 and runlog.possibly_live(runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0], targets[r][2])
-                and control_end(latest, r) is None)
+                and control_end(current, r) is None)
         # the run's next action, as `aew status` gives it
-        action = next((h["action"] for h in self.harness_resume(self.k.store.read()) if h["run"] == run), None)
+        action = next((h["action"] for h in self.harness_resume(current) if h["run"] == run), None)
         if action:
             out["next_action"] = action
         return out

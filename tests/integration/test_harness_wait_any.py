@@ -142,3 +142,65 @@ def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeyp
         f.write_text("go", encoding="utf-8")
     lab.wait(RA)
     lab.wait(RB)
+
+
+def _records_say_running(monkeypatch, *runs: str) -> None:
+    """Hold the named runs' own records at running, so only the control lane can end the wait."""
+    from aew.harness import runlog
+
+    real = runlog.observed_status
+    monkeypatch.setattr(runlog, "observed_status",
+                        lambda d, *a, **k: ("running", None) if Path(d).name in runs else real(d, *a, **k))
+
+
+def test_an_invocation_already_ended_when_the_wait_starts_ends_it_at_once(lab, tmp_path, monkeypatch):
+    """The initial control snapshot is examined too: a cancellation committed before the wait began ends it at once,
+    even while the run's own record still says running (independent review of #79)."""
+    release = held(lab, tmp_path, RA, RB)
+    lab.lead("invoke", "cancel", "INV-0001", "--reason", "no longer needed")
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RA, RB)
+    started = time.monotonic()
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30)
+    assert out["run"] == RA and not out["timed_out"], out
+    assert out["ended_by"] == {"lane": "control", "why": "invocation INV-0001 is cancelled"}
+    assert time.monotonic() - started < 5, "the waiter waited for a commit it had already seen"
+    assert out["still_running"] == [RB]
+    monkeypatch.undo()
+    release[RB].write_text("go", encoding="utf-8")
+    lab.wait(RB)
+
+
+def test_a_commit_between_the_initial_read_and_its_identity_is_not_lost(lab, tmp_path, monkeypatch):
+    """A commit that lands just after the waiter's initial read is a change it must examine: the identity it compares
+    against is taken before that read, never after (independent review of #79)."""
+    release = held(lab, tmp_path, RA, RB)
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RA, RB)
+    real = engine.store.read
+    calls = []
+
+    def read(*a, **k):
+        snapshot = real(*a, **k)
+        if not calls:  # the initial read: the cancellation commits right after it
+            lab.lead("invoke", "cancel", "INV-0001", "--reason", "no longer needed")
+        calls.append(1)
+        return snapshot
+
+    monkeypatch.setattr(engine.store, "read", read)
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30)
+    assert out["run"] == RA and out.get("ended_by", {}).get("lane") == "control", out
+    monkeypatch.undo()
+    release[RB].write_text("go", encoding="utf-8")
+    lab.wait(RB)
+
+
+def test_still_running_names_only_runs_observed_live(lab, tmp_path):
+    """Several targets already ended: wait-any returns one and calls none of the others still running."""
+    release = held(lab, tmp_path, RA, RB)
+    for f in release.values():
+        f.write_text("go", encoding="utf-8")
+    lab.wait(RA)
+    lab.wait(RB)
+    out = lab.ok("harness", "wait", RA, RB, "--any", "--timeout", "10")
+    assert out["run"] in (RA, RB) and not out["timed_out"] and out["still_running"] == [], out

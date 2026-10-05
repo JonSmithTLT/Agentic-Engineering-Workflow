@@ -371,31 +371,45 @@ class Harness:
             raise UsageError("a run is named twice")
         if len(names) > 1 and not any_:
             raise UsageError("waiting on several runs needs --any: it returns the first of them to end")
+        # The identity is taken before the read it stands for: a commit between the two then shows as a change and
+        # costs one more parse, instead of being taken as already seen without its snapshot being examined.
+        seen = self._control_identity()
         state = self.k.store.read()
         targets: dict[str, tuple[str, dict[str, Any], str | None]] = {}
         for run in names:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
-        seen = self._control_identity()
+        latest = state  # the newest control snapshot examined
+        unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
+
+        def control_end(fresh: dict[str, Any], run: str) -> str | None:
+            inv_id = targets[run][0]
+            inv = fresh["invocations"].get(inv_id)
+            status = inv["status"] if inv is not None else "archived"
+            return None if status == "active" else f"invocation {inv_id} is {status}"
 
         def ended_by_control(fresh: dict[str, Any]) -> tuple[str, str] | None:
-            for run, (inv_id, _inv, _launched) in targets.items():
-                inv = fresh["invocations"].get(inv_id)
-                status = inv["status"] if inv is not None else "archived"
-                if status != "active":
-                    return run, f"invocation {inv_id} is {status}"
+            for run in targets:
+                why = control_end(fresh, run)
+                if why is not None:
+                    return run, why
             return None
 
         def check() -> tuple[str, str, dict[str, Any] | None, str | None] | None:
-            nonlocal seen
+            nonlocal seen, latest, unexamined
             for run, (_inv_id, _inv, launched) in targets.items():
                 status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
                 if not runlog.possibly_live(status, launched):
                     return run, status, record, None
-            now = self._control_identity()
-            if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
-                seen = now
-                ended = ended_by_control(self.k.store.read())
+            fresh, unexamined = unexamined, None
+            if fresh is None:
+                now = self._control_identity()
+                if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
+                    seen = now
+                    fresh = self.k.store.read()
+            if fresh is not None:
+                latest = fresh
+                ended = ended_by_control(fresh)
                 if ended is not None:
                     status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
                     return ended[0], status, record, ended[1]
@@ -415,7 +429,12 @@ class Harness:
         if control is not None:
             out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
         if len(names) > 1:
-            out["still_running"] = sorted(r for r in names if r != run)
+            # Only the runs observed live in both lanes: a run whose record ended, or whose invocation the newest
+            # examined snapshot shows ended, is not still running.
+            out["still_running"] = sorted(
+                r for r in names if r != run
+                and runlog.possibly_live(runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0], targets[r][2])
+                and control_end(latest, r) is None)
         # the run's next action, as `aew status` gives it
         action = next((h["action"] for h in self.harness_resume(self.k.store.read()) if h["run"] == run), None)
         if action:

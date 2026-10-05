@@ -256,7 +256,7 @@ Built as §2.6 and the M4-D plan say, with these specifics. The ADR text is in A
   - median 42.2 ms from the start of the commit (p90 47.6 ms), within the 50 ms budget;
   - median 13.3 ms from the commit's return.
   - The Rocky 8 measurement is still owed (OBX-37).
-- **Tests:** `tests/integration/test_harness_wait_any.py`: the first to end, a control-side end, the refusals and the timeout shape, and the parse count under spurious wakes and under a commit.
+- **Tests:** `tests/integration/test_harness_wait_any.py`: the first to end, a control-side end, the refusals and the timeout shape, the parse count under spurious wakes and under a commit; and, from the independent review: an invocation already ended when the wait starts (the initial snapshot is examined), a commit between the initial read and its identity (the identity is taken first), and `still_running` naming only runs live in both lanes.
 
 ### 2.10 Stage commands (M4-E; F15)
 Gated on the designer promoting F15 v0.4 to a governing design (decision 1; met 2026-10-05: the typed Lead surface v0.2 governs). Then:

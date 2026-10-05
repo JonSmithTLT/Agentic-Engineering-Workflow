@@ -1087,13 +1087,6 @@ sections:
       with a new key'
     When: '**M4 candidate** (run UX)'
     Notes: The key is fixed when the server process starts.
-  - '#': V2
-    Work: 'A clearer path when the Lead wrapper exits with an invocation active: the seat stays held, the credential is
-      gone with the wrapper, and re-acquiring is refused'
-    Source: 'the run: the operator had to take over (generation 2)'
-    When: '**M4 candidate** (Lead UX); Q12 covers the wider seat lifecycle'
-    Notes: Takeover worked as designed and interrupted the running investigation cleanly. The refusal could name takeover
-      as the next step.
   - '#': V3
     Work: Whether review-type work should default to a plan-bound reviewer
     Source: 'the run: the Lead accepted all three plans with `--assurance none`; review and verification of the deep ticket
@@ -1297,3 +1290,12 @@ sections:
     Was: An investigation-review coverage contract
     Closed: '2026-10-01'
     By: 'Absorbed into F17 (designer; `8eac795`, PR #6)'
+  - '#': V2
+    Was: 'A clearer path when the Lead wrapper exits with an invocation active: the seat stays held, the credential is gone
+      with the wrapper, and re-acquiring is refused'
+    Closed: '2026-10-05'
+    By: '`aew lead acquire`''s refusal names the holder (generation, session, acquired at), says that a gone session means
+      `aew lead takeover` at an operator terminal, and derives what a takeover would do by running its interruption on a
+      copy of the state: the active invocations it interrupts, the Tickets that become INTERRUPTED (recovered as `aew resume`
+      lists), and only a lease that survives, for `aew integrate reconcile`; `next: aew lead takeover` in its details. Q12
+      keeps the wider seat lifecycle'

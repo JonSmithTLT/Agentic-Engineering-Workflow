@@ -478,3 +478,24 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
         _add_lead(q)
         q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
             token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id))
+    # The Lead's queue commands (M4-D4): scheduling only, never eligibility.
+    for name, method, text in (
+        ("defer", "integrate_defer", "set a queue entry aside (gives up its lease if it holds one)"),
+        ("requeue", "integrate_requeue", "return a DEFERRED or AWAITING_DISPOSITION entry to the queue in its place"),
+    ):
+        q = isub.add_parser(name, help=text)
+        q.add_argument("work_id")
+        q.add_argument("--reason", required=True)
+        _add_lead(q)
+        q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
+            token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason))
+    q = isub.add_parser("reorder", help="move a queue entry ahead of another, or to the front")
+    q.add_argument("work_id")
+    where = q.add_mutually_exclusive_group(required=True)
+    where.add_argument("--before", metavar="WORK_ID", help="the Ticket whose entry it goes ahead of")
+    where.add_argument("--first", action="store_true", help="to the front of the queue")
+    q.add_argument("--reason", required=True)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).integrate_reorder(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, before=None if a.first else a.before,
+        reason=a.reason))

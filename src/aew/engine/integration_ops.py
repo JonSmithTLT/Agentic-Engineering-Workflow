@@ -27,6 +27,7 @@ from aew.errors import (
     LeaseNotHeld,
     LeaseReconcileRequired,
     StaleCandidate,
+    UsageError,
 )
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
@@ -178,9 +179,87 @@ class Integration:
                 "case-sensitive filesystem", paths=clashes[:50])
         return None
 
-    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def _build_candidate(self, ctx: Any, work_id: str, *, unleased: bool = False,
+                         retire_why: str = "replaced by a new candidate"
+                         ) -> tuple[dict[str, Any], dict[str, Any] | None, GateUnsatisfied | None]:
+        """Retire any open candidate and build a new one on the current authoritative head, under the lease the
+        entry holds (prepare, and D4's one automatic rebuild). Returns the unit, the conflict (None if the merge was
+        clean) and the admission refusal (None if admitted). A conflict or refusal is committed: the lease is
+        released and the entry waits for the Lead's disposition."""
+        state = ctx.state
         conflict: dict[str, Any] | None = None
         refused: GateUnsatisfied | None = None
+        unit = self.units.unit(state, work_id)
+        integ = unit.get("integration") or {}
+        if integ:
+            lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+            why = ("its integration worktree is gone" if lost
+                   else "prepared before the integration queue, so no lease held it; replaced under the queue"
+                   if unleased and integ.get("status") in {"prepared", "validated"}
+                   else retire_why)
+            self._retire_integration(state, unit, f"{why} (was {integ.get('status')})")
+        gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
+        ws = unit["workspace"]
+        ws_path = Path(ws["path"])
+        ticket_commit = I.commit_workspace(ws_path, f"aew({work_id}): {unit['title']}")
+        committed = self.invocations.snapshot_of(ws_path, ws["id"])["relevant_inputs_fingerprint"]
+        if committed != gated:
+            raise IntegrityError("committed tree differs from the gated evaluated snapshot",
+                                 gated=gated, committed=committed)
+        base = self.k.authoritative_commit()
+        if base is None:
+            raise IntegrityError(f"the authoritative branch {self.k.authoritative_branch} has no commit")
+        attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
+        name = f"{work_id}-int-{attempt}"
+        referenced = {u["integration"]["workspace"] for u in state["work"].values()
+                      if (u.get("integration") or {}).get("status") in {"prepared", "validated", "publishing"}}
+        int_ws = worktrees.allocate_detached(
+            repo_root=self.k.repo_root, aew_root=self.k.aew_root, workspaces_root=self.k.workspaces_root(),
+            work_id=work_id, name=name, workspace_id=f"int-{work_id}-{attempt}", commit=base,
+            referenced_paths=referenced)
+        try:
+            merged = I.merge_candidate(self.k.repo_root, Path(int_ws["path"]), ticket_commit,
+                                       f"aew: integrate {work_id} ({unit['title']})")
+        except GitError:
+            worktrees.remove(self.k.repo_root, int_ws["path"])
+            raise
+        record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
+                  "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
+                  "binding": self.gates.integration_binding(unit)}
+        candidate: str = merged.get("commit") or ""
+        changed: list[str] = []
+        if merged["conflict"]:
+            worktrees.remove(self.k.repo_root, int_ws["path"])
+            conflict = {"paths": merged["paths"]}
+            unit["integration"] = {**record, "status": "conflict", "conflict_paths": merged["paths"]}
+            # A conflict releases the lease and returns the entry to the Lead; it is never auto-resolved.
+            self.queue.record_attempt(state, work_id, unit["integration"])
+            self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="conflict",
+                               detail={"paths": merged["paths"][:50]})
+            ctx.summary = f"{work_id} integration conflict on {merged['paths']}"
+        else:
+            changed = I.changed_between(self.k.repo_root, base, candidate)
+            refused = self._admission_refusal(unit, changed)
+            if refused is not None and not Q.queued(state):
+                worktrees.remove(self.k.repo_root, int_ws["path"])
+                raise refused  # v1: no queue entry to hold the refusal, so nothing is committed
+        if refused is not None:
+            # Like a conflict, a refused candidate is the Lead's to settle: the lease is released and the entry
+            # waits for disposition, committed, so it never holds up an independent entry behind it (FIFO).
+            worktrees.remove(self.k.repo_root, int_ws["path"])
+            self.queue.record_attempt(state, work_id, {**record, "status": "refused"})
+            self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="refused",
+                               detail={"code": refused.code, "reason": refused.message})
+            ctx.summary = f"{work_id} integration candidate refused at admission: {refused.message}"
+        elif not merged["conflict"]:
+            snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
+            unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
+                                   "candidate_snapshot": snap, "changed_paths": changed}
+            self.queue.record_attempt(state, work_id, unit["integration"])
+            ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
+        return unit, conflict, refused
+
+    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
             self.queue.sync(state)
@@ -188,74 +267,7 @@ class Integration:
             decision = self.dispatch.decide_in(ctx, "integrate.prepare", work_id)
             unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
             self.queue.grant(ctx, work_id)
-            unit = self.units.unit(state, work_id)
-            integ = unit.get("integration") or {}
-            if integ:
-                lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
-                why = ("its integration worktree is gone" if lost
-                       else "prepared before the integration queue, so no lease held it; replaced under the queue"
-                       if unleased and integ.get("status") in {"prepared", "validated"}
-                       else "replaced by a new candidate")
-                self._retire_integration(state, unit, f"{why} (was {integ.get('status')})")
-            gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
-            ws = unit["workspace"]
-            ws_path = Path(ws["path"])
-            ticket_commit = I.commit_workspace(ws_path, f"aew({work_id}): {unit['title']}")
-            committed = self.invocations.snapshot_of(ws_path, ws["id"])["relevant_inputs_fingerprint"]
-            if committed != gated:
-                raise IntegrityError("committed tree differs from the gated evaluated snapshot",
-                                     gated=gated, committed=committed)
-            base = self.k.authoritative_commit()
-            if base is None:
-                raise IntegrityError(f"the authoritative branch {self.k.authoritative_branch} has no commit")
-            attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
-            name = f"{work_id}-int-{attempt}"
-            referenced = {u["integration"]["workspace"] for u in state["work"].values()
-                          if (u.get("integration") or {}).get("status") in {"prepared", "validated", "publishing"}}
-            int_ws = worktrees.allocate_detached(
-                repo_root=self.k.repo_root, aew_root=self.k.aew_root, workspaces_root=self.k.workspaces_root(),
-                work_id=work_id, name=name, workspace_id=f"int-{work_id}-{attempt}", commit=base,
-                referenced_paths=referenced)
-            try:
-                merged = I.merge_candidate(self.k.repo_root, Path(int_ws["path"]), ticket_commit,
-                                           f"aew: integrate {work_id} ({unit['title']})")
-            except GitError:
-                worktrees.remove(self.k.repo_root, int_ws["path"])
-                raise
-            record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
-                      "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
-                      "binding": self.gates.integration_binding(unit)}
-            candidate: str = merged.get("commit") or ""
-            changed: list[str] = []
-            if merged["conflict"]:
-                worktrees.remove(self.k.repo_root, int_ws["path"])
-                conflict = {"paths": merged["paths"]}
-                unit["integration"] = {**record, "status": "conflict", "conflict_paths": merged["paths"]}
-                # A conflict releases the lease and returns the entry to the Lead; it is never auto-resolved.
-                self.queue.record_attempt(state, work_id, unit["integration"])
-                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="conflict",
-                                   detail={"paths": merged["paths"][:50]})
-                ctx.summary = f"{work_id} integration conflict on {merged['paths']}"
-            else:
-                changed = I.changed_between(self.k.repo_root, base, candidate)
-                refused = self._admission_refusal(unit, changed)
-                if refused is not None and not Q.queued(state):
-                    worktrees.remove(self.k.repo_root, int_ws["path"])
-                    raise refused  # v1: no queue entry to hold the refusal, so nothing is committed
-            if refused is not None:
-                # Like a conflict, a refused candidate is the Lead's to settle: the lease is released and the entry
-                # waits for disposition, committed, so it never holds up an independent entry behind it (FIFO).
-                worktrees.remove(self.k.repo_root, int_ws["path"])
-                self.queue.record_attempt(state, work_id, {**record, "status": "refused"})
-                self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result="refused",
-                                   detail={"code": refused.code, "reason": refused.message})
-                ctx.summary = f"{work_id} integration candidate refused at admission: {refused.message}"
-            elif not merged["conflict"]:
-                snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
-                unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
-                                       "candidate_snapshot": snap, "changed_paths": changed}
-                self.queue.record_attempt(state, work_id, unit["integration"])
-                ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
+            unit, conflict, refused = self._build_candidate(ctx, work_id, unleased=unleased)
             self.units.before_commit(ctx)
         self._prune_retired_candidates(unit)
         if refused is not None:
@@ -269,6 +281,54 @@ class Integration:
         if conflict:
             result["next"] = "resolve by returning the Ticket to RUNNING (rebase) or REPLAN_REQUIRED"
         return result
+
+    # ------------------------------------------------------------------ the Lead's queue commands (M4-D4)
+
+    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+        """Set a queue entry aside: the Ticket stays COMMIT_READY and holds up nobody. A LEASED entry gives up its
+        lease, and its open candidate, which nothing published, is retired."""
+        if not (reason and reason.strip()):
+            raise UsageError("deferring needs a reason")
+        with self.k.lead_txn(token, expect_rev, "integrate.defer", reason=reason) as ctx:
+            self.queue.sync(ctx.state)
+            unit = self.units.unit(ctx.state, work_id)
+            integ = unit.get("integration") or {}
+            if integ.get("status") == "publishing":
+                raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile` first")
+            if Q.lease_of(ctx.state, work_id) is not None and integ.get("status") in OPEN_INTEGRATION:
+                self._retire_integration(ctx.state, unit, f"deferred by the Lead: {reason}")
+            moved = self.queue.defer(ctx.state, work_id, reason=reason)
+            ctx.summary = f"{work_id} queue entry {moved['entry']} deferred ({moved['from']}): {reason}"
+            self.units.before_commit(ctx)
+        self._prune_retired_candidates(unit)
+        return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
+                "revision": ctx.session.committed_revision}
+
+    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+        """Return a DEFERRED or AWAITING_DISPOSITION entry to the queue in its own place: the Lead's disposition when
+        the cause is settled (a policy changed, a head that moved twice, an inconclusive result to retry)."""
+        if not (reason and reason.strip()):
+            raise UsageError("requeueing needs a reason")
+        with self.k.lead_txn(token, expect_rev, "integrate.requeue", reason=reason) as ctx:
+            self.queue.sync(ctx.state)
+            moved = self.queue.requeue(ctx.state, work_id, reason=reason)
+            ctx.summary = f"{work_id} queue entry {moved['entry']} requeued from {moved['from']}: {reason}"
+        return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
+                "revision": ctx.session.committed_revision,
+                "next": f"`aew integrate prepare {work_id}` when it is next in the queue"}
+
+    def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
+                          reason: str) -> dict[str, Any]:
+        """Move a queue entry ahead of another (or to the front). Order is scheduling, never eligibility: the work
+        graph still decides what may integrate (M4 report §2.6)."""
+        if not (reason and reason.strip()):
+            raise UsageError("reordering needs a reason")
+        with self.k.lead_txn(token, expect_rev, "integrate.reorder", reason=reason) as ctx:
+            self.queue.sync(ctx.state)
+            moved = self.queue.reorder(ctx.state, work_id, before=before)
+            ctx.summary = (f"{work_id} queue entry {moved['entry']} moved "
+                           f"{'to the front' if before is None else 'ahead of ' + before}: {reason}")
+        return {"ok": True, "work_id": work_id, **moved, "revision": ctx.session.committed_revision}
 
     @staticmethod
     def _queue_brief(state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
@@ -335,9 +395,90 @@ class Integration:
             raise GateUnsatisfied("policy-required post-integration checks are missing, or ran under a check "
                                   "definition that policy/checks.yaml has since changed", missing=missing)
 
+    def _moved_head(self, ctx: Any, work_id: str, current: str | None) -> dict[str, Any]:
+        """The authoritative head moved under a candidate that was not published (M4-D4; the M4 report §2.6 and §2.7).
+
+        Under the queue, the first move is answered by the one automatic rebuild: nothing was published (the ref does
+        not contain the candidate), legality is recomputed as a grant would, and the candidate is rebuilt on the new
+        head under the same lease, custodian and queue position (no release, no new ``seq`` or ``commit_ready_seq``).
+        The Ticket's work product is reused; the integration candidate and its validation are not, so validation reruns
+        on the rebuilt candidate. A second move, changed legality, a conflict or a refusal releases the lease to
+        AWAITING_DISPOSITION for the Lead. A v1 project has no queue and is stale as before M4-D.
+
+        Returns the outcome: ``rebuilt``, ``disposition`` or ``stale`` (v1)."""
+        state = ctx.state
+        unit = self.units.unit(state, work_id)
+        integ = unit["integration"]
+        base, candidate = integ["base"], integ.get("candidate")
+        integ["status"] = "stale_candidate"
+        ctx.op = "integrate.stale"
+        _, entry = Q.entry_of(state, work_id)
+        if entry is None:  # v1: no queue; the Lead prepares again, as before M4-D
+            ctx.summary = f"{work_id} candidate stale: authoritative ref moved"
+            return {"outcome": "stale", "expected": base, "current": current}
+        lease = Q.lease_of(state, work_id)
+        if lease is None or lease["reconcile"] is not None:
+            # A reconcile under a dead custodian (or no lease at all) never rebuilds: nothing was published, so the
+            # entry returns to its place, as D3 reconciles a dead custodian.
+            self.queue.release(state, work_id, to="QUEUED", result="stale_candidate")
+            ctx.summary = f"{work_id} candidate stale: authoritative ref moved (lease reconciled)"
+            return {"outcome": "stale", "expected": base, "current": current}
+
+        def dispose(why: str, **detail: Any) -> dict[str, Any]:
+            self.queue.release(state, work_id, to="AWAITING_DISPOSITION", result=why,
+                               detail={"expected": base, "current": current, **detail})
+            ctx.summary = f"{work_id} candidate stale ({why}): its queue entry waits for the Lead"
+            return {"outcome": "disposition", "why": why, "expected": base, "current": current, **detail}
+
+        if current is None or (candidate and git.is_ancestor(candidate, current, cwd=self.k.repo_root)):
+            # Not provably unpublished: the ref is gone, or it already holds the candidate (published outside AEW).
+            return dispose("not_provably_unpublished")
+        if entry["rebuilds_used"] >= 1:
+            return dispose("head_moved_again")
+        decision = self.dispatch.decide(state, "integrate.prepare", work_id)
+        if not decision.allowed:
+            return dispose("legality_changed", blocking=[b.message for b in decision.blocking])
+        ctx.dispatch_decisions.append(decision)
+        entry["rebuilds_used"] += 1
+        _, conflict, refused = self._build_candidate(
+            ctx, work_id, retire_why="the authoritative head moved; rebuilt once under the same lease (M4-D4)")
+        if conflict is not None:
+            return {"outcome": "disposition", "why": "conflict", "expected": base, "current": current, **conflict}
+        if refused is not None:
+            return {"outcome": "disposition", "why": "refused", "expected": base, "current": current,
+                    "code": refused.code, "refusal": refused.message}
+        ctx.op = "integrate.rebuild"
+        ctx.summary = (f"{work_id} candidate rebuilt on the moved head {current[:12]} under the same lease (the one "
+                       "automatic rebuild)")
+        return {"outcome": "rebuilt", "expected": base, "current": current}
+
+    def _moved_head_result(self, ctx: Any, work_id: str, moved: dict[str, Any]) -> dict[str, Any]:
+        """What ``publish`` answers after :meth:`_moved_head` committed: the rebuilt candidate, or StaleCandidate."""
+        unit = self.units.unit(ctx.state, work_id)
+        self._prune_retired_candidates(unit)
+        queue = self._queue_brief(ctx.state, work_id)
+        revision = ctx.session.committed_revision
+        if moved["outcome"] == "rebuilt":
+            return {"ok": False, "work_id": work_id, "rebuilt": True, "integration": unit["integration"],
+                    "queue": queue, "revision": revision,
+                    "next": "the authoritative head moved, so the candidate was rebuilt on it under the same lease "
+                            "(the one automatic rebuild): rerun post-integration validation on it, then publish"}
+        if moved["outcome"] == "stale":
+            raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
+                                 revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
+        reasons = {"head_moved_again": "the authoritative head moved again after the one automatic rebuild",
+                   "legality_changed": "the integration is no longer legal on the moved head",
+                   "conflict": "the rebuild on the moved head conflicts",
+                   "refused": "the rebuilt candidate was refused at admission",
+                   "not_provably_unpublished": "the ref no longer proves the candidate unpublished"}
+        raise StaleCandidate(f"{reasons[moved['why']]}: the queue entry waits for the Lead's disposition (`aew "
+                             "integrate requeue` to try again, or return the Ticket to RUNNING)",
+                             queue=queue, revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
+
     def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         # Phase 1: record intent (publishing H -> M) after re-validating everything.
         stale = None
+        moved: dict[str, Any] | None = None
         with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
@@ -355,11 +496,7 @@ class Integration:
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
             elif current != integ["base"]:
-                integ["status"] = "stale_candidate"
-                # D3: the entry keeps its place and the Lead prepares again (D4 rebuilds once under the same lease).
-                self.queue.release(ctx.state, work_id, to="QUEUED", result="stale_candidate")
-                stale = {"expected": integ["base"], "current": current}
-                ctx.summary = f"{work_id} candidate stale: authoritative ref moved"
+                moved = self._moved_head(ctx, work_id, current)
             else:
                 self._require_obligations_at_acceptance(ctx.state, work_id, unit)
                 self._post_integration_ok(ctx.state, work_id, unit)
@@ -368,11 +505,11 @@ class Integration:
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+        if moved is not None:
+            return self._moved_head_result(ctx, work_id, moved)
         if stale:
-            what = ("the integration candidate was built from an earlier COMMIT_READY or plan; run `aew integrate "
-                    "prepare` again" if "reason" in stale else
-                    "the authoritative ref moved since the candidate was built; rebuild and revalidate")
-            raise StaleCandidate(what, **stale)
+            raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; run "
+                                 "`aew integrate prepare` again", **stale)
         faults.hit("integrate.after_publishing_record")
         committed = ctx.session.committed_revision
         assert committed is not None  # the transaction above committed
@@ -389,6 +526,7 @@ class Integration:
         ``integrate reconcile``; a refused sync aborts the transaction, so nothing is overwritten.
         """
         stale: StaleCandidate | None = None
+        moved: dict[str, Any] | None = None
         withdrawn: GateUnsatisfied | None = None
         sync: dict[str, Any] = {}  # set on the path that completes; the others raise below
         remove_ticket_workspace = False
@@ -427,17 +565,15 @@ class Integration:
                     try:
                         I.cas_publish(self.k.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
                         cas = "published"
-                    except StaleCandidate as exc:
-                        stale = exc
+                    except StaleCandidate:  # the ref moved between the check and the CAS: nothing was published
+                        moved = self._moved_head(ctx, work_id, git.rev_parse(ref, cwd=self.k.repo_root))
             elif current is None or not git.is_ancestor(candidate, current, cwd=self.k.repo_root):
-                stale = StaleCandidate("the authoritative ref no longer contains the candidate", current=current)
-            if stale:
-                if unit.get("integration") is not None:
-                    integ["status"] = "stale_candidate"
-                self.queue.release(ctx.state, work_id, to="QUEUED", result="stale_candidate")
+                moved = self._moved_head(ctx, work_id, current)
+            if stale:  # the binding mismatch: superseded, the entry keeps its place (D3)
+                self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
                 ctx.op = "integrate.stale"
-                ctx.summary = f"{work_id} candidate stale"
-            elif withdrawn:
+                ctx.summary = f"{work_id} candidate superseded (found at finalization)"
+            elif withdrawn or moved is not None:
                 pass
             else:
                 faults.hit("integrate.after_cas")
@@ -467,6 +603,8 @@ class Integration:
                 remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
                 ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.k.authoritative_branch}"
                 self.units.before_commit(ctx)
+        if moved is not None:
+            return self._moved_head_result(ctx, work_id, moved)
         if stale:
             raise stale
         if withdrawn:

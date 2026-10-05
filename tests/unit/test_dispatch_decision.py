@@ -24,7 +24,8 @@ NOT_DISPATCHING = {
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
     "history reindex", "history show", "init",
-    "integrate publish", "integrate reconcile", "invoke cancel", "invoke show", "lead acquire",
+    "integrate defer", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
+    "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
@@ -254,7 +255,8 @@ def test_every_dispatch_entrypoint_and_integration_primitive_is_declared():
         if e.surface == "cli":
             spec = P.spec_for(e.name)
             assert spec.declared and spec.guard_id == e.name, e.name
-    for name in ("integrate.prepare", "verify.ingest.integration", "integrate.publish", "integrate.reconcile"):
+    for name in ("integrate.prepare", "verify.ingest.integration", "integrate.publish", "integrate.reconcile",
+                 "integrate.defer", "integrate.requeue", "integrate.reorder"):
         assert P.spec_for(name).declared, name
     for spec in P.SPECS.values():
         assert spec.operation_class in P.OPERATION_CLASSES, spec

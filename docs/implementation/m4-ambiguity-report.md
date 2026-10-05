@@ -231,6 +231,28 @@ Built as §2.6 and the M4-D plan say, with these specifics. The ADR text is in A
   - the later-commit sync case in `test_worktree_sync.py`;
   - the seeded walk `tests/regression/test_m4_queue_walk.py`, whose acceptance budget is 3 seeds × 500 steps.
 
+### M4-D4 as built (2026-10-05)
+
+Built as §2.6 and §2.7 say. The ADR text is ADR-0004's second amendment of 2026-10-05.
+
+- **The one automatic rebuild** happens where a moved head is found:
+  - at `integrate publish`;
+  - at `reconcile`, when a CAS never happened against a moved head.
+
+  It first proves the ref does not contain the candidate, recomputes the `integrate.prepare` decision, and rebuilds the candidate under the same lease, custodian and position (`rebuilds_used: 1`). Publish then answers `rebuilt`, and validation reruns on the new candidate. Each grant gets a fresh allowance.
+- **To the Lead (AWAITING_DISPOSITION):**
+  - a second move, changed legality, a conflict or refusal on the rebuild, or a ref that can't prove the candidate unpublished;
+  - an inconclusive post-integration validation, which no longer holds the one lease while the Lead decides.
+
+  A failed validation retires the entry through VERIFICATION_FAILED, as before. A superseded binding keeps D3's answer, back to QUEUED in its place.
+- **The Lead's commands:** `aew integrate defer`, `requeue` and `reorder`, each with a reason. They are judgment-bearing primitives (`queue_disposition`).
+  - Deferring a LEASED entry gives up the lease and retires the unpublished candidate.
+  - Requeue keeps the entry's place.
+  - Reorder renumbers the live entries with fresh positions.
+- **Oracle rule 39:** at most one rebuild per lease; a disposition record exactly on DEFERRED and AWAITING_DISPOSITION entries.
+- **Tests:** `tests/integration/test_queue_disposition.py`; D3's stale-candidate tests now expect the rebuild; the queue walk adds defer, requeue and reorder.
+- **Not here:** `aew integrate next` and the queue in `status`, `resume` and `guide` (M4-F); the `checks` validation path (D5); wait-any (D6).
+
 ### 2.7 What survives a head move: reuse work product, not proof (decision 4)
 - **Head moved, Ticket work product unchanged:** existing Ticket evidence may stay current if every binding it depends on is unchanged. The integration candidate is still rebuilt against the new H, integration validation always reruns, and `DispatchDecision` recomputes.
 - **Conflict resolution or changed implementation:** a new implementation attempt and fingerprint. Snapshot-bound review and verification do not carry forward, the effective gates for the Ticket's class and policy rerun, and plan/assurance applicability is recomputed from its bindings.

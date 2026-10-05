@@ -414,3 +414,50 @@ def test_item5_a_repaired_record_is_sealed_and_read_back_through_its_segment(tmp
                                                                       if k != "events"}
     assert len(read_back["events"]) == 70  # the complete set, from the sealed payload
     check_invariants(tmp_path, synthetic_through=SEG - 5)
+
+
+# ---------------------------------------------------------------------------------------------- two compactors
+
+def b_seals_inside_as_first(monkeypatch, root: Path, since: int, name: str) -> list[int]:
+    """Make compactor A's first call of ``log_compact.<name>`` (``_read_record`` for records, ``read_optional`` for
+    sidecars) run compactor B's complete seal of segment 0 first: B checks, builds, publishes, verifies and prunes
+    after A found no segment and before A read the files B removes."""
+    original = getattr(log_compact, name)
+    ran: list[int] = []
+
+    def racing(*args, **kwargs):
+        if not ran:
+            ran.append(1)
+            for _ in log_compact.seal_steps(root, 0, since):  # B, with the real (unpatched once ran) reads
+                pass
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(log_compact, name, racing)
+    return ran
+
+
+@pytest.mark.parametrize("name", ["_read_record", "read_optional"])
+def test_a_compactor_whose_files_another_compactor_sealed_mid_build_verifies_that_segment(tmp_path, monkeypatch,
+                                                                                         name):
+    """Independent review of #60 (P2): without the lock, compactor B can seal segment 0 and prune its records (or an
+    overflow sidecar) between A's "no segment yet" check and A's reads. That is not missing history: A must verify
+    B's segment and carry on, not raise "incomplete history" and stop before later segments."""
+    state = long_log(tmp_path, SEG + 14, overflow_every=37)
+    truth = everything(tmp_path, state)
+    ran = b_seals_inside_as_first(monkeypatch, tmp_path, 0, name)
+    steps = list(log_compact.seal_steps(tmp_path, 0, 0))  # A
+    assert ran and (tmp_path / outbox.segment_path(0)).exists()
+    assert [s["step"] for s in steps][0] == "verified"  # A published nothing: it verified B's segment
+    monkeypatch.undo()
+    assert everything(tmp_path, state) == truth and outbox_violations(tmp_path, state) == []
+
+
+def test_a_pre_outbox_segment_another_compactor_sealed_mid_build_is_not_reported_unsealable(tmp_path, monkeypatch):
+    """The same window before outbox.since: A finds a pre-outbox record pruned by B, which is not a lost record, so
+    `compact` must not report a segment B sealed as unsealable."""
+    state = pre_outbox_log(tmp_path)
+    b_seals_inside_as_first(monkeypatch, tmp_path, state["outbox"]["since"], "_read_record")
+    result = log_compact.compact(make_store(tmp_path), window=WINDOW)
+    monkeypatch.undo()
+    assert result["unsealable"] == [] and result["sealed"] == [0, 1, 2]
+    assert outbox_violations(tmp_path, state) == []

@@ -35,7 +35,9 @@ lock, so a commit never waits for them (a segment costs seconds to verify), and 
   the newest revision's record (a commit, or recovery repairing it), which ``window >= 1`` keeps out of every eligible
   segment, so no writer touches the files a compactor reads or removes;
 * a second compactor is harmless: the publish is create-if-absent (the loser verifies the winner's segment), and the
-  verification and the prune are idempotent (a file already removed is not an error).
+  verification and the prune are idempotent (a file already removed is not an error). A build that fails because
+  files are missing looks for the segment again before reporting anything: another compactor may have sealed and
+  pruned them after this one found no segment, and then they are sealed, not lost (nor unsealable).
 
 Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through
 the lock.
@@ -215,7 +217,18 @@ def seal_steps(aew_root: Path, index: int, since: int,
     lock, from :func:`compact`). See the module docstring for the order and why the rest needs no lock."""
     rel = segment_path(index)
     if not (aew_root / rel).is_file():
-        text = build_segment(aew_root, index, since)
+        try:
+            text: str | None = build_segment(aew_root, index, since)
+        except IntegrityError:  # Unsealable included
+            # Another compactor may have published this segment and pruned its files after the check above: a record
+            # it removed is not missing, it is sealed. Then the segment is verified below like any existing one.
+            # Only a build failure with no segment behind it is incomplete history (or a truly unsealable segment).
+            if not (aew_root / rel).is_file():
+                raise
+            text = None
+    else:
+        text = None
+    if text is not None:
         try:
             with publish_lock():
                 create_exclusive(aew_root / rel, text)

@@ -50,6 +50,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).history_log(since=a.since, kinds=a.kind, follow=a.follow,
                                                            timeout=a.timeout, limit=a.limit))
 
+    q = hsub.add_parser("compact", help="seal transition-log revisions older than the 4,096-revision window into "
+                                        "256-transition segments (maintenance; never discards a transition)")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).history_compact())
+
     q = hsub.add_parser("links", help="follow the provenance and reference links recorded from and to a record")
     q.add_argument("record_id")
     q.add_argument("--depth", type=int, default=1, help="how many steps to follow (1-3)")

@@ -121,3 +121,32 @@ def test_process_killed_after_prewriting_leaves_only_benign_records(tmp_path):
     assert history_model.check(tmp_path, unreferenced=("work/T-0002/archive.yaml",)) == 1
     history_model.archive(make_store(tmp_path), 3, prewritten=True)
     assert history_model.check(tmp_path) == 4
+
+
+# ADR-0012 D9: the transition log's sealing points (M4-D slice D2). Not on the commit path: a compaction is killed.
+SEAL_POINTS = ["log.seal.after_segment", "log.seal.mid_prune"]
+COMPACT_WORKER = HELPERS / "compact_worker.py"
+
+
+@pytest.mark.parametrize("point", SEAL_POINTS)
+def test_process_killed_at_each_sealing_point_recovers(tmp_path, point):
+    from log_fixture import extend_log
+    from store_model import outbox_violations
+
+    init(tmp_path)
+    one_transaction(make_store(tmp_path))
+    extend_log(tmp_path, 300, overflow_every=13)
+    env = dict(os.environ, AEW_FAULT=point)
+    env.pop("AEW_FAULT_MODE", None)
+    kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+    proc = subprocess.run([sys.executable, str(COMPACT_WORKER), str(tmp_path), "8"], env=env, capture_output=True,
+                          text=True, timeout=300, **kwargs)
+    assert proc.returncode == CRASH_EXIT_CODE, proc.stderr
+    state = make_store(tmp_path).read()
+    assert outbox_violations(tmp_path, state) == []  # one valid representation of every transition, readable
+    one_transaction(make_store(tmp_path))  # commits continue over a half-sealed log
+    env.pop("AEW_FAULT")
+    proc = subprocess.run([sys.executable, str(COMPACT_WORKER), str(tmp_path), "8"], env=env, capture_output=True,
+                          text=True, timeout=300, **kwargs)
+    assert proc.returncode == 0, proc.stderr
+    assert check_invariants(tmp_path, synthetic_through=300) == 301

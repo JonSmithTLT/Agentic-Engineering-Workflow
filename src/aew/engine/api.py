@@ -249,6 +249,8 @@ class ProjectAdmin:
                 "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
+        from aew.engine import log_compact
+        add("transition-log", *log_compact.window_status(self.k.aew_root, state["revision"]))  # ADR-0012 D6
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
@@ -736,6 +738,14 @@ class Engine:
                 found.append(narrowed)
         return {"ok": True, "since": since, "through": through, "revision": state["revision"], "next": through,
                 "transitions": found}
+
+    def history_compact(self) -> dict[str, Any]:
+        """Seal the transition log's revisions older than its 4,096-revision window into 256-transition segments
+        (ADR-0012 D6). Maintenance, off the commit path: it changes the log's physical representation only, never a
+        logical transition, and needs no Lead credential (``aew.engine.log_compact``)."""
+        from aew.engine import log_compact
+
+        return log_compact.compact(self._k.store)
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = 50) -> dict[str, Any]:

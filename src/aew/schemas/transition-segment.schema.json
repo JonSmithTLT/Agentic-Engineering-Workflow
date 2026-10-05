@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "aew/transition-segment/v1",
+  "description": "A sealed segment of the transition log (ADR-0012 D6): 256 consecutive logical transitions, each exactly as its per-revision record held it, and the exact bytes of every overflow payload among them, keyed by revision. It preserves the transition hash chain (D7): prev_h is the h of the transition before the first one (null when the chain starts inside or after the segment) and head_h the h of the last one (null when the segment is before the chain).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "segment",
+    "first",
+    "count",
+    "prev_h",
+    "head_h",
+    "transitions",
+    "overflow"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aew/transition-segment/v1"
+    },
+    "segment": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "first": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "count": {
+      "const": 256
+    },
+    "prev_h": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:aew:schema:transition#/$defs/sha256"
+        }
+      ]
+    },
+    "head_h": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:aew:schema:transition#/$defs/sha256"
+        }
+      ]
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 256,
+      "maxItems": 256,
+      "items": {
+        "$ref": "urn:aew:schema:transition"
+      }
+    },
+    "overflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9]+$": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -14,6 +14,7 @@ superseded credentials, so a superseded Lead can never overwrite newer state.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
@@ -51,6 +52,44 @@ class Lead:
         self.k = k
         self.archive = archive
         self.queue = queue
+
+    def _seat_held(self, state: dict[str, Any]) -> PermissionDenied:
+        """Why ``lead acquire`` is refused, and the way on (register V2). The common case is a Lead wrapper that exited
+        while the seat was held: its credential went with it, so the seat cannot be re-acquired or handed off, and an
+        operator-authorized takeover is the path. Saying which invocations a takeover interrupts lets the operator
+        decide it with the cost in view.
+
+        The recovery advice is derived from what the takeover would do, by running its interruption and queue sync on
+        a copy of the state: a Ticket whose phase waited on an interrupted invocation becomes INTERRUPTED (and its
+        queue entry, with any lease, is retired), and only a lease that survives is left for reconcile."""
+        lead = state["lead"]
+        generation = lead["generation"]
+        active = sorted(i for i, inv in state["invocations"].items()
+                        if inv["status"] == "active" and inv.get("kind") != "integration_attempt")
+        holder = f"generation {generation}" + (f", session {lead['session_label']!r}" if lead.get("session_label")
+                                               else "") + (f", acquired {lead['acquired_at']}"
+                                                           if lead.get("acquired_at") else "")
+        interrupts = (f"it interrupts the active invocation(s) {', '.join(active)}" if active
+                      else "no invocation is active, so it interrupts nothing")
+        after = copy.deepcopy(state)
+        self._interrupt_invocations(after, "Lead takeover")
+        self.queue.sync(after)
+        stopped = sorted(w for w, u in after["work"].items()
+                         if u["state"] == "INTERRUPTED" and state["work"][w]["state"] != "INTERRUPTED")
+        if stopped:
+            interrupts += (f"; {', '.join(stopped)} then become(s) INTERRUPTED, to be recovered as `aew resume` "
+                           "lists (success is never assumed)")
+        lease = (after.get("queue") or {}).get("lease")
+        if lease:
+            work = ((after["queue"]["entries"].get(lease["entry"])) or {}).get("work")
+            interrupts += f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work}`"
+        return PermissionDenied(
+            f"the Lead seat is held ({holder}). A successor takes it over cooperatively with `aew lead handoff "
+            f"accept`. If the holding session is gone (its wrapper exited or crashed and its credential went with "
+            f"it), the seat cannot be re-acquired: run `aew lead takeover` at an operator terminal. It starts "
+            f"generation {generation + 1}, revokes the old credential, and {interrupts}",
+            generation=generation, session_label=lead.get("session_label"), acquired_at=lead.get("acquired_at"),
+            active_invocations=active, interrupted_work=stopped, next="aew lead takeover")
 
     def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
         lead = state["lead"]
@@ -136,11 +175,7 @@ class Lead:
     def lead_acquire(self, *, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         with self.k.store.session() as s:
             if s.state["lead"]["status"] != "vacant":
-                raise PermissionDenied(
-                    "the Lead seat is held; a successor must use `aew lead handoff accept` (cooperative) "
-                    "or an operator-authorized `aew lead takeover`",
-                    generation=s.state["lead"]["generation"],
-                )
+                raise self._seat_held(s.state)
             if expect_rev != s.revision:
                 raise StaleRevision(f"expected revision {expect_rev}, current is {s.revision}",
                                     expected=expect_rev, current=s.revision)

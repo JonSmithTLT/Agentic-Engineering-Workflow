@@ -563,6 +563,17 @@ class Engine:
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_reconcile(token=token, expect_rev=expect_rev, work_id=work_id)
 
+    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+
+    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+
+    def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
+                          reason: str) -> dict[str, Any]:
+        return self._integration.integrate_reorder(token=token, expect_rev=expect_rev, work_id=work_id, before=before,
+                                                   reason=reason)
+
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         return self._harness.invocation_whoami(invocation_token=invocation_token)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import threading
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,14 @@ class Service:
         except Exception:  # noqa: BLE001 (provenance only: the session carries no Lead authority)
             generation = 0
         self.table = SessionTable(self.project_id, hours=hours, clock=clock, generation=generation)
+        # One dashboard server per project: a second one would overwrite the endpoint files the first published, and
+        # stopping either would strand the other (lead developer's review). Refused before binding or prompting.
+        running = locate(engine.aew_root)
+        if running is not None:
+            raise UsageError(f"a dashboard server is already running for this project at {running['url']} (pid "
+                             f"{running['pid']}); run `aew dashboard open` for a new session, or stop it first",
+                             url=running["url"], pid=running["pid"])
+        self.instance = secrets.token_hex(8)  # this service's identity in the endpoint file: a pid is not enough
         try:
             self.server = DashboardServer(engine, authenticator=self.table, sessions=self.table, port=port,
                                           validate_with=validate_with)
@@ -92,6 +101,9 @@ class Service:
         self.server.stop()
         self._remove_endpoint()
 
+    def _thread_alive(self) -> bool:
+        return self.server._thread.is_alive()  # noqa: SLF001 (the serving thread; stop() is idempotent otherwise)
+
     def close(self) -> None:
         """Give up before serving (the operator refused): nothing was issued, nothing is recorded."""
         self._stop.set()
@@ -110,15 +122,23 @@ class Service:
             f.write(self.control.key_hex + "\n")
         pid = os.getpid()
         atomic_write(root / SERVER_JSON_REL, json.dumps({
-            "schema": "aew/dashboard-endpoint/v1", "pid": pid, "started_by": procs.started_at(pid),
-            "started_at": self.started_at, "port": self.port, "url": self.url, "project": self.project_id,
-            "control": {"endpoint": self.control.address, "key_file": KEY_REL},
+            "schema": "aew/dashboard-endpoint/v1", "instance": self.instance, "pid": pid,
+            "started_by": procs.started_at(pid), "started_at": self.started_at, "port": self.port, "url": self.url,
+            "project": self.project_id, "control": {"endpoint": self.control.address, "key_file": KEY_REL},
         }, indent=2) + "\n")
 
     def _remove_endpoint(self) -> None:
+        """Remove the endpoint files only if this service published them: another service's files stay."""
+        root = self.engine.aew_root
+        try:
+            info = json.loads((root / SERVER_JSON_REL).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return  # nothing there, or not ours to judge
+        if not isinstance(info, dict) or info.get("instance") != self.instance:
+            return
         for rel in (SERVER_JSON_REL, KEY_REL):
             try:
-                (self.engine.aew_root / rel).unlink()
+                (root / rel).unlink()
             except OSError:
                 pass
 
@@ -142,4 +162,4 @@ def locate(aew_root: Path) -> dict[str, Any] | None:
     if not isinstance(endpoint, str) or not key:
         return None
     return {"pid": info["pid"], "port": info.get("port"), "url": info.get("url"), "started_at": info.get("started_at"),
-            "project": info.get("project"), "endpoint": endpoint, "key": key}
+            "project": info.get("project"), "endpoint": endpoint, "key": key, "instance": info.get("instance")}

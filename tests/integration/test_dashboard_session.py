@@ -355,6 +355,43 @@ def test_a_stale_endpoint_file_names_no_server(project: Project, tmp_path: Path)
         op.has_terminal = original
 
 
+def test_one_dashboard_server_per_project_and_cleanup_only_of_its_own_files(project: Project):
+    """Two services for one project would overwrite each other's endpoint files; the second is refused before it binds
+    or prompts, and a service removes only the files it published (lead developer's review)."""
+    engine = Engine.discover(project.root)
+    first = service.Service(engine, port=0, console=None)
+    first.start()
+    try:
+        with pytest.raises(errors.UsageError, match="already running") as exc:
+            service.Service(engine, port=0, console=None)
+        assert exc.value.details["pid"] == os.getpid() and exc.value.details["url"] == first.url
+        found = service.locate(engine.aew_root)
+        assert found and found["instance"] == first.instance and found["port"] == first.port
+        # another service's files (simulated: the file names a different instance) are not this one's to delete
+        endpoint = engine.aew_root / service.SERVER_JSON_REL
+        published = json.loads(endpoint.read_text(encoding="utf-8"))
+        endpoint.write_text(json.dumps({**published, "instance": "another-instance"}), encoding="utf-8")
+        first.stop()
+        assert endpoint.exists() and (engine.aew_root / service.KEY_REL).exists()
+        assert json.loads(endpoint.read_text(encoding="utf-8"))["instance"] == "another-instance"
+    finally:
+        if first._thread_alive():
+            first.stop()
+    # the stale file names this process (alive), so it still blocks; a real stop of the owner removes it
+    endpoint.write_text(json.dumps(published), encoding="utf-8")
+    second = service.Service.__new__(service.Service)  # reach _remove_endpoint with the owner's identity
+    second.engine, second.instance = engine, first.instance
+    second._remove_endpoint()  # noqa: SLF001
+    assert not endpoint.exists() and service.locate(engine.aew_root) is None
+    third = service.Service(engine, port=0, console=None)  # now a new server may start
+    third.start()
+    try:
+        assert service.locate(engine.aew_root)["instance"] == third.instance  # type: ignore[index]
+    finally:
+        third.stop()
+    assert service.locate(engine.aew_root) is None
+
+
 def test_an_occupied_port_fails_and_never_moves(project: Project):
     taken = socket.socket()
     taken.bind(("127.0.0.1", 0))

@@ -303,6 +303,10 @@ class ControlStore:
             events = outbox.derive_events(before, working, after) + list(transition.events)
             hot, overflow, overflow_text = outbox.bound(revision, events)
         if overflow is not None and overflow_text is not None:  # the complete set, staged like any other write
+            # Validated before anything touches disk, as the hot list is with control.yaml: a malformed event fails
+            # the commit wherever it falls in the list, not only within the first 64 (D1 review F1).
+            validate("transition-events", {"schema": outbox.EVENTS_SCHEMA, "revision": revision, "events": events},
+                     source=f"revision {revision}'s overflow events {overflow['path']}")
             writes = [*writes, PendingWrite(overflow["path"], overflow_text, True)]
         for rel, digest in sorted(prewritten.items()):
             if sha256_file(self._abs(rel)) != digest:

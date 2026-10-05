@@ -108,8 +108,17 @@ truncated: false                  # the adapter stopped paging messages before t
 Token categories are normalized to `input`, `output`, `reasoning`, `cache_read`, `cache_write` and `unknown` (any
 category the harness reports that AEW does not name, summed). A harness that reports fewer categories leaves the
 rest `0` with `tokens_trust: partial`; one that reports none gives `absent` and all zeros. `effective` is the
-supervisor's list as it stands; `model_check` is its status word. Nothing in the record is a dollar figure AEW
+supervisor's list as it stands, **capped at 8 distinct entries** (a ninth distinct model is counted in
+`effective_truncated`, an integer); `model_check` is its status word. Nothing in the record is a dollar figure AEW
 computed: `provider_cost_usd` is the provider's own number, labelled.
+
+**The bound is a number, not an adjective.** The field list is closed (the schema has `additionalProperties:
+false`), every string is an enumeration or an identifier, every number is an integer or a float, and the serialized
+record is **at most 2 KiB** (the schema's string lengths and the `effective` cap make that a consequence, and the
+invariants check it directly). ADR-0011's H1 is measured at 20 open and 3,000 completed units; a usage record lives in
+hot state only while its unit is open and leaves with the bundle, so at most the open units' runs carry one. The build
+adds the usage copy to `tools/perf/control_plane.py`'s series and re-measures ADR-0011's H2 (derivation plus hash at
+most 10 ms per commit) with every run of every open invocation carrying a 2 KiB record (§7).
 
 **R2.** The adapter normalizes; the supervisor records; the engine copies. `HarnessAdapter.collect()` gains a
 normalized `usage_record` (the fields above minus `run`, `recorded_at`, `status`, `requested`, `model_check`), built
@@ -169,6 +178,13 @@ that crashed before reporting is counted as a run with unknown usage, never sile
 (a run with `usage` present is never rewritten) and bounded (one object per run; the record has no arrays that grow).
 `inv.runs[]` is declared in the control schema with this optional field (it is written today and not declared).
 
+**A usage copy derives no event.** ADR-0012 D2 derives `run.added` by comparing the run ids of `inv.runs[]` before and
+after the commit (`outbox.py`: a run is new when its `run` id was not in the previous list), and `invocation.status`
+from the status field; a new field on an existing run changes neither, so a commit whose only effect on an invocation
+is a usage copy publishes no `run.added`, no `invocation.status`, and no event of any kind for it. No new kind is
+added: a wait-any consumer (D6) must never read a usage copy as a new run, and nothing waits on usage. The build's
+tests state this directly (§7), and ADR-0012's oracle rules 24 to 26 hold across a usage copy.
+
 Why not a supervisor-initiated commit at the run's end: ADR-0012 froze that supervisors do not commit, the run's
 credential may already be revoked when the run ends (superseded, cancelled), and every path that makes a run's
 result matter to the workflow is a Lead transaction anyway. Why not a cold record of its own: a usage object is a
@@ -190,7 +206,10 @@ No surface sums a `missing` run into a total without saying how many it skipped.
 
 - per **run**: the record, plus the derived cost and its `pricing_sha256`;
 - per **invocation**: the sum over its runs, with counts `runs`, `reported`, `provisional`, `missing`, `unpriced`,
-  `zero_with_tokens`; per model (`provider/model` from `effective`, or `requested` when unmatched);
+  `zero_with_tokens`; per model (`provider/model` from `effective`, or `requested` when unmatched). An invocation
+  with no runs is normal, not a gap: the custody invocations of M4-D3 (`integration_attempt`) never run a harness,
+  and a dispatched invocation may not have launched yet. They are counted as `invocations_without_runs` at every
+  level and contribute nothing else; no roll-up expects a run under every invocation;
 - per **unit**: the sum over its invocations (hot or rehydrated), then over its children by the hierarchy (a Story
   sums its Tickets, an Epic its Stories), each level reporting its own and its descendants' totals separately;
 - per **project**: the hot units plus the `recent` ring by default; `--all` walks the history index for archived
@@ -262,7 +281,14 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
   test: for any set of runs, the unit total equals the sum of invocation totals equals the sum of run figures, and
   the counts partition the runs.
 - **Slice 2 (after #60 and #65):** the three copy paths, each shown to copy exactly once and to write an `absent`
-  record for a run without a usage record; archival carries usage into the bundle and rehydration reads it back;
+  record for a run without a usage record; **a usage copy derives no event** (the transition's typed events are
+  empty for that invocation: no `run.added`, no `invocation.status`) and ADR-0012's oracle rules 24 to 26 hold across
+  it, with a wait-any consumer blocked on the wake file not woken by it; **the size bound**: a record over 2 KiB or
+  with a ninth distinct `effective` entry is refused by the schema and the invariants, and
+  `tools/perf/control_plane.py` gains the usage copy in its series with H2 re-measured at 20 open and 3,000 completed
+  units with every open run carrying a 2 KiB record (at most 10 ms derivation plus hash per commit, the ADR-0011
+  bound), on the Windows reference machine and the Rocky 8 host; archival carries usage into the bundle and
+  rehydration reads it back; a custody invocation without runs rolls up as `invocations_without_runs`;
   `aew usage show` on a project driven to archival (the dashboard suite's world is reusable) equals the sum computed
   from the run directories while they exist, and still answers after `local/harness/runs` is deleted; `--all` pages
   the archive; the Lead session's usage written at session end by the broker and refused through the bridge; the

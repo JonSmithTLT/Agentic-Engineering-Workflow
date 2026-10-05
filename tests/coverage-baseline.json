@@ -1,6 +1,6 @@
 {
   "schema": "aew/coverage-baseline/v1",
-  "line": 92.09,
-  "branch": 82.39,
-  "measured": "Linux lanes (fast, integration, acceptance, regression, adversarial); serial runs without coverage"
+  "line": 92.19,
+  "branch": 82.65,
+  "measured": "Linux and Windows lanes combined (fast, integration, acceptance, regression, adversarial); serial runs without coverage"
 }

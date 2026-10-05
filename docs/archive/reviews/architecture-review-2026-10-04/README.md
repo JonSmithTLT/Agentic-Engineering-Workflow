@@ -22,7 +22,7 @@ Probes, result files and the three prototype patches are in [`eval/reviews/archi
 | Thread | Delivered here | Superseded or absorbed by |
 |---|---|---|
 | T1 typed Lead surface | [`t1-typed-lead-surface-design-v0.1.md`](t1-typed-lead-surface-design-v0.1.md) with the prototype patch | [v0.2](../../../design/typed-lead-surface-design-v0.2.md) (governing since 2026-10-05), ledger TLS |
-| T2 evaluation component | [`t2-evaluation-component-plan.md`](t2-evaluation-component-plan.md) | [evaluation component v0.2](../../../design/proposals/evaluation-component-design-v0.2.md), ledger EVC |
+| T2 evaluation component | [`t2-evaluation-component-plan.md`](t2-evaluation-component-plan.md) | [evaluation component v0.2](../../../design/evaluation-component-design-v0.2.md), ledger EVC |
 | T3 transaction outbox | [`adr-0012-transaction-outbox-draft.md`](adr-0012-transaction-outbox-draft.md) | [ADR-0012](../../../implementation/adr/0012-transaction-outbox.md), accepted; ledger OBX |
 | T4 knowledge storage placement | [`adr-0013-knowledge-storage-placement-draft.md`](adr-0013-knowledge-storage-placement-draft.md); [`t4-knowledge-manifest-prototype.md`](t4-knowledge-manifest-prototype.md) with its patch | [ADR-0013](../../../implementation/adr/0013-knowledge-storage-placement.md), accepted; ledger KST; the prototype's lessons in [`knowledge-manifest-prototype-lessons-2026-10-04.md`](../../../research/knowledge-manifest-prototype-lessons-2026-10-04.md), ledger KMP |
 | T4 question 1, the D9 spike | moved to research as it is still a live input | [knowledge service identity spike](../../../research/knowledge-service-identity-spike-2026-10-04.md), ledger KSI |

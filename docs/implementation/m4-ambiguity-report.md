@@ -266,6 +266,20 @@ Built as §2.6 and §2.7 say. The ADR text is ADR-0004's second amendment of 202
 - `aew harness wait --any R1 R2 …`, woken through a per-project wake file instead of 0.2 s polling (ADR-0012 D4 decided the file: `local/wake`, bumped by the store after each commit's log record and by the supervisor after each run-record write; built in M4-D slice D1). Polling remains the fallback.
 - It returns the first run to end, with its next action.
 
+### M4-D6 as built (2026-10-05)
+
+- **`aew harness wait R1 R2 … --any`** returns the first run to end, with its next action and the runs still running. Several runs without `--any` are refused, which leaves room for an `--all`; the single-run form is unchanged.
+- **Waking:** the 0.2 s poll is gone. The wait blocks on `local/wake` (a stat every 25 ms, a coarse re-check every 2 s) through `outbox.wait_for`, the same loop as `history log --follow`.
+- **Two lanes on each wake (ADR-0012 D5):**
+  - the runs' own records: did one end;
+  - committed control state: did an invocation one of the runs serves stop being active, cancelled, interrupted by a takeover or completed. Such a result carries `ended_by: {lane: control, why}`.
+- **No parse between commits:** control state is parsed only when `control.yaml`'s identity changed. A wait parses nothing between commits, however often the wake file changes (OBX-38).
+- **Wake latency** (`tools/perf/wake_latency.py`, two processes, 60 commits, Windows reference machine):
+  - median 42.2 ms from the start of the commit (p90 47.6 ms), within the 50 ms budget;
+  - median 13.3 ms from the commit's return.
+  - The Rocky 8 measurement is still owed (OBX-37).
+- **Tests:** `tests/integration/test_harness_wait_any.py`: the first to end, a control-side end, the refusals and the timeout shape, the parse count under spurious wakes and under a commit; and, from the independent review: an invocation already ended when the wait starts (the initial snapshot is examined), a commit between the initial read and its identity (the identity is taken first), and `still_running` naming only runs live in both lanes.
+
 ### 2.10 Stage commands (M4-E; F15)
 Gated on the designer promoting F15 v0.4 to a governing design (decision 1; met 2026-10-05: the typed Lead surface v0.2 governs). Then:
 - `ActionProjection`;

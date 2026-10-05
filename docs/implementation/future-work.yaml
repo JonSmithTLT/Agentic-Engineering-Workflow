@@ -783,7 +783,8 @@ sections:
       found waiting is 12% of Lead steps and the cost is workflow choreography (a median 20 workflow-command steps per session)
     Source: '`m3-dogfood-report.md` §6.3; `m3-audit-findings.md` L1, L2'
     Target and notes: '**M4** (the wait-any part, with E1). Addressed by F15 (stage commands). A push-style or wait-any
-      `harness wait` is M4 work (F9, audit L2).'
+      `harness wait` is M4 work (F9, audit L2). **The wait-any part is built (M4-D6, 2026-10-05; E1 closed):** the choreography
+      part stays with F15.'
 - number: 6
   title: Engineering follow-ups (the M3 audits)
   columns:
@@ -809,13 +810,6 @@ sections:
       are preserved without manufacturing a new review artifact. PD-03 results setup and further detail organization remain
       separately planned; broader dashboard review Unscheduled, ownership pending. Preserve all features/contracts. Deferred
       from W03; no Engine records.'
-  - '#': E1
-    Work: '`aew harness wait` on any of several runs, woken by the supervisor instead of polled'
-    Source: audit L2
-    When: '**M4** (mutating concurrency above 1), with F9'
-    Notes: 'Waits are 12% of the Lead''s steps today (audit L1). Designed by [ADR-0012](adr/0012-transaction-outbox.md)
-      D4 and D8 (E18): block on the wake file, check run records and committed events on each wake; median wake under 50
-      ms.'
   - '#': E3
     Work: Watch CI for load-sensitive timing
     Source: audit T2
@@ -1129,6 +1123,12 @@ sections:
       (the promotion PR of 2026-10-05); the idea note v0.4 stays adopted direction and governs only what the design defers
       to it; its requirements the design carries are marked absorbed in the ledger (TIS, LWE); the design's first-transport
       decision closes Q13's transport part; the Workflow Contract §15.6 consolidation goes to the re-freeze (E19)
+  - '#': E1
+    Was: '`aew harness wait` on any of several runs, woken by the supervisor instead of polled'
+    Closed: '2026-10-05'
+    By: 'M4-D6: `aew harness wait R1 R2 … --any` blocks on the wake file, checks the run records and the committed control
+      state on each wake (ADR-0012 D5), parses no control state between commits, and returns the first run to end with its
+      next action; median wake 42.2 ms on Windows (`tools/perf/wake_latency.py`), Rocky 8 owed'
   - '#': E2
     Was: Subprocess-aware coverage of the harness code (supervisor, bridge, broker, adapter)
     Closed: '2026-10-03'

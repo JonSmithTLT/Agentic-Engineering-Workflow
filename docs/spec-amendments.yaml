@@ -160,6 +160,10 @@ considered:
     reason: >-
       adopted design; its own WC amendment (Phase 5, ratifying assurance predicates) is conditional on dogfood and
       unwritten; until then it changes no WC/KC text
+  - path: docs/design/evaluation-component-design-v0.2.md
+    reason: >-
+      adopted design (F19, 2026-10-05); the evaluation instrument sits outside the engine and replaces no WC/KC
+      text; it measures the Class 0 amendment's audit sample rather than amending it
   - path: docs/design/ticket-revision-amendment-2026-09-30.md
     reason: amends a proposal (the hierarchy revision design), not the frozen set; its WC/KC debt is `pending` above
   - path: docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md

@@ -84,9 +84,12 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
     """Run ``cell`` of the frozen preregistration once; returns the finalized result. ``cases`` maps each case id
     to its ``case.yaml``; ``work`` is the scratch root (a fresh ``work/<run_name>`` is made under it). Raises
     :class:`Refused` when nothing was registered."""
-    experiment = frozen["experiment"]
     # 1. Refuse before anything is counted.
     try:
+        if not isinstance(frozen, dict):
+            raise Invalid("the preregistration is not a mapping")
+        experiment = frozen["experiment"]
+        ledger = AttemptLedger(ledger_dir, frozen)  # verifies the frozen record
         order = {o["cell"]: o for o in frozen["assignment"]["order"]}
         if cell not in order:
             raise Invalid(f"{cell} is not a cell of preregistration {experiment!r}")
@@ -113,12 +116,20 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
     except Exception as exc:  # noqa: BLE001 (anything before registering, an unreadable file included, is a refusal)
         raise Refused(f"{type(exc).__name__}: {exc}" if not isinstance(exc, Invalid) else str(exc)) from None
     # 2. Register.
-    ledger = AttemptLedger(ledger_dir, frozen)
     run_id = f"{experiment}/{run_name}"
     try:
         line = ledger.register(run_id=run_id, cell=cell, requested_profile=frozen["profiles"]["roles"],
                                retry_of=retry_of)
-    except Exception as exc:  # noqa: BLE001 (the ledger refused it, or never wrote the line: nothing registered)
+    except Exception as exc:  # noqa: BLE001
+        # Refused only if the line is provably absent: a failure after it was written (its fsync, say) leaves a
+        # registered attempt, which is runner_lost, never "nothing registered" (PR #100 re-review, N1).
+        try:
+            written = run_id in ledger.attempts()
+        except Exception:  # noqa: BLE001 (the ledger cannot be read back: it may hold the line)
+            written = True
+        if written:
+            raise RuntimeError(f"registering {run_id} failed after its line may have been written ({exc}): the "
+                               "attempt is runner_lost") from exc
         raise Refused(str(exc)) from None
     # 3–4. Build and run; anything that goes wrong is recorded, never swallowed into a valid result.
     before = _checkout_state()

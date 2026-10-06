@@ -230,7 +230,10 @@ def files_of(repo: Path) -> WorkTree:
             p = here / name
             rel = p.relative_to(repo).as_posix()
             if is_link(p):
-                other[rel] = f"{LINK} -> {os.readlink(p)}"
+                try:
+                    other[rel] = f"{LINK} -> {os.readlink(p)}"
+                except (OSError, ValueError):  # a reparse point that is not a link (an app alias, a socket)
+                    other[rel] = SPECIAL
                 if name in dirnames:
                     dirnames.remove(name)
             elif name in filenames:

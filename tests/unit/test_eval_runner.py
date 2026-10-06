@@ -454,3 +454,46 @@ def test_the_command_line_never_says_nothing_was_registered_when_something_was(t
     assert runner.main([*base, "--name", "z"]) == runner.EXIT_LOST
     assert "failed after registering" in capsys.readouterr().err
     assert AttemptLedger(tmp_path / "ledger", f).status() == {"demo/z": "runner_lost"}
+
+
+def test_a_registration_that_fails_after_its_line_is_written_is_not_called_a_refusal(tmp_path, monkeypatch):
+    """N1: the line is in the ledger, so the attempt is runner_lost, and the runner says so (exit 4, not 1)."""
+    from aew_eval import ledger as L
+
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+    real_append = L.AttemptLedger._append
+
+    def append_then_fail(self, line):
+        real_append(self, line)
+        raise OSError("fsync failed")
+
+    monkeypatch.setattr(L.AttemptLedger, "_append", append_then_fail)
+    with pytest.raises(RuntimeError, match="runner_lost"):
+        run(f, case_path, tmp_path)
+    assert AttemptLedger(tmp_path / "ledger", f).status() == {"demo/r1": "runner_lost"}
+
+
+def test_a_preregistration_that_is_not_a_valid_mapping_is_a_refusal(tmp_path):
+    """N2: an unusable preregistration is refused before anything is registered, never 'failed after registering'."""
+    case_path = make_case(tmp_path / "case")
+    for bad in ([], {"schema": "aew/eval-prereg/v1"}):
+        with pytest.raises(runner.Refused):
+            runner.run_cell(bad, ledger_dir=tmp_path / "ledger", cell="C1/ref/1", cases={"C1": case_path},
+                            work=tmp_path / "work", run_name="r1")
+    assert nothing_registered(tmp_path)
+
+
+def test_a_reparse_point_that_is_not_a_link_is_recorded_as_special(tmp_path, monkeypatch):
+    """N3: os.readlink refuses some reparse points (an app alias, a socket): the entry is recorded, not a failure."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "alias").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(fixture, "is_link", lambda p: p.name == "alias")
+
+    def readlink(p):
+        raise ValueError("not a symbolic link")
+
+    monkeypatch.setattr(fixture.os, "readlink", readlink)
+    tree = fixture.files_of(repo)
+    assert tree.other == {"alias": fixture.SPECIAL} and tree.files == {}

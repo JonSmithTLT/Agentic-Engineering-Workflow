@@ -43,7 +43,7 @@ def test_publish_rechecks_new_required_role_gate(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
-    p.lead('work', 'staff', wid, '--review', 'security_reviewer', '--by', 'operator', '--pin')
+    p.as_operator('work_staff', work_id=wid, review=['security_reviewer'], selected_by='operator', pin=True)
     gates = p.ok('gate', 'show', wid)
     assert gates['gates']['review_card:security_reviewer']['status'] == 'MISSING'
     result = p.aew('integrate', 'publish', wid, '--token', p.token, '--expect-rev', str(p.rev()))

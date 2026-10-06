@@ -56,6 +56,7 @@ from aew.knowledge.manifest import (
     render_manifest,
     roles_readme,
 )
+from aew.operator import require_operator_attribution
 from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_text, utc_now
@@ -89,16 +90,18 @@ class ProjectAdmin:
         ctx.state["manifest_sha256"] = sha256_text(text)
 
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str,
-                         decided_by: str = "lead", reason: str | None = None) -> dict[str, Any]:
+                         decided_by: str = "lead", reason: str | None = None,
+                         authorization: dict[str, str] | None = None) -> dict[str, Any]:
         if klass not in AUTHORITY_CLASSES:
             raise UsageError(f"class must be one of {AUTHORITY_CLASSES}")
+        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
         with self.k.lead_txn(token, expect_rev, "authority.accept", reason=reason) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
                 raise IllegalTransition(f"{candidate_id} is already {candidate['status']}")
             by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
-                      recorded_by_lead=True)
+                      recorded_by_lead=True, **(authorization or {}))
             decision = self.k.new_decision(
                 ctx, "authority_acceptance",
                 f"Accepted {candidate['path']} as {klass} authority",
@@ -209,7 +212,7 @@ class ProjectAdmin:
             return checks
         add("manifest-pin", "PASS" if self.k.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.k.manifest_pin_ok(state)
-            else "project.yaml modified outside AEW; review then `aew manifest adopt`")
+            else "project.yaml modified outside AEW; the operator reviews it, then `aew manifest adopt`")
         for name in ("guardrails", "checks", "gates"):
             try:
                 self.k.policy(name)
@@ -414,9 +417,10 @@ class Engine:
         return self._k.authoritative_commit()
 
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str = "lead",
-                         reason: str | None = None) -> dict[str, Any]:
+                         reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
         return self._project.authority_accept(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
-                                              klass=klass, decided_by=decided_by, reason=reason)
+                                              klass=klass, decided_by=decided_by, reason=reason,
+                                              authorization=authorization)
 
     def authority_list(self) -> dict[str, Any]:
         return self._project.authority_list()
@@ -942,10 +946,10 @@ class Engine:
     def work_staff(self, *, token: str, expect_rev: int, work_id: str, execute: list[str] | None = None,
                    review: list[str] | None = None, verify: list[str] | None = None, forbid: list[str] | None = None,
                    remove: list[str] | None = None, selected_by: str = "lead", pin: bool = False,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
         return self._roles.work_staff(token=token, expect_rev=expect_rev, work_id=work_id, execute=execute,
                                       review=review, verify=verify, forbid=forbid, remove=remove,
-                                      selected_by=selected_by, pin=pin, reason=reason)
+                                      selected_by=selected_by, pin=pin, reason=reason, authorization=authorization)
 
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
                         reason: str | None = None) -> dict[str, Any]:

@@ -165,10 +165,10 @@ def test_policy_trigger_requires_named_card(tmp_path):
 
 def test_forbidden_and_pinned_cards(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
-    calc.lead("work", "staff", wid, "--forbid", "python_engineer", "--by", "operator", "--reason", "not Python")
+    calc.as_operator("work_staff", work_id=wid, forbid=["python_engineer"], selected_by="operator", reason="not Python")
     fail(calc.aew("work", "staff", wid, "--execute", "python_engineer", "--token", calc.token,
                   "--expect-rev", str(calc.rev())), "PERMISSION_DENIED")
-    calc.lead("work", "staff", wid, "--execute", "c_engineer", "--by", "operator", "--pin")
+    calc.as_operator("work_staff", work_id=wid, execute=["c_engineer"], selected_by="operator", pin=True)
     fail(calc.aew("work", "staff", wid, "--execute", "calc_engineer", "--token", calc.token,
                   "--expect-rev", str(calc.rev())), "PERMISSION_DENIED")
     out = calc.lead("work", "staff", wid, "--execute", "calc_engineer", "--reason", "calc_engineer fits better")

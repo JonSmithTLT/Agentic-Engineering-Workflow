@@ -152,7 +152,7 @@ def test_pinning_existing_card_updates_constraint(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     p.lead('work', 'staff', wid, '--execute', 'c_engineer')
-    p.lead('work', 'staff', wid, '--execute', 'c_engineer', '--by', 'operator', '--pin')
+    p.as_operator('work_staff', work_id=wid, execute=['c_engineer'], selected_by='operator', pin=True)
     selected = unit(p, wid)['role_plan']['execute'][0]
     assert selected['selected_by'] == 'operator' and selected['pinned'], selected
 
@@ -160,7 +160,7 @@ def test_pinning_existing_card_updates_constraint(tmp_path):
 def test_explicit_dispatch_cannot_bypass_operator_pin(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
-    p.lead('work', 'staff', wid, '--execute', 'c_engineer', '--by', 'operator', '--pin')
+    p.as_operator('work_staff', work_id=wid, execute=['c_engineer'], selected_by='operator', pin=True)
     assign(p, wid)
     p.lead('invoke', 'cancel', unit(p, wid)['implementer_invocation'], '--reason', 'fresh bounded attempt')
     result = p.aew('invoke', 'create', wid, '--card', 'python_engineer',

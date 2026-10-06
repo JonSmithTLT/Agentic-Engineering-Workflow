@@ -216,7 +216,7 @@ class Kernel:
         if not self.manifest_pin_ok(state):
             raise IntegrityError(
                 f"{AEW_DIR}/{MANIFEST} was modified outside AEW; review the change and run "
-                "`aew manifest adopt` (Lead) to accept it",
+                "`aew manifest adopt` at the operator's own terminal to accept it (a Lead session is refused it)",
             )
 
     def workspaces_root(self) -> Path:
@@ -253,8 +253,9 @@ class Kernel:
                 )
             if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
                 raise MigrationRequired(
-                    "this project's control state is v1: migrate it first (`aew migrate --expect-rev N`, Lead); "
-                    "until then the Lead can change the seat, cancel invocations and adopt the manifest",
+                    "this project's control state is v1: migrate it first (the operator runs `aew migrate "
+                    "--expect-rev N` at their own terminal); until then the Lead can change the seat and cancel "
+                    "invocations, and the operator can adopt the manifest",
                     schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
             if not _adopting_manifest:
                 self.check_manifest_pin(s.state)

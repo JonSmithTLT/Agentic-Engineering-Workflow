@@ -179,7 +179,8 @@ class Validation:
         unit = self.units.unit(state, work_id)
         if not Q.queued(state):
             raise IllegalTransition("checks-mode validation runs under the integration queue's lease: migrate this "
-                                    "project's control state to v2 first (`aew migrate`)")
+                                    "project's control state to v2 first (the operator runs `aew migrate` at their own "
+                                    "terminal)")
         integ = unit.get("integration") or {}
         if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
             raise IllegalTransition(f"{work_id} has no prepared integration candidate to validate",

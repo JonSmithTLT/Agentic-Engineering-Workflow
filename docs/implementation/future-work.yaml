@@ -460,8 +460,14 @@ sections:
       before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`;
       after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside
       it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`.
-      Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them), then the hidden-evaluator
-      channel (design §8).'
+      **Slice 3 built (2026-10-06), the hidden-evaluator channel (design §5, §8 step 3):** `hidden.py` takes the private
+      root from `AEW_EVAL_HIDDEN_ROOT` and removes it from the environment before any arm runs; an oracle (`cases/<id>/oracle/checks.py`)
+      is hashed like a fixture and refused before registration when it is missing, no longer matches its preregistered commitment,
+      or belongs to a held-out case that `exposure.yaml` records as exposed; it scores the exported tree after the arm has
+      returned, in an isolated process (`score_child.py`, `python -I -B`, standard library only before the tree joins the
+      path, exiting straight after its result) so the model''s tree cannot replace the scorer or its result; a changed oracle
+      makes the run invalid. Proved in `tests/unit/test_eval_hidden.py`. Next: the `aew` and `raw` arms by generalizing
+      `dogfood.py` (the M3 driver still runs them).'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve

@@ -246,22 +246,21 @@ def test_a_process_the_program_leaves_behind_ends_with_it(tmp_path):
     """Review 2 and 5: what the model's program starts ends when the program returns (its tree is ended), so nothing
     can write late, and scoring stays bounded: on POSIX the grandchild holds the program's output open until the
     tree is ended; on Windows it inherits no pipe and is ended with the tree."""
-    marker = tmp_path / "late.txt"
     checks = '''
-import sys
+import sys, time
 
 def checks(tree, run):
-    ran = run([sys.executable, "-c", "import calc"], timeout=5)
-    yield "imported", ran.returncode in (0, None), ran
+    ran = run([sys.executable, "-c", "import calc"], timeout=30)
+    yield "the program returned", ran.returncode == 0, ran
+    time.sleep(6)  # between two runs: the grandchild would have written by now
+    yield "nothing it started outlived it", not (tree / "late.txt").exists(), "late.txt was written"
 '''
-    grandchild = f"import time; time.sleep(4); open({str(marker)!r}, 'w').write('late')"
+    grandchild = "import pathlib, time; time.sleep(3); pathlib.Path('late.txt').write_text('late')"
     child = ("import subprocess, sys\nsubprocess.Popen([sys.executable, '-c', " + repr(grandchild) + "], "
+             "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, "
              "creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n")
-    started = time.monotonic()
-    scored(tmp_path, [{"write": "calc.py", "content": child}], checks=checks)
-    assert time.monotonic() - started < 45
-    time.sleep(6)
-    assert not marker.exists(), "a process the model's program started outlived it"
+    score = scored(tmp_path, [{"write": "calc.py", "content": child}], checks=checks)
+    assert score["passed"] is True, score  # review of f815385, 3: proved inside the check, as each run returns
 
 
 def test_the_model_cannot_turn_a_failure_into_a_retry(tmp_path):
@@ -348,25 +347,48 @@ def test_a_held_out_case_is_scored_only_where_scoring_is_contained(tmp_path, mon
 @pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
                     reason="Linux bubblewrap containment (Windows refuses held-out scoring instead)")
 def test_on_linux_the_models_programs_are_scored_in_a_sandbox(tmp_path):
-    """Review of 7c743ff, 1 and 3: the model's program runs in its own pid namespace (the runner is not among the
-    processes it sees), and the hidden root and the ledger are masked."""
+    """Reviews of 7c743ff (1, 3) and f815385 (blocker): the model's program runs in its own pid namespace (the runner
+    is not among the processes it sees), and the hidden root's whole private repository (another held-out case and the
+    .git that holds every oracle included) and the ledger are masked. The private repository lives under the home
+    directory here, outside /tmp, which the sandbox replaces anyway."""
+    import uuid
+
+    private = Path.home() / ".cache" / f"aew-eval-test-{uuid.uuid4().hex}"
+    try:
+        (private / ".git").mkdir(parents=True)
+        (private / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        secret = private / "eval"
+        make_oracle(secret, cid="OTHER-HELD-OUT")
+        ledger = tmp_path / "ledger"
+        ledger.mkdir()
+        (ledger / "attempts.jsonl").write_text("x\n", encoding="utf-8")
+        probe = ("import json, os; pids = [int(p) for p in os.listdir('/proc') if p.isdigit()]; "
+                 "seen = lambda p: os.listdir(p) if os.path.isdir(p) else []; "  # masked, or absent from the sandbox
+                 f"print(json.dumps([len(pids), {os.getpid()} in pids, seen({str(secret)!r}), "
+                 f"seen({str(secret / 'cases')!r}), seen({str(private / '.git')!r}), seen({str(ledger)!r})]))")
+        checks = ("import json, sys\n"
+                  "def checks(tree, run):\n"
+                  f"    ran = run([sys.executable, '-c', {probe!r}])\n"
+                  "    last = ran.stdout.strip().splitlines()[-1] if ran.stdout else ran\n"
+                  "    yield 'probe', ran.returncode == 0, last\n")
+        make_oracle(secret, checks=checks)
+        score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}),
+                             hide=[ledger])
+        assert score["passed"] is True and score["contained"] is True, score
+        count, runner_seen, root, cases, git_dir, ledger_listing = json.loads(score["checks"][0]["detail"])
+        assert count <= 3 and runner_seen is False, score
+        assert root == [] and cases == [] and git_dir == [] and ledger_listing == [], score
+    finally:
+        shutil.rmtree(private, ignore_errors=True)
+
+
+def test_a_score_records_whether_it_was_contained(tmp_path):
+    """Review of f815385, 2: outside Linux the model's programs are not contained while scored, so the score says so
+    (not tamper-evident), and an analysis that needs that property can exclude it."""
     secret = tmp_path / "private"
-    ledger = tmp_path / "ledger"
-    ledger.mkdir()
-    (ledger / "attempts.jsonl").write_text("x\n", encoding="utf-8")
-    probe = ("import json, os; pids = [int(p) for p in os.listdir('/proc') if p.isdigit()]; "
-             "seen = lambda p: os.listdir(p) if os.path.isdir(p) else []; "  # masked, or absent from the sandbox
-             f"print(json.dumps([len(pids), {os.getpid()} in pids, seen({str(secret)!r}), seen({str(ledger)!r})]))")
-    checks = ("import json, sys\n"
-              "def checks(tree, run):\n"
-              f"    ran = run([sys.executable, '-c', {probe!r}])\n"
-              "    yield 'probe', ran.returncode == 0, ran.stdout.strip().splitlines()[-1] if ran.stdout else ran\n")
-    make_oracle(secret, checks=checks)
-    score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}),
-                         hide=[ledger])
-    assert score["passed"] is True, score
-    count, runner_seen, root_listing, ledger_listing = json.loads(score["checks"][0]["detail"])
-    assert count <= 3 and runner_seen is False and root_listing == [] and ledger_listing == [], score
+    make_oracle(secret)
+    score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": FIX["content"]}))
+    assert score["passed"] is True and score["contained"] is sys.platform.startswith("linux")
 
 
 @pytest.mark.parametrize("stdout", ['{"checks": []}{"checks": []}',

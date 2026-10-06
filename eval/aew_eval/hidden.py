@@ -29,9 +29,11 @@ Reference material is ``ORACLE_FILES`` (``{path: bytes}``), never a path.
 **Where scoring is contained, and where not.** On Linux with bubblewrap, the model's programs run in a sandbox with
 the hidden root, the ledger and the user's secrets masked, and in their own pid namespace, so the runner's ``/proc``
 entry (which still holds the root's path) is out of reach. Linux without bubblewrap refuses every oracle-scored cell.
+The sandbox masks the hidden root's whole private repository (its ``.git`` holds every oracle), not only the root.
 Elsewhere (Windows) a same-user program could search the disk for the private corpus, so held-out cases are refused
-there before anything is counted; other cases score with that exposure stated. The arms that run a model must meet the
-same bar while the model runs: the next slice.
+there before anything is counted, and every other score records ``contained: false``: it is not tamper-evident (the
+program could read its own oracle), and an analysis that needs that property excludes it. The arms that run a model
+must meet the same bar while the model runs: the next slice.
 """
 
 from __future__ import annotations
@@ -79,17 +81,19 @@ class Oracle:
     case: str
     files: dict[str, bytes] = field(repr=False)
     sha256: str
+    root: Path  # the hidden root it came from: always masked while it scores (review of f815385, blocker)
 
     @classmethod
     def locate(cls, root: Path, case: str) -> Oracle:
         """The case's oracle under ``root``, read once and hashed; refuses one with no ``checks.py``."""
-        path = resolve_root(root) / "cases" / fixture.safe_relative(case, "case id") / "oracle"
+        root = resolve_root(root)
+        path = root / "cases" / fixture.safe_relative(case, "case id") / "oracle"
         if not path.is_dir():
             raise Invalid(f"no oracle for case {case} under the hidden root")
         files = fixture._read_tree(path, "oracle")  # noqa: SLF001 (one reading and hashing rule for every tree)
         if CHECKS not in files:
             raise Invalid(f"the oracle of case {case} has no {CHECKS}")
-        return cls(case, files, fixture._digest(files))  # noqa: SLF001
+        return cls(case, files, fixture._digest(files), root)  # noqa: SLF001
 
 
 def content_sha256(path: Path) -> str:
@@ -132,7 +136,7 @@ def require(root: Path | None, oracle: Oracle | None, *, case: str, commitment: 
 
 def _failed(oracle: Oracle, reason: str, detail: str) -> dict[str, Any]:
     return {"passed": False, "failure": reason, "checks": [{"name": reason, "ok": False, "detail": detail[-1200:]}],
-            "hidden_sha256": oracle.sha256}
+            "hidden_sha256": oracle.sha256, "contained": sys.platform.startswith("linux")}
 
 
 def _parse(stdout: str) -> list[dict[str, Any]] | None:
@@ -171,10 +175,18 @@ def program_env(scratch: Path) -> dict[str, str]:
     return env
 
 
+def private_repository(root: Path) -> Path:
+    """The repository the hidden root lives in (its history holds every oracle), or the root itself outside one."""
+    for p in (root, *root.parents):
+        if (p / ".git").exists():
+            return p
+    return root
+
+
 def scoring_layout(tree: Path, scratch: Path, hide: list[Path]) -> Any:
-    """Linux: the sandbox the model's programs are scored in. The tree and a scratch directory are writable; the hidden
-    root, the ledger and the user's secrets are masked; its own pid namespace hides every other process, the runner's
-    ``/proc`` entry included."""
+    """Linux: the sandbox the model's programs are scored in. The tree and a scratch directory are writable; ``hide``
+    (the hidden root's whole private repository, and the ledger) and the user's secrets are masked; its own pid
+    namespace hides every other process, the runner's ``/proc`` entry included."""
     from aew.harness.containment import layout as L
 
     bwrap = L.find_bwrap()
@@ -203,7 +215,8 @@ def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (
 
     scratch = Path(tempfile.mkdtemp(prefix="aew-eval-scoring-")).resolve()  # TEMP may be an 8.3 name (review, 6)
     try:
-        layout = scoring_layout(tree, scratch, list(hide)) if sys.platform.startswith("linux") else None
+        masked = [private_repository(oracle.root), *hide]
+        layout = scoring_layout(tree, scratch, masked) if sys.platform.startswith("linux") else None
         spec = {"files": {rel: base64.b64encode(data).decode("ascii") for rel, data in oracle.files.items()},
                 "layout": dataclasses.asdict(layout) if layout is not None else None,
                 "env": program_env(scratch)}
@@ -226,6 +239,6 @@ def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (
             return _failed(oracle, "SCORING_NO_RESULT",
                            f"exit {proc.returncode}; output {stdout[-300:]!r}; errors {stderr[-600:]}")
         return {"passed": bool(checks) and all(c["ok"] for c in checks), "failure": None, "checks": checks,
-                "hidden_sha256": oracle.sha256}
+                "hidden_sha256": oracle.sha256, "contained": layout is not None}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

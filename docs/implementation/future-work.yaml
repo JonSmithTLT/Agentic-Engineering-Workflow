@@ -291,9 +291,9 @@ sections:
     Belongs to or gated by: '**Gate: before F15.2 ships** (M4-E); first in the set''s order, because F15.5 and F15.6 depend
       on the distinction'
     Notes: Narrows the typed surface's one policy digest (TIS-13, TLS-14) to `legality_digest` for `STALE_POLICY`, so tuning
-      health, steering or recovery never invalidates in-flight legal work. The approved v0.1 design it amends (the steering,
-      bounded recovery and run health projection designs) is not yet in the repository; until it is ingested, the amendment
-      and the register are the tracked text
+      health, steering or recovery never invalidates in-flight legal work. It amends the digest rules of the [Crawl/Walk/Run
+      steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) §6, the [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md)
+      §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5
   - '#': F15.5
     Work: 'Crawl / Walk / Run steering over `ActionProjection`, with its operator authority boundary: `aew confirm`, autonomy
       increases and `PUBLISH_IF_CLEAN` grants only through an operator capability structurally absent from agent shells
@@ -301,29 +301,40 @@ sections:
       actions whose declared side effects are all in the allow-list `{control_state}`, with catalog conformance (observed
       effects within declared); the auto-run envelope (budget, admission, repetition N = 2, the loop deadline) and the invocation
       hard deadline as an authority-reducing safety action; an out-of-band operator notifier for unattended Run'
-    Source (governing): '[A1, steering authority and execution envelope](../design/steering-authority-execution-envelope-amendment-v0.1.md)
+    Source (governing): '[Crawl/Walk/Run steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) (approved
+      2026-10-05; ledger CWR-01 to CWR-12), as amended by [A1, steering authority and execution envelope](../design/steering-authority-execution-envelope-amendment-v0.1.md)
       (approved 2026-10-05; ledger SAE-01 to SAE-15); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md)
       (ledger PFS-01 to PFS-04)'
     Belongs to or gated by: '**M4-E**, with F15.2. **Gate: before F15.2 ships** any mode-changing or confirmation surface:
       the operator capability must be out of an agent shell''s reach'
     Notes: Steering changes who confirms an already-legal action and when, never legality, gates or transitions (PBD-07).
-      The approved v0.1 design it amends (the Crawl/Walk/Run steering design) is not yet in the repository; until it is
-      ingested, the amendment and the register are the tracked text
+      The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default
+      while M4-H measures, and the product default is not frozen (CWR-12)
   - '#': F15.6
-    Work: 'Bounded relaunch of a `launch_failed` run (recovery R5-3, `recovery.relaunch_launch_failed: 1`), fail-closed:
-      a termination proof from every custody mechanism, the old credential revoked and confirmed before a fresh one is bound
-      to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned allow-list of
-      transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint, or project-wide;
-      operator reset), and a relaunch record binding all of it'
-    Source (governing): '[A2, launch-failure recovery safety](../design/launch-failure-recovery-safety-amendment-v0.1.md)
+    Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
+      recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
+      1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed
+      before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned
+      allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint,
+      or project-wide; operator reset), and a relaunch record binding all of it'
+    Source (governing): '[bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) (approved,
+      limited slice, 2026-10-05; ledger BRP-01 to BRP-07, BRP-09, BRP-10), as amended by [A2, launch-failure recovery safety](../design/launch-failure-recovery-safety-amendment-v0.1.md)
       (approved 2026-10-05; ledger LFR-01 to LFR-08); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md)
       (ledger PFS-01 to PFS-04); [A3, policy binding and digests](../design/policy-binding-digest-amendment-v0.1.md) §5
       (PBD-06)'
     Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
       and non-side-effecting (the set''s release gate)'
-    Notes: The approved v0.1 design it amends (the bounded recovery design; its other rows are unchanged, and the deferred
-      ones stay deferred) is not yet in the repository; until it is ingested, the amendment and the register are the tracked
-      text
+    Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
+      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7
+  - '#': F15.7
+    Work: 'The deferred recovery rows: row 4 `REDISPATCH_IF_LOST` (a pre-authorized re-dispatch of a lost clean run, a sibling
+      of `PUBLISH_IF_CLEAN`), row 6 a policy-resolved Investigator after a blocked report, row 8 `max_fix_attempts` (the
+      fix-loop cap)'
+    Source (governing): '[bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) §8, §10
+      (ledger BRP-08, BRP-10)'
+    Belongs to or gated by: '**Evaluation**: after M4-H''s base rates, with F19; each row needs its own adoption, and rows
+      1 and 3 never promote them'
+    Notes: 'Non-governing until adopted: production policy refuses their keys in the `recovery:` namespace as active authority'
   - '#': F16
     Work: 'Explain AEW to the model Lead instead of leaving it to trial and error (operator, 2026-09-30). What each risk
       class requires and what it still guarantees (gates, the roles that run, the evidence produced), and when it applies;
@@ -1087,15 +1098,16 @@ sections:
       N minutes with no events. Built as the run health projection: a field of `harness_status` (and `resume` and the dashboard
       run), never a store or authority, with H1''s rules: terminal statuses pass through, robust p95 calibration, an incremental
       cache, `since` from telemetry, an edge-triggered wake'
-    Source: review finding 2; run R-INV-0006-1 hung 20 minutes on a truncated PowerShell here-string; [H1, run health projection
-      implementation note](../design/run-health-projection-implementation-note-v0.1.md) (approved 2026-10-05; ledger RHN-01
-      to RHN-10); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) §1, §4 (PFS-01, PFS-03)
+    Source: review finding 2; run R-INV-0006-1 hung 20 minutes on a truncated PowerShell here-string; [run health projection
+      design v0.1](../design/run-health-projection-design-v0.1.md) (approved 2026-10-05; ledger RHP-01 to RHP-11), as amended
+      by [H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md) (approved
+      2026-10-05; ledger RHN-01 to RHN-10); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) §1,
+      §4 (PFS-01, PFS-03)
     When: '**M4 candidate** (run UX). Before, or as part of, the Q7 hard dogfood'
     Notes: '`harness status` already shows "in a shell tool since …"; only the Lead''s own polling found it. Also check
       whether the agent''s shell can get end-of-file on stdin (OpenCode''s choice or AEW''s). H1 is required before STALLED/UNRESPONSIVE
-      is a production operator signal; it blocks F15.2 only if F15.2 consumes health. The approved v0.1 design it amends
-      (the run health projection design) is not yet in the repository; until it is ingested, the amendment and the register
-      are the tracked text'
+      is a production operator signal; it blocks F15.2 only if F15.2 consumes health. The dashboard''s run item and attention
+      carry the same object (RHP-07), which is a dashboard contract change (F20)'
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
@@ -1126,7 +1138,8 @@ sections:
     When: '**On measured need**, only after U1''s deterministic detection has been observed in use'
     Notes: The Lead's manual recovery worked once it saw the stall. Health never authorizes recovery; any automatic nudge
       stays this row's separate adoption ([H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md)
-      §8, RHN-09).
+      §8, RHN-09). The approved design keeps it deferred ([run health projection design v0.1](../design/run-health-projection-design-v0.1.md)
+      §2, §11).
   - '#': U8
     Work: Make a run that ended without its expected output conspicuous in `aew harness wait`
     Source: the Lead's debrief

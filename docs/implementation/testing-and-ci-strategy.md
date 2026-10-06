@@ -28,9 +28,9 @@ The **directory** says what a test is. **Markers** are used only for properties 
 
 ### Deterministic regression versus exploration
 
-- **Deterministic regressions** (review probes, compositions, crash matrices, acceptance scenarios) have fixed inputs and run on **every pull request**. A known failure, once fixed, is never demoted to nightly-only coverage.
+- **Deterministic regressions** (review probes, compositions, crash matrices, acceptance scenarios) have fixed inputs and run on every full-tier pull request and **every push to `main`** (§3, the tiers). A known failure, once fixed, is never demoted to nightly-only coverage.
 - **Exploration** is seeded and randomized: the walk, randomized store crashes and repeated races.
-  - Its default budget runs on every pull request.
+  - Its default budget runs on every full-tier pull request and every push to `main`.
   - Nightly runs larger budgets with rotating seeds, which are printed for reproduction.
   - When exploration finds a reproducible failure, the failing sequence becomes a deterministic test in `tests/regression/`, with or before its fix.
 
@@ -53,10 +53,20 @@ Deterministic fault points are named code locations, not timings. That is why th
 
 | When | What runs | Blocking |
 |---|---|---|
-| Every pull request, every push to `main`, the merge queue | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `static` + `assurance` | **Yes** |
+| Every push to `main`, the merge queue, a manual run, and every pull request in the `full` tier | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `static` + `assurance` | **Yes** |
+| A pull request in the `docs` or `web` tier | `core` per OS + `static` + `web` (which runs its checks when `web/` changed) + `assurance` | **Yes** |
 | Nightly (07:17 UTC) and on demand | serial reference run, extended walk, race repetition, extended randomized crashes, extra interpreter matrix | No; failures open an issue |
 
-- **One gate for everything.** There is no separate "PR subset" versus "merge set": every merge gate runs on every pull request, in parallel. Fast feedback comes from ordering and parallelism, not from deferring assurance.
+- **The gate is tiered by what changed** (CI redesign P1, 2026-10-06). `tools/ci/tier.py` classifies a pull request's diff against its merge base, and fails closed:
+
+  | Tier | Changed paths | Lanes required |
+  |---|---|---|
+  | `docs` | only `docs/**` and Markdown outside `src/`, `tests/`, `tools/` and `.github/` | `fast`, `serial` (every docs, ledger, register and link test is in them) |
+  | `web` | only those plus `web/**` | the same, plus the web checks |
+  | `full` | anything else; the shared files in `tier.SHARED` (the dashboard contract and its approval, which code reads); an empty diff; a diff git cannot compute; a pull request into any branch but `main`; any event but a pull request | every lane |
+
+  `assurance` recomputes the tier from the same diff and fails if it differs from the one the jobs ran under. It requires every collected test of the tier's lanes, by the lane each lane report records for every collected test, and refuses a reduced tier on any event but a pull request. The coverage ratchet runs in the `full` tier only.
+- **Pre-merge assurance for the reduced tiers (operator, 2026-10-06).** A pre-merge full `merge_group` gate would be preferred, but GitHub does not provide merge queues for personal-account repositories, and AEW stays on the operator's personal account by prior decision. So the reduced tiers are backed by an always-full run of every push to `main`. This is an explicit reduction in pre-merge assurance for docs and web changes, accepted for throughput. A red `main` after a reduced-tier merge is triaged as a classification defect: correct `tier.py` and pin the case in `tests/unit/test_ci_tools.py`. If the repository moves to an organization, full merge-group assurance replaces this control; `ci.yml` keeps the `merge_group` trigger, and `merge_group` is always `full`, so no CI change is needed.
 - **The merge gate is the `assurance` job.** It fails unless, per OS and from the lane reports:
   - every job collected the same test set;
   - every collected test ran exactly once across all lanes and shards;
@@ -65,7 +75,7 @@ Deterministic fault points are named code locations, not timings. That is why th
   - the skipped tests are exactly those pinned in `tests/platform-skips.yaml`;
   - no xfail/xpass occurred unless pinned.
 
-  It also fails if any test job, or `static`, did not succeed. Mark `assurance` as a **required status check** on `main`.
+  It also fails if any test job the tier requires, or `static`, did not succeed. Mark `assurance` as a **required status check** on `main`.
 - **The dashboard joins the same gate** (F20.1, 2026-10-03). `ci.yml` calls `web.yml`, whose `changes` job decides whether `web/`, the shared contract (`docs/design/dashboard-api-v1-provisional.yaml`) or `web.yml` changed (merge base for pull requests and merge groups; it fails closed). If so, `checks` runs: locked install, the contract's acceptance digest, generated-artifact consistency, typecheck, lint, the frontend tests, the production build with its mock exclusion, the demo build and the compiled browser checks. Its `result` job passes only when the checks passed, or when nothing they cover changed, and `assurance` requires it. The Python lanes never need Node, and the web jobs never need Python.
 - **The gate has already caught one gap.** On its first run it found that the frozen-spec tag `aew-spec-frozen-2026-09-25` had never been pushed to GitHub. So `test_spec_pin.py::test_tagged_revision_carries_pinned_blobs` had skipped silently in every earlier CI run. The tag was pushed on 2026-09-27, and the test now runs on both OSes.
 - **The nightly lane has already found one gap.** On its first run (150 steps, fault rate 0.15), seeds 1014 and 1034 failed on both OSes, and the failure was in the walk harness, not in AEW.
@@ -178,7 +188,7 @@ Before and after:
 | Runner minutes per PR commit | ~124 (2 × ~62) | 31–35 |
 | Local Windows, whole suite serially | 1499 s (per-test sum; 552 tests) | 1520 s (602 tests: 597 passed, 5 pinned skips, the same outcomes as the parallel run) |
 
-The longest jobs are the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s), the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there). Since M2 the lane jobs are: Linux integration 1, acceptance 1, regression 2, adversarial 1; Windows integration 2, acceptance 2, regression 3, adversarial 2 (14 lane jobs, 17 with `core` and `assurance`, sized from the first two M2 CI runs); since M4-D3 Linux integration is 2 (one shard reached 29 of its 30 minutes on `main`, and the queue tests took it over); since M4-D5 Windows integration is 3 (a shard of 2 ran out its 30 minutes once checks-mode validation's tests were added); the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
+The longest jobs are the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s), the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there). Since M2 the lane jobs are: Linux integration 1, acceptance 1, regression 2, adversarial 1; Windows integration 2, acceptance 2, regression 3, adversarial 2 (14 lane jobs, 17 with `core` and `assurance`, sized from the first two M2 CI runs); since M4-D3 Linux integration is 2 (one shard reached 29 of its 30 minutes on `main`, and the queue tests took it over); since M4-D5 Windows integration is 3 (a shard of 2 ran out its 30 minutes once checks-mode validation's tests were added); since 2026-10-06 integration is 3 on both platforms (with the typed Lead surface's and the dashboard's tests, every shard of 2 ran 24 to over 30 of its 30 minutes); the `integration` lane and the two `regression` shards. Runner-to-runner variation is up to 2× for CPU-bound jobs.
 
 A lane that outgrows its budget gets another shard: add a matrix entry in `ci.yml`, since shards are deterministic. Do not move it to nightly.
 

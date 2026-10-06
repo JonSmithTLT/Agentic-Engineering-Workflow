@@ -159,6 +159,10 @@ def test_lane_report_records_the_whole_collection_and_only_the_lane_results(tmp_
     assert len(report["collected"]) == 10
     assert list(report["results"]) == ["tests/integration/test_b.py::test_b1"]
     assert report["results"]["tests/integration/test_b.py::test_b1"]["outcome"] == "passed"
+    # Every collected test's lane, so assurance can require exactly a reduced tier's lanes (CI redesign P1).
+    assert set(report["lanes"]) == set(report["collected"])
+    assert report["lanes"]["tests/integration/test_b.py::test_b_serial"] == "serial"
+    assert report["lanes"]["tests/unit/test_a.py::test_a1"] == "fast"
 
 
 def test_shards_partition_a_lane_exactly_once(tmp_path):

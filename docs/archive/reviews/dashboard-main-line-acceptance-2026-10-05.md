@@ -6,7 +6,7 @@
   - F20.2 (PR #67);
   - F20.3 (PR #71);
   - F20.4 (PR #87, merged);
-  - F20.5 (PR #90, at `5ff85bf`, after the lead developer's review).
+  - F20.5 (PR #90, merged at `90fdb28` after its independent review rounds).
 
   The F20.6 PR names its own commit.
 - **Contract:** 0.1.2, SHA-256 `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`, the digest `web/docs/c0-approval.json` accepts.
@@ -33,9 +33,9 @@ The served bytes are these files. `test_the_frontend_is_served_from_the_package_
 
 | Check | How | Result |
 |---|---|---|
-| The product end to end through one session | **Session:** no session gives `401`. The one-time URL is followed as an address-bar navigation (`303`, `HttpOnly`, `SameSite=Strict` cookie). **Frontend:** the packaged `index.html` and its bundle load byte-identical, with their cache policy. Nine deep links reload to the SPA fallback. **Projections:** 18 reads in the pages' order (the bootstrap `/project` first). Each is validated against the contract, carries R21's headers, and is replayed with `If-None-Match` to a `304` carrying the same validator. `/attention` is the capability's `403`. | Pass (Windows, Linux) |
+| The product end to end through one session | **Session:** no session gives `401`. The one-time URL is followed as an address-bar navigation (`303`, `HttpOnly`, `SameSite=Strict` cookie). **Frontend:** the packaged `index.html` and its bundle load byte-identical, with their cache policy. Nine deep links reload to the SPA fallback. **Projections:** 21 reads in the pages' order (the bootstrap `/project` first), the run, evidence and knowledge detail pages among them, each detail page also deep-linked. Each is validated against the contract, carries R21's headers, and is replayed with `If-None-Match` to a `304` carrying the same validator. `/attention` is the capability's `403`. | Pass (Windows, Linux) |
 | The real CLI | `aew --print-credential dashboard serve --port 0` runs at a pseudo-terminal and the typed-back code is answered. The same walk then runs over the URL it prints. `SIGINT` ends the command, after which nothing listens and the endpoint files are gone. | Pass on Linux (`serial`; skipped on Windows, where a console would appear on the desktop) |
-| Session expiry | With an injected clock past the session's hours, the read is `401 SESSION_EXPIRED` and the dead cookie is cleared. A conditional request is `401` too, never a `304`. The page still loads to show the session-required state. | Pass |
+| Session expiry | With an injected clock past the session's hours, the read is `401 SESSION_EXPIRED` and the dead cookie is cleared. A conditional request with the validator it held while the session lived (shown to match with a `304` first) is `401` too, never a `304`. The page still loads to show the session-required state. | Pass |
 | Server stop | Stopping the server ends every session. A new server on the same project answers the old cookie with `401 SESSION_REQUIRED`: sessions are process-local and never durable. | Pass |
 | Scope and validator isolation | A second project's server shows only its own records. One server's cookie is `401` on the other, and one server's validator never confirms the other's representation. Within a server the validator is bound to path, project and query (F20.4's suite). | Pass |
 | Hostile content | Markup, a script breakout, an event handler, a bidi override and an ANSI escape in a unit's title come back as the exact JSON string under `application/json`, `nosniff` and the CSP. No HTML response ever carries project text: every HTML response is the build, unchanged. | Pass (server side; display is the browser gate's) |
@@ -46,18 +46,19 @@ The served bytes are these files. `test_the_frontend_is_served_from_the_package_
 
 - F20.3's session controls, in PR #71;
 - F20.4's ten conditional-request controls, in PR #87;
-- F20.5's twenty header, origin, bounds, traversal and log controls, and the nine for its review fixes (request targets, connection admission, the SPA index, casing), in PR #90.
+- F20.5's twenty header, origin, bounds, traversal and log controls, the nine for its first review fixes (request targets, connection admission, the SPA index, casing), and those of its later review rounds (the request-head deadline, stdlib's tokenization, the busy drain, end of input, the log's encoding and dropped lines, the two-word request line, the logged method), in PR #90.
 
 The acceptance suite adds no new mechanism. It exercises those mechanisms together.
 
 **Runs:**
 
-Both runs are at this record's commit, on F20.5 after its review fixes.
+At this record's commit, on `main` with F20.5 merged (`90fdb28`).
 
 | Platform | Command | Result |
 |---|---|---|
-| Windows 11 (developer host), Python 3.13 | the dashboard suites, `test_credential_delivery`, `test_register`, `test_requirements_ledger`, `test_spec_amendments`, `test_docs_links` (`-n 6`) | 633 passed, 3 skipped (the two POSIX pty tests, and the linked-index test, which needs a file link) |
-| Rocky Linux 8.10 VM (kernel 4.18, SELinux enforcing), Python 3.11.13 | the same set (`-n 4`), then the two pty tests (`-p no:xdist`) | 634 passed; then both pty tests passed (2 passed, 34.9 s), F20.6's real-CLI walk included |
+| Windows 11 (developer host), Python 3.13 | the dashboard suites, `test_credential_delivery`, `test_register`, `test_requirements_ledger`, `test_spec_amendments`, `test_docs_links` (`-n 6`) | 645 passed, 3 skipped (the two POSIX pty tests, and the linked-index test, which needs a file link) |
+| Linux, Python 3.11 | CI's full gate at this record's commit (the dashboard suites in the `integration` and `fast` lanes; both pty tests, F20.6's real-CLI walk included, in the `serial` lane) | see the PR's `assurance` |
+| Rocky Linux 8.10 VM (kernel 4.18, SELinux enforcing), Python 3.11.13 | the same set at the record's previous commit (F20.5 at `5ff85bf`), before F20.5's later review rounds | 634 passed; both pty tests passed |
 | CI (Windows and Linux matrix, `assurance`) | the full suite | on the PR |
 
 Driving `serve` at a pseudo-terminal found one server defect, fixed in PR #90: the request log wrote synchronously to the terminal, so a terminal that stops reading stalled every request. It also found one test-harness hazard, fixed here in both pty tests: a runner launched in the background inherits SIGINT ignored, so the child now restores the default before it becomes `aew`.

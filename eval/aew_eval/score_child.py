@@ -1,42 +1,93 @@
-"""The scoring process of the hidden-evaluator channel: ``python -I -B score_child.py <checks.py> <tree>``.
+"""The scoring process of the hidden-evaluator channel: ``python -I -B score_child.py <oracle copy> <tree>``.
 
-It runs model-written code (the checks import and drive it), so it is its own process, isolated (``-I``: no
-``PYTHONPATH``, no user site, not even this script's directory on the path) and importing only the standard library
-before the tree joins the path. A file the model planted in the tree (a ``json.py``, an ``aew_eval/``) therefore cannot
-replace anything this script uses; it can only be what the checks deliberately import. Prints one JSON line:
-``{"passed", "checks": [{"name", "ok", "detail"}]}``.
+**The model's code never runs in this process.** It is isolated (``-I``: no ``PYTHONPATH``, no user site, not even this
+script's directory on the path), the tree is never put on its path, and an oracle's ``checks(tree, run)`` reaches the
+model's program only through ``run``: a separate process, with its own pipes, no console window and a timeout, whose
+whole process tree is ended when it returns or times out. So nothing in the tree can replace a module this process or
+the checks import, patch a builtin, or write to this process's output (PR #105 review, findings 1 to 3).
+
+Writes exactly one JSON object to standard output, ``{"checks": [{"name", "ok", "detail"}]}``, and exits 0; the
+runner computes ``passed`` itself and treats anything else as a failed score. A check that raises, of any kind, is a
+failed check.
 """
 
-import importlib.util
 import json
+import os
+import signal
+import subprocess
 import sys
 import traceback
 from pathlib import Path
+from typing import Any, cast
+
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def run(checks_py: Path, tree: Path) -> dict:
+class Ran:
+    """What one program run returned: its exit code (``None`` when it timed out) and its output, as text."""
+
+    def __init__(self, returncode, stdout, stderr, timed_out):
+        self.returncode, self.stdout, self.stderr, self.timed_out = returncode, stdout, stderr, timed_out
+
+    def __repr__(self):
+        return f"Ran(returncode={self.returncode!r}, timed_out={self.timed_out}, stdout={self.stdout[-300:]!r})"
+
+
+def _end_tree(proc):
+    """End ``proc`` and everything it started (a process group on POSIX; the tree, by taskkill, on Windows; the
+    runner's job object ends anything left when this process exits)."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True,
+                       creationflags=NO_WINDOW, check=False)
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def make_run(tree):
+    def run(argv, *, cwd=None, input=None, env=None, timeout=120):
+        """Run the model's program: ``argv`` in ``cwd`` (the tree by default), its own pipes, standard input closed
+        unless ``input`` is given, the tree on ``PYTHONPATH``, ended with everything it started when it returns."""
+        full_env = {**os.environ, "PYTHONPATH": str(tree), "PYTHONUTF8": "1", **(env or {})}
+        kwargs: dict[str, Any] = ({"creationflags": NO_WINDOW} if sys.platform == "win32"
+                                  else {"start_new_session": True})
+        proc = subprocess.Popen([str(a) for a in argv], cwd=str(cwd or tree), env=full_env,
+                                stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        timed_out = False
+        try:
+            out, err = proc.communicate(input=None if input is None else input.encode("utf-8"), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _end_tree(proc)
+            out, err = proc.communicate()
+        finally:
+            _end_tree(proc)  # nothing it started outlives it
+        return Ran(None if timed_out else proc.returncode, cast(bytes, out).decode("utf-8", "replace"),
+                   cast(bytes, err).decode("utf-8", "replace"), timed_out)
+    return run
+
+
+def score(checks_py, tree):
     results = []
-    sys.path.insert(0, str(tree))  # only now: everything this script needs is already imported
     try:
-        spec = importlib.util.spec_from_file_location("aew_eval_oracle_checks", checks_py)
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        for name, ok, detail in module.checks(tree):
-            results.append({"name": str(name), "ok": bool(ok), "detail": str(detail)[-600:]})
-    except Exception:  # noqa: BLE001 (a broken check or broken model code is a failed check, recorded)
+        namespace: dict[str, Any] = {"__name__": "aew_eval_oracle_checks", "__file__": str(checks_py)}
+        exec(compile(checks_py.read_bytes(), str(checks_py), "exec"), namespace)  # noqa: S102 (the oracle's own code)
+        for name, ok, detail in namespace["checks"](tree, make_run(tree)):
+            results.append({"name": str(name), "ok": ok is True, "detail": str(detail)[-600:]})
+    except BaseException:  # noqa: BLE001 (any failure in the checks, SystemExit included, is a failed check)
         results.append({"name": "checks raised", "ok": False, "detail": traceback.format_exc()[-1200:]})
-    return {"passed": bool(results) and all(r["ok"] for r in results), "checks": results}
+    return {"checks": results}
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("usage: python -I -B score_child.py <checks.py> <tree>", file=sys.stderr)
+        sys.stderr.write("usage: python -I -B score_child.py <checks.py> <tree>\n")
         sys.exit(2)
     sys.dont_write_bytecode = True
-    out = run(Path(sys.argv[1]), Path(sys.argv[2]).resolve())
-    sys.stdout.write("\n" + json.dumps(out) + "\n")
+    result = score(Path(sys.argv[1]), Path(sys.argv[2]).resolve())
+    sys.stdout.write(json.dumps(result))
     sys.stdout.flush()
-    import os
-
-    os._exit(0)  # the result is the last line: no exit handler the model's code registered runs after it
+    os._exit(0)

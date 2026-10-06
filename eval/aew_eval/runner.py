@@ -89,9 +89,9 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
     :class:`Refused` when nothing was registered. ``hidden_root`` is the private evaluation root (by default taken
     from ``AEW_EVAL_HIDDEN_ROOT``, which is removed from the environment either way)."""
     env_root = hidden.take_root()  # first: nothing this run starts can inherit it
-    hidden_root = hidden_root or env_root
     # 1. Refuse before anything is counted.
     try:
+        hidden_root = hidden.resolve_root(hidden_root) if hidden_root is not None else env_root
         if not isinstance(frozen, dict):
             raise Invalid("the preregistration is not a mapping")
         experiment = frozen["experiment"]
@@ -112,7 +112,8 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
                               arm_config=arm["config"])
         commitment = case.manifest["hidden_sha256"]
         oracle = hidden.Oracle.locate(hidden_root, case.id) if commitment and hidden_root else None
-        hidden.require(oracle, case=case.id, commitment=commitment, held_out=case.id in frozen["held_out"])
+        hidden.require(hidden_root, oracle, case=case.id, commitment=commitment,
+                       held_out=case.id in frozen["held_out"])
         if oracle is not None and scorer is not None:
             raise Invalid(f"case {case.id} is scored by its hidden oracle; a second scorer is not used")
         runner = arms.arm_for(arm["kind"])

@@ -298,7 +298,11 @@ sections:
       the operator capability must be out of an agent shell''s reach'
     Notes: Steering changes who confirms an already-legal action and when, never legality, gates or transitions (PBD-07).
       The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default
-      while M4-H measures, and the product default is not frozen (CWR-12)
+      while M4-H measures, and the product default is not frozen (CWR-12). **The operator's sign-off belongs to the same
+      capability** (operator, 2026-10-06). A record that says the operator decided (today `authority accept --decided-by
+      operator`, which the Lead's credential holder can still type) must carry proof the operator confirmed it through that
+      channel, not a flag. Until then `authority accept|reject`, `manifest adopt` and `migrate` are refused in a Lead session
+      (`lead_broker.OPERATOR_DECIDED`)
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:

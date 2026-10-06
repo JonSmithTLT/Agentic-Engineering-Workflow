@@ -14,8 +14,9 @@ runs one call of the typed Lead surface (``aew.surface``; F15.1) with the held c
 refuses:
 
 * every Lead-authenticated command that is not classified **Lead-reachable** (``LEAD_REACHABLE``): the
-  operator-only ones (``OPERATOR_ONLY``: commands that would print a credential, offer secret or session URL; Lead
-  acquisition, handoff, takeover and release stay operator actions at the operator's own terminal), the typed
+  operator-only ones (``OPERATOR_ONLY``: commands that would print a credential, offer secret or session URL, so Lead
+  acquisition, handoff, takeover and release stay operator actions at the operator's own terminal; commands the
+  operator confirms there; and the operator's own decisions, which the Lead must not make for them), the typed
   surface's own transports (``NOT_RELAYED``), and any command nobody has classified yet (fail closed). The same
   check runs in the ``aew`` client and in the broker, for a shell command and for the typed ``cli`` escape alike;
 * dispatches without ``--launch`` (they print an invocation credential into the Lead's transcript);
@@ -68,19 +69,27 @@ CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeo
 # Commands the operator confirms with a typed-back code at their own terminal, which a Lead session has none of:
 # resetting the validation circuit breaker (M4-D5; the breaker stops automatic retries until the operator says so).
 OPERATOR_CONFIRMED = (frozenset({"integrate", "breaker", "reset"}),)
+# The operator's decisions (operator, 2026-10-06): what governs the project and its state, which a Lead session must
+# not be able to make, or record as the operator's, on its own. Authority sources become the files every pack treats
+# as governing, and `authority accept --decided-by operator` would otherwise let the Lead record the operator's
+# sign-off; `manifest adopt` is the approval of an edit to project.yaml, which the actor that can edit the file must not
+# also hold; `migrate` restructures the control state and is not easily reverted. Waivers, history loads and audits
+# stay the Lead's: policy bounds a waiver, and the others only add reference context or verify.
+OPERATOR_DECIDED = (frozenset({"authority", "accept"}), frozenset({"authority", "reject"}),
+                    frozenset({"manifest", "adopt"}), frozenset({"migrate"}))
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1 adds the
 # operator's confirmation, autonomy increases and PUBLISH_IF_CLEAN grants here when F15.5 builds them).
-OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED
+OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
 # here and from OPERATOR_ONLY is refused until someone classifies it (a test walks the parser).
 LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
-    "authority accept", "authority reject", "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
+    "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
     "harness launch", "harness send", "harness stop", "history audit", "history load", "integrate defer",
     "integrate prepare", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
     "integrate validate",
-    "invoke cancel", "invoke create", "lead handoff cancel", "manifest adopt", "migrate", "plan accept", "plan adopt",
+    "invoke cancel", "invoke create", "lead handoff cancel", "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
@@ -114,6 +123,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     if any(p <= path for p in OPERATOR_CONFIRMED):
         return (f"`aew {command_name(ns)}` is confirmed by the operator with a code typed at their own terminal; "
                 "a Lead session cannot run it: ask the operator")
+    if any(p <= path for p in OPERATOR_DECIDED):
+        return (f"`aew {command_name(ns)}` is the operator's decision, made at their own terminal; a Lead session "
+                "cannot run it or record it as theirs: ask the operator")
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "

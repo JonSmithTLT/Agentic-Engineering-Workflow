@@ -80,6 +80,33 @@ def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_valida
                                            "--expect-rev", "1")) is None
 
 
+@pytest.mark.parametrize("argv", [
+    ("authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "operator", "--expect-rev", "1"),
+    ("authority", "reject", "C-0001", "--expect-rev", "1"),
+    ("manifest", "adopt", "--reason", "reviewed", "--expect-rev", "1"),
+    ("migrate", "--expect-rev", "1"),
+])
+def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
+    """Operator, 2026-10-06: a Lead session may not accept authority (or record the operator's sign-off), approve an
+    edit to project.yaml it could have made itself, or migrate the control state; the broker refuses them too."""
+    refusal = lead_broker.refuses_locally(_ns(*argv))
+    name = " ".join(a for a in argv if not a.startswith("-") and a not in {"C-0001", "decisions", "operator",
+                                                                           "reviewed", "1"})
+    assert refusal and refusal.startswith(f"`aew {name}` is the operator's decision"), refusal
+    assert "credential" not in refusal
+    with pytest.raises(errors.PermissionDenied):
+        lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
+
+
+@pytest.mark.parametrize("argv", [
+    ("gate", "waive", "T-0001", "--gate", "review", "--reason", "x", "--expect-rev", "1"),
+    ("history", "load", "R-0001", "--into", "T-0001", "--reason", "x", "--expect-rev", "1"),
+    ("history", "audit", "--expect-rev", "1"),
+])
+def test_waivers_history_loads_and_audits_stay_the_leads(argv):
+    assert lead_broker.refuses_locally(_ns(*argv)) is None
+
+
 def test_the_typed_surfaces_transports_are_never_relayed(monkeypatch):
     monkeypatch.setenv(lead_broker.ENV_ENDPOINT, r"\\.\pipe\nowhere")
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)

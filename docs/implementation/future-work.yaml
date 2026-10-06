@@ -248,25 +248,6 @@ sections:
       concern; the review''s recommendation is historical input. The work is F15.1 to F15.3 below. ARV-04 (operator, 2026-10-05):
       the typed surface is one of the two mechanisms named to keep the operator and designer''s serial path short; the other
       is F8''s operator inbox.'
-  - '#': F15.1
-    Work: 'The typed surface''s read-only and transport slice: the catalog and runner (`aew.surface`), the broker operation
-      `lead.tool`, the `aew-lead` MCP transport spawned without a credential and forwarding to the broker, the query tools
-      (`status`, `resume`, `work_show`, `explain`, `harness_status`), `harness_wait` on the ADR-0012 wake file, `checkpoint`,
-      the CLI parity adapter `aew lead tool`, surface-profile filtering (the generic `cli` escape is recovery-only), the
-      catalog conformance tests and the `lead_mcp` dispatch channel'
-    Source (governing): '[typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) §3 to §5, §7, §8, §11 (ledger
-      TLS-01 to TLS-12, TLS-15, TLS-16, TLS-18 to TLS-25)'
-    Belongs to or gated by: '**M4-D** (the design''s §11); the first transport is MCP (Q13, designer 2026-10-05)'
-    Notes: 'Creates no multi-step mutation semantics. The prototype on the review branch (patch in `eval/reviews/architecture-2026-10-04/patches/`)
-      proved the seams; everything it did not build is listed in the design''s §9. Three slices, one PR each: A the contract,
-      B the broker operation, the fail-closed Lead reachability classification and the CLI parity adapter, C the MCP transport
-      and the Lead projection. **A built:** `aew.surface` (catalog, effective class, runner, tri-state projection with a
-      control part cached on control and policy identity, and dispatch legality, run telemetry, guidance and evidence read
-      on every call), `schemas/surface.schema.json` with A3''s `policy_binding`; the stages and publication are catalogued
-      and refused until built. **B built:** the broker operation `lead.tool` (cooperative: a typed wait blocks on the wake
-      file without holding the broker; channel `lead_mcp` or `lead_broker` by ingress; lost authority answered once from
-      committed state, then the bridge closes), the fail-closed Lead reachability classification (`LEAD_REACHABLE`, `OPERATOR_ONLY`,
-      `NOT_RELAYED`) applied by the client and the broker alike, the recovery-only `cli` escape and `aew lead tool`'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review
@@ -1295,6 +1276,18 @@ sections:
       designer''s open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers
       and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`,
       "M4-B as built"'
+  - '#': F15.1
+    Was: 'The typed Lead surface''s read-only and transport slice (typed Lead surface v0.2 §3 to §5, §7, §8, §11''s M4-D
+      row): the catalog and runner, `lead.tool`, the `aew-lead` MCP transport, the query tools, `harness_wait`, `checkpoint`,
+      `aew lead tool`, surface profiles, conformance and the `lead_mcp` channel'
+    Closed: '2026-10-06'
+    By: 'PRs #88, #93 and #95. #88 the contract: `aew.surface` (the v1 catalog with the stages designed and refused, the
+      effective class, one runner, a tri-state `ActionProjection` with availability, callability and auto-run eligibility
+      kept apart), `schemas/surface.schema.json` with A3''s `policy_binding`. #93 the broker: `lead.tool` (cooperative,
+      so a typed wait never holds the broker), the fail-closed Lead reachability classification, the recovery-only `cli`
+      escape and `aew lead tool`. #95 the transport: `aew lead mcp` (no credential, no direct mode, never an engine), the
+      Lead projection and probe against the pinned 2.0.18 (MCP timeouts in ms, default 12 h; tools named `<server>_<tool>`).
+      Still open for F15.2: TLS-07, TLS-16 (`ticket_draft` equivalence), TLS-26, TLS-28; for E18: TLS-25''s dashboard half'
   - '#': F20.1
     Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
     Closed: '2026-10-03'

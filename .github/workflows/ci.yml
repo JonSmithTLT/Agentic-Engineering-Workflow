@@ -3,12 +3,14 @@ name: ci
 # Implements docs/implementation/testing-and-ci-strategy.md. A change to lanes, shards, platforms or the
 # merge gate updates that document in the same pull request.
 #
+#   changes              the change's tier (tools/ci/tier.py, CI redesign P1): docs, web or full; fail closed to full
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
-#   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job
+#   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
 #   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
-#   assurance            every collected test ran exactly once and passed on every OS, and web and static passed
-#                        (the merge gate)
+#   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, and web
+#                        and static passed (the merge gate). It recomputes the tier, and refuses a reduced tier on
+#                        any event but a pull request: a push to main and a merge group always run in full.
 
 on:
   pull_request:
@@ -28,6 +30,25 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
+  changes:
+    # Reduced tiers are for pull requests only, and are backed by main's always-full push run: a personal-account
+    # repository has no merge queue (strategy §3, "Tiers"). Anything not provably docs or web is full.
+    name: tier
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: tier
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/ci/tier.py --event "$EVENT" --base "$BASE" --head "$HEAD" --github-output "$GITHUB_OUTPUT"
+
   core:
     name: core (${{ matrix.os }})
     strategy:
@@ -81,6 +102,8 @@ jobs:
 
   lanes:
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.tier == 'full'
     strategy:
       fail-fast: false
       matrix:
@@ -174,12 +197,29 @@ jobs:
 
   assurance:
     # The merge gate: mark this check as required on `main`.
-    needs: [core, lanes, web, static]
+    needs: [changes, core, lanes, web, static]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: tier
+        name: The tier, recomputed from the same diff, is the one the jobs ran under
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          RAN: ${{ needs.changes.outputs.tier }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          python3 tools/ci/tier.py --event "$EVENT" --base "$BASE" --head "$HEAD" --github-output "$RUNNER_TEMP/tier"
+          tier=$(sed -n 's/^tier=//p' "$RUNNER_TEMP/tier")
+          echo "tier: recomputed $tier, ran $RAN"
+          test "$tier" = "$RAN"
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -192,18 +232,28 @@ jobs:
         with:
           pattern: coverage-*
           path: coverage-data
-      - name: Every collected test ran exactly once and passed (pinned platform skips excepted)
+      - name: Every collected test of the tier's lanes ran exactly once and passed (pinned platform skips excepted)
+        env:
+          TIER: ${{ steps.tier.outputs.tier }}
+          EVENT: ${{ github.event_name }}
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
-          --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
-      - name: Coverage holds its baseline (line and branch, Linux lanes; E2)
+          --require linux,win32 --tier "$TIER" --event "$EVENT" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Coverage holds its baseline (line and branch, Linux lanes; E2; full tier only)
+        if: steps.tier.outputs.tier == 'full'
         run: >-
           python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
           --summary "$GITHUB_STEP_SUMMARY"
-      - name: Every test job succeeded
+      - name: Every test job the tier requires succeeded (lanes are required unless the tier is known and reduced)
         if: always()
+        env:
+          TIER: ${{ steps.tier.outputs.tier }}
+          CHANGES: ${{ needs.changes.result }}
+          CORE: ${{ needs.core.result }}
+          LANES: ${{ needs.lanes.result }}
+          WEB: ${{ needs.web.result }}
+          STATIC: ${{ needs.static.result }}
         run: |
-          echo "core=${{ needs.core.result }} lanes=${{ needs.lanes.result }} web=${{ needs.web.result }}" \
-            "static=${{ needs.static.result }}"
-          test "${{ needs.core.result }}" = success && test "${{ needs.lanes.result }}" = success \
-            && test "${{ needs.web.result }}" = success && test "${{ needs.static.result }}" = success
+          echo "tier=${TIER:-unknown} changes=$CHANGES core=$CORE lanes=$LANES web=$WEB static=$STATIC"
+          test "$CHANGES" = success && test "$CORE" = success && test "$WEB" = success && test "$STATIC" = success
+          if [ "$TIER" = docs ] || [ "$TIER" = web ]; then test "$LANES" = skipped; else test "$LANES" = success; fi

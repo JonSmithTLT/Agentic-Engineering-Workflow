@@ -24,6 +24,7 @@ def _load(name: str):
 
 
 check_assurance = _load("check_assurance")
+tier = _load("tier")
 update_durations = _load("update_durations")
 
 ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
@@ -187,3 +188,113 @@ def test_durations_merge_updates_and_prunes():
     assert merged["schema"] == "aew/test-durations/v1"
     assert merged["platforms"]["win32"] == {ALL[0]: 0.5}  # refreshed; the vanished test and the skip are gone
     assert merged["platforms"]["darwin"] == {"k": 1.0}  # platforms without reports are kept
+
+
+# ------------------------------------------------------------------ the tiered gate (CI redesign P1)
+
+LANE_OF = {ALL[0]: "fast", ALL[1]: "serial", ALL[2]: "regression", SKIP_ID: "integration"}
+
+
+def docs_tier_run(with_lanes: bool = True) -> list[dict]:
+    """A docs-tier run: only the core jobs (fast, then serial) on each OS."""
+    extra = {"lanes": dict(LANE_OF)} if with_lanes else {}
+    runs = []
+    for platform in ("linux", "win32"):
+        runs += [report(platform, "fast", {ALL[0]: "passed"}, **extra),
+                 report(platform, "serial", {ALL[1]: "passed"}, **extra)]
+    return runs
+
+
+@pytest.mark.parametrize(("paths", "expected"), [
+    (["docs/README.md"], "docs"),
+    (["docs/design/requirements-ledger.yaml", "docs/implementation/future-work.yaml"], "docs"),
+    (["AGENTS.md", "CLAUDE.md", "README.md", "eval/m3/README.md", "web/docs/notes.md"], "docs"),
+    (["web/src/App.tsx", "docs/README.md"], "web"),
+    (["web/package-lock.json"], "web"),
+    (["docs/design/dashboard-api-v1-provisional.yaml"], "full"),  # the contract code reads
+    (["web/docs/c0-approval.json"], "full"),  # its approval, read by the dashboard server
+    (["src/aew/README.md"], "full"),  # Markdown under a code root is not documentation
+    (["tests/fixtures/notes.md"], "full"),
+    (["tools/ci/tier.py"], "full"),
+    (["docs/README.md", "src/aew/cli/main.py"], "full"),
+    ([".github/workflows/ci.yml"], "full"),
+    (["pyproject.toml"], "full"),
+    ([".gitleaksignore"], "full"),
+    ([], "full"),  # an empty diff proves nothing
+], ids=lambda v: v if isinstance(v, str) else ",".join(v)[:40] or "empty")
+def test_the_tier_is_the_widest_any_changed_path_needs(paths, expected):
+    assert tier.decide("pull_request", paths) == expected
+
+
+@pytest.mark.parametrize("event", ["push", "merge_group", "workflow_dispatch", "schedule", ""])
+def test_only_a_pull_request_may_take_a_reduced_tier(event):
+    assert tier.decide(event, ["docs/README.md"]) == "full"
+
+
+def test_a_diff_that_cannot_be_computed_is_full(tmp_path, monkeypatch):
+    assert tier.decide("pull_request", None) == "full"
+    assert tier.changed_paths("", "abc") is None and tier.changed_paths("0" * 40, "abc") is None
+    monkeypatch.chdir(tmp_path)  # not a repository: git fails
+    assert tier.changed_paths("abc", "def") is None
+
+
+def test_every_repository_file_the_code_names_is_full_tier():
+    """A file that src/ reads by its repository path is a code input, whatever it looks like: changing it must run
+    the full gate. Paths that do not exist here (discovery's conventions for other projects) are not ours."""
+    import re
+
+    named = {m.group(1) for f in (ROOT / "src").rglob("*.py")
+             for m in re.finditer(r'"((?:docs|web|eval)/[^"*?]+)"', f.read_text(encoding="utf-8"))}
+    ours = sorted(p for p in named if (ROOT / p).is_file())
+    assert ours, "expected at least the dashboard contract"
+    assert [p for p in ours if tier.classify_path(p) != "full"] == []
+
+
+def test_a_complete_docs_tier_run_passes():
+    assert check_assurance.check(docs_tier_run(), EXPECT, ["linux", "win32"], "docs")[0] == []
+
+
+def test_the_docs_tier_still_needs_every_fast_and_serial_test():
+    runs = docs_tier_run()
+    runs[1]["results"].clear()  # linux serial ran nothing
+    assert "linux: never ran: tests/unit/test_a.py::t2" in check_assurance.check(
+        runs, EXPECT, ["linux", "win32"], "docs")[0]
+
+
+def test_a_reduced_tier_without_recorded_lanes_fails_closed():
+    found = check_assurance.check(docs_tier_run(with_lanes=False), EXPECT, ["linux", "win32"], "docs")[0]
+    assert any("needs each test's lane" in p for p in found), found
+
+
+def test_the_full_tier_requires_every_lane():
+    assert any("never ran" in p for p in check_assurance.check(docs_tier_run(), EXPECT, ["linux", "win32"])[0])
+
+
+def test_the_cli_refuses_a_reduced_tier_on_a_push(tmp_path):
+    for i, r in enumerate(docs_tier_run()):
+        (tmp_path / "reports" / f"job{i}").mkdir(parents=True)
+        (tmp_path / "reports" / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    base = [str(tmp_path / "reports"), "--skips", str(tmp_path / "skips.yaml"), "--tier", "docs"]
+    assert check_assurance.main([*base, "--event", "pull_request"]) == 0
+    assert check_assurance.main([*base, "--event", "push"]) == 1
+    assert check_assurance.main([*base, "--event", "merge_group"]) == 1
+
+
+def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_tier():
+    """Structure of .github/workflows/ci.yml: the tier job feeds the lanes and the gate, the gate recomputes it, and a
+    reduced tier passes only with the lanes skipped."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    jobs = wf["jobs"]
+    assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
+    assert "tools/ci/tier.py" in jobs["changes"]["steps"][-1]["run"]
+    assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
+    assert "needs" not in jobs["core"] and "needs" not in jobs["static"]  # core and static run in every tier
+    gate = jobs["assurance"]
+    assert "changes" in gate["needs"] and gate["if"] == "always()"
+    runs = "\n".join(str(s.get("run", "")) for s in gate["steps"])
+    assert "tools/ci/tier.py" in runs and 'test "$tier" = "$RAN"' in runs
+    assert '--tier "$TIER" --event "$EVENT"' in runs
+    coverage = next(s for s in gate["steps"] if "coverage_gate.py" in str(s.get("run", "")))
+    assert coverage["if"] == "steps.tier.outputs.tier == 'full'"
+    assert 'test "$LANES" = skipped' in runs and 'test "$LANES" = success' in runs

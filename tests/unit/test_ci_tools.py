@@ -202,6 +202,8 @@ def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
     # exactly the constructs this condition uses; anything else fails the test.
     import re
 
+    # The job must run after a failed or cancelled job at all, so the condition must start from always() (re-review).
+    assert condition.startswith("always() && "), condition
     py = condition.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
     py = py.replace("github.event_name", "event")
     py = re.sub(r"contains\(needs\.\*\.result, '(\w+)'\)", r"('\1' in results)", py)

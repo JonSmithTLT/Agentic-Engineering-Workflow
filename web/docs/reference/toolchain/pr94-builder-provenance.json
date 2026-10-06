@@ -1,0 +1,24 @@
+{
+  "artifact_version": "1.0.0",
+  "date": "2026-10-06",
+  "image_id": "sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5e5a4d9252360b8b",
+  "registry_digest": null,
+  "platform": "linux/amd64 glibc",
+  "node": "22.22.2",
+  "npm": "10.9.7",
+  "base_image_id": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "runtime_source_commit": "7fed3028b9152e0345130824479d7eddb05d52ea",
+  "lockfile_sha256": "0eaba7ab3e6b2df60cc72d72cc6ad0c7d8537c3ec94369e0e593517976b4a9fe",
+  "manifest_sha256": "ad43c2981d6e52f2d0e0bf64157f7cbff4f506e09f424d618ba31d8b90cd4ed4",
+  "checksums_sha256": "8f89a9b4930c14b74bae242a5e157122f97b1fcd798c59d316acda4e186b5b88",
+  "package_count": 438,
+  "archive_name": "aew-pr94-builder-7fed302.tar",
+  "archive_sha256": "2f18d031cbc367a5617df64514202477847c1c9b4a4e9c6b4bf3f2aadd50aa9e",
+  "archive_bytes": 1018130432,
+  "operator_approval": {
+    "date": "2026-10-06",
+    "scope": "PR94 dependency adoption, including Vitest 5.0.3 and the metadata correction; merge conditional on validation, independent review and CI.",
+    "packaged_frontend_baseline_changed": false
+  },
+  "validation_evidence": "Exact final source/tree, build inventories and browser results are recorded in the PR94 committed-source review packet; runtime_source_commit identifies carrier staging, not an acceptance claim for a later head."
+}

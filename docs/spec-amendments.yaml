@@ -178,6 +178,21 @@ considered:
     reason: >-
       adopted direction, not contract text; where it touches WC §15.6 the typed Lead surface v0.2 governs and is the
       overlay above
+  - path: docs/design/pre-f15-2-amendment-set-v0.1.md
+    reason: >-
+      approved amendment set (2026-10-05) over the steering, recovery and health designs; replaces no WC/KC text
+  - path: docs/design/steering-authority-execution-envelope-amendment-v0.1.md
+    reason: >-
+      approved amendment (2026-10-05, F15.5) to the steering design; replaces no WC/KC text
+  - path: docs/design/launch-failure-recovery-safety-amendment-v0.1.md
+    reason: >-
+      approved amendment (2026-10-05, F15.6) to the bounded recovery design; replaces no WC/KC text
+  - path: docs/design/policy-binding-digest-amendment-v0.1.md
+    reason: >-
+      approved amendment (2026-10-05, F15.4) to the policy digest rules; replaces no WC/KC text
+  - path: docs/design/run-health-projection-implementation-note-v0.1.md
+    reason: >-
+      approved implementation note (2026-10-05, U1) to the run health projection design; replaces no WC/KC text
   - path: docs/implementation/adr/0001-control-state-persistence.md
     reason: ADR; implements WC §5 and KC §12.3; its amendments revise its own mechanism
   - path: docs/implementation/adr/0002-evaluated-snapshot-fingerprint.md

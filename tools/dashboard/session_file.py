@@ -11,9 +11,10 @@ follows it as a browser's address bar does (a top-level navigation), takes the `
 
     {"version": 1, "origin": "http://127.0.0.1:4280", "cookie": {"name": "aew_session", "value": "aew1.<id>.<secret>"}}
 
-The file is created owner-only: mode 0600 on POSIX; on Windows its inherited ACL is replaced by one granting only
-the current user. Keep it in a private scratch directory, never in evidence, and delete it after the run; the
-session dies with the server anyway. The tool prints the origin and the file's path, never the credential.
+The file is created owner-only and written through its creating handle: mode 0600 on POSIX; on Windows a protected
+DACL granting only the current user's SID, set at creation. Keep it in a private scratch directory, never in
+evidence, and delete it after the run; the session dies with the server anyway. The tool prints the origin and the
+file's path, never the credential.
 """
 
 from __future__ import annotations
@@ -66,52 +67,69 @@ def exchange(url: str) -> tuple[str, str]:
 
 
 def write_private(path: Path, text: str) -> None:
-    """Create ``path`` readable by its owner only, then write ``text``."""
+    """Create ``path`` readable by its owner only and write ``text`` through the creating handle.
+
+    The file never exists with wider access, and is never reopened by name (a swap between the two would let the
+    secret land elsewhere): on POSIX ``O_CREAT | O_EXCL`` with mode 0600; on Windows ``CreateFileW`` with a protected
+    security descriptor granting only the current user's SID full access, opened without sharing. Any failure leaves
+    no file and nothing written (PR #97 review A1-A4: an ACL narrowed after creation by display name could be read
+    in between, could fail on a localized or renamed account, and kept the runner's default-DACL entries)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         path.unlink()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    os.close(fd)
-    if os.name == "nt":  # replace the whole ACL before any secret is written
-        user = os.environ.get("USERNAME") or ""
-        domain = os.environ.get("USERDOMAIN") or ""
-        who = f"{domain}\\{user}" if domain else user
-        try:
-            _owner_only_acl(path, who)
-        except BaseException:
-            path.unlink(missing_ok=True)  # never leave a file whose access was not narrowed
-            raise
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(text)
+    fd = _create_owner_only_nt(path) if os.name == "nt" else os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
 
 
-def _icacls(*args: str) -> str:
-    return subprocess.run(["icacls", *args], check=True, capture_output=True, text=True,
-                          creationflags=NO_WINDOW).stdout
+def user_sid() -> str:
+    """The current user's SID (``whoami /user``): only its ASCII SID column is read, so the account's display name,
+    language and code page never matter."""
+    out = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], check=True, capture_output=True,
+                         creationflags=NO_WINDOW).stdout.decode("ascii", "replace")
+    sid = out.strip().rsplit(",", 1)[-1].strip().strip('"')
+    if not re.fullmatch(r"S-1-\d+(-\d+)+", sid):
+        raise SystemExit("could not read the current user's SID; no session file written")
+    return sid
 
 
-def _principals(path: Path) -> list[str]:
-    """The principals ``icacls`` lists for ``path`` (the text before each ``:(``), in order."""
-    out = _icacls(str(path))
-    found = []
-    for n, line in enumerate(out.splitlines()):
-        entry = line[len(str(path)):] if n == 0 else line
-        if ":(" in entry:
-            found.append(entry.strip().split(":(", 1)[0])
-    return found
+def _create_owner_only_nt(path: Path) -> int:  # pragma: windows-only
+    """A new file whose DACL is protected (nothing inherited) and grants only the current user, created that way in
+    one call, with no sharing; returns a writable file descriptor."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
 
+    class SecurityAttributes(ctypes.Structure):
+        _fields_ = [("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
+                    ("bInheritHandle", wintypes.BOOL)]
 
-def _owner_only_acl(path: Path, who: str) -> None:
-    """Inheritance off, the user's grant only. A new file can also carry explicit entries from the process's default
-    DACL (SYSTEM, Administrators, OWNER RIGHTS on a CI runner), which ``/inheritance:r`` keeps: each is removed, and
-    the result is checked, so the tool refuses rather than writing a secret readable by anyone else."""
-    _icacls(str(path), "/inheritance:r", "/grant:r", f"{who}:(R,W)")
-    for principal in _principals(path):
-        if principal.lower() != who.lower():
-            _icacls(str(path), "/remove:g", principal)
-    left = _principals(path)
-    if [p.lower() for p in left] != [who.lower()]:
-        raise SystemExit(f"could not make the session file owner-only (its ACL still names {left}); nothing written")
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    to_sd = advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    to_sd.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    to_sd.restype = wintypes.BOOL
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(SecurityAttributes),
+                       wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    sd = ctypes.c_void_p()
+    if not to_sd(f"D:P(A;;FA;;;{user_sid()})", 1, ctypes.byref(sd), None):  # SDDL_REVISION_1
+        raise OSError(ctypes.get_last_error(), "could not build the session file's security descriptor")
+    try:
+        attrs = SecurityAttributes(ctypes.sizeof(SecurityAttributes), sd, False)
+        generic_write, no_sharing, create_new, normal = 0x40000000, 0, 1, 0x80
+        handle = create(str(path), generic_write, no_sharing, ctypes.byref(attrs), create_new, normal, None)
+    finally:
+        kernel.LocalFree(sd)
+    if handle is None or handle == wintypes.HANDLE(-1).value:
+        raise OSError(ctypes.get_last_error(), f"could not create {path} owner-only")
+    return msvcrt.open_osfhandle(handle, os.O_WRONLY)
 
 
 def main(argv: list[str] | None = None) -> int:

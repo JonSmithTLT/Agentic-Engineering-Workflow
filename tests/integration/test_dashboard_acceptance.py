@@ -16,6 +16,7 @@ The browser half (the web side's ``browser-live.mjs`` against this server) is re
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import os
 import re
@@ -374,9 +375,10 @@ def test_the_real_cli_serves_the_product_end_to_end(world):
 
 # ------------------------------------------------------------------------------------------------- the browser handoff
 
-def test_the_session_file_is_owner_only_whatever_entries_a_new_file_starts_with(tmp_path):
-    """A new file can carry explicit entries from the process's default DACL (SYSTEM, Administrators, OWNER RIGHTS on
-    the Windows CI runner), which removing inheritance keeps: the tool removes them, or refuses. On POSIX, mode 0600."""
+def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothing(tmp_path, monkeypatch):
+    """The file is created owner-only (POSIX 0600; Windows a protected DACL naming the user's SID alone, set at
+    creation, so the CI runner's default-DACL entries never appear) and written through that handle; a failure while
+    creating or writing leaves no file (PR #97 review A1-A4)."""
     import importlib.util
     import subprocess
 
@@ -385,19 +387,42 @@ def test_the_session_file_is_owner_only_whatever_entries_a_new_file_starts_with(
     tool = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tool)
     out = tmp_path / "session.json"
+    tool.write_private(out, '{"secret": 1}\n')
+    assert out.read_text(encoding="utf-8") == '{"secret": 1}\n'
     if IS_WINDOWS:
-        out.write_text("", encoding="utf-8")
-        for sid in ("*S-1-5-18", "*S-1-5-32-544", "*S-1-3-4"):  # explicit, as the runner's default DACL gives them
-            subprocess.run(["icacls", str(out), "/grant", f"{sid}:(F)"], check=True, capture_output=True,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-        assert len(tool._principals(out)) > 1
-        user, domain = os.environ["USERNAME"], os.environ.get("USERDOMAIN") or ""
-        tool._owner_only_acl(out, f"{domain}\\{user}" if domain else user)
-        principals = tool._principals(out)
-        assert len(principals) == 1 and user.lower() in principals[0].lower(), principals
+        acl = subprocess.run(["icacls", str(out)], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
+                             ).stdout.decode("oem", "replace")
+        grants = [ln for ln in acl.splitlines()[:-2] if ":(" in ln]
+        assert len(grants) == 1 and os.environ["USERNAME"].lower() in grants[0].lower(), acl
+        assert "(I)" not in acl and "(F)" in grants[0], acl
+        sid = tool.user_sid()
+        assert sid.startswith("S-1-5-"), sid
     else:
-        tool.write_private(out, "{}\n")
         assert out.stat().st_mode & 0o777 == 0o600
+    # Failures leave nothing: before the file exists, and while writing through the handle.
+    gone = tmp_path / "gone.json"
+    if IS_WINDOWS:
+        monkeypatch.setattr(tool, "user_sid", lambda: (_ for _ in ()).throw(SystemExit("no SID")))
+        with pytest.raises(SystemExit):
+            tool.write_private(gone, "secret")
+        assert not gone.exists()
+        monkeypatch.undo()
+
+    class Broken(io.StringIO):
+        def write(self, text):
+            raise OSError("disk full")
+
+    real_fdopen = os.fdopen
+
+    def fdopen(fd, *a, **k):
+        os.close(fd)
+        return Broken()
+
+    monkeypatch.setattr(tool.os, "fdopen", fdopen)
+    with pytest.raises(OSError, match="disk full"):
+        tool.write_private(gone, "secret")
+    assert not gone.exists()
+    monkeypatch.setattr(tool.os, "fdopen", real_fdopen)
 
 
 def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, monkeypatch, capsys):

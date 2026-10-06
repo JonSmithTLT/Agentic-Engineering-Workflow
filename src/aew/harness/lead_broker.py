@@ -254,6 +254,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     from aew.engine.api import Engine
 
     parser = build_parser()
+    stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
+    argv = _expand_fields(argv, parser, stdin_stream, cwd)
     noise = io.StringIO()
     try:
         with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
@@ -289,13 +291,35 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     stdin_before = sys.stdin
     try:  # requests are serialized, so the process-wide cwd/stdin swap is safe here
         os.chdir(target)
-        sys.stdin = io.StringIO(stdin)
+        sys.stdin = stdin_stream
         with dispatch.channel(channel):  # its dispatches record which transport carried them (M4-A)
             result = ns.handler(ns)
     finally:
         sys.stdin = stdin_before
         os.chdir(previous)
     return {"result": result, "json": bool(getattr(ns, "json", False))}
+
+
+def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO, cwd: str) -> list[str]:
+    """``--fields FILE|-`` expanded as the ``aew`` client does, with this call's stdin and a FILE read from its
+    directory, before anything is parsed or checked. A shell command relayed through ``lead.cli`` arrives already
+    expanded (its client did it), so for it this changes nothing; the typed ``cli`` escape submits its argv as given
+    (PR #93 review). Expanded values are checked like any other argument afterwards."""
+    from aew.cli import fields
+
+    if not any(a == fields.OPTION or a.startswith(fields.OPTION + "=") for a in argv):
+        return argv
+    previous, stdin_before = os.getcwd(), sys.stdin
+    try:  # requests are serialized, so the process-wide swap is safe here
+        try:
+            os.chdir(Path(cwd).resolve())
+        except OSError as exc:
+            raise errors.UsageError(f"cannot use {cwd} as the command's directory: {exc.strerror or exc}") from None
+        sys.stdin = stdin
+        return fields.expand(argv, parser)
+    finally:
+        sys.stdin = stdin_before
+        os.chdir(previous)
 
 
 def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:

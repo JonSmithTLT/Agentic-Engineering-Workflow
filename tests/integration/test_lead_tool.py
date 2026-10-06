@@ -127,6 +127,54 @@ def test_the_cli_escape_keeps_every_broker_refusal(held, argv, why):
     assert _rev(engine) == rev
 
 
+def test_a_command_that_answers_not_ok_stops_the_call_and_keeps_what_it_committed(held, monkeypatch):
+    """`integrate publish` after the head moved commits one rebuild and answers ``ok: false`` (revalidate, then
+    publish); the direct CLI exits nonzero for it. The typed result must not call that a success (PR #93 review).
+    A checkpoint that commits and then answers the same way stands in for it here."""
+    p, wid, engine, broker = held
+    real = Engine.checkpoint
+
+    def committed_but_not_done(self, **kwargs):
+        out = real(self, **kwargs)
+        return {**out, "ok": False, "rebuilt": True, "next": "rerun post-integration validation, then publish"}
+
+    monkeypatch.setattr(Engine, "checkpoint", committed_but_not_done)
+    rev = _rev(engine)
+    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev)]}, profile="recovery")
+    assert not out["ok"] and out["stopped"]["boundary"] == "refused", out
+    assert out["stopped"]["at"] == "aew checkpoint" and out["stopped"]["error"]["code"] == "NOT_COMPLETED"
+    assert out["stopped"]["error"]["message"] == "rerun post-integration validation, then publish"
+    assert _rev(engine) == rev + 1 and out["completed_steps"][0]["revision"] == rev + 1  # what committed stays
+    assert out["result"]["output"]["rebuilt"] is True and out["revision"] == rev + 1
+
+
+def test_the_cli_escape_expands_fields_from_its_own_stdin(held):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev), "--fields", "-"],
+                       "stdin": "next: 'from fields: $1 `x`'\n"}, profile="recovery")
+    assert out["ok"], out["stopped"]
+    assert _rev(engine) == rev + 1 and engine.store.read()["next_action"] == "from fields: $1 `x`"
+    (p.root / "fields.yaml").write_text("next: from a file\n", encoding="utf-8")  # a FILE is read from the project
+    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev + 1), "--fields", "fields.yaml"]},
+               profile="recovery")
+    assert out["ok"] and engine.store.read()["next_action"] == "from a file"
+
+
+@pytest.mark.parametrize(("argv", "stdin", "code"), [
+    (["checkpoint", "--expect-rev", "{rev}"], "token: x\n", "USAGE"),  # a credential never goes through --fields
+    # nor around a broker refusal: the expanded argv meets every one of them
+    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "launch: false\n", "PERMISSION_DENIED"),
+])
+def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    argv = [a.replace("{rev}", str(rev)).replace("{wid}", wid) for a in argv] + ["--fields", "-"]
+    out = call("cli", {"argv": argv, "stdin": stdin}, profile="recovery")
+    assert not out["ok"] and out["stopped"]["error"]["code"] == code, out["stopped"]
+    assert _rev(engine) == rev
+
+
 def test_the_cli_escape_refuses_a_token(held):
     p, wid, engine, broker = held
     out = call("cli", {"argv": ["checkpoint", "--token", "x", "--expect-rev", str(_rev(engine))]}, profile="recovery")

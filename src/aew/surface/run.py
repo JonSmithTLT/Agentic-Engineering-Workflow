@@ -60,6 +60,7 @@ class Call:
         self.run_cli = run_cli
         self.steps: list[dict[str, Any]] = []
         self.subject: str | None = None
+        self.unsuccessful: dict[str, Any] | None = None  # a command that answered ``ok: false`` (the cli escape)
 
     def token(self) -> str:
         return self._token or ""  # without one the engine refuses the mutation (its own check, its own code)
@@ -122,17 +123,28 @@ def _harness_wait(c: Call) -> Any:
 
 def _cli(c: Call) -> Any:
     """The recovery escape: one `aew` command through the broker's own ``run_cli``, with every refusal it has. What
-    it changed is the command's own answer; its revision is reported when the command states one."""
+    it changed is the command's own answer; its revision is reported when the command states one.
+
+    A command that answers ``ok: false`` (the direct CLI exits nonzero for it) did not do what was asked, though it
+    may have committed something on the way (``integrate publish`` after the head moved commits one rebuild and asks
+    for revalidation): its step stays recorded and the call stops there, never reported as a success (PR #93
+    review)."""
     if c.run_cli is None:
         raise errors.UsageError("the cli escape needs the Lead broker or an operator's own credential")
     argv = list(c.a["argv"])
     reply = c.run_cli(argv, c.a.get("stdin") or "")
     output = reply.get("result")
     revision = output.get("revision") if isinstance(output, dict) else None
-    c.steps.append({"primitive": "aew " + " ".join(a for a in argv[:3] if not a.startswith("-")),
+    words = next((argv[:i] for i, a in enumerate(argv) if a.startswith("-")), argv)[:3]  # the command, not values
+    c.steps.append({"primitive": "aew " + " ".join(words),
                     "operation_class": spec_for("cli").operation_class,
                     "revision": revision if isinstance(revision, int) else None,
                     "summary": "a primitive command (recovery)", "refs": []})
+    if isinstance(output, dict) and output.get("ok") is False:
+        problems = output.get("problems")
+        message = output.get("next") or ("; ".join(map(str, problems)) if isinstance(problems, list) else "")
+        c.unsuccessful = {"code": "NOT_COMPLETED", "message": str(message or "the command answered ok: false"),
+                          "details": {}}
     return {"argv": argv, "output": output}
 
 
@@ -203,6 +215,8 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
         except errors.AEWError as refusal:
             at = call.steps[-1]["primitive"] if call.steps else t.name
             stopped = {"at": at, "boundary": boundary_of(refusal), "error": _error(refusal)}
+        if stopped is None and call.unsuccessful is not None:
+            stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry

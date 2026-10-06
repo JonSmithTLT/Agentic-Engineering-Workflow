@@ -42,6 +42,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **Adopted amendments** are listed in `docs/spec-amendments.yaml` (as an overlay or under `considered`).
 - **The register is data.** Edit `docs/implementation/future-work.yaml`, then run `python tools/register.py render`.
   Never edit `future-work.md` by hand. Closed rows move to §9 with the date and what closed them; nothing is deleted.
+  What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
+  command; `check` fails when an item goes stale or a question or **Designer** row has none).
 - Before committing docs work: `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
   tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/test_spec_pin.py`.
 

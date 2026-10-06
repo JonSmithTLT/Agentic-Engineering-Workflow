@@ -241,7 +241,9 @@ class Validation:
                 return {"ok": True, "work_id": work_id, "noop": True, "run": current["id"],
                         "evidence": list(current.get("evidence") or []), "result": current.get("result"),
                         "integration": unit["integration"]["status"], "revision": self._rev()}
-            attempts = self._infra_attempts(current, identity)
+            # A diagnostic run is advisory: the authoritative runs' attempt bound never applies to it, so it can never
+            # release the lease or change the candidate's status (PR #91 re-review, finding 2).
+            attempts = 0 if diagnostic else self._infra_attempts(current, identity)
             if attempts >= V.MAX_INFRA_ATTEMPTS:
                 return self._release_unavailable(token, rev, work_id, current, why="the infrastructure attempt "
                                                  "bound for this candidate is used up")
@@ -523,6 +525,8 @@ class Validation:
                 ctx.summary = f"{work_id} validation run {run['id']} superseded while its checks ran; nothing recorded"
             elif problem is not None:
                 abandoned = problem
+                if problem[0] not in NOT_INFRA and not run.get("diagnostic"):  # an expiry counts, as in _abandon
+                    current["breaker_open"] = self._breaker_record(state, work_id, run["id"], problem[0])
                 self._terminate(ctx, work_id, current, "abandoned", reason=problem[0], detail=problem[1])
                 ctx.summary = f"{work_id} validation run {run['id']} abandoned: {problem[0]}"
             elif run.get("diagnostic"):

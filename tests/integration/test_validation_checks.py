@@ -592,3 +592,81 @@ def test_a_diagnostic_run_never_displaces_the_satisfying_validation(calc, tmp_pa
     assert integration["diagnostic_run"]["state"] == "advisory"
     assert_control_invariants(calc)
     assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
+
+
+# ------------------------------------------------------------------------------------- PR #91 re-review findings
+
+def _gates(p, **post) -> None:
+    pol = p.root / ".aew/policy/gates.yaml"
+    g = load_yaml(pol.read_text(encoding="utf-8"))
+    g["post_integration"] = post
+    pol.write_text(dump_yaml(g), encoding="utf-8", newline="\n")
+
+
+def test_with_no_checks_listed_a_verifiers_pass_still_publishes(calc, tmp_path, contained):
+    """Re-review finding 1: checks mode with an empty list refuses checks, never the verifier the refusal points to."""
+    policy(calc, checks=SMOKE, post=[])
+    wid = prepared(calc, tmp_path)
+    with pytest.raises(GateUnsatisfied):
+        validate(calc, wid)
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration"))
+    assert integ(calc, wid)["status"] == "validated"
+    assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
+
+
+def test_a_checks_validation_never_publishes_once_policy_lists_no_checks(calc, tmp_path, contained):
+    """Re-review finding 4: a candidate validated by its checks, after policy empties the list and turns verification
+    off, is refused at publication (VALIDATION_CHECKS_EMPTY), never published as 'nothing required'."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    assert validate(calc, wid)["result"] == "pass" and integ(calc, wid)["status"] == "validated"
+    _gates(calc, verification=False, checks=[], validation="checks")
+    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
+    assert res.error["details"]["code_reason"] == "VALIDATION_CHECKS_EMPTY", res.error
+    assert control(calc)["work"][wid]["state"] == "COMMIT_READY"
+
+
+def test_a_diagnostic_run_never_spends_or_ends_the_authoritative_attempts(calc, tmp_path, contained, monkeypatch):
+    """Re-review finding 2: with the authoritative attempt bound used up, a diagnostic run is still only advisory: it
+    never releases the lease or marks the candidate unavailable."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    from aew.engine.faults import InjectedFault
+
+    monkeypatch.setattr(VO, "executor_alive", lambda run: False)
+    for _ in range(2):  # two interrupted authoritative runs: the bound is used up
+        monkeypatch.setenv("AEW_FAULT", "validate.before_check")
+        monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+        with pytest.raises(InjectedFault):
+            validate(calc, wid)
+        monkeypatch.delenv("AEW_FAULT")
+        assert validate(calc, wid)["abandoned"] == "VALIDATION_INTERRUPTED"
+    advisory = validate(calc, wid, diagnostic=True)
+    assert advisory["diagnostic"], advisory
+    assert entry(calc, wid)["state"] == "LEASED" and integ(calc, wid)["status"] == "prepared"
+    assert_control_invariants(calc)
+
+
+def test_a_deadline_found_at_commit_is_counted_by_the_breaker(calc, tmp_path, contained, monkeypatch):
+    """Re-review finding 3: a run whose deadline passed while its checks ran, found by its own transaction 2, is an
+    infrastructure failure for the breaker, as the same expiry found by a later call is."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    real = VO.Validation._execute
+    executed = {"done": False}
+
+    def execute(self, work_id, run):
+        out = real(self, work_id, run)
+        executed["done"] = True  # from here on, the deadline has passed
+        return out
+
+    monkeypatch.setattr(VO.Validation, "_execute", execute)
+    monkeypatch.setattr(VO, "_past", lambda stamp: executed["done"])
+    out = validate(calc, wid)
+    assert out["abandoned"] == "VALIDATION_DEADLINE_EXPIRED", out
+    breaker = control(calc)["queue"]["validation_breaker"]
+    assert [f["code"] for f in breaker["failures"]] == ["VALIDATION_DEADLINE_EXPIRED"], breaker
+    assert "breaker_open" in integ(calc, wid)["current_validation_run"]
+    assert entry(calc, wid)["state"] == "LEASED"
+    assert_control_invariants(calc)

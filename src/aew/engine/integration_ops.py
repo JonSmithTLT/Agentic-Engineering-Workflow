@@ -360,8 +360,8 @@ class Integration:
         now = self.invocations.snapshot_of(integ["workspace"], integ["workspace_id"])["relevant_inputs_fingerprint"]
         if now != fp:
             raise GateUnsatisfied("the integration candidate changed after it was prepared", prepared=fp, current=now)
-        self._require_checks_policy(state, work_id)
         if not policy["verification"] and not policy["checks"]:
+            self._require_checks_policy(state, work_id)  # checks mode with nothing listed is never "none required"
             return
         if integ.get("status") != "validated":
             raise GateUnsatisfied("post-integration verification has not passed for the integrated snapshot",
@@ -389,11 +389,14 @@ class Integration:
         mode (M4-D5) the engine's own check evidence does, bound to the current identity; a verifier's passing report
         is accepted in either mode, since it is never weaker."""
         policy = self.k.policy("gates")["post_integration"]
-        self._require_checks_policy(state, work_id)
         if not policy["verification"] and not policy["checks"]:
+            self._require_checks_policy(state, work_id)  # checks mode with nothing listed is never "none required"
             return
         integ = unit["integration"]
         if (integ.get("validation") or {}).get("mode") == V.CHECKS:
+            # An empty check set never satisfies checks mode; a verifier's pass (the branch below) still does, in
+            # either mode (PR #91 re-review, finding 1).
+            self._require_checks_policy(state, work_id)
             self._require_checks_validation(state, work_id, unit)
             return
         fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
@@ -414,8 +417,9 @@ class Integration:
                                   "definition that policy/checks.yaml has since changed", missing=missing)
 
     def _require_checks_policy(self, state: dict[str, Any], work_id: str) -> None:
-        """A Ticket whose validation resolves to `checks` with no checks listed is never validated: an empty set
-        would pass vacuously, so publication is refused rather than treating no validation as success (PR #91)."""
+        """A Ticket whose validation resolves to `checks` with no checks listed is never validated by checks: an empty
+        set would pass vacuously, so publication is refused rather than treating no validation as success (PR #91).
+        A verifier's passing report is still accepted (``_require_bound_validation``)."""
         if V.obligation(state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS and \
                 not self.k.policy("gates")["post_integration"].get("checks"):
             raise GateUnsatisfied("post-integration validation resolves to `checks`, but gates.post_integration.checks "

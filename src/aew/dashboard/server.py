@@ -25,6 +25,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import queue
 import re
 import threading
 import time
@@ -32,7 +33,7 @@ from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TextIO
 from urllib.parse import parse_qs, urlsplit
 
 from aew.dashboard import etag as E
@@ -82,6 +83,43 @@ GONE_PAGE = ("This dashboard link was already used, has expired, or was never is
              "terminal for a new one.")
 CROSS_SITE_PAGE = ("This dashboard link is opened by you, from the address bar, not from another page or by a "
                    "prefetch. Paste it into the address bar of this browser; it is still valid.")
+
+
+class RequestLog(logging.Handler):
+    """The request log's sink (R23), which never blocks a request. Request threads only enqueue a formatted line,
+    and a full queue drops it. One writer thread writes to the stream. A terminal that stops reading (Ctrl-S, a
+    suspended emulator) therefore stalls only the writer, never the server or its shutdown."""
+
+    def __init__(self, stream: TextIO, *, capacity: int = 1024) -> None:
+        super().__init__()
+        self.stream = stream
+        self.dropped = 0
+        self._lines: queue.Queue[str | None] = queue.Queue(capacity)
+        self._writer = threading.Thread(target=self._write, name="aew-dashboard-log", daemon=True)
+        self._writer.start()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._lines.put_nowait(self.format(record))
+        except queue.Full:
+            self.dropped += 1
+
+    def _write(self) -> None:
+        while (line := self._lines.get()) is not None:
+            try:
+                self.stream.write(line + chr(10))
+                self.stream.flush()
+            except (OSError, ValueError):
+                pass  # the stream is gone: the log is best effort, the server is not
+
+    def close(self) -> None:
+        """Stop the writer; waits at most a second for lines already queued (never for a stalled stream)."""
+        try:
+            self._lines.put_nowait(None)
+        except queue.Full:
+            pass
+        self._writer.join(1.0)
+        super().close()
 
 
 class Authenticator(Protocol):

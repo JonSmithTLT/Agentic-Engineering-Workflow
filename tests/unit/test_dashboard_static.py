@@ -232,3 +232,47 @@ def test_build_json_matches_the_web_build_agreement():
     assert record["inputs"]["web/package-lock.json"] in agreement and record["inputs"]["web/package.json"] in agreement
     assert table["Pinned builder image"] == record["builder"]["image"]
     assert table["Toolchain"] == f"Node {record['builder']['node'].lstrip('v')} / npm {record['builder']['npm']}"
+
+
+# ---------------------------------------------------------------------------------------------- the request log
+
+def test_the_request_log_never_blocks_a_request_on_a_stalled_terminal():
+    """``serve`` logs to its terminal; a terminal that stops reading (Ctrl-S, a suspended emulator) must stall
+    only the log's writer: logging returns at once, lines beyond the queue are dropped, and closing never hangs."""
+    import logging
+    import threading
+    import time
+
+    from aew.dashboard.server import RequestLog
+
+    class Stalled:
+        def __init__(self) -> None:
+            self.release = threading.Event()
+            self.lines: list[str] = []
+
+        def write(self, text: str) -> None:
+            self.release.wait()
+            self.lines.append(text)
+
+        def flush(self) -> None:
+            pass
+
+    stream = Stalled()
+    handler = RequestLog(stream, capacity=8)  # type: ignore[arg-type]
+    logger = logging.getLogger("aew.dashboard.test-request-log")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    requests = threading.Thread(target=lambda: [logger.info("GET /api/v1/project 200 %dms", n) for n in range(200)],
+                                daemon=True)
+    try:
+        requests.start()
+        requests.join(5.0)
+        assert not requests.is_alive(), "logging blocked on the stalled terminal"
+        assert handler.dropped >= 200 - 8 - 1
+        started = time.monotonic()
+        handler.close()
+        assert time.monotonic() - started < 3.0  # shutdown does not wait for the terminal either
+    finally:
+        stream.release.set()
+        logger.removeHandler(handler)

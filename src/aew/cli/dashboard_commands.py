@@ -20,6 +20,7 @@ from aew import operator
 from aew.cli import credentials
 from aew.cli.commands import _add_json, _engine
 from aew.dashboard import control, service
+from aew.dashboard.server import RequestLog
 from aew.dashboard.session import DEFAULT_HOURS, MAX_HOURS, MIN_HOURS
 from aew.errors import NotFound, OperatorAuthorizationRequired, UsageError
 
@@ -81,7 +82,7 @@ def _serve(a: argparse.Namespace) -> None:
     except BaseException:
         svc.close()
         raise
-    log = logging.StreamHandler(sys.stderr)  # the request log (R23): method, redacted path, status, milliseconds
+    log = RequestLog(sys.stderr)  # the request log (R23): method, redacted path, status, milliseconds; never blocks
     log.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%dT%H:%M:%S"))
     logging.getLogger("aew.dashboard").addHandler(log)
     logging.getLogger("aew.dashboard").setLevel(logging.INFO)
@@ -101,6 +102,8 @@ def _serve(a: argparse.Namespace) -> None:
         svc.wait()
     finally:
         svc.stop()
+        logging.getLogger("aew.dashboard").removeHandler(log)
+        log.close()
 
 
 def _open(a: argparse.Namespace) -> dict[str, Any]:

@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/surface/v1",
+  "title": "The typed Lead surface's result contract: StageResult, ActionProjection and the adapter input error",
+  "description": "typed-lead-surface-design-v0.2 §3.3, with A3's policy binding (F15.1). Every object is closed. A StageResult always means the runner observed AEW state: revision and generation are never null. An adapter input error is never a StageResult.",
+  "$ref": "#/$defs/stage_result",
+  "$defs": {
+    "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED", "JUDGMENT_BEARING"]},
+    "availability": {"enum": ["AVAILABLE", "BLOCKED", "UNKNOWN"]},
+    "kind": {"enum": ["query", "wait", "stage", "decision", "primitive"]},
+    "argv": {"type": "array", "items": {"type": "string"}},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "details"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string"},
+        "details": {"type": "object"}
+      }
+    },
+    "policy_binding": {
+      "description": "A3: the digests a staged action is bound to. Null until F15.4 computes them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legality_digest", "operational_digest", "authorization_digest"],
+      "properties": {
+        "legality_digest": {"$ref": "#/$defs/digest"},
+        "operational_digest": {"$ref": "#/$defs/digest"},
+        "authorization_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "operation_class", "revision", "summary", "refs"],
+      "properties": {
+        "primitive": {"type": "string", "minLength": 1},
+        "operation_class": {"$ref": "#/$defs/operation_class"},
+        "revision": {"type": ["integer", "null"], "minimum": 0},
+        "summary": {"type": "string"},
+        "refs": {"type": "array", "items": {"type": "string"}},
+        "retried_after_stale_revision": {"type": "boolean"}
+      }
+    },
+    "stopped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "boundary", "error"],
+      "properties": {
+        "at": {"type": "string", "minLength": 1},
+        "boundary": {"enum": ["refused", "stale_revision", "stale_authority", "stale_policy", "permission",
+                              "launch_failed", "not_found", "judgment_required", "unavailable", "error"]},
+        "error": {"$ref": "#/$defs/error"}
+      }
+    },
+    "action": {
+      "description": "availability is legality only; callable is presentation (built and exposed on the caller's profile); auto_runnable means eligible for the stage runner to advance without judgment, never a query or a wait.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "kind", "arguments", "operation_class", "availability", "callable", "auto_runnable",
+                   "reason_codes", "cli_fallback"],
+      "properties": {
+        "action": {"type": "string", "minLength": 1},
+        "kind": {"$ref": "#/$defs/kind"},
+        "arguments": {"type": "object"},
+        "operation_class": {"$ref": "#/$defs/operation_class"},
+        "availability": {"$ref": "#/$defs/availability"},
+        "callable": {"type": "boolean"},
+        "auto_runnable": {"type": "boolean"},
+        "reason_codes": {"type": "array", "items": {"type": "string"}},
+        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"auto_runnable": {"const": true}}, "required": ["auto_runnable"]},
+         "then": {"properties": {"availability": {"const": "AVAILABLE"},
+                                 "kind": {"enum": ["stage", "decision"]},
+                                 "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED"]}}}}
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "subject", "evidence", "tool", "arguments", "availability", "default",
+                   "cli_fallback"],
+      "properties": {
+        "decision": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "tool": {"type": ["string", "null"]},
+        "arguments": {"type": ["object", "null"]},
+        "availability": {"$ref": "#/$defs/availability"},
+        "default": {"const": "NONE"},
+        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]}
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string"},
+        "details": {"type": "object"}
+      }
+    },
+    "run": {
+      "description": "local run telemetry, never authority",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "invocation", "work_unit", "role", "status", "reason", "evidence", "source",
+                   "observed_at"],
+      "properties": {
+        "run": {"type": "string"},
+        "invocation": {"type": "string"},
+        "work_unit": {"type": "string"},
+        "role": {"type": "string"},
+        "status": {"type": "string"},
+        "reason": {"type": ["string", "null"]},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "source": {"const": "local_telemetry"},
+        "observed_at": {"type": "string"}
+      }
+    },
+    "action_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "generation", "subject", "state", "actions", "decisions_required", "blockers",
+                   "anomalies", "hints", "runs"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 0},
+        "generation": {"type": "integer", "minimum": 0},
+        "subject": {"type": "string", "minLength": 1},
+        "state": {"type": ["string", "null"]},
+        "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
+        "decisions_required": {"type": "array", "items": {"$ref": "#/$defs/decision"}},
+        "blockers": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
+        "anomalies": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
+        "hints": {"description": "reader-only prose; never parsed", "type": "array", "items": {"type": "string"}},
+        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}}
+      }
+    },
+    "stage_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "surface", "tool", "base_operation_class", "effective_operation_class", "revision",
+                   "generation", "stage_intent_id", "policy_binding", "completed_steps", "stopped", "result",
+                   "projection"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "surface": {"const": "aew/surface/v1"},
+        "tool": {"type": "string", "minLength": 1},
+        "base_operation_class": {"$ref": "#/$defs/operation_class"},
+        "effective_operation_class": {"$ref": "#/$defs/operation_class"},
+        "revision": {"type": "integer", "minimum": 0},
+        "generation": {"type": "integer", "minimum": 0},
+        "stage_intent_id": {"type": ["string", "null"]},
+        "policy_binding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/policy_binding"}]},
+        "completed_steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/stopped"}]},
+        "result": {"description": "the tool's own payload, as the engine returned it (scrubbed)",
+                   "type": ["object", "null"]},
+        "projection": {"$ref": "#/$defs/action_projection"}
+      },
+      "allOf": [
+        {"if": {"properties": {"ok": {"const": true}}, "required": ["ok"]},
+         "then": {"properties": {"stopped": {"type": "null"}}}},
+        {"if": {"properties": {"ok": {"const": false}}, "required": ["ok"]},
+         "then": {"properties": {"stopped": {"$ref": "#/$defs/stopped"}}}}
+      ]
+    },
+    "adapter_input_error": {
+      "description": "A transport-level input error: the call never reached the runner (or the broker could not be reached) and nothing committed. Never a StageResult.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "details"],
+      "properties": {
+        "code": {"enum": ["INVALID_ARGUMENTS", "UNKNOWN_TOOL", "TOOL_NOT_BUILT", "TOOL_NOT_EXPOSED",
+                          "BROKER_UNREACHABLE"]},
+        "message": {"type": "string"},
+        "details": {"type": "object"}
+      }
+    }
+  }
+}

@@ -257,8 +257,12 @@ sections:
     Source (governing): '[typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) §3 to §5, §7, §8, §11 (ledger
       TLS-01 to TLS-12, TLS-15, TLS-16, TLS-18 to TLS-25)'
     Belongs to or gated by: '**M4-D** (the design''s §11); the first transport is MCP (Q13, designer 2026-10-05)'
-    Notes: Creates no multi-step mutation semantics. The prototype on the review branch (patch in `eval/reviews/architecture-2026-10-04/patches/`)
-      proved the seams; everything it did not build is listed in the design's §9
+    Notes: 'Creates no multi-step mutation semantics. The prototype on the review branch (patch in `eval/reviews/architecture-2026-10-04/patches/`)
+      proved the seams; everything it did not build is listed in the design''s §9. Three slices, one PR each: A the contract,
+      B the broker operation, the fail-closed Lead reachability classification and the CLI parity adapter, C the MCP transport
+      and the Lead projection. **A built:** `aew.surface` (catalog, effective class, runner, tri-state projection with a
+      control part cached on control and policy identity and legality and run-telemetry overlays read on every call), `schemas/surface.schema.json`
+      with A3''s `policy_binding`; the stages, publication and the `cli` escape are catalogued and refused until built'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review

@@ -186,7 +186,7 @@ def private_repository(root: Path) -> list[Path]:
     for p in (root, *root.parents):
         dot_git = p / ".git"
         if dot_git.is_dir():  # the main checkout, and any worktree linked to it elsewhere
-            linked = [Path(f.read_text(encoding="utf-8").strip()).resolve().parent
+            linked = [(f.parent / f.read_text(encoding="utf-8").strip()).resolve().parent
                       for f in (dot_git / "worktrees").glob("*/gitdir")]
             return list(dict.fromkeys([p, *linked]))
         if dot_git.is_file():
@@ -202,7 +202,7 @@ def private_repository(root: Path) -> list[Path]:
                 if common.name == ".git":  # a non-bare main checkout: its working tree holds the corpus too
                     out.append(common.parent)
                 for linked in (common / "worktrees").glob("*/gitdir"):  # and every other linked worktree's
-                    out.append(Path(linked.read_text(encoding="utf-8").strip()).resolve().parent)
+                    out.append((linked.parent / linked.read_text(encoding="utf-8").strip()).resolve().parent)
             return list(dict.fromkeys(out))
     return [root]
 

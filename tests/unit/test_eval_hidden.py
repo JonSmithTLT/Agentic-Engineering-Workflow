@@ -402,6 +402,15 @@ def test_a_worktree_root_masks_its_object_store_and_every_checkout(tmp_path):
     plain = tmp_path / "plain"
     plain.mkdir()
     assert hidden.private_repository(plain) == [plain]
+    # Review of e71f1f3: git 2.48+ (worktree.useRelativePaths) records a linked worktree relative to its own gitdir
+    # file, which is where it resolves from, whatever the runner's working directory.
+    other = tmp_path / "other-wt"
+    (other / "eval").mkdir(parents=True)
+    record = main / ".git" / "worktrees" / "other-wt"
+    record.mkdir(parents=True)
+    (record / "gitdir").write_text("../../../../other-wt/.git\n", encoding="utf-8")
+    assert other.resolve() in hidden.private_repository(main / "eval")
+    assert other.resolve() in hidden.private_repository(linked / "eval")
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,

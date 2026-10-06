@@ -70,6 +70,46 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     assert project.ok("status", "--json")["contradictions"] == []
 
 
+OPERATOR_DECISIONS = ("authority accept", "authority reject", "manifest adopt", "migrate")
+
+
+def _names_the_operator(text: str) -> None:
+    for command in OPERATOR_DECISIONS:
+        if f"aew {command}" in text:
+            assert "operator" in text, (command, text)
+
+
+def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project):
+    """PR #103 review, F1: a Lead session refuses the operator's decisions, so the next actions and refusals the Lead
+    reads say the operator runs them, at their own terminal, rather than sending the Lead into a refusal."""
+    from invariants import load_control
+
+    from aew.engine.base import as_v1
+    from aew.engine.store import serialize_control
+    from aew.harness import lead_broker
+
+    assert {frozenset(c.split()) for c in OPERATOR_DECISIONS} == set(lead_broker.OPERATOR_DECIDED)
+    actions = project.ok("status", "--json")["next_actions"]
+    assert any("aew authority accept" in a for a in actions), actions
+    for action in actions:
+        _names_the_operator(action)
+    manifest = project.root / ".aew/project.yaml"
+    manifest.write_bytes(manifest.read_bytes() + b"# edited\n")
+    res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
+    assert "aew manifest adopt" in res.error["message"]
+    _names_the_operator(res.error["message"])
+    project.lead("manifest", "adopt", "--reason", "reviewed")
+    control = project.root / ".aew/state/control.yaml"
+    control.write_bytes(serialize_control(as_v1(load_control(project.root))))
+    res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
+    assert res.error["code"] == "MIGRATION_REQUIRED" and "aew migrate" in res.error["message"]
+    _names_the_operator(res.error["message"])
+    actions = project.ok("status", "--json")["next_actions"]
+    assert any("aew migrate" in a for a in actions), actions
+    for action in actions:
+        _names_the_operator(action)
+
+
 # ------------------------------------------------------------------ credentials
 
 

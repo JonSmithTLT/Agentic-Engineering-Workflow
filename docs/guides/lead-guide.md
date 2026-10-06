@@ -44,7 +44,7 @@ Checks not configured yet (their gates stay blocked): unit.
 
 ## Before the first Ticket
 
-- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, and gives them no authority. `aew status` asks you to classify them first: `aew authority list`, then `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev N` or `aew authority reject <candidate> --reason ... --expect-rev N`. This tells AEW which documents govern the work and which only orient it.
+- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, and gives them no authority. Classifying them is the operator's decision, made at their own terminal (`aew authority accept` and `aew authority reject` are refused in your session): `aew authority list` shows them, and you ask the operator to classify them. This tells AEW which documents govern the work and which only orient it.
 - Look at the project before you describe work in it. You cannot edit files, but you can read and search them with your read, glob and grep tools.
 
 ## A mutating Ticket, step by step

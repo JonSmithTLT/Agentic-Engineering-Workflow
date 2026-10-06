@@ -98,6 +98,30 @@ def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
         lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
 
 
+def operator_decided_commands() -> list[str]:
+    """The operator's decisions as typed, in the parser's order (`authority accept`, `manifest adopt`, `migrate`)."""
+    return sorted(" ".join(path) for path, _ in leaves(build_parser())
+                  if any(p == frozenset(path) for p in lead_broker.OPERATOR_DECIDED))
+
+
+def assert_never_the_leads(text: str) -> None:
+    """Every passage that names an operator-decided command also says the operator runs it (PR #103 review, F1)."""
+    for passage in text.replace("\n- ", "\n\n").split("\n\n"):
+        for command in operator_decided_commands():
+            if f"aew {command}" in passage:
+                assert "operator" in passage, (command, passage)
+
+
+def test_the_lead_guide_never_tells_the_lead_to_run_an_operator_decision():
+    from aew.engine import guide
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+
+    assert len(operator_decided_commands()) == len(lead_broker.OPERATOR_DECIDED)
+    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert "aew authority accept" in text
+    assert_never_the_leads(text)
+
+
 @pytest.mark.parametrize("argv", [
     ("gate", "waive", "T-0001", "--gate", "review", "--reason", "x", "--expect-rev", "1"),
     ("history", "load", "R-0001", "--into", "T-0001", "--reason", "x", "--expect-rev", "1"),

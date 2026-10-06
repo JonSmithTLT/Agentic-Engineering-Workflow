@@ -61,6 +61,7 @@ checks the index, and that every citation names a real section of the frozen ver
    - [`ticket-revision-amendment-2026-09-30.md`](design/ticket-revision-amendment-2026-09-30.md): Ticket revisions
    - [`typed-lead-surface-design-v0.2.md`](design/typed-lead-surface-design-v0.2.md): the typed Lead surface (F15), governing since 2026-10-05: one catalog of typed actions below transport, one runner, `StageResult` and a tri-state `ActionProjection`, MCP (`aew-lead`, broker-side) as the first normal transport and the CLI as parity and recovery; its §11 sequences M4-D, M4-E and M6
    - [`evaluation-component-design-v0.2.md`](design/evaluation-component-design-v0.2.md): the shared evaluation instrument (F19), adopted 2026-10-05: preregistration, the append-only attempt ledger, immutable runs, the hidden-evaluator channel; evaluation-only, never workflow authority; its first slice comes before M4-H's preregistration
+   - [`project-maps-design-v0.5.md`](design/project-maps-design-v0.5.md): project maps (T5; F22, F22.1 to F22.3), adopted 2026-10-05, the implementation contract: the deterministic structural core from Git objects with mechanically tracked inputs, the map registry with its own `map_revision` and the closed `map_service` writer, contained semantic extensions (C/C++ first) over exact source views, sibling indexes, typed configuration-qualified queries, untrusted map text, assurance monotonicity, T5-INV-01 to 12; slices T5-A to T5-E
    - [`install-bootstrap-ux-design-v0.3.md`](design/install-bootstrap-ux-design-v0.3.md): installation, bootstrap and first-run UX (T10; F18, F18.1 to F18.4, E21), adopted 2026-10-05: `aew init` proposes and the operator applies, atomically and bound to the proposal; static inspection before trust; isolated generated harness configuration; `aew doctor` diagnoses and never mutates; support follows a qualified pin; host topology still waits for Q12
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
@@ -121,7 +122,6 @@ text is not governing.
 |---|---|---|---|
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
-| [`project-maps-design-v0.4.md`](design/proposals/project-maps-design-v0.4.md) | F22, F22.1 to F22.3 | Proposed consolidation for the designer's freeze (2026-10-05): listing-bound freshness and the semantic-extension contract; v0.3 governs until adopted | Structural slice an M4 candidate; semantic extension with M6 |
 | [`remote-integration-target-sketch-2026-10-04.md`](design/proposals/remote-integration-target-sketch-2026-10-04.md) | F23, Q14 | Sketch, waiting on the designer's scope question (Q14) | Deferred until a team repository requires it; M4-D must not foreclose it |
 | [`aew-knowledge-capture-admission-design-v0.4.md`](design/proposals/aew-knowledge-capture-admission-design-v0.4.md) | F21 | Proposed, for joint review with the two below | M6b |
 | [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | Proposed | M6b |
@@ -191,8 +191,9 @@ ADR-0011 [implementation plan](archive/milestones/adr-0011-implementation-plan.m
 **Superseded** ([`archive/superseded/`](archive/superseded/)):
 [plan assurance v0.3](archive/superseded/plan-assurance-and-premise-validation-design-v0.3.md), replaced by
 [v0.4](design/plan-assurance-and-premise-validation-design-v0.4.md);
-[project maps v0.3](archive/superseded/project-maps-design-v0.3.md), design frozen 2026-10-04 and governing until the
-designer adopts [v0.4](design/proposals/project-maps-design-v0.4.md) (proposed 2026-10-05)
+[project maps v0.3](archive/superseded/project-maps-design-v0.3.md) (design frozen 2026-10-04) and
+[v0.4](archive/superseded/project-maps-design-v0.4.md) (the consolidation proposed for the freeze, 2026-10-05), replaced by
+[v0.5](design/project-maps-design-v0.5.md), adopted 2026-10-05
 
 ## Skills
 

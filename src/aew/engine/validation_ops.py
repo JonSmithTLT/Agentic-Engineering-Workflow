@@ -32,6 +32,7 @@ only through AWAITING_DISPOSITION, never by the timer itself.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import socket
@@ -97,6 +98,16 @@ def _parse(stamp: str) -> datetime:
 
 def _past(stamp: str | None) -> bool:
     return bool(stamp) and _now() >= _parse(str(stamp))
+
+
+CURRENT, DIAGNOSTIC = "current_validation_run", "diagnostic_run"
+SLOTS = (CURRENT, DIAGNOSTIC)
+
+
+def slot_of(run: dict[str, Any]) -> str:
+    """Where a run lives on its integration record: an authoritative run is the current one; an advisory diagnostic
+    run has its own slot, so it never displaces the run publication relies on (PR #91 review, finding 4)."""
+    return DIAGNOSTIC if run.get("diagnostic") else CURRENT
 
 
 def executor_alive(run: dict[str, Any]) -> bool:
@@ -179,6 +190,11 @@ class Validation:
 
     def _require_checks_mode(self, ob: dict[str, Any], work_id: str) -> None:
         if ob["mode"] == V.CHECKS:
+            if not self._post().get("checks"):
+                raise GateUnsatisfied(
+                    f"{work_id}'s post-integration validation resolves to `checks`, but gates.post_integration.checks "
+                    "lists none: an empty check set proves nothing, so it never validates a candidate. List the "
+                    "checks, or validate with the verifier", code_reason="VALIDATION_CHECKS_EMPTY")
             return
         if ob["verifier_required"]:
             raise GateUnsatisfied(
@@ -210,10 +226,13 @@ class Validation:
         while True:
             state = self.k.store.read()
             unit = self._require_validatable(state, work_id)
-            current = (unit["integration"] or {}).get("current_validation_run")
+            current = (unit["integration"] or {}).get(CURRENT)
             identity = self._identity(unit, self.obligation(state, work_id), self._check_set())
-            if current and current["state"] == "running":
-                settled = self._settle_running(token, rev, work_id, current, identity, wait=wait)
+            # One run at a time on a candidate, authoritative or diagnostic: both execute in its worktree.
+            running = next((r for r in ((unit["integration"] or {}).get(s) for s in SLOTS)
+                            if r and r["state"] == "running"), None)
+            if running is not None:
+                settled = self._settle_running(token, rev, work_id, running, identity, wait=wait)
                 if settled is not None:
                     return settled
                 rev = self._rev()  # the run we waited for ended: look again, under the revision it left
@@ -254,7 +273,7 @@ class Validation:
 
             def ended() -> bool:
                 unit = self.k.store.read()["work"].get(work_id) or {}
-                now = (unit.get("integration") or {}).get("current_validation_run") or {}
+                now = (unit.get("integration") or {}).get(slot_of(run)) or {}
                 return now.get("id") != run["id"] or now.get("state") != "running" or not executor_alive(now)
 
             remaining = max(0.0, (_parse(run["deadline_at"]) - _now()).total_seconds())
@@ -265,7 +284,7 @@ class Validation:
             return self._abandon(token, rev, work_id, run["id"], "VALIDATION_DEADLINE_EXPIRED",
                                  "the run passed its hard deadline; its executor was terminated")
         staged = self._staged(run)
-        if staged is not None and run["identity"] == identity:
+        if staged is not None and (run["identity"] == identity or run.get("diagnostic")):
             return self._commit_txn(token, rev, work_id, run, staged)  # finished, never committed: no re-run
         if staged is not None:
             return self._abandon(token, rev, work_id, run["id"], self._moved_reason(run["identity"], identity),
@@ -300,7 +319,7 @@ class Validation:
             if diagnostic:
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
                         "revision": self._rev()}
-            current = (self.k.store.read()["work"][work_id].get("integration") or {}).get("current_validation_run")
+            current = (self.k.store.read()["work"][work_id].get("integration") or {}).get(CURRENT)
             return self._release_unavailable(token, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
                                                 else "not an allow-listed transient reason" if code not in V.TRANSIENT
@@ -314,10 +333,10 @@ class Validation:
             ob = self.obligation(state, work_id)
             self._require_checks_mode(ob, work_id)
             integ = unit["integration"]
-            current = integ.get("current_validation_run")
-            if current and current["state"] == "running":
-                raise ValidationRunning(f"{current['id']} is already validating {work_id}'s candidate",
-                                        run=current["id"])
+            for other in (integ.get(s) for s in SLOTS):
+                if other and other["state"] == "running":
+                    raise ValidationRunning(f"{other['id']} is already running on {work_id}'s candidate",
+                                            run=other["id"])
             lease = Q.lease_of(state, work_id)
             assert lease is not None  # _require_validatable
             custodian = state["invocations"][lease["custodian"]]
@@ -325,6 +344,7 @@ class Validation:
             custodian["validation_runs"] = n
             run_id = f"IV-{lease['custodian'].split('-', 1)[1]}-{n}"
             check_set = self._check_set()
+            definitions = self._resolve_definitions(check_set)
             now = _now()
             run = {"id": run_id, "custodian": lease["custodian"], "entry": lease["entry"],
                    "identity": self._identity(unit, ob, check_set), "checks": check_set["checks"],
@@ -335,14 +355,32 @@ class Validation:
                    "state": "running", "infra_attempt": attempt}
             if diagnostic:
                 run["diagnostic"] = True
-            integ["current_validation_run"] = run
+            integ[slot_of(run)] = run
             runs = integ.setdefault("validation_runs", {"count": 0, "ids": []})
             runs["count"] += 1
             runs["ids"].append(run_id)
             ctx.refs.append(f"invocation:{lease['custodian']}")
             ctx.summary = (f"{work_id} validation run {run_id} pinned ({'diagnostic, ' if diagnostic else ''}"
                            f"{len(check_set['checks'])} checks, deadline {run['deadline_at']})")
-        return run
+        # The resolved definitions travel with the executor, never through state: the checks run exactly what this
+        # transaction pinned, whatever policy says while they run (PR #91 review, finding 1).
+        return {**run, "_definitions": definitions}
+
+    def _resolve_definitions(self, check_set: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """Each pinned check's definition as resolved now: a configured check's command, cwd and timeout, or the
+        guardrails policy for the builtin; with the digest it hashes to, which must be the pinned one."""
+        checks_policy, guardrails = self.k.policy("checks"), copy.deepcopy(self.k.policy("guardrails"))
+        out: dict[str, dict[str, Any]] = {}
+        for entry in check_set["checks"]:
+            if entry["definition_sha256"] is None:
+                continue  # not configured: the run reports CHECK_NOT_CONFIGURED
+            cfg = copy.deepcopy(C.resolve(checks_policy, entry["check_id"]))
+            digest = C.definition_digest(cfg, guardrails=guardrails if cfg.get("builtin") else None)
+            if digest != entry["definition_sha256"]:
+                raise IllegalTransition(f"check {entry['check_id']}'s definition changed while the run was pinned; "
+                                        "run `aew integrate validate` again")
+            out[entry["check_id"]] = {"cfg": cfg, "guardrails": guardrails if cfg.get("builtin") else None}
+        return out
 
     def _staging(self, run_id: str) -> Path:
         return self.k.aew_root / STAGING / run_id
@@ -417,10 +455,11 @@ class Validation:
                    integ: dict[str, Any], scope: tuple[list[str], Any], env: dict[str, str], layout: Any,
                    trees: Any) -> dict[str, Any]:
         directory = self._staging(run["id"])
-        cfg = C.resolve(self.k.policy("checks"), check_id)
+        pinned = run["_definitions"][check_id]  # the definition transaction 1 resolved, never live policy
+        cfg = pinned["cfg"]
         if cfg.get("builtin"):  # the guardrails, over what the candidate changes against its base
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
-                                  self.k.policy("guardrails"), scope[0], scope[1])
+                                  pinned["guardrails"], scope[0], scope[1])
             out = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None}
         else:
@@ -476,7 +515,7 @@ class Validation:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
-            current = integ.get("current_validation_run") or {}
+            current = integ.get(slot_of(run)) or {}
             problem = self._pin_problem(state, work_id, unit, run)
             if current.get("id") != run["id"] or current.get("state") != "running":
                 # The candidate was retired, or the run settled, while the checks ran: nothing is recorded for it.
@@ -503,7 +542,7 @@ class Validation:
                     ctx.refs.append(f"evidence/{work_id}/{eid}.md")
                 ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "check_result",
                                    "ids": evidence_ids})
-                change = self._apply_result(state, work_id, unit, run, overall, evidence_ids)
+                change = self._apply_result(state, work_id, unit, run, overall, results)
                 ctx.summary = f"{work_id} validation run {run['id']} committed: {overall}"
             self.units.before_commit(ctx)
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
@@ -594,7 +633,8 @@ class Validation:
         return out
 
     def _apply_result(self, state: dict[str, Any], work_id: str, unit: dict[str, Any], run: dict[str, Any],
-                      overall: str, evidence_ids: list[str]) -> dict[str, str] | None:
+                      overall: str, results: list[dict[str, Any]]) -> dict[str, str] | None:
+        evidence_ids = [r["id"] for r in results]
         integ = unit["integration"]
         integ["validation"] = {"mode": V.CHECKS, "run": run["id"], "evidence": evidence_ids,
                                "identity": run["identity"]}
@@ -607,7 +647,7 @@ class Validation:
             # The existing COMMIT_READY -> VERIFICATION_FAILED edge, taken from the engine's own check evidence. No
             # verifier or verification evidence is written, and verify.ingest is not called (rev 3 tightening 6).
             integ["status"] = "validation_failed"
-            failing = next((e for e in evidence_ids if "-check-" in e), None)
+            failing = next(r["id"] for r in results if r["result"] == "fail")  # the classification's evidence
             transitions.check(unit["state"], "VERIFICATION_FAILED", "integrate.validate")
             unit["last_verification"]["evidence"] = failing
             return self.units.set_state(unit, "VERIFICATION_FAILED",
@@ -632,19 +672,41 @@ class Validation:
             run["reason"] = reason
         if detail:
             run["detail"] = detail
+        Validation._write_record(ctx, work_id, run)
+
+    @staticmethod
+    def _write_record(ctx: Any, work_id: str, run: dict[str, Any]) -> None:
         path = f"work/{work_id}/{RUNS_DIR}/{run['id']}.yaml"
-        text = dump_yaml({"schema": "aew/validation-run/v1", **run})
+        text = dump_yaml({"schema": "aew/validation-run/v1", **{k: v for k, v in run.items() if k != "record"}})
         ctx.session.write(path, text)
         ctx.refs.append(path)
         run["record"] = {"path": path, "sha256": sha256_text(text)}
 
+    def finalize(self, ctx: Any) -> None:
+        """A transaction finalizer: every terminal run without its immutable record gets one in the same commit. A run
+        ended by retiring its candidate (a state hook, which has no transaction to write through) is recorded here,
+        so no terminal run is ever only a line in integration history (PR #91 review, finding 6)."""
+        for wid, unit in ctx.state["work"].items():
+            records = [unit.get("integration") or {}, *(unit.get("integration_history") or [])]
+            for holder in records:
+                for s in SLOTS:
+                    run = holder.get(s)
+                    if run and run.get("state") in TERMINAL and not run.get("record"):
+                        self._write_record(ctx, wid, run)
+
+    @staticmethod
+    def _find(unit: dict[str, Any], run_id: str) -> dict[str, Any]:
+        """The run ``run_id`` in whichever slot holds it, or an empty dict."""
+        integ = unit.get("integration") or {}
+        return next((r for r in (integ.get(s) for s in SLOTS) if r and r.get("id") == run_id), {})
+
     def _abandon(self, token: str, rev: int, work_id: str, run_id: str, reason: str, detail: str) -> dict[str, Any]:
         with self.k.lead_txn(token, rev, "integrate.validation_abandoned") as ctx:
             unit = self.units.unit(ctx.state, work_id)
-            current = (unit.get("integration") or {}).get("current_validation_run") or {}
-            if current.get("id") != run_id or current.get("state") != "running":
+            current = self._find(unit, run_id)
+            if current.get("state") != "running":
                 raise IllegalTransition(f"{run_id} is no longer {work_id}'s running validation run")
-            if reason not in NOT_INFRA:
+            if reason not in NOT_INFRA and not current.get("diagnostic"):
                 current["breaker_open"] = self._breaker_record(ctx.state, work_id, run_id, reason)
             self._terminate(ctx, work_id, current, "abandoned", reason=reason, detail=detail)
             ctx.summary = f"{work_id} validation run {run_id} abandoned: {reason}"
@@ -657,9 +719,10 @@ class Validation:
         is open."""
         with self.k.lead_txn(token, self._rev(), "integrate.validation_unavailable") as ctx:
             unit = self.units.unit(ctx.state, work_id)
-            current = (unit.get("integration") or {}).get("current_validation_run") or {}
-            is_open = self._breaker_record(ctx.state, work_id, run_id, code)
-            if current.get("id") == run_id and current.get("state") == "running":
+            current = self._find(unit, run_id)
+            is_open = (self._breaker_record(ctx.state, work_id, run_id, code) if not current.get("diagnostic")
+                       else self._breaker(ctx.state)["open"] is not None)
+            if current.get("state") == "running":
                 current["breaker_open"] = is_open
                 self._terminate(ctx, work_id, current, "abandoned" if code == "VALIDATION_DEADLINE_EXPIRED"
                                 else "unavailable", reason=code, detail=detail)

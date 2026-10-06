@@ -276,7 +276,8 @@ class Resume:
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
             status = (u.get("integration") or {}).get("status")
-            stuck = VO.stuck_run((u.get("integration") or {}).get("current_validation_run"))
+            stuck = next((s for s in (VO.stuck_run((u.get("integration") or {}).get(slot)) for slot in VO.SLOTS)
+                          if s), None)
             if stuck:  # a checks-mode validation run left running (M4-D5): settle it before anything else
                 return [stuck]
             waiting = self._queue_wait(state, wid)

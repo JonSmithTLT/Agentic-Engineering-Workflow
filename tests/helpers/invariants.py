@@ -255,20 +255,28 @@ def validation_violations(root: Path, state: dict[str, Any],
     for wid, u in sorted(state["work"].items()):
         integ = u.get("integration") or {}
         run = integ.get("current_validation_run")
-        # 40. At most one running run per candidate, and only under its entry's lease; a terminal run is kept as an
-        #     immutable record whose bytes match what the state says; run ids are never reused.
+        # 40. At most one running run per candidate (authoritative or diagnostic), and only under its entry's lease;
+        #     every terminal run, on the open candidate or a retired one, is kept as an immutable record whose bytes
+        #     match what the state says; run ids are never reused.
         ids = (integ.get("validation_runs") or {}).get("ids") or []
         if len(set(ids)) != len(ids):
             problems.append(f"{wid} reuses validation run ids {ids}")
-        if run:
-            if run["state"] == "running":
-                holder = (entries.get((lease or {}).get("entry") or "") or {}).get("work")
-                if holder != wid or (lease or {}).get("custodian") != run["custodian"]:
-                    problems.append(f"{wid}'s validation run {run['id']} is running without its entry's lease")
-            elif run.get("record"):
-                rec = root / ".aew" / run["record"]["path"]
-                if not rec.exists() or sha256_file(rec) != run["record"]["sha256"]:
-                    problems.append(f"{wid}'s terminal validation run {run['id']} has no intact record")
+        slots = ("current_validation_run", "diagnostic_run")
+        live = [r for r in (integ.get(s) for s in slots) if r and r["state"] == "running"]
+        if len(live) > 1:
+            problems.append(f"{wid} has {len(live)} validation runs running at once")
+        for r in live:
+            holder = (entries.get((lease or {}).get("entry") or "") or {}).get("work")
+            if holder != wid or (lease or {}).get("custodian") != r["custodian"]:
+                problems.append(f"{wid}'s validation run {r['id']} is running without its entry's lease")
+        for holder_record in [integ, *(u.get("integration_history") or [])]:
+            for s in slots:
+                r = holder_record.get(s)
+                if not r or r["state"] == "running":
+                    continue
+                rec = root / ".aew" / ((r.get("record") or {}).get("path") or "missing")
+                if not r.get("record") or not rec.exists() or sha256_file(rec) != r["record"]["sha256"]:
+                    problems.append(f"{wid}'s terminal validation run {r['id']} has no intact record")
         # 41. Engine evidence (producer.kind engine) is only a check_result, names its validation run, and was produced
         #     under one of the Ticket's custody invocations.
         for ev in evidence.setdefault(wid, _evidence(root, wid)).values():

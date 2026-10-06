@@ -65,7 +65,7 @@ def obligation(state: dict[str, Any], work_id: str, gates_policy: dict[str, Any]
     unit = state["work"][work_id]
     local = int(unit["risk_class"])
     sources: list[str] = []
-    floor: int | None = None
+    floors: dict[str, int] = {}
     parent = unit.get("parent")
     while parent:
         anc = state["work"][parent]
@@ -73,15 +73,19 @@ def obligation(state: dict[str, Any], work_id: str, gates_policy: dict[str, Any]
         if INTEGRATION_VERIFIER_GATE in (policy.get("mandatory_gates") or []):
             sources.append(f"{parent} mandatory gate {INTEGRATION_VERIFIER_GATE}")
         if policy.get("min_descendant_class") is not None:
-            floor = max(floor if floor is not None else 0, int(policy["min_descendant_class"]))
+            floors[parent] = int(policy["min_descendant_class"])
         parent = anc.get("parent")
-    if floor is not None and mode_for_class(post, floor) == VERIFIER:
-        sources.append(f"an ancestor's minimum descendant class {floor}, whose validation is {VERIFIER}")
+    # Each ancestor's explicit rule on its own: a mapping need not be monotonic, so one ancestor's higher floor that
+    # maps to checks never hides another's lower floor that maps to a verifier (PR #91 review, finding 3).
+    for anc_id, cls in sorted(floors.items()):
+        if mode_for_class(post, cls) == VERIFIER:
+            sources.append(f"{anc_id} minimum descendant class {cls}, whose validation is {VERIFIER}")
+    floor = max(floors.values()) if floors else None
     preferred = mode_for_class(post, local)
     required = bool(sources)
     mode = VERIFIER if required else preferred
     basis = {"post_integration": {k: post.get(k) for k in ("verification", "checks", "validation")},
-             "local_class": local, "floor": floor, "verifier_sources": sorted(sources)}
+             "local_class": local, "floors": dict(sorted(floors.items())), "verifier_sources": sorted(sources)}
     return {"mode": mode, "preferred": preferred, "verifier_required": required, "sources": sorted(sources),
             "local_class": local, "floor": floor, "binding": _digest(basis)}
 

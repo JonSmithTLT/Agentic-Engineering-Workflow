@@ -79,7 +79,7 @@ def test_entrypoints_are_declared_with_an_owner_for_every_guard(tmp_path):
 def test_the_dispatch_finalizer_runs_before_archival(tmp_path):
     engine = Engine(tmp_path, tmp_path / ".aew")
     steps = [f"{type(s.__self__).__name__}.{s.__func__.__name__}" for s in engine._k.finalizers.steps]
-    assert steps == ["Dispatch.finalize", "Queue.finalize", "Archive.finalize"]
+    assert steps == ["Dispatch.finalize", "Queue.finalize", "Validation.finalize", "Archive.finalize"]
 
 
 # ---------------------------------------------------------------- the decision

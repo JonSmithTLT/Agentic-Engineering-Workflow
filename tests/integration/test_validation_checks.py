@@ -77,7 +77,7 @@ def policy(p, *, checks: dict | None = None, post: list[str] | None = None, vali
     c["checks"].update(checks or {})
     (pol / "checks.yaml").write_text(dump_yaml(c), encoding="utf-8", newline="\n")
     g = load_yaml((pol / "gates.yaml").read_text(encoding="utf-8"))
-    g["post_integration"] = {"verification": True, "checks": post or ["smoke"],
+    g["post_integration"] = {"verification": True, "checks": ["smoke"] if post is None else post,
                              "validation": "checks" if validation is None else validation}
     if deadline:
         g["post_integration"]["validation_deadline_s"] = deadline
@@ -154,6 +154,8 @@ def test_a_failing_check_is_verification_failed_from_engine_evidence_alone(calc,
     kinds = {e["kind"] for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"}
     assert kinds == {"check_result"}  # no verification evidence is manufactured
     assert unit["history"][-1]["to"] == "VERIFICATION_FAILED"
+    # The failure pointer names the failing check, though a passing one ran first (PR #91 review, finding 5).
+    assert "-check-broken-" in unit["last_verification"]["evidence"], unit["last_verification"]
     assert entry(calc, wid) is None  # the entry retires with the Ticket, as for a failed verifier
     assert_control_invariants(calc)
 
@@ -205,7 +207,7 @@ def test_a_diagnostic_run_is_advisory_only(calc, tmp_path):
     out = calc.lead("integrate", "validate", wid, "--diagnostic")
     assert out["diagnostic"] and out["advisory"][0]["result"] == "pass", out
     assert integ(calc, wid)["status"] == "prepared"
-    assert integ(calc, wid)["current_validation_run"]["state"] == "advisory"
+    assert integ(calc, wid)["diagnostic_run"]["state"] == "advisory"  # its own slot (PR #91 review, finding 4)
     assert not [e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"]
     res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
     assert res.returncode != 0  # advisory results never satisfy validation
@@ -332,6 +334,8 @@ def test_a_lost_lease_while_the_checks_run_records_nothing_satisfying(calc, tmp_
     assert not [e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"]
     retired = control(calc)["work"][wid]["integration_history"][-1]["current_validation_run"]
     assert retired["state"] == "abandoned" and retired["reason"] == "SUPERSEDED"
+    # ...and its immutable record, written in the retiring transaction (PR #91 review, finding 6).
+    assert (calc.root / ".aew" / retired["record"]["path"]).is_file()
     assert_control_invariants(calc)
 
 
@@ -524,3 +528,67 @@ def test_a_policy_choosing_checks_with_no_checks_is_inconsistent(calc):
     gates = {"post_integration": {"verification": True, "checks": [], "validation": "checks"}}
     assert validation.policy_problems(gates)
     assert any("checks-mode" in p for p in consistency.problems(gates, {"checks": {}}, set()))
+
+
+# ---------------------------------------------------------------------------------- PR #91 review findings
+
+def test_the_checks_execute_the_definition_that_was_pinned(calc, tmp_path, contained, monkeypatch):
+    """Finding 1: policy edited while the checks run, and restored before transaction 2, never changes what ran."""
+    failing = {"configured": True, "command": py("raise SystemExit(1)"), "cwd": ".", "timeout_s": 60}
+    policy(calc, checks={"gate": failing}, post=["gate"])
+    wid = prepared(calc, tmp_path)
+    real = VO.Validation._one_check
+
+    def swap(self, run, check_id, *a, **k):
+        policy(calc, checks={"gate": {**failing, "command": py("raise SystemExit(0)")}}, post=["gate"])  # would pass
+        try:
+            return real(self, run, check_id, *a, **k)
+        finally:
+            policy(calc, checks={"gate": failing}, post=["gate"])  # restored before transaction 2 re-verifies
+
+    monkeypatch.setattr(VO.Validation, "_one_check", swap)
+    out = validate(calc, wid)
+    assert out["result"] == "fail", out  # the pinned definition ran, and its digest is what the evidence carries
+    ev = next(e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine")
+    assert ev["method"]["command"][-1] == "raise SystemExit(1)"
+    assert ev["check"]["definition_sha256"] == C.definition_digest(failing)
+
+
+def test_checks_mode_with_no_checks_never_validates(calc, tmp_path, contained):
+    """Finding 2: an empty check set is refused before pinning and at publication, never a vacuous pass."""
+    policy(calc, checks=SMOKE, post=[])
+    wid = prepared(calc, tmp_path)
+    with pytest.raises(GateUnsatisfied) as caught:
+        validate(calc, wid)
+    assert caught.value.details["code_reason"] == "VALIDATION_CHECKS_EMPTY"
+    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
+    assert control(calc)["work"][wid]["state"] == "COMMIT_READY"
+
+
+def test_each_ancestors_minimum_class_rule_is_checked_on_its_own():
+    """Finding 3: a Story's floor 4 mapped to checks must not hide an Epic's floor 3 mapped to a verifier."""
+    from aew.policy import validation as V
+
+    state = {"work": {"T-1": {"risk_class": 4, "parent": "S-1"},
+                      "S-1": {"parent": "E-1", "policy": {"min_descendant_class": 4}},
+                      "E-1": {"policy": {"min_descendant_class": 3}}}}
+    gates = {"post_integration": {"verification": True, "checks": ["smoke"],
+                                  "validation": {"by_class": {"3": "verifier", "4": "checks"}}}}
+    ob = V.obligation(state, "T-1", gates)
+    assert ob["mode"] == "verifier" and ob["verifier_required"], ob
+    assert any(s.startswith("E-1 ") for s in ob["sources"]) and not any(s.startswith("S-1 ") for s in ob["sources"])
+
+
+def test_a_diagnostic_run_never_displaces_the_satisfying_validation(calc, tmp_path, contained):
+    """Finding 4: an advisory run has its own slot; the validation publication relies on is untouched."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    passed = validate(calc, wid)
+    advisory = validate(calc, wid, diagnostic=True)
+    assert advisory["diagnostic"] and not advisory.get("evidence"), advisory
+    integration = integ(calc, wid)
+    assert integration["current_validation_run"]["id"] == passed["run"]
+    assert integration["diagnostic_run"]["state"] == "advisory"
+    assert_control_invariants(calc)
+    assert calc.lead("integrate", "publish", wid)["state"] == "DONE"

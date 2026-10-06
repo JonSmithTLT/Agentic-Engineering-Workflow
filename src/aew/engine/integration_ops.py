@@ -94,12 +94,14 @@ class Integration:
         if record.get("status") in OPEN_INTEGRATION - {"validation_failed", "discarded"}:
             record["status"] = "superseded"
         record["retired"] = {"at": utc_now(), "reason": why}
-        run = record.get("current_validation_run")
-        if run and run.get("state") == "running":
-            # A checks-mode run of a retired candidate can never commit (its transaction 2 finds it gone): it ends
-            # here, kept with the retired record (M4-D5).
-            record["current_validation_run"] = {**run, "state": "abandoned", "reason": "SUPERSEDED",
-                                                "ended_at": utc_now(), "detail": why}
+        for slot in ("current_validation_run", "diagnostic_run"):
+            run = record.get(slot)
+            if run and run.get("state") == "running":
+                # A checks-mode run of a retired candidate can never commit (its transaction 2 finds it gone): it
+                # ends here, with the retired record; the validation finalizer writes its immutable record in this
+                # same transaction (M4-D5).
+                record[slot] = {**run, "state": "abandoned", "reason": "SUPERSEDED", "ended_at": utc_now(),
+                                "detail": why}
         for inv_id in unit.get("invocations", []):
             inv = state["invocations"].get(inv_id) or {}
             if inv.get("status") == "active" and inv.get("scope") == "integration":
@@ -358,6 +360,7 @@ class Integration:
         now = self.invocations.snapshot_of(integ["workspace"], integ["workspace_id"])["relevant_inputs_fingerprint"]
         if now != fp:
             raise GateUnsatisfied("the integration candidate changed after it was prepared", prepared=fp, current=now)
+        self._require_checks_policy(state, work_id)
         if not policy["verification"] and not policy["checks"]:
             return
         if integ.get("status") != "validated":
@@ -386,6 +389,7 @@ class Integration:
         mode (M4-D5) the engine's own check evidence does, bound to the current identity; a verifier's passing report
         is accepted in either mode, since it is never weaker."""
         policy = self.k.policy("gates")["post_integration"]
+        self._require_checks_policy(state, work_id)
         if not policy["verification"] and not policy["checks"]:
             return
         integ = unit["integration"]
@@ -408,6 +412,15 @@ class Integration:
         if missing:
             raise GateUnsatisfied("policy-required post-integration checks are missing, or ran under a check "
                                   "definition that policy/checks.yaml has since changed", missing=missing)
+
+    def _require_checks_policy(self, state: dict[str, Any], work_id: str) -> None:
+        """A Ticket whose validation resolves to `checks` with no checks listed is never validated: an empty set
+        would pass vacuously, so publication is refused rather than treating no validation as success (PR #91)."""
+        if V.obligation(state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS and \
+                not self.k.policy("gates")["post_integration"].get("checks"):
+            raise GateUnsatisfied("post-integration validation resolves to `checks`, but gates.post_integration.checks "
+                                  "lists none: list the checks, or validate with the verifier",
+                                  code_reason="VALIDATION_CHECKS_EMPTY")
 
     def _require_checks_validation(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
         """Checks-mode validation (M4-D5) holds for THIS candidate now: its run committed a pass under the exact current

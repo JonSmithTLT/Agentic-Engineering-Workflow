@@ -4,6 +4,10 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_eval_hidden.py::test_on_linux_a_worktree_roots_object_store_is_masked_too: >-
+      the scoring sandbox is Linux bubblewrap only (F19 slice 3); what it masks for a worktree root is
+      computed and tested on every platform (test_a_worktree_root_masks_its_object_store_and_every_checkout).
+      Covered on Linux.
     tests/unit/test_eval_hidden.py::test_on_linux_the_models_programs_are_scored_in_a_sandbox: >-
       the model's programs are contained while scored only under Linux bubblewrap (F19 slice 3); Windows refuses
       held-out scoring instead (tested). Covered on Linux.

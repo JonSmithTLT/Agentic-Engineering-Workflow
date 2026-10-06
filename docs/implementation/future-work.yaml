@@ -467,13 +467,15 @@ sections:
       the arm has returned, sent to an isolated scoring process (`score_child.py`, `python -I -B`) on its standard input,
       never to the disk, in an AEW process tree. The model''s code never runs in that process: the checks reach the model''s
       program only through `run`, which gives each program its own process tree (a job object on Windows; on Linux a bubblewrap
-      sandbox in its own pid namespace with the hidden root''s whole private repository, the ledger and the user''s secrets
-      masked) and an allow-listed environment. The runner accepts only a clean exit with exactly one well-formed result,
-      computes `passed` itself, and records no result or a timeout as a failed score, never a retryable `invalid_measurement`.
-      Linux without bubblewrap refuses oracle-scored cells; Windows refuses held-out cases, and every other score there
-      records `contained: false` (a same-user program could search the disk, so it is not tamper-evident). The model arms
-      must meet the same bar while the model runs. Proved in `tests/unit/test_eval_hidden.py`. Next: the `aew` and `raw`
-      arms by generalizing `dogfood.py` (the M3 driver still runs them).'
+      sandbox in its own pid namespace with the hidden root''s whole private repository (for a worktree or submodule also
+      its object store and every checkout), the ledger and the user''s secrets masked; another copy of the corpus elsewhere
+      on the host is not masked, so it lives in one place on a scoring host) and an allow-listed environment. The runner
+      accepts only a clean exit with exactly one well-formed result, computes `passed` itself, and records no result or
+      a timeout as a failed score, never a retryable `invalid_measurement`. Linux without bubblewrap refuses oracle-scored
+      cells; Windows refuses held-out cases, and every other score there records `contained: false` (a same-user program
+      could search the disk, so it is not tamper-evident). The model arms must meet the same bar while the model runs. Proved
+      in `tests/unit/test_eval_hidden.py`. Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still
+      runs them).'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve

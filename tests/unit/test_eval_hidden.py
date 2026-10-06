@@ -382,6 +382,54 @@ def test_on_linux_the_models_programs_are_scored_in_a_sandbox(tmp_path):
         shutil.rmtree(private, ignore_errors=True)
 
 
+def private_checkouts(base: Path) -> tuple[Path, Path]:
+    """A private repository with one committed oracle, and a linked worktree of it: (main, worktree)."""
+    main, linked = base / "main", base / "linked"
+    make_oracle(main / "eval", cid="HELD")
+    for args in (("init", "-q", "-b", "main"), ("add", "-A"), ("commit", "-q", "-m", "corpus"),
+                 ("worktree", "add", "-q", str(linked))):
+        fixture.git(main, *args)
+    return main, linked
+
+
+def test_a_worktree_root_masks_its_object_store_and_every_checkout(tmp_path):
+    """Review of 5d64bf4: in a linked worktree `.git` is a file; the object store and the main checkout (and every
+    other linked worktree) hold the corpus too, so all of them are masked, whichever checkout the root is in."""
+    main, linked = private_checkouts(tmp_path)
+    expected = {linked.resolve(), (main / ".git").resolve(), main.resolve()}
+    assert expected <= set(hidden.private_repository(linked / "eval"))
+    assert {main.resolve(), linked.resolve()} <= set(hidden.private_repository(main / "eval"))
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert hidden.private_repository(plain) == [plain]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                    reason="Linux bubblewrap containment (Windows refuses held-out scoring instead)")
+def test_on_linux_a_worktree_roots_object_store_is_masked_too(tmp_path):
+    """Review of 5d64bf4: with the hidden root in a linked worktree under the home directory, the main checkout's
+    object store and working tree are as invisible to the model's program as the worktree itself."""
+    import uuid
+
+    base = Path.home() / ".cache" / f"aew-eval-test-{uuid.uuid4().hex}"
+    try:
+        main, linked = private_checkouts(base)
+        probe = ("import json, os; seen = lambda p: sorted(os.listdir(p)) if os.path.isdir(p) else []; "
+                 f"print(json.dumps([seen({str(main / '.git' / 'objects')!r}), seen({str(main)!r}), "
+                 f"seen({str(linked)!r})]))")
+        checks = ("import sys\n"
+                  "def checks(tree, run):\n"
+                  f"    ran = run([sys.executable, '-c', {probe!r}])\n"
+                  "    last = ran.stdout.strip().splitlines()[-1] if ran.stdout else ran\n"
+                  "    yield 'probe', ran.returncode == 0, last\n")
+        make_oracle(linked / "eval", checks=checks)
+        score = hidden.score(hidden.Oracle.locate(linked / "eval", "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}))
+        assert score["passed"] is True and score["contained"] is True, score
+        assert json.loads(score["checks"][0]["detail"]) == [[], [], []], score
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def test_a_score_records_whether_it_was_contained(tmp_path):
     """Review of f815385, 2: outside Linux the model's programs are not contained while scored, so the score says so
     (not tamper-evident), and an analysis that needs that property can exclude it."""

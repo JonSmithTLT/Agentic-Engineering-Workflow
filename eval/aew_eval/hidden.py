@@ -29,7 +29,10 @@ Reference material is ``ORACLE_FILES`` (``{path: bytes}``), never a path.
 **Where scoring is contained, and where not.** On Linux with bubblewrap, the model's programs run in a sandbox with
 the hidden root, the ledger and the user's secrets masked, and in their own pid namespace, so the runner's ``/proc``
 entry (which still holds the root's path) is out of reach. Linux without bubblewrap refuses every oracle-scored cell.
-The sandbox masks the hidden root's whole private repository (its ``.git`` holds every oracle), not only the root.
+The sandbox masks the hidden root's whole private repository (its ``.git`` holds every oracle), not only the root,
+and, for a linked worktree or a submodule, the git directory and object store its ``.git`` file points to. Only that
+repository is masked: another copy of the private corpus on the host (a second clone, a backup, a mounted drive) stays
+readable, so the private corpus lives in one place on a scoring host.
 Elsewhere (Windows) a same-user program could search the disk for the private corpus, so held-out cases are refused
 there before anything is counted, and every other score records ``contained: false``: it is not tamper-evident (the
 program could read its own oracle), and an analysis that needs that property excludes it. The arms that run a model
@@ -175,12 +178,33 @@ def program_env(scratch: Path) -> dict[str, str]:
     return env
 
 
-def private_repository(root: Path) -> Path:
-    """The repository the hidden root lives in (its history holds every oracle), or the root itself outside one."""
+def private_repository(root: Path) -> list[Path]:
+    """What holds the private corpus around the hidden root, to be masked: the repository it lives in (its history
+    holds every oracle), or the root itself outside one. In a linked worktree or a submodule ``.git`` is a file naming
+    the git directory elsewhere, and its ``commondir`` names the object store: both are included, with the main
+    checkout and every linked worktree the object store knows of (review of 5d64bf4)."""
     for p in (root, *root.parents):
-        if (p / ".git").exists():
-            return p
-    return root
+        dot_git = p / ".git"
+        if dot_git.is_dir():  # the main checkout, and any worktree linked to it elsewhere
+            linked = [Path(f.read_text(encoding="utf-8").strip()).resolve().parent
+                      for f in (dot_git / "worktrees").glob("*/gitdir")]
+            return list(dict.fromkeys([p, *linked]))
+        if dot_git.is_file():
+            out = [p]
+            text = dot_git.read_text(encoding="utf-8", errors="replace").strip()
+            if text.startswith("gitdir:"):
+                git_dir = (p / text.removeprefix("gitdir:").strip()).resolve()
+                out.append(git_dir)
+                common_file = git_dir / "commondir"
+                common = ((git_dir / common_file.read_text(encoding="utf-8").strip()).resolve()
+                          if common_file.is_file() else git_dir)
+                out.append(common)
+                if common.name == ".git":  # a non-bare main checkout: its working tree holds the corpus too
+                    out.append(common.parent)
+                for linked in (common / "worktrees").glob("*/gitdir"):  # and every other linked worktree's
+                    out.append(Path(linked.read_text(encoding="utf-8").strip()).resolve().parent)
+            return list(dict.fromkeys(out))
+    return [root]
 
 
 def scoring_layout(tree: Path, scratch: Path, hide: list[Path]) -> Any:
@@ -215,7 +239,7 @@ def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (
 
     scratch = Path(tempfile.mkdtemp(prefix="aew-eval-scoring-")).resolve()  # TEMP may be an 8.3 name (review, 6)
     try:
-        masked = [private_repository(oracle.root), *hide]
+        masked = [*private_repository(oracle.root), *hide]
         layout = scoring_layout(tree, scratch, masked) if sys.platform.startswith("linux") else None
         spec = {"files": {rel: base64.b64encode(data).decode("ascii") for rel, data in oracle.files.items()},
                 "layout": dataclasses.asdict(layout) if layout is not None else None,

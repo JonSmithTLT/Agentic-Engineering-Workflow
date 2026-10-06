@@ -4487,7 +4487,9 @@
     "web/docs/templates/task-review.md",
     "web/docs/reviews/docs-organization-2026-10-04/provenance.json",
     "web/docs/reviews/docs-organization-2026-10-04/dist.SHA256SUMS",
-    "web/docs/reviews/docs-organization-2026-10-04/dist-demo.SHA256SUMS"
+    "web/docs/reviews/docs-organization-2026-10-04/dist-demo.SHA256SUMS",
+    "web/docs/reference/f20-production-baseline.md",
+    "web/docs/reference/f20-live-browser-handoff.md"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

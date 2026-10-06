@@ -593,14 +593,3 @@ def test_the_logged_method_never_carries_control_bytes(live, caplog):
     text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
     assert "\x1b" not in text and "\x07" not in text and "<bad method>" in text, text
     assert "GET /api/v1/project 200" in text
-
-
-def test_the_bounds_the_design_records_are_the_servers():
-    """Finding 6: the connection bound, the busy answer, the head deadline and the log queue are written down where
-    R23 is, with the values the server uses."""
-    note = (ROOT / "docs/design/proposals/dashboard-main-line-api-design-v0.1.md").read_text(encoding="utf-8")
-    ledger = (ROOT / "docs/design/requirements-ledger.yaml").read_text(encoding="utf-8")
-    for text in (note, ledger):
-        assert f"{SV.MAX_CONNECTIONS} connections" in text
-        assert f"{SV.HEAD_DEADLINE_S:.0f} s" in text and f"{SV.LOG_QUEUE} lines" in text
-

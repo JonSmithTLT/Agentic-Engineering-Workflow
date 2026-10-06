@@ -20,6 +20,10 @@ the connection. The agent's environment carries only the endpoint and the key; t
 * The key is a run-scoped capability deliberately usable by every process the agent starts (they are the
   agent). It is not the AEW credential, and it is useless once the run ends, rotates or is revoked:
   the supervisor refuses and closes the bridge.
+* Requests run one at a time. A server may declare **cooperative** operations (the Lead broker's ``lead.tool``,
+  F15.1): their handler is called outside that serialization and takes it itself, through :meth:`BridgeServer.
+  serialized`, around every engine call, so a long wait blocks no other request while no two engine calls ever run
+  at once. A server that declares none behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -31,7 +35,8 @@ import shutil
 import sys
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from multiprocessing import AuthenticationError
 from multiprocessing.connection import Client, Listener
 from typing import Any
@@ -91,9 +96,13 @@ def validate_request(request: Any, operations: Operations = OPERATIONS) -> tuple
 class BridgeServer:
     """The supervisor side. ``handler(op, args)`` runs one request with the held credential."""
 
-    def __init__(self, handler: Callable[[str, dict[str, Any]], Any], operations: Operations = OPERATIONS) -> None:
+    def __init__(self, handler: Callable[[str, dict[str, Any]], Any], operations: Operations = OPERATIONS,
+                 cooperative: frozenset[str] = frozenset()) -> None:
         self.handler = handler
         self.operations = operations
+        if not cooperative <= set(operations):
+            raise ValueError(f"cooperative operations must be operations: {sorted(cooperative - set(operations))}")
+        self.cooperative = cooperative
         self.key = secrets.token_bytes(32)
         self.address, family, self._private_dir = private_address()
         self._listener = Listener(self.address, family=family, authkey=self.key)
@@ -148,12 +157,17 @@ class BridgeServer:
             op = "invalid"
             try:
                 op, args = validate_request(json.loads(raw.decode("utf-8")), self.operations)
-                with self._serial:
-                    if self._closed.is_set():
-                        raise errors.StaleAuthority("this run's AEW bridge is closed: the run ended, was superseded, "
-                                                    "or its invocation ended")
-                    self.requests += 1
+                if op in self.cooperative:  # it serializes its own engine calls (``serialized``)
+                    with self._idle:
+                        self.requests += 1
                     result = self.handler(op, args)
+                else:
+                    with self._serial:
+                        if self._closed.is_set():
+                            raise errors.StaleAuthority("this run's AEW bridge is closed: the run ended, was "
+                                                        "superseded, or its invocation ended")
+                        self.requests += 1
+                        result = self.handler(op, args)
                 reply: dict[str, Any] = {"ok": True, "result": result}
             except errors.AEWError as exc:
                 self.refused += 1
@@ -173,6 +187,13 @@ class BridgeServer:
             with self._idle:
                 self._in_flight -= 1
                 self._idle.notify_all()
+
+    @contextmanager
+    def serialized(self) -> Iterator[None]:
+        """The one-request-at-a-time section, for a cooperative operation's engine calls. It does not refuse a closed
+        bridge: a request already being handled may still answer from committed state (its handler checks)."""
+        with self._serial:
+            yield
 
     def drain(self, timeout: float) -> bool:
         """Wait for requests already being handled to finish (each is refused or completed by the engine)."""

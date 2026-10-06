@@ -137,7 +137,7 @@ class Project:
         from aew.engine.api import Engine
 
         return getattr(Engine.discover(self.root), method)(
-            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty (test substitute)"},
+            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty"},
             **kwargs)
 
 

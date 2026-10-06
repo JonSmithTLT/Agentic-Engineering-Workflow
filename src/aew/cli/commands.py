@@ -93,7 +93,7 @@ def register(sub: argparse._SubParsersAction) -> None:
                                                           next_action=a.next_action))
 
     p = sub.add_parser("migrate", help="move a v1 project's control state to v2: finished work leaves the hot state "
-                                       "(Lead; ADR-0011)")
+                                       "(the operator, at their own terminal; ADR-0011)")
     _add_lead(p)
     p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), expect_rev=a.expect_rev))
 
@@ -102,7 +102,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     p = sub.add_parser("manifest", help="project manifest maintenance")
     msub = p.add_subparsers(dest="manifest_cmd", required=True)
-    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml (Lead)")
+    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml (the operator, at their own "
+                                         "terminal)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
@@ -211,7 +212,9 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("candidate")
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
-    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead")
+    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead",
+                   help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
+                        "typed back)")
     q.add_argument("--reason")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).authority_accept(

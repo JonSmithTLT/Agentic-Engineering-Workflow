@@ -130,7 +130,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--forbid", action="append", default=[], metavar="CARD")
     q.add_argument("--remove", action="append", default=[], metavar="SLOT=CARD")
     q.add_argument("--by", choices=["lead", "operator"], default="lead",
-                   help="who made the selection (operator = recorded on the operator's instruction)")
+                   help="who made the selection; operator: the operator confirms it at their own terminal "
+                        "(a code typed back), and a Lead session is refused it")
     q.add_argument("--pin", action="store_true", help="pin the selection (Lead may replace only with --reason)")
     q.add_argument("--reason")
     _add_lead(q)

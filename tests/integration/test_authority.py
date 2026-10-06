@@ -101,6 +101,33 @@ def test_a_decision_recorded_as_the_operators_needs_the_operator_at_their_termin
     assert control_bytes(project) == before
 
 
+@pytest.mark.parametrize("by", ["operator", "lead"])
+def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, monkeypatch, by):
+    """PR #103 re-review, N3: through the real CLI handlers, a record attributed to the operator is confirmed at the
+    terminal and carries `authorized_by: operator-tty`; the Lead's own record never prompts. (The terminal itself is
+    substituted in-process: no terminal exists here.)"""
+    from aew import operator
+    from aew.cli.main import main
+
+    asked: list[str] = []
+    confirmed = {"authorized_by": "operator-tty", "challenge_code": "X"}
+    monkeypatch.setattr(operator, "authorize", lambda text, **_: asked.append(text) or confirmed)
+    monkeypatch.delenv("AEW_LEAD_BROKER", raising=False)
+    monkeypatch.chdir(project.root)
+    cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
+    wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"]
+    assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by, "--token", project.token,
+                 "--expect-rev", str(project.rev())]) == 0
+    assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by, "--token", project.token,
+                 "--expect-rev", str(project.rev())]) == 0
+    decisions = "".join(f.read_text(encoding="utf-8") for f in (project.root / ".aew/decisions").glob("*.md"))
+    if by == "operator":
+        assert [a.split(":")[0] for a in asked] == ["RECORD as YOUR decision", "RECORD as YOUR selection"], asked
+        assert decisions.count("operator-tty") == 2
+    else:
+        assert asked == [] and "operator-tty" not in decisions
+
+
 OPERATOR_DECISIONS = ("authority accept", "authority reject", "manifest adopt", "migrate")
 
 

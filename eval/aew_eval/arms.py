@@ -8,6 +8,9 @@ An arm takes the built scratch repository and does the case's work in it; the ru
 * ``aew`` (the headless Lead) and ``raw`` (the same harness alone): built by generalizing the M3 driver
   (``eval/m3/dogfood/dogfood.py``), which still runs the M3 experiment as it was. Until then the runner refuses a
   cell of either kind before anything is registered, so nothing is counted that never ran.
+
+An arm's configuration is checked against its case before the attempt is registered (:meth:`Arm.check`), so a
+malformed configuration is a refusal, never a counted ``invalid_measurement`` that spends a retry.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from aew_eval import fixture
 from aew_eval.schemas import Invalid
 
 
@@ -33,24 +37,41 @@ class ArmResult:
 class Arm(Protocol):
     kind: str
 
+    def check(self, config: dict[str, Any], snap: fixture.Snapshot) -> None: ...
+
     def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float) -> ArmResult: ...
 
 
 class ScriptedArm:
     """Applies its configuration's ``steps`` in order: ``{"write": PATH, "content": TEXT}`` or ``{"delete": PATH}``.
-    Paths are relative to the repository and may not leave it. No model, no provider, no network."""
+    Paths are relative, ``/``-separated and stay inside the repository, never in ``.git``. No model, no provider,
+    no network."""
 
     kind = "scripted"
+
+    def check(self, config: dict[str, Any], snap: fixture.Snapshot) -> None:
+        if config.get("seeded"):
+            fixture.starting_files(snap, seeded=True)  # refuses a case without a seeded tree
+        steps = config.get("steps", [])
+        if not isinstance(steps, list):
+            raise Invalid("a scripted arm's steps are a list")
+        for n, step in enumerate(steps, 1):
+            if not isinstance(step, dict) or len({"write", "delete"} & step.keys()) != 1:
+                raise Invalid(f"scripted step {n} is one of write or delete: {step!r}")
+            rel = step.get("write", step.get("delete"))
+            if not isinstance(rel, str):
+                raise Invalid(f"scripted step {n} names no path: {step!r}")
+            fixture.safe_relative(rel, f"scripted step {n}")
+            if "write" in step and not isinstance(step.get("content", ""), str):
+                raise Invalid(f"scripted step {n}: content is text")
 
     def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float) -> ArmResult:
         root = repo.resolve()
         steps = config.get("steps") or []
         for n, step in enumerate(steps, 1):
-            rel = step.get("write") or step.get("delete")
-            if not isinstance(rel, str) or not rel:
-                raise Invalid(f"scripted step {n} names no path: {step}")
-            target = (root / rel).resolve()
-            if root not in target.parents:
+            rel = fixture.safe_relative(step.get("write") or step.get("delete"), f"scripted step {n}")
+            target = root / rel
+            if root not in target.resolve().parents:  # a link made by an earlier step is never followed out
                 raise Invalid(f"scripted step {n} leaves the repository: {rel}")
             if "write" in step:
                 target.parent.mkdir(parents=True, exist_ok=True)

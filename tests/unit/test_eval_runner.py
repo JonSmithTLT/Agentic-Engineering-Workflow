@@ -1,12 +1,13 @@
 """The evaluation instrument's second slice (register F19; the evaluation component design v0.2, §2 and §8 step 2):
-fixtures built from a case manifest with a checkout-independent hash, and the runner that runs one preregistered
-cell: a changed input is refused before anything is counted, the attempt is registered before the arm runs, and the
-result is finalized once, whatever the arm did.
+fixtures read once, hashed and built with a platform-independent result, and the runner that runs one preregistered
+cell: a changed or unsound input is refused before anything is counted, the attempt is registered before the arm
+runs, nothing reads the scratch repository through git after the arm, and the result is finalized once.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,12 +47,19 @@ def make_case(root: Path, *, cid: str = "C1", overlay: bool = True, seeded: bool
     return path
 
 
-def plan_for(case_path: Path, *, steps: list | None = None, kind: str = "scripted", **over) -> dict:
+def set_fixture(path: Path, fx: dict) -> Path:
+    manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(yaml.safe_dump({**manifest, "fixture": fx}), encoding="utf-8")
+    return path
+
+
+def plan_for(case_path: Path, *, steps: list | None = None, kind: str = "scripted", config: dict | None = None,
+             **over) -> dict:
     case = fixture.load(case_path)
     record = {
         "schema": "aew/eval-prereg/v1", "experiment": "demo", "question": "Does the reference fix the bug?",
         "arms": [{"id": "ref", "kind": kind, "description": "the reference edit",
-                  "config": {"steps": [FIX] if steps is None else steps}}],
+                  "config": config if config is not None else {"steps": [FIX] if steps is None else steps}}],
         "cases": [{"id": case.id, "family": "demo", "sha256": fixture.case_sha256(case), "hidden_sha256": None,
                    "control_of": None}],
         "profiles": {"roles": {"lead": "none"}, "budget_usd": 1.0},
@@ -74,48 +82,115 @@ def run(f: dict, case_path: Path, tmp_path: Path, name: str = "r1", **kw) -> dic
                            cases={"C1": case_path}, work=tmp_path / "work", run_name=name, **kw)
 
 
+def nothing_registered(tmp_path: Path) -> bool:
+    return not (tmp_path / "ledger" / "attempts.jsonl").exists()
+
+
+def link_dir(link: Path, target: Path) -> None:
+    """A directory link: a junction on Windows (no privilege needed), a symbolic link elsewhere."""
+    if sys.platform == "win32":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        os.symlink(target, link, target_is_directory=True)
+
+
 # ---------------------------------------------------------------------------------------------- fixtures
 
 def test_a_case_hash_covers_the_manifest_and_every_tree_and_ignores_line_ends(tmp_path):
     path = make_case(tmp_path / "c")
-    case = fixture.load(path)
-    first = fixture.case_sha256(case)
+    first = fixture.case_sha256(fixture.load(path))
     crlf = tmp_path / "c" / "base" / "calc.py"
     crlf.write_bytes(crlf.read_bytes().replace(b"\n", b"\r\n"))  # a Windows checkout
-    assert fixture.case_sha256(case) == first
+    assert fixture.case_sha256(fixture.load(path)) == first
     (tmp_path / "c" / "overlay" / "NOTES.md").write_text("changed\n", encoding="utf-8")
-    assert fixture.case_sha256(case) != first
+    second = fixture.case_sha256(fixture.load(path))
+    assert second != first
     manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
-    manifest["family"] = "other"
-    path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
-    assert fixture.case_sha256(fixture.load(path)) not in (first,)
+    path.write_text(yaml.safe_dump({**manifest, "family": "other"}), encoding="utf-8")
+    assert fixture.case_sha256(fixture.load(path)) not in (first, second)
 
 
-def test_a_fixture_builds_a_fresh_repository_with_lf_and_one_commit(tmp_path):
+def test_a_fixture_builds_from_its_snapshot_with_lf_and_one_commit(tmp_path):
     path = make_case(tmp_path / "c", seeded=True)
     crlf = tmp_path / "c" / "base" / "calc.py"
     crlf.write_bytes(crlf.read_bytes().replace(b"\n", b"\r\n"))
-    case = fixture.load(path)
+    snap = fixture.snapshot(fixture.load(path))
+    crlf.write_text("changed after the snapshot\n", encoding="utf-8")  # never read again
     repo = tmp_path / "repo"
-    base = fixture.build(case, repo)
-    assert b"\r\n" not in (repo / "calc.py").read_bytes() and (repo / "NOTES.md").is_file()
-    assert fixture.changed_paths(repo, base) == []
+    start = fixture.build(snap, repo)
+    assert (repo / "calc.py").read_bytes() == b"def add(a, b):\n    return a - b\n"
+    assert fixture.changed_paths(start, fixture.files_of(repo)) == []
+    assert fixture.git(repo, "rev-list", "--count", "HEAD") == "1"
     with pytest.raises(Invalid, match="fresh directory"):
-        fixture.build(case, repo)
+        fixture.build(snap, repo)
     seeded = tmp_path / "seeded"
-    fixture.build(case, seeded, seeded=True)
+    fixture.build(snap, seeded, seeded=True)
     assert "b + a" in (seeded / "calc.py").read_text(encoding="utf-8")
 
 
-def test_a_case_whose_trees_are_missing_or_outside_it_is_refused(tmp_path):
+@pytest.mark.parametrize(("fx", "match"), [
+    ({"base": "nowhere"}, "not a directory"),
+    ({"base": "../elsewhere"}, "inside the case directory"),
+    ({"base": "."}, "inside the case directory"),  # the manifest and the other trees would be part of the start
+    ({"base": "base", "overlay": "base/sub"}, "lies inside"),
+])
+def test_a_case_whose_trees_are_missing_outside_or_nested_is_refused(tmp_path, fx, match):
     path = make_case(tmp_path / "c", overlay=False)
-    manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
     (tmp_path / "elsewhere").mkdir()
     (tmp_path / "elsewhere" / "x.py").write_text("x = 1\n", encoding="utf-8")
-    for bad, match in (({"base": "nowhere"}, "not a directory"), ({"base": "../elsewhere"}, "outside")):
-        (tmp_path / "c" / "case.yaml").write_text(yaml.safe_dump({**manifest, "fixture": bad}), encoding="utf-8")
-        with pytest.raises(Invalid, match=match):
-            fixture.load(tmp_path / "c" / "case.yaml")
+    (tmp_path / "c" / "base" / "sub").mkdir()
+    with pytest.raises(Invalid, match=match):
+        fixture.load(set_fixture(path, fx))
+
+
+@pytest.mark.parametrize("name", [".git/config", "pkg/.GIT/x", "CON", "aux.txt", "dot.", "pipe|x"])
+def test_a_fixture_path_that_is_repository_metadata_or_unportable_is_refused(tmp_path, name):
+    path = make_case(tmp_path / "c", overlay=False)
+    with pytest.raises(Invalid):
+        fixture.safe_relative(name, "test")
+    # On disk too, where this platform can hold the name exactly as spelled (Windows cannot hold most of these).
+    target = tmp_path / "c" / "base" / name
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x", encoding="utf-8")
+        held = target.name in os.listdir(target.parent)
+    except OSError:
+        held = False
+    if held:
+        with pytest.raises(Invalid):
+            fixture.snapshot(fixture.load(path))
+
+
+def test_paths_differing_only_in_case_are_refused(tmp_path):
+    path = make_case(tmp_path / "c")
+    (tmp_path / "c" / "overlay" / "Calc.py").write_text("x\n", encoding="utf-8")  # base has calc.py
+    with pytest.raises(Invalid, match="differ only in case"):
+        fixture.snapshot(fixture.load(path))
+
+
+def test_a_link_or_junction_in_a_fixture_is_refused(tmp_path):
+    path = make_case(tmp_path / "c", overlay=False)
+    (tmp_path / "outside").mkdir()
+    (tmp_path / "outside" / "secret.txt").write_text("not the case's\n", encoding="utf-8")
+    link_dir(tmp_path / "c" / "base" / "linked", tmp_path / "outside")
+    with pytest.raises(Invalid, match="link"):
+        fixture.snapshot(fixture.load(path))
+
+
+def test_the_runners_git_ignores_the_callers_git_environment(tmp_path, monkeypatch):
+    """A GIT_DIR (or any GIT_* variable) set for another repository never reaches the runner's git (PR #100)."""
+    other = tmp_path / "other"
+    other.mkdir()
+    fixture.git(other, "init", "-q", "--template=")
+    config_before = (other / ".git" / "config").read_bytes()
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "stray-index"))
+    snap = fixture.snapshot(fixture.load(make_case(tmp_path / "c")))
+    fixture.build(snap, tmp_path / "repo")
+    assert (tmp_path / "repo" / ".git").is_dir() and (other / ".git" / "config").read_bytes() == config_before
+    assert not (tmp_path / "stray-index").exists()
 
 
 # ---------------------------------------------------------------------------------------------- the runner
@@ -123,37 +198,121 @@ def test_a_case_whose_trees_are_missing_or_outside_it_is_refused(tmp_path):
 def test_a_scripted_cell_runs_end_to_end_and_is_finalized_once(tmp_path):
     case_path = make_case(tmp_path / "case")
     f = plan_for(case_path)
-    record = run(f, case_path, tmp_path, scorer=lambda tree: {"fixed": "a + b" in (tree / "calc.py").read_text()})
+    seen: dict = {}
+
+    def scorer(tree: Path) -> dict:
+        seen["tree"] = tree
+        return {"fixed": "a + b" in (tree / "calc.py").read_text(encoding="utf-8")}
+
+    record = run(f, case_path, tmp_path, scorer=scorer)
     validate("aew/eval-run/v1", record)
     assert record["validity"] == {"status": "valid", "reason_code": None}
     assert record["outcome"]["changed_paths"] == ["calc.py"] and record["outcome"]["score"] == {"fixed": True}
-    assert record["environment"]["checkout_untouched"] in (True, None)
+    assert record["outcome"]["safety"]["checkout_untouched"] is True  # this checkout is a git checkout
+    repo = tmp_path / "work" / "r1" / "repo"
+    assert repo not in seen["tree"].parents and not (seen["tree"] / ".git").exists()  # the export is outside it
     ledger = AttemptLedger(tmp_path / "ledger", f)
     assert ledger.status() == {"demo/r1": "valid"} and ledger.verify() == []
-    with pytest.raises(Invalid, match="already has attempt"):  # one cell, one counted attempt
+    with pytest.raises(runner.Refused, match="already has attempt"):  # one cell, one counted attempt
         run(f, case_path, tmp_path, name="r2")
 
 
-def test_a_changed_fixture_or_an_unbuilt_arm_is_refused_before_anything_is_counted(tmp_path):
+def test_changed_paths_and_the_export_need_no_git_and_hold_any_name(tmp_path):
+    """Collection reads plain files: a non-ASCII name is recorded as itself, and an export-ignore attribute (which
+    git archive would honour) hides nothing from the scorer (PR #100 review, findings 6 and 7)."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path, steps=[FIX, {"write": "café.py", "content": "x = 1\n"},
+                                   {"write": ".gitattributes", "content": "calc.py export-ignore\n"}])
+    record = run(f, case_path, tmp_path, scorer=lambda tree: {"calc": (tree / "calc.py").is_file()})
+    assert record["outcome"]["changed_paths"] == [".gitattributes", "café.py", "calc.py"]
+    assert record["outcome"]["score"] == {"calc": True}
+
+
+@pytest.mark.parametrize("rel", ["/etc/x", "C:/x", "\\\\host\\share\\x", "../escape.txt", "a/../../x", ".git/config",
+                                 "sub/.git/hooks/pre-commit", "a\\b"])
+def test_a_scripted_step_outside_the_work_tree_or_in_git_metadata_is_refused_before_registering(tmp_path, rel):
+    """The runner's own git can never be pointed at a configuration an arm wrote (PR #100 review, finding 1)."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path, steps=[{"write": rel, "content": "[core]\n\tfsmonitor = evil\n"}])
+    with pytest.raises(runner.Refused):
+        run(f, case_path, tmp_path)
+    assert nothing_registered(tmp_path)
+
+
+def test_an_arm_that_rewrites_git_metadata_at_run_time_never_reaches_the_runners_git(tmp_path, monkeypatch):
+    """Even an arm that writes .git/config while it runs (a model, not a checked script) cannot make collection run
+    a program: nothing reads the scratch repository through git after the arm."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+    marker = tmp_path / "ran.txt"
+
+    class Hostile:
+        kind = "scripted"
+
+        def check(self, config, snap):
+            pass
+
+        def run(self, repo, config, *, deadline_s):
+            cmd = f'{sys.executable} -c "open(r\'{marker}\', \'w\').write(\'x\')"'.replace("\\", "/")
+            with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
+                fh.write(f"[core]\n\tfsmonitor = {cmd}\n[filter \"x\"]\n\tclean = {cmd}\n")
+            (repo / ".gitattributes").write_text("* filter=x\n", encoding="utf-8")
+            return arms.ArmResult()
+
+    monkeypatch.setitem(arms.ARMS, "scripted", Hostile())
+    record = run(f, case_path, tmp_path, scorer=lambda tree: {})
+    assert record["validity"]["status"] == "valid" and not marker.exists()
+    assert ".gitattributes" in record["outcome"]["changed_paths"]
+
+
+def test_a_changed_fixture_an_unbuilt_arm_or_a_bad_configuration_is_refused_before_anything_is_counted(tmp_path):
     case_path = make_case(tmp_path / "case")
     f = plan_for(case_path)
     (tmp_path / "case" / "base" / "calc.py").write_text("changed after freezing\n", encoding="utf-8")
-    with pytest.raises(prereg.Mismatch, match="fixture of C1 changed"):
+    with pytest.raises(runner.Refused, match="fixture of C1 changed"):
         run(f, case_path, tmp_path)
-    assert not (tmp_path / "ledger" / "attempts.jsonl").exists()
-    case2 = make_case(tmp_path / "case2")
-    f2 = plan_for(case2, kind="aew", steps=[])
-    with pytest.raises(Invalid, match="not built in the shared runner yet"):
-        run(f2, case2, tmp_path / "two")
-    assert not (tmp_path / "two" / "ledger" / "attempts.jsonl").exists()
+    assert nothing_registered(tmp_path)
+    for n, (kind, config, match) in enumerate([
+            ("aew", {"steps": []}, "not built in the shared runner yet"),
+            ("scripted", {"seeded": True, "steps": []}, "no seeded tree"),
+            ("scripted", {"steps": [{"write": "x.py", "delete": "y.py"}]}, "one of write or delete"),
+            ("scripted", {"steps": "write"}, "a list")]):
+        where = tmp_path / f"t{n}"
+        cp = make_case(where / "case")
+        with pytest.raises(runner.Refused, match=match):
+            run(plan_for(cp, kind=kind, config=config), cp, where)
+        assert nothing_registered(where)
 
 
-def test_an_arm_that_fails_is_counted_as_an_invalid_measurement_and_may_be_retried(tmp_path):
+def test_a_scratch_root_inside_a_git_work_tree_is_refused(tmp_path):
     case_path = make_case(tmp_path / "case")
-    f = plan_for(case_path, steps=[{"write": "../escape.txt", "content": "x"}])
+    f = plan_for(case_path)
+    for inside in (ROOT / ".eval-scratch-test", tmp_path / "case"):  # the AEW checkout; any other work tree
+        if inside == tmp_path / "case":
+            fixture.git(inside, "init", "-q", "--template=")
+        with pytest.raises(runner.Refused, match="lies inside the git work tree"):
+            runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
+                            cases={"C1": case_path}, work=inside, run_name="r1")
+    assert nothing_registered(tmp_path) and not (ROOT / ".eval-scratch-test").exists()
+
+
+def test_an_arm_that_fails_is_counted_as_an_invalid_measurement_and_may_be_retried(tmp_path, monkeypatch):
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+
+    class Fails:
+        kind = "scripted"
+
+        def check(self, config, snap):
+            pass
+
+        def run(self, repo, config, *, deadline_s):
+            raise RuntimeError("the harness crashed")
+
+    monkeypatch.setitem(arms.ARMS, "scripted", Fails())
     record = run(f, case_path, tmp_path)
-    assert record["validity"] == {"status": "invalid_measurement", "reason_code": "RUNNER_ERROR:Invalid"}
-    assert "leaves the repository" in record["outcome"]["error"] and not (tmp_path / "work" / "escape.txt").exists()
+    assert record["validity"] == {"status": "invalid_measurement", "reason_code": "RUNNER_ERROR:RuntimeError"}
+    assert "the harness crashed" in record["outcome"]["error"]
     retry = run(f, case_path, tmp_path, name="r1b", retry_of="demo/r1")
     assert retry["validity"]["status"] == "invalid_measurement"
     assert AttemptLedger(tmp_path / "ledger", f).attempts()["demo/r1"].retries == ["demo/r1b"]
@@ -167,6 +326,9 @@ def test_a_runner_killed_while_the_arm_runs_leaves_a_visible_attempt(tmp_path, m
     class Dies:
         kind = "scripted"
 
+        def check(self, config, snap):
+            pass
+
         def run(self, repo, config, *, deadline_s):
             raise KeyboardInterrupt  # not an Exception: the runner itself stops here, as a kill would
 
@@ -176,19 +338,25 @@ def test_a_runner_killed_while_the_arm_runs_leaves_a_visible_attempt(tmp_path, m
     assert AttemptLedger(tmp_path / "ledger", f).status() == {"demo/r1": "runner_lost"}
 
 
-def test_the_command_line_runs_a_cell_and_refuses_a_bad_one(tmp_path):
+def test_the_command_line_says_whether_anything_was_counted(tmp_path):
     case_path = make_case(tmp_path / "case")
     f = plan_for(case_path)
     frozen_path = tmp_path / "prereg.yaml"
     prereg.dump(f, frozen_path)
     base = [sys.executable, "-m", "aew_eval.runner", str(frozen_path), "--case", f"C1={case_path}",
             "--ledger", str(tmp_path / "ledger"), "--work", str(tmp_path / "work")]
-    env = {**__import__("os").environ, "PYTHONPATH": str(ROOT / "eval")}
-    ok = subprocess.run([*base, "--cell", f["assignment"]["order"][0]["cell"], "--name", "cli1"], env=env,
-                        capture_output=True, text=True, timeout=120, creationflags=NO_WINDOW)
-    assert ok.returncode == 0 and "demo/cli1: valid" in ok.stdout, ok.stderr
-    bad = subprocess.run([*base, "--cell", "C9/ref/1", "--name", "cli2"], env=env, capture_output=True, text=True,
-                         timeout=120, creationflags=NO_WINDOW)
-    assert bad.returncode == 1 and "not a cell" in bad.stderr
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "eval")}
+
+    def cli(*extra: str) -> subprocess.CompletedProcess:
+        return subprocess.run([*base, *extra], env=env, capture_output=True, text=True, encoding="utf-8",
+                              timeout=120, creationflags=NO_WINDOW)
+
+    cell = f["assignment"]["order"][0]["cell"]
+    ok = cli("--cell", cell, "--name", "cli1")
+    assert ok.returncode == runner.EXIT_VALID and "demo/cli1: valid" in ok.stdout, ok.stderr
+    bad = cli("--cell", "C9/ref/1", "--name", "cli2")
+    assert bad.returncode == runner.EXIT_REFUSED and "nothing registered" in bad.stderr
+    again = cli("--cell", cell, "--name", "cli3")  # the cell is counted already
+    assert again.returncode == runner.EXIT_REFUSED and "already has attempt" in again.stderr
     lines = [json.loads(x) for x in (tmp_path / "ledger" / "attempts.jsonl").read_text().splitlines()]
-    assert [x["run_id"] for x in lines] == ["demo/cli1", "demo/cli1"]  # registered, finalized; nothing for cli2
+    assert [x["run_id"] for x in lines] == ["demo/cli1", "demo/cli1"]  # registered, finalized; nothing else

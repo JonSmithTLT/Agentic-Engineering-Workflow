@@ -467,11 +467,14 @@ sections:
       retries only under the frozen policy; each transaction under a per-experiment lock, every byte written, a torn tail
       repaired, every pinned field of a result checked) and the deterministic mapping of all 68 M3 records (`compat.py`),
       proved in `tests/unit/test_eval_instrument.py`. **Slice 2 built (2026-10-06):** `fixture.py` (a case manifest''s fixture
-      trees hashed with LF line ends, so a Windows and a Linux checkout agree, and built into a fresh one-commit repository),
-      `arms.py` (the `scripted` arm: exact edits, no model) and `runner.py` (one preregistered cell: a changed input or
-      an arm kind not built yet is refused before anything is registered; the attempt is registered before the arm runs;
-      an arm failure is a counted `invalid_measurement`; the result is finalized once, with the changed paths, an optional
-      score over an export of the final tree, and whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`.
+      trees read once into a snapshot that is both hashed and built from, with LF line ends; paths that would build differently
+      on Windows and Linux, `.git` components, links and junctions, and trees outside or nested in each other refused; git
+      run with a scrubbed environment and no configuration, hooks or signing), `arms.py` (the `scripted` arm: exact edits,
+      no model, its configuration checked against the case before registering) and `runner.py` (one preregistered cell:
+      a changed input, an arm kind not built yet, a bad configuration or a scratch root inside a git work tree is refused
+      before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`;
+      after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside
+      it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`.
       Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them), then the hidden-evaluator
       channel (design §8).'
   - '#': F20

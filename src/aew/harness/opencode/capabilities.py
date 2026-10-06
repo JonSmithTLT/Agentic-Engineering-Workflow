@@ -72,7 +72,10 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
     "Permission.Request": {"id": S, "action": S, "resources": A},
     "Permission.Rule": {"action": S, "resource": S, "effect": S},
     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
-                           "formatter": B, "default_agent": S, "permissions": A, "commands": O},
+                           "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O,
+                           "mcp.servers": O},
+    # The Lead's typed surface (F15.1): a release that respells local MCP servers fails closed at launch.
+    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B},
     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
     "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
 }

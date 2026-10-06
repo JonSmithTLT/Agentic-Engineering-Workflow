@@ -101,9 +101,9 @@ def test_the_catalog_is_the_v1_catalog():
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}
-    # The cli escape is built with the broker (slice B); the stages and publication with the journal (F15.2).
-    assert designed == {"cli", "ticket_draft", "ticket_start", "ticket_request_review",
-                        "ticket_request_verification", "ticket_prepare", "integration_publish"}
+    # The stages and publication are built with the journal (F15.2).
+    assert designed == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+                        "ticket_prepare", "integration_publish"}
 
 
 def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does():
@@ -140,6 +140,14 @@ def test_the_normal_profile_never_offers_the_cli_escape():
     assert contract.TOOLS["cli"].profiles == (RECOVERY,)
     assert "cli" not in {t.name for t in contract.exposed(NORMAL)}
     assert all(t.built for t in contract.exposed(RECOVERY))
+
+
+def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
+    from aew.engine import primitives
+
+    assert contract.OPERATION_CLASSES == primitives.OPERATION_CLASSES
+    assert (contract.MECHANICAL, contract.POLICY_RESOLVED, contract.JUDGMENT_BEARING) == (
+        primitives.MECHANICAL, primitives.POLICY_RESOLVED, primitives.JUDGMENT_BEARING)
 
 
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():

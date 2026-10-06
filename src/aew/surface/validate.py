@@ -14,22 +14,9 @@ from jsonschema import Draft202012Validator
 
 from aew.surface import contract
 from aew.surface.contract import Tool
+from aew.surface.errors import CODES, AdapterInputError
 
-CODES = ("INVALID_ARGUMENTS", "UNKNOWN_TOOL", "TOOL_NOT_BUILT", "TOOL_NOT_EXPOSED", "BROKER_UNREACHABLE")
-
-
-class AdapterInputError(Exception):
-    """A transport-level input error. Deliberately not an ``AEWError``: it is not the engine's answer."""
-
-    def __init__(self, code: str, message: str, **details: Any) -> None:
-        if code not in CODES:
-            raise ValueError(f"unknown adapter input error code {code!r}")
-        super().__init__(message)
-        self.code, self.message, self.details = code, message, details
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"code": self.code, "message": self.message, "details": dict(self.details)}
-
+__all__ = ["CODES", "AdapterInputError", "check_call"]
 
 @cache
 def _validator(name: str) -> Draft202012Validator:

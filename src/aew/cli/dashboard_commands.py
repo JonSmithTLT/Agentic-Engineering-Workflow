@@ -16,13 +16,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from aew import operator
 from aew.cli import credentials
 from aew.cli.commands import _add_json, _engine
-from aew.dashboard import control, service
-from aew.dashboard.server import RequestLog
-from aew.dashboard.session import DEFAULT_HOURS, MAX_HOURS, MIN_HOURS
+from aew.dashboard.defaults import DEFAULT_HOURS, DEFAULT_PORT, MAX_HOURS, MIN_HOURS
 from aew.errors import NotFound, OperatorAuthorizationRequired, UsageError
+
+# The server stack (``service``, ``control``) and the operator prompt are imported by the handlers that use them: the
+# parser is built for every `aew` command, which must not pay for the server (CI redesign P2).
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -32,8 +32,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     q = dsub.add_parser("serve", help="start the dashboard server from this terminal (you confirm with a typed-back "
                                       "code) and get the first one-time session URL; runs until interrupted")
-    q.add_argument("--port", type=int, default=service.DEFAULT_PORT,
-                   help=f"TCP port on 127.0.0.1 (default {service.DEFAULT_PORT}; 0 for an ephemeral port). An "
+    q.add_argument("--port", type=int, default=DEFAULT_PORT,
+                   help=f"TCP port on 127.0.0.1 (default {DEFAULT_PORT}; 0 for an ephemeral port). An "
                         "occupied port is an error, never a silent move to another port")
     q.add_argument("--session-hours", type=int, default=DEFAULT_HOURS,
                    help=f"how long a browser session lasts, {MIN_HOURS} to {MAX_HOURS} (default {DEFAULT_HOURS})")
@@ -67,6 +67,10 @@ def console(text: str) -> None:
 
 
 def _serve(a: argparse.Namespace) -> None:
+    from aew import operator
+    from aew.dashboard import service
+    from aew.dashboard.server import RequestLog
+
     if not MIN_HOURS <= a.session_hours <= MAX_HOURS:
         raise UsageError(f"--session-hours is {MIN_HOURS} to {MAX_HOURS}")
     if not 0 <= a.port <= 65535:
@@ -107,6 +111,9 @@ def _serve(a: argparse.Namespace) -> None:
 
 
 def _open(a: argparse.Namespace) -> dict[str, Any]:
+    from aew import operator
+    from aew.dashboard import control, service
+
     engine = _engine(a)
     if not operator.has_terminal():
         # Refused before the server is contacted: a requester that cannot type the code back must never put a
@@ -123,6 +130,8 @@ def _open(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def _status(a: argparse.Namespace) -> dict[str, Any]:
+    from aew.dashboard import control, service
+
     engine = _engine(a)
     found = service.locate(engine.aew_root)
     if found is None:

@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-from aew.engine.dispatch import ENTRYPOINTS
-from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, OPERATION_CLASSES, POLICY_RESOLVED
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
+
+# The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
+# authority) does not either. These mirror aew.engine.primitives and aew.engine.dispatch exactly (tested).
+MECHANICAL, POLICY_RESOLVED, JUDGMENT_BEARING = "MECHANICAL", "POLICY_RESOLVED", "JUDGMENT_BEARING"
+OPERATION_CLASSES = (MECHANICAL, POLICY_RESOLVED, JUDGMENT_BEARING)
 
 QUERY = "query"  # reads committed state and local telemetry; never commits
 WAIT = "wait"  # blocks on local run telemetry and committed events; never commits
@@ -93,7 +96,10 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
 
-EXPLAINABLE = sorted(name for name, e in ENTRYPOINTS.items() if e.covered_by is None)
+# The dispatch entrypoints a decision can be asked of: every one that is not covered by another (tested to equal
+# aew.engine.dispatch.ENTRYPOINTS without the covered ones).
+EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.mutating", "invoke.create.non_mutating",
+                      "invoke.create.parent", "work.assign", "work.dispatch", "work.redispatch"))
 
 
 # ---------------------------------------------------------------------------------------------- the catalog
@@ -157,7 +163,7 @@ TOOLS: dict[str, Tool] = _catalog(
          _obj({"argv": _strings("the command and its arguments", min_items=1),
                "stdin": {"type": "string", "description": "text for an argument given as '-'"}},
               ("argv",)),
-         required_judgments=("undeclared",), mutates=True, status=DESIGNED, profiles=(RECOVERY,)),  # built in B
+         required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
     # ---- designed in F15.1, built by F15.2 over the StageIntent journal
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",

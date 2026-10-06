@@ -278,6 +278,51 @@ def test_the_request_log_never_blocks_a_request_on_a_stalled_terminal():
         logger.removeHandler(handler)
 
 
+def test_dropped_request_log_lines_are_reported_once_the_writer_catches_up():
+    """A gap in the request log is never silent: the next line written says how many were dropped (review of
+    PR #90, finding 7)."""
+    import logging
+    import re
+    import threading
+    import time
+
+    from aew.dashboard.server import RequestLog
+
+    class Gated:
+        def __init__(self) -> None:
+            self.release = threading.Event()
+            self.text = ""
+
+        def write(self, text: str) -> None:
+            self.release.wait()
+            self.text += text
+
+        def flush(self) -> None:
+            pass
+
+    stream = Gated()
+    handler = RequestLog(stream, capacity=2)  # type: ignore[arg-type]
+    logger = logging.getLogger("aew.dashboard.test-dropped")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    try:
+        for n in range(20):
+            logger.info("line %d", n)
+        assert handler.dropped >= 20 - 2 - 1
+        stream.release.set()
+        deadline = time.monotonic() + 5
+        while not handler._lines.empty() and time.monotonic() < deadline:  # noqa: SLF001 (the writer caught up)
+            time.sleep(0.01)
+        logger.info("after")
+        handler.close()
+        reported = sum(int(n) for n in re.findall(r"(\d+) request log line\(s\) dropped", stream.text))
+        assert reported == handler.dropped and "after" in stream.text, stream.text
+    finally:
+        stream.release.set()
+        logger.removeHandler(handler)
+
+
 def test_the_spa_index_is_held_to_the_same_containment(tmp_path):
     """A build whose ``index.html`` is a link out of the root serves nothing for ``/`` or a deep link, as a
     direct request for it does not (review of PR #90)."""

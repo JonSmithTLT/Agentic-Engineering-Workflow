@@ -27,14 +27,17 @@ import io
 import json
 import logging
 import queue
+import re
+import socket
+import sys
 import threading
 import time
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Protocol, TextIO
-from urllib.parse import parse_qs, unquote, urlsplit
+from typing import Any, Protocol, TextIO, cast
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aew.dashboard import etag as E
 from aew.dashboard import frontend as ST
@@ -52,6 +55,10 @@ API_PREFIX = "/api/v1"
 HOST = "127.0.0.1"
 MAX_QUERY = 2048
 SOCKET_TIMEOUT_S = 10.0
+# The whole request head (request line and headers, or the wait for them on a kept-alive connection) must arrive
+# within this, however slowly its bytes trickle in: a per-read timeout alone lets a client sending a byte every few
+# seconds hold a connection forever (review of PR #90, finding 1).
+HEAD_DEADLINE_S = 10.0
 MAX_PATH = 2048
 MAX_REQUEST_LINE = 4096
 MAX_HEADER_LINES = 64
@@ -61,6 +68,15 @@ MAX_IN_FLIGHT = 16
 # alive; beyond this the connection gets a 503 at once and is closed, so neither half-sent requests nor idle
 # keep-alive connections can hold more threads than this (lead developer's review of PR #90).
 MAX_CONNECTIONS = 32
+# After the prepared 503, how long the accept loop drains what the refused client already sent before closing: a
+# close with unread input resets the connection, and the client would see a reset instead of the 503.
+BUSY_DRAIN_S = 0.1
+LOG_PATH_MAX = 256  # characters of a path the request log records
+LOG_QUEUE = 1024  # request log lines waiting for the writer; beyond this they are dropped, counted and reported
+# The characters a logged path keeps as they are: everything else, a control character or a CR/LF above all, is
+# percent-encoded, so no request can forge a log line or send escape sequences to the operator's terminal.
+LOG_SAFE = "/%:@!$&'()*+,;=-._~"
+LOG_METHOD = re.compile(r"[A-Z]{1,16}")  # a method token the log records as sent; any other is `<bad method>`
 ALLOWED_METHODS = "GET, HEAD"
 # R21: on every response, static and API alike.
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -91,12 +107,15 @@ CROSS_SITE_PAGE = ("This dashboard link is opened by you, from the address bar, 
 class RequestLog(logging.Handler):
     """The request log's sink (R23), which never blocks a request. Request threads only enqueue a formatted line,
     and a full queue drops it. One writer thread writes to the stream. A terminal that stops reading (Ctrl-S, a
-    suspended emulator) therefore stalls only the writer, never the server or its shutdown."""
+    suspended emulator) therefore stalls only the writer, never the server or its shutdown. Dropped lines are
+    counted, and once the writer catches up it writes one line saying how many, so a gap is never silent."""
 
-    def __init__(self, stream: TextIO, *, capacity: int = 1024) -> None:
+    def __init__(self, stream: TextIO, *, capacity: int = LOG_QUEUE) -> None:
         super().__init__()
         self.stream = stream
         self.dropped = 0
+        self._reported = 0
+        self._count = threading.Lock()
         self._lines: queue.Queue[str | None] = queue.Queue(capacity)
         self._writer = threading.Thread(target=self._write, name="aew-dashboard-log", daemon=True)
         self._writer.start()
@@ -105,10 +124,16 @@ class RequestLog(logging.Handler):
         try:
             self._lines.put_nowait(self.format(record))
         except queue.Full:
-            self.dropped += 1
+            with self._count:
+                self.dropped += 1
 
     def _write(self) -> None:
         while (line := self._lines.get()) is not None:
+            with self._count:
+                gap, self._reported = self.dropped - self._reported, self.dropped
+            if gap:
+                line = (f"aew dashboard: {gap} request log line(s) dropped: the log stream was not keeping up"
+                        + chr(10) + line)
             try:
                 self.stream.write(line + chr(10))
                 self.stream.flush()
@@ -137,8 +162,8 @@ def log_target(raw: str | None) -> str:
     path = urlsplit(raw).path
     at = unquote(path).lower().find(SESSION_PREFIX)
     if at >= 0:  # wherever it appears: everything from the segment on is withheld
-        return unquote(path)[:at] + "/session/<redacted>"
-    return path[:256]
+        return quote(unquote(path)[:at], safe=LOG_SAFE)[:LOG_PATH_MAX] + "/session/<redacted>"
+    return quote(path, safe=LOG_SAFE)[:LOG_PATH_MAX]
 
 
 def is_path_target(raw: str) -> bool:
@@ -169,6 +194,10 @@ class Refusal(Exception):
         super().__init__(body["message"])
         self.status = status
         self.body = body
+
+
+class _ClientGone(Exception):
+    """The client's input ended before its request head did: there is nobody to answer."""
 
 
 Route = Callable[[P.Projector, dict[str, str], dict[str, str]], dict[str, Any]]
@@ -244,6 +273,12 @@ class _Listener(ThreadingHTTPServer):
             try:
                 request.settimeout(1.0)
                 request.sendall(self.busy)
+                request.shutdown(socket.SHUT_WR)  # the 503 is complete: the client sees the end of the response
+                end = time.monotonic() + BUSY_DRAIN_S
+                while (left := end - time.monotonic()) > 0:  # read what it sent, so the close is not a reset
+                    request.settimeout(left)
+                    if not request.recv(65536):
+                        break
             except OSError:
                 pass
             self.shutdown_request(request)
@@ -259,6 +294,13 @@ class _Listener(ThreadingHTTPServer):
             super().process_request_thread(request, client_address)
         finally:
             self.connections.release()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """Never stdlib's traceback on standard error, which bypasses the request log: a client that went away is
+        nothing to report, anything else goes to the dashboard's logger."""
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        LOG.exception("dashboard connection failed")
 
 
 class DashboardServer:
@@ -287,44 +329,75 @@ class DashboardServer:
             def handle(self) -> None:
                 try:
                     super().handle()
-                except (ConnectionResetError, BrokenPipeError, TimeoutError):
-                    pass  # the client went away between keep-alive requests: nothing to answer
+                except (ConnectionError, TimeoutError, _ClientGone):
+                    pass  # the client went away, or ran out its head deadline: nothing to answer
+
+            def _readline(self, limit: int) -> bytes:
+                """One line of at most ``limit`` bytes, read before the head deadline however slowly it arrives:
+                each socket read waits only for the time that remains (``TimeoutError`` once none does)."""
+                line = b""
+                while len(line) < limit:
+                    remaining = self.deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("request head deadline")
+                    self.connection.settimeout(remaining)
+                    # The handler's rfile is a BufferedReader (StreamRequestHandler buffers reads by default): peek
+                    # does at most one socket read, and returns what is buffered otherwise.
+                    ahead = cast(io.BufferedReader, self.rfile).peek(1)
+                    if not ahead:
+                        return line  # end of input
+                    end = ahead.find(b"\n", 0, limit - len(line))
+                    line += self.rfile.read(end + 1 if end >= 0 else min(len(ahead), limit - len(line)))
+                    if end >= 0:
+                        return line
+                return line
 
             def handle_one_request(self) -> None:
-                # stdlib's own, with the request line read within MAX_REQUEST_LINE (stdlib reads 64 KiB first).
+                # stdlib's own, with the head read within MAX_REQUEST_LINE (stdlib reads 64 KiB first), the header
+                # bounds, and one deadline for the whole head.
+                self.deadline = time.monotonic() + HEAD_DEADLINE_S
                 try:
-                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+                    self.raw_requestline = self._readline(MAX_REQUEST_LINE + 1)
                     self.started = time.monotonic()
                     if len(self.raw_requestline) > MAX_REQUEST_LINE:
                         self.requestline, self.request_version, self.command = "", "", ""
                         self.send_error(HTTPStatus.REQUEST_URI_TOO_LONG)
                         return
-                    if not self.raw_requestline:
+                    if not self.raw_requestline.endswith(b"\n"):  # input ended (mid-line or at once): nobody to answer
                         self.close_connection = True
                         return
                     if not self.parse_request():
                         return
+                    self.connection.settimeout(SOCKET_TIMEOUT_S)  # the response: the per-operation timeout again
                     getattr(self, "do_" + self.command)()
                     self.wfile.flush()
                 except TimeoutError:
                     self.close_connection = True
 
             def _read_header_block(self) -> bytes | None:
-                """The header block, read line by line within the bounds; ``None`` when it exceeds them
-                (nothing past the bound is read: the connection is closed with the refusal)."""
+                """The header block, read line by line within the bounds and the head deadline; ``None`` when it
+                exceeds the bounds (nothing past them is read: the connection is closed with the refusal). Input
+                that ends before the blank line is a client that went away (``_ClientGone``), never a complete
+                request (review of PR #90, finding 4)."""
                 block = b""
                 for _ in range(MAX_HEADER_LINES + 1):
-                    line = self.rfile.readline(MAX_HEADER_BYTES + 1 - len(block))
+                    line = self._readline(MAX_HEADER_BYTES + 1 - len(block))
                     block += line
-                    if line in (b"\r\n", b"\n", b""):
+                    if line in (b"\r\n", b"\n"):
                         return block
                     if len(block) > MAX_HEADER_BYTES:
                         return None
+                    if not line.endswith(b"\n"):
+                        raise _ClientGone
                 return None
 
             def parse_request(self) -> bool:
-                words = self.raw_requestline.split()
-                if len(words) == 3 and words[2].startswith(b"HTTP/1."):
+                # Tokenized as stdlib does (text, split on any whitespace), so every request stdlib would read headers
+                # for has them read here first, within the bounds and the head deadline (review of PR #90, finding
+                # 2): two words as well as three, since stdlib reads the headers of a two-word line before it is
+                # refused as HTTP/0.9 below (re-review R1).
+                words = str(self.raw_requestline, "iso-8859-1").rstrip("\r\n").split()
+                if len(words) >= 2:
                     block = self._read_header_block()  # bounded while reading, before stdlib parses it
                     if block is None:
                         self.command, self.request_version = "", self.protocol_version
@@ -381,7 +454,10 @@ class DashboardServer:
             def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
                 path = log_target(raw_target(self))
                 ms = (time.monotonic() - getattr(self, "started", time.monotonic())) * 1000
-                LOG.info("%s %s %s %.0fms", getattr(self, "command", None) or "-", path, int(code), ms)
+                method = getattr(self, "command", None) or "-"
+                if method != "-" and not LOG_METHOD.fullmatch(method):  # never control bytes to the terminal
+                    method = "<bad method>"
+                LOG.info("%s %s %s %.0fms", method, path, int(code), ms)
 
         self.httpd = _Listener((HOST, port), Handler, self._busy_response())
         self._thread = threading.Thread(target=self.httpd.serve_forever, name="aew-dashboard", daemon=True)
@@ -444,6 +520,9 @@ class DashboardServer:
             status, body, tag = self._respond(h, url)
         except Refusal as r:
             status, body = r.status, r.body
+        except ConnectionError:  # the client went away while its answer was written: not a projection failure
+            h.close_connection = True
+            return
         except Exception:  # never let a request kill the server; the client learns only that it failed
             LOG.exception("dashboard request failed")
             status, body = HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")

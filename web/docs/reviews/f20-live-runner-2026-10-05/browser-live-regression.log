@@ -1,0 +1,32 @@
+v22.22.2
+TAP version 13
+# Subtest: target cannot contain credentials, paths, queries or foreign hosts
+ok 1 - target cannot contain credentials, paths, queries or foreign hosts
+  ---
+  duration_ms: 1.439951
+  type: 'test'
+  ...
+# Subtest: cookie file is narrow, origin-bound, private and never leaks parser errors
+ok 2 - cookie file is narrow, origin-bound, private and never leaks parser errors
+  ---
+  duration_ms: 4.724682
+  type: 'test'
+  ...
+# Subtest: browser guard allows only read-only same-origin production traffic
+ok 3 - browser guard allows only read-only same-origin production traffic
+  ---
+  duration_ms: 0.253829
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52.654963
+PASS live-runner regression: authenticated desktop/phone, test adapter only
+PASS live-runner regression: auth-bypass, test adapter only
+PASS live-runner regression: malformed, test adapter only

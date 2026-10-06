@@ -166,6 +166,7 @@ class LanePlugin:
         self.shard = parse_shard(spec) if spec else None
         self.report_path = config.getoption("aew_lane_report")
         self.collected: list[str] = []
+        self.lanes: dict[str, str] = {}  # every collected test's lane: assurance requires only the tier's lanes (P1)
         self.phases: dict[str, dict[str, str]] = {}
         self.durations: dict[str, float] = {}
         self.started = time.perf_counter()
@@ -194,8 +195,10 @@ class LanePlugin:
         if problems:
             raise pytest.UsageError("unclassified tests:\n  " + "\n  ".join(sorted(set(problems))))
         self.collected = [item.nodeid for item in items]
+        self.lanes = lanes
         if _is_worker(config):
             config.workeroutput["aew_collected"] = self.collected  # type: ignore[attr-defined]
+            config.workeroutput["aew_lanes"] = self.lanes  # type: ignore[attr-defined]
         keep = [i for i in items if self.lane is None or lanes[i.nodeid] == self.lane]
         if self.shard:
             k, n = self.shard
@@ -229,6 +232,7 @@ class LanePlugin:
         collected = getattr(node, "workeroutput", {}).get("aew_collected")
         if collected and not self.collected:
             self.collected = list(collected)
+            self.lanes = dict(getattr(node, "workeroutput", {}).get("aew_lanes") or {})
 
     def pytest_sessionstart(self, session: pytest.Session) -> None:
         if not _is_worker(self.config):
@@ -267,6 +271,7 @@ class LanePlugin:
             "exitstatus": exitstatus,
             "wall_s": round(time.perf_counter() - self.started, 2),
             "collected": sorted(self.collected),
+            "lanes": dict(sorted(self.lanes.items())),
             "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
                         for nid, ph in sorted(self.phases.items())},
         }

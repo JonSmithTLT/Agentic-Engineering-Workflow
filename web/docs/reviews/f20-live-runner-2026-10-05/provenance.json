@@ -1,0 +1,28 @@
+{
+  "source_commit": "cf7a3da235c7334ae974a5840298f9f8276d24f9",
+  "source_tree": "aebcf7f846c39467db7fef26d2829380abbdaa7d",
+  "builder": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+  "method": "Local shared clone, detached explicit commit, core.autocrlf=false; clean tracked/untracked tree before and after offline gate.",
+  "gate": "PASS",
+  "network": "none",
+  "checkout": "web/artifacts/commit-freeze/run-1ARQYAGX/source",
+  "build_trees": {
+    "dist": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+    "dist-demo": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a"
+  },
+  "browser_runtime_image": "sha256:cc7e6dbac78cefcba1766c2580732ff60f6076fa4a1d94175933ce4a05a83d1b",
+  "browser_runtime_note": "Disposable derivative of the pinned builder with browser OS libraries; base offline builder unchanged.",
+  "playwright": "1.59.1",
+  "chromium_revision": "1217",
+  "chromium_version": "147.0.7727.15",
+  "chromium_executable_sha256": "696170a79640ec5b50c7518140ace06c69a49cfb295bf527d4a85e26a12b89a7",
+  "browser_method": "Tracked web/docs copied from clean detached checkpoint into ephemeral browser container; frozen dist copied; locked offline-installed dependencies mounted read-only under /runtime/node_modules; --network none. Regression owns a test-only authenticated adapter, not an Engine server.",
+  "source_and_build_trees_unchanged_after_browser_checks": true,
+  "acceptance": "Web-owned runner verification only; packaged-server F20.6 and independent review remain pending.",
+  "evidence_sha256": {
+    "dist.SHA256SUMS": "486c3a2c531c0c46fd5f850fc771598321ce47154a777c67ba21775110f7f89a",
+    "dist-demo.SHA256SUMS": "19030453fa2102481cd834472e61b4d0462ee0588b76bddb9275f1859afbe75a",
+    "offline-gate.log": "ae014f9df959e0d1bfa88c5f20ec9786db06fdc9aeec81b11d981215de5d2eee",
+    "browser-live-regression.log": "83a438fc0bfecbf4dea4352a0d62e340716257ad5bd609cdda3afcd1c30c77fe"
+  }
+}

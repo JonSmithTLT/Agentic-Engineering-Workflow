@@ -28,6 +28,7 @@ NOT_DISPATCHING = {
     "integrate defer", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+    "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",

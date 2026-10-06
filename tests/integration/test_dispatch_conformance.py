@@ -1,9 +1,10 @@
 """Dispatch-entrypoint conformance (M4-A; m4-ambiguity-report.md §2.1, plan review 2026-10-03).
 
 Every way to dispatch is a declared entrypoint (``aew.engine.dispatch.ENTRYPOINTS``). These tests drive each one
-for real, through the CLI, through ``--launch`` and through the Lead broker's relay, and prove each reached the
-predicate: the invocation or run it created records the decision that admitted it. A query (``aew dispatch
-explain``) equals the execution, and an ALLOW is never reused once anything it depended on changed.
+for real, through the CLI, through ``--launch``, through the Lead broker's relay and through the typed Lead surface's
+MCP transport (channel ``lead_mcp``, F15.1), and prove each reached the predicate: the invocation or run it created
+records the decision that admitted it. A query (``aew dispatch explain``) equals the execution, and an ALLOW is never
+reused once anything it depended on changed.
 """
 
 from __future__ import annotations
@@ -146,6 +147,44 @@ def test_a_lead_session_dispatch_is_relayed_to_the_same_predicate(lab, tmp_path)
     inv_id = lab.project.ok("work", "show", wid)["control"]["implementer_invocation"]
     admitted(lab.project, inv_id, "work.assign", channel="lead_broker")
     lab.wait(lab.project.ok("invoke", "show", inv_id)["runs"][0]["run"])
+
+
+def test_a_typed_surface_dispatch_is_carried_by_lead_mcp_and_waited_on_through_it(lab, tmp_path):
+    """The `aew-lead` MCP server's recovery-profile cli escape dispatches through the same predicate; the channel
+    records that the MCP transport carried it (provenance only); the run is then waited on through MCP."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "aew", "args": ["whoami"]}])
+    probe = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
+    script, transcript = tmp_path / "mcp.json", tmp_path / "mcp.jsonl"
+    script.write_text(json.dumps([
+        {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
+        {"call": "status", "arguments": {}},
+        {"call": "cli", "arguments": {"argv": ["work", "assign", wid, "--launch", "--expect-rev", "$revision_text"]}},
+    ]), encoding="utf-8")
+    res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
+                  "--transcript", str(transcript), "--profile", "recovery",
+                  env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    steps = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+    assigned = steps[3]["reply"]["result"]["structuredContent"]
+    assert assigned["ok"], assigned["stopped"]
+    inv_id = lab.project.ok("work", "show", wid)["control"]["implementer_invocation"]
+    record = admitted(lab.project, inv_id, "work.assign", channel="lead_mcp")
+    run = lab.project.ok("invoke", "show", inv_id)["runs"][0]
+    assert run["dispatch"]["channel"] == "lead_mcp" and run["dispatch"]["covered_by"] == "work.assign"
+    # The decision is the same predicate's: explaining it now through the CLI names the same entrypoint.
+    assert record["entrypoint"] == "work.assign"
+    # Waiting on the run through MCP: one call until it ends.
+    script.write_text(json.dumps([
+        {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+        {"call": "harness_wait", "arguments": {"runs": [run["run"]], "timeout_s": 120}},
+    ]), encoding="utf-8")
+    res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
+                  "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    waited = json.loads(transcript.read_text(encoding="utf-8").splitlines()[1])["reply"]["result"]
+    assert waited["structuredContent"]["ok"] and waited["structuredContent"]["result"]["timed_out"] is False
+    assert_control_invariants(lab.project)
 
 
 # ---------------------------------------------------------------- query equals execution, never a cached ALLOW

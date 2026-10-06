@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.dashboard.control import Console, ControlServer
+from aew.dashboard.defaults import DEFAULT_PORT  # noqa: F401  (re-exported for callers)
 from aew.dashboard.server import DashboardServer
 from aew.dashboard.session import DEFAULT_HOURS, SessionTable
 from aew.engine.api import Engine
@@ -30,7 +31,6 @@ from aew.harness import procs
 from aew.knowledge.manifest import load_manifest
 from aew.util import atomic_write, utc_now
 
-DEFAULT_PORT = 4280
 DIR_REL = "local/dashboard"
 SERVER_JSON_REL = f"{DIR_REL}/server.json"
 KEY_REL = f"{DIR_REL}/control.key"
@@ -42,7 +42,8 @@ class Service:
     """Binds on construction (so an occupied port fails before any operator prompt), serves after ``start``."""
 
     def __init__(self, engine: Engine, *, port: int = DEFAULT_PORT, hours: int = DEFAULT_HOURS,
-                 console: Console | None, clock: Any = utc_now, validate_with: Any = None) -> None:
+                 console: Console | None, clock: Any = utc_now, validate_with: Any = None,
+                 static_root: Path | None = None) -> None:
         self.engine = engine
         self.project_id = str(load_manifest(engine.aew_root)["project"]["id"])
         try:
@@ -58,7 +59,7 @@ class Service:
         self.instance = secrets.token_hex(8)  # this service's identity in the endpoint file: a pid is not enough
         try:
             self.server = DashboardServer(engine, authenticator=self.table, sessions=self.table, port=port,
-                                          validate_with=validate_with)
+                                          validate_with=validate_with, static_root=static_root)
         except OSError as exc:
             raise UsageError(f"the dashboard cannot listen on 127.0.0.1:{port} ({exc.strerror or exc}); it never moves "
                              "to another port by itself: pass --port N for a different one, or --port 0 for an "

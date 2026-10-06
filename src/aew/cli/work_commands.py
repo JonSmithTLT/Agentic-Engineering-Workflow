@@ -468,6 +468,16 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     _register_integration(sub)
 
 
+def _breaker_reset(a: argparse.Namespace) -> Any:
+    from aew import operator
+
+    # The operator's own decision, typed back at the controlling terminal: never available to an agent shell.
+    authorization = operator.authorize("RESET the validation circuit breaker: automatic infrastructure retries of "
+                                       f"post-integration validation resume ({a.reason})")
+    return _engine(a).integrate_breaker_reset(token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason,
+                                              authorization=authorization)
+
+
 def _register_integration(sub: argparse._SubParsersAction) -> Any:
     p = sub.add_parser("integrate", help="Lead-controlled integration: validate, then publish by ref CAS")
     isub = p.add_subparsers(dest="integrate_cmd", required=True)
@@ -481,6 +491,26 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
         _add_lead(q)
         q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
             token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id))
+    # Checks-mode post-integration validation (M4-D5): deterministic, contained, under the entry's lease.
+    q = isub.add_parser("validate", help="validate the candidate with the policy's post-integration checks (checks "
+                                         "mode): no model, contained, under the lease")
+    q.add_argument("work_id")
+    q.add_argument("--wait", action="store_true", help="wait for a run already validating this candidate, up to its "
+                                                       "deadline, instead of refusing")
+    q.add_argument("--diagnostic", action="store_true",
+                   help="run the checks for information only (also where containment is unavailable): advisory "
+                        "results, never evidence, never a state change")
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _engine(a).integrate_validate(
+        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, wait=a.wait, diagnostic=a.diagnostic))
+    q = isub.add_parser("breaker", help="the validation infrastructure circuit breaker")
+    bsub = q.add_subparsers(dest="breaker_cmd", required=True)
+    b = bsub.add_parser("status", help="whether automatic infrastructure retries are stopped, and why")
+    b.set_defaults(handler=lambda a: _engine(a).integrate_breaker_status())
+    b = bsub.add_parser("reset", help="re-enable automatic infrastructure retries (operator-confirmed at the terminal)")
+    b.add_argument("--reason", required=True)
+    _add_lead(b)
+    b.set_defaults(handler=_breaker_reset)
     # The Lead's queue commands (M4-D4): scheduling only, never eligibility.
     for name, method, text in (
         ("defer", "integrate_defer", "set a queue entry aside (gives up its lease if it holds one)"),

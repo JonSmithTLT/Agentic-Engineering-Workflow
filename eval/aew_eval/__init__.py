@@ -11,7 +11,9 @@ A measurement instrument, never workflow authority: nothing here mutates project
   result is finalized once and immutably, a runner that dies leaves a visible ``runner_lost`` attempt);
 * :mod:`aew_eval.compat`: the deterministic mapping of the M3 dogfood records (``aew/dogfood-run/v1``).
 
-The runner, fixtures, the hidden-evaluator channel, metrics and reports come later (design §8). Hidden oracles never
+Slice 2 adds :mod:`aew_eval.fixture` (a case's fixture hashed and built), :mod:`aew_eval.arms` (the scripted arm)
+and :mod:`aew_eval.runner` (one preregistered cell, registered before it runs and finalized once). The aew and raw
+arms, the hidden-evaluator channel, metrics and reports come later (design §8). Hidden oracles never
 live in this repository: a preregistration holds only their content hashes.
 """
 

@@ -5,6 +5,7 @@ Start here for the frontend. These pages distinguish current guidance, design pr
 | Your task | Start here |
 |---|---|
 | Run or rebuild the frontend | [Local development](how-to/local-development.md), [PR94 builder](how-to/pr94-offline-builder.md), [historical builder](how-to/pinned-web-builder.md) |
+| Check a live authenticated production server | [Live browser runner](how-to/authenticated-live-browser.md), [F20 handoff](reference/f20-live-browser-handoff.md) |
 | Open a demo without service workers | [HTTP demo](how-to/http-demo.md) |
 | Verify a change or freeze review evidence | [Verification](how-to/verification.md) |
 | Review an investigation through the product | [Independent review](how-to/independent-review.md) |

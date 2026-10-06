@@ -9,12 +9,19 @@ skipped:
       Covered on Linux.
     tests/unit/test_store.py::test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file: >-
       the lock file is replaced while open, which Windows refuses (area 5 P2 is POSIX-only). Covered on Linux.
+    tests/integration/test_validation_checks.py::test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused: >-
+      checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
+      mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.
     tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
       POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
       the refusal path runs and AT-1 substitutes the terminal channel in-process.
     tests/integration/test_dashboard_session.py::test_serve_at_a_real_terminal_shows_the_challenge_and_writes_the_url: >-
       POSIX pty operator path for `aew dashboard serve` (F20.3); a Windows console would appear on the desktop.
       Covered on Linux; on Windows the no-terminal refusals run and the serving console is substituted in-process.
+    tests/integration/test_dashboard_acceptance.py::test_the_real_cli_serves_the_product_end_to_end: >-
+      POSIX pty operator path for F20.6's real-CLI walk (`aew dashboard serve` at a pseudo-terminal); a Windows
+      console would appear on the desktop. Covered on Linux (serial lane); on Windows the in-process service runs
+      the same walk (test_the_product_end_to_end_through_one_session).
     tests/integration/test_worktree_sync.py::test_executable_bit_only_change_materializes: >-
       needs POSIX filemode semantics (core.fileMode=false on Windows). Covered on Linux.
     tests/integration/test_worktree_sync.py::test_file_symlink_transitions_sync[file_to_symlink]: >-

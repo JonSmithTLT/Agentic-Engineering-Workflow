@@ -13,8 +13,11 @@
     "work_unit": {"type": "string"},
     "producer": {
       "type": "object",
-      "required": ["role", "invocation"],
+      "required": ["invocation"],
       "properties": {
+        "kind": {"enum": ["role_invocation", "engine"],
+                 "description": "M4-D5: who produced the record. Absent means role_invocation (every earlier record). `engine` is AEW's own deterministic check machinery under a custody invocation (an integration_attempt): only on check_result, never with a role, and always naming its validation run"},
+        "validation_run": {"type": "string", "description": "M4-D5: the validation run (IV-...) that produced an engine check_result"},
         "role": {"type": "string"},
         "invocation": {"type": "string"},
         "role_card": {"type": ["object", "null"]},
@@ -168,6 +171,14 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"producer": {"required": ["kind"], "properties": {"kind": {"const": "engine"}}}}},
+      "then": {"properties": {"kind": {"const": "check_result"},
+                              "producer": {"required": ["validation_run"], "not": {"required": ["role"]}}}},
+      "else": {"properties": {"producer": {"required": ["role"]}}}
+    }
+  ],
   "$defs": {
     "snapshot": {
       "type": "object",

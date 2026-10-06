@@ -30,3 +30,5 @@ python -m pytest --lane regression -n auto -q                                   
 ```
 
 Test lanes, the CI merge gate and the rules for adding tests are in [`docs/implementation/testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md).
+
+**Pull requests:** every one gets an independent review, findings are fixed in the same pull request, and the author may merge only when the review is clear and CI is green. The rules for every agent and contributor are in [`AGENTS.md`](AGENTS.md).

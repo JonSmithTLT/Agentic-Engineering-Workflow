@@ -72,10 +72,10 @@ def test_closed_rows_are_gates_first_then_id_order_and_an_appended_row_is_report
     # a row appended in closing order (where every change used to append) is a problem until render sorts it
     data = copy.deepcopy(DATA)
     section = next(s for s in data["sections"] if s["title"].startswith("Closed"))
-    section["rows"].append({c: ("E0" if c == "#" else "x") for c in section["columns"]})  # an id nobody uses
+    section["rows"].append({c: ("A0" if c == "#" else "x") for c in section["columns"]})  # unused, sorts first
     assert any("not in id order" in p for p in register.problems(data))
     assert register.problems(register.normalize(data)) == []
-    assert next(iter(register.normalize(data)["sections"][-1]["rows"][len(gates)].values())) == "E0"
+    assert next(iter(register.normalize(data)["sections"][-1]["rows"][len(gates)].values())) == "A0"
 
 
 def test_a_change_log_in_the_preamble_is_reported():

@@ -248,21 +248,6 @@ sections:
       concern; the review''s recommendation is historical input. The work is F15.1 to F15.3 below. ARV-04 (operator, 2026-10-05):
       the typed surface is one of the two mechanisms named to keep the operator and designer''s serial path short; the other
       is F8''s operator inbox.'
-  - '#': F15.1
-    Work: 'The typed surface''s read-only and transport slice: the catalog and runner (`aew.surface`), the broker operation
-      `lead.tool`, the `aew-lead` MCP transport spawned without a credential and forwarding to the broker, the query tools
-      (`status`, `resume`, `work_show`, `explain`, `harness_status`), `harness_wait` on the ADR-0012 wake file, `checkpoint`,
-      the CLI parity adapter `aew lead tool`, surface-profile filtering (the generic `cli` escape is recovery-only), the
-      catalog conformance tests and the `lead_mcp` dispatch channel'
-    Source (governing): '[typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) §3 to §5, §7, §8, §11 (ledger
-      TLS-01 to TLS-12, TLS-15, TLS-16, TLS-18 to TLS-25)'
-    Belongs to or gated by: '**M4-D** (the design''s §11); the first transport is MCP (Q13, designer 2026-10-05)'
-    Notes: 'Creates no multi-step mutation semantics. The prototype on the review branch (patch in `eval/reviews/architecture-2026-10-04/patches/`)
-      proved the seams; everything it did not build is listed in the design''s §9. Three slices, one PR each: A the contract,
-      B the broker operation, the fail-closed Lead reachability classification and the CLI parity adapter, C the MCP transport
-      and the Lead projection. **A built:** `aew.surface` (catalog, effective class, runner, tri-state projection with a
-      control part cached on control and policy identity and legality and run-telemetry overlays read on every call), `schemas/surface.schema.json`
-      with A3''s `policy_binding`; the stages, publication and the `cli` escape are catalogued and refused until built'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review
@@ -466,8 +451,17 @@ sections:
       ledger (registered and synced before any provider action, a result finalized once, a killed runner visible as `runner_lost`,
       retries only under the frozen policy; each transaction under a per-experiment lock, every byte written, a torn tail
       repaired, every pinned field of a result checked) and the deterministic mapping of all 68 M3 records (`compat.py`),
-      proved in `tests/unit/test_eval_instrument.py`. Next: the runner and fixtures by generalizing `dogfood.py`, then the
-      hidden-evaluator channel (design §8).'
+      proved in `tests/unit/test_eval_instrument.py`. **Slice 2 built (2026-10-06):** `fixture.py` (a case manifest''s fixture
+      trees read once into a snapshot that is both hashed and built from, with LF line ends; paths that would build differently
+      on Windows and Linux, `.git` components, links and junctions, and trees outside or nested in each other refused; git
+      run with a scrubbed environment and no configuration, hooks or signing), `arms.py` (the `scripted` arm: exact edits,
+      no model, its configuration checked against the case before registering) and `runner.py` (one preregistered cell:
+      a changed input, an arm kind not built yet, a bad configuration or a scratch root inside a git work tree is refused
+      before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`;
+      after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside
+      it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`.
+      Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them), then the hidden-evaluator
+      channel (design §8).'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve
@@ -481,7 +475,7 @@ sections:
       at `7c120b4` (main-line review and fix verification ACCEPT, 2026-10-02). Merged to `main` by F20.1 (PR #26); the records
       are `web/docs/reference/integration-checklist.md` and `web/docs/archive/core/frontend-core-review-main-line.md` (index:
       `web/docs/README.md`)'
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), as tickets F20.2 to F20.6; F20.1 to F20.4 are done (§9)'
+    Belongs to or gated by: '**M4** (operator, 2026-10-03), as tickets F20.2 to F20.6; F20.1 to F20.5 are done (§9)'
     Notes: 'Contract changes renew its review (C0). Out of scope until then: Queue (no reviewed wire model) and Graph (optional,
       after the freeze; the core contract is not expanded for it). Write actions wait until the typed surface exists, so
       that the dashboard calls the same tools (ARV-01, operator 2026-10-05). Small frontend follow-up, not blocking: an
@@ -491,23 +485,23 @@ sections:
       it (renewed C0 review), and the dashboard then draws an honest timeline. Until then the dashboard does not assemble
       one from other timestamps (run times, completion). **Lead developer (2026-10-05, PR #57):** when F28 is built the
       run label''s `network` becomes an object (`mode`, `provider_relay`, `egress_allow`), so the dashboard contract needs
-      a note for the web developer; a contract change renews C0.'
-  - '#': F20.5
-    Work: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
-      CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only (an SSH tunnel
-      for a remote host)'
-    Source (governing): '`web/docs/reference/integration-checklist.md`'
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.2 and F20.3'
-    Notes: '**Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §4.13, §4.14, §5.4: the committed static build with `BUILD.json`, the exact header set, Host and Origin rules, request
-      bounds'
+      a note for the web developer; a contract change renews C0. **Main line (2026-10-05, F20.5 browser check):** the engine''s
+      terminal integration status `integrated` is not among `Integration.status`''s `x-known-values` (prepared, publishing,
+      conflict, superseded), so the Work page shows it as an unknown value with a warning, as the contract says it must;
+      adding it is a contract change (renewed C0), for the web developer to schedule.'
   - '#': F20.6
     Work: 'Integrated acceptance: the browser and security checks against authenticated live state, recorded separately
       from the frontend''s acceptance'
     Source (governing): '`web/docs/reference/integration-checklist.md`'
     Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.1 to F20.5'
     Notes: '**Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §5.5: the acceptance record, separate from the frontend''s'
+      §5.5: the acceptance record, separate from the frontend''s. **Server half done (2026-10-05):** the end-to-end acceptance
+      suite (`tests/integration/test_dashboard_acceptance.py`: the packaged frontend and every page''s projection through
+      one session, conditional replays, expiry, server stop, per-project scope, hostile content as data, the real CLI at
+      a pseudo-terminal on POSIX), the browser handoff tools (`tools/dashboard/acceptance_project.py`, `tools/dashboard/session_file.py`)
+      and the record [`dashboard-main-line-acceptance-2026-10-05.md`](../archive/reviews/dashboard-main-line-acceptance-2026-10-05.md).
+      **Open: the browser gate** (operator, 2026-10-05): the web side''s `web/scripts/browser-live.mjs` run against the
+      packaged authenticated server and recorded there; until then F20.6 stays open'
   - '#': F20.7
     Work: 'The dashboard event endpoint (ADR-0012 D8): `GET /api/v1/events?since=R` as a bounded long poll on the revision
       cursor over the outbox''s typed events, waking on `local/wake` through F20.2''s lock-free reader; the reply names
@@ -740,12 +734,6 @@ sections:
       brief is a stand-in. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): Lead skills (reconnaissance, protected
       goal inputs, classification) and role skills (verification evidence, report authoring) as F19-evaluated candidates;
       language manuals deferred; a minimal delivery path is F26.'
-  - '#': D4
-    Work: A deterministic `checks` adapter for integration-scope verifiers
-    Source: M3 plan §7
-    Target and notes: '**M4** (designer, 2026-10-01; F10): a policy-selectable deterministic integration-validation path.
-      Existing verifier policy stays the default until evaluation supports cheaper routing. In T1 the LLM post-integration
-      verifier cost USD 0.0025.'
   - '#': D5
     Work: Model optimization and routing policy
     Source: M3 plan §8
@@ -1185,6 +1173,14 @@ sections:
       (the promotion PR of 2026-10-05); the idea note v0.4 stays adopted direction and governs only what the design defers
       to it; its requirements the design carries are marked absorbed in the ledger (TIS, LWE); the design's first-transport
       decision closes Q13's transport part; the Workflow Contract §15.6 consolidation goes to the re-freeze (E19)
+  - '#': D4
+    Was: A deterministic `checks` adapter for integration-scope verifiers
+    Closed: '2026-10-05'
+    By: 'M4-D5: `aew integrate validate` runs the policy''s post-integration checks on the candidate under the lease, contained,
+      with no model, when `gates.post_integration.validation` resolves to `checks` (by the Ticket''s local class; an inherited
+      verifier obligation overrides); engine-produced `check_result` evidence bound to the run''s exact identity; fail-closed
+      without immutable-source containment; a hard deadline; bounded infrastructure handling with a circuit breaker (ADR-0004''s
+      and ADR-0003''s amendments of 2026-10-05). `verifier` stays the default; switching it is an evaluation (F19)'
   - '#': E1
     Was: '`aew harness wait` on any of several runs, woken by the supervisor instead of polled'
     Closed: '2026-10-05'
@@ -1291,6 +1287,18 @@ sections:
       designer''s open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers
       and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`,
       "M4-B as built"'
+  - '#': F15.1
+    Was: 'The typed Lead surface''s read-only and transport slice (typed Lead surface v0.2 §3 to §5, §7, §8, §11''s M4-D
+      row): the catalog and runner, `lead.tool`, the `aew-lead` MCP transport, the query tools, `harness_wait`, `checkpoint`,
+      `aew lead tool`, surface profiles, conformance and the `lead_mcp` channel'
+    Closed: '2026-10-06'
+    By: 'PRs #88, #93 and #95. #88 the contract: `aew.surface` (the v1 catalog with the stages designed and refused, the
+      effective class, one runner, a tri-state `ActionProjection` with availability, callability and auto-run eligibility
+      kept apart), `schemas/surface.schema.json` with A3''s `policy_binding`. #93 the broker: `lead.tool` (cooperative,
+      so a typed wait never holds the broker), the fail-closed Lead reachability classification, the recovery-only `cli`
+      escape and `aew lead tool`. #95 the transport: `aew lead mcp` (no credential, no direct mode, never an engine), the
+      Lead projection and probe against the pinned 2.0.18 (MCP timeouts in ms, default 12 h; tools named `<server>_<tool>`).
+      Still open for F15.2: TLS-07, TLS-16 (`ticket_draft` equivalence), TLS-26, TLS-28; for E18: TLS-25''s dashboard half'
   - '#': F20.1
     Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
     Closed: '2026-10-03'
@@ -1317,6 +1325,15 @@ sections:
       scope (path, project, normalized query); `If-None-Match` as a list, `W/` and `*` never matching; a `304` with the
       validator sent, no body, after authentication; tested against live projections (a commit, a revision-only commit,
       telemetry alone); design note §4.12, §5.3'
+  - '#': F20.5
+    Was: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
+      CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only'
+    Closed: '2026-10-05'
+    By: 'PR #90: the frontend built from `4f0a710` (agreed with the web developer and the operator) by the pinned offline
+      builder and committed under `src/aew/dashboard/static/` with `BUILD.json` (`tools/dashboard/import_build.py`); `aew.dashboard.frontend`
+      (the SPA fallback, traversal refused); R21''s header set on every response; the exact Host (`421`) and Origin and
+      `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request
+      log; `serve --static DIR`; design note §4.13, §4.14, §5.4'
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error
     Closed: '2026-10-01'

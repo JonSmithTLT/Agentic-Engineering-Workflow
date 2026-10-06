@@ -80,11 +80,13 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
         trees.add(tree)  # a run's CheckTrees: killed on arrival if the run has already ended
     faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
     exit_code: int | None = None
+    outcome, spawn_errno = "ran", None
     try:
         try:
             proc = tree.spawn(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               stdin=subprocess.DEVNULL, env=env, text=True)
         except OSError as exc:
+            outcome, spawn_errno = "spawn_failed", exc.errno
             log = f"$ {' '.join(command)}\nfailed to start: {exc}"
         else:
             try:
@@ -92,6 +94,7 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
                 exit_code = proc.returncode
                 log = f"$ {' '.join(command)}\n(cwd {cwd})\n\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
             except subprocess.TimeoutExpired:
+                outcome = "timeout"
                 tree.kill()
                 stdout, stderr = proc.communicate()
                 log = f"$ {' '.join(command)}\nTIMEOUT after {timeout}s\n{stdout or ''}\n{stderr or ''}"
@@ -101,5 +104,7 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
             trees.discard(tree)
     if left and exit_code is not None:
         log += "\n--- processes the check left running were ended when it returned ---\n"
+    # ``outcome`` tells a check that could not start (``spawn_failed``, with its errno) or ran out of time (``timeout``)
+    # from one that ran: integration validation (M4-D5) treats the first as infrastructure, the second as inconclusive.
     return {"exit_code": exit_code, "duration_s": round(time.monotonic() - started, 3), "log": log,
-            "command": command}
+            "command": command, "outcome": outcome, "spawn_errno": spawn_errno}

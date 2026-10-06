@@ -17,6 +17,7 @@ node --version; npm --version
 sha256sum package-lock.json /opt/spt-frontend/frontend-npm-manifest.json /opt/spt-frontend/SHA256SUMS
 npm ci --offline --ignore-scripts
 npm ls --all
+node --test scripts/live-inputs.test.mjs
 cp src/api/types.ts /tmp/types-before.ts
 npm run generate:types
 cmp src/api/types.ts /tmp/types-before.ts

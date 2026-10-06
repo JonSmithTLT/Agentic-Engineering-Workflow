@@ -25,9 +25,11 @@ NOT_DISPATCHING = {
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
     "history reindex", "history show", "init",
-    "integrate defer", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
+    "integrate breaker reset", "integrate breaker status", "integrate defer", "integrate publish",
+    "integrate reconcile", "integrate reorder", "integrate requeue", "integrate validate",  # under the lease (M4-D5)
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+    "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
@@ -78,7 +80,7 @@ def test_entrypoints_are_declared_with_an_owner_for_every_guard(tmp_path):
 def test_the_dispatch_finalizer_runs_before_archival(tmp_path):
     engine = Engine(tmp_path, tmp_path / ".aew")
     steps = [f"{type(s.__self__).__name__}.{s.__func__.__name__}" for s in engine._k.finalizers.steps]
-    assert steps == ["Dispatch.finalize", "Queue.finalize", "Archive.finalize"]
+    assert steps == ["Dispatch.finalize", "Queue.finalize", "Validation.finalize", "Archive.finalize"]
 
 
 # ---------------------------------------------------------------- the decision

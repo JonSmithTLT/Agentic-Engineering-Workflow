@@ -40,7 +40,8 @@ ENGINE_OWNED = {"schema", "id", "kind", "work_unit", "created_at", "evaluated_sn
                 "seq", "integrity", "sealed_by", "attempt", "subject"}
 # Producer fields the engine records from control state (ADR-0010): identity, the pinned execution, and
 # the credential and harness run that presented the submission. A submitter may only *declare* the rest.
-ENGINE_OWNED_PRODUCER = {"role", "invocation", "role_card", "execution_profile", "run", "credential"}
+ENGINE_OWNED_PRODUCER = {"kind", "role", "invocation", "role_card", "execution_profile", "run", "credential",
+                         "validation_run"}
 DECLARED_PRODUCER = {"model", "provider", "harness"}
 # Reserved for per-card output contracts (ADR-0006, post-M1): a card-declared contract name and a
 # payload validated against that contract's schema. Rejected until contracts are implemented.

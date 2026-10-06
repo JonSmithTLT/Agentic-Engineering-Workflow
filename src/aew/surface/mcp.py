@@ -215,8 +215,15 @@ def _calls_a_tool(message: Any, *, waiting: bool = False) -> bool:
     """Whether answering ``message`` may wait on the broker (a ``tools/call``, alone or in a batch); with
     ``waiting``, whether it calls a wait tool, which may block for minutes and so has its own lane."""
     items = message if isinstance(message, list) else [message]
-    return any(isinstance(m, dict) and m.get("method") == "tools/call"
-               and (not waiting or _is_wait((m.get("params") or {}).get("name"))) for m in items)
+    return any(isinstance(m, dict) and m.get("method") == "tools/call" and (not waiting or _is_wait(_name(m)))
+               for m in items)
+
+
+def _name(message: dict[str, Any]) -> Any:
+    """A call's tool name, or None. Never raises: any shape of ``params`` reaches ``handle``, which answers it (a bad
+    line on the reader thread must never end the server; PR #95 re-review)."""
+    params = message.get("params")
+    return params.get("name") if isinstance(params, dict) else None
 
 
 def _is_wait(name: Any) -> bool:

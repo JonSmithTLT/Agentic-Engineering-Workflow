@@ -308,3 +308,21 @@ def test_waits_never_hold_every_worker():
     server.join(10)
     assert not server.is_alive()
 
+
+def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
+    """Routing a call to its lane reads its tool name on the reader thread: params that are not an object get the
+    protocol error and the next request is still answered (PR #95 re-review: they ended the server)."""
+    import io
+
+    lines = [{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1]},
+             {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": "x"},
+             [{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": ["harness_wait"]}],
+             {"jsonrpc": "2.0", "id": 4, "method": "ping"}]
+    stdin = io.BytesIO("".join(json.dumps(m) + "\n" for m in lines).encode())
+    stdout = io.BytesIO()
+    assert mcp.Server(Spy()).serve(stdin, stdout) == 0
+    out = [json.loads(line) for line in stdout.getvalue().decode().splitlines()]
+    flat = [r for o in out for r in (o if isinstance(o, list) else [o])]
+    assert {r["id"]: r.get("error", {}).get("code") for r in flat} == {1: mcp.INVALID_PARAMS, 2: mcp.INVALID_PARAMS,
+                                                                      3: mcp.INVALID_PARAMS, 4: None}
+

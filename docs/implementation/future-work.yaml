@@ -501,7 +501,13 @@ sections:
     Source (governing): '`web/docs/reference/integration-checklist.md`'
     Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.1 to F20.5'
     Notes: '**Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §5.5: the acceptance record, separate from the frontend''s'
+      §5.5: the acceptance record, separate from the frontend''s. **Server half done (2026-10-05):** the end-to-end acceptance
+      suite (`tests/integration/test_dashboard_acceptance.py`: the packaged frontend and every page''s projection through
+      one session, conditional replays, expiry, server stop, per-project scope, hostile content as data, the real CLI at
+      a pseudo-terminal on POSIX), the browser handoff tools (`tools/dashboard/acceptance_project.py`, `tools/dashboard/session_file.py`)
+      and the record [`dashboard-main-line-acceptance-2026-10-05.md`](../archive/reviews/dashboard-main-line-acceptance-2026-10-05.md).
+      **Open: the browser gate** (operator, 2026-10-05): the web side''s `web/scripts/browser-live.mjs` run against the
+      packaged authenticated server and recorded there; until then F20.6 stays open'
   - '#': F20.7
     Work: 'The dashboard event endpoint (ADR-0012 D8): `GET /api/v1/events?since=R` as a bounded long poll on the revision
       cursor over the outbox''s typed events, waking on `local/wake` through F20.2''s lock-free reader; the reply names

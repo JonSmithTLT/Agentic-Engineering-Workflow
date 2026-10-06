@@ -666,6 +666,9 @@ def _pty_serve(root: Path) -> tuple[str, int, str]:
     argv = [sys.executable, "-m", "aew", "-C", str(root), "dashboard", "serve", "--port", "0"]
     pid, fd = pty.fork()
     if pid == 0:  # child: controlling terminal is the pty slave
+        # A runner started in the background inherits SIGINT ignored, and Python then installs no handler: the
+        # interrupt below would never stop the server. The child restores the default before it becomes `aew`.
+        signal.signal(signal.SIGINT, signal.default_int_handler)
         os.execvpe(argv[0], argv, clean_env())  # noqa: S606 (argv is fixed above)
     buf = b""
     answered = False

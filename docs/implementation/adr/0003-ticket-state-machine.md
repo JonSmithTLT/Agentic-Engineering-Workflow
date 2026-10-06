@@ -14,6 +14,7 @@
 | `assign` | READY → ASSIGNED |
 | `review.ingest` | REVIEW_PENDING → REVIEW_PASSED / REVIEW_FAILED (from the Reviewer's disposition) |
 | `verify.ingest` | VERIFY_PENDING → VERIFIED / VERIFICATION_FAILED / VERIFICATION_INCONCLUSIVE; COMMIT_READY → VERIFICATION_FAILED (post-integration) |
+| `integrate.validate` | COMMIT_READY → VERIFICATION_FAILED (post-integration, checks mode: the same edge, from the engine's own check evidence; M4-D5) |
 | `verify.classify` | VERIFICATION_FAILED → RUNNING / REPLAN_REQUIRED / VERIFICATION_INCONCLUSIVE (Lead classification only) |
 | `integrate.publish` | COMMIT_READY → DONE |
 | `plan.accept` | REPLAN_REQUIRED → BLOCKED / READY |
@@ -115,3 +116,15 @@ model: none
 - **What does not end it.** The state hooks that cancel a Ticket's invocations (terminal states, a released workspace) leave it to the queue, which ends it in the same transaction.
 - **Death means reconciliation.** When it stops being active while its lease is held, the lease is marked for reconciliation and its children are cancelled. ADR-0004's amendment of today says what reconciliation does.
 - **No Ticket state changes.** A Ticket waits on its custodian in no phase, so losing one never makes a Ticket INTERRUPTED.
+
+## Amendment 2026-10-05 (2) — engine-produced check evidence (M4-D5)
+
+AEW's deterministic machinery may produce check evidence under a custody invocation. That evidence names `producer.kind: engine` and its validation run (`producer.validation_run`). It is never judgment evidence, and the custodian still never implies a role.
+
+- **The producer.** `producer.kind` is new and optional: `engine` or `role_invocation`. A record without it is a role's, as every earlier record is, and keeps its meaning; nothing is migrated.
+  - `role` is required only for a role's record. The schema refuses it on an engine record.
+  - An engine record is only ever a `check_result`, names its validation run, and was produced under one of its Ticket's `integration_attempt` custodians (oracle rule 41).
+  - A submitter can never supply `kind` or `validation_run`: like the rest of the producer, they are the engine's.
+- **The custodian hosts the run, it does not perform it.** The IA invocation is where the checks ran, under which lease. It gains a counter of its validation runs, and nothing else: still no role, credential, execution profile or harness run (oracle rule 36).
+- **The transition.** In checks mode, a failed check moves the Ticket COMMIT_READY → VERIFICATION_FAILED through `integrate.validate`: the edge `verify.ingest` takes for a failed verifier, taken from the engine's own `check_result` evidence. No verifier or verification evidence is written, and `verify.ingest` is not called. The table's rule for that edge now names both operations; every other edge keeps exactly one.
+- **Gate evaluation.** Ticket-scope gates count only role evidence, so engine evidence never satisfies a Ticket gate. The inherited gate `post_integration_verifier` is an integration-scope obligation: the Ticket's own gates report it CURRENT, and `integrate validate` and `publish` enforce it (ADR-0004's third amendment of today).

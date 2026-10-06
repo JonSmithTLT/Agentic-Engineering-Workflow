@@ -55,6 +55,29 @@
           "items": {
             "type": "string"
           }
+        },
+        "validation": {
+          "description": "M4-D5: how a candidate is validated after integration. `verifier` (the default) dispatches a model verifier; `checks` runs `checks` deterministically under the lease, contained, with no model. A map chooses by the Ticket's LOCAL risk class; an inherited integration-verifier obligation always overrides it.",
+          "oneOf": [
+            {"enum": ["verifier", "checks"]},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "by_class": {
+                  "type": "object",
+                  "propertyNames": {"enum": ["0", "1", "2", "3", "4"]},
+                  "additionalProperties": {"enum": ["verifier", "checks"]}
+                },
+                "default": {"enum": ["verifier", "checks"]}
+              }
+            }
+          ]
+        },
+        "validation_deadline_s": {
+          "description": "M4-D5: the hard deadline of one checks-mode validation run, executor included. Default: the checks' timeouts plus an orchestration allowance, capped at six hours.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

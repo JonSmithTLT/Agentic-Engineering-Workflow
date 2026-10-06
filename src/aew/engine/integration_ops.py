@@ -32,6 +32,7 @@ from aew.errors import (
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
+from aew.policy import validation as V
 from aew.util import render_frontmatter, utc_now
 from aew.workspace import git, worktrees
 from aew.workspace import integration as I
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 
 # An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
 OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive", "validation_failed", "conflict",
-                              "stale_candidate", "discarded"})
+                              "stale_candidate", "discarded", "validation_unavailable"})
 # The default most paths one candidate may change (gates.yaml `max_publish_paths`; register E34). A publish syncs each
 # changed path into the authoritative checkout under the control lock, measured at about 4.5 to 5.5 ms a path on the
 # Windows reference machine (tools/perf/publish_sync.py), so 2,000 paths keep the hold near 10 s, well inside the
@@ -93,6 +94,12 @@ class Integration:
         if record.get("status") in OPEN_INTEGRATION - {"validation_failed", "discarded"}:
             record["status"] = "superseded"
         record["retired"] = {"at": utc_now(), "reason": why}
+        run = record.get("current_validation_run")
+        if run and run.get("state") == "running":
+            # A checks-mode run of a retired candidate can never commit (its transaction 2 finds it gone): it ends
+            # here, kept with the retired record (M4-D5).
+            record["current_validation_run"] = {**run, "state": "abandoned", "reason": "SUPERSEDED",
+                                                "ended_at": utc_now(), "detail": why}
         for inv_id in unit.get("invocations", []):
             inv = state["invocations"].get(inv_id) or {}
             if inv.get("status") == "active" and inv.get("scope") == "integration":
@@ -375,11 +382,16 @@ class Integration:
         return None
 
     def _require_bound_validation(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
-        """The recorded post-integration report passed for THIS candidate, under its plan (re-review R1)."""
+        """The recorded post-integration report passed for THIS candidate, under its plan (re-review R1). In checks
+        mode (M4-D5) the engine's own check evidence does, bound to the current identity; a verifier's passing report
+        is accepted in either mode, since it is never weaker."""
         policy = self.k.policy("gates")["post_integration"]
         if not policy["verification"] and not policy["checks"]:
             return
         integ = unit["integration"]
+        if (integ.get("validation") or {}).get("mode") == V.CHECKS:
+            self._require_checks_validation(state, work_id, unit)
+            return
         fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
         evidence = {e["id"]: e for e in E.scan(self.k.aew_root, work_id)[0]}
         ver = evidence.get(integ.get("post_integration_evidence") or "")
@@ -396,6 +408,46 @@ class Integration:
         if missing:
             raise GateUnsatisfied("policy-required post-integration checks are missing, or ran under a check "
                                   "definition that policy/checks.yaml has since changed", missing=missing)
+
+    def _require_checks_validation(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
+        """Checks-mode validation (M4-D5) holds for THIS candidate now: its run committed a pass under the exact current
+        identity (candidate, snapshot, check set, obligation binding), and every policy check has a passing engine
+        ``check_result`` of that run, under the lease's custodian, for its current definition."""
+        integ = unit["integration"]
+        validation = integ["validation"]
+        ob = V.obligation(state, work_id, self.k.policy("gates"))
+        if ob["mode"] != V.CHECKS:
+            raise GateUnsatisfied("this Ticket's post-integration validation must now be a verifier's ("
+                                  + ("; ".join(ob["sources"]) or "the policy changed")
+                                  + "): the checks-mode validation no longer satisfies it", sources=ob["sources"])
+        post = self.k.policy("gates")["post_integration"]
+        check_set = V.check_set(post, self.k.policy("checks"), self.k.policy("guardrails"))
+        fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
+        current = {"candidate": integ["candidate"], "snapshot": fp, "check_set": check_set["digest"],
+                   "binding": ob["binding"]}
+        pinned = validation["identity"]
+        if {"candidate": pinned["candidate"], "snapshot": pinned["snapshot"], "check_set": pinned["check_set"],
+                "binding": pinned["obligation"]["binding"]} != current:
+            raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: run "
+                                  f"`aew integrate validate {work_id}` again", validated=pinned, current=current)
+        run = integ.get("current_validation_run") or {}
+        if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":
+            raise GateUnsatisfied("the checks-mode validation run did not commit a pass", run=validation["run"])
+        evidence = {e["id"]: e for e in E.scan(self.k.aew_root, work_id)[0]}
+        definitions = C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails"))
+        passed = set()
+        for eid in validation["evidence"]:
+            ev = evidence.get(eid)
+            if (ev is not None and ev["kind"] == "check_result" and ev["result"] == "pass"
+                    and ev["producer"].get("kind") == "engine" and ev["producer"].get("validation_run") == run["id"]
+                    and ev["producer"]["invocation"] == run["custodian"]
+                    and ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fp
+                    and C.proves_current_definition(ev, definitions)):
+                passed.add(ev["check"]["check_id"])
+        missing = [c for c in post["checks"] if c not in passed]
+        if missing:
+            raise GateUnsatisfied("policy-required post-integration checks have no passing engine result of the "
+                                  "committed validation run for the current definition", missing=missing)
 
     def _moved_head(self, ctx: Any, work_id: str, current: str | None) -> dict[str, Any]:
         """The authoritative head moved under a candidate that was not published (M4-D4; the M4 report §2.6 and §2.7).
@@ -471,7 +523,10 @@ class Integration:
             return {"ok": False, "work_id": work_id, "rebuilt": True, "integration": unit["integration"],
                     "queue": queue, "revision": revision,
                     "next": "the authoritative head moved, so the candidate was rebuilt on it under the same lease "
-                            "(the one automatic rebuild): rerun post-integration validation on it, then publish"}
+                            "(the one automatic rebuild): " + (
+                                f"run `aew integrate validate {work_id}` on it" if V.obligation(
+                                    ctx.state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS
+                                else "rerun post-integration verification on it") + ", then publish"}
         if moved["outcome"] == "stale":
             raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
                                  revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})

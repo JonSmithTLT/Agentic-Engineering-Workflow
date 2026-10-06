@@ -25,7 +25,8 @@ NOT_DISPATCHING = {
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
     "history reindex", "history show", "init",
-    "integrate defer", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
+    "integrate breaker reset", "integrate breaker status", "integrate defer", "integrate publish",
+    "integrate reconcile", "integrate reorder", "integrate requeue", "integrate validate",  # under the lease (M4-D5)
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from aew import SPEC_SET
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
@@ -21,6 +22,7 @@ from aew.errors import AEWError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
 from aew.knowledge.render import finished_summary, work_graph_lines
+from aew.policy import validation as V
 from aew.util import parse_frontmatter
 
 if TYPE_CHECKING:
@@ -274,15 +276,22 @@ class Resume:
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
             status = (u.get("integration") or {}).get("status")
+            stuck = VO.stuck_run((u.get("integration") or {}).get("current_validation_run"))
+            if stuck:  # a checks-mode validation run left running (M4-D5): settle it before anything else
+                return [stuck]
             waiting = self._queue_wait(state, wid)
             if waiting and status != "publishing":
                 return [waiting]
+            checks_mode = V.obligation(state, wid, self.k.policy("gates"))["mode"] == V.CHECKS
             return [{
                 None: "integrate: `aew integrate prepare`",
                 "discarded": "integrate: `aew integrate prepare`",
                 "stale_candidate": "the candidate is stale: `aew integrate prepare` again, then revalidate",
                 "conflict": "integration conflict: return to RUNNING (rebase) or REPLAN_REQUIRED",
-                "prepared": "dispatch post-integration verification (`aew invoke create --scope integration`)",
+                "prepared": ("validate the candidate with the policy's checks (`aew integrate validate`)" if checks_mode
+                             else "dispatch post-integration verification (`aew invoke create --scope integration`)"),
+                "validation_unavailable": "post-integration validation could not run (infrastructure): fix the "
+                                          "environment, then `aew integrate requeue`",
                 "validation_inconclusive": "resolve the post-integration verification blocker, then run `aew integrate "
                                            "prepare` (a new candidate) and verify it",
                 "validated": "publish: `aew integrate publish`",

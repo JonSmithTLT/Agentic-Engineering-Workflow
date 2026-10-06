@@ -26,7 +26,7 @@ from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control
 from aew.history.store import History
 from aew.knowledge import evidence as E
-from aew.util import load_yaml, parse_frontmatter
+from aew.util import load_yaml, parse_frontmatter, sha256_file
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -239,6 +239,61 @@ def control_violations(root: Path) -> list[str]:
     problems += segment_violations(Path(root) / ".aew", hot) if hot.get("outbox") else []
     # 34-39. M4-D: the integration queue and its lease (29-33 are ADR-0013's).
     problems += queue_violations(root, hot)
+    # 40-42. M4-D5: checks-mode validation runs and engine-produced evidence.
+    problems += validation_violations(root, state, evidence)
+    return problems
+
+
+def validation_violations(root: Path, state: dict[str, Any],
+                          evidence: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+    """M4-D5 (the M4-D5 plan rev 3): validation runs are durable and exact, and engine evidence stays in its lane."""
+    problems: list[str] = []
+    lease = (state.get("queue") or {}).get("lease")
+    entries = (state.get("queue") or {}).get("entries") or {}
+    gates = yaml.safe_load((root / ".aew/policy/gates.yaml").read_text(encoding="utf-8")) or {}
+    post = gates.get("post_integration") or {}
+    for wid, u in sorted(state["work"].items()):
+        integ = u.get("integration") or {}
+        run = integ.get("current_validation_run")
+        # 40. At most one running run per candidate, and only under its entry's lease; a terminal run is kept as an
+        #     immutable record whose bytes match what the state says; run ids are never reused.
+        ids = (integ.get("validation_runs") or {}).get("ids") or []
+        if len(set(ids)) != len(ids):
+            problems.append(f"{wid} reuses validation run ids {ids}")
+        if run:
+            if run["state"] == "running":
+                holder = (entries.get((lease or {}).get("entry") or "") or {}).get("work")
+                if holder != wid or (lease or {}).get("custodian") != run["custodian"]:
+                    problems.append(f"{wid}'s validation run {run['id']} is running without its entry's lease")
+            elif run.get("record"):
+                rec = root / ".aew" / run["record"]["path"]
+                if not rec.exists() or sha256_file(rec) != run["record"]["sha256"]:
+                    problems.append(f"{wid}'s terminal validation run {run['id']} has no intact record")
+        # 41. Engine evidence (producer.kind engine) is only a check_result, names its validation run, and was produced
+        #     under one of the Ticket's custody invocations.
+        for ev in evidence.setdefault(wid, _evidence(root, wid)).values():
+            prod = ev["producer"]
+            if prod.get("kind") != "engine":
+                continue
+            inv = state["invocations"].get(prod["invocation"]) or {}
+            if ev["kind"] != "check_result" or not prod.get("validation_run") or "role" in prod \
+                    or inv.get("kind") != "integration_attempt" or inv.get("work_unit") != wid:
+                problems.append(f"{ev['id']} is engine evidence outside its lane (kind {ev['kind']}, "
+                                f"producer {prod})")
+        # 42. A checks-mode `validated` candidate has a passing engine result of its committed run, for every policy
+        #     check, on its snapshot.
+        validation = integ.get("validation") or {}
+        if integ.get("status") == "validated" and validation.get("mode") == "checks":
+            fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
+            ev_all = evidence.setdefault(wid, _evidence(root, wid))
+            passed = {ev_all[e]["check"]["check_id"] for e in validation.get("evidence") or [] if e in ev_all
+                      and ev_all[e]["result"] == "pass"
+                      and ev_all[e]["producer"].get("validation_run") == validation["run"]
+                      and ev_all[e]["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fp}
+            missing = [c for c in post.get("checks") or [] if c not in passed]
+            if missing or (run or {}).get("id") != validation["run"] or (run or {}).get("state") != "committed":
+                problems.append(f"{wid} is validated in checks mode without a committed pass "
+                                f"for {missing or 'its run'}")
     return problems
 
 

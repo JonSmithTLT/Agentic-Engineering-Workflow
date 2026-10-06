@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.policy import checks as C
+from aew.policy import validation as V
 
 CURRENT, STALE, MISSING, FAILED, WAIVED = "CURRENT", "STALE", "MISSING", "FAILED", "WAIVED"
 REVIEW_GATES_PREFIX = "review_"
@@ -160,7 +161,8 @@ def evaluate(
     ingested = [e for e in own if accepted_refs.get(e["id"]) == e.get("_sha256")]
 
     def by_role(role: str) -> list[dict[str, Any]]:
-        return [e for e in own if invocations[e["producer"]["invocation"]]["role"] == role]
+        # An engine custodian's check evidence (M4-D5, ``producer.kind: engine``) has no role and is never a role's.
+        return [e for e in own if (invocations.get(e["producer"]["invocation"]) or {}).get("role") == role]
 
     waived = {w["gate"] for w in unit.get("waivers", []) if w.get("gate")}
     results: dict[str, dict[str, Any]] = {}
@@ -237,6 +239,11 @@ def evaluate(
 
             status, eid = _latest_status(cands, passing, fingerprint, plan_rev)
             results[gate] = {"status": status, "evidence": eid}
+        elif gate == V.INTEGRATION_VERIFIER_GATE:
+            # An integration-scope obligation (M4-D5): it decides how the integrated candidate is validated, and
+            # integrate validate and publish enforce it there. Nothing at the Ticket's own snapshot satisfies it.
+            results[gate] = {"status": CURRENT, "detail": "an integration-scope obligation: post-integration "
+                                                          "validation must be a verifier's, enforced at publish"}
         else:
             results[gate] = {"status": MISSING, "detail": "no evaluator for this gate in M1"}
     return results

@@ -769,12 +769,6 @@ sections:
       brief is a stand-in. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): Lead skills (reconnaissance, protected
       goal inputs, classification) and role skills (verification evidence, report authoring) as F19-evaluated candidates;
       language manuals deferred; a minimal delivery path is F26.'
-  - '#': D4
-    Work: A deterministic `checks` adapter for integration-scope verifiers
-    Source: M3 plan §7
-    Target and notes: '**M4** (designer, 2026-10-01; F10): a policy-selectable deterministic integration-validation path.
-      Existing verifier policy stays the default until evaluation supports cheaper routing. In T1 the LLM post-integration
-      verifier cost USD 0.0025.'
   - '#': D5
     Work: Model optimization and routing policy
     Source: M3 plan §8
@@ -1220,6 +1214,14 @@ sections:
       (the promotion PR of 2026-10-05); the idea note v0.4 stays adopted direction and governs only what the design defers
       to it; its requirements the design carries are marked absorbed in the ledger (TIS, LWE); the design's first-transport
       decision closes Q13's transport part; the Workflow Contract §15.6 consolidation goes to the re-freeze (E19)
+  - '#': D4
+    Was: A deterministic `checks` adapter for integration-scope verifiers
+    Closed: '2026-10-05'
+    By: 'M4-D5: `aew integrate validate` runs the policy''s post-integration checks on the candidate under the lease, contained,
+      with no model, when `gates.post_integration.validation` resolves to `checks` (by the Ticket''s local class; an inherited
+      verifier obligation overrides); engine-produced `check_result` evidence bound to the run''s exact identity; fail-closed
+      without immutable-source containment; a hard deadline; bounded infrastructure handling with a circuit breaker (ADR-0004''s
+      and ADR-0003''s amendments of 2026-10-05). `verifier` stays the default; switching it is an evaluation (F19)'
   - '#': E1
     Was: '`aew harness wait` on any of several runs, woken by the supervisor instead of polled'
     Closed: '2026-10-05'

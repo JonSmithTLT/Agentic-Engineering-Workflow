@@ -262,6 +262,18 @@ Built as §2.6 and §2.7 say. The ADR text is ADR-0004's second amendment of 202
 - A policy-selectable path: `gates.post_integration.validation: verifier | checks`. With `checks`, a deterministic adapter runs the policy's integration checks against the candidate under the lease, and records bound `check_result` evidence that satisfies validation without a model.
 - The default stays `verifier` until evaluation supports cheaper routing.
 
+### M4-D5 as built (2026-10-05)
+
+Built to the M4-D5 plan, revision 3, which the designer approved after two rounds (2026-10-05). The ADR text is ADR-0004's third amendment of 2026-10-05, with ADR-0003's second.
+
+- **`aew integrate validate <T>`** validates the candidate with the policy's post-integration checks under the lease, with no model, when `gates.post_integration.validation` resolves to `checks` for the Ticket's local class and no inherited obligation requires a verifier. Its evidence is `producer.kind: engine` `check_result`, naming the run.
+- **Two transactions around the checks**, pinning and then re-verifying the lease, custodian, candidate, snapshot, check set and obligation binding. A run is durable and its identity exact; every terminal run is kept as an immutable record.
+- **Fail closed:** only Linux containment that keeps the worktree read-only produces satisfying evidence. Windows and `allow_weaker` are refused (`VALIDATION_CONTAINMENT_UNAVAILABLE`); `--diagnostic` is advisory only.
+- **Results:** a FAIL is VERIFICATION_FAILED through `integrate.validate` itself; an inconclusive result takes M4-D4's AWAITING_DISPOSITION path; infrastructure failure records no evidence, retries an allow-listed transient reason once after a backoff, trips a project breaker that only the operator resets, and releases the lease to disposition once bounded.
+- **The hard deadline** kills the checks or a hung executor and refuses its late commit; the lease moves only through AWAITING_DISPOSITION.
+- **Oracle rules 40 to 42.** **Tests:** `tests/integration/test_validation_checks.py`.
+- **Not here:** switching the default to `checks` (an evaluation, F19); chaining validation after prepare automatically (M4-E's `ticket_prepare`).
+
 ### 2.9 Wait-any (M4-D; E1, the wait-any part of O4)
 - `aew harness wait --any R1 R2 …`, woken through a per-project wake file instead of 0.2 s polling (ADR-0012 D4 decided the file: `local/wake`, bumped by the store after each commit's log record and by the supervisor after each run-record write; built in M4-D slice D1). Polling remains the fallback.
 - It returns the first run to end, with its next action.

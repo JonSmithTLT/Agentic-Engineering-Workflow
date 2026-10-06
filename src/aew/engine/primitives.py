@@ -54,6 +54,10 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
                   "control_state+workspace", "expected_revision", "integrate.prepare"),
+    # Checks-mode validation (M4-D5): the mode and the exact check set are resolved from recorded policy, so the
+    # command is policy-resolved; its substeps (pin, execute contained, fingerprint, write evidence) are mechanical.
+    PrimitiveSpec("integrate.validate", POLICY_RESOLVED, (), ("gates", "checks", "guardrails", "execution"),
+                  ("prepared_candidate",), "control_state", "candidate", None),
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
                   ("integration_verification",), "control_state", "expected_revision", None),
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),

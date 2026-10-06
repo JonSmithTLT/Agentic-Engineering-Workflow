@@ -187,3 +187,37 @@ D3's answers to a moved head (the lease released, the entry back to QUEUED) are 
 - **Tests:**
   - `tests/integration/test_queue_disposition.py` covers the rebuild, the second move, the conflicting rebuild, reconcile's rebuild after a crash before the CAS, inconclusive validation, defer, defer of a leased entry, reorder and the refusals;
   - the queue walk adds defer, requeue and reorder.
+
+## Amendment 2026-10-05 (3) — checks-mode validation (M4-D5)
+
+The M4 report's §2.8, built to the M4-D5 plan, revision 3 (approved by the designer, 2026-10-05). With `gates.post_integration.validation` resolving to `checks` for a Ticket, a candidate is validated with no model. With `verifier`, the default, nothing changes.
+
+- **Which Tickets.** The policy prefers a mode by the Ticket's own local risk class (`validation: checks`, or `{by_class: {"0": checks, ...}, default: verifier}`). Effective obligations override it: a verifier is mandatory when an ancestor lists the gate `post_integration_verifier`, or when an ancestor's minimum descendant class maps to `verifier`. No class inherited from ancestors chooses the mode. Policy that would weaken a required verifier is refused, naming the obligation and its source.
+- **The command.** `aew integrate validate <T>`, the primitive `integrate.validate`, is `POLICY_RESOLVED`: the mode and the exact check set come from recorded policy, and its substeps (pin, execute, fingerprint, write evidence) are mechanical. It needs a live lease and a prepared candidate.
+- **Two transactions around the checks.**
+  1. Transaction 1 pins the run: the lease and its custodian, the candidate, its snapshot, the check set's digest, the **obligation binding** (the digest of the legality inputs the mode was resolved from) and the run's hard deadline. The operational digest is not pinned: an operational change never abandons a run.
+  2. The checks run outside the control lock, contained.
+  3. Transaction 2 re-resolves the obligation and re-verifies everything pinned. Any difference abandons the run with its reason (`STALE_OBLIGATION`, `CHECK_SET_CHANGED`, `CANDIDATE_CHANGED`, `LEASE_LOST`, `SUPERSEDED`, `VALIDATION_DEADLINE_EXPIRED`) and writes nothing satisfying.
+- **The run's identity and history.** A run is identified by (candidate, snapshot, check-set digest, obligation binding). A committed run is reused only on an exact match; otherwise a new run starts, and publish refuses the old evidence. One run per candidate runs at a time. Each terminal run is an immutable record, `work/<T>/validation-runs/<IV>.yaml`, created once; hot state keeps the current run (with its record's path and digest) and the run ids. A run of a retired candidate ends `abandoned` (`SUPERSEDED`) with the retired record.
+- **Crash and retry.** Results are staged per check, atomically, with `finished.json` last. A `running` run whose executor is gone is ingested without re-running when `finished.json` is consistent and its identity current, and abandoned otherwise (`VALIDATION_INTERRUPTED`, one infrastructure attempt). `resume` names such a run.
+- **Containment: fail closed.** Checks mode produces satisfying evidence only where the integration worktree is immutable for the whole run: Linux, `os_readonly_roots`, the verifier layout, self-tested. Elsewhere (Windows, or `containment.mode: allow_weaker`), `validate` is refused before anything is pinned, with `VALIDATION_CONTAINMENT_UNAVAILABLE`, and the Ticket takes the verifier path. A before/after fingerprint stays as a second line; a mismatch is `inconclusive` with `WORKSPACE_MUTATED`. `--diagnostic` runs the checks for information on any host: an advisory run, never evidence, never a state change.
+- **Results.**
+
+  | What happened | Evidence | Ticket and entry |
+  |---|---|---|
+  | Every check passed | `check_result: pass` per check, `kind: engine` | `validated`; publish next, under the lease |
+  | A check failed | `check_result: fail` | VERIFICATION_FAILED through `integrate.validate`; the entry retires with the Ticket |
+  | A check timed out, or the candidate changed | `check_result: inconclusive` | `validation_inconclusive`; the Ticket stays COMMIT_READY and the entry goes to AWAITING_DISPOSITION (M4-D4's path) |
+  | Infrastructure: a check could not start, the sandbox could not be established, the run was interrupted or passed its deadline | none satisfying; the run `unavailable` or `abandoned` with its code | after the bounded handling below: `validation_unavailable`, the entry to AWAITING_DISPOSITION |
+
+- **The hard deadline.** Every run has `deadline_at`, from `gates.post_integration.validation_deadline_s` or the checks' timeouts plus an orchestration allowance, capped at six hours. Expiry is authority-reducing only: the checks are killed, a hung executor is terminated by whoever finds it, and transaction 2 refuses a run past its deadline. The lease is released only through AWAITING_DISPOSITION, never by the timer.
+- **Infrastructure, bounded.**
+  - Retry only for an allow-listed transient reason: `SPAWN_RACE` (a check's executable busy, ETXTBSY) and `SANDBOX_SETUP_TRANSIENT` (the containment self-test timed out). Never for a missing executable, a failed self-test, resource exhaustion (ENOMEM, EAGAIN), a deadline or any unknown reason.
+  - One retry per identity, after a 30 s backoff.
+  - A project circuit breaker (`queue.validation_breaker`): three infrastructure failures in ten minutes stop automatic retries for every entry. `aew integrate breaker status` shows it; `aew integrate breaker reset` clears it only with the operator's typed-back confirmation at the terminal. It is operational safety state, not workflow authority.
+  - The bound reached, one transaction records the run, proves nothing was published (the ref and the candidate's fingerprint unchanged), parks the candidate and releases the lease to AWAITING_DISPOSITION. Independent entries behind it integrate meanwhile. No `fail` evidence and no VERIFICATION_FAILED for an environment failure.
+- **Publish.** In checks mode, publish requires the committed passing run under the exact current identity, and a passing engine `check_result` of that run, under its custodian, on the candidate's snapshot, for every policy check's current definition. A verifier's passing report is accepted in either mode.
+- **After the one automatic rebuild** publish says to run `aew integrate validate`: the rebuild retired the old validation with its candidate.
+- **The check's environment** is an allowlist (operating-system basics and the sandbox's settings): the candidate's code never sees the Lead's credential.
+- **Oracle rules 40 to 42:** a running run only under its entry's lease, ids never reused, and every terminal run's record intact; engine evidence only as above; a checks-mode `validated` candidate has a committed passing result for every policy check.
+- **Tests:** `tests/integration/test_validation_checks.py` covers every result path, the obligation pin, identity and history, the containment refusal and `--diagnostic`, the crash table, a lost lease, the deadline (a hung executor and a check past it), the transient allow-list, the breaker and its reset, the rebuild and the producer rules; on Linux, a check that tries to write the candidate is refused by the sandbox.

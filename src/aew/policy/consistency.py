@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.policy import validation as V
+
 # The gates each unit type has an evaluator for (engine/gates.py, nonmutating_ops, hierarchy_ops).
 MUTATING = {"accepted_plan", "local_checks", "self_review", "review_r1", "verification_goal_backwards",
             "verification_contract"}
@@ -45,6 +47,7 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], specialties: set[str
                        if gate.startswith("review_") else f"AEW has no evaluator for it on {label}")
                 out.append(f"policy/gates.yaml {table}[{cls}] requires gate `{gate}`, but {why}: nothing can satisfy "
                            "it, so those units can never complete.")
+    out += [f"policy/gates.yaml {p}" for p in V.policy_problems(gates)]
     all_known = MUTATING | NON_MUTATING | PARENT
     for gate in gates.get("waivable_gates") or []:
         if gate not in all_known and not (gate.startswith("review_") and gate[len("review_"):] in specialties):

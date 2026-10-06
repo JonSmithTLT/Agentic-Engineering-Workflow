@@ -1323,7 +1323,7 @@ sections:
     Was: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
       CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only'
     Closed: '2026-10-05'
-    By: 'PR #TBD: the frontend built from `4f0a710` (agreed with the web developer and the operator) by the pinned offline
+    By: 'PR #90: the frontend built from `4f0a710` (agreed with the web developer and the operator) by the pinned offline
       builder and committed under `src/aew/dashboard/static/` with `BUILD.json` (`tools/dashboard/import_build.py`); `aew.dashboard.frontend`
       (the SPA fallback, traversal refused); R21''s header set on every response; the exact Host (`421`) and Origin and
       `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request

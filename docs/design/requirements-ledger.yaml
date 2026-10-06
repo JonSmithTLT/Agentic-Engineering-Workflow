@@ -250,8 +250,8 @@ sources:
       "0. What changed from v0.3": change log; each change is in the section it amended
       "12. Evidence": pointers to the probe and benchmark files
   - prefix: IBU
-    path: docs/design/proposals/install-bootstrap-ux-design-v0.3.md
-    role: proposal
+    path: docs/design/install-bootstrap-ux-design-v0.3.md
+    role: adopted-design
     no_requirements:
       "1. Where the first-run path stands today [repo]": the first-run path as documented at the time; facts, no requirements
       "5. Two profiles": heading; requirements in its subsections

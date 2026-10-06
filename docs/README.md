@@ -61,6 +61,7 @@ checks the index, and that every citation names a real section of the frozen ver
    - [`ticket-revision-amendment-2026-09-30.md`](design/ticket-revision-amendment-2026-09-30.md): Ticket revisions
    - [`typed-lead-surface-design-v0.2.md`](design/typed-lead-surface-design-v0.2.md): the typed Lead surface (F15), governing since 2026-10-05: one catalog of typed actions below transport, one runner, `StageResult` and a tri-state `ActionProjection`, MCP (`aew-lead`, broker-side) as the first normal transport and the CLI as parity and recovery; its §11 sequences M4-D, M4-E and M6
    - [`evaluation-component-design-v0.2.md`](design/evaluation-component-design-v0.2.md): the shared evaluation instrument (F19), adopted 2026-10-05: preregistration, the append-only attempt ledger, immutable runs, the hidden-evaluator channel; evaluation-only, never workflow authority; its first slice comes before M4-H's preregistration
+   - [`install-bootstrap-ux-design-v0.3.md`](design/install-bootstrap-ux-design-v0.3.md): installation, bootstrap and first-run UX (T10; F18, F18.1 to F18.4, E21), adopted 2026-10-05: `aew init` proposes and the operator applies, atomically and bound to the proposal; static inspection before trust; isolated generated harness configuration; `aew doctor` diagnoses and never mutates; support follows a qualified pin; host topology still waits for Q12
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
@@ -104,7 +105,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 [0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state ·
 [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D, first slice PR #53) ·
 [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b) ·
-[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (proposed; F18.3)
+[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (proposed; the designer asked for one narrow change before adoption, 2026-10-05; F18.3)
 
 Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
 
@@ -121,7 +122,6 @@ text is not governing.
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`network-containment-design-v0.2.md`](design/proposals/network-containment-design-v0.2.md) | F28 | Design frozen, proposed; direction accepted by the designer | Gate: before internal alpha |
 | [`project-maps-design-v0.4.md`](design/proposals/project-maps-design-v0.4.md) | F22, F22.1 to F22.3 | Proposed consolidation for the designer's freeze (2026-10-05): listing-bound freshness and the semantic-extension contract; v0.3 governs until adopted | Structural slice an M4 candidate; semantic extension with M6 |
-| [`install-bootstrap-ux-design-v0.3.md`](design/proposals/install-bootstrap-ux-design-v0.3.md) | F18, F18.1 to F18.4, E21 | Design frozen, proposed (2026-10-04); host topology waits for Q12 | Unscheduled |
 | [`remote-integration-target-sketch-2026-10-04.md`](design/proposals/remote-integration-target-sketch-2026-10-04.md) | F23, Q14 | Sketch, waiting on the designer's scope question (Q14) | Deferred until a team repository requires it; M4-D must not foreclose it |
 | [`aew-knowledge-capture-admission-design-v0.4.md`](design/proposals/aew-knowledge-capture-admission-design-v0.4.md) | F21 | Proposed, for joint review with the two below | M6b |
 | [`aew-knowledge-capture-recall-shared-semantics-v0.4.md`](design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md) | F21 | Proposed | M6b |
@@ -134,7 +134,7 @@ text is not governing.
 | [`AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`](design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md) | F9 | Frozen at v0.1 | Revisit on dogfood evidence |
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
-| [`cost-usage-ledger-design-v0.1.md`](design/proposals/cost-usage-ledger-design-v0.1.md) | F25, U4 | Proposed (2026-10-05; its §8 asks eight decisions): one normalized usage record per run copied into control state at the Lead's next transaction, trust labels, a project-owned price table with the derived cost computed at read, roll-ups as projections, the Lead session's own line, `aew usage` | G7's accepted ledger, before any budget enforcement; the build after M4-D's open PRs |
+| [`cost-usage-ledger-design-v0.1.md`](design/proposals/cost-usage-ledger-design-v0.1.md) | F25, U4 | Proposed; **changes requested** by the designer (2026-10-05): billing semantics (R4) and durable Lead usage (R8) before adoption, the rest of the direction kept | G7's accepted ledger, before any budget enforcement; the build after M4-D's open PRs |
 
 ## Research and investigations ([`research/`](research/))
 

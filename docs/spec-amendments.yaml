@@ -164,6 +164,10 @@ considered:
     reason: >-
       adopted design (F19, 2026-10-05); the evaluation instrument sits outside the engine and replaces no WC/KC
       text; it measures the Class 0 amendment's audit sample rather than amending it
+  - path: docs/design/install-bootstrap-ux-design-v0.3.md
+    reason: >-
+      adopted design (T10, F18, 2026-10-05); installation, bootstrap and first-run mechanics; replaces no WC/KC
+      text
   - path: docs/design/ticket-revision-amendment-2026-09-30.md
     reason: amends a proposal (the hierarchy revision design), not the frozen set; its WC/KC debt is `pending` above
   - path: docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md

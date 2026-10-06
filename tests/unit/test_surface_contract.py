@@ -142,6 +142,14 @@ def test_the_normal_profile_never_offers_the_cli_escape():
     assert all(t.built for t in contract.exposed(RECOVERY))
 
 
+def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
+    from aew.engine import primitives
+
+    assert contract.OPERATION_CLASSES == primitives.OPERATION_CLASSES
+    assert (contract.MECHANICAL, contract.POLICY_RESOLVED, contract.JUDGMENT_BEARING) == (
+        primitives.MECHANICAL, primitives.POLICY_RESOLVED, primitives.JUDGMENT_BEARING)
+
+
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
     offered = contract.TOOLS["explain"].input_schema["properties"]["entrypoint"]["enum"]
     assert set(offered) == {n for n, e in ENTRYPOINTS.items() if e.covered_by is None}

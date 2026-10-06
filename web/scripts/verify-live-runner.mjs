@@ -62,7 +62,16 @@ try {
     const report = fs.readFileSync(output, 'utf8');
     assert(!logs.includes(secret) && !report.includes(secret), 'Credential escaped sanitized boundary');
     assert.equal(exit, expected, logs + report);
-    assert.equal(JSON.parse(report).status, expected === 0 ? 'PASS' : 'FAIL');
+    const result = JSON.parse(report);
+    assert.equal(result.status, expected === 0 ? 'PASS' : 'FAIL');
+    if (mode === 'auth-bypass') assert.equal(result.failed_stage, 'unauthenticated-api-refusal');
+    else if (mode === 'malformed') assert.equal(result.failed_stage, 'desktop-authenticated-bootstrap');
+    else {
+      assert(result.checks.includes('phone: missing session shows refusal and no Work table'));
+      assert(result.checks.includes('desktop: Work copied selection reloads against the same authenticated origin'));
+      assert.equal(result.counts.blocked_requests, 0);
+      assert.equal(result.counts.invalid_responses, 0);
+    }
     console.log(`PASS live-runner regression: ${mode || 'authenticated desktop/phone'}, test adapter only`);
   }
   await run(0, '');

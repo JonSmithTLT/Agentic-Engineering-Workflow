@@ -476,3 +476,117 @@ def test_an_oversized_request_line_is_refused_while_it_is_read(live):
         s.sendall(b"GET /" + b"a" * 5000)  # past 4 KiB, and never ended
         got = s.recv(65536)
     assert got.startswith(b"HTTP/1.1 414 "), got[:40]
+
+
+# ------------------------------------------------------------------------------------------- re-review of PR #90
+
+def _closed_within(s: socket.socket, seconds: float) -> bool:
+    """Whether the server ends the connection (end of input or a reset) within ``seconds``."""
+    s.settimeout(seconds)
+    try:
+        while s.recv(65536):
+            pass
+        return True
+    except (ConnectionError, OSError):
+        return True
+    except TimeoutError:
+        return False
+
+
+def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, monkeypatch):
+    """Finding 1: one byte every 0.3 s never trips a per-read timeout, but the whole head must arrive within the
+    deadline, so a slow client cannot hold its connection (and with 32 of them, every slot) for ever."""
+    monkeypatch.setattr(SV, "HEAD_DEADLINE_S", 1.0)
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        started = time.monotonic()
+        head = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nX-Slow: ".encode("latin-1")
+        s.sendall(head)
+        gone = False
+        while time.monotonic() - started < 6.0:
+            try:
+                s.sendall(b"a")
+            except OSError:
+                gone = True
+                break
+            if _closed_within(s, 0.3):
+                gone = True
+                break
+        assert gone, "the connection outlived the head deadline"
+        assert time.monotonic() - started < 4.0
+
+
+@pytest.mark.parametrize("line", ["GET / HTTP/01.1", "GET\xa0/ HTTP/1.1"])
+def test_every_request_stdlib_would_read_headers_for_is_bounded_while_it_is_read(live, line):
+    """Finding 2: a request line stdlib tokenizes differently from bytes (a padded version, a non-breaking space)
+    still has its header block bounded on the wire, not read whole or waited on."""
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=5) as s:
+        s.sendall(f"{line}\r\nHost: {live.host}\r\nX-Big: {'b' * (17 * 1024)}".encode("latin-1"))
+        started = time.monotonic()
+        got = s.recv(65536)
+    assert got.startswith(b"HTTP/1.1 431 "), got[:40]
+    assert time.monotonic() - started < 4.0
+
+
+def test_every_refused_connection_reads_its_503_rather_than_a_reset(live):
+    """Finding 3: the busy answer is completed and the client's request drained before the close, so a refused
+    client reads the 503 instead of a connection reset."""
+    held = [_connect_partial(live) for _ in range(SV.MAX_CONNECTIONS)]
+    try:
+        _wait_for_connections(live, 0)
+        for _ in range(40):
+            _busy(live)
+    finally:
+        for s in held:
+            s.close()
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
+
+
+def test_a_request_whose_client_leaves_mid_head_is_never_processed(live, caplog):
+    """Finding 4: input that ends before the blank line is a client that went away: nothing is routed, answered
+    or logged as a failure, and no traceback reaches standard error."""
+    with caplog.at_level(logging.INFO, logger="aew.dashboard"):
+        with socket.create_connection(("127.0.0.1", live.server.port), timeout=5) as s:
+            s.sendall(f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n"
+                      .encode("latin-1"))
+            s.shutdown(socket.SHUT_WR)
+            assert s.recv(65536) == b""  # no response: the request was never complete
+        assert live.request("GET", "/api/v1/project")[0] == 200
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
+    assert "request failed" not in text and "connection failed" not in text
+    assert text.count("GET /api/v1/project 200") == 1, text
+
+
+def test_a_client_gone_is_never_a_traceback_and_anything_else_goes_to_the_log(live, caplog, capsys):
+    httpd = live.server.httpd
+    for gone in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, TimeoutError):
+        try:
+            raise gone("client went away")
+        except gone:
+            httpd.handle_error(None, ("127.0.0.1", 1))
+    with caplog.at_level(logging.ERROR, logger="aew.dashboard"):
+        try:
+            raise ValueError("a real defect")
+        except ValueError:
+            httpd.handle_error(None, ("127.0.0.1", 1))
+    assert capsys.readouterr().err == ""  # stdlib's handler would have printed a traceback here
+    assert [r.getMessage() for r in caplog.records if r.name == "aew.dashboard"] == ["dashboard connection failed"]
+
+
+def test_a_logged_path_can_neither_forge_a_line_nor_grow_without_bound():
+    """Finding 5: the path before a redacted session segment, and any other path, is re-encoded and capped."""
+    forged = SV.log_target("/%0d%0aGET%20/admin%20200%201ms%0d%0a/session/abc")
+    assert "\r" not in forged and "\n" not in forged and forged.endswith("/session/<redacted>"), forged
+    assert "%0D%0A" in forged
+    assert len(SV.log_target("/" + "p" * 1500 + "/session/abc")) <= SV.LOG_PATH_MAX + len("/session/<redacted>")
+    assert "\x1b" not in SV.log_target("/\x1b[31mred") and len(SV.log_target("/" + "x" * 3000)) == SV.LOG_PATH_MAX
+
+
+def test_the_bounds_the_design_records_are_the_servers():
+    """Finding 6: the connection bound, the busy answer, the head deadline and the log queue are written down where
+    R23 is, with the values the server uses."""
+    note = (ROOT / "docs/design/proposals/dashboard-main-line-api-design-v0.1.md").read_text(encoding="utf-8")
+    ledger = (ROOT / "docs/design/requirements-ledger.yaml").read_text(encoding="utf-8")
+    for text in (note, ledger):
+        assert f"{SV.MAX_CONNECTIONS} connections" in text
+        assert f"{SV.HEAD_DEADLINE_S:.0f} s" in text and f"{SV.LOG_QUEUE} lines" in text
+

@@ -468,6 +468,13 @@ bounded by the contract's `maxItems`. Static paths are resolved inside the stati
 `/assets/` gets `index.html` (the SPA fallback for deep links such as `/work/T-0012`); an unknown path with an
 extension is `404`; `/mockServiceWorker.js` is `404`. The request log goes to the server's standard error: method,
 path with `/session/` codes redacted, status and milliseconds; never a query string, header or cookie.
+*As built (F20.5, review of PR #90):* at most 32 connections are admitted, each a handler thread, counted at accept
+before a byte is read; the next gets a prepared `503 SERVER_BUSY` with `Retry-After: 1` and `Connection: close`, and
+its input is drained briefly so it reads the answer rather than a reset. The whole request head must arrive within
+10 s, however slowly it trickles (the per-read timeout alone would let a slow client hold a connection for ever).
+Input that ends before the head does is a client gone, never a request. The log path is percent-encoded and capped at
+256 characters; the log is written by one thread from a queue of 1024 lines, a full queue drops lines, and the next
+line written reports how many.
 
 ### 4.15 Engine edits, kept small and additive
 

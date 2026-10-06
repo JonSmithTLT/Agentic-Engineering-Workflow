@@ -72,14 +72,46 @@ def write_private(path: Path, text: str) -> None:
         path.unlink()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
-    if os.name == "nt":  # replace the inherited ACL before any secret is written
+    if os.name == "nt":  # replace the whole ACL before any secret is written
         user = os.environ.get("USERNAME") or ""
         domain = os.environ.get("USERDOMAIN") or ""
         who = f"{domain}\\{user}" if domain else user
-        subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{who}:(R,W)"], check=True,
-                       capture_output=True, creationflags=NO_WINDOW)
+        try:
+            _owner_only_acl(path, who)
+        except BaseException:
+            path.unlink(missing_ok=True)  # never leave a file whose access was not narrowed
+            raise
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+
+
+def _icacls(*args: str) -> str:
+    return subprocess.run(["icacls", *args], check=True, capture_output=True, text=True,
+                          creationflags=NO_WINDOW).stdout
+
+
+def _principals(path: Path) -> list[str]:
+    """The principals ``icacls`` lists for ``path`` (the text before each ``:(``), in order."""
+    out = _icacls(str(path))
+    found = []
+    for n, line in enumerate(out.splitlines()):
+        entry = line[len(str(path)):] if n == 0 else line
+        if ":(" in entry:
+            found.append(entry.strip().split(":(", 1)[0])
+    return found
+
+
+def _owner_only_acl(path: Path, who: str) -> None:
+    """Inheritance off, the user's grant only. A new file can also carry explicit entries from the process's default
+    DACL (SYSTEM, Administrators, OWNER RIGHTS on a CI runner), which ``/inheritance:r`` keeps: each is removed, and
+    the result is checked, so the tool refuses rather than writing a secret readable by anyone else."""
+    _icacls(str(path), "/inheritance:r", "/grant:r", f"{who}:(R,W)")
+    for principal in _principals(path):
+        if principal.lower() != who.lower():
+            _icacls(str(path), "/remove:g", principal)
+    left = _principals(path)
+    if [p.lower() for p in left] != [who.lower()]:
+        raise SystemExit(f"could not make the session file owner-only (its ACL still names {left}); nothing written")
 
 
 def main(argv: list[str] | None = None) -> int:

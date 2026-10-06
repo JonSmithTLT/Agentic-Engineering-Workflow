@@ -374,6 +374,32 @@ def test_the_real_cli_serves_the_product_end_to_end(world):
 
 # ------------------------------------------------------------------------------------------------- the browser handoff
 
+def test_the_session_file_is_owner_only_whatever_entries_a_new_file_starts_with(tmp_path):
+    """A new file can carry explicit entries from the process's default DACL (SYSTEM, Administrators, OWNER RIGHTS on
+    the Windows CI runner), which removing inheritance keeps: the tool removes them, or refuses. On POSIX, mode 0600."""
+    import importlib.util
+    import subprocess
+
+    spec = importlib.util.spec_from_file_location("session_file", ROOT / "tools/dashboard/session_file.py")
+    assert spec and spec.loader
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    out = tmp_path / "session.json"
+    if IS_WINDOWS:
+        out.write_text("", encoding="utf-8")
+        for sid in ("*S-1-5-18", "*S-1-5-32-544", "*S-1-3-4"):  # explicit, as the runner's default DACL gives them
+            subprocess.run(["icacls", str(out), "/grant", f"{sid}:(F)"], check=True, capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        assert len(tool._principals(out)) > 1
+        user, domain = os.environ["USERNAME"], os.environ.get("USERDOMAIN") or ""
+        tool._owner_only_acl(out, f"{domain}\\{user}" if domain else user)
+        principals = tool._principals(out)
+        assert len(principals) == 1 and user.lower() in principals[0].lower(), principals
+    else:
+        tool.write_private(out, "{}\n")
+        assert out.stat().st_mode & 0o777 == 0o600
+
+
 def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, monkeypatch, capsys):
     """``tools/dashboard/session_file.py``: the one-time URL on stdin becomes the web runner's session file, in its
     agreed format, owner-only, and the credential is never printed."""

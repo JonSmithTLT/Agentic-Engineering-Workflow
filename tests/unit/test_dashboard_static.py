@@ -354,3 +354,17 @@ def test_withheld_names_are_withheld_in_any_casing(path, tmp_path):
     (root / "mockServiceWorker.js").write_text("x", encoding="utf-8")
     (root / "assets" / "BUILD.json").write_text("{}", encoding="utf-8")
     assert F.resolve(root, path) is None
+
+
+def test_the_bounds_the_design_records_are_the_servers():
+    """PR #90 review, finding 6: the connection bound, the busy answer, the head deadline and the log queue are written
+    down where R23 is, with the values the server uses. In the fast lane, which every CI tier runs: a docs-only change
+    to R23 or the ledger must meet it (CI redesign P1's guard)."""
+    from aew.dashboard import server as SV
+
+    note = (ROOT / "docs/design/proposals/dashboard-main-line-api-design-v0.1.md").read_text(encoding="utf-8")
+    ledger = (ROOT / "docs/design/requirements-ledger.yaml").read_text(encoding="utf-8")
+    for text in (note, ledger):
+        assert f"{SV.MAX_CONNECTIONS} connections" in text
+        assert f"{SV.HEAD_DEADLINE_S:.0f} s" in text and f"{SV.LOG_QUEUE} lines" in text
+

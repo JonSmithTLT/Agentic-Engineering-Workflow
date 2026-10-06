@@ -137,7 +137,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
   2. Environment changes go through `monkeypatch`, and xdist workers are separate processes.
   3. Deterministic `AEW_FAULT` injection points are code locations, not timings.
   4. **Enforced every run.** An autouse fixture fails any test that leaks an `AEW_*` variable or changes the working directory. The controller's **isolation guard** fails the session if the AEW checkout or the global git config changed.
-  5. **Re-proven daily.** The nightly `reference` job runs the entire suite with no xdist and no shards on both OSes.
+  5. **Re-proven daily.** The nightly `reference` job runs the entire suite with no xdist on both OSes, split into duration-balanced serial shards (§11) whose aggregate proves every collected test ran exactly once.
 - **Coarse parallelism comes first.** Lanes are separate GitHub Actions jobs, on separate machines. Within a lane job, `-n auto --dist worksteal` uses the runner's vCPUs and never oversubscribes them. Timeouts (CLI 180 s, lock 60 s) are sized for the serial run and are not raised to hide contention.
 - **Windows runner configuration.** Microsoft Defender exclusions for the test paths were A/B-measured and are **not used**. Summed Windows pytest time was 1037 s and 1202 s with exclusions and 1131 s without, which is within runner noise, and the exclusion step added ~9 s of setup per job.
 
@@ -165,7 +165,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
 | Local full run (`-n auto -m "not serial"` + `--lane serial`) | ≤ 5 min | 268 s (260 s parallel + 8 s serial lane) |
 | First CI signal (`core`, Linux: frozen-spec pin + unit + serial) | ≤ 3 min | 29–32 s (Windows `core`: 71–123 s) |
 | Full PR / merge assurance (first job created to `assurance` done) | ≤ 15 min (target 10) | **279–325 s** over 3 runs (383–409 s while sharing the 20-job concurrency limit with a nightly run) |
-| Nightly | ≤ 90 min | first validation run: Linux jobs 98–1190 s; Windows jobs 196–1106 s, plus the Windows serial `reference`, the long pole, at 2675 s (~45 min). **Over budget since 2026-10-01:** that job took 76 min on 2026-09-30, then hit its 90 min job timeout three nights running, while the Linux one grew from 41 to 62 min. Its timeout is now 150 min, so the nightly finishes. The budget still stands, and meeting it again needs the job split or sped up |
+| Nightly | ≤ 90 min | first validation run: Linux jobs 98–1190 s; Windows jobs 196–1106 s, plus the Windows serial `reference`, the long pole, at 2675 s (~45 min). **Over budget since 2026-10-01:** that job took 76 min on 2026-09-30, then hit its 90 min job timeout three nights running, while the Linux one grew from 41 to 62 min. Its timeout was raised to 150 min so the nightly would finish. E26 then split the job into serial shards, each under a 60 minute timeout (the timeout is never raised again: a shard that nears 45 minutes gets another shard, `of` in the matrix) |
 
 Before and after:
 
@@ -235,7 +235,8 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 
 | Job | What | Why |
 |---|---|---|
-| `reference` | Whole suite, serial, unsharded, both OSes | Re-proves the parallel runs are equivalent; refreshes durations |
+| `reference` | Whole suite, serial (no xdist), both OSes, in shards (`--shard k/N`: Linux 3, Windows 6, each under a 60 minute timeout) | Re-proves the parallel runs are equivalent; refreshes durations |
+| `reference-assurance` | `check_assurance.py` over every `reference` shard's lane report, with `--require linux,win32`, and a check that every shard's job succeeded | The shards together are the unsharded run: a shard that did not run, did not upload or failed fails this job, never a silently smaller green nightly (E26) |
 | `walk-extended` | 3 blocks × 6 rotating seeds per OS for both walks, 150 steps, fault rate 0.15 (hierarchy walk: 250 steps, fault rate 0.12) | More adversarial sequences and crashes |
 | `race-repeat` | Serial lane ×10, then 200 racing writes per writer | Heavier race and kill repetition |
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |

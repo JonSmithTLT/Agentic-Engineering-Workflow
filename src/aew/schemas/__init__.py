@@ -29,6 +29,7 @@ SCHEMAS = {
     "transition": "transition.schema.json",
     "transition-events": "transition-events.schema.json",
     "transition-segment": "transition-segment.schema.json",
+    "surface": "surface.schema.json",  # the typed Lead surface's result contract (F15.1)
 }
 
 

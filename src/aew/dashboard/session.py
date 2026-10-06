@@ -20,13 +20,12 @@ from datetime import UTC, datetime, timedelta
 from http.cookies import SimpleCookie
 from typing import Any
 
+from aew.dashboard.defaults import DEFAULT_HOURS, MAX_HOURS, MIN_HOURS  # noqa: F401  (re-exported for callers)
 from aew.engine import authority
 from aew.errors import PermissionDenied, StaleAuthority
 from aew.util import utc_now
 
 COOKIE = "aew_session"
-DEFAULT_HOURS = 24
-MIN_HOURS, MAX_HOURS = 1, 168
 MAX_SESSIONS = 32
 CODE_TTL_S = 600.0
 # An expired record is kept this long so a stale cookie is answered SESSION_EXPIRED (the engine's "credential

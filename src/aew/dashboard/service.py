@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.dashboard.control import Console, ControlServer
+from aew.dashboard.defaults import DEFAULT_PORT  # noqa: F401  (re-exported for callers)
 from aew.dashboard.server import DashboardServer
 from aew.dashboard.session import DEFAULT_HOURS, SessionTable
 from aew.engine.api import Engine
@@ -30,7 +31,6 @@ from aew.harness import procs
 from aew.knowledge.manifest import load_manifest
 from aew.util import atomic_write, utc_now
 
-DEFAULT_PORT = 4280
 DIR_REL = "local/dashboard"
 SERVER_JSON_REL = f"{DIR_REL}/server.json"
 KEY_REL = f"{DIR_REL}/control.key"

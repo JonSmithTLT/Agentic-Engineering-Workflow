@@ -15,8 +15,11 @@ The order is the design's, and nothing else happens here:
    files outside the scratch repository for the optional scorer. ``outcome.safety.checkout_untouched`` says whether
    the AEW checkout changed.
 
-Scoring through the hidden-evaluator channel is the next slice (design §8 step 3): until then ``outcome.score`` is
-whatever the optional ``scorer`` returns over the export, and ``null`` without one.
+Scoring goes through the hidden-evaluator channel (:mod:`aew_eval.hidden`; design §5, §8 step 3). The hidden root is
+taken out of the environment before anything else, so no arm can pass it on. A case that commits to an oracle is
+refused, before registration, unless its oracle is found and matches the commitment, and a held-out case is refused
+once it has been exposed. The oracle scores the exported tree after the arm has returned, in its own process. A case
+with no oracle is scored by the optional ``scorer`` (``null`` without one).
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from aew_eval import arms, fixture, prereg
+from aew_eval import arms, fixture, hidden, prereg
 from aew_eval.canonical import sha256_of
 from aew_eval.ledger import AttemptLedger
 from aew_eval.schemas import Invalid
@@ -80,12 +83,15 @@ def _export(tree: fixture.WorkTree, dest: Path) -> Path:
 
 def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict[str, Path], work: Path,
              run_name: str, retry_of: str | None = None, scorer: Scorer | None = None,
-             deadline_s: float = 3600.0) -> dict[str, Any]:
+             deadline_s: float = 3600.0, hidden_root: Path | None = None) -> dict[str, Any]:
     """Run ``cell`` of the frozen preregistration once; returns the finalized result. ``cases`` maps each case id
     to its ``case.yaml``; ``work`` is the scratch root (a fresh ``work/<run_name>`` is made under it). Raises
-    :class:`Refused` when nothing was registered."""
+    :class:`Refused` when nothing was registered. ``hidden_root`` is the private evaluation root (by default taken
+    from ``AEW_EVAL_HIDDEN_ROOT``, which is removed from the environment either way)."""
+    env_root = hidden.take_root()  # first: nothing this run starts can inherit it
     # 1. Refuse before anything is counted.
     try:
+        hidden_root = hidden.resolve_root(hidden_root) if hidden_root is not None else env_root
         if not isinstance(frozen, dict):
             raise Invalid("the preregistration is not a mapping")
         experiment = frozen["experiment"]
@@ -104,6 +110,12 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         prereg.require_inputs(frozen, case=case.id, arm=arm["id"], case_sha256=snap.sha256,
                               hidden_sha256=case.manifest["hidden_sha256"], roles=frozen["profiles"]["roles"],
                               arm_config=arm["config"])
+        commitment = case.manifest["hidden_sha256"]
+        oracle = hidden.Oracle.locate(hidden_root, case.id) if commitment and hidden_root else None
+        hidden.require(hidden_root, oracle, case=case.id, commitment=commitment,
+                       held_out=case.id in frozen["held_out"])
+        if oracle is not None and scorer is not None:
+            raise Invalid(f"case {case.id} is scored by its hidden oracle; a second scorer is not used")
         runner = arms.arm_for(arm["kind"])
         runner.check(arm["config"], snap)
         owner = _inside_a_work_tree(work)
@@ -148,7 +160,10 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         result = runner.run(repo, arm["config"], deadline_s=deadline_s)
         final = fixture.files_of(repo)
         outcome["changed_paths"] = fixture.changed_paths(start, final)
-        outcome["score"] = scorer(_export(final, scratch / "export")) if scorer else None
+        if oracle is not None:  # after the arm has returned: no model-controlled process is running
+            outcome["score"] = hidden.score(oracle, _export(final, scratch / "export"), hide=[ledger_dir])
+        else:
+            outcome["score"] = scorer(_export(final, scratch / "export")) if scorer else None
     except Exception as exc:  # noqa: BLE001 (the attempt is counted either way; the reason is recorded)
         validity = {"status": "invalid_measurement", "reason_code": f"RUNNER_ERROR:{type(exc).__name__}"}
         outcome["error"] = str(exc)[-600:]

@@ -276,3 +276,36 @@ def test_the_request_log_never_blocks_a_request_on_a_stalled_terminal():
     finally:
         stream.release.set()
         logger.removeHandler(handler)
+
+
+def test_the_spa_index_is_held_to_the_same_containment(tmp_path):
+    """A build whose ``index.html`` is a link out of the root serves nothing for ``/`` or a deep link, as a
+    direct request for it does not (review of PR #90)."""
+    root = tmp_path / "build"
+    root.mkdir()
+    outside = tmp_path / "outside.html"
+    outside.write_text("<p>outside</p>", encoding="utf-8")
+    try:
+        (root / "index.html").symlink_to(outside)
+    except OSError:
+        pytest.skip("this platform does not let the test create a file link (Linux CI runs it)")
+    for path in ("/", "/work/T-0001", "/index.html"):
+        assert F.resolve(root, path) is None, path
+
+
+def test_the_spa_index_must_be_a_regular_file(tmp_path):
+    root = tmp_path / "build"
+    (root / "index.html").mkdir(parents=True)  # a directory where the index should be
+    assert F.resolve(root, "/") is None and F.resolve(root, "/work") is None
+
+
+@pytest.mark.parametrize("path", ["/build.json", "/Build.Json", "/BUILD.JSON", "/mockserviceworker.js",
+                                  "/MOCKSERVICEWORKER.JS", "/assets/BUILD.json"])
+def test_withheld_names_are_withheld_in_any_casing(path, tmp_path):
+    assert F.resolve(STATIC, path) is None
+    root = tmp_path / "custom"
+    (root / "assets").mkdir(parents=True)
+    (root / "index.html").write_text("x", encoding="utf-8")
+    (root / "mockServiceWorker.js").write_text("x", encoding="utf-8")
+    (root / "assets" / "BUILD.json").write_text("{}", encoding="utf-8")
+    assert F.resolve(root, path) is None

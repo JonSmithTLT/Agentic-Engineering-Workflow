@@ -16,6 +16,7 @@ import logging
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -369,3 +370,109 @@ def test_the_request_log_redacts_session_codes_and_never_records_queries_headers
     for secret in (code, "SECRET_QUERY_VALUE", "SECRET_HEADER_VALUE", "SECRET_IN_A_BAD_LINE",
                    live.cookie.split("=", 1)[1], "aew_session"):
         assert secret not in text, secret
+
+
+# ------------------------------------------------------------------------------------------- review of PR #90
+
+@pytest.mark.parametrize("form", ["http://{host}/session/{code}", "//{host}/session/{code}",
+                                  "http://user:pw@{host}/session/{code}?q=1"])
+def test_a_non_path_target_is_refused_before_routing_and_never_logged(live, caplog, form):
+    """An absolute-form (or network-path) target names a one-time code where routing would find it but the log
+    redaction did not: it is refused before any route, the code stays unspent, and the log never shows it."""
+    code = live.table.mint()
+    target = form.format(host=live.host, code=code)
+    with caplog.at_level(logging.INFO, logger="aew.dashboard"):
+        status, _, raw = live.raw(f"GET {target} HTTP/1.1\r\nHost: {live.host}\r\nSec-Fetch-Site: cross-site\r\n\r\n"
+                                  .encode("latin-1"))
+    assert status == 400 and error_code(raw) == "INVALID_REQUEST"
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
+    assert code not in text and "user:pw" not in text and "q=1" not in text and "<not a path>" in text
+    status, headers, _ = live.request("GET", f"/session/{code}", cookie=False)
+    assert status == 303  # the code was never spent by the refused request
+
+
+def test_the_log_redacts_session_paths_however_they_are_spelled():
+    for raw in ("/session/abc", "/Session/abc", "/%73ession/abc", "/SESSION/abc?x=1", "/session/abc#f"):
+        assert SV.log_target(raw) == "/session/<redacted>", raw
+    assert SV.log_target("/127.0.0.1:4280/session/abc") == "/127.0.0.1:4280/session/<redacted>"
+    assert SV.log_target("/api/v1/work?state=SECRET") == "/api/v1/work"
+    assert SV.log_target("http://127.0.0.1:1/x") == SV.log_target("//h/x") == "<not a path>"
+    assert SV.log_target(None) == "-"
+
+
+def _connect_partial(live: Live) -> socket.socket:
+    s = socket.create_connection(("127.0.0.1", live.server.port), timeout=30)
+    s.sendall(f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\n".encode("latin-1"))  # no terminator
+    return s
+
+
+def _busy(live: Live) -> None:
+    status, headers, raw = live.raw(f"GET / HTTP/1.1\r\nHost: {live.host}\r\n\r\n".encode("latin-1"))
+    assert status == 503 and headers.get("retry-after") == "1" and error_code(raw) == "SERVER_BUSY"
+    assert headers.get("connection") == "close"
+    assert_headers(headers)
+
+
+def _wait_for_connections(live: Live, free: int) -> None:
+    deadline = time.monotonic() + 30
+    while live.server.httpd.connections._value != free:  # noqa: SLF001 (the admission semaphore)
+        assert time.monotonic() < deadline, live.server.httpd.connections._value  # noqa: SLF001
+        time.sleep(0.05)
+
+
+def test_half_sent_requests_hold_no_more_than_the_connection_bound(live):
+    """Connections that never finish their headers each hold a handler thread: at the bound, the next connection
+    is answered 503 at once, before anything of it is read, and the server recovers when they go."""
+    held = [_connect_partial(live) for _ in range(SV.MAX_CONNECTIONS)]
+    try:
+        _wait_for_connections(live, 0)
+        _busy(live)
+    finally:
+        for s in held:
+            s.close()
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
+    assert live.request("GET", "/api/v1/project")[0] == 200
+
+
+def test_idle_keep_alive_connections_hold_no_more_than_the_connection_bound(live):
+    held = []
+    try:
+        for _ in range(SV.MAX_CONNECTIONS):
+            conn = http.client.HTTPConnection("127.0.0.1", live.server.port, timeout=30)
+            conn.request("GET", "/api/v1/project", headers={"Cookie": live.cookie})
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200 and not resp.will_close
+            held.append(conn)  # left open and idle
+        _wait_for_connections(live, 0)
+        _busy(live)
+    finally:
+        for conn in held:
+            conn.close()
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
+    assert live.request("GET", "/api/v1/project")[0] == 200
+
+
+@pytest.mark.parametrize("block", ["X-Big: " + "b" * (17 * 1024), "".join(f"X-H{i}: v\r\n" for i in range(70))])
+def test_an_oversized_header_block_is_refused_while_it_is_read(live, block):
+    """The bounds hold on the wire: the refusal comes once the bound is passed, without waiting for a terminator
+    the client never sends."""
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=5) as s:
+        s.sendall(f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\n{block}".encode("latin-1"))
+        started = time.monotonic()
+        got = s.recv(65536)
+    assert got.startswith(b"HTTP/1.1 431 "), got[:40]
+    assert time.monotonic() - started < 4.0
+
+
+def test_withheld_files_are_withheld_in_any_casing(live):
+    for path in ("/build.json", "/Build.Json", "/BUILD.JSON", "/mockserviceworker.js", "/MockServiceWorker.JS"):
+        status, _, raw = live.request("GET", path)
+        assert status == 404 and error_code(raw) == "NOT_FOUND", path
+
+
+def test_an_oversized_request_line_is_refused_while_it_is_read(live):
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=5) as s:
+        s.sendall(b"GET /" + b"a" * 5000)  # past 4 KiB, and never ended
+        got = s.recv(65536)
+    assert got.startswith(b"HTTP/1.1 414 "), got[:40]

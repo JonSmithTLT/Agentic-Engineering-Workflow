@@ -23,10 +23,10 @@ note §4.3). Every ``200`` carries a strong ``ETag`` over the representation and
 from __future__ import annotations
 
 import html
+import io
 import json
 import logging
 import queue
-import re
 import threading
 import time
 from collections.abc import Callable
@@ -34,7 +34,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Protocol, TextIO
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from aew.dashboard import etag as E
 from aew.dashboard import frontend as ST
@@ -57,6 +57,10 @@ MAX_REQUEST_LINE = 4096
 MAX_HEADER_LINES = 64
 MAX_HEADER_BYTES = 16 * 1024
 MAX_IN_FLIGHT = 16
+# Connections, each a handler thread, admitted before anything is read: a browser keeps up to six per origin
+# alive; beyond this the connection gets a 503 at once and is closed, so neither half-sent requests nor idle
+# keep-alive connections can hold more threads than this (lead developer's review of PR #90).
+MAX_CONNECTIONS = 32
 ALLOWED_METHODS = "GET, HEAD"
 # R21: on every response, static and API alike.
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -77,7 +81,6 @@ PARSE_ERRORS = {HTTPStatus.REQUEST_URI_TOO_LONG: "REQUEST_TOO_LARGE",
                 HTTPStatus.METHOD_NOT_ALLOWED: "METHOD_NOT_ALLOWED",
                 HTTPStatus.NOT_IMPLEMENTED: "METHOD_NOT_ALLOWED"}
 SESSION_PREFIX = "/session/"
-SESSION_PATH = re.compile(r"^/session/[^/?#]+")
 # The pages the one-time URL exchange answers with. They name no code and carry no data (R9).
 GONE_PAGE = ("This dashboard link was already used, has expired, or was never issued. Run `aew dashboard open` at your "
              "terminal for a new one.")
@@ -120,6 +123,34 @@ class RequestLog(logging.Handler):
             pass
         self._writer.join(1.0)
         super().close()
+
+
+def log_target(raw: str | None) -> str:
+    """The request target as the log may record it: an origin-form path with its query and fragment dropped and
+    a ``/session/`` code redacted (also when encoded or cased differently). Any other form (absolute, authority,
+    a ``//`` network path) is refused before routing and never written: it can carry a code, userinfo or a
+    query (lead developer's review of PR #90). ``raw`` is the target as the request line sent it."""
+    if not raw:
+        return "-"
+    if not is_path_target(raw):
+        return "<not a path>"
+    path = urlsplit(raw).path
+    at = unquote(path).lower().find(SESSION_PREFIX)
+    if at >= 0:  # wherever it appears: everything from the segment on is withheld
+        return unquote(path)[:at] + "/session/<redacted>"
+    return path[:256]
+
+
+def is_path_target(raw: str) -> bool:
+    """Whether a request target is origin-form: one path (not ``//`` or a scheme), the only form this server serves."""
+    parts = urlsplit(raw)
+    return raw.startswith("/") and not raw.startswith("//") and not parts.scheme and not parts.netloc
+
+
+def raw_target(h: BaseHTTPRequestHandler) -> str | None:
+    """The target exactly as the request line sent it: stdlib rewrites a leading ``//`` in ``path``."""
+    words = (getattr(h, "requestline", "") or "").split()
+    return words[1] if len(words) >= 2 else getattr(h, "path", None)
 
 
 class Authenticator(Protocol):
@@ -197,6 +228,39 @@ def match_route(path: str) -> tuple[str, dict[str, str]] | None:
     return None
 
 
+class _Listener(ThreadingHTTPServer):
+    """``ThreadingHTTPServer`` with its connections bounded at accept, before a handler thread exists or a byte
+    is read: the ``MAX_CONNECTIONS + 1``-th gets a prepared ``503`` and is closed."""
+
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], handler: Any, busy: bytes) -> None:
+        self.busy = busy
+        self.connections = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self.connections.acquire(blocking=False):
+            try:
+                request.settimeout(1.0)
+                request.sendall(self.busy)
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.connections.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.connections.release()
+
+
 class DashboardServer:
     """Serves one project's projections to authenticated readers on the loopback interface."""
 
@@ -226,9 +290,54 @@ class DashboardServer:
                 except (ConnectionResetError, BrokenPipeError, TimeoutError):
                     pass  # the client went away between keep-alive requests: nothing to answer
 
+            def handle_one_request(self) -> None:
+                # stdlib's own, with the request line read within MAX_REQUEST_LINE (stdlib reads 64 KiB first).
+                try:
+                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+                    self.started = time.monotonic()
+                    if len(self.raw_requestline) > MAX_REQUEST_LINE:
+                        self.requestline, self.request_version, self.command = "", "", ""
+                        self.send_error(HTTPStatus.REQUEST_URI_TOO_LONG)
+                        return
+                    if not self.raw_requestline:
+                        self.close_connection = True
+                        return
+                    if not self.parse_request():
+                        return
+                    getattr(self, "do_" + self.command)()
+                    self.wfile.flush()
+                except TimeoutError:
+                    self.close_connection = True
+
+            def _read_header_block(self) -> bytes | None:
+                """The header block, read line by line within the bounds; ``None`` when it exceeds them
+                (nothing past the bound is read: the connection is closed with the refusal)."""
+                block = b""
+                for _ in range(MAX_HEADER_LINES + 1):
+                    line = self.rfile.readline(MAX_HEADER_BYTES + 1 - len(block))
+                    block += line
+                    if line in (b"\r\n", b"\n", b""):
+                        return block
+                    if len(block) > MAX_HEADER_BYTES:
+                        return None
+                return None
+
             def parse_request(self) -> bool:
-                self.started = time.monotonic()
-                if not super().parse_request():
+                words = self.raw_requestline.split()
+                if len(words) == 3 and words[2].startswith(b"HTTP/1."):
+                    block = self._read_header_block()  # bounded while reading, before stdlib parses it
+                    if block is None:
+                        self.command, self.request_version = "", self.protocol_version
+                        self.send_error(HTTPStatus.REQUEST_HEADER_FIELDS_TOO_LARGE)
+                        return False
+                    real, self.rfile = self.rfile, io.BytesIO(block)
+                    try:
+                        parsed = super().parse_request()
+                    finally:
+                        self.rfile = real
+                else:
+                    parsed = super().parse_request()  # refused by stdlib, or HTTP/0.9, refused below
+                if not parsed:
                     return False
                 if not self.request_version.startswith("HTTP/1."):  # HTTP/0.9 has no headers to carry R21's set
                     self.send_error(HTTPStatus.HTTP_VERSION_NOT_SUPPORTED)
@@ -270,13 +379,11 @@ class DashboardServer:
                 pass  # stdlib's messages can carry the request line (a query); the request log is log_request
 
             def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
-                raw = getattr(self, "path", None) or "-"
-                path = SESSION_PATH.sub("/session/<redacted>", raw.split("?", 1)[0])[:256]
+                path = log_target(raw_target(self))
                 ms = (time.monotonic() - getattr(self, "started", time.monotonic())) * 1000
                 LOG.info("%s %s %s %.0fms", getattr(self, "command", None) or "-", path, int(code), ms)
 
-        self.httpd = ThreadingHTTPServer((HOST, port), Handler)
-        self.httpd.daemon_threads = True
+        self.httpd = _Listener((HOST, port), Handler, self._busy_response())
         self._thread = threading.Thread(target=self.httpd.serve_forever, name="aew-dashboard", daemon=True)
 
     # ---------------------------------------------------------------- lifecycle
@@ -352,8 +459,22 @@ class DashboardServer:
             extra.append(("Set-Cookie", S.expired_cookie()))  # a dead cookie is removed from the browser (R10)
         self._send(h, status, body, head=head, extra=extra)
 
+    @classmethod
+    def _busy_response(cls) -> bytes:
+        """The prepared answer for a connection beyond ``MAX_CONNECTIONS``: R21's headers, the contract's
+        ``Error``, ``Retry-After``, and the connection closed."""
+        body = json.dumps(error_body("SERVER_BUSY"), separators=(",", ":")).encode()
+        head = ["HTTP/1.1 503 Service Unavailable", "Content-Type: application/json; charset=utf-8",
+                f"Content-Length: {len(body)}", "Retry-After: 1", "Connection: close"]
+        head += [f"{name}: {value}" for name, value in cls._common_headers()]
+        return ("\r\n".join(head) + "\r\n\r\n").encode("latin-1") + body
+
     def _admit(self, h: BaseHTTPRequestHandler, url: Any) -> None:
-        """The checks before any routing (R22, R23): the exact origin, the request's size, no body."""
+        """The checks before any routing (R22, R23): an origin-form target, the exact origin, the request's
+        size, no body."""
+        if not is_path_target(raw_target(h) or ""):
+            h.close_connection = True
+            raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "the request target must be a path"))
         if h.headers.get("Host") != f"{HOST}:{self.port}":
             raise Refusal(HTTPStatus.MISDIRECTED_REQUEST, error_body("HOST_NOT_ALLOWED"))
         origin = h.headers.get("Origin")

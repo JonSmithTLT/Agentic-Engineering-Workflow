@@ -24,7 +24,9 @@ from urllib.parse import unquote
 INDEX = "index.html"
 BUILD_JSON = "BUILD.json"
 ASSETS_PREFIX = "/assets/"
-NEVER_SERVED = frozenset({"/mockServiceWorker.js", f"/{BUILD_JSON}"})
+# Withheld by the resolved file's own name, so any casing a case-insensitive filesystem (Windows, macOS) resolves to
+# them is withheld too (lead developer's review of PR #90).
+NEVER_SERVED = frozenset({"mockserviceworker.js", BUILD_JSON.casefold()})
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8",
          ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
@@ -65,6 +67,16 @@ def _extension(name: str) -> str:
     return name[dot:].lower() if dot > 0 else ""
 
 
+def _contained(root: Path, segments: list[str]) -> Path | None:
+    """The regular file ``segments`` names once every link is resolved, if it is still inside ``root`` and is not
+    a withheld name; else ``None``."""
+    base = root.resolve()
+    target = base.joinpath(*segments).resolve()
+    if base not in target.parents or not target.is_file() or target.name.casefold() in NEVER_SERVED:
+        return None
+    return target
+
+
 def resolve(root: Path, raw_path: str) -> Asset | None:
     """The file a static request path names (``None``: ``404``), or :class:`BadPath`."""
     if ENCODED_SEPARATOR.search(raw_path):
@@ -75,21 +87,19 @@ def resolve(root: Path, raw_path: str) -> Asset | None:
         raise BadPath("not UTF-8") from None
     if not path.startswith("/") or "\\" in path or "\x00" in path:
         raise BadPath("not a plain path")
-    if path in NEVER_SERVED:
-        return None
     segments = path[1:].split("/")
     if path == "/":
         segments = []
     elif any(s in ("", ".", "..") for s in segments):
         raise BadPath("an empty, . or .. segment")
     if not segments or (not _extension(segments[-1]) and not path.startswith(ASSETS_PREFIX)):
-        return Asset(root / INDEX, TYPES[".html"], NO_STORE)  # the SPA fallback for deep links
+        index = _contained(root, [INDEX])  # the SPA fallback for deep links, held to the same checks
+        return Asset(index, TYPES[".html"], NO_STORE) if index is not None else None
     ext = _extension(segments[-1])
     if ext not in TYPES:
         return None
-    base = root.resolve()
-    target = base.joinpath(*segments).resolve()
-    if base not in target.parents or not target.is_file():  # resolved: a link out of the root is outside it
+    target = _contained(root, segments)
+    if target is None:
         return None
     cache = IMMUTABLE if path.startswith(ASSETS_PREFIX) else NO_STORE
     return Asset(target, TYPES[ext], cache)

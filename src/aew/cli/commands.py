@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from aew import doctor
 from aew.errors import UsageError
 from aew.util import read_text_input
 
@@ -220,6 +219,8 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
 
 
 def _doctor(args: argparse.Namespace) -> Any:
+    from aew import doctor
+
     report = doctor.run(cwd=args.cwd)
     return report if args.json else doctor.render(report)
 

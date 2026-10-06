@@ -4489,7 +4489,20 @@
     "web/docs/reviews/docs-organization-2026-10-04/dist.SHA256SUMS",
     "web/docs/reviews/docs-organization-2026-10-04/dist-demo.SHA256SUMS",
     "web/docs/reference/f20-production-baseline.md",
-    "web/docs/reference/f20-live-browser-handoff.md"
+    "web/docs/reference/f20-live-browser-handoff.md",
+    "web/docs/how-to/authenticated-live-browser.md",
+    "web/docs/reviews/f20-live-runner-2026-10-05/dist.SHA256SUMS",
+    "web/docs/reviews/f20-live-runner-2026-10-05/dist-demo.SHA256SUMS",
+    "web/docs/reviews/f20-live-runner-2026-10-05/offline-gate.log",
+    "web/docs/reviews/f20-live-runner-2026-10-05/browser-live-regression.log",
+    "web/docs/reviews/f20-live-runner-2026-10-05/provenance.json",
+    "web/docs/reviews/f20-live-runner-2026-10-05.md",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06.md",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/browser-live-regression.log",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist-demo.SHA256SUMS",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist.SHA256SUMS",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/offline-gate.log",
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/provenance.json"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

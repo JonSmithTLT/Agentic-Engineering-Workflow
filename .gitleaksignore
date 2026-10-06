@@ -1,4 +1,9 @@
 # Known false positives in history, scoped by commit, path, rule and line.
+# F20 live-runner retained offline-gate output: this exact line is the public accepted API 0.1.2
+# SHA-256, verified against c0-approval.json and the canonical artifact. It is not a credential.
+f5a21be24c90bcbb9b68d041b40c759c4ac9f0c7:web/docs/reviews/f20-live-runner-2026-10-05/offline-gate.log:generic-api-key:42
+# PR89 correction freeze: same entire public accepted API digest line, verified again.
+dda26b1d93801492ab1d8153c70d6c25df2c9183:web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/offline-gate.log:generic-api-key:48
 #
 # Commit d7ef742 (docs/consolidation, 2026-10-05) added the raw OpenCode and Codex model-request captures of the
 # architecture review's T9 probe and the T3 log-growth probe's console output. The 22 `prompt_cache_key` values in

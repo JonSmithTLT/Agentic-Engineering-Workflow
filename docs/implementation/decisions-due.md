@@ -35,7 +35,7 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
 | Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
 | Unscheduled | operator and designer | adoption | ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap bundle's build waits for it | F18.3 | - |
-| Unscheduled | designer | decision | Confirm the Q12 record's §11 reading before F31 is built: WC §8.2's crash rule (in-flight work reconciled as INTERRUPTED/unknown) applies when an invocation's own custody is lost, not when only the Lead's attachment is lost, so Q12 needs no amendment to the frozen specification | F31 | - |
+| Unscheduled | designer | decision | Before F31 is built: confirm the Q12 record's §11 reading that WC §8.2's crash rule (in-flight work reconciled as INTERRUPTED/unknown) applies when an invocation's own custody is lost, not when only the Lead's attachment is lost; and settle what "no AEW project access" after `aew close` covers (`aew` read commands, the project's files, or both; §12) | F31 | - |
 | Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
 | Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
 | Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |

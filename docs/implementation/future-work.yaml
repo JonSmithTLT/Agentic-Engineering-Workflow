@@ -373,8 +373,8 @@ sections:
       its consequential observations with it.'
   - '#': F18
     Work: 'Operator bootstrap and host integration: setting up AEW and its harness on a host, and starting and attaching
-      the operator''s session under the hosting model Q12 picks. Bootstrap and hosting only; comprehensive native-feature
-      integration stays with M6 (F13)'
+      the operator''s session within the hosting boundary Q12 decided (2026-10-06). Bootstrap and hosting only; comprehensive
+      native-feature integration stays with M6 (F13)'
     Source (governing): Designer and operator, 2026-10-01; provider research §5 ([`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md));
       **the design is [install, bootstrap and first-run UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)** (adopted
       by the designer and the operator 2026-10-05; ledger IBU)
@@ -728,14 +728,16 @@ sections:
   - '#': F31
     Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches
       a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
-      from canonical state on attach, stale authority for every older generation, a harness crash or host loss that revokes
-      and stales the attachment''s generation, the Lead attachment''s requested and effective execution profile recorded,
-      and admitted invocations whose custody survives the Lead attachment''s close, loss or takeover (a later generation
-      reconciles what they deposit; cancelling them stays an explicit control)'
+      from canonical state on attach, stale authority for every older generation, no AEW project authority or access left
+      to a closed attachment, a harness crash or host loss that revokes and stales the attachment''s generation, the Lead
+      attachment''s requested and effective execution profile recorded, and admitted invocations whose custody survives
+      the Lead attachment''s close, loss or takeover (a later generation reconciles what they deposit; cancelling them stays
+      an explicit control)'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
       §4 to §9 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
-    Belongs to or gated by: '**M4 candidate.** The next milestone triage places it. Before it is built, the designer confirms
-      the record''s §11 reading of WC §8.2 (decisions-due)'
+    Belongs to or gated by: '**Designer.** Waits for the designer''s confirmations in decisions-due (the record''s §11 reading
+      of the frozen specification, and what "no AEW project access" covers, §12); then the next milestone triage places
+      the build'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
       takeover's interruption of every in-flight invocation, and `lead release`'s refusal while invocations are active (record
       §11). Native harness subagents only where the adapter keeps AEW's invocation identity, custody, profile, parent, limits

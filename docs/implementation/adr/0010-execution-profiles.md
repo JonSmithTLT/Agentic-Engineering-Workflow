@@ -113,6 +113,7 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
 - **Reference models, not semantics.** The reference topology is GPT-6 Astra for the Lead, Laguna S2.1 as the default
   worker, and GPT-5.4 and approved open-source models as selectable workers (GPT-5.4 where its capability justifies
   the cost and rate-limit pressure). These are profiles in `policy/execution.yaml` like any other: no workflow
-  semantics may depend on a model's name, and selection stays capability- and profile-based and attributable. Each is
-  qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before it is
-  relied on (F32).
+  semantics may depend on a model's name, and selection stays capability- and profile-based and attributable.
+- **Qualification (the lead developer's addition, decision record §12, not the decision's text).** Each reference
+  model is qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before
+  it is relied on, as every profile is (F32).

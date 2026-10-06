@@ -166,9 +166,16 @@ Not part of the decision; recorded so the build (register F31) starts from the d
 behaviour, then what the decision requires.
 
 - **The Lead session is the harness process.** `aew lead session -- <harness>` and `aew opencode` (ADR-0009) hold the
-  Lead credential in a broker whose lifetime is the wrapped harness process: the attachment opens when the harness
-  starts and ends when it exits. The decision separates them: an attachment opens (`aew open`) and closes (`aew close`)
-  while the harness keeps running (§4 to §6).
+  Lead credential in a broker whose lifetime is the wrapped harness process. With `--acquire` the seat is taken when
+  the harness starts and, if nothing is active, released when it exits; with the operator's `AEW_LEAD_TOKEN` the
+  authority outlives the session, and only the broker ends with it. Neither is an attachment that opens and closes
+  while the harness keeps running; the decision makes it one (`aew open`, `aew close`; §4 to §6).
+- **A superseded session keeps reading.** When the broker's credential stops being current, it closes its bridge and
+  the Lead's harness keeps running as a read-only session (`harness/lead_broker.py`): it can still run `aew`'s read
+  commands and read the project's files. §5 says that after `aew close` the model has "no AEW project authority or AEW
+  project access". Authority is withdrawn today; access is not. What "access" means for a harness whose working
+  directory is the project (read commands, the files, the dashboard) is for the designer to settle before F31 is
+  built (§12).
 - **Takeover interrupts children.** `aew lead takeover` revokes every in-flight invocation's credential and marks a
   Ticket waiting on one `INTERRUPTED` (ADR-0005; `lead_ops._interrupt_invocations`); invocation credentials are scoped
   to the Lead generation. The decision gives admitted invocations custody independent of the Lead attachment: losing,
@@ -195,7 +202,11 @@ behaviour, then what the decision requires.
   supervisor own broker and project capabilities and the curated environment, §9) but not their processes:
   - the knowledge service principal's authority is already fixed by ADR-0013 D9 (project-bound, independent of the
     Lead generation), and its hosting goes to the hosting design under F18 with F21;
-  - the dashboard server's process placement stays with F18 and F20.
+  - the dashboard server's process placement stays with F18 and F20;
+  - multi-project knowledge visibility (K3), which ADR-0013 left to Q12, is not decided by it and stays with F21.
+- **What "no AEW project access" covers.** §5 removes the closed attachment's AEW project access as well as its
+  authority. Whether that means refusing `aew` read commands, keeping the harness from the project's files (which needs
+  containment of the Lead's harness), or both, is the designer's to settle before F31 is built (decisions-due, F31).
 - **Concrete mechanisms.** Command names beyond `aew open` and `aew close`, the attach handshake, how a child's
   credential outlives the generation it was admitted under, and the configuration and state isolation of the Lead's
   harness (U6) are implementation choices for F31 and the F18 hosting design, within §10's limit.

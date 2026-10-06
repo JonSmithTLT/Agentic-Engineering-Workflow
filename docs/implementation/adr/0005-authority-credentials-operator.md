@@ -191,7 +191,9 @@ behaviour above stands.
 - **Every attachment is a fresh generation.** Opening one (`aew open`) is a new generation, as acquire, handoff accept
   and takeover are today. Closing it (`aew close`), or losing it to a harness crash or host loss, revokes the Lead's
   credential and stales the generation; persistent project state is untouched. An old generation never regains
-  mutation authority, and its calls get `STALE_AUTHORITY`. A normal model turn ending changes nothing.
+  mutation authority, and its calls get `STALE_AUTHORITY`. A closed attachment leaves the model no AEW project
+  authority and no AEW project access (decision record §5; what access covers, §12). A normal model turn ending changes
+  nothing.
 - **Admitted invocations keep their own custody.** Above, an invocation credential is scoped to the Lead generation and
   revoked on takeover, and a Ticket waiting on one becomes `INTERRUPTED`. Under Q12, closing, losing or taking over the
   Lead attachment does not revoke, interrupt or cancel an already-admitted invocation: it may finish and deposit its

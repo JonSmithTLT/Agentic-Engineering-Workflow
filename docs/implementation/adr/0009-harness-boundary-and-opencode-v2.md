@@ -554,11 +554,14 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
   profiles, the harness configuration inputs, capability negotiation, and lifecycle observation and provenance. The
   adapter translates these into the harness's native configuration and lifecycle mechanisms. The harness owns model
   execution and never becomes workflow authority. A launcher or wrapper may set up, launch, supervise and tear down, but
-  decides no workflow progression, evidence acceptance, retry or gate.
+  decides no workflow progression, evidence acceptance, retry, gate or other AEW semantics.
 - **The Lead session.** Today `aew lead session -- <harness>` and `aew opencode` tie the Lead broker to the wrapped
-  harness process: the attachment starts and ends with it. Under Q12 an attachment opens and closes (`aew open`,
+  harness process (with `--acquire`, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it), and a
+  superseded session keeps running as a read-only session. Under Q12 an attachment opens and closes (`aew open`,
   `aew close`) while the harness and its conversation keep running; a later attachment re-hydrates from canonical
-  project state, which wins over the model's retained context.
+  project state, which wins over the model's retained context. After `aew close` the model has no AEW project
+  authority or AEW project access (what access covers is for the designer; decision record §12).
 - **Native subagents.** A harness's own subagent feature may be used only where the adapter preserves AEW's invocation
-  identity, role, custody, execution profile, parent relationship, limits and provenance; otherwise AEW dispatches. No
+  identity, role, custody, execution profile, parent relationship, limits and evidence and provenance; otherwise AEW
+  dispatches. No
   native feature may bypass AEW dispatch or create an uncontrolled subagent.

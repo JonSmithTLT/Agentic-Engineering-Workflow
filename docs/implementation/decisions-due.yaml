@@ -149,9 +149,10 @@ items:
   needs: decision
   owner: designer
   due: Unscheduled
-  what: 'Confirm the Q12 record''s §11 reading before F31 is built: WC §8.2''s crash rule (in-flight work reconciled as
-    INTERRUPTED/unknown) applies when an invocation''s own custody is lost, not when only the Lead''s attachment is lost,
-    so Q12 needs no amendment to the frozen specification'
+  what: 'Before F31 is built: confirm the Q12 record''s §11 reading that WC §8.2''s crash rule (in-flight work reconciled
+    as INTERRUPTED/unknown) applies when an invocation''s own custody is lost, not when only the Lead''s attachment is lost;
+    and settle what "no AEW project access" after `aew close` covers (`aew` read commands, the project''s files, or both;
+    §12)'
 - row: Q4
   needs: decision
   owner: designer

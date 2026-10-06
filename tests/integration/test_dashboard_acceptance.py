@@ -365,7 +365,7 @@ def test_the_real_cli_serves_the_product_end_to_end(world):
         reader.join(10)
     log = bytes(screen).decode("utf-8", "replace")
     assert os.waitstatus_to_exitcode(status) in (0, 130), log
-    assert len(seen["api"]) == 18
+    assert len(seen["api"]) == 21  # the detail pages too (PR #97 review)
     assert "GET /session/<redacted> 303" in log and "GET /api/v1/overview 200" in log  # the request log, redacted
     assert url.split("/session/")[1] not in log.split(url, 1)[-1]  # the code never reappears after its URL
     with pytest.raises(OSError):
@@ -385,7 +385,35 @@ def _dacl(path: Path) -> str:
         subprocess.run(["icacls", str(path), "/save", str(saved)], check=True, capture_output=True,
                        creationflags=subprocess.CREATE_NO_WINDOW)
         sddl = saved.read_bytes().decode("utf-16").splitlines()[1].strip()
-    return sddl[sddl.index("D:"):] if "D:" in sddl else sddl
+    return _canonical_dacl(sddl[sddl.index("D:"):] if "D:" in sddl else sddl)
+
+
+def _canonical_dacl(sddl: str) -> str:
+    """A DACL in Windows' own canonical SDDL: round-tripped through the security descriptor APIs, so a SID that has an
+    alias is written as Windows writes it (the CI runner's account is the built-in Administrator, ``LA``)."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    to_sd = advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    to_sd.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    to_sd.restype = wintypes.BOOL
+    to_str = advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW
+    to_str.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR),
+                       ctypes.c_void_p]
+    to_str.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    sd, text = ctypes.c_void_p(), wintypes.LPWSTR()
+    assert to_sd(sddl, 1, ctypes.byref(sd), None), ctypes.get_last_error()
+    try:
+        assert to_str(sd, 1, 4, ctypes.byref(text), None), ctypes.get_last_error()  # DACL_SECURITY_INFORMATION
+        out = text.value or ""
+    finally:
+        kernel.LocalFree(sd)
+        if text:
+            kernel.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+    return out
 
 
 def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothing(tmp_path, monkeypatch):
@@ -403,7 +431,7 @@ def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothi
     assert out.read_text(encoding="utf-8") == '{"secret": 1}\n'
     if IS_WINDOWS:
         # The guarantee itself, for any account: a protected DACL whose one entry gives the user's SID full access.
-        assert _dacl(out) == f"D:P(A;;FA;;;{tool.user_sid()})", _dacl(out)
+        assert _dacl(out) == _canonical_dacl(f"D:P(A;;FA;;;{tool.user_sid()})"), _dacl(out)
     else:
         assert out.stat().st_mode & 0o777 == 0o600
     # Failures leave nothing: before the file exists, and while writing through the handle.
@@ -469,7 +497,8 @@ def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, 
         browser.cookie = record["cookie"]["value"]
         assert browser.api("/project")[0] == 200  # the file holds a live session
         if IS_WINDOWS:
-            assert _dacl(out) == f"D:P(A;;FA;;;{tool.user_sid()})", _dacl(out)  # the user's SID alone, protected
+            # the user's SID alone, protected
+            assert _dacl(out) == _canonical_dacl(f"D:P(A;;FA;;;{tool.user_sid()})"), _dacl(out)
         else:
             assert out.stat().st_mode & 0o777 == 0o600
         monkeypatch.setattr(sys, "stdin", io.StringIO(svc.url + "/session/" + "x" * 43 + "\n"))

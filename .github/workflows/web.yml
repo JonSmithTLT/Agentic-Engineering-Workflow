@@ -72,6 +72,7 @@ jobs:
       - name: Change detector regression probes
         run: |
           node --test scripts/ci-paths.test.mjs
+          node --test scripts/live-inputs.test.mjs
           bash -n scripts/freeze-committed-build.sh scripts/freeze-w05-evidence.sh scripts/freeze-w06-evidence.sh
       - name: Contract acceptance digest
         run: node scripts/check-contract.mjs
@@ -98,6 +99,7 @@ jobs:
       - name: Compiled browser and CSP checks
         run: |
           node scripts/ci-browser.mjs
+          node --experimental-strip-types scripts/verify-live-runner.mjs
           node scripts/browser-w02.mjs
           node scripts/browser-w03.mjs
           node scripts/browser-http-demo.mjs

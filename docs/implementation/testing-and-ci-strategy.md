@@ -112,6 +112,7 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 
 ### Failure and merge-blocking policy
 
+- **A merge also needs a clear independent review** at the same head commit ([`AGENTS.md`](../../AGENTS.md), rules 1 and 4).
 - **Red `assurance` means no merge.** Re-running a failed job is allowed only to rule out runner infrastructure (network, image). A test that fails and then passes on re-run is a defect to investigate, not a flake to ignore.
 - **Never mark a test xfail or skip to get green.** Changing `platform-skips.yaml` is a reviewed decision that names the platform that covers the test.
 - **A nightly failure opens or updates a `nightly-failure` issue.** Triage it before the next merge to `main`. A reproducible failure becomes a deterministic regression test.

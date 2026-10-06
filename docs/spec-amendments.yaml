@@ -168,6 +168,10 @@ considered:
     reason: >-
       adopted design (T10, F18, 2026-10-05); installation, bootstrap and first-run mechanics; replaces no WC/KC
       text
+  - path: docs/design/project-maps-design-v0.5.md
+    reason: >-
+      adopted design (T5, F22, 2026-10-05); derived project-navigation artifacts and their query contracts, never
+      workflow authority; realizes KC §8.2 to §8.5 and replaces no WC/KC text
   - path: docs/design/ticket-revision-amendment-2026-09-30.md
     reason: amends a proposal (the hierarchy revision design), not the frozen set; its WC/KC debt is `pending` above
   - path: docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md

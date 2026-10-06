@@ -128,7 +128,7 @@ def render_manifest(manifest: dict[str, Any]) -> str:
     header = (
         "# AEW project manifest (KC §6). Resolver/index only: referencing a source here does not\n"
         "# make it authoritative. authority.accepted changes only through `aew authority accept`.\n"
-        "# The engine pins this file's hash; adopt manual edits with `aew manifest adopt`.\n"
+        "# The engine pins this file's hash; the operator adopts manual edits with `aew manifest adopt`.\n"
     )
     return header + dump_yaml(manifest)
 

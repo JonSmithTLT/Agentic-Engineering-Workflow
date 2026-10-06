@@ -32,6 +32,16 @@ def _lead_token(args: argparse.Namespace) -> str:
     return token
 
 
+def operator_attribution(by: str, text: str) -> dict[str, str] | None:
+    """When a command records its decision as the operator's, the operator's confirmation, typed back at their own
+    terminal (``operator.authorize``); refused without one. Asked before the engine runs anything."""
+    if by != "operator":
+        return None
+    from aew import operator
+
+    return operator.authorize(text)
+
+
 def _read_text_arg(value: str | None) -> str:
     return read_text_input(value)
 
@@ -206,7 +216,8 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).authority_accept(
         token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, klass=a.klass,
-        decided_by=a.decided_by, reason=a.reason))
+        decided_by=a.decided_by, reason=a.reason, authorization=operator_attribution(
+            a.decided_by, f"RECORD as YOUR decision: accept {a.candidate} as {a.klass} authority")))
     q = asub.add_parser("reject")
     q.add_argument("candidate")
     q.add_argument("--reason")

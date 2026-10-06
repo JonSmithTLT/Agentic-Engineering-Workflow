@@ -287,7 +287,7 @@ def test_lead_override_of_an_operator_pin_goes_through_a_recorded_decision(tmp_p
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     p.lead("work", "staff", wid, "--execute", "c_engineer")
-    p.lead("work", "staff", wid, "--execute", "c_engineer", "--by", "operator", "--pin")
+    p.as_operator("work_staff", work_id=wid, execute=["c_engineer"], selected_by="operator", pin=True)
     p.lead("work", "staff", wid, "--execute", "c_engineer")  # a Lead re-selection keeps the operator pin
     entry = unit(p, wid)["role_plan"]["execute"][0]
     assert entry["selected_by"] == "operator" and entry["pinned"] is True
@@ -541,7 +541,7 @@ def test_publication_enforces_an_obligation_added_after_validation(tmp_path):
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
-    p.lead("work", "staff", wid, "--review", "security_reviewer", "--by", "operator", "--pin")
+    p.as_operator("work_staff", work_id=wid, review=["security_reviewer"], selected_by="operator", pin=True)
     res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
     assert res.error["code"] == "GATE_UNSATISFIED" and "review_card:security_reviewer" in res.error["details"]["unmet"]
     u = unit(p, wid)
@@ -556,7 +556,7 @@ def test_an_obligation_added_during_an_interrupted_publish_withdraws_it_cleanly(
     wid, _ = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
     crash_after_publishing_record(p, wid)
-    p.lead("work", "staff", wid, "--review", "security_reviewer", "--by", "operator", "--pin")
+    p.as_operator("work_staff", work_id=wid, review=["security_reviewer"], selected_by="operator", pin=True)
     res = p.aew("integrate", "reconcile", wid, "--token", p.token, "--expect-rev", str(p.rev()))
     assert res.error["code"] == "GATE_UNSATISFIED"
     u = unit(p, wid)

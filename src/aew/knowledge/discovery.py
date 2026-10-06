@@ -63,8 +63,8 @@ def open_questions_for(candidates: list[dict[str, Any]]) -> str:
     for c in candidates:
         lines.append(
             f"- {c['id']} `{c['path']}`: suggested **{c['suggested_class']}** ({c['confidence']} confidence; "
-            f"{c['reason']}). Accept with `aew authority accept {c['id']} --class <class>` or reject with "
-            f"`aew authority reject {c['id']}`."
+            f"{c['reason']}). The operator accepts it with `aew authority accept {c['id']} --class <class>` or "
+            f"rejects it with `aew authority reject {c['id']}`."
         )
     lines += ["", "## Unknown project knowledge", "",
               "- Project overview, architecture, ownership and build/test commands are not yet established "

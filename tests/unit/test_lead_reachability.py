@@ -122,6 +122,21 @@ def test_the_lead_guide_never_tells_the_lead_to_run_an_operator_decision():
     assert_never_the_leads(text)
 
 
+def test_a_lead_session_never_records_a_decision_as_the_operators():
+    """`work staff` stays the Lead's, but `--by operator` records the operator's selection: only the operator, at their
+    own terminal. The broker refuses it before anything runs."""
+    argv = ("work", "staff", "T-0001", "--review", "security_reviewer", "--by", "operator", "--pin",
+            "--expect-rev", "1")
+    refusal = lead_broker.refuses_locally(_ns(*argv))
+    assert refusal and refusal.startswith("`aew work staff` with `--by operator`"), refusal
+    with pytest.raises(errors.PermissionDenied):
+        lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
+    assert lead_broker.refuses_locally(_ns(*(a for a in argv if a not in {"--by", "operator"}))) is None
+    refusal = lead_broker.refuses_locally(_ns("authority", "accept", "C-0001", "--class", "decisions",
+                                              "--decided-by", "operator", "--expect-rev", "1"))
+    assert refusal and "operator" in refusal  # authority accept is the operator's in any form
+
+
 @pytest.mark.parametrize("argv", [
     ("gate", "waive", "T-0001", "--gate", "review", "--reason", "x", "--expect-rev", "1"),
     ("history", "load", "R-0001", "--into", "T-0001", "--reason", "x", "--expect-rev", "1"),
@@ -192,3 +207,40 @@ def test_only_a_cooperative_operation_lets_another_request_through(cooperative, 
 def test_a_cooperative_operation_must_be_an_operation():
     with pytest.raises(ValueError):
         bridge.BridgeServer(lambda *_: None, {"a": {}}, frozenset({"b"}))
+
+
+def _messages(tree):
+    """Every string the program can show (literals and f-strings), skipping docstrings; implicitly concatenated literals
+    are one constant, so a sentence split across lines is read whole."""
+    import ast
+
+    docstrings = {id(n.body[0].value) for n in ast.walk(tree)
+                  if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+                  and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    parts = {id(v) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for v in n.values}  # read whole, below
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings | parts:
+            yield node.lineno, node.value
+        elif isinstance(node, ast.JoinedStr):
+            yield node.lineno, "".join(v.value for v in node.values if isinstance(v, ast.Constant))
+
+
+# Machine-readable fields that hold a command and nothing else; the message beside each names the operator.
+BARE_COMMAND_FIELDS = {"aew migrate --expect-rev N"}  # MigrationRequired's next_action (base.py)
+
+
+def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
+    """PR #103 re-review, R1: a message that names an operator decision says the operator makes it, wherever it is
+    shown (refusals the Lead reads, packs, the dashboard, init's files)."""
+    import ast
+    from pathlib import Path
+
+    import aew
+
+    stale = []
+    for path in Path(aew.__file__).parent.rglob("*.py"):
+        for line, text in _messages(ast.parse(path.read_text(encoding="utf-8"))):
+            for command in operator_decided_commands():
+                if f"aew {command}" in text and "operator" not in text and text not in BARE_COMMAND_FIELDS:
+                    stale.append(f"{path.name}:{line}: {text[:100]}")
+    assert not stale, stale

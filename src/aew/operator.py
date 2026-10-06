@@ -169,3 +169,13 @@ def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
                     chars.pop()
                 continue
             chars.append(ch)
+
+
+def require_operator_attribution(claimed: bool, authorization: dict[str, str] | None, what: str) -> None:
+    """A record that says the operator decided needs the operator's own confirmation, typed back at their terminal
+    (:func:`authorize`): a flag says who decided, it never proves it (operator, 2026-10-06: "if my name is attached to
+    it I should have actually approved"). The CLI asks before it calls the engine; nothing else can supply one."""
+    if claimed and not str((authorization or {}).get("authorized_by") or "").startswith("operator"):
+        raise OperatorAuthorizationRequired(
+            f"{what} recorded as the operator's needs the operator's confirmation at their own terminal: the "
+            "operator runs the command there and types back the code it shows (a flag is not a sign-off)")

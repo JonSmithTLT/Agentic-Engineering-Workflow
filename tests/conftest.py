@@ -130,6 +130,16 @@ class Project:
         """Run a Lead mutation with the current token and revision."""
         return self.ok(*args, "--token", self.token, "--expect-rev", str(self.rev()))
 
+    def as_operator(self, method: str, **kwargs: Any) -> Any:
+        """A Lead mutation the operator confirmed at their own terminal (a decision recorded as theirs). The terminal
+        channel is substituted in-process, as the takeover tests do; `test_authority.py` covers the refusal without
+        it."""
+        from aew.engine.api import Engine
+
+        return getattr(Engine.discover(self.root), method)(
+            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty (test substitute)"},
+            **kwargs)
+
 
 @pytest.fixture
 def repo(tmp_path) -> Path:

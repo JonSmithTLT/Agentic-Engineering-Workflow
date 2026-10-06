@@ -47,7 +47,8 @@ def test_init_discovers_candidates_but_confers_no_authority(repo):
 
 def test_accept_and_reject_candidates(project):
     cands = {c["path"]: c["id"] for c in project.ok("authority", "list")["candidates"]}
-    res = project.lead("authority", "accept", cands["docs/adr/"], "--class", "decisions", "--decided-by", "operator")
+    res = project.as_operator("authority_accept", candidate_id=cands["docs/adr/"], klass="decisions",
+                              decided_by="operator")
     decision = project.root / f".aew/decisions/{res['decision']}.md"
     assert decision.exists() and "authority_acceptance" in decision.read_text()
     project.lead("authority", "reject", cands["README.md"], "--reason", "orientation only")
@@ -68,6 +69,36 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     assert project.ok("status", "--json")["contradictions"]
     project.lead("manifest", "adopt", "--reason", "profile corrected by operator")
     assert project.ok("status", "--json")["contradictions"] == []
+
+
+@pytest.mark.parametrize("argv", [
+    ("authority", "accept", "{cand}", "--class", "decisions", "--decided-by", "operator"),
+    ("work", "staff", "{wid}", "--review", "security_reviewer", "--by", "operator", "--pin"),
+])
+def test_a_decision_recorded_as_the_operators_needs_the_operator_at_their_terminal(project, argv):
+    """Operator, 2026-10-06: "if my name is attached to it I should have actually approved". A flag that says the
+    operator decided is refused unless the operator typed the code back at their own terminal; with no terminal (an
+    agent's shell, this test) nothing is recorded. The engine refuses the same without the terminal's authorization."""
+    from aew.engine.api import Engine
+    from aew.errors import OperatorAuthorizationRequired
+
+    cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
+    wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"] \
+        if argv[0] == "work" else ""
+    args = [a.format(cand=cand, wid=wid) for a in argv]
+    before = control_bytes(project)
+    res = project.aew(*args, "--token", project.token, "--expect-rev", str(project.rev()))
+    assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
+    assert control_bytes(project) == before
+    engine = Engine.discover(project.root)
+    with pytest.raises(OperatorAuthorizationRequired):
+        if argv[0] == "work":
+            engine.work_staff(token=project.token, expect_rev=project.rev(), work_id=wid, review=["security_reviewer"],
+                              selected_by="operator", authorization={"authorized_by": "lead"})
+        else:
+            engine.authority_accept(token=project.token, expect_rev=project.rev(), candidate_id=cand,
+                                    klass="decisions", decided_by="operator")
+    assert control_bytes(project) == before
 
 
 OPERATOR_DECISIONS = ("authority accept", "authority reject", "manifest adopt", "migrate")

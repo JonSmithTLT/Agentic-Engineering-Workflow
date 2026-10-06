@@ -6,7 +6,7 @@ import argparse
 import os
 from typing import Any
 
-from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg
+from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
 from aew.errors import UsageError
 from aew.harness import bridge
 
@@ -136,7 +136,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_staff(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, execute=a.execute, review=a.review,
-        verify=a.verify, forbid=a.forbid, remove=a.remove, selected_by=a.by, pin=a.pin, reason=a.reason))
+        verify=a.verify, forbid=a.forbid, remove=a.remove, selected_by=a.by, pin=a.pin, reason=a.reason,
+        authorization=operator_attribution(a.by, f"RECORD as YOUR selection: {_staffing(a)}")))
 
     q = wsub.add_parser("transition", help="Lead transition (guards and reasons enforced)")
     q.add_argument("work_id")
@@ -466,6 +467,13 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
         reason=a.reason))
 
     _register_integration(sub)
+
+
+def _staffing(a: argparse.Namespace) -> str:
+    """What `work staff` will record, for the operator's confirmation prompt."""
+    parts = [f"{slot}={card}" for slot in ("execute", "review", "verify", "forbid") for card in getattr(a, slot)]
+    parts += [f"remove {spec}" for spec in a.remove]
+    return f"{a.work_id} " + (", ".join(parts) or "(no change)") + (" (pinned)" if a.pin else "")
 
 
 def _breaker_reset(a: argparse.Namespace) -> Any:

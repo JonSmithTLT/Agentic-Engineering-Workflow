@@ -77,6 +77,11 @@ OPERATOR_CONFIRMED = (frozenset({"integrate", "breaker", "reset"}),)
 # stay the Lead's: policy bounds a waiver, and the others only add reference context or verify.
 OPERATOR_DECIDED = (frozenset({"authority", "accept"}), frozenset({"authority", "reject"}),
                     frozenset({"manifest", "adopt"}), frozenset({"migrate"}))
+# Arguments that record a decision as the operator's (operator, 2026-10-06: "if my name is attached to it I should have
+# actually approved"): the command asks the operator at their own terminal (`operator.require_operator_attribution`),
+# so a Lead session may run the command but never with this argument.
+OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
+                       frozenset({"authority", "accept"}): ("decided_by", "operator")}
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1 adds the
 # operator's confirmation, autonomy increases and PUBLISH_IF_CLEAN grants here when F15.5 builds them).
 OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED
@@ -126,6 +131,11 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     if any(p <= path for p in OPERATOR_DECIDED):
         return (f"`aew {command_name(ns)}` is the operator's decision, made at their own terminal; a Lead session "
                 "cannot run it or record it as theirs: ask the operator")
+    dest, value = OPERATOR_ATTRIBUTED.get(path, ("", None))
+    if value is not None and getattr(ns, dest, None) == value:
+        return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "
+                "operator's, which only the operator confirms, at their own terminal: run it without that flag "
+                "(as the Lead's), or ask the operator")
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "

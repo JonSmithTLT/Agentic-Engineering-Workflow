@@ -13,11 +13,14 @@ structured content with ``isError`` from its ``ok``. A call naming an unknown, d
 arguments outside the tool's schema, is an input error that never reaches the broker; an unreachable broker is a
 transport error, never a fabricated result. Stdout carries the protocol only; diagnostics go to stderr.
 
-Ingress keeps being read while a tool runs: each ``tools/call`` is answered from a worker thread (at most
-``MAX_IN_FLIGHT`` at once), so a ``harness_wait`` of up to ten minutes never queues the Lead's next status,
-checkpoint or ping behind it. Replies are written whole, one at a time, and may arrive out of request order, as
-JSON-RPC allows (each carries its id). Nothing is serialized here beyond stdout: the broker serializes every engine
-call (PR #95 review).
+Ingress keeps being read while a tool runs: each ``tools/call`` is answered from a worker thread. Waits (a
+``harness_wait`` blocks for up to ten minutes) have their own lane of ``MAX_WAITS`` workers, and every other call
+its own ``MAX_IN_FLIGHT``, so however many waits are in flight the Lead's next status, checkpoint or ping is never
+queued behind them; a wait beyond ``MAX_WAITS`` queues behind the other waits only (PR #95 re-review). Replies are
+written whole, one at a time, and may arrive out of request order, as JSON-RPC allows (each carries its id); a batch
+is answered with one array. A request without an id is not a request: unless it is a ``notifications/*`` message it
+is dropped unrun, so nothing commits without a reply. Nothing is serialized here beyond stdout: the broker serializes
+every engine call.
 """
 
 from __future__ import annotations
@@ -38,7 +41,8 @@ from aew.surface.validate import check_call
 
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
-MAX_IN_FLIGHT = 8  # tool calls answered at once; a further call starts when one of them ends
+MAX_IN_FLIGHT = 8  # non-wait tool calls answered at once; a further one starts when one of them ends
+MAX_WAITS = 8  # wait tool calls in flight at once, in a lane of their own
 BROKER_UNREACHABLE = -32001  # a server error: the Lead broker could not be reached; nothing about AEW is claimed
 # Variables whose presence means this is not the Lead session's curated environment (the broker's own coordinates
 # are expected; any credential, or another bridge's coordinates, is not).
@@ -105,12 +109,15 @@ class Server:
             except Exception as exc:  # stdout gone, or a defect: the reader decides when the session ends
                 self.log.write(f"aew lead mcp: could not answer: {type(exc).__name__}: {exc}\n")
 
-        with ThreadPoolExecutor(MAX_IN_FLIGHT, thread_name_prefix="aew-lead-mcp-call") as calls:
+        with ThreadPoolExecutor(MAX_IN_FLIGHT, thread_name_prefix="aew-lead-mcp-call") as calls, \
+                ThreadPoolExecutor(MAX_WAITS, thread_name_prefix="aew-lead-mcp-wait") as waits:
             for line in reader:
                 if not line.strip():
                     continue
                 message = _parse(line)
-                if _calls_a_tool(message):
+                if _calls_a_tool(message, waiting=True):
+                    waits.submit(answer, message)
+                elif _calls_a_tool(message):
                     calls.submit(answer, message)
                 else:  # local and immediate: answered in order, as read
                     write(self.respond(message))
@@ -119,14 +126,17 @@ class Server:
     def handle_line(self, line: str) -> list[dict[str, Any]]:
         return self.respond(_parse(line))
 
-    def respond(self, message: Any) -> list[dict[str, Any]]:
-        """The replies to one parsed line (``_NOT_JSON`` for a line that was not JSON)."""
+    def respond(self, message: Any) -> list[Any]:
+        """The lines that answer one parsed line (``_NOT_JSON`` for a line that was not JSON): one reply, or for a
+        batch one array of its replies (JSON-RPC 2.0 §6; notifications get none, and an all-notification batch gets
+        no line at all)."""
         if message is _NOT_JSON:
             return [_error(None, PARSE_ERROR, "not JSON")]
-        if isinstance(message, list):  # a batch: each item answered on its own; notifications get no answer
+        if isinstance(message, list):
             if not message:
                 return [_error(None, INVALID_REQUEST, "an empty batch")]
-            return [r for m in message if (r := self.handle(m)) is not None]
+            replies = [r for m in message if (r := self.handle(m)) is not None]
+            return [replies] if replies else []
         reply = self.handle(message)
         return [] if reply is None else [reply]
 
@@ -145,14 +155,17 @@ class Server:
             if method == "notifications/initialized":
                 self.initialized = True
             return None
+        if notification:  # MCP requests carry an id: one without is dropped unrun, so nothing commits unanswered
+            self.log.write(f"aew lead mcp: dropped {method} sent without an id (a request needs one)\n")
+            return None
         try:
             result = self.dispatch(method, params)
         except _RpcError as exc:
-            return None if notification else _error(rid, exc.code, exc.message, exc.data)
+            return _error(rid, exc.code, exc.message, exc.data)
         except Exception as exc:  # an implementation defect: reported, and the session goes on
             self.log.write(f"aew lead mcp: internal error in {method}: {type(exc).__name__}: {exc}\n")
-            return None if notification else _error(rid, INTERNAL_ERROR, "internal error")
-        return None if notification else {"jsonrpc": "2.0", "id": rid, "result": result}
+            return _error(rid, INTERNAL_ERROR, "internal error")
+        return {"jsonrpc": "2.0", "id": rid, "result": result}
 
     # ------------------------------------------------------------------ methods
 
@@ -198,10 +211,17 @@ def _parse(line: str) -> Any:
         return _NOT_JSON
 
 
-def _calls_a_tool(message: Any) -> bool:
-    """Whether answering ``message`` may wait on the broker (a ``tools/call``, alone or in a batch)."""
+def _calls_a_tool(message: Any, *, waiting: bool = False) -> bool:
+    """Whether answering ``message`` may wait on the broker (a ``tools/call``, alone or in a batch); with
+    ``waiting``, whether it calls a wait tool, which may block for minutes and so has its own lane."""
     items = message if isinstance(message, list) else [message]
-    return any(isinstance(m, dict) and m.get("method") == "tools/call" for m in items)
+    return any(isinstance(m, dict) and m.get("method") == "tools/call"
+               and (not waiting or _is_wait((m.get("params") or {}).get("name"))) for m in items)
+
+
+def _is_wait(name: Any) -> bool:
+    t = contract.tool(name) if isinstance(name, str) else None
+    return t is not None and t.kind == contract.WAIT
 
 
 class _RpcError(Exception):

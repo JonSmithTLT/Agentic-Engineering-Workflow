@@ -117,7 +117,8 @@ def test_malformed_input_is_a_protocol_error_and_the_session_survives(capsys):
     batch = server.handle_line(json.dumps([{"jsonrpc": "2.0", "id": 1, "method": "ping"},
                                            {"jsonrpc": "2.0", "method": "notifications/initialized"},
                                            {"jsonrpc": "2.0", "id": 2, "method": "ping"}]))
-    assert [r["id"] for r in batch] == [1, 2]
+    assert len(batch) == 1 and [r["id"] for r in batch[0]] == [1, 2]  # one array per batch (PR #95 re-review)
+    assert server.handle_line(json.dumps([{"jsonrpc": "2.0", "method": "notifications/initialized"}])) == []
     defect = rpc(server, "tools/call", {"name": "status", "arguments": {}})
     assert defect["error"]["code"] == mcp.INTERNAL_ERROR and rpc(server, "ping")["result"] == {}
 
@@ -250,3 +251,60 @@ def test_the_probe_fails_closed_on_a_release_that_respells_mcp_configuration():
 
 def test_the_catalogs_listed_tools_are_its_built_rows_only():
     assert {t.name for t in contract.exposed("recovery")} == {t.name for t in contract.TOOLS.values() if t.built}
+
+
+def test_a_tool_call_without_an_id_is_dropped_unrun(capsys):
+    """MCP requests carry an id: a `tools/call` without one would commit with no reply, so it never reaches the
+    broker (PR #95 re-review)."""
+    spy = Spy()
+    server = mcp.Server(spy)
+    assert server.handle({"jsonrpc": "2.0", "method": "tools/call",
+                          "params": {"name": "checkpoint", "arguments": {"expect_rev": 3}}}) is None
+    assert server.handle({"jsonrpc": "2.0", "method": "ping"}) is None
+    assert spy.calls == []
+    assert "dropped tools/call sent without an id" in capsys.readouterr().err
+
+
+def test_waits_never_hold_every_worker():
+    """However many waits are in flight, a status is answered at once: waits have a lane of their own (PR #95
+    re-review: eight waits held all eight workers, and a status queued behind them)."""
+    import os
+    import threading
+
+    release = threading.Event()
+    waiting = threading.Semaphore(0)
+
+    def forward(name, arguments, profile):
+        if name == "harness_wait":
+            waiting.release()
+            release.wait(30)
+        return {"ok": True, "revision": 7, "tool": name}
+
+    read_end, write_end = os.pipe()
+    out_read, out_write = os.pipe()
+    stdin, stdout, replies = os.fdopen(read_end, "rb"), os.fdopen(out_write, "wb"), os.fdopen(out_read, "rb")
+    feed = os.fdopen(write_end, "wb")
+    server = threading.Thread(target=lambda: (mcp.Server(forward).serve(stdin, stdout), stdout.close()))
+    server.start()
+    waits = mcp.MAX_WAITS + 2
+    try:
+        for rid in range(1, waits + 1):
+            feed.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": "tools/call",
+                                    "params": {"name": "harness_wait", "arguments": {"runs": ["R-1"]}}}) + "\n")
+                       .encode())
+        feed.flush()
+        for _ in range(mcp.MAX_WAITS):
+            assert waiting.acquire(timeout=10)  # every wait worker is blocked
+        feed.write((json.dumps({"jsonrpc": "2.0", "id": 100, "method": "tools/call",
+                                "params": {"name": "status", "arguments": {}}}) + "\n").encode())
+        feed.flush()
+        first = json.loads(replies.readline())
+        assert first["id"] == 100 and not release.is_set()  # answered while all the waits still block
+    finally:
+        feed.close()
+        release.set()
+    rest = {json.loads(replies.readline())["id"] for _ in range(waits)}
+    assert rest == set(range(1, waits + 1))
+    server.join(10)
+    assert not server.is_alive()
+

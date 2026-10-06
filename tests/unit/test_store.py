@@ -82,13 +82,33 @@ def test_injected_fault_each_point_in_process(tmp_path, monkeypatch, point):
     assert check_invariants(tmp_path) == n + 1
 
 
+def test_the_windowed_oracle_sees_the_newest_transaction_and_the_full_one_all_history(tmp_path):
+    """The randomized run checks a window every iteration and the whole store periodically: the window must catch a
+    fault in the newest transaction, and only the full check is trusted with older ones."""
+    store = init(tmp_path)
+    for _ in range(5):
+        one_transaction(store)
+    assert check_invariants(tmp_path, window=2) == 5 and check_invariants(tmp_path) == 5
+    newest, oldest = tmp_path / "records/item-5.md", tmp_path / "records/item-1.md"
+    saved = newest.read_bytes()
+    newest.write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        check_invariants(tmp_path, window=2)
+    newest.write_bytes(saved)
+    oldest.write_text("tampered\n", encoding="utf-8")
+    assert check_invariants(tmp_path, window=2) == 5  # outside the window, by design
+    with pytest.raises(AssertionError):
+        check_invariants(tmp_path)
+
+
 def test_randomized_crash_iterations(tmp_path, monkeypatch):
     # Merge gate: seed 20260925, 200 iterations. The nightly crash-extended job rotates the seed and raises the count.
     rng = random.Random(int(os.environ.get("AEW_CRASH_SEED", "20260925")))
     init(tmp_path)
     monkeypatch.setenv("AEW_FAULT_MODE", "raise")
     expected = 0
-    for _ in range(int(os.environ.get("AEW_CRASH_ITERATIONS", "200"))):
+    iterations = int(os.environ.get("AEW_CRASH_ITERATIONS", "200"))
+    for i in range(iterations):
         point = rng.choice(FAULT_POINTS + [None, None])
         if point:
             monkeypatch.setenv("AEW_FAULT", point)
@@ -101,7 +121,10 @@ def test_randomized_crash_iterations(tmp_path, monkeypatch):
             if point not in BEFORE_COMMIT:
                 expected += 1
         monkeypatch.delenv("AEW_FAULT", raising=False)
-        assert check_invariants(tmp_path) == expected
+        # A crash touches only its own transaction: its window every iteration, the whole store every 32 and at the
+        # end (proving nothing older changed). The full check every iteration made the run quadratic.
+        full = i % 32 == 0 or i == iterations - 1
+        assert check_invariants(tmp_path, window=None if full else 2) == expected
 
 
 def test_truncated_control_state_fails_closed(tmp_path):

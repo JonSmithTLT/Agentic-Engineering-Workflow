@@ -77,15 +77,22 @@ def one_transaction(store: ControlStore, *, expect_rev: int | None = None) -> in
         return s.commit(Transition(op="bump", actor={"kind": "test"}, events=declared(k)), expect_rev=expect_rev)
 
 
-def check_invariants(root: Path, *, synthetic_through: int = 0) -> int:
+def check_invariants(root: Path, *, synthetic_through: int = 0, window: int | None = None) -> int:
     """``synthetic_through``: revisions up to it were appended by ``log_fixture.extend_log``, not by this workload, so
-    they have no item record and carry their own events."""
+    they have no item record and carry their own events.
+
+    ``window``: check only the newest ``window`` revisions' records and transitions (and the chain link into them);
+    every whole-store rule (the counters, leftovers, the views, segment fidelity) still holds in full. One transaction,
+    crashed anywhere, can only touch its own revision: a caller that ran the full check before it can check the window
+    after it, and the full check again now and then, which proves nothing older changed. Without it the check reads the
+    whole history, so a long randomized run is quadratic (the nightly crash job timed out from PR #53 on)."""
     store = make_store(root)
     state = store.read()
     n = state["counters"]["n"]
     assert state["revision"] == n, (state["revision"], n)
     view = outbox.LogView(root, state["outbox"]["since"], retries=0)
-    for k in range(1, n + 1):
+    first = 1 if window is None else max(1, n - window + 1)
+    for k in range(first, n + 1):
         if k > synthetic_through:
             assert (root / f"records/item-{k}.md").read_text() == item_content(k), k
         assert view.resolve(k) is not None, f"log {k} missing, unsealed and sealed"
@@ -102,22 +109,25 @@ def check_invariants(root: Path, *, synthetic_through: int = 0) -> int:
     leftovers = [p for p in root.rglob(".*.tmp")]
     assert not leftovers, leftovers
     if n:
-        assert outbox_violations(root, state, expected=declared, synthetic_through=synthetic_through) == []
+        assert outbox_violations(root, state, expected=declared, synthetic_through=synthetic_through,
+                                 from_revision=first - 1) == []
     return n
 
 
-def outbox_violations(root: Path, state: dict[str, Any], *, expected=None, synthetic_through: int = 0) -> list[str]:
+def outbox_violations(root: Path, state: dict[str, Any], *, expected=None, synthetic_through: int = 0,
+                      from_revision: int = 0) -> list[str]:
     """ADR-0012's oracle rules over a store's transition log. 24: exactly one logical transition per revision from
     the outbox's start, chained, the newest equal to ``last_transition``, whichever physical representation holds it
     (equivalent where both do). 25 (when ``expected`` gives each revision's events): the complete events are exactly
     those. 26: the hot list is bounded, and an overflow's payload holds the complete set its descriptor names. 27:
-    every sealed segment's fidelity (``segment_violations``)."""
+    every sealed segment's fidelity (``segment_violations``). ``from_revision``: the transitions after it only, the
+    chain checked from its record (``check_invariants``' window)."""
     problems: list[str] = []
     start = state["outbox"]["since"]
     last = None
     view = outbox.LogView(root, start, retries=0)
     try:
-        for record in outbox.read_transitions(root, start - 1 if start else 0, state["revision"],
+        for record in outbox.read_transitions(root, max(start - 1 if start else 0, from_revision), state["revision"],
                                               outbox=state["outbox"]):
             last = record
             hot = state["last_transition"] if record["revision"] == state["revision"] else None

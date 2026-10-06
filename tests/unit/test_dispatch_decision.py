@@ -29,6 +29,7 @@ NOT_DISPATCHING = {
     "integrate reconcile", "integrate reorder", "integrate requeue", "integrate validate",  # under the lease (M4-D5)
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+    "lead tool",  # the typed surface's CLI transport: its dispatching tools reach the registry through their primitives
     "lead takeover", "manifest adopt", "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",

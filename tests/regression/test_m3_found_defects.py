@@ -82,7 +82,7 @@ def test_a_lead_session_that_ends_during_an_authority_check_is_not_superseded(mo
             if self.slow:
                 entered.set()
                 release.wait(10)
-            return {}
+            return {"lead": {"generation": 1}}  # the broker binds to the Lead's generation it acts for (F15.1-B)
 
     class Engine:
         store = Store()

@@ -261,8 +261,12 @@ sections:
       proved the seams; everything it did not build is listed in the design''s §9. Three slices, one PR each: A the contract,
       B the broker operation, the fail-closed Lead reachability classification and the CLI parity adapter, C the MCP transport
       and the Lead projection. **A built:** `aew.surface` (catalog, effective class, runner, tri-state projection with a
-      control part cached on control and policy identity and legality and run-telemetry overlays read on every call), `schemas/surface.schema.json`
-      with A3''s `policy_binding`; the stages, publication and the `cli` escape are catalogued and refused until built'
+      control part cached on control and policy identity, and dispatch legality, run telemetry, guidance and evidence read
+      on every call), `schemas/surface.schema.json` with A3''s `policy_binding`; the stages and publication are catalogued
+      and refused until built. **B built:** the broker operation `lead.tool` (cooperative: a typed wait blocks on the wake
+      file without holding the broker; channel `lead_mcp` or `lead_broker` by ingress; lost authority answered once from
+      committed state, then the bridge closes), the fail-closed Lead reachability classification (`LEAD_REACHABLE`, `OPERATOR_ONLY`,
+      `NOT_RELAYED`) applied by the client and the broker alike, the recovery-only `cli` escape and `aew lead tool`'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review
@@ -466,8 +470,17 @@ sections:
       ledger (registered and synced before any provider action, a result finalized once, a killed runner visible as `runner_lost`,
       retries only under the frozen policy; each transaction under a per-experiment lock, every byte written, a torn tail
       repaired, every pinned field of a result checked) and the deterministic mapping of all 68 M3 records (`compat.py`),
-      proved in `tests/unit/test_eval_instrument.py`. Next: the runner and fixtures by generalizing `dogfood.py`, then the
-      hidden-evaluator channel (design §8).'
+      proved in `tests/unit/test_eval_instrument.py`. **Slice 2 built (2026-10-06):** `fixture.py` (a case manifest''s fixture
+      trees read once into a snapshot that is both hashed and built from, with LF line ends; paths that would build differently
+      on Windows and Linux, `.git` components, links and junctions, and trees outside or nested in each other refused; git
+      run with a scrubbed environment and no configuration, hooks or signing), `arms.py` (the `scripted` arm: exact edits,
+      no model, its configuration checked against the case before registering) and `runner.py` (one preregistered cell:
+      a changed input, an arm kind not built yet, a bad configuration or a scratch root inside a git work tree is refused
+      before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`;
+      after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside
+      it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`.
+      Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them), then the hidden-evaluator
+      channel (design §8).'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve

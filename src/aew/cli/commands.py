@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from aew import doctor
 from aew.errors import UsageError
 from aew.util import read_text_input
 
@@ -161,6 +160,17 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("harness_command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
     q.set_defaults(handler=_lead_session)
 
+    q = lsub.add_parser("tool", help="call one typed Lead surface tool (F15.1): the catalog, runner and result of the "
+                                     "Lead's MCP server; inside a Lead session it goes through the session's broker")
+    q.add_argument("name", nargs="?", help="the tool (see --list)")
+    q.add_argument("--arguments", default="{}", metavar="JSON|-",
+                   help="the tool's arguments as a JSON object, or - to read it from stdin (no shell sees it)")
+    q.add_argument("--profile", choices=["normal", "recovery"], default="normal",
+                   help="the surface profile; the generic cli escape is offered only on recovery")
+    q.add_argument("--list", action="store_true", help="list the catalog: kinds, classes, status, profiles")
+    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN); never inside a Lead session")
+    q.set_defaults(handler=_lead_tool)
+
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
                                         "credential or, by default, any provider key (ADR-0009)")
     p.add_argument("--acquire", action="store_true",
@@ -203,6 +213,8 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
 
 
 def _doctor(args: argparse.Namespace) -> Any:
+    from aew import doctor
+
     report = doctor.run(cwd=args.cwd)
     return report if args.json else doctor.render(report)
 
@@ -223,6 +235,52 @@ def _init(args: argparse.Namespace) -> Any:
         "authority_candidates": engine.manifest["authority"]["candidates"],
         "next": "acquire Lead authority: aew lead acquire --expect-rev 0",
     }
+
+
+def _lead_tool(args: argparse.Namespace) -> Any:
+    """``aew lead tool``: the typed surface's CLI transport (parity, recovery, conformance; F15.1 plan §6)."""
+    import json
+
+    from aew.surface import SURFACE, client, contract
+    from aew.surface.errors import AdapterInputError
+
+    if args.list:
+        return {"ok": True, "surface": SURFACE, "tools": [
+            {"name": t.name, "kind": t.kind, "base_operation_class": t.base_class, "status": t.status,
+             "progression": t.progression, "profiles": list(t.profiles), "description": t.description}
+            for t in contract.TOOLS.values()]}
+    if not args.name:
+        raise UsageError("name a tool (see `aew lead tool --list`)")
+    try:
+        try:
+            arguments = json.loads(read_text_input("-") if args.arguments == "-" else args.arguments)
+        except ValueError:
+            raise AdapterInputError("INVALID_ARGUMENTS", f"{args.name}: --arguments is not a JSON object") from None
+        if client.in_session():
+            if args.token:
+                raise UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
+            return client.forward(args.name, arguments, ingress="cli", profile=args.profile)
+        return _lead_tool_here(args, arguments)
+    except AdapterInputError as exc:
+        err = UsageError(exc.message, **exc.details)
+        err.code = exc.code  # the adapter's own code: an input error, never an engine refusal
+        raise err from None
+
+
+def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
+    """Outside a Lead session: the runner in this process, with the operator's own credential (ADR-0005)."""
+    from aew.harness import lead_broker
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    engine = _engine(args)
+    token = args.token or os.environ.get("AEW_LEAD_TOKEN") or ""
+
+    def cli(argv: list[str], stdin: str) -> dict[str, Any]:
+        return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
+
+    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile), args.name, arguments,
+                        token=token or None, run_cli=cli)
 
 
 def _lead_session(args: argparse.Namespace) -> Any:

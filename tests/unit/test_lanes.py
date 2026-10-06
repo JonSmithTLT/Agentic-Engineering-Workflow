@@ -71,8 +71,8 @@ def test_partition_is_total_disjoint_and_deterministic():
         flat = [n for b in bins for n in b]
         assert sorted(flat) == sorted(ids) and len(flat) == len(set(flat))
         assert bins == lanes.partition(list(reversed(ids)), dict(durations), shards)  # input order irrelevant
-    median = statistics.median(durations.values())
-    weight = {n: durations.get(n, median) for n in ids}
+    mean = statistics.fmean(durations.values())
+    weight = {n: durations.get(n, mean) for n in ids}
     loads = [sum(weight[n] for n in b) for b in lanes.partition(ids, durations, 4)]
     assert max(loads) - min(loads) <= max(weight.values()) + 1e-9  # greedy LPT: within one test of balance
 

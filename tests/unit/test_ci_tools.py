@@ -227,12 +227,24 @@ def docs_tier_run(with_lanes: bool = True) -> list[dict]:
     (["DOCS/README.md"], "docs"),
 ], ids=lambda v: v if isinstance(v, str) else ",".join(v)[:40] or "empty")
 def test_the_tier_is_the_widest_any_changed_path_needs(paths, expected):
-    assert tier.decide("pull_request", paths) == expected
+    assert tier.decide("pull_request", paths, "main") == expected
 
 
 @pytest.mark.parametrize("event", ["push", "merge_group", "workflow_dispatch", "schedule", ""])
 def test_only_a_pull_request_may_take_a_reduced_tier(event):
-    assert tier.decide(event, ["docs/README.md"]) == "full"
+    assert tier.decide(event, ["docs/README.md"], "main") == "full"
+
+
+def test_the_command_line_passes_the_base_branch(tmp_path):
+    """The base branch reaches the decision from the command line (PR #99 re-review, B): a docs-only change is docs
+    only into main, and an omitted base is full."""
+    changed = tmp_path / "changed.txt"
+    changed.write_text("docs/README.md\n", encoding="utf-8")
+    for base, expected in (("main", "docs"), ("feature", "full"), (None, "full")):
+        out = tmp_path / f"out-{base}"
+        argv = ["--event", "pull_request", "--paths-file", str(changed), "--github-output", str(out)]
+        assert tier.main(argv + (["--base-ref", base] if base else [])) == 0
+        assert f"tier={expected}\n" in out.read_text(encoding="utf-8"), base
 
 
 def test_a_pull_request_into_another_branch_is_full():
@@ -281,6 +293,7 @@ REDUCED = {**GREEN, "lanes": "skipped"}
     ("docs", GREEN, False),  # a reduced tier whose lanes ran: the tier and the jobs disagree
     ("full", REDUCED, False),  # the full tier with its lanes skipped
     ("", {**REDUCED, "changes": "failure"}, False),  # the tier unknown: everything required
+    ("", REDUCED, False),  # ... the lanes too, though every other job succeeded (PR #99 re-review, A)
     ("full", {k: v for k, v in GREEN.items() if k != "static"}, False),  # a needed job missing
 ])
 def test_the_gate_requires_every_needed_job_in_every_tier(tier_name, results, ok):
@@ -292,7 +305,7 @@ def test_the_gate_requires_every_needed_job_in_every_tier(tier_name, results, ok
 
 
 def test_a_diff_that_cannot_be_computed_is_full(tmp_path, monkeypatch):
-    assert tier.decide("pull_request", None) == "full"
+    assert tier.decide("pull_request", None, "main") == "full"
     assert tier.changed_paths("", "abc") is None and tier.changed_paths("0" * 40, "abc") is None
     monkeypatch.chdir(tmp_path)  # not a repository: git fails
     assert tier.changed_paths("abc", "def") is None

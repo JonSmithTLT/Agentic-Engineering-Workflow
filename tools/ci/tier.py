@@ -59,7 +59,7 @@ def tier_of(paths: list[str]) -> str:
     return max((classify_path(p) for p in paths), key=TIERS.index)
 
 
-def decide(event: str, paths: list[str] | None, base_ref: str = "main") -> str:
+def decide(event: str, paths: list[str] | None, base_ref: str) -> str:
     """The tier for ``event``: reduced tiers only for a pull request into ``main`` whose diff is known."""
     if event not in REDUCED_EVENTS or base_ref not in REDUCED_BASES or paths is None:
         return "full"

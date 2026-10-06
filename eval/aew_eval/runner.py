@@ -67,12 +67,11 @@ def _inside_a_work_tree(path: Path) -> Path | None:
     return None
 
 
-def _export(files: dict[str, bytes], dest: Path) -> Path:
-    """The final work tree's files, copied outside the scratch repository for scoring (no .gitattributes applies)."""
+def _export(tree: fixture.WorkTree, dest: Path) -> Path:
+    """The final work tree's regular files, their exact bytes, copied outside the scratch repository for scoring (no
+    .gitattributes applies). A link or special file is recorded as changed, never exported (it could point anywhere)."""
     dest.mkdir(parents=True)
-    for rel, data in files.items():
-        if data.startswith(b"link -> "):
-            continue  # a link is recorded as changed, never exported (it would point anywhere)
+    for rel, data in tree.files.items():
         out = dest / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
@@ -111,15 +110,15 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         scratch = work / run_name
         if scratch.exists():
             raise Invalid(f"{scratch} exists: every run gets a fresh scratch directory")
-    except Invalid as exc:
-        raise Refused(str(exc)) from None
+    except Exception as exc:  # noqa: BLE001 (anything before registering, an unreadable file included, is a refusal)
+        raise Refused(f"{type(exc).__name__}: {exc}" if not isinstance(exc, Invalid) else str(exc)) from None
     # 2. Register.
     ledger = AttemptLedger(ledger_dir, frozen)
     run_id = f"{experiment}/{run_name}"
     try:
         line = ledger.register(run_id=run_id, cell=cell, requested_profile=frozen["profiles"]["roles"],
                                retry_of=retry_of)
-    except Invalid as exc:  # the ledger refused it (a counted cell, a retry its policy forbids): nothing registered
+    except Exception as exc:  # noqa: BLE001 (the ledger refused it, or never wrote the line: nothing registered)
         raise Refused(str(exc)) from None
     # 3–4. Build and run; anything that goes wrong is recorded, never swallowed into a valid result.
     before = _checkout_state()
@@ -180,8 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cases = dict(pair.split("=", 1) for pair in args.case)
         frozen = prereg.load(args.prereg)
-    except (OSError, ValueError) as exc:
-        print(f"refused: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 (an unreadable or unparsable input: nothing registered)
+        print(f"refused (nothing registered): {type(exc).__name__}: {exc}", file=sys.stderr)
         return EXIT_REFUSED
     try:
         record = run_cell(frozen, ledger_dir=args.ledger, cell=args.cell, cases={k: Path(v) for k, v in cases.items()},
@@ -189,8 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     except Refused as exc:
         print(f"refused (nothing registered): {exc}", file=sys.stderr)
         return EXIT_REFUSED
-    except Invalid as exc:
-        print(f"failed after registering: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 (registered, then the runner failed: the attempt is runner_lost)
+        print(f"failed after registering ({type(exc).__name__}): {exc}", file=sys.stderr)
         return EXIT_LOST
     print(f"{record['run_id']}: {record['validity']['status']}")
     return EXIT_VALID if record["validity"]["status"] == "valid" else EXIT_COUNTED_NOT_VALID

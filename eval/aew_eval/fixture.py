@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,8 @@ CASE = "aew/eval-case/v1"
 TREES = ("base", "overlay", "seeded")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$", re.IGNORECASE)
+GIT_SHORT_NAME = re.compile(r"^git~\d+$", re.IGNORECASE)  # the 8.3 name of .git on an NTFS volume (git refuses it too)
+LINK, SPECIAL = "link", "special"  # what a work tree holds besides regular files
 GIT_CONFIG = ("-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "commit.gpgsign=false",
               "-c", "core.autocrlf=false", "-c", "user.name=Fixture Developer", "-c", "user.email=dev@fixture.invalid")
 
@@ -96,12 +99,20 @@ def safe_relative(rel: str, what: str) -> str:
     for part in parts:
         if part in ("", ".", ".."):
             raise Invalid(f"{what}: {rel!r} has an empty, . or .. component")
-        if part.casefold() == ".git":
+        if part.casefold() == ".git" or GIT_SHORT_NAME.match(part):
             raise Invalid(f"{what}: {rel!r} names a .git component: repository metadata is never a fixture or an "
                           "arm's work product")
-        if WINDOWS_RESERVED.match(part) or part.endswith((".", " ")) or any(c in part for c in '<>:"|?*'):
+        if WINDOWS_RESERVED.match(part) or part.endswith((".", " ")) or any(c in part for c in '<>:"|?*') \
+                or any(ord(c) < 0x20 or ord(c) == 0x7F for c in part):
             raise Invalid(f"{what}: {rel!r} has a component Windows cannot hold ({part!r})")
     return rel
+
+
+def is_link(p: Path) -> bool:
+    """A symbolic link, or a Windows junction or other reparse point (``Path.is_junction`` only exists from 3.12)."""
+    st = os.lstat(p)
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return stat.S_ISLNK(st.st_mode) or bool(reparse and (getattr(st, "st_file_attributes", 0) or 0) & reparse)
 
 
 def _read_tree(root: Path, what: str) -> dict[str, bytes]:
@@ -111,13 +122,15 @@ def _read_tree(root: Path, what: str) -> dict[str, bytes]:
         here = Path(dirpath)
         for name in dirnames + filenames:
             p = here / name
-            if p.is_symlink() or p.is_junction():
+            if is_link(p):
                 raise Invalid(f"{what}: {p.relative_to(root).as_posix()} is a link; a fixture holds regular files")
             if root not in p.resolve().parents:
                 raise Invalid(f"{what}: {p.relative_to(root).as_posix()} resolves outside the tree")
         for name in filenames:
             p = here / name
             rel = safe_relative(p.relative_to(root).as_posix(), what)
+            if not stat.S_ISREG(os.lstat(p).st_mode):
+                raise Invalid(f"{what}: {rel} is not a regular file")
             files[rel] = normalized(p.read_bytes())
     if not files:
         raise Invalid(f"{what}: no files")
@@ -129,18 +142,24 @@ def _digest(files: dict[str, bytes]) -> str:
 
 
 def snapshot(case: Case) -> Snapshot:
-    """Read the case's fixture once. Refuses paths that would collide on a case-insensitive file system, within a
-    tree or across trees (an overlay may replace a file only under exactly the same name)."""
+    """Read the case's fixture once. Refuses, within a tree or across trees, paths whose files or directories would
+    collide on a case-insensitive file system, and a name that is a file in one tree and a directory in another (an
+    overlay may replace a file only under exactly the same name)."""
     trees: dict[str, dict[str, bytes] | None] = {}
-    seen: dict[str, str] = {}
+    seen: dict[str, tuple[str, str]] = {}  # case-folded path -> (as spelled, "file" or "dir")
     for which in TREES:
         tree = case.tree(which)
         trees[which] = None if tree is None else _read_tree(tree, f"case {case.id} {which}")
         for rel in trees[which] or {}:
-            prior = seen.setdefault(rel.casefold(), rel)
-            if prior != rel:
-                raise Invalid(f"case {case.id}: {rel!r} and {prior!r} differ only in case; they would build "
-                              "differently on Windows and Linux")
+            parts = rel.split("/")
+            for n in range(1, len(parts) + 1):
+                path, kind = "/".join(parts[:n]), "file" if n == len(parts) else "dir"
+                prior = seen.setdefault(path.casefold(), (path, kind))
+                if prior[0] != path:
+                    raise Invalid(f"case {case.id}: {path!r} and {prior[0]!r} differ only in case; they would build "
+                                  "differently on Windows and Linux")
+                if prior[1] != kind:
+                    raise Invalid(f"case {case.id}: {path!r} is a file in one tree and a directory in another")
     digests = {which: None if files is None else _digest(files) for which, files in trees.items()}
     return Snapshot(case, trees, sha256_of({"manifest": case.manifest, "trees": digests}))
 
@@ -190,25 +209,40 @@ def build(snap: Snapshot, repo: Path, *, seeded: bool = False) -> dict[str, byte
     return files
 
 
-def files_of(repo: Path) -> dict[str, bytes]:
-    """A work tree's files as plain files, without git (whose configuration an arm may have rewritten) and without
-    following a link out of it: ``.git`` is skipped, a link is recorded by its target text, never read through."""
+@dataclass(frozen=True)
+class WorkTree:
+    """A work tree as found, without git: its regular files' exact bytes, and everything else it holds (a link,
+    with its target text; a FIFO, socket or device, as special), kept apart so no content is mistaken for either."""
+
+    files: dict[str, bytes]
+    other: dict[str, str]
+
+
+def files_of(repo: Path) -> WorkTree:
+    """A work tree read as plain files, without git (whose configuration an arm may have rewritten), never following a
+    link out of it and never opening anything but a regular file (a FIFO would block): ``.git`` is skipped."""
     files: dict[str, bytes] = {}
+    other: dict[str, str] = {}
     for dirpath, dirnames, filenames in os.walk(repo, followlinks=False):
         here = Path(dirpath)
         dirnames[:] = [d for d in dirnames if not (here == repo and d == ".git")]
-        for name in dirnames + filenames:
+        for name in list(dirnames) + filenames:
             p = here / name
             rel = p.relative_to(repo).as_posix()
-            if p.is_symlink() or p.is_junction():
-                files[rel] = b"link -> " + os.readlink(p).encode("utf-8", "surrogateescape")
+            if is_link(p):
+                other[rel] = f"{LINK} -> {os.readlink(p)}"
                 if name in dirnames:
                     dirnames.remove(name)
             elif name in filenames:
-                files[rel] = normalized(p.read_bytes())
-    return files
+                if stat.S_ISREG(os.lstat(p).st_mode):
+                    files[rel] = p.read_bytes()
+                else:
+                    other[rel] = SPECIAL
+    return WorkTree(files, other)
 
 
-def changed_paths(start: dict[str, bytes], now: dict[str, bytes]) -> list[str]:
-    """Every path added, removed or changed between two sets of files."""
-    return sorted(rel for rel in start.keys() | now.keys() if start.get(rel) != now.get(rel))
+def changed_paths(start: dict[str, bytes], now: WorkTree) -> list[str]:
+    """Every path added, removed or changed since the starting point (built with exactly ``start``'s bytes, so a
+    line-end-only rewrite is a change), and every link or special file now present."""
+    changed = {rel for rel in start.keys() | now.files.keys() if start.get(rel) != now.files.get(rel)}
+    return sorted(changed | now.other.keys())

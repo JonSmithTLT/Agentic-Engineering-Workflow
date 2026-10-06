@@ -145,7 +145,8 @@ def test_a_case_whose_trees_are_missing_outside_or_nested_is_refused(tmp_path, f
         fixture.load(set_fixture(path, fx))
 
 
-@pytest.mark.parametrize("name", [".git/config", "pkg/.GIT/x", "CON", "aux.txt", "dot.", "pipe|x"])
+@pytest.mark.parametrize("name", [".git/config", "pkg/.GIT/x", "GIT~1/config", "git~12/x", "CON", "aux.txt", "dot.",
+                                  "pipe|x", "tab\there", "bell\x07"])
 def test_a_fixture_path_that_is_repository_metadata_or_unportable_is_refused(tmp_path, name):
     path = make_case(tmp_path / "c", overlay=False)
     with pytest.raises(Invalid):
@@ -168,6 +169,28 @@ def test_paths_differing_only_in_case_are_refused(tmp_path):
     (tmp_path / "c" / "overlay" / "Calc.py").write_text("x\n", encoding="utf-8")  # base has calc.py
     with pytest.raises(Invalid, match="differ only in case"):
         fixture.snapshot(fixture.load(path))
+
+
+def test_directories_differing_only_in_case_or_a_file_against_a_directory_are_refused(tmp_path):
+    """One directory on Windows, two on Linux; or a build that fails after registering (PR #100 re-review, R-3, R-4)."""
+    path = make_case(tmp_path / "c")
+    (tmp_path / "c" / "base" / "Src").mkdir()
+    (tmp_path / "c" / "base" / "Src" / "a.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "c" / "overlay" / "src").mkdir()
+    (tmp_path / "c" / "overlay" / "src" / "b.py").write_text("b\n", encoding="utf-8")
+    with pytest.raises(Invalid, match="differ only in case"):
+        fixture.snapshot(fixture.load(path))
+    path2 = make_case(tmp_path / "d")
+    (tmp_path / "d" / "overlay" / "calc.py").mkdir()  # base has the file calc.py
+    (tmp_path / "d" / "overlay" / "calc.py" / "x.py").write_text("x\n", encoding="utf-8")
+    with pytest.raises(Invalid, match="a file in one tree and a directory in another"):
+        fixture.snapshot(fixture.load(path2))
+
+
+def test_link_detection_needs_nothing_newer_than_python_3_11():
+    """Path.is_junction exists from 3.12; the project supports 3.11 (PR #100 re-review, R-1)."""
+    source = (ROOT / "eval" / "aew_eval" / "fixture.py").read_text(encoding="utf-8")
+    assert ".is_junction(" not in source
 
 
 def test_a_link_or_junction_in_a_fixture_is_refused(tmp_path):
@@ -360,3 +383,74 @@ def test_the_command_line_says_whether_anything_was_counted(tmp_path):
     assert again.returncode == runner.EXIT_REFUSED and "already has attempt" in again.stderr
     lines = [json.loads(x) for x in (tmp_path / "ledger" / "attempts.jsonl").read_text().splitlines()]
     assert [x["run_id"] for x in lines] == ["demo/cli1", "demo/cli1"]  # registered, finalized; nothing else
+
+
+# ---------------------------------------------------------------------------------------------- re-review of PR #100
+
+def test_collection_keeps_exact_bytes_and_keeps_links_and_special_files_apart(tmp_path, monkeypatch):
+    """R-5 and R-7: a file whose text begins like a link record is exported; a line-end-only rewrite is a change and
+    is exported as written; a special file is recorded without being opened (a FIFO would block)."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+    import stat as st
+
+    class Writes:
+        kind = "scripted"
+
+        def check(self, config, snap):
+            pass
+
+        def run(self, repo, config, *, deadline_s):
+            (repo / "looks.txt").write_bytes(b"link -> not a link\n")
+            (repo / "README.md").write_bytes(b"# calc\r\n")  # CRLF only
+            (repo / "pipe").write_bytes(b"")
+            return arms.ArmResult()
+
+    real_lstat = os.lstat
+
+    def lstat(p, *a, **k):  # the "pipe" is a FIFO on every platform, as far as collection can tell
+        res = real_lstat(p, *a, **k)
+        if str(p).endswith("pipe"):
+            return os.stat_result((st.S_IFIFO | 0o644, *res[1:]))
+        return res
+
+    monkeypatch.setitem(arms.ARMS, "scripted", Writes())
+    monkeypatch.setattr(fixture.os, "lstat", lstat)
+    seen: dict = {}
+    record = run(f, case_path, tmp_path, scorer=lambda tree: seen.update(
+        looks=(tree / "looks.txt").read_bytes(), readme=(tree / "README.md").read_bytes(),
+        pipe=(tree / "pipe").exists()) or {})
+    assert record["validity"]["status"] == "valid", record["outcome"]
+    assert record["outcome"]["changed_paths"] == ["README.md", "looks.txt", "pipe"]
+    assert seen == {"looks": b"link -> not a link\n", "readme": b"# calc\r\n", "pipe": False}
+
+
+def test_an_8_3_short_name_of_git_metadata_is_refused_before_registering(tmp_path):
+    """R-2: GIT~1 is .git on an NTFS volume with short names."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path, steps=[{"write": "GIT~1/config", "content": "[core]\n"}])
+    with pytest.raises(runner.Refused, match=r"\.git component"):
+        run(f, case_path, tmp_path)
+    assert nothing_registered(tmp_path)
+
+
+def test_the_command_line_never_says_nothing_was_registered_when_something_was(tmp_path, monkeypatch, capsys):
+    """R-6: an error after registering exits 4 (the attempt is runner_lost); an unreadable input before it exits 1."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+    frozen_path = tmp_path / "prereg.yaml"
+    prereg.dump(f, frozen_path)
+    base = [str(frozen_path), "--case", f"C1={case_path}", "--ledger", str(tmp_path / "ledger"),
+            "--work", str(tmp_path / "work"), "--cell", f["assignment"]["order"][0]["cell"]]
+    assert runner.main([str(tmp_path / "missing.yaml"), *base[1:], "--name", "x"]) == runner.EXIT_REFUSED
+    assert runner.main([str(frozen_path), "--case", f"C1={tmp_path / 'nope.yaml'}", *base[3:], "--name", "y"]) \
+        == runner.EXIT_REFUSED
+    assert nothing_registered(tmp_path)
+
+    def broken(self, record):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(AttemptLedger, "finalize", broken)
+    assert runner.main([*base, "--name", "z"]) == runner.EXIT_LOST
+    assert "failed after registering" in capsys.readouterr().err
+    assert AttemptLedger(tmp_path / "ledger", f).status() == {"demo/z": "runner_lost"}

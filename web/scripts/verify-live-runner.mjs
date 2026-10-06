@@ -17,7 +17,7 @@ world.responses['/capabilities'].data.action_projection = { state: 'UNSUPPORTED'
 world.responses['/capabilities'].data.queue = { state: 'UNSUPPORTED', reasons: [] };
 const projector = new DemoProjector(world);
 const secret = 'aew1.runner.privateTestSecret';
-let fault = '', apiRequests = 0;
+let fault = '', apiRequests = 0, copiedWork = false;
 const root = path.resolve(process.env.DASHBOARD_STATIC_ROOT ?? 'dist');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aew-live-regression-'));
 const file = path.join(dir, 'session.json');
@@ -33,17 +33,34 @@ const server = http.createServer((req, res) => {
       res.writeHead(401); res.end(JSON.stringify({ code: 'SESSION_REQUIRED', message: 'Session required', reasons: [] })); return;
     }
     const result = projector.read(url);
-    if (fault === 'malformed' && url.pathname === '/api/v1/capabilities') result.body.extra = secret;
+    if (fault === 'malformed' && url.pathname === '/api/v1/capabilities') {
+      result.body = globalThis.structuredClone(result.body);
+      result.body.extra = secret;
+    }
+    if (fault === 'reopen-malformed' && copiedWork && url.pathname.startsWith('/api/v1/work/')) {
+      result.body = globalThis.structuredClone(result.body);
+      result.body.extra = true;
+    }
     res.writeHead(result.status);
     res.end(JSON.stringify(result.body)); return;
   }
   if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+  if (url.pathname === '/reopen-review-error.js') {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.end('throw new Error("REOPEN_REVIEW_ERROR")'); return;
+  }
   let target = path.resolve(root, '.' + url.pathname);
   if (!target.startsWith(root + path.sep) && target !== root) { res.writeHead(404); res.end(); return; }
   if (!path.extname(target)) target = path.join(root, 'index.html');
   if (!fs.existsSync(target)) { res.writeHead(404); res.end(); return; }
   res.setHeader('Content-Type', { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css' }[path.extname(target)] ?? 'application/octet-stream');
-  res.end(fs.readFileSync(target));
+  let body = fs.readFileSync(target);
+  if (url.pathname === '/work' && url.searchParams.has('selected')) {
+    copiedWork = true;
+    if (fault === 'reopen-script') body = Buffer.from(body.toString().replace('</head>', '<script src="/reopen-review-error.js"></script></head>'));
+    if (fault === 'report-write-failure' && !fs.existsSync(output)) fs.mkdirSync(output);
+  }
+  res.end(body);
 });
 try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -51,14 +68,25 @@ try {
   fs.writeFileSync(file, JSON.stringify({ version: 1, origin, cookie: { name: 'aew_session', value: secret } }), { mode: 0o600 });
   async function run(expected, mode) {
     fault = mode;
+    copiedWork = false;
+    fs.rmSync(output, { recursive: true, force: true });
     const child = spawn(process.execPath, ['--experimental-strip-types', 'scripts/browser-live.mjs'], {
-      env: { ...process.env, DASHBOARD_BASE_URL: origin, DASHBOARD_SESSION_FILE: file, DASHBOARD_LIVE_OUTPUT: output },
+      env: { ...process.env, DASHBOARD_BASE_URL: origin, DASHBOARD_SESSION_FILE: file,
+        DASHBOARD_LIVE_OUTPUT: mode === 'output-directory' ? dir : output },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let logs = '';
     child.stdout.on('data', chunk => { logs += chunk; });
     child.stderr.on('data', chunk => { logs += chunk; });
     const exit = await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });
+    if (mode === 'output-directory' || mode === 'report-write-failure') {
+      assert.equal(exit, 1);
+      assert(logs.includes(`FAIL authenticated live browser checks: ${mode === 'output-directory' ? 'input-validation' : 'report-write'}`));
+      assert(!logs.includes(dir) && !logs.includes(secret) && !logs.includes('EISDIR') && !logs.includes('node:fs'));
+      console.log(`PASS live-runner regression: ${mode}, sanitized persistence failure`);
+      return;
+    }
+    assert(fs.existsSync(output), 'Runner did not persist its sanitized result');
     const report = fs.readFileSync(output, 'utf8');
     assert(!logs.includes(secret) && !report.includes(secret), 'Credential escaped sanitized boundary');
     assert.equal(exit, expected, logs + report);
@@ -66,6 +94,16 @@ try {
     assert.equal(result.status, expected === 0 ? 'PASS' : 'FAIL');
     if (mode === 'auth-bypass') assert.equal(result.failed_stage, 'unauthenticated-api-refusal');
     else if (mode === 'malformed') assert.equal(result.failed_stage, 'desktop-authenticated-bootstrap');
+    else if (mode === 'reopen-script') {
+      assert.equal(result.failed_stage, 'desktop-work-copy-reopen');
+      assert(result.counts.page_errors > 0);
+      assert(!result.checks.includes('desktop: Work copied selection reloads against the same authenticated origin'));
+    }
+    else if (mode === 'reopen-malformed') {
+      assert.equal(result.failed_stage, 'desktop-work-copy-reopen');
+      assert(result.counts.invalid_responses > 0);
+      assert(!result.checks.includes('desktop: Work copied selection reloads against the same authenticated origin'));
+    }
     else {
       assert(result.checks.includes('phone: missing session shows refusal and no Work table'));
       assert(result.checks.includes('desktop: Work copied selection reloads against the same authenticated origin'));
@@ -78,6 +116,10 @@ try {
   assert(apiRequests > 0);
   await run(1, 'auth-bypass');
   await run(1, 'malformed');
+  await run(1, 'reopen-script');
+  await run(1, 'reopen-malformed');
+  await run(1, 'output-directory');
+  await run(1, 'report-write-failure');
 } finally {
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));

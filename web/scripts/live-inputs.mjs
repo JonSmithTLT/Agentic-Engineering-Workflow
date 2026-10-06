@@ -43,15 +43,31 @@ export function sessionCookie(file, origin) {
 }
 
 export function safeOutput(file, cookieFile) {
-  // A caller must never accidentally overwrite the private input with evidence.
-  const identity = p => fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p);
-  if (identity(file) === identity(cookieFile)) throw new Error('LIVE_OUTPUT_INVALID');
-  if (fs.existsSync(file)) {
-    const output = fs.statSync(file), input = fs.statSync(cookieFile);
-    if (output.dev === input.dev && output.ino === input.ino) throw new Error('LIVE_OUTPUT_INVALID');
+  try {
+    const target = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (target && !target.isFile()) throw new Error();
+    // A caller must never accidentally overwrite the private input with evidence.
+    const identity = p => fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p);
+    if (identity(file) === identity(cookieFile)) throw new Error('LIVE_OUTPUT_INVALID');
+    if (fs.existsSync(file)) {
+      const output = fs.statSync(file), input = fs.statSync(cookieFile);
+      if (output.dev === input.dev && output.ino === input.ino) throw new Error('LIVE_OUTPUT_INVALID');
+    }
+    fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+    return file;
+  } catch {
+    throw new Error('LIVE_OUTPUT_INVALID');
   }
-  fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-  return file;
+}
+
+export function writeReport(file, report, write = fs.writeFileSync) {
+  try {
+    write(file, JSON.stringify(report, null, 2) + '\n');
+    return true;
+  } catch {
+    // Filesystem paths and errors must never escape the diagnostics boundary.
+    return false;
+  }
 }
 
 export function permittedRequest(url, method, origin) {

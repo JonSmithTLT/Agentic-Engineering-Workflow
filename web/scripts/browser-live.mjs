@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { chromium, request } from 'playwright';
 import { responseSchemas } from '../src/api/schema.ts';
-import { targetOrigin, sessionCookie, safeOutput, permittedRequest } from './live-inputs.mjs';
+import { targetOrigin, sessionCookie, safeOutput, permittedRequest, writeReport } from './live-inputs.mjs';
 
 const checks = [];
 const skipped = [];
@@ -73,27 +73,30 @@ try {
         counts.blocked_requests++;
         return route.abort();
       });
+      function observe(page) {
+        page.setDefaultTimeout(15000);
+        page.on('pageerror', () => counts.page_errors++);
+        page.on('console', m => { if (m.type() === 'error' && !refusing) counts.console_errors++; });
+        page.on('response', response => {
+          if (!new globalThis.URL(response.url()).pathname.startsWith('/api/v1/')) return;
+          const task = (async () => {
+            counts.api_responses++;
+            if (refusing && response.status() === 401) return;
+            if (response.status() === 304) return;
+            if (response.status() !== 200) { counts.invalid_responses++; return; }
+            try {
+              const schema = schemaFor(response.url());
+              if (!schema) throw new Error();
+              const body = schema.parse(await response.json());
+              if (project && body.project_id !== project.project_id) throw new Error();
+            } catch { counts.invalid_responses++; }
+          })();
+          pending.add(task);
+          void task.finally(() => pending.delete(task));
+        });
+      }
+      context.on('page', observe);
       const page = await context.newPage();
-      page.setDefaultTimeout(15000);
-      page.on('pageerror', () => counts.page_errors++);
-      page.on('console', m => { if (m.type() === 'error' && !refusing) counts.console_errors++; });
-      page.on('response', response => {
-        if (!new globalThis.URL(response.url()).pathname.startsWith('/api/v1/')) return;
-        const task = (async () => {
-          counts.api_responses++;
-          if (refusing && response.status() === 401) return;
-          if (response.status() === 304) return;
-          if (response.status() !== 200) { counts.invalid_responses++; return; }
-          try {
-            const schema = schemaFor(response.url());
-            if (!schema) throw new Error();
-            const body = schema.parse(await response.json());
-            if (project && body.project_id !== project.project_id) throw new Error();
-          } catch { counts.invalid_responses++; }
-        })();
-        pending.add(task);
-        void task.finally(() => pending.delete(task));
-      });
       async function projection(route, schema) {
         const result = await context.request.get(origin + '/api/v1' + route, { maxRedirects: 0 });
         requirePass(result.status() === 200);
@@ -165,10 +168,15 @@ try {
                 const pinned = await page.evaluate(() => navigator.clipboard.readText());
                 const pinnedUrl = new globalThis.URL(pinned);
                 requirePass(pinnedUrl.origin === origin && pinnedUrl.pathname === route && pinnedUrl.searchParams.get('selected') === record.id);
+                stage = `${layout}-work-copy-reopen`;
                 const reopened = await context.newPage();
                 try {
                   await reopened.goto(pinned, { waitUntil: 'domcontentloaded' });
                   await reopened.locator('main').getByRole('heading', { level: 1, name: title, exact: true }).last().waitFor();
+                  await reopened.locator('main').getByRole('status').filter({ hasText: /^CURRENT$/ }).first().waitFor();
+                  await reopened.waitForLoadState('networkidle');
+                  await Promise.all([...pending]);
+                  requirePass(counts.page_errors === 0 && counts.console_errors === 0 && counts.invalid_responses === 0 && counts.blocked_requests === 0);
                 } finally { await reopened.close(); }
                 checks.push(`${layout}: Work copied selection reloads against the same authenticated origin`);
               }
@@ -211,18 +219,19 @@ try {
   }
   stage = 'final-validation';
   requirePass(counts.blocked_requests === 0 && counts.page_errors === 0);
-  fs.writeFileSync(output, JSON.stringify({ status: 'PASS', mode: 'authenticated-live-production',
+  stage = 'report-write';
+  requirePass(writeReport(output, { status: 'PASS', mode: 'authenticated-live-production',
     contract_version: pin.version, contract_sha256: digest, browser_version: browser.version(),
     checks, skipped, counts, limitations: [
       'BUILD.json/source provenance and main-line security negative controls must be recorded by F20.6.',
       'No screenshots, traces, HAR, response bodies, request headers or credentials are captured.',
       'Hostile-content datasets, validator/session replacement isolation, expiry and conditional-request guarantees require separate main-line acceptance checks.',
-    ] }, null, 2) + '\n');
+    ] }));
   console.log(`PASS authenticated live browser checks (${checks.length}); see sanitized report`);
 } catch {
   // Never print Playwright, schema, URL or filesystem exception details.
-  if (output) fs.writeFileSync(output, JSON.stringify({ status: 'FAIL', mode: 'authenticated-live-production',
-    failed_stage: stage, checks, skipped, counts }, null, 2) + '\n');
+  if (output) writeReport(output, { status: 'FAIL', mode: 'authenticated-live-production',
+    failed_stage: stage, checks, skipped, counts });
   console.error(`FAIL authenticated live browser checks: ${stage}`);
   process.exitCode = 1;
 } finally { if (browser) await browser.close(); }

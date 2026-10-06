@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { targetOrigin, sessionCookie, safeOutput, permittedRequest } from './live-inputs.mjs';
+import { targetOrigin, sessionCookie, safeOutput, permittedRequest, writeReport } from './live-inputs.mjs';
 
 const origin = 'http://127.0.0.1:4280';
 test('target cannot contain credentials, paths, queries or foreign hosts', () => {
@@ -37,6 +37,8 @@ test('cookie file is narrow, origin-bound, private and never leaks parser errors
     assert.throws(() => sessionCookie(file, origin), { message: 'LIVE_SESSION_FILE_INVALID' });
     write(input);
     assert.throws(() => safeOutput(file, file), { message: 'LIVE_OUTPUT_INVALID' });
+    assert.throws(() => safeOutput(dir, file), { message: 'LIVE_OUTPUT_INVALID' });
+    assert.equal(writeReport(dir, { status: 'FAIL' }), false);
     if (process.platform !== 'win32') {
       fs.chmodSync(file, 0o644);
       assert.throws(() => sessionCookie(file, origin), { message: 'LIVE_SESSION_FILE_INVALID' });
@@ -49,6 +51,14 @@ test('cookie file is narrow, origin-bound, private and never leaks parser errors
       assert.throws(() => safeOutput(alias, file), { message: 'LIVE_OUTPUT_INVALID' });
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('report persistence failures return safely without exposing filesystem errors', () => {
+  for (const code of ['EACCES', 'ENOSPC', 'EISDIR']) {
+    assert.equal(writeReport('/private/path', { status: 'FAIL' }, () => {
+      throw new Error(`${code}: /private/path privateSecret`);
+    }), false);
+  }
 });
 
 test('browser guard allows only read-only same-origin production traffic', () => {

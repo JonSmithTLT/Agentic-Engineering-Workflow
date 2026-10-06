@@ -202,8 +202,25 @@ def test_a_wait_ends_with_a_real_stale_result_when_authority_goes_and_then_the_b
     assert exc.value.code == "BROKER_UNREACHABLE"  # not "stale": nothing about AEW's state is claimed
 
 
-def test_a_call_after_authority_moved_is_answered_once_then_the_bridge_closes(held):
-    p, wid, engine, broker = held
+def test_a_call_after_authority_moved_is_answered_once_then_the_bridge_closes(tmp_path, monkeypatch):
+    """With the watchdog held off, the next call still reaches the broker, which answers from committed state that the
+    authority is gone (a real StageResult) and closes. Normally the watchdog closes the bridge within a second, and a
+    caller then sees only BROKER_UNREACHABLE: both are truthful, neither is fabricated."""
+    monkeypatch.setattr(lead_broker, "POLL_S", 3600.0)
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    broker = lead_broker.LeadBroker(engine, p.token)
+    broker.start()
+    for name, value in broker.env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    try:
+        _answered_once_then_closed(p, engine)
+    finally:
+        broker.close()
+
+
+def _answered_once_then_closed(p, engine):
     Engine.discover(p.root).lead_release(token=p.token, expect_rev=_rev(engine))
     out = call("status", {})
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority" and out["result"] is None

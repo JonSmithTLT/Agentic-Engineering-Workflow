@@ -395,3 +395,31 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     coverage = next(s for s in gate["steps"] if "coverage_gate.py" in str(s.get("run", "")))
     assert coverage["if"] == "steps.tier.outputs.tier == 'full'"
     assert '--base-ref "$BASE_REF"' in runs and '--base-ref "$BASE_REF"' in jobs["changes"]["steps"][-1]["run"]
+
+
+def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
+    """A scheduled job that hits its timeout ends `cancelled`; the report must open the issue for it too (CI posture
+    review 2026-10-05, finding 1: six of eight nightlies timed out silently)."""
+    nightly = yaml.safe_load((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
+    report = nightly["jobs"]["report"]
+    condition = " ".join(str(report["if"]).split())
+    assert set(report["needs"]) == set(nightly["jobs"]) - {"report"}  # every nightly job is reported on
+
+    # Evaluate the expression itself over every event and job outcome, so its grouping is pinned, not just its parts
+    # (PR #92 review: without the parentheses a failed manual run would open the issue). The translation covers
+    # exactly the constructs this condition uses; anything else fails the test.
+    import re
+
+    # The job must run after a failed or cancelled job at all, so the condition must start from always() (re-review).
+    assert condition.startswith("always() && "), condition
+    py = condition.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    py = py.replace("github.event_name", "event")
+    py = re.sub(r"contains\(needs\.\*\.result, '(\w+)'\)", r"('\1' in results)", py)
+    assert re.fullmatch(r"[\w\s()'=.]+", py) and "needs" not in py and "github" not in py, py
+    outcomes = ("success", "failure", "cancelled", "skipped")
+    for event in ("schedule", "workflow_dispatch", "push"):
+        for results in [(o,) for o in outcomes] + [("success", "cancelled"), ("skipped", "failure")]:
+            fires = eval(py, {"__builtins__": {}}, {"event": event, "results": results})  # noqa: S307
+            expected = event == "schedule" and bool({"failure", "cancelled"} & set(results))
+            assert fires == expected, (event, results, condition)
+

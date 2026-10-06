@@ -604,12 +604,13 @@ Raised here, relayed by the operator; nothing in `web/` is edited by the main li
 3. The W01 ledger's answers are in §4.9; when the web agent is satisfied, the ledger rows can record the accepted
    artifact (this note's commit, contract 0.1.2, its digest) as resolved.
 4. F20.6 wants the compiled browser checks to run against a live authenticated server. **Web agent (2026-10-05):**
-   base-URL inputs exist; an authenticated live mode still needs implementing on the web side: it accepts the target
-   URL and a private session-cookie file, starts no fixture servers, keeps credentials out of the evidence, and gives
-   the fixture-specific assertions a separate live acceptance path. The demo preview contracts stay excluded from the
-   production integration. F20.6 depends on that work; the main line provides the server, the cookie file (0600, in
-   the scratch directory, never in evidence) and the acceptance record. The [web handoff](../../../web/docs/reference/f20-live-browser-handoff.md)
-   records this missing dependency and ownership; cookie-file format and invocation still need agreement before implementation.
+   the [web-owned live runner](../../../web/docs/how-to/authenticated-live-browser.md) accepts a root target URL and
+   a private version-1 cookie file, starts no fixture servers and keeps credentials out of evidence. The separate
+   fixture regression verifies its behavior, not Engine acceptance. The main line supplies the server, authorized
+   test project, cookie file (0600 POSIX / restricted Windows ACL, private scratch) and acceptance record. The
+   [handoff](../../../web/docs/reference/f20-live-browser-handoff.md) records remaining integration coverage; expiry,
+   conditional requests, security negative controls and hostile/scope scenarios are still main-line acceptance tasks.
+   Provisional preview contracts remain excluded from production integration.
 5. The `/history` default order is newest first (seq descending), as `aew history list` orders; `/activity` the same
    by revision. If the frontend assumes ascending order anywhere, say so before F20.2 is reviewed.
 6. The `aew_session` cookie name is kept; `401` responses carry a JSON `Error` body (`SESSION_REQUIRED`,

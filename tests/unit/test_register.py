@@ -138,8 +138,8 @@ def test_every_open_question_and_designer_row_has_an_item():
     due = copy.deepcopy(DUE)
     due["items"] = [i for i in due["items"] if i["row"] not in {"Q7", "U10"}]
     problems = register.due_problems(DATA, due)
-    assert any("Q7 waits for a decision" in p for p in problems), problems
-    assert any("U10 waits for a decision" in p for p in problems), problems
+    assert any("Q7 is an open question with no item" in p for p in problems), problems
+    assert any("U10 waits for the designer" in p for p in problems), problems
 
 
 def test_an_item_names_a_known_due_point_owner_and_need():
@@ -154,3 +154,37 @@ def test_the_view_lists_the_soonest_first():
     dues = [line.split(" | ")[0].removeprefix("| ") for line in owed.splitlines() if line.startswith("| ")][1:]
     order = [register.DUE_ORDER.index(d) for d in dues]
     assert len(dues) == len(DUE["items"]) and order == sorted(order)
+
+
+def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_blocker():
+    """PR #104 review, 1: an open question is covered only by its own item; a **Designer** row may instead be blocked by
+    one (F6 waits for Q4's decision)."""
+    due = copy.deepcopy(DUE)
+    q14 = next(i for i in due["items"] if i["row"] == "Q14")
+    due["items"].remove(q14)
+    next(i for i in due["items"] if i["row"] == "Q12")["blocks"].append("Q14")
+    assert any("Q14 is an open question with no item of its own" in p for p in register.due_problems(DATA, due))
+    assert not any("F6" in p for p in register.due_problems(DATA, DUE))  # blocked by Q4's item
+
+
+def test_a_malformed_item_is_named_never_a_crash():
+    """PR #104 review, 2: the renderer tolerates what the check refuses, so `check` names the problem."""
+    due = copy.deepcopy(DUE)
+    due["items"][0] = {"row": "Q12", "due": "soon"}
+    text = register.render_due(due)
+    assert "| soon |" in text
+    assert any("missing needs, owner, what" in p for p in register.due_problems(DATA, due))
+
+
+def test_items_stay_in_order_and_one_row_has_one_item():
+    """PR #104 review, 4: items are kept in (due, row) order, like §Closed, so concurrent additions land apart; a merge
+    that leaves two items for one row is refused."""
+    assert DUE["items"] == sorted(DUE["items"], key=register.due_key)
+    due = copy.deepcopy(DUE)
+    due["items"].append(copy.deepcopy(due["items"][0]))
+    problems = register.due_problems(DATA, due)
+    assert any("not in (due, row) order" in p for p in problems), problems
+    due = register.normalize_due(due)
+    assert any(f"{due['items'][0]['row']} has 2 items" in p for p in register.due_problems(DATA, due))
+    assert register.DUE_ORDER.index("M4-D") < register.DUE_ORDER.index("Gate: before F15.2 ships") \
+        < register.DUE_ORDER.index("M4-E")  # docs/README.md's order (review, 3)

@@ -16,7 +16,8 @@ dashboard keep reading the markdown; triage tooling reads the YAML.
 register: each item names its register row, what is needed (a decision, a design, or the adoption of one), its owner,
 the point it is due by (``DUE_ORDER``) and the rows it blocks. ``render`` writes ``decisions-due.md`` from it, soonest
 first, with the blocked rows beside what they wait for. ``check`` keeps it current: an item whose row or blocked row
-has closed is stale, and every open question (§4) and every open row targeted **Designer** must have an item.
+has closed is stale; one row has at most one item; every open question (§4) must have its own item, and every open row
+targeted **Designer** must have one or be blocked by one (it then waits for that item's decision).
 
 The markdown is plain GitHub tables, one per section, with optional prose before the table. A cell never contains a
 literal ``|`` (the table would break), so cells split on it. Rows are kept exactly as written: the YAML holds text,
@@ -25,8 +26,10 @@ not interpretation; a row's id is its first cell and its target is read from the
 Merges. Two changes to the register collide only where they touch the same lines, so the file keeps nothing that
 every change edits: the preamble carries no per-change log (the history is ``git log`` on the YAML; each row carries
 its own dates), and §Closed is kept in id order rather than closing order, so two changes that close different
-entries insert at different places. After every sync with main run ``render``, conflict or not: a clean merge can
-still leave §Closed unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict,
+entries insert at different places; ``decisions-due.yaml`` is kept the same way, in (due, row) order, and two
+branches that add an item for the same row merge into a duplicate that ``check`` refuses. After every sync with main
+run ``render``, conflict or not: a clean merge can still leave §Closed or the items unsorted and the markdown stale,
+which only ``check`` (CI) catches. When a merge does conflict,
 resolve the YAML only and run ``render``: the markdown is derived and is never merged by hand.
 """
 
@@ -49,7 +52,7 @@ DUE_MD = ROOT / "docs" / "implementation" / "decisions-due.md"
 DUE_SCHEMA = "aew/decisions-due/v1"
 # The points a decision can be due by, soonest first: the gates and M4 phases in their order (docs/README.md), then the
 # later milestones and the register's open-ended targets.
-DUE_ORDER = ("Gate: before F15.2 ships", "M4-D", "M4-E", "M4-F", "M4-G", "M4-H", "M4", "Gate: before internal alpha",
+DUE_ORDER = ("M4-D", "Gate: before F15.2 ships", "M4-E", "M4-F", "M4-G", "M4-H", "M4", "Gate: before internal alpha",
              "M5", "M6", "Evaluation", "Unscheduled")
 NEEDS = ("decision", "design", "adoption")
 OWNERS = ("operator", "designer", "operator and designer")
@@ -241,16 +244,33 @@ def load_due() -> dict[str, Any]:
     return yaml.safe_load(DUE_YAML.read_text(encoding="utf-8"))
 
 
+def due_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    """Items are kept soonest first, then by row id, in the YAML as on the page: a new item lands among its neighbours,
+    not at the end where every other change also appends (the register's merge rule)."""
+    due = item.get("due")
+    return (DUE_ORDER.index(due) if due in DUE_ORDER else len(DUE_ORDER), id_key(str(item.get("row") or "")))
+
+
+def normalize_due(due: dict[str, Any]) -> dict[str, Any]:
+    due["items"] = sorted(due.get("items") or [], key=due_key)
+    return due
+
+
 def due_problems(data: dict[str, Any], due: dict[str, Any]) -> list[str]:
     """Why the decisions-due list no longer matches the register: an item on a closed or unknown row, a blocked row that
-    closed, a field outside its vocabulary, or an open question or Designer row with no item."""
+    closed, a field outside its vocabulary, two items for one row, items out of order, an open question with no item of
+    its own, or a **Designer** row that neither has an item nor is blocked by one."""
     out: list[str] = []
     if due.get("schema") != DUE_SCHEMA:
         out.append(f"{DUE_YAML.name}: schema is not {DUE_SCHEMA}")
     open_ids = {r["id"] for r in rows(data) if r["id"]}
     all_ids = {r["id"] for r in rows(data, open_only=False) if r["id"]}
-    covered: set[str] = set()
-    for n, item in enumerate(due.get("items") or [], 1):
+    own: Counter[str] = Counter()
+    blocked_by_an_item: set[str] = set()
+    items = due.get("items") or []
+    if items != sorted(items, key=due_key):
+        out.append(f"{DUE_YAML.name} is not in (due, row) order: run `python tools/register.py render`")
+    for n, item in enumerate(items, 1):
         where = f"{DUE_YAML.name} item {n} ({item.get('row', '?')})"
         missing = [k for k in ("row", "needs", "owner", "due", "what") if not item.get(k)]
         if missing:
@@ -269,11 +289,17 @@ def due_problems(data: dict[str, Any], due: dict[str, Any]) -> list[str]:
             out.append(f"{where}: owner is one of {', '.join(OWNERS)}")
         if item["due"] not in DUE_ORDER:
             out.append(f"{where}: due is one of {', '.join(DUE_ORDER)}")
-        covered |= {item["row"], *(item.get("blocks") or [])}
+        own[item["row"]] += 1
+        blocked_by_an_item |= set(item.get("blocks") or [])
+    out += [f"{DUE_YAML.name}: {row} has {n} items; one row, one item" for row, n in sorted(own.items()) if n > 1]
     for r in rows(data):
-        if r["id"] and r["id"] not in covered and (r["section"] == 4 or r["target"] == "Designer"):
-            out.append(f"register {r['id']} waits for a decision (§4 or **Designer**) but has no item in "
-                       f"{DUE_YAML.name}")
+        if not r["id"] or r["id"] in own:
+            continue
+        if r["section"] == 4:
+            out.append(f"register {r['id']} is an open question with no item of its own in {DUE_YAML.name}")
+        elif r["target"] == "Designer" and r["id"] not in blocked_by_an_item:
+            out.append(f"register {r['id']} waits for the designer (**Designer**) but has no item in {DUE_YAML.name}, "
+                       "and no item blocks it")
     return out
 
 
@@ -284,20 +310,21 @@ def _cell(text: str) -> str:
 def render_due(due: dict[str, Any]) -> str:
     """The decisions-due view: what is owed, by whom and by when, soonest first; then each blocked row and what it
     waits for."""
-    items = sorted(due.get("items") or [], key=lambda i: (DUE_ORDER.index(i["due"]), id_key(i["row"])))
+    items = sorted(due.get("items") or [], key=due_key)
     out = ["# Decisions due", "",
            "*Generated by `python tools/register.py render` from `decisions-due.yaml`; edit the YAML, never this page. "
            "Each item points to its row in the [future-work register](future-work.md), which holds the detail.*", "",
-           due["intro"].strip(), "",
+           str(due.get("intro") or "").strip(), "",
            "## Owed, soonest first", "",
            "| Due by | Owner | Needs | What | Row | Blocks |", "|---|---|---|---|---|---|"]
     for i in items:
-        out.append(f"| {i['due']} | {i['owner']} | {i['needs']} | {_cell(i['what'])} | {i['row']} | "
-                   f"{', '.join(i.get('blocks') or []) or '-'} |")
+        out.append(f"| {i.get('due')} | {i.get('owner')} | {i.get('needs')} | {_cell(i.get('what', ''))} | "
+                   f"{i.get('row')} | {', '.join(i.get('blocks') or []) or '-'} |")
     blocked: dict[str, list[str]] = {}
     for i in items:
         for row in i.get("blocks") or []:
-            blocked.setdefault(row, []).append(f"{i['row']} ({i['needs']}, {i['owner']}, by {i['due']})")
+            blocked.setdefault(row, []).append(
+                f"{i.get('row')} ({i.get('needs')}, {i.get('owner')}, by {i.get('due')})")
     out += ["", "## Blocked until then", "", "| Row | Waits for |", "|---|---|"]
     for row in sorted(blocked, key=id_key):
         out.append(f"| {row} | {'; '.join(blocked[row])} |")
@@ -321,6 +348,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     data = normalize(load())
     due = load_due()
+    if args.command == "render":
+        due_text = dump(normalize_due(due))
+        if due_text != DUE_YAML.read_text(encoding="utf-8"):
+            DUE_YAML.write_text(due_text, encoding="utf-8", newline="\n")
+            print(f"normalized {DUE_YAML.relative_to(ROOT)}")
     if args.command == "due":
         print(render_due(due), end="")
         return 0
@@ -339,12 +371,12 @@ def main(argv: list[str] | None = None) -> int:
             print("problem:", p)
         return 0
     ok = render_markdown(data) == MD.read_text(encoding="utf-8")
+    for problem in due_problems(data, due):  # first: a malformed item is named, not a crash in the renderer
+        ok = False
+        print("problem:", problem)
     if render_due(due) != DUE_MD.read_text(encoding="utf-8"):
         ok = False
         print(f"{DUE_MD.relative_to(ROOT)} differs from what {DUE_YAML.relative_to(ROOT)} renders")
-    for problem in due_problems(data, due):
-        ok = False
-        print("problem:", problem)
     if dump(data) != YAML.read_text(encoding="utf-8"):
         ok = False
         print(f"{YAML.relative_to(ROOT)} is not normalized (§Closed in id order, canonical layout)")

@@ -21,6 +21,7 @@ The accepted API is **0.1.2**. Journal, Investigation, Evidence inspection and E
 - [Frontend behavior contract](../UX-CONTRACT.md) and [design tokens](../DESIGN.md).
 - [Accepted API artifact](../../docs/design/dashboard-api-v1-provisional.yaml) and [C0 acceptance](c0-approval.json).
 - [Engine documentation map](../../docs/README.md) and [integration register F20](../../docs/implementation/future-work.md).
+- [F20.5 approved build baseline](reference/f20-production-baseline.md) and [F20.6 live browser dependency](reference/f20-live-browser-handoff.md).
 - [Current integration checklist](reference/integration-checklist.md), [original visual direction](archive/core/design-direction.md), and [builder provenance](reference/toolchain/builder-provenance.json).
 
 The Engine and web documents have separate review cadences. The archive/catalog indexes retain C0, D0/D1 and W01–W06 evidence; the design index retains the future backlog, plans and adoption questions.

@@ -261,8 +261,12 @@ sections:
       proved the seams; everything it did not build is listed in the design''s §9. Three slices, one PR each: A the contract,
       B the broker operation, the fail-closed Lead reachability classification and the CLI parity adapter, C the MCP transport
       and the Lead projection. **A built:** `aew.surface` (catalog, effective class, runner, tri-state projection with a
-      control part cached on control and policy identity and legality and run-telemetry overlays read on every call), `schemas/surface.schema.json`
-      with A3''s `policy_binding`; the stages, publication and the `cli` escape are catalogued and refused until built'
+      control part cached on control and policy identity, and dispatch legality, run telemetry, guidance and evidence read
+      on every call), `schemas/surface.schema.json` with A3''s `policy_binding`; the stages and publication are catalogued
+      and refused until built. **B built:** the broker operation `lead.tool` (cooperative: a typed wait blocks on the wake
+      file without holding the broker; channel `lead_mcp` or `lead_broker` by ingress; lost authority answered once from
+      committed state, then the bridge closes), the fail-closed Lead reachability classification (`LEAD_REACHABLE`, `OPERATOR_ONLY`,
+      `NOT_RELAYED`) applied by the client and the broker alike, the recovery-only `cli` escape and `aew lead tool`'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review

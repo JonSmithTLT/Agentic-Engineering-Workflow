@@ -101,9 +101,9 @@ def test_the_catalog_is_the_v1_catalog():
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}
-    # The cli escape is built with the broker (slice B); the stages and publication with the journal (F15.2).
-    assert designed == {"cli", "ticket_draft", "ticket_start", "ticket_request_review",
-                        "ticket_request_verification", "ticket_prepare", "integration_publish"}
+    # The stages and publication are built with the journal (F15.2).
+    assert designed == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+                        "ticket_prepare", "integration_publish"}
 
 
 def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does():

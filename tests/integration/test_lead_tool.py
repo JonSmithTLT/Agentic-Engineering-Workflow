@@ -1,0 +1,212 @@
+"""The typed Lead surface through the Lead broker (F15.1 slice B; typed-lead-surface-design-v0.2 §4.1, §5, §7): the
+`lead.tool` operation, the CLI parity transport, the recovery-only cli escape with every broker refusal, the channel
+each ingress records, the cooperative wait that never holds the broker, and the difference between a broker that
+answers "your authority is gone" and one that cannot be reached."""
+
+from __future__ import annotations
+
+import json
+import threading
+import time
+
+import pytest
+from aewflow import create_planned_ticket, sample_project
+from conftest import clean_env
+
+from aew import errors
+from aew.engine.api import Engine
+from aew.harness import lead_broker
+from aew.surface import client, run
+from aew.surface.context import SurfaceContext
+from aew.surface.errors import AdapterInputError
+
+
+@pytest.fixture
+def held(tmp_path, monkeypatch):
+    """A real Lead broker for a project, serving its bridge; this process acts as the Lead's harness."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+    broker = lead_broker.LeadBroker(engine, p.token)
+    broker.start()
+    for name, value in broker.env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    yield p, wid, engine, broker
+    broker.close()
+
+
+def _rev(engine) -> int:
+    """The current revision, read directly (a CLI subprocess here would inherit the session's coordinates)."""
+    return engine.store.read()["revision"]
+
+
+def call(name, arguments, *, ingress="mcp", profile="normal"):
+    return client.forward(name, arguments, ingress=ingress, profile=profile)
+
+
+def test_the_client_uses_the_brokers_coordinates():
+    assert client.ENV_NAMES == lead_broker.ENV_NAMES
+
+
+# ---------------------------------------------------------------------------------------------- parity
+
+
+def test_a_call_through_the_broker_returns_the_runners_own_result(held):
+    p, wid, engine, broker = held
+    via_broker = call("status", {"work_id": wid})
+    ctx = SurfaceContext.for_session({"generation": broker.generation, "session_label": broker.session_label},
+                                     profile="normal", ingress="mcp")
+    here = run.run_tool(engine, ctx, "status", {"work_id": wid})
+    for key in ("ok", "surface", "tool", "revision", "generation", "result", "completed_steps", "stopped"):
+        assert via_broker[key] == here[key], key
+    assert [a["action"] for a in via_broker["projection"]["actions"]] == ["ticket_start"]
+
+
+def test_the_cli_transport_goes_through_the_session_broker(held):
+    p, wid, engine, broker = held
+    env = clean_env(broker.env)
+    res = p.aew("lead", "tool", "status", "--arguments", json.dumps({"work_id": wid}), env=env)
+    assert res.returncode == 0, res.stderr
+    out = res.json
+    assert out["ok"] and out["tool"] == "status" and out["projection"]["subject"] == wid
+    bad = p.aew("lead", "tool", "cli", "--arguments", json.dumps({"argv": ["status"]}), env=env)
+    assert bad.returncode != 0 and bad.error["code"] == "TOOL_NOT_EXPOSED"  # recovery-only: concealed normally
+    listed = p.aew("lead", "tool", "--list", env=env)
+    assert listed.returncode == 0, listed.stderr
+    assert [t["name"] for t in listed.json["tools"]][:3] == ["status", "resume", "work_show"]
+
+
+def test_a_checkpoint_commits_through_the_broker_and_no_result_carries_the_credential(held):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    out = call("checkpoint", {"expect_rev": rev, "note": "paused", "next": "review"})
+    assert out["ok"] and out["revision"] == rev + 1 and out["completed_steps"][0]["primitive"] == "checkpoint"
+    assert p.token not in json.dumps(out)
+
+
+def test_ill_formed_calls_never_reach_the_engine(held):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    for name, args, profile, code in (("nope", {}, "normal", "UNKNOWN_TOOL"),
+                                      ("ticket_start", {"expect_rev": rev, "work_id": wid}, "normal",
+                                       "TOOL_NOT_BUILT"),
+                                      ("cli", {"argv": ["status"]}, "normal", "TOOL_NOT_EXPOSED"),
+                                      ("checkpoint", {"expect_rev": rev, "bogus": 1}, "normal", "INVALID_ARGUMENTS")):
+        with pytest.raises(AdapterInputError) as exc:
+            call(name, args, profile=profile)
+        assert exc.value.code == code
+    assert _rev(engine) == rev
+
+
+# ---------------------------------------------------------------------------------------------- the cli escape
+
+
+def test_the_cli_escape_runs_a_lead_command_on_the_recovery_profile(held):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    out = call("cli", {"argv": ["checkpoint", "--next", "recovered", "--expect-rev", str(rev)]}, profile="recovery")
+    assert out["ok"] and out["effective_operation_class"] == "JUDGMENT_BEARING" and _rev(engine) == rev + 1
+    assert out["completed_steps"][0]["revision"] == rev + 1
+
+
+@pytest.mark.parametrize(("argv", "why"), [
+    (["lead", "release", "--expect-rev", "{rev}"], "operator"),  # operator-only
+    (["lead", "handoff", "offer", "--expect-rev", "{rev}"], "operator"),
+    (["lead", "tool", "status"], "transport"),  # no nested surface
+    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "--launch"),  # it would print an invocation credential
+    (["status"], "Lead-authenticated"),  # not a Lead command: run it directly
+])
+def test_the_cli_escape_keeps_every_broker_refusal(held, argv, why):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    argv = [a.replace("{rev}", str(rev)).replace("{wid}", wid) for a in argv]
+    out = call("cli", {"argv": argv}, profile="recovery")
+    assert not out["ok"] and out["stopped"]["boundary"] == "permission", out["stopped"]
+    assert out["stopped"]["error"]["code"] == "PERMISSION_DENIED" and why in out["stopped"]["error"]["message"]
+    assert _rev(engine) == rev
+
+
+def test_the_cli_escape_refuses_a_token(held):
+    p, wid, engine, broker = held
+    out = call("cli", {"argv": ["checkpoint", "--token", "x", "--expect-rev", str(_rev(engine))]}, profile="recovery")
+    assert not out["ok"] and out["stopped"]["error"]["code"] == "USAGE"
+
+
+def test_the_bridge_key_is_not_a_lead_credential(held):
+    p, wid, engine, broker = held
+    with pytest.raises((errors.PermissionDenied, errors.StaleAuthority)):
+        engine.checkpoint(token=broker.env[lead_broker.ENV_KEY], expect_rev=_rev(engine), note="x")
+
+
+# ---------------------------------------------------------------------------------------------- channels and waiting
+
+
+def _fake_wait(engine, monkeypatch, seen):
+    """A run that never ends: each single check (timeout 0) reports it still running."""
+    def harness_wait(runs, *, timeout=600.0, any_=False):
+        seen.append(timeout)
+        return {"run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True}
+
+    monkeypatch.setattr(engine, "harness_wait", harness_wait)
+
+
+def test_a_wait_never_holds_the_broker_and_channels_never_bleed(held, monkeypatch):
+    p, wid, engine, broker = held
+    seen: list[float] = []
+    _fake_wait(engine, monkeypatch, seen)
+    waited: dict = {}
+
+    def waiter():
+        started = time.monotonic()
+        waited["out"] = call("harness_wait", {"runs": ["R-INV-0009-1", "R-INV-0010-1"], "timeout_s": 4})
+        waited["took"] = time.monotonic() - started
+
+    thread = threading.Thread(target=waiter)
+    thread.start()
+    time.sleep(0.5)
+    for _ in range(3):  # explain from both ingresses and a query, all while the wait blocks
+        started = time.monotonic()
+        mcp = call("explain", {"work_id": wid}, ingress="mcp")
+        cli = call("explain", {"work_id": wid}, ingress="cli")
+        status = call("status", {}, ingress="mcp")
+        assert mcp["result"]["channel"] == "lead_mcp" and cli["result"]["channel"] == "lead_broker"
+        assert status["ok"] and time.monotonic() - started < 3.0, "a request waited behind the blocking wait"
+    rev = _rev(engine)
+    from aew.harness import bridge
+
+    out = bridge.call("lead.cli", {"argv": ["checkpoint", "--next", "during the wait", "--expect-rev", str(rev)],
+                                   "cwd": str(p.root), "stdin": ""}, env_names=lead_broker.ENV_NAMES)
+    assert out["result"]["revision"] == rev + 1  # a relayed command commits while the wait blocks
+    thread.join(30)
+    assert waited["out"]["ok"] and waited["out"]["result"]["timed_out"] is True
+    assert 3.5 <= waited["took"] < 15
+    assert seen and set(seen) == {0}, "the cooperative wait checks once per observation, never blocking in the engine"
+
+
+def test_a_wait_ends_with_a_real_stale_result_when_authority_goes_and_then_the_broker_is_unreachable(held,
+                                                                                                    monkeypatch):
+    p, wid, engine, broker = held
+    _fake_wait(engine, monkeypatch, [])
+    waited: dict = {}
+    thread = threading.Thread(target=lambda: waited.update(out=call("harness_wait", {"runs": ["R-INV-0009-1"]})))
+    thread.start()
+    time.sleep(0.5)
+    Engine.discover(p.root).lead_release(token=p.token, expect_rev=_rev(engine))  # the seat moves on, elsewhere
+    thread.join(30)
+    out = waited["out"]
+    assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority"
+    assert isinstance(out["revision"], int) and out["projection"]["subject"] == "project"  # it read committed state
+    with pytest.raises(AdapterInputError) as exc:
+        call("status", {})
+    assert exc.value.code == "BROKER_UNREACHABLE"  # not "stale": nothing about AEW's state is claimed
+
+
+def test_a_call_after_authority_moved_is_answered_once_then_the_bridge_closes(held):
+    p, wid, engine, broker = held
+    Engine.discover(p.root).lead_release(token=p.token, expect_rev=_rev(engine))
+    out = call("status", {})
+    assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority" and out["result"] is None
+    with pytest.raises(AdapterInputError) as exc:
+        call("status", {})
+    assert exc.value.code == "BROKER_UNREACHABLE"

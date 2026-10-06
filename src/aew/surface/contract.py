@@ -157,7 +157,7 @@ TOOLS: dict[str, Tool] = _catalog(
          _obj({"argv": _strings("the command and its arguments", min_items=1),
                "stdin": {"type": "string", "description": "text for an argument given as '-'"}},
               ("argv",)),
-         required_judgments=("undeclared",), mutates=True, status=DESIGNED, profiles=(RECOVERY,)),  # built in B
+         required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
     # ---- designed in F15.1, built by F15.2 over the StageIntent journal
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",

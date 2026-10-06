@@ -627,8 +627,9 @@ sections:
       (5) the Lead session''s usage is kept durably in cold history (the existing Lead history domain), the 32-entry ring
       being only its hot projection. **Design note (proposed 2026-10-05, its §8 asks eight decisions):** [cost-usage-ledger-design-v0.1.md](../design/proposals/cost-usage-ledger-design-v0.1.md)
       (ledger CUL): one normalized usage record per run, copied into control state at the Lead''s next transaction on the
-      invocation; trust labels; a project-owned price table with the derived cost computed at read; roll-ups as projections;
-      the Lead session''s own line; aew usage show, runs and lead'
+      invocation; trust labels; a project-owned price table applied through the adapter''s declared token semantics, the
+      derived cost computed at read under the pricing snapshot recorded at copy (revised 2026-10-05 after the designer''s
+      review); roll-ups as projections; the Lead session''s own line; aew usage show, runs and lead'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'

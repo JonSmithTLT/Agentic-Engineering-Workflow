@@ -54,7 +54,7 @@ export function JournalPacketHost({ name, record, associationId }: { name: strin
     if (originIndex.current !== null && now > originIndex.current) navigate(originIndex.current - now);
     else { const p = new URLSearchParams(params); for (const k of ['context_association', 'packet_tab', 'packet_section', 'packet_disposition', 'packet_cursor']) p.delete(k); p.set('panel', 'provenance'); setParams(p); }
   };
-  return <><CopyDashboardLink />{!project ? <p role="status">Waiting for project bootstrap…</p> : !association ? <><button onClick={back}>Return to Journal</button><p role="alert">Context association unavailable or binding mismatch. No packet request sent.</p></> : <VerifiedAssociationHost key={`${associationId}:${name}:${project}`} association={association} back={back} />}</>;
+  return <><p className="preview-note" role="note">Context association preview · PROVISIONAL · Fictional fixture; backend adoption pending.</p><div className="filter-bar"><CopyDashboardLink /></div>{!project ? <p role="status">Waiting for project bootstrap…</p> : !association ? <><button onClick={back}>Return to Journal</button><p role="alert">Context association unavailable or binding mismatch. No packet request sent.</p></> : <VerifiedAssociationHost key={`${associationId}:${name}:${project}`} association={association} back={back} />}</>;
 }
 function VerifiedAssociationHost({ association: a, back }: { association: ReuseAssociation; back: () => void }) {
   const binding = useMemo(() => a.target, [a]);

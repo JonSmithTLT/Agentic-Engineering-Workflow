@@ -34,3 +34,9 @@ The browser container used `--network none`, the explicit Chromium 1217 path, an
 ## Main-line handoff
 
 Use the [live runner command and private cookie-file interface](../how-to/authenticated-live-browser.md) from a separate tooling checkout against the actual packaged server. Record server/build/tooling commits, actual `BUILD.json`, asset hashes and platform results. Complete security negative controls, expiry/replacement, conditional requests, validator/scope isolation and authorized hostile-content tasks separately. Empty supplied collections leave detail coverage unexercised, explicitly recorded by the runner. Fixture regression PASS is not live acceptance. CI is configured to repeat the runner regression alongside the existing browser suites; its PR result is separate from this local evidence.
+
+## Publication secret scan
+
+Gitleaks 8.30.1 scanned the branch history from `ab990c781030f90655ceb205cde3e1ca2c7f460b` through `26c822b` before publication: six commits, no leaks after the repository's exact history-fingerprint exception. The one raw finding was `generic-api-key` at line 42 of the retained `offline-gate.log` in commit `f5a21be`; the entire line was verified as the public accepted API 0.1.2 SHA-256 emitted by the contract check. The exception records this precise commit/path/rule/line and rationale in `.gitleaksignore`; no broad rule or path exclusion was introduced.
+
+A separate directory scan of the exact final changed-file contents, with inline allow comments disabled, reported only that same public-digest line. It was checked against the canonical artifact and C0 pin. There were no credential findings. Reports were redacted; machine-specific scan paths are not published here. The Linux scanner archive was verified against the official release checksum before execution. The branch-history scan is repeated on the final documentation commit before pushing.

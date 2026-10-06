@@ -326,8 +326,10 @@ def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
     literal = re.compile(r'"((?:docs|web|eval)/[^"*?\n]+)"')
     parts = re.compile(r'"(docs|web|eval)"((?:\s*/\s*"[^"\n]+")+)')
     # Readers that run only in the core lanes, or never: the register tool is exercised by tests/unit/test_register.py
-    # (fast lane); eval/reviews holds archived review probes kept as they ran, which nothing executes.
-    core_only = {ROOT / "tools" / "register.py", ROOT / "tools" / "ci" / "tier.py"}
+    # and the frontend importer by tests/unit/test_dashboard_static.py (both fast lane); eval/reviews holds archived
+    # review probes kept as they ran, which nothing executes.
+    core_only = {ROOT / "tools" / "register.py", ROOT / "tools" / "ci" / "tier.py",
+                 ROOT / "tools" / "dashboard" / "import_build.py"}  # exercised by tests/unit/test_dashboard_static.py
     archived = ROOT / "eval" / "reviews"
     named: set[str] = set()
     for f in sources:

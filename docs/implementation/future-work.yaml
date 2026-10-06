@@ -981,12 +981,6 @@ sections:
       (accepted 2026-10-05) 5.5
     When: '**Unscheduled** (depends on available infrastructure)'
     Notes: Run by hand on the operator's VM today
-  - '#': E26
-    Work: Split the Windows serial nightly `reference` job instead of raising its timeout
-    Source: architecture review §4.1; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05) 5.6
-    When: '**M4 candidate**'
-    Notes: '|'
   - '#': E27
     Work: OpenTelemetry-shaped local spans for commands and runs
     Source: architecture review §4.1; [architecture review response](../design/architecture-review-response-2026-10-04.md)
@@ -1235,6 +1229,11 @@ sections:
     Was: GitHub Action majors behind (Node 20 runtimes; CodeQL Action v3 deprecated December 2026)
     Closed: '2026-10-01'
     By: 'The post-M3 cleanup: checkout v7, setup-python v7, upload-artifact v7, download-artifact v8, codeql-action v4'
+  - '#': E26
+    Was: The Windows serial nightly `reference` job, split instead of its timeout raised (it had grown to 150 minutes)
+    Closed: '2026-10-05'
+    By: 'Sharded: Linux 3 and Windows 6 serial shards (`--shard k/N`), each under a 60 minute timeout, and a `reference-assurance`
+      aggregate (`check_assurance.py`, now also failing on a missing shard) that `report` waits for (PR #70)'
   - '#': E29
     Was: Context packs reserve context in a fixed order (constraints; work, authority and guardrails; source and evidence;
       then optional recall), written into the pack generator before any recall exists

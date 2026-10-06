@@ -119,6 +119,7 @@ jobs:
             web/output/playwright-w04/
             web/output/playwright-w05/
             web/output/playwright-w06/
+            web/output/playwright-w07/
           if-no-files-found: ignore
           retention-days: 14
 

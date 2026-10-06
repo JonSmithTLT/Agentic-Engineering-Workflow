@@ -4508,7 +4508,9 @@
     "web/docs/design/plans/w07-reuse-trail.md",
     "web/docs/reviews/w07-reuse-plan-review.md",
     "web/docs/design/plans/w07-authorization.json",
-    "web/docs/design/w07-reuse.manifest.json"
+    "web/docs/design/w07-reuse.manifest.json",
+    "web/docs/reference/backend-questions/w07-backend-question-ledger.md",
+    "web/docs/reviews/w07-reuse-checkpoint-1.md"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

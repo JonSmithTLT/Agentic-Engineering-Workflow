@@ -43,7 +43,7 @@ Use W identifiers to distinguish these dashboard milestones from AEW Engine mile
 | W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | W04-01–03 frontend fixture review ACCEPT at 2808149; CI and operator merge separate |
 | W05 — Evidence and benchmark investigation | Read pinned artifacts; benchmark exploration deferred | W01, W02; W04-01 for paired comparisons | W05-01 accepted frontend fixtures; backend/live pending |
 | W06 — Execution investigation | Follow recorded events, fanout and execution receipts | W01, W02, W05-01; W04 context components where used | W06-01–03 implemented; independent fixture review pending |
-| W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | W07-02 first presentation-only checkpoint planned and independently reviewed; implementation/acceptance pending |
+| W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | W07-02 first presentation-only checkpoint implemented and independently code-reviewed; product fixture acceptance and backend/live adoption pending |
 | W08 — Operational obligations | Inspect supplied judgment, consequences and project aggregates | W01, W02; accepted F15/F17 or reviewed fixture proposals | Not proposed |
 | W09 — Portable investigation and evaluated experiments | Rehearse investigations and evaluate narrowly bounded extensions | Feature-specific prerequisites below | Not proposed |
 

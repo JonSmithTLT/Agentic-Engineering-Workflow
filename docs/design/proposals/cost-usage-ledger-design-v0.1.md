@@ -1,6 +1,6 @@
 # The cost and usage ledger: the design note for F25 (v0.1)
 
-- **Status:** **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8.
+- **Status:** **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8. **Revised 2026-10-05 after the designer's review** (REQUEST CHANGES: R1, R2, R3, R5, R6, R7, R9 and R10 kept; R4 and R8 revised): the reported counters are priced only after being mapped onto non-overlapping billable buckets (§5.3); a missing price is `unpriced`, never zero; a derived cost binds to an immutable pricing snapshot recorded at copy time, with the current-price figure a separate projection; an effective-model mismatch or mix is unpriced unless usage is partitioned per model; the Lead session's usage is archived into the existing cold lead history, the ring of 32 being only the hot projection (§5.7). **Second round (lead developer, 2026-10-05):** a Lead session's usage is its own `history/lead/` record written in its own commit, because one credential spans every session of a seat started without `--acquire` and a slot on the credential would overwrite them; and the semantics of the reported token counters are the adapter's declaration (`token_semantics`), pinned by the harness conformance tests, not a price-row setting (§5.3). Returned for adoption.
   Register F25 (absorbs U4 when built); ledger prefix CUL. Written by the lead developer of the main AEW repository.
   The build is a separate task after approval (the register's model split: this note by Fable, the build by Opus),
   and it waits for M4-D's open PRs (§6).
@@ -27,7 +27,9 @@
   categories, wall time, steps, the provider's reported cost when it exists, and a trust label for each of those.
 - One record per **Lead session** (U4): what the operator's own Lead TUI session used, kept apart from the units'
   work.
-- A **price table** the project owns, from which a derived cost is computed at read time and never stored as a fact.
+- A **price table** the project owns (flat prices per billable bucket), applied through the adapter's declared token
+  semantics, from which a derived cost is computed at read time under the pricing snapshot recorded when the run was
+  copied, and never stored as a fact.
 - **Roll-ups** from run to invocation to unit to parent, and to the project, as projections of the records, never as
   stored totals.
 - A **surface** to read them: `aew usage show`, `aew usage runs`, `--json`, and the same functions for F19's
@@ -95,6 +97,8 @@ status: ended_with_evidence       # the run's terminal status as observed when c
 requested: {provider: openai, model: gpt-6.1, effort: high, profile: implementer}   # the pin (ADR-0010)
 effective: [{provider: openai, model: gpt-6.1, effort: high}]                      # what ran (ADR-0009)
 model_check: match                # match | mismatch | effort_unreported | no_model_step | unreported
+tokens_by_model: null             # optional: [{provider, model, tokens: {…the same categories…}}] when the harness partitions usage per model; else null
+token_semantics: input_includes_cache_read_output_includes_reasoning   # the adapter's declaration of how the reported counters overlap, from knowledge pinned by the conformance tests; unknown when it cannot say
 wall_s: 412.6                     # started_at to the terminal status
 steps: 23                         # assistant messages (model calls) in the run's session
 tokens: {input: 184210, output: 9120, reasoning: 30011, cache_read: 151000, cache_write: 12000, unknown: 0}
@@ -133,10 +137,14 @@ harness gave every category AEW names, `partial` otherwise, `absent` when none. 
 when the harness gave a non-zero cost or a zero with zero tokens, `zero_with_tokens` when it reported `0` against
 non-zero tokens (the subscription-login case the M3 dogfood hit: the number is not a price), `absent` when it gave
 none. Roll-ups never add a `zero_with_tokens` or `absent` provider cost into a reported total; they count it as
-unpriced (R7). A derived cost (R4) is labelled by the price table's digest, never by a trust word, because its trust
-is the table's.
+unpriced (R7). A derived cost (R4) is labelled by the pricing snapshot's digest and the record's token semantics, never by a trust
+word, because its trust is the table's. `tokens` are the harness's **reported** counters, kept as reported: whether they
+overlap (a provider that counts cached tokens inside `input`, or reasoning tokens inside `output`) depends on the harness
+and its version as much as on the provider, so the **adapter** states it in `token_semantics`, from knowledge the harness
+conformance tests pin against the qualified harness version (R2); the record never guesses it, and no hand-edited price
+row carries it, because such a row would silently misprice after a harness upgrade.
 
-### 5.3 The price table and the derived cost
+### 5.3 The price table, the token semantics, the pricing snapshot and the derived cost
 
 **R4.** The project owns a price table, `policy/pricing.yaml`, schema `aew/pricing/v1`, pointed at by the manifest's
 `policy.pricing` (optional; a project without one has no derived cost, and every surface says `unpriced`):
@@ -146,19 +154,56 @@ schema: aew/pricing/v1
 currency: USD
 as_of: 2026-10-01
 source: "the provider's published list prices on the date above, as the operator recorded them"
-prices:                       # USD per million tokens, by `<provider>/<model>`; a missing category is 0
-  openai/gpt-6.1: {input: 2.0, output: 8.0, reasoning: 8.0, cache_read: 0.5, cache_write: 2.0}
-  openai/gpt-6.1-mini: {input: 0.4, output: 1.6, reasoning: 1.6, cache_read: 0.1, cache_write: 0.4}
+prices:                       # USD per million tokens, by `<provider>/<model>`, per billable bucket; nothing else
+  openai/gpt-6.1:      {input: 2.0, output: 8.0, cache_read: 0.5, cache_write: 2.0}
+  openai/gpt-6.1-mini: {input: 0.4, output: 1.6, cache_read: 0.1, cache_write: 0.4}
 ```
 
-The derived cost of a run is `Σ tokens[c] × prices[provider/model][c] / 1e6` over the categories, using the
-**effective** model when `model_check` is `match` and the **requested** one otherwise (with the derivation marked
-`estimated_on_requested_model`), and `null` with reason `unpriced_model` when the table has no row. It is computed
-at **read time** by every surface and never written into the record or into control state: a corrected price table
-corrects every past figure on the next read, and nothing in authority ever disagreed with a price. Every derived
-figure is reported with `pricing_sha256` (the table's digest), so the evaluation component's `pricing_snapshot_sha256`
-(EVC-14) is this digest, frozen by the preregistration's copy of the table. `aew init` writes no price table (it
-cannot know prices); `aew doctor` reports a missing one as INFO, a malformed one as ERROR.
+Four rules, each a correction the designer's review required (2026-10-05), the first restated after the lead
+developer's review of the revision (the same day):
+
+1. **Non-overlapping billing buckets, declared by the adapter, not by policy.** The harness's token categories are
+   *reported* counters and are not guaranteed to be mutually exclusive (cached tokens are a subset of `input` for some
+   providers; reasoning tokens sit inside `output` for some), and **how they overlap depends on the harness version
+   as much as on the provider**. That knowledge therefore lives where the harness is known: the adapter's
+   `normalize()` (R2) declares `token_semantics` in the record, one of a closed enumeration AEW defines in
+   `harness/usage.py` (`disjoint`, `input_includes_cache_read`, `input_includes_cache_read_output_includes_reasoning`,
+   `output_includes_reasoning`, `unknown`), chosen per provider from a mapping table pinned to the qualified harness
+   version by the harness conformance tests (the pinned OpenCode 2.0.18 OpenAPI fixture is one input; a harness
+   version with no pinned mapping yields `unknown`, never a guess). The derivation maps the reported categories onto
+   billable buckets by the record's declared semantics before any multiplication. `unknown` prices nothing
+   (`unpriced_token_semantics_unknown`); a mapping that would make a bucket negative (`cache_read` > `input`) prices
+   nothing (`unpriced_inconsistent_counters`). The price table carries **no** semantics: a hand-edited row cannot know
+   what a harness upgrade changed, and would silently misprice when it does. New semantics are a schema addition with
+   a conformance fixture, never a formula in policy.
+2. **A missing price is unpriced, never zero.** A row must price every bucket the record's semantics bills. A run with
+   a non-zero count in a bucket the row does not price is `unpriced` with reason `unpriced_category:<bucket>`; a zero
+   count in an unpriced bucket is fine. Nothing defaults to `0`: the `zero_with_tokens` lesson (R3) applies to prices
+   as much as to reported costs.
+3. **A derived cost binds to an immutable pricing snapshot.** The first time a table digest is used by a usage copy
+   (R5), the engine writes the table's exact bytes, content-addressed, to `.aew/pricing/<sha256>.yaml` (project
+   data beside `policy/`, immutable, never rewritten, never pruned; `aew doctor` checks that every digest a record
+   names is present and matches). Each copied usage carries `pricing_sha256`, the digest of the table in effect
+   **when AEW recorded the run**, or `null` when the project had none. A surface therefore computes and labels two
+   figures, both derived, neither stored: `estimated_at_record` (under the snapshot the record names: "what did we
+   estimate this run cost when we recorded it", reproducible for ever) and `estimated_under_current_prices` (under
+   `policy/pricing.yaml` as it is now: "what would these tokens cost today"). The evaluation component's
+   `pricing_snapshot_sha256` (EVC-14) is the snapshot digest the preregistration froze; its runs report the figure
+   under that snapshot. A corrected table changes `estimated_under_current_prices` on the next read and nothing
+   else; `estimated_at_record` never moves, and the usage facts are never rewritten.
+4. **A model mismatch or a model mix is unpriced unless usage is partitioned.** The derived cost uses the
+   **effective** model and only when the usage is attributable to one model: `model_check` is `match`, or
+   `effective` has one entry, or the harness partitioned the counters per model (`tokens_by_model`, optional in R1's
+   record and bounded by the same 8-entry cap), in which case each partition is priced on its own row and summed.
+   Otherwise the run is `unpriced` with reason `unpriced_effective_model_mix` (several effective models, counters not
+   partitioned) or `unpriced_model` (no row for the effective model). The requested model is **never** used to price
+   a run: a precise-looking estimate on a model that may not have been billed is worse than `unpriced`. A
+   provider-reported cost with `provider_cost_trust: reported` is shown beside the derived figure regardless.
+
+The derived cost of a priceable run is `Σ buckets[b] × prices[provider/model][b] / 1e6` over the billable buckets the
+record's `token_semantics` yields. It is computed at **read time** by every surface and never written into the record
+or into control state. `aew init` writes no price table (it cannot know prices); `aew doctor` reports a missing one as
+INFO, and a malformed one or a missing snapshot named by a record as ERROR.
 
 ### 5.4 Placement: the record lands in control state at the Lead's next transaction on the invocation
 
@@ -204,9 +249,12 @@ No surface sums a `missing` run into a total without saying how many it skipped.
 **R7.** `engine/usage_ops.py` computes, from the hot state plus whatever archived units a query names or the
 `recent` ring holds:
 
-- per **run**: the record, plus the derived cost and its `pricing_sha256`;
+- per **run**: the record, `pricing_sha256` as recorded at copy, `estimated_at_record` and
+  `estimated_under_current_prices` (each a figure or `unpriced` with its reason), and the provider-reported cost with its
+  trust label;
 - per **invocation**: the sum over its runs, with counts `runs`, `reported`, `provisional`, `missing`, `unpriced`,
-  `zero_with_tokens`; per model (`provider/model` from `effective`, or `requested` when unmatched). An invocation
+  `zero_with_tokens`, and the unpriced reasons tallied; per effective model (a mixed run counts under
+  `unpriced_effective_model_mix`, never under the requested model). An invocation
   with no runs is normal, not a gap: the custody invocations of M4-D3 (`integration_attempt`) never run a harness,
   and a dispatched invocation may not have launched yet. They are counted as `invocations_without_runs` at every
   level and contribute nothing else; no roll-up expects a run under every invocation;
@@ -215,22 +263,40 @@ No surface sums a `missing` run into a total without saying how many it skipped.
 - per **project**: the hot units plus the `recent` ring by default; `--all` walks the history index for archived
   units (bounded by `--since`/`--until`, newest first, as `aew history list` pages) and rehydrates them one at a time.
 
-Totals are never written back anywhere (not to control state, not to a cache file): a changed price table or a
-late-copied record changes the next read and nothing else. Wall time sums are labelled `wall_s_sum` (runs overlap;
+Totals are never written back anywhere (not to control state, not to a cache file): a changed price table changes
+`estimated_under_current_prices` on the next read and nothing else, and a late-copied record joins the next read. Wall time sums are labelled `wall_s_sum` (runs overlap;
 the sum is not elapsed time).
 
-### 5.7 The Lead session's usage (U4): its own ledger line, never summed into units
+### 5.7 The Lead session's usage (U4): its own ledger line, never summed into units, one cold record per session
 
 **R8.** `aew lead session` and `aew opencode` (the Lead broker) record the Lead session's usage when the session
-ends, as `aew/lead-session-usage/v1` (`session_label`, `generation`, `started_at`, `ended_at`, `tokens`,
-`tokens_trust`, `provider_cost_usd`, `provider_cost_trust`, `effective`, `source`), committed by the broker with the
-Lead credential it holds, as the broker's own transition `lead.session_usage`, into a bounded ring
-`state["lead"]["sessions"]` (the last 32; the `lead` record is schema-versioned for additions, ADR-0005). The source
-is OpenCode's own session data read by the broker after the TUI exits (U4's note: the standalone `session list` or
-`stats` output; the fields are a probe, §7). This transition is initiated by the broker process on exit, not by a
-model request: `lead.cli` through the bridge refuses `lead session_usage` as it refuses credential-emitting commands,
-so the Lead's model cannot write its own usage. The Lead's usage is reported beside the units' totals and never added
-to any unit, Ticket or parent: it is the operator's seat, not a unit's work.
+ends, as `aew/lead-session-usage/v1` (`session_label`, `generation`, `token_id`, `started_at`, `ended_at`, `tokens`,
+`tokens_trust`, `provider_cost_usd`, `provider_cost_trust`, `effective`, `token_semantics`, `source`,
+`pricing_sha256`), committed by the broker with the Lead credential it holds, as the broker's own transition
+`lead.session_usage`. That transition does two things in its one commit:
+
+- **Cold, the durable copy, one record per session:** it writes an immutable history record
+  `history/lead/NNNNNN.yaml` holding the usage object, through the same staged cold writer the lead archival uses
+  (`archive_ops._write_record`: staged in the commit's redo record, hashed, indexed by the history manifest as kind
+  `lead` with `links: {token, generation, session}`), numbered by the existing `lead_archive` counter. This is
+  *appended per session*, not attached to the credential: the usual seat is one `AEW_LEAD_TOKEN` in the operator's
+  shell that spans every session started without `--acquire` (harness conformance §3), so a slot on the credential
+  would be overwritten by each new session and nothing would reach the cold state until the seat changed, which is
+  exactly the history the designer's review protects (the lead developer's finding on the first revision, 2026-10-05).
+  The cold record is never discarded (ADR-0011); `aew usage lead --all` walks `aew history list --kind lead`,
+  selects the records of this schema, and sums every session ever recorded.
+- **Hot, a projection:** the bounded ring `state["lead"]["sessions"]` (the last 32; the `lead` record is
+  schema-versioned for additions, ADR-0005) for `resume`, `status` and `aew usage lead` without an archive walk. The
+  ring holds the same objects the cold records hold; it is never the only copy.
+
+No new history kind (`lead` exists), no new hot growth path (the ring is bounded), no change to `_lead_entry` (ended
+credentials are archived as before, now without any usage on them). The source is OpenCode's own session data read by
+the broker after the TUI exits (U4's note: the standalone `session list` or `stats` output; the fields are a probe, §7).
+This transition is initiated by the broker process on exit, not by a model request: `lead.cli` through the bridge
+refuses `lead session_usage` as it refuses credential-emitting commands, so the Lead's model cannot write its own usage.
+The Lead's usage is reported beside the units' totals and never added to any unit, Ticket or parent: it is the
+operator's seat, not a unit's work. Its derived cost follows R4 exactly (declared semantics, snapshot at record,
+mismatch unpriced).
 
 ### 5.8 Surfaces
 
@@ -253,17 +319,23 @@ table is the project's, dated and sourced).
 
 Additive edits, each with its own unit test:
 
-1. `harness/usage.py` (new): `normalize(raw_usage, raw_assistant, effective) -> usage_record`; the OpenCode adapter's
-   `collect()` fills `usage_record`; `base.py`'s docstring names it.
+1. `harness/usage.py` (new): `normalize(raw_usage, raw_assistant, effective, semantics) -> usage_record` and the closed
+   `TOKEN_SEMANTICS` enumeration; the OpenCode adapter's `collect()` fills `usage_record`, choosing `token_semantics` per
+   provider from its mapping table pinned to the qualified harness version (a version without a pinned mapping yields
+   `unknown`); `base.py`'s docstring names both; the harness conformance suite gains the mapping's fixture test.
 2. `harness/supervisor.py`: writes `result.usage_record` (one line beside the existing `result`).
-3. `schemas/control.schema.json`: `invocations.*.runs[]` declared; `usage` optional; `lead.sessions` optional ring;
-   `schemas/pricing.schema.json` (new); the manifest's optional `policy.pricing`.
+3. `schemas/control.schema.json`: `invocations.*.runs[]` declared; `usage` optional with `pricing_sha256` and
+   `token_semantics`; `lead.sessions` optional ring; `schemas/pricing.schema.json` (new: flat prices per billable bucket,
+   no semantics); `schemas/lead-session-usage.schema.json` (new, the cold record); the manifest's optional `policy.pricing`.
 4. `engine/usage_ops.py` (new): `copy_run_usage(state, inv_id, aew_root)` (R5's idempotent copy, called by the three
-   paths), the projections of R7, the price table reader and derivation (R4).
+   paths, which also records `pricing_sha256` and writes the content-addressed snapshot `.aew/pricing/<sha256>.yaml`
+   on first use), the projections of R7 with both derived figures, the price table reader, the bucket mapping by the
+   record's `token_semantics` and the derivation (R4).
 5. `engine/evidence_ops.py` (ingestion and `invoke cancel`), `engine/harness_ops.py` (relaunch), `engine/archive_ops.py`
    (the bundle finalizer): one call each to `copy_run_usage`.
-6. `engine/lead_ops.py` and `harness/lead_broker.py`: the `lead.session_usage` transition and the broker's exit hook;
-   the bridge's refusal of it from the model side.
+6. `engine/lead_ops.py` and `harness/lead_broker.py`: the `lead.session_usage` transition (one `history/lead/` record
+   through `archive_ops._write_record` plus the ring entry, in one commit) and the broker's exit hook; the bridge's
+   refusal of it from the model side; `archive_ops._lead_entry` untouched.
 7. `cli/usage_commands.py` (new) and its registration; `status_ops` gains the bounded summary.
 
 **Sequencing.** M4-D's open PRs change `engine/api.py`, `evidence_ops.py`, `archive_ops.py`, `lead_ops.py`,
@@ -277,9 +349,17 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
 - **Slice 1 (no engine collision):** `harness/usage.py` with fixtures from the pinned OpenCode OpenAPI (a session with
   all categories; one with `cost: 0` and tokens; one with no usage; a truncated paging run); the supervisor writing
   `result.usage_record`; `usage_ops` projections over hand-built states with every label and count exercised; the
-  price table schema, the derivation with `match` versus `mismatch` runs, `unpriced_model`, and the digest; property
-  test: for any set of runs, the unit total equals the sum of invocation totals equals the sum of run figures, and
-  the counts partition the runs.
+  price table schema (flat buckets; a row carrying semantics is refused), the adapter's `token_semantics` mapping pinned
+  against the 2.0.18 OpenAPI fixture in the harness conformance suite (a fixture of another version with no pinned
+  mapping yields `unknown`, and `unknown` is `unpriced_token_semantics_unknown`), each semantics value against
+  hand-computed figures including the overlap cases (cached inside input, reasoning inside output), a negative bucket
+  (`unpriced_inconsistent_counters`), a bucket with tokens and no price (`unpriced_category`), `match` versus
+  `mismatch` versus a partitioned `tokens_by_model` run (priced per partition) versus an unpartitioned mix
+  (`unpriced_effective_model_mix`, never the requested model), `unpriced_model`; the snapshot: the first copy under a
+  digest writes `.aew/pricing/<sha256>.yaml`, a second never rewrites it, a changed `policy/pricing.yaml` changes
+  `estimated_under_current_prices` and leaves `estimated_at_record` byte-identical, a missing snapshot is a doctor
+  ERROR; property test: for any set of runs, the unit total equals the sum of invocation totals equals the sum of run
+  figures, and the counts (including every unpriced reason) partition the runs.
 - **Slice 2 (after #60 and #65):** the three copy paths, each shown to copy exactly once and to write an `absent`
   record for a run without a usage record; **a usage copy derives no event** (the transition's typed events are
   empty for that invocation: no `run.added`, no `invocation.status`) and ADR-0012's oracle rules 24 to 26 hold across
@@ -292,8 +372,10 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
   rehydration reads it back; a custody invocation without runs rolls up as `invocations_without_runs`;
   `aew usage show` on a project driven to archival (the dashboard suite's world is reusable) equals the sum computed
   from the run directories while they exist, and still answers after `local/harness/runs` is deleted; `--all` pages
-  the archive; the Lead session's usage written at session end by the broker and refused through the bridge; the
-  bridge's refusal has a negative control.
+  the archive; the Lead session's usage written at session end by the broker as its own `history/lead/` record plus
+  the ring entry in one commit, refused through the bridge (with a negative control); **40 sessions in one seat without
+  `--acquire`** (one credential throughout) leave 40 cold records while the ring holds 32, and `aew usage lead --all`
+  sums all 40; `_lead_entry` archives the ended credential unchanged.
 - **Probe (before slice 2's Lead part):** OpenCode's standalone session or stats output after a TUI exit, on the
   pinned 2.0.18, to confirm which fields exist and whether cost is `0` under a subscription login (U4). Recorded with
   the design's evidence; if no readable source exists, the Lead line records `tokens_trust: absent` and says so.
@@ -306,15 +388,20 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
 1. **R5, placement:** usage copied into `inv.runs[].usage` at the Lead's next transaction on the invocation (ingest,
    cancel, relaunch, archival), never by the supervisor. Alternative: a supervisor-initiated engine operation at the
    run's end, which would reopen OBX-45.
-2. **R4, the derived cost is never stored:** computed at read from the project's dated price table and reported with
-   the table's digest. Alternative: freeze a derived figure into the record at copy time (simpler reads, but a price
-   correction then needs a migration and authority would hold a number that was never a fact).
+2. **R4, revised after the designer's review (2026-10-05):** the derived cost is never stored; it is computed at read
+   under the pricing snapshot recorded at copy (`estimated_at_record`, reproducible) and, separately, under today's
+   table (`estimated_under_current_prices`); priced only over the non-overlapping buckets the adapter's declared
+   `token_semantics` yields (pinned by the conformance tests, never a price-row setting); a missing price or unknown
+   semantics is `unpriced`, never zero; a model mismatch or mix is `unpriced` unless usage is
+   partitioned per model. Alternative rejected: freezing a dollar figure into the record (authority would hold a
+   number that was never a fact).
 3. **R3, the trust labels** and the rule that `zero_with_tokens` is unpriced, not free.
 4. **R7, roll-ups as projections**, including `--all` over the archive through the history index, and no stored
    totals.
-5. **R8, the Lead session's usage** as a broker-committed `lead.session_usage` transition into a bounded ring on the
-   `lead` record, refused from the model side, never summed into units. Alternative: no Lead line in v1 (U4 stays
-   open).
+5. **R8, revised after the designer's review (2026-10-05):** the Lead session's usage as a broker-committed
+   `lead.session_usage` transition that writes one `history/lead/` cold record per session (durable, never discarded)
+   **and** the bounded hot ring entry in the same commit; `aew usage lead --all` sums every session; refused from the
+   model side; never summed into units. Alternative: no Lead line in v1 (U4 stays open).
 6. **R9, the surface names** (`aew usage show|runs|lead`) and the one bounded summary in `aew status --json`.
 7. **R10, non-goals:** no budget refusal, no dashboard route, no pruning, no per-step records.
 8. **§6 sequencing:** slice 1 may start now; slice 2 after #60 and #65, coordinated with D6.

@@ -149,6 +149,25 @@ def walk(browser: Browser, ids: dict[str, str]) -> dict[str, Any]:
         security_headers(replay[1])
         browser.validators[path] = tag
         seen["api"].append(path)
+    # The detail pages behind the lists (PR #97 review, finding 1): the first record of each, read, validated and
+    # replayed like the rest, and its page deep-linked.
+    # (Archived evidence is listed by its work unit, as the Evidence page reads it.)
+    for listing in ("/runs", f"/evidence?work={ids['done']}", "/knowledge"):
+        items = browser.api(listing)[2]["data"]["items"]
+        assert items, f"the acceptance project has no {listing} records"
+        detail = f"{listing.split('?')[0]}/{items[0]['id']}"
+        status, headers, body = browser.api(detail)
+        assert status == 200, (detail, status, body)
+        assert CONTRACT.violations(CONTRACT.response_schema(contract_route(detail)), body) == [], detail
+        assert body["project_id"] == project["project_id"]
+        security_headers(headers)
+        replay = browser.get(f"/api/v1{detail}", headers={**FETCH, "If-None-Match": headers["etag"]})
+        assert replay[0] == 304 and replay[2] == b"", detail
+        browser.validators[detail] = headers["etag"]
+        seen["api"].append(detail)
+        status, _, page = browser.get(detail, headers=NAVIGATION)
+        assert status == 200 and page == index, detail  # its deep link reloads the frontend
+        seen["pages"].append(detail)
     status, _, body = browser.api("/attention")  # UNSUPPORTED until F15.1: the page shows the capability state
     assert status == 403 and body["reasons"][0]["code"] == "AWAITS_ACTION_PROJECTION"
     by_id = {u["id"]: u for u in browser.api("/work")[2]["data"]["items"]}
@@ -184,7 +203,7 @@ def test_the_product_end_to_end_through_one_session(world):
         browser.open(svc.issue())
         seen = walk(browser, world.ids)
         assert set(world.ids.values()) <= set(seen["work"]) | {world.ids["done"]}
-        assert len(seen["api"]) == 18 and len(seen["pages"]) >= 10
+        assert len(seen["api"]) == 21 and len(seen["pages"]) >= 13
     finally:
         svc.stop()
 
@@ -213,13 +232,15 @@ def test_a_session_expires_and_the_page_still_loads_to_say_so(world):
     try:
         browser = Browser(svc.url)
         browser.open(svc.issue())
-        assert browser.api("/overview")[0] == 200
+        status, headers, _ = browser.api("/overview")
+        tag = headers["etag"]  # a real validator, which matches while the session lives (PR #97 review, finding 2)
+        assert status == 200
+        assert browser.get("/api/v1/overview", headers={**FETCH, "If-None-Match": tag})[0] == 304
         clock.offset = timedelta(hours=2, seconds=1)
         status, headers, body = browser.api("/overview")
         assert status == 401 and body["code"] == "SESSION_EXPIRED"
         assert headers["set-cookie"].startswith(f"{S.COOKIE}=;")  # the dead cookie is removed
         security_headers(headers)
-        tag = browser.validators.get("/overview") or "*"
         assert browser.get("/api/v1/overview", headers={**FETCH, "If-None-Match": tag})[0] == 401  # no 304 either
         assert browser.get("/", headers=NAVIGATION)[0] == 200  # the frontend shows the session-required state
     finally:

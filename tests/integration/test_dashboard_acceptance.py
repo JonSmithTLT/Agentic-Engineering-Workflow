@@ -375,12 +375,24 @@ def test_the_real_cli_serves_the_product_end_to_end(world):
 
 # ------------------------------------------------------------------------------------------------- the browser handoff
 
+def _dacl(path: Path) -> str:
+    """A Windows file's DACL as SDDL (``icacls /save`` writes the path, then its descriptor, in UTF-16)."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        saved = Path(d) / "acl.txt"
+        subprocess.run(["icacls", str(path), "/save", str(saved)], check=True, capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+        sddl = saved.read_bytes().decode("utf-16").splitlines()[1].strip()
+    return sddl[sddl.index("D:"):] if "D:" in sddl else sddl
+
+
 def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothing(tmp_path, monkeypatch):
     """The file is created owner-only (POSIX 0600; Windows a protected DACL naming the user's SID alone, set at
     creation, so the CI runner's default-DACL entries never appear) and written through that handle; a failure while
     creating or writing leaves no file (PR #97 review A1-A4)."""
     import importlib.util
-    import subprocess
 
     spec = importlib.util.spec_from_file_location("session_file", ROOT / "tools/dashboard/session_file.py")
     assert spec and spec.loader
@@ -390,13 +402,8 @@ def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothi
     tool.write_private(out, '{"secret": 1}\n')
     assert out.read_text(encoding="utf-8") == '{"secret": 1}\n'
     if IS_WINDOWS:
-        acl = subprocess.run(["icacls", str(out)], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
-                             ).stdout.decode("oem", "replace")
-        grants = [ln for ln in acl.splitlines()[:-2] if ":(" in ln]
-        assert len(grants) == 1 and os.environ["USERNAME"].lower() in grants[0].lower(), acl
-        assert "(I)" not in acl and "(F)" in grants[0], acl
-        sid = tool.user_sid()
-        assert sid.startswith("S-1-5-"), sid
+        # The guarantee itself, for any account: a protected DACL whose one entry gives the user's SID full access.
+        assert _dacl(out) == f"D:P(A;;FA;;;{tool.user_sid()})", _dacl(out)
     else:
         assert out.stat().st_mode & 0o777 == 0o600
     # Failures leave nothing: before the file exists, and while writing through the handle.
@@ -423,6 +430,20 @@ def test_the_session_file_is_owner_only_from_creation_and_a_failure_leaves_nothi
         tool.write_private(gone, "secret")
     assert not gone.exists()
     monkeypatch.setattr(tool.os, "fdopen", real_fdopen)
+    if IS_WINDOWS:  # the handle made but not converted: closed, and the file goes (PR #97 re-review B1)
+        import msvcrt
+
+        sid = tool.user_sid()  # read first: subprocess uses open_osfhandle for its pipes
+        monkeypatch.setattr(tool, "user_sid", lambda: sid)
+
+        def no_fd(handle, flags):
+            raise OSError("no descriptor")
+
+        monkeypatch.setattr(msvcrt, "open_osfhandle", no_fd)
+        with pytest.raises(OSError, match="no descriptor"):
+            tool.write_private(gone, "secret")
+        monkeypatch.undo()
+        assert not gone.exists()
 
 
 def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, monkeypatch, capsys):
@@ -430,7 +451,6 @@ def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, 
     agreed format, owner-only, and the credential is never printed."""
     import importlib.util
     import io
-    import subprocess
 
     spec = importlib.util.spec_from_file_location("session_file", ROOT / "tools/dashboard/session_file.py")
     assert spec and spec.loader
@@ -449,11 +469,7 @@ def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, 
         browser.cookie = record["cookie"]["value"]
         assert browser.api("/project")[0] == 200  # the file holds a live session
         if IS_WINDOWS:
-            acl = subprocess.run(["icacls", str(out)], capture_output=True, text=True,
-                                 creationflags=subprocess.CREATE_NO_WINDOW).stdout
-            grants = [ln for ln in acl.splitlines()[:-2] if ":(" in ln]
-            assert len(grants) == 1 and os.environ["USERNAME"].lower() in grants[0].lower(), acl
-            assert "(I)" not in acl  # nothing inherited
+            assert _dacl(out) == f"D:P(A;;FA;;;{tool.user_sid()})", _dacl(out)  # the user's SID alone, protected
         else:
             assert out.stat().st_mode & 0o777 == 0o600
         monkeypatch.setattr(sys, "stdin", io.StringIO(svc.url + "/session/" + "x" * 43 + "\n"))

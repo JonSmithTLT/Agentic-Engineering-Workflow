@@ -118,6 +118,7 @@ def _create_owner_only_nt(path: Path) -> int:  # pragma: windows-only
                        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
     create.restype = wintypes.HANDLE
     kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     sd = ctypes.c_void_p()
     if not to_sd(f"D:P(A;;FA;;;{user_sid()})", 1, ctypes.byref(sd), None):  # SDDL_REVISION_1
         raise OSError(ctypes.get_last_error(), "could not build the session file's security descriptor")
@@ -129,7 +130,12 @@ def _create_owner_only_nt(path: Path) -> int:  # pragma: windows-only
         kernel.LocalFree(sd)
     if handle is None or handle == wintypes.HANDLE(-1).value:
         raise OSError(ctypes.get_last_error(), f"could not create {path} owner-only")
-    return msvcrt.open_osfhandle(handle, os.O_WRONLY)
+    try:
+        return msvcrt.open_osfhandle(handle, os.O_WRONLY)
+    except BaseException:  # the handle is still ours: close it, so the file can go (PR #97 re-review B1)
+        kernel.CloseHandle(handle)
+        path.unlink(missing_ok=True)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

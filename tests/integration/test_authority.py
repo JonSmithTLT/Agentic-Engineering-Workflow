@@ -70,6 +70,66 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     assert project.ok("status", "--json")["contradictions"] == []
 
 
+def _doctor(project: Project, name: str) -> dict:
+    return next(c for c in project.aew("doctor", "--json").json["checks"] if c["check"] == name)  # FAIL exits 1
+
+
+@pytest.mark.parametrize("edit", ["edit", "delete"])
+def test_a_policy_file_changed_outside_aew_refuses_every_lead_write_until_adopted(project, edit):
+    """The manifest pin alone left gates, guardrails, checks and execution policy editable outside AEW with no record
+    (M4 area-5 review, note 6): a loosened gates.yaml changed what a Ticket owes silently. Every policy file is pinned
+    now, an edit or a removal is refused like a manifest edit, and only a recorded `manifest adopt` accepts it."""
+    assert _doctor(project, "policy-pin")["status"] == "PASS"
+    path = project.root / ".aew/policy" / ("gates.yaml" if edit == "edit" else "execution.yaml")
+    if edit == "edit":
+        path.write_bytes(path.read_bytes() + b"# loosened outside AEW\n")
+    else:
+        path.unlink()
+    rel = f"policy/{path.name}"
+    before = control_bytes(project)
+    res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
+    assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR", res.stderr
+    assert f".aew/{rel}" in res.error["message"] and "manifest adopt" in res.error["message"]
+    assert res.error["details"]["files"] == [rel] and control_bytes(project) == before
+    assert any(rel in c for c in project.ok("status", "--json")["contradictions"])
+    assert _doctor(project, "policy-pin")["status"] == "FAIL"
+    adopted = project.lead("manifest", "adopt", "--reason", "reviewed by the operator")
+    assert adopted["adopted"] == [rel]
+    assert project.ok("status", "--json")["contradictions"] == []
+    assert _doctor(project, "policy-pin")["status"] == "PASS"
+    project.lead("checkpoint", "--next", "y")
+    res = project.aew("manifest", "adopt", "--reason", "again", "--token", project.token,
+                      "--expect-rev", str(project.rev()))
+    assert res.error["code"] == "ILLEGAL_TRANSITION" and "nothing to adopt" in res.error["message"]
+
+
+def test_an_invalid_policy_file_is_never_pinned(project):
+    gates = project.root / ".aew/policy/gates.yaml"
+    gates.write_text("waivable_gates: 5\n", encoding="utf-8")
+    before = control_bytes(project)
+    res = project.aew("manifest", "adopt", "--reason", "x", "--token", project.token,
+                      "--expect-rev", str(project.rev()))
+    assert res.returncode != 0 and res.error["code"] != "ILLEGAL_TRANSITION", res.stderr
+    assert control_bytes(project) == before
+
+
+def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(project):
+    from invariants import load_control
+
+    from aew.engine.store import serialize_control
+
+    state = load_control(project.root)
+    del state["policy_sha256"]
+    (project.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    assert _doctor(project, "policy-pin")["status"] == "WARN"
+    project.lead("checkpoint", "--next", "x")  # unpinned is not drift: nothing is refused
+    adopted = project.lead("manifest", "adopt", "--reason", "pin the reviewed policy")
+    assert adopted["adopted"] == []
+    assert set(load_control(project.root)["policy_sha256"]) == {
+        "policy/checks.yaml", "policy/execution.yaml", "policy/gates.yaml", "policy/guardrails.yaml"}
+    assert _doctor(project, "policy-pin")["status"] == "PASS"
+
+
 # ------------------------------------------------------------------ credentials
 
 

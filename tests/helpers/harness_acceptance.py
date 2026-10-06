@@ -145,6 +145,7 @@ def route_reviewers(lab: HarnessLab, profile: dict[str, Any]) -> None:
     policy["profiles"]["review"] = profile
     policy["routing"]["archetypes"]["reviewer"] = "review"
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()  # routing set up before the scenario, not an edit under test
 
 
 def tokens(lab: HarnessLab) -> dict[str, Any]:

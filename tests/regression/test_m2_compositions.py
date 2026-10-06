@@ -379,6 +379,7 @@ def test_the_m2_oracle_rules_are_not_vacuous(tmp_path):
     gates = p.root / ".aew/policy/gates.yaml"
     policy = load_yaml(gates.read_text(encoding="utf-8"), source="gates")
     gates.write_text(dump_yaml({**policy, "non_mutating_concurrency": 1}), encoding="utf-8", newline="\n")
+    p.pin_policy()
     assert cap_violations(p.root, state) == []  # one active executor is within a cap of one
     over = copy.deepcopy(state)
     over["invocations"]["INV-9999"] = dict(over["invocations"][out["invocation"]], work_unit=survey)

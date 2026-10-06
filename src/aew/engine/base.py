@@ -37,10 +37,23 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue")
 
 
+# Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
+# before them, which `aew manifest adopt` pins.
+POLICY_PINS = "policy_sha256"
+
+
+def policy_files(manifest: dict[str, Any]) -> list[str]:
+    """The policy files a manifest puts in force, as paths under ``.aew``: every ``policy`` entry, and the execution
+    policy at its conventional path when the manifest names none (``aew.policy.execution.policy_path``)."""
+    named = manifest.get("policy") or {}
+    return sorted({*named.values(), named.get("execution") or X.REL_PATH})
+
+
 def as_v1(state: dict[str, Any]) -> dict[str, Any]:
     """A v1 view of a control state: the schema says v1 and every v2-only key is gone. For fixtures and tools that
-    build a v1 project from `aew init`, never for migration (v1 to v2 only)."""
-    return {k: v for k, v in state.items() if k not in V2_ONLY_KEYS} | {"schema": V1}
+    build a v1 project from `aew init`, never for migration (v1 to v2 only). The policy pins go too: a v1 project
+    predates them (a v1 project may gain them later, through `aew manifest adopt`)."""
+    return {k: v for k, v in state.items() if k not in (*V2_ONLY_KEYS, POLICY_PINS)} | {"schema": V1}
 # What a Lead may still do on a v1 project (ADR-0011; implementation plan §3): change the seat, end work in flight (a
 # live run blocks the migration), and adopt a changed manifest (the migration checks the pin). Everything else waits
 # for `aew migrate`, so a v1 project is never refused before the command that clears the refusal exists.
@@ -212,12 +225,33 @@ class Kernel:
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return sha256_file(self.aew_root / MANIFEST) == state["manifest_sha256"]
 
+    def policy_pins(self, manifest: dict[str, Any] | None = None) -> dict[str, str | None]:
+        """The sha256 of every policy file ``project.yaml`` names, and of the execution policy at its conventional path
+        when the manifest names none; ``None`` for a file that does not exist (the execution policy is optional)."""
+        return {rel: sha256_file(self.aew_root / rel) if (self.aew_root / rel).is_file() else None
+                for rel in policy_files(self.manifest if manifest is None else manifest)}
+
+    def policy_pin_drift(self, state: dict[str, Any]) -> list[str] | None:
+        """The policy files that differ from their pins in control state, or ``None`` for a project whose policy files
+        were never pinned (initialized before the pin; ``aew manifest adopt`` pins them). The manifest pin alone left
+        gates, guardrails, checks and execution policy editable outside AEW, unrecorded (M4 area-5 review, note 6)."""
+        pinned = state.get(POLICY_PINS)
+        if pinned is None:
+            return None
+        current = self.policy_pins()
+        return sorted(rel for rel in pinned.keys() | current.keys() if pinned.get(rel) != current.get(rel))
+
     def check_manifest_pin(self, state: dict[str, Any]) -> None:
         if not self.manifest_pin_ok(state):
             raise IntegrityError(
                 f"{AEW_DIR}/{MANIFEST} was modified outside AEW; review the change and run "
-                "`aew manifest adopt` (Lead) to accept it",
+                "`aew manifest adopt` to accept it",
             )
+        drift = self.policy_pin_drift(state)
+        if drift:
+            raise IntegrityError(
+                f"policy file(s) {', '.join(f'{AEW_DIR}/{rel}' for rel in drift)} modified outside AEW; the operator "
+                "reviews the change and runs `aew manifest adopt` at their own terminal to accept it", files=drift)
 
     def workspaces_root(self) -> Path:
         raw = Path(self.manifest.get("workspaces", {}).get("root", f"../.aew-workspaces/{self.project_id}"))

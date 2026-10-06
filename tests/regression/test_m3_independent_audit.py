@@ -259,6 +259,7 @@ def _redefine_check(p, check_id: str, **changes) -> None:
     data = _yaml.safe_load(policy.read_text(encoding="utf-8"))
     data["checks"][check_id].update(changes)
     policy.write_text(_yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+    p.adopt_policy()
 
 
 def _unit_check(p, wid: str) -> dict:

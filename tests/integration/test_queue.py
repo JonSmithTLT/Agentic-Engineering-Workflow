@@ -27,6 +27,7 @@ def _concurrency(p, cap):
     gates = p.root / ".aew/policy/gates.yaml"
     gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": cap}),
                      encoding="utf-8", newline="\n")
+    p.pin_policy()
 
 
 def _own_change(i):
@@ -325,6 +326,7 @@ def _max_publish_paths(p, n):
     gates = p.root / ".aew/policy/gates.yaml"
     gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "max_publish_paths": n}),
                      encoding="utf-8", newline="\n")
+    p.pin_policy()
 
 
 def test_a_candidate_refused_at_admission_never_holds_up_an_independent_entry(tmp_path):

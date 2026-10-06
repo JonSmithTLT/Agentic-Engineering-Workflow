@@ -22,6 +22,8 @@ class StatusViews:
         found = []
         if not self.k.manifest_pin_ok(state):
             found.append("project.yaml does not match its pinned hash (modified outside AEW)")
+        found += [f"policy file {rel} does not match its pinned hash (modified outside AEW)"
+                  for rel in self.k.policy_pin_drift(state) or []]
         for wid, unit in sorted(state["work"].items()):
             record = self.k.aew_root / unit["record"]
             if sha256_file(record) != unit["record_sha256"]:

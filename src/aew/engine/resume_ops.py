@@ -87,8 +87,8 @@ class Resume:
         try:
             unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:
-                actions.append(f"configure checks {unconfigured} in policy/checks.yaml "
-                               "(gates needing them stay blocked)")
+                actions.append(f"configure checks {unconfigured} in policy/checks.yaml (gates needing them stay "
+                               "blocked); the operator then accepts the edit with `aew manifest adopt`")
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())

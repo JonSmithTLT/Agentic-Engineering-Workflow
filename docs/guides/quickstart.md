@@ -21,7 +21,12 @@ cd <repo>                       # the main worktree, on the authoritative branch
 aew init                        # discovers authority *candidates*; confers no authority
 $EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
 aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
+aew manifest adopt --reason "configured the test command" --token <credential> --expect-rev 1
 ```
+
+The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
+you review it and run `aew manifest adopt` (a recorded decision). A Lead session cannot adopt, so the Lead can never
+approve a policy change it made.
 
 Hand the credential to the Lead session (for example in its environment as `AEW_LEAD_TOKEN`). It is never written to disk.
 A command that issues a credential writes it only to your terminal, never to standard output, and the JSON result says

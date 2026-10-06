@@ -157,6 +157,7 @@ def test_non_mutating_concurrency_policy_is_enforced_at_dispatch(tmp_path):
     gates = load_yaml(gates_path.read_text(encoding="utf-8"), source="gates")
     gates["non_mutating_concurrency"] = 1
     gates_path.write_text(dump_yaml(gates), encoding="utf-8", newline="\n")
+    p.pin_policy()
     a = create_investigation(p, tmp_path, title="A")
     b = create_investigation(p, tmp_path, title="B")
     dispatch(p, a)

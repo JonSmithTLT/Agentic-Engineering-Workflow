@@ -216,6 +216,7 @@ def _cap_nonmutating_concurrency(p, cap):
     gates = load_yaml(policy.read_text(encoding="utf-8"), source="gates")
     gates["non_mutating_concurrency"] = cap
     policy.write_text(dump_yaml(gates), encoding="utf-8")
+    p.pin_policy()
 
 
 def test_redispatch_respects_nonmutating_concurrency_after_ingest(tmp_path):

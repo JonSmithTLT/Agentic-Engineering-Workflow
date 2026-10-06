@@ -35,6 +35,16 @@
     "manifest_sha256": {
       "$ref": "#/$defs/sha256"
     },
+    "policy_sha256": {
+      "description": "The pin of every policy file project.yaml puts in force, by path under .aew; null for an absent optional file. Absent in a project initialized before the pin.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {"$ref": "#/$defs/sha256"},
+          {"type": "null"}
+        ]
+      }
+    },
     "lead": {
       "type": "object",
       "required": [

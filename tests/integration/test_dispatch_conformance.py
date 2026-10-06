@@ -235,6 +235,7 @@ def test_an_allow_is_never_reused_after_policy_changes(tmp_path):
     policy = load_yaml(guardrails.read_text(encoding="utf-8"))
     policy["protected_paths"] = [*policy["protected_paths"], "tests/test_core.py"]
     guardrails.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.adopt_policy()
     rev = p.rev()
     res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(rev))
     assert res.returncode == 5 and res.error["code"] == "DISPATCH_REFUSED"

@@ -67,6 +67,16 @@ def test_operator_only_commands_are_refused_and_read_only_commands_are_not_relay
     assert lead_broker.refuses_locally(_ns("status")) is None  # read-only: runs locally, holds no authority
 
 
+def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_validate_is_reachable():
+    """M4-D5: resetting the validation breaker is the operator's, confirmed at their terminal; validating a candidate
+    is the Lead's."""
+    refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed", "--token", "x",
+                                              "--expect-rev", "1"))
+    assert refusal and "confirmed by the operator" in refusal and "credential" not in refusal
+    assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001", "--token", "x",
+                                           "--expect-rev", "1")) is None
+
+
 def test_the_typed_surfaces_transports_are_never_relayed(monkeypatch):
     monkeypatch.setenv(lead_broker.ENV_ENDPOINT, r"\\.\pipe\nowhere")
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)

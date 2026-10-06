@@ -216,3 +216,19 @@ def test_the_import_writes_the_build_and_its_record(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         tool.main([str(dist), "--source-commit", head, "--builder-image", "latest", "--node", "v22",
                    "--npm", "10", "--built-at", "2026-10-06T00:00:00Z"])  # a mutable image name is refused
+
+
+def test_build_json_matches_the_web_build_agreement():
+    """``web/docs/reference/f20-production-baseline.md`` is the operator-approved baseline (web agent, 2026-10-05):
+    every identity it records is the one ``BUILD.json`` binds, so a rebuild from another commit, toolchain or
+    lockfile fails here until a new baseline is agreed."""
+    agreement = (ROOT / "web/docs/reference/f20-production-baseline.md").read_text(encoding="utf-8")
+    table = dict(re.findall(r"^\| ([^|]+?) \| `?([^|`]+?)`? \|$", agreement, re.M))
+    record = build()
+    assert table["Frontend source commit"] == record["source"]["commit"] == AGREED_COMMIT
+    assert table["Repository tree"] == record["source"]["tree"]
+    assert table["Frontend subtree"] == record["source"]["web_tree"]
+    assert table["Contract SHA-256 at that commit"] == record["contract"]["sha256"]
+    assert record["inputs"]["web/package-lock.json"] in agreement and record["inputs"]["web/package.json"] in agreement
+    assert table["Pinned builder image"] == record["builder"]["image"]
+    assert table["Toolchain"] == f"Node {record['builder']['node'].lstrip('v')} / npm {record['builder']['npm']}"

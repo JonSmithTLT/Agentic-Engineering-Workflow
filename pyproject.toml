@@ -39,6 +39,7 @@ where = ["src"]
 "aew.schemas" = ["*.json"]
 "aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]
 "aew.templates" = ["*.md", "*.yaml"]
+"aew.dashboard" = ["static/*.html", "static/*.svg", "static/BUILD.json", "static/assets/*"]
 
 # Static checks (testing-and-ci-strategy.md, "Static checks"): Ruff and Pyright gate merges through `assurance`.
 [tool.ruff]

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 from aew import operator
@@ -34,6 +36,9 @@ def register(sub: argparse._SubParsersAction) -> None:
                         "occupied port is an error, never a silent move to another port")
     q.add_argument("--session-hours", type=int, default=DEFAULT_HOURS,
                    help=f"how long a browser session lasts, {MIN_HOURS} to {MAX_HOURS} (default {DEFAULT_HOURS})")
+    q.add_argument("--static", type=Path, metavar="DIR",
+                   help="serve this unpacked production build of the frontend instead of the packaged one (the web "
+                        "agent's local runs; acceptance uses the packaged build)")
     _add_json(q)
     q.set_defaults(handler=_serve)
 
@@ -65,14 +70,21 @@ def _serve(a: argparse.Namespace) -> None:
         raise UsageError(f"--session-hours is {MIN_HOURS} to {MAX_HOURS}")
     if not 0 <= a.port <= 65535:
         raise UsageError("--port is 0 to 65535")
+    static = a.static
+    if static is not None and not (static / "index.html").is_file():
+        raise UsageError(f"--static {static} holds no index.html: not a production build of the frontend")
     engine = _engine(a)
-    svc = service.Service(engine, port=a.port, hours=a.session_hours, console=console)
+    svc = service.Service(engine, port=a.port, hours=a.session_hours, console=console, static_root=static)
     try:
         operator.authorize(f"START the read-only dashboard of project {svc.project_id} on {svc.url} and ISSUE a "
                            f"browser session of {a.session_hours} h")
     except BaseException:
         svc.close()
         raise
+    log = logging.StreamHandler(sys.stderr)  # the request log (R23): method, redacted path, status, milliseconds
+    log.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%dT%H:%M:%S"))
+    logging.getLogger("aew.dashboard").addHandler(log)
+    logging.getLogger("aew.dashboard").setLevel(logging.INFO)
     svc.start()
     url = svc.issue()
     to_stdout = bool(getattr(a, "print_credential", False))

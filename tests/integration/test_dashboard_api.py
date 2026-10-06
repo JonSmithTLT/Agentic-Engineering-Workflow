@@ -442,8 +442,10 @@ def test_unknown_routes_and_methods_are_refused(world):
     assert world.server is not None
     conn = http.client.HTTPConnection("127.0.0.1", world.server.port, timeout=30)
     try:
-        conn.request("GET", "/index.html")
-        assert conn.getresponse().status == 404
+        conn.request("GET", "/index.html")  # the frontend since F20.5; an API route is never a file
+        resp = conn.getresponse()
+        resp.read()
+        assert resp.status == 200 and resp.getheader("Content-Type").startswith("text/html")
     finally:
         conn.close()
     conn = http.client.HTTPConnection("127.0.0.1", world.server.port, timeout=30)
@@ -451,7 +453,7 @@ def test_unknown_routes_and_methods_are_refused(world):
         conn.request("POST", "/api/v1/project", body=b"{}", headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
         resp.read()
-        assert resp.status in (405, 501)  # http.server answers 501 for a method the handler does not implement
+        assert resp.status == 405 and resp.getheader("Allow") == "GET, HEAD"  # F20.5: never stdlib's 501
     finally:
         conn.close()
 

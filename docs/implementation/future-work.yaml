@@ -487,7 +487,10 @@ sections:
       it (renewed C0 review), and the dashboard then draws an honest timeline. Until then the dashboard does not assemble
       one from other timestamps (run times, completion). **Lead developer (2026-10-05, PR #57):** when F28 is built the
       run label''s `network` becomes an object (`mode`, `provider_relay`, `egress_allow`), so the dashboard contract needs
-      a note for the web developer; a contract change renews C0.'
+      a note for the web developer; a contract change renews C0. **Main line (2026-10-05, F20.5 browser check):** the engine''s
+      terminal integration status `integrated` is not among `Integration.status`''s `x-known-values` (prepared, publishing,
+      conflict, superseded), so the Work page shows it as an unknown value with a warning, as the contract says it must;
+      adding it is a contract change (renewed C0), for the web developer to schedule.'
   - '#': F20.2
     Work: 'Read-only API and conformance: serve the accepted GET/HEAD projections of contract 0.1.2 with bounded cursors
       and filters, and validate every response against the contract in Python tests'
@@ -521,15 +524,6 @@ sections:
       as W01 behaves; any envelope or revision change changes the validator, so it never gets a 304. **Design note (approved
       with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
       §4.12, §5.3: the validator excludes `generated_at` and includes the request scope'
-  - '#': F20.5
-    Work: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
-      CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only (an SSH tunnel
-      for a remote host)'
-    Source (governing): '`web/docs/reference/integration-checklist.md`'
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.2 and F20.3'
-    Notes: '**Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §4.13, §4.14, §5.4: the committed static build with `BUILD.json`, the exact header set, Host and Origin rules, request
-      bounds'
   - '#': F20.6
     Work: 'Integrated acceptance: the browser and security checks against authenticated live state, recorded separately
       from the frontend''s acceptance'
@@ -1325,6 +1319,15 @@ sections:
     Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
     Closed: '2026-10-03'
     By: 'PR #26'
+  - '#': F20.5
+    Was: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
+      CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only'
+    Closed: '2026-10-05'
+    By: 'PR #TBD: the frontend built from `4f0a710` (agreed with the web developer and the operator) by the pinned offline
+      builder and committed under `src/aew/dashboard/static/` with `BUILD.json` (`tools/dashboard/import_build.py`); `aew.dashboard.frontend`
+      (the SPA fallback, traversal refused); R21''s header set on every response; the exact Host (`421`) and Origin and
+      `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request
+      log; `serve --static DIR`; design note §4.13, §4.14, §5.4'
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error
     Closed: '2026-10-01'

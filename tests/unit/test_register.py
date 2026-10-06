@@ -188,3 +188,22 @@ def test_items_stay_in_order_and_one_row_has_one_item():
     assert any(f"{due['items'][0]['row']} has 2 items" in p for p in register.due_problems(DATA, due))
     assert register.DUE_ORDER.index("M4-D") < register.DUE_ORDER.index("Gate: before F15.2 ships") \
         < register.DUE_ORDER.index("M4-E")  # docs/README.md's order (review, 3)
+
+
+def test_an_incomplete_item_still_counts_as_its_rows_item():
+    """PR #104 re-review, B: the missing field is the one problem; the question is not also reported as uncovered."""
+    due = copy.deepcopy(DUE)
+    next(i for i in due["items"] if i["row"] == "Q12").pop("what")
+    problems = register.due_problems(DATA, due)
+    assert any("(Q12): missing what" in p for p in problems) and not any("Q12 is an open question" in p
+                                                                         for p in problems), problems
+
+
+def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
+    """PR #104 re-review, A: a decisions-due problem never claims the register's markdown is stale."""
+    due = copy.deepcopy(DUE)
+    due["items"][0]["due"] = "M4-I"
+    monkeypatch.setattr(register, "load_due", lambda: due)
+    assert register.main(["check"]) == 1
+    out = capsys.readouterr().out
+    assert "due is one of" in out and "future-work.md differs" not in out, out

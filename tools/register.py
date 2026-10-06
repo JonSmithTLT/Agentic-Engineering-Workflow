@@ -272,6 +272,8 @@ def due_problems(data: dict[str, Any], due: dict[str, Any]) -> list[str]:
         out.append(f"{DUE_YAML.name} is not in (due, row) order: run `python tools/register.py render`")
     for n, item in enumerate(items, 1):
         where = f"{DUE_YAML.name} item {n} ({item.get('row', '?')})"
+        if item.get("row"):
+            own[item["row"]] += 1  # an incomplete item is still that row's item (review of PR #104, B)
         missing = [k for k in ("row", "needs", "owner", "due", "what") if not item.get(k)]
         if missing:
             out.append(f"{where}: missing {', '.join(missing)}")
@@ -289,7 +291,6 @@ def due_problems(data: dict[str, Any], due: dict[str, Any]) -> list[str]:
             out.append(f"{where}: owner is one of {', '.join(OWNERS)}")
         if item["due"] not in DUE_ORDER:
             out.append(f"{where}: due is one of {', '.join(DUE_ORDER)}")
-        own[item["row"]] += 1
         blocked_by_an_item |= set(item.get("blocks") or [])
     out += [f"{DUE_YAML.name}: {row} has {n} items; one row, one item" for row, n in sorted(own.items()) if n > 1]
     for r in rows(data):
@@ -370,7 +371,9 @@ def main(argv: list[str] | None = None) -> int:
         for p in problems(data) + due_problems(data, due):
             print("problem:", p)
         return 0
-    ok = render_markdown(data) == MD.read_text(encoding="utf-8")
+    ok = md_ok = render_markdown(data) == MD.read_text(encoding="utf-8")
+    if not md_ok:  # each line names what is out of step, never the register for a decisions-due problem (PR #104, A)
+        print(f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders")
     for problem in due_problems(data, due):  # first: a malformed item is named, not a crash in the renderer
         ok = False
         print("problem:", problem)
@@ -380,8 +383,7 @@ def main(argv: list[str] | None = None) -> int:
     if dump(data) != YAML.read_text(encoding="utf-8"):
         ok = False
         print(f"{YAML.relative_to(ROOT)} is not normalized (§Closed in id order, canonical layout)")
-    print("in sync" if ok else f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders; run "
-          "`python tools/register.py render`")
+    print("in sync" if ok else "run `python tools/register.py render`, and fix any problem it cannot")
     return 0 if ok else 1
 
 

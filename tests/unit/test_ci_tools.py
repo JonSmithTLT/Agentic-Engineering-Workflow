@@ -117,3 +117,15 @@ def test_durations_merge_updates_and_prunes():
     assert merged["schema"] == "aew/test-durations/v1"
     assert merged["platforms"]["win32"] == {ALL[0]: 0.5}  # refreshed; the vanished test and the skip are gone
     assert merged["platforms"]["darwin"] == {"k": 1.0}  # platforms without reports are kept
+
+
+def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
+    """A scheduled job that hits its timeout ends `cancelled`; the report must open the issue for it too (CI posture
+    review 2026-10-05, finding 1: six of eight nightlies timed out silently)."""
+    nightly = yaml.safe_load((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
+    report = nightly["jobs"]["report"]
+    condition = " ".join(str(report["if"]).split())
+    assert condition.startswith("always()") and "github.event_name == 'schedule'" in condition
+    assert "contains(needs.*.result, 'failure')" in condition and "contains(needs.*.result, 'cancelled')" in condition
+    assert set(report["needs"]) == set(nightly["jobs"]) - {"report"}  # every nightly job is reported on
+

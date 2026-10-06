@@ -487,19 +487,21 @@ def _closed_within(s: socket.socket, seconds: float) -> bool:
         while s.recv(65536):
             pass
         return True
-    except (ConnectionError, OSError):
-        return True
-    except TimeoutError:
+    except TimeoutError:  # first: TimeoutError is an OSError (re-review R2)
         return False
+    except OSError:
+        return True
 
 
-def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, monkeypatch):
+@pytest.mark.parametrize("line", ["GET /api/v1/project HTTP/1.1", "GET /api/v1/project"])
+def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, monkeypatch, line):
     """Finding 1: one byte every 0.3 s never trips a per-read timeout, but the whole head must arrive within the
-    deadline, so a slow client cannot hold its connection (and with 32 of them, every slot) for ever."""
+    deadline, so a slow client cannot hold its connection (and with 32 of them, every slot) for ever. A two-word
+    request line too, whose headers stdlib would read before refusing it (re-review R1)."""
     monkeypatch.setattr(SV, "HEAD_DEADLINE_S", 1.0)
     with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
         started = time.monotonic()
-        head = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nX-Slow: ".encode("latin-1")
+        head = f"{line}\r\nHost: {live.host}\r\nX-Slow: ".encode("latin-1")
         s.sendall(head)
         gone = False
         while time.monotonic() - started < 6.0:
@@ -515,7 +517,7 @@ def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, mo
         assert time.monotonic() - started < 4.0
 
 
-@pytest.mark.parametrize("line", ["GET / HTTP/01.1", "GET\xa0/ HTTP/1.1"])
+@pytest.mark.parametrize("line", ["GET / HTTP/01.1", "GET\xa0/ HTTP/1.1", "GET /"])
 def test_every_request_stdlib_would_read_headers_for_is_bounded_while_it_is_read(live, line):
     """Finding 2: a request line stdlib tokenizes differently from bytes (a padded version, a non-breaking space)
     still has its header block bounded on the wire, not read whole or waited on."""
@@ -579,6 +581,18 @@ def test_a_logged_path_can_neither_forge_a_line_nor_grow_without_bound():
     assert "%0D%0A" in forged
     assert len(SV.log_target("/" + "p" * 1500 + "/session/abc")) <= SV.LOG_PATH_MAX + len("/session/<redacted>")
     assert "\x1b" not in SV.log_target("/\x1b[31mred") and len(SV.log_target("/" + "x" * 3000)) == SV.LOG_PATH_MAX
+
+
+def test_the_logged_method_never_carries_control_bytes(live, caplog):
+    """Re-review R3: a request line whose method token is an escape sequence is refused, and the log records
+    `<bad method>`, never the bytes a terminal would act on."""
+    with caplog.at_level(logging.INFO, logger="aew.dashboard"):
+        status, _, _ = live.raw(f"\x1b]0;owned\x07\x1b[2J / HTTP/1.1\r\nHost: {live.host}\r\n\r\n".encode("latin-1"))
+        live.request("GET", "/api/v1/project")
+    assert 400 <= status < 506
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
+    assert "\x1b" not in text and "\x07" not in text and "<bad method>" in text, text
+    assert "GET /api/v1/project 200" in text
 
 
 def test_the_bounds_the_design_records_are_the_servers():

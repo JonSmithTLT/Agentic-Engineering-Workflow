@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import queue
+import re
 import socket
 import sys
 import threading
@@ -75,6 +76,7 @@ LOG_QUEUE = 1024  # request log lines waiting for the writer; beyond this they a
 # The characters a logged path keeps as they are: everything else, a control character or a CR/LF above all, is
 # percent-encoded, so no request can forge a log line or send escape sequences to the operator's terminal.
 LOG_SAFE = "/%:@!$&'()*+,;=-._~"
+LOG_METHOD = re.compile(r"[A-Z]{1,16}")  # a method token the log records as sent; any other is `<bad method>`
 ALLOWED_METHODS = "GET, HEAD"
 # R21: on every response, static and API alike.
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -389,9 +391,11 @@ class DashboardServer:
 
             def parse_request(self) -> bool:
                 # Tokenized as stdlib does (text, split on any whitespace), so every request stdlib would read headers
-                # for has them read here first, within the bounds (review of PR #90, finding 2).
+                # for has them read here first, within the bounds and the head deadline (review of PR #90, finding
+                # 2): two words as well as three, since stdlib reads the headers of a two-word line before it is
+                # refused as HTTP/0.9 below (re-review R1).
                 words = str(self.raw_requestline, "iso-8859-1").rstrip("\r\n").split()
-                if len(words) >= 3:
+                if len(words) >= 2:
                     block = self._read_header_block()  # bounded while reading, before stdlib parses it
                     if block is None:
                         self.command, self.request_version = "", self.protocol_version
@@ -448,7 +452,10 @@ class DashboardServer:
             def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
                 path = log_target(raw_target(self))
                 ms = (time.monotonic() - getattr(self, "started", time.monotonic())) * 1000
-                LOG.info("%s %s %s %.0fms", getattr(self, "command", None) or "-", path, int(code), ms)
+                method = getattr(self, "command", None) or "-"
+                if method != "-" and not LOG_METHOD.fullmatch(method):  # never control bytes to the terminal
+                    method = "<bad method>"
+                LOG.info("%s %s %s %.0fms", method, path, int(code), ms)
 
         self.httpd = _Listener((HOST, port), Handler, self._busy_response())
         self._thread = threading.Thread(target=self.httpd.serve_forever, name="aew-dashboard", daemon=True)

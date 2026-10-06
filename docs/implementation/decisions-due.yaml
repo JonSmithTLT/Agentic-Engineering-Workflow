@@ -29,8 +29,9 @@ items:
   needs: decision
   owner: operator
   due: M4-G
-  what: Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the Windows integration shards already
-    take 20 to 24 of their 30 minutes, so it needs a shard rebalance (P4) or a longer limit.
+  what: Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration
+    shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer
+    limit.
 - row: F22.1
   needs: decision
   owner: operator
@@ -49,10 +50,12 @@ items:
   needs: decision
   owner: operator and designer
   due: M4-H
-  what: How the model arms keep a held-out corpus out of reach while the model runs. The Lead's harness (read, glob and
-    grep allowed) and the raw arm's OpenCode are not contained, so a private corpus on the same host is readable during
-    an arm. Options are to contain those harnesses with the hidden root masked, a two-account profile (F23), or no private
-    corpus on the arm's host. The aew and raw arms wait for it.
+  what: 'How the model arms keep a held-out corpus out of reach while the model runs. Every model-controlled process in
+    both arms can read it today: the raw arm''s OpenCode and the Lead''s harness are not contained (the Lead''s allowed
+    shell reads any file, for example through `git diff --no-index`), and the aew arm''s dispatched runs are contained on
+    Linux for writing only (the host stays readable unless a path is in `containment.hide`) and not at all on Windows. Options:
+    contain every model-controlled process of both arms with the hidden root masked (Linux only); a two-account profile
+    (F23); or no private corpus on the arm''s host. The aew and raw arms wait for it.'
 - row: Q7
   needs: decision
   owner: designer

@@ -33,6 +33,10 @@ node --experimental-strip-types scripts/verify-live-runner.mjs
 
 Retained: [provenance](f20-live-runner-pr89-correction-2026-10-06/provenance.json), [offline gate](f20-live-runner-pr89-correction-2026-10-06/offline-gate.log), [browser controls](f20-live-runner-pr89-correction-2026-10-06/browser-live-regression.log), [production manifest](f20-live-runner-pr89-correction-2026-10-06/dist.SHA256SUMS), [demo manifest](f20-live-runner-pr89-correction-2026-10-06/dist-demo.SHA256SUMS). Runtime identities and file hashes are recorded in provenance. The disposable browser image adds OS libraries without altering the pinned builder.
 
+## Publication secret scan
+
+Gitleaks 8.30.1 scanned the nine-commit publication history through `dda26b1`. Its sole raw finding was line 48 of the retained offline log, verified in full as the public accepted API 0.1.2 SHA-256. The repository exception records only this exact commit/path/rule/line fingerprint and rationale; no broad exclusion was added. The final history is rescanned before pushing. No credential findings were identified.
+
 ## Integration posture
 
 The runner is published through PR #89 on `feat/f20-authenticated-browser`. F20.4 (#87) is merged; F20.5 (#90) and F20.6 (#97) remain separate integration work. Server-half acceptance does not complete the browser gate. Main-line operators must still run the [authenticated live interface](../how-to/authenticated-live-browser.md) against the packaged server, recording server/build/tooling identities and their separate security checks. The reported `integrated` semantic value remains a contract-review question; this correction does not silently accept it.

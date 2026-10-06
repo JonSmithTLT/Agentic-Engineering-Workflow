@@ -15,6 +15,10 @@ skipped:
     tests/integration/test_dashboard_session.py::test_serve_at_a_real_terminal_shows_the_challenge_and_writes_the_url: >-
       POSIX pty operator path for `aew dashboard serve` (F20.3); a Windows console would appear on the desktop.
       Covered on Linux; on Windows the no-terminal refusals run and the serving console is substituted in-process.
+    tests/integration/test_dashboard_acceptance.py::test_the_real_cli_serves_the_product_end_to_end: >-
+      POSIX pty operator path for F20.6's real-CLI walk (`aew dashboard serve` at a pseudo-terminal); a Windows
+      console would appear on the desktop. Covered on Linux (serial lane); on Windows the in-process service runs
+      the same walk (test_the_product_end_to_end_through_one_session).
     tests/integration/test_worktree_sync.py::test_executable_bit_only_change_materializes: >-
       needs POSIX filemode semantics (core.fileMode=false on Windows). Covered on Linux.
     tests/integration/test_worktree_sync.py::test_file_symlink_transitions_sync[file_to_symlink]: >-

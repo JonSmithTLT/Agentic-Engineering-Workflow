@@ -36,7 +36,7 @@ from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Protocol, TextIO
+from typing import Any, Protocol, TextIO, cast
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aew.dashboard import etag as E
@@ -341,7 +341,9 @@ class DashboardServer:
                     if remaining <= 0:
                         raise TimeoutError("request head deadline")
                     self.connection.settimeout(remaining)
-                    ahead = self.rfile.peek(1)  # at most one socket read; what is buffered otherwise
+                    # The handler's rfile is a BufferedReader (StreamRequestHandler buffers reads by default): peek
+                    # does at most one socket read, and returns what is buffered otherwise.
+                    ahead = cast(io.BufferedReader, self.rfile).peek(1)
                     if not ahead:
                         return line  # end of input
                     end = ahead.find(b"\n", 0, limit - len(line))

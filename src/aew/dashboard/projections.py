@@ -9,6 +9,10 @@ Capabilities (R18, as the designer decided on 2026-10-05): ``overview``, ``work`
 syncs; ``queue`` is UNSUPPORTED (no route in 0.1.2); ``action_projection`` is UNSUPPORTED until the typed Lead
 surface's ``ActionProjection`` (F15.1) is its source, so ``/attention`` answers 403 meanwhile, while ``/overview``'s
 bounded ``attention`` list and ``Work.has_attention`` carry the engine facts the backend already provides.
+
+Wherever a projection needs the snapshot's time it writes :data:`~aew.dashboard.etag.SNAPSHOT_TIME`; the server
+computes the validator over that and then stamps the real time in (F20.4), so the time of a read never changes an
+``ETag``.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.dashboard import cursors
+from aew.dashboard.etag import SNAPSHOT_TIME
 from aew.dashboard.reader import Snapshot
 from aew.dashboard.reasons import reason
 from aew.engine import outbox
@@ -149,7 +154,7 @@ class Projector:
 
     def envelope(self, data: Any) -> dict[str, Any]:
         return {"schema_version": SCHEMA_VERSION, "project_id": self.s.project_id,
-                "control_revision": str(self.s.revision), "generated_at": self.s.generated_at, "data": data}
+                "control_revision": str(self.s.revision), "generated_at": SNAPSHOT_TIME, "data": data}
 
     def listing(self, items: list[dict[str, Any]], next_cursor: str | None) -> dict[str, Any]:
         return self.envelope({"items": items, "next_cursor": next_cursor})
@@ -211,7 +216,7 @@ class Projector:
                 if observed == K.LOST:
                     reasons.append(reason("RUN_LOST", f"run {run['run']} of {inv_id}"))
                     status = status if status == "UNHEALTHY" else "DEGRADED"
-        return {"status": status, "reasons": _bounded(reasons), "observed_at": self.s.generated_at}
+        return {"status": status, "reasons": _bounded(reasons), "observed_at": SNAPSHOT_TIME}
 
     def _audit_policy(self) -> dict[str, Any]:
         block = self.s.gates.get("history_audit") or {}
@@ -236,7 +241,7 @@ class Projector:
         history = unit.get("history") or []
         if history and isinstance(history[-1], dict) and history[-1].get("at"):
             return str(history[-1]["at"])
-        return str(unit.get("created_at") or self.s.generated_at)
+        return str(unit.get("created_at") or SNAPSHOT_TIME)
 
     def _blockers(self, unit: dict[str, Any]) -> list[dict[str, Any]]:
         out = []
@@ -370,7 +375,7 @@ class Projector:
             items.append({"id": f"AT-contradiction-{n}", "kind": "anomaly", "severity": "high",
                           "subject": entity(self.s.project_id, "project", self.s.project_name),
                           "title": "Contradiction", "summary": rich(text), "reasons": [reason("CONTRADICTION", text)],
-                          "first_seen_at": self.s.generated_at})
+                          "first_seen_at": SNAPSHOT_TIME})
         for inv_id, inv in sorted(self.state["invocations"].items()):
             for run in inv.get("runs") or []:
                 observed, _ = self._observe(run["run"])
@@ -380,7 +385,7 @@ class Projector:
                                   "subject": entity(inv_id, "invocation"), "title": f"run {run['run']} {observed}",
                                   "summary": rich(f"{inv['role']} run for {inv['work_unit']} is {observed}"),
                                   "reasons": [reason(code, f"run {run['run']} of {inv_id}")],
-                                  "first_seen_at": str(run.get("launched_at") or self.s.generated_at)})
+                                  "first_seen_at": str(run.get("launched_at") or SNAPSHOT_TIME)})
         self._attention = items
         return items
 
@@ -401,7 +406,7 @@ class Projector:
         tok = tokens.get(str(run.get("token_id") or "")) or {}
         authority = "current" if current else f"none ({tok.get('revoke_reason') or inv['status']})"
         return {"id": run["run"], "harness": str(run.get("harness") or "unknown"),
-                "launched_at": str(run.get("launched_at") or self.s.generated_at),
+                "launched_at": str(run.get("launched_at") or SNAPSHOT_TIME),
                 "kind": str(run.get("kind") or "launch"), "status": observed, "authority": authority}
 
     def invocation_item(self, inv_id: str, inv: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:

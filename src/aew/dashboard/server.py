@@ -6,7 +6,9 @@ the engine's read collaborators), and each request projects one lock-free snapsh
 
 The server **requires an authenticator** (the enablement rule, designer 2026-10-05): the product's is the operator
 session (``session.SessionTable``, F20.3), which also serves the one-time URL exchange at ``/session/<code>`` (design
-note §4.3). Conditional requests (F20.4), the static build and the full header set (F20.5) come in their slices.
+note §4.3). Every ``200`` carries a strong ``ETag`` over the representation and its scope, and a request whose
+``If-None-Match`` names it is a ``304`` with no body (F20.4, :mod:`aew.dashboard.etag`). The static build and the full
+header set (F20.5) come in their slice.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlsplit
 
+from aew.dashboard import etag as E
 from aew.dashboard import projections as P
 from aew.dashboard import session as S
 from aew.dashboard.contract import Contract
@@ -106,6 +109,9 @@ QUERY_PARAMETERS: dict[str, frozenset[str]] = {
 }
 
 
+LIMIT_PARAMETERS = frozenset({"limit", "annotations_limit"})
+
+
 def match_route(path: str) -> tuple[str, dict[str, str]] | None:
     """The contract route a request path names, and its ``{id}``."""
     if path in ROUTES and "{id}" not in path:
@@ -187,18 +193,24 @@ class DashboardServer:
     # ---------------------------------------------------------------- requests
 
     def handle(self, h: BaseHTTPRequestHandler, *, head: bool) -> None:
+        tag: str | None = None
         try:
             url = urlsplit(h.path)
             if self.sessions is not None and url.path.startswith(SESSION_PREFIX) and len(url.path) <= MAX_PATH:
                 self._exchange(h, url.path[len(SESSION_PREFIX):], head=head)
                 return
-            status, body = self._respond(h, url)
+            status, body, tag = self._respond(h, url)
         except Refusal as r:
             status, body = r.status, r.body
         except Exception:  # never let a request kill the server; the client learns only that it failed
             LOG.exception("dashboard request failed")
             status, body = HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")
         extra: list[tuple[str, str]] = []
+        if tag is not None:  # a 200: conditional (R19)
+            if E.matches(h.headers.get("If-None-Match"), tag):
+                self._not_modified(h, tag)
+                return
+            extra.append(("ETag", tag))
         if status == HTTPStatus.UNAUTHORIZED and S.cookie_value(h.headers) is not None:
             extra.append(("Set-Cookie", S.expired_cookie()))  # a dead cookie is removed from the browser (R10)
         self._send(h, status, body, head=head, extra=extra)
@@ -239,7 +251,8 @@ class DashboardServer:
         return [("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"),
                 ("Referrer-Policy", "no-referrer")]
 
-    def _respond(self, h: BaseHTTPRequestHandler, url: Any) -> tuple[int, dict[str, Any]]:
+    def _respond(self, h: BaseHTTPRequestHandler, url: Any) -> tuple[int, dict[str, Any], str]:
+        """The ``200`` body of a read, stamped with the snapshot's time, and its validator; or a :class:`Refusal`."""
         if len(url.path) > MAX_PATH or len(url.query) > MAX_QUERY:
             raise Refusal(HTTPStatus.REQUEST_URI_TOO_LONG, error_body("REQUEST_TOO_LARGE"))
         if h.headers.get("Content-Length") not in (None, "0") or h.headers.get("Transfer-Encoding"):
@@ -255,7 +268,8 @@ class DashboardServer:
             raise Refusal(HTTPStatus.UNAUTHORIZED, refused)
         query = self._query(url.query, route)
         with self._serial:
-            projector = P.Projector(self.reader.snapshot())
+            snapshot = self.reader.snapshot()
+            projector = P.Projector(snapshot)
             try:
                 body = ROUTES[route](projector, query, matched)
             except CursorError as exc:
@@ -272,12 +286,19 @@ class DashboardServer:
                 LOG.error("projection %s failed: %s %s", route, exc.code, exc.message)
                 raise Refusal(HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")) from None
         body = P.scrub(body)
+        tag = E.validator(E.scope(url.path, snapshot.project_id, self._normalized(query)), body)
+        body = E.stamp(body, snapshot.generated_at)
         if self.contract is not None:
             violations = self.contract.violations(self.contract.response_schema(route), body)
             if violations:
                 LOG.error("projection %s violates the contract: %s", route, violations[:5])
                 raise Refusal(HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED"))
-        return HTTPStatus.OK, body
+        return HTTPStatus.OK, body, tag
+
+    @staticmethod
+    def _normalized(query: dict[str, str]) -> dict[str, Any]:
+        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``)."""
+        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS else v for k, v in query.items()}
 
     @staticmethod
     def _query(raw: str, route: str) -> dict[str, str]:
@@ -291,6 +312,15 @@ class DashboardServer:
                 raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", f"parameter {name} given badly"))
             out[name] = values[0]
         return out
+
+    @classmethod
+    def _not_modified(cls, h: BaseHTTPRequestHandler, tag: str) -> None:
+        """``304``: the validator the client sent (it matched), the headers of the ``200``, no body (R19)."""
+        h.send_response(int(HTTPStatus.NOT_MODIFIED))
+        h.send_header("ETag", tag)
+        for name, value in cls._common_headers():
+            h.send_header(name, value)
+        h.end_headers()
 
     @classmethod
     def _send(cls, h: BaseHTTPRequestHandler, status: int, body: dict[str, Any], *, head: bool,

@@ -2,6 +2,8 @@
 
 This is current frontend handoff guidance, not evidence of completed backend integration. The [original core checklist](../archive/core/integration-checklist.md) remains historical.
 
+- Build F20.5 from the [operator-approved immutable baseline](f20-production-baseline.md); record the actual packaged build manifest.
+- Complete the [web-owned authenticated live runner](f20-live-browser-handoff.md) before claiming F20.6 browser acceptance; base-URL fixture scripts alone do not meet this gate.
 - Confirm the accepted API/capability/authentication contract, project bootstrap, session handling and refusal semantics before connecting production.
 - Main-line owners supply packaging/static serving, Host/Origin policy, CSP/security headers and the actual session cookie. Fixture servers do not prove those behaviors.
 - Exercise the compiled production build against the live server with explicit target/session inputs once the integration interface exists; keep fixtures distinct from live acceptance.

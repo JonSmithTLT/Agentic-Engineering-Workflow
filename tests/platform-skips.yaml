@@ -9,6 +9,9 @@ skipped:
       Covered on Linux.
     tests/unit/test_store.py::test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file: >-
       the lock file is replaced while open, which Windows refuses (area 5 P2 is POSIX-only). Covered on Linux.
+    tests/integration/test_validation_checks.py::test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused: >-
+      checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
+      mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.
     tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
       POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
       the refusal path runs and AT-1 substitutes the terminal channel in-process.

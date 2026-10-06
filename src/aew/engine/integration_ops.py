@@ -55,6 +55,18 @@ MAX_PUBLISH_PATHS = 2000
 KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
 
 
+def _end_running_validation(record: dict[str, Any], why: str) -> None:
+    """End any checks-mode run still marked running on an integration record whose candidate is retired or published:
+    it can never commit (its transaction 2 finds it no longer running and records nothing), so it ends here, abandoned
+    as SUPERSEDED (never a breaker event), and the validation finalizer writes its immutable record in this same
+    transaction (M4-D5)."""
+    for slot in ("current_validation_run", "diagnostic_run"):
+        run = record.get(slot)
+        if run and run.get("state") == "running":
+            record[slot] = {**run, "state": "abandoned", "reason": "SUPERSEDED", "ended_at": utc_now(),
+                            "detail": why}
+
+
 class Integration:
     """Lead-controlled integration: prepare -> post-integration verification -> publish (CAS) -> DONE."""
 
@@ -94,14 +106,7 @@ class Integration:
         if record.get("status") in OPEN_INTEGRATION - {"validation_failed", "discarded"}:
             record["status"] = "superseded"
         record["retired"] = {"at": utc_now(), "reason": why}
-        for slot in ("current_validation_run", "diagnostic_run"):
-            run = record.get(slot)
-            if run and run.get("state") == "running":
-                # A checks-mode run of a retired candidate can never commit (its transaction 2 finds it gone): it
-                # ends here, with the retired record; the validation finalizer writes its immutable record in this
-                # same transaction (M4-D5).
-                record[slot] = {**run, "state": "abandoned", "reason": "SUPERSEDED", "ended_at": utc_now(),
-                                "detail": why}
+        _end_running_validation(record, why)
         for inv_id in unit.get("invocations", []):
             inv = state["invocations"].get(inv_id) or {}
             if inv.get("status") == "active" and inv.get("scope") == "integration":
@@ -674,6 +679,9 @@ class Integration:
                 transitions.check(unit["state"], "DONE", "integrate.publish")
                 integ.update(status="integrated", commit=candidate, integrated_at=utc_now(), cas=cas,
                              worktree_sync=sync)
+                # A checks run still marked running (one interrupted before the Lead validated through the verifier)
+                # ends with the publication, never archived as running (PR #91 re-review R1).
+                _end_running_validation(integ, f"{work_id} was published while the run was marked running")
                 completion = self._completion_record(ctx.state, work_id, unit)
                 ctx.session.write(f"work/{work_id}/completion.md", completion)
                 ctx.refs.append(f"work/{work_id}/completion.md")

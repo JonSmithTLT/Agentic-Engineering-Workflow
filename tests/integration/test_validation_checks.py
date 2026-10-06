@@ -387,6 +387,45 @@ def test_a_check_past_the_deadline_is_killed_and_the_run_released_through_dispos
     assert integ(calc, wid)["current_validation_run"]["state"] == "abandoned"
     assert entry(calc, wid)["state"] == "AWAITING_DISPOSITION"
     assert_control_invariants(calc)
+    # The Lead's disposition may requeue it: QUEUED after the release is legal (re-review R2, oracle rule 43).
+    calc.lead("integrate", "requeue", wid, "--reason", "the slow check is fixed")
+    assert entry(calc, wid)["state"] == "QUEUED"
+    assert_control_invariants(calc)
+
+
+def _runs_in(value) -> list[dict]:
+    """Every validation run record anywhere in a document (an archive bundle's shape is not this test's concern)."""
+    if isinstance(value, dict):
+        found = [value] if str(value.get("id", "")).startswith("IV-") and "state" in value else []
+        return found + [r for v in value.values() for r in _runs_in(v)]
+    if isinstance(value, list):
+        return [r for v in value for r in _runs_in(v)]
+    return []
+
+
+def test_publishing_through_the_verifier_ends_a_run_left_running(calc, tmp_path, contained, monkeypatch):
+    """Re-review R1: a checks run interrupted before the Lead validated through the verifier ends with the
+    publication, abandoned and recorded, never archived as running."""
+    policy(calc, checks=SMOKE, post=["unit"])  # the check the verifier helper cites
+    wid = prepared(calc, tmp_path)
+    monkeypatch.setenv("AEW_FAULT", "validate.before_check")
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    from aew.engine.faults import InjectedFault
+
+    with pytest.raises(InjectedFault):
+        validate(calc, wid)
+    monkeypatch.delenv("AEW_FAULT")
+    assert integ(calc, wid)["current_validation_run"]["state"] == "running"
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration"))
+    assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
+    # The DONE Ticket is archived out of the hot state: its bundle is what keeps the run for good.
+    bundle = load_yaml((calc.root / ".aew/work" / wid / "archive.yaml").read_text(encoding="utf-8"))
+    text = dump_yaml(bundle)
+    assert "state: running" not in text, "a run is archived as running"
+    run = next(r for r in _runs_in(bundle) if r.get("id", "").startswith("IV-"))
+    assert run["state"] == "abandoned" and run["reason"] == "SUPERSEDED", run
+    assert (calc.root / ".aew" / run["record"]["path"]).is_file()
+    assert_control_invariants(calc)
 
 
 # ----------------------------------------------------- infrastructure: allow-list, backoff, circuit breaker

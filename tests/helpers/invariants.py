@@ -306,12 +306,23 @@ def validation_violations(root: Path, state: dict[str, Any],
                                 f"for {missing or 'its run'}")
         # 43. A run that passed its deadline never releases the lease by itself: while the candidate it validated is
         #     still open, its entry is still LEASED (a further attempt within the bound) or went the disposition
-        #     way (AWAITING_DISPOSITION, or DEFERRED by the Lead), never straight back to QUEUED.
+        #     way (AWAITING_DISPOSITION, or DEFERRED by the Lead). QUEUED only after that disposition: the release
+        #     alone marks the candidate `validation_unavailable`, and the Lead may then requeue it (re-review R2).
         if run and run.get("reason") == "VALIDATION_DEADLINE_EXPIRED" and integ.get("workspace"):
             mine = [e for e in entries.values() if e.get("work") == wid]
-            if mine and mine[0]["state"] not in ("LEASED", "AWAITING_DISPOSITION", "DEFERRED"):
+            state_now = mine[0]["state"] if mine else None
+            disposed = state_now == "QUEUED" and integ.get("status") == "validation_unavailable"
+            if mine and state_now not in ("LEASED", "AWAITING_DISPOSITION", "DEFERRED") and not disposed:
                 problems.append(f"{wid}'s validation run {run['id']} passed its deadline and its entry is "
-                                f"{mine[0]['state']}: the lease left other than through AWAITING_DISPOSITION")
+                                f"{state_now}: the lease left other than through AWAITING_DISPOSITION")
+        # 44. A run is running only on an open candidate: a published or retired one never keeps a running run
+        #     (it would never be recorded, and the archive would hold it running forever; re-review R1).
+        open_candidate = u["state"] == "COMMIT_READY" and integ.get("status") in ("prepared", "validated")
+        for holder_record in [integ, *(u.get("integration_history") or [])]:
+            for s in slots:
+                r = holder_record.get(s)
+                if r and r["state"] == "running" and (holder_record is not integ or not open_candidate):
+                    problems.append(f"{wid}'s validation run {r['id']} is running on a candidate that is not open")
     return problems
 
 

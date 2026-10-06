@@ -161,8 +161,10 @@ def walk(browser: Browser, ids: dict[str, str]) -> dict[str, Any]:
         assert CONTRACT.violations(CONTRACT.response_schema(contract_route(detail)), body) == [], detail
         assert body["project_id"] == project["project_id"]
         security_headers(headers)
+        assert headers["content-type"] == "application/json; charset=utf-8"
         replay = browser.get(f"/api/v1{detail}", headers={**FETCH, "If-None-Match": headers["etag"]})
-        assert replay[0] == 304 and replay[2] == b"", detail
+        assert replay[0] == 304 and replay[1]["etag"] == headers["etag"] and replay[2] == b"", detail
+        security_headers(replay[1])  # as for every read above (PR #97 re-review, N1)
         browser.validators[detail] = headers["etag"]
         seen["api"].append(detail)
         status, _, page = browser.get(detail, headers=NAVIGATION)

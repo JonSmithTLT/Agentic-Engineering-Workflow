@@ -67,12 +67,12 @@ A browser check against the packaged build and live state (Overview, a deep-link
 
 ## The browser gate (pending)
 
-The web side's runner is `web/scripts/browser-live.mjs`, in PR #89 (branch `feat/f20-authenticated-browser`, open), with its how-to `web/docs/how-to/authenticated-live-browser.md` there. It checks desktop and phone navigation, supplied record details, Back, Work copy and reopen, themes, and session refusal, against real same-origin responses, with service workers blocked and no fixture servers. The main line provides the server, the project and the private session file:
+The web side's runner is `web/scripts/browser-live.mjs`, on `main` since PR #89 (merged at `6e3746b`), with its how-to `web/docs/how-to/authenticated-live-browser.md`. It checks desktop and phone navigation, supplied record details, Back, Work copy and reopen, themes, and session refusal, against real same-origin responses, with service workers blocked and no fixture servers. The main line provides the server, the project and the private session file:
 
 1. `python tools/dashboard/acceptance_project.py <empty scratch dir>` builds the project and prints its record ids.
 2. `aew -C <dir>/repo dashboard serve` runs at the operator's terminal on the default port 4280, with the typed-back code. The URL is written to that terminal.
 3. `aew -C <dir>/repo dashboard open` gives a further URL (confirmed with a code shown at the serving console). Paste it into `python tools/dashboard/session_file.py <private scratch>/session.json`.
-4. From a separate checkout of PR #89's branch (the runner's tooling commit is recorded separately), in `web/`, with Node 22 and the locked Playwright install, run `DASHBOARD_BASE_URL=http://127.0.0.1:4280 DASHBOARD_SESSION_FILE=<private scratch>/session.json CHROMIUM_PATH=<staged chromium> node --experimental-strip-types scripts/browser-live.mjs`. The packaging baseline stays `4f0a710`.
+4. From `web/` at the commit recorded here (the runner is on `main`), with Node 22 and the locked Playwright install, run `DASHBOARD_BASE_URL=http://127.0.0.1:4280 DASHBOARD_SESSION_FILE=<private scratch>/session.json CHROMIUM_PATH=<staged chromium> node --experimental-strip-types scripts/browser-live.mjs`. The packaging baseline stays `4f0a710`.
 5. Record here the runner's commit, the server commit, `BUILD.json`'s commit and the results. Delete the session file. The file, the cookie, and any URL, header, trace or storage state never enter evidence.
 
 Until then the integration checklist's browser-side items (hostile-content display, scope and validator isolation in the UI, UI task checks on the integrated system) are **NOT RUN**.

@@ -79,6 +79,76 @@ def test_every_gap_in_the_envelope_is_a_problem(mutate, expected):
     assert any(p.startswith(expected) for p in found), found
 
 
+def sharded_reference_run(shards: int = 3) -> list[dict]:
+    """The nightly reference run: no lane, ``shards`` shards per platform, every test in exactly one shard."""
+    runs = []
+    for platform in ("linux", "win32"):
+        skip = "skipped" if platform == "win32" else "passed"
+        for k in range(1, shards + 1):
+            mine = {n: ("passed" if n != SKIP_ID else skip) for i, n in enumerate(ALL) if i % shards == k - 1}
+            runs.append(report(platform, None, mine, shard=f"{k}/{shards}"))
+    return runs
+
+
+def test_a_complete_sharded_reference_run_passes():
+    assert problems(sharded_reference_run()) == []
+
+
+@pytest.mark.parametrize("dropped", [0, 1, 2], ids=["first", "middle", "last"])
+def test_a_dropped_reference_shard_fails_the_aggregate(dropped):
+    """The nightly aggregate (E26): a shard whose job did not run or upload must never read as a green run."""
+    runs = sharded_reference_run()
+    runs.pop(3 + dropped)  # a Windows shard (the Linux shards come first)
+    found = problems(runs)
+    assert f"win32: all: shard {dropped + 1}/3 has no report" in "\n".join(found), found
+    assert any(p.startswith("win32: never ran: ") for p in found), found  # its tests are missing too
+
+
+def test_a_dropped_reference_shard_is_a_problem_even_when_it_held_no_tests():
+    runs = sharded_reference_run(shards=5)  # more shards than tests: shards 4 and 5 are empty
+    runs.pop(4)  # linux shard 5
+    assert any(p.startswith("linux: all: shard 5/5 has no report") for p in problems(runs))
+
+
+def test_shard_reports_that_disagree_on_the_count_are_a_problem():
+    runs = sharded_reference_run()
+    runs[0]["shard"] = "1/2"
+    assert any(p.startswith("linux: all: shard reports disagree on the shard count") for p in problems(runs))
+
+
+def test_a_failed_reference_shard_fails_the_aggregate():
+    runs = sharded_reference_run()
+    runs[4].update(exitstatus=1)
+    assert any(p.startswith("win32: session win32/all shard 2/3 exited 1") for p in problems(runs))
+
+
+def test_the_nightly_reference_job_is_sharded_and_aggregated():
+    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under a 60 minute
+    timeout, and the aggregate (which `report` waits for) requires both platforms."""
+    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
+    reference = jobs["reference"]
+    assert reference["timeout-minutes"] <= 60, "split the job further instead of raising the timeout (E26)"
+    per_os: dict[str, list[tuple[int, int]]] = {}
+    for entry in reference["strategy"]["matrix"]["include"]:
+        per_os.setdefault(entry["os"], []).append((entry["shard"], entry["of"]))
+    assert set(per_os) == {"ubuntu-latest", "windows-latest"}
+    for os_name, shards in per_os.items():
+        counts = {n for _, n in shards}
+        assert len(counts) == 1, f"{os_name}: shards disagree on the shard count"
+        assert sorted(k for k, _ in shards) == list(range(1, counts.pop() + 1)), f"{os_name}: a shard is missing"
+    steps = "\n".join(str(step.get("run", "")) for step in reference["steps"])
+    assert "--shard ${{ matrix.shard }}/${{ matrix.of }}" in steps and "-p no:xdist" in steps
+    assert "matrix.shard" in steps.split("--lane-report")[1], "each shard needs its own lane report"
+    uploads = [step["with"]["name"] for step in reference["steps"] if "upload-artifact" in step.get("uses", "")]
+    assert uploads and all("matrix.shard" in name for name in uploads)
+    aggregate = jobs["reference-assurance"]
+    assert aggregate["needs"] == ["reference"] and aggregate["if"] == "always()"
+    runs = "\n".join(str(step.get("run", "")) for step in aggregate["steps"])
+    assert "check_assurance.py reference-reports" in runs and "--require linux,win32" in runs
+    assert "needs.reference.result" in runs
+    assert "reference-assurance" in jobs["report"]["needs"]
+
+
 def test_a_pinned_skip_for_a_vanished_test_is_stale():
     expect = copy.deepcopy(EXPECT)
     expect["skipped"]["win32"]["tests/unit/test_gone.py::x"] = "old"

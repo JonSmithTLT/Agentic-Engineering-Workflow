@@ -22,6 +22,7 @@ REASONS: dict[str, str] = {
     "PROJECTION_FAILED": "the projection could not be refreshed; the last known content stands",
     "METHOD_NOT_ALLOWED": "only GET and HEAD are served",
     "REQUEST_TOO_LARGE": "the request exceeds the server's bounds",
+    "SERVER_BUSY": "the server is answering as many requests as it allows at once; retry in a second",
     "HOST_NOT_ALLOWED": "the request names a host this server does not serve",
     "ORIGIN_NOT_ALLOWED": "the request comes from an origin this server does not serve",
     # capabilities

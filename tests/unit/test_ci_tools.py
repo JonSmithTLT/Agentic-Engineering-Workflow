@@ -221,6 +221,10 @@ def docs_tier_run(with_lanes: bool = True) -> list[dict]:
     (["pyproject.toml"], "full"),
     ([".gitleaksignore"], "full"),
     ([], "full"),  # an empty diff proves nothing
+    (["Src/aew/notes.md"], "full"),  # a Windows checkout puts it in src/ (review of PR #99, finding 5)
+    (["TESTS/fixture.md"], "full"),
+    (["Web/Docs/C0-Approval.json"], "full"),
+    (["DOCS/README.md"], "docs"),
 ], ids=lambda v: v if isinstance(v, str) else ",".join(v)[:40] or "empty")
 def test_the_tier_is_the_widest_any_changed_path_needs(paths, expected):
     assert tier.decide("pull_request", paths) == expected
@@ -231,6 +235,62 @@ def test_only_a_pull_request_may_take_a_reduced_tier(event):
     assert tier.decide(event, ["docs/README.md"]) == "full"
 
 
+def test_a_pull_request_into_another_branch_is_full():
+    """It can be retargeted to main without a new run, so its run must already be full (review of PR #99, 6)."""
+    assert tier.decide("pull_request", ["docs/README.md"], "main") == "docs"
+    for base in ("impl/f15-1-broker-cli", "", "Main"):
+        assert tier.decide("pull_request", ["docs/README.md"], base) == "full", base
+
+
+def test_a_rename_out_of_the_code_is_full_tier(tmp_path, monkeypatch):
+    """With git's default rename detection, moving src/aew/m.py to docs/m.md lists only docs/m.md: the diff must
+    name both sides (review of PR #99, finding 2). Real git, real commits."""
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=tmp_path, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    (tmp_path / "src" / "aew").mkdir(parents=True)
+    (tmp_path / "src" / "aew" / "m.py").write_text("x = 1\n" * 20, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    (tmp_path / "docs").mkdir()
+    git("mv", "src/aew/m.py", "docs/m.md")
+    git("commit", "-q", "-m", "move")
+    monkeypatch.chdir(tmp_path)
+    paths = tier.changed_paths(base, git("rev-parse", "HEAD"))
+    assert paths is not None and "src/aew/m.py" in paths, paths
+    assert tier.decide("pull_request", paths, "main") == "full"
+
+
+GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success"}
+REDUCED = {**GREEN, "lanes": "skipped"}
+
+
+@pytest.mark.parametrize(("tier_name", "results", "ok"), [
+    ("full", GREEN, True),
+    ("docs", REDUCED, True),
+    ("web", REDUCED, True),
+    ("web", {**REDUCED, "web": "failure"}, False),
+    ("full", {**GREEN, "web": "failure"}, False),
+    ("docs", {**REDUCED, "core": "failure"}, False),
+    ("docs", {**REDUCED, "changes": "failure"}, False),
+    ("docs", GREEN, False),  # a reduced tier whose lanes ran: the tier and the jobs disagree
+    ("full", REDUCED, False),  # the full tier with its lanes skipped
+    ("", {**REDUCED, "changes": "failure"}, False),  # the tier unknown: everything required
+    ("full", {k: v for k, v in GREEN.items() if k != "static"}, False),  # a needed job missing
+])
+def test_the_gate_requires_every_needed_job_in_every_tier(tier_name, results, ok):
+    """Every needed job, any of which failing fails the gate (review of PR #99, finding 1: a shell && chain followed
+    by another line let a failing web, core or changes job pass)."""
+    assert (tier.job_problems(tier_name, results) == []) is ok
+    jobs = ",".join(f"{k}={v}" for k, v in results.items())
+    assert (tier.main(["--jobs-for", tier_name, "--jobs", jobs]) == 0) is ok
+
+
 def test_a_diff_that_cannot_be_computed_is_full(tmp_path, monkeypatch):
     assert tier.decide("pull_request", None) == "full"
     assert tier.changed_paths("", "abc") is None and tier.changed_paths("0" * 40, "abc") is None
@@ -238,15 +298,33 @@ def test_a_diff_that_cannot_be_computed_is_full(tmp_path, monkeypatch):
     assert tier.changed_paths("abc", "def") is None
 
 
-def test_every_repository_file_the_code_names_is_full_tier():
-    """A file that src/ reads by its repository path is a code input, whatever it looks like: changing it must run
-    the full gate. Paths that do not exist here (discovery's conventions for other projects) are not ours."""
+def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
+    """A repository file that code, a non-core test, a helper, a CI tool or an eval driver names by its path is an
+    input to more than the core lanes, whatever it looks like: changing it must run the full gate (review of PR #99,
+    finding 4). Both spellings count: a "docs/x/y.md" literal and Path parts ("docs" / "x" / "y.md"). Paths that do
+    not exist here (discovery's conventions for other projects, fixture projects) are not ours. The fast lane's own
+    readers (tests/unit, the spec pin) run in every tier and are left out."""
     import re
 
-    named = {m.group(1) for f in (ROOT / "src").rglob("*.py")
-             for m in re.finditer(r'"((?:docs|web|eval)/[^"*?]+)"', f.read_text(encoding="utf-8"))}
+    sources = [*(ROOT / "src").rglob("*.py"), *(ROOT / "tools").rglob("*.py"), *(ROOT / "eval").rglob("*.py"),
+               ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py"),
+               *(ROOT / "tests" / "integration").rglob("*.py"), *(ROOT / "tests" / "regression").rglob("*.py"),
+               *(ROOT / "tests" / "acceptance").rglob("*.py")]
+    literal = re.compile(r'"((?:docs|web|eval)/[^"*?\n]+)"')
+    parts = re.compile(r'"(docs|web|eval)"((?:\s*/\s*"[^"\n]+")+)')
+    # Readers that run only in the core lanes, or never: the register tool is exercised by tests/unit/test_register.py
+    # (fast lane); eval/reviews holds archived review probes kept as they ran, which nothing executes.
+    core_only = {ROOT / "tools" / "register.py", ROOT / "tools" / "ci" / "tier.py"}
+    archived = ROOT / "eval" / "reviews"
+    named: set[str] = set()
+    for f in sources:
+        if f in core_only or archived in f.parents:
+            continue
+        text = f.read_text(encoding="utf-8")
+        named |= {m.group(1) for m in literal.finditer(text)}
+        named |= {"/".join([m.group(1), *re.findall(r'"([^"]+)"', m.group(2))]) for m in parts.finditer(text)}
     ours = sorted(p for p in named if (ROOT / p).is_file())
-    assert ours, "expected at least the dashboard contract"
+    assert "docs/design/dashboard-api-v1-provisional.yaml" in ours
     assert [p for p in ours if tier.classify_path(p) != "full"] == []
 
 
@@ -291,10 +369,16 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
     assert "needs" not in jobs["core"] and "needs" not in jobs["static"]  # core and static run in every tier
     gate = jobs["assurance"]
-    assert "changes" in gate["needs"] and gate["if"] == "always()"
+    assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static"} and gate["if"] == "always()"
+    reports = next(s for s in gate["steps"] if "check_assurance.py" in str(s.get("run", "")))
+    assert "if" not in reports  # the lane-report check always runs (review of PR #99, finding 1)
+    final = gate["steps"][-1]
+    assert final["if"] == "always()" and "tools/ci/tier.py --jobs-for" in final["run"]
+    for step in gate["steps"]:  # bash -e ignores a failure in the middle of an && chain: never one in the gate
+        assert "&&" not in str(step.get("run", "")), step.get("name")
     runs = "\n".join(str(s.get("run", "")) for s in gate["steps"])
     assert "tools/ci/tier.py" in runs and 'test "$tier" = "$RAN"' in runs
     assert '--tier "$TIER" --event "$EVENT"' in runs
     coverage = next(s for s in gate["steps"] if "coverage_gate.py" in str(s.get("run", "")))
     assert coverage["if"] == "steps.tier.outputs.tier == 'full'"
-    assert 'test "$LANES" = skipped' in runs and 'test "$LANES" = success' in runs
+    assert '--base-ref "$BASE_REF"' in runs and '--base-ref "$BASE_REF"' in jobs["changes"]["steps"][-1]["run"]

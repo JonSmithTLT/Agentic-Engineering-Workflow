@@ -28,9 +28,9 @@ The **directory** says what a test is. **Markers** are used only for properties 
 
 ### Deterministic regression versus exploration
 
-- **Deterministic regressions** (review probes, compositions, crash matrices, acceptance scenarios) have fixed inputs and run on **every pull request**. A known failure, once fixed, is never demoted to nightly-only coverage.
+- **Deterministic regressions** (review probes, compositions, crash matrices, acceptance scenarios) have fixed inputs and run on every full-tier pull request and **every push to `main`** (§3, the tiers). A known failure, once fixed, is never demoted to nightly-only coverage.
 - **Exploration** is seeded and randomized: the walk, randomized store crashes and repeated races.
-  - Its default budget runs on every pull request.
+  - Its default budget runs on every full-tier pull request and every push to `main`.
   - Nightly runs larger budgets with rotating seeds, which are printed for reproduction.
   - When exploration finds a reproducible failure, the failing sequence becomes a deterministic test in `tests/regression/`, with or before its fix.
 
@@ -63,10 +63,10 @@ Deterministic fault points are named code locations, not timings. That is why th
   |---|---|---|
   | `docs` | only `docs/**` and Markdown outside `src/`, `tests/`, `tools/` and `.github/` | `fast`, `serial` (every docs, ledger, register and link test is in them) |
   | `web` | only those plus `web/**` | the same, plus the web checks |
-  | `full` | anything else; the shared files in `tier.SHARED` (the dashboard contract and its approval, which code reads); an empty diff; a diff git cannot compute; any event but a pull request | every lane |
+  | `full` | anything else; the shared files in `tier.SHARED` (the dashboard contract and its approval, which code reads); an empty diff; a diff git cannot compute; a pull request into any branch but `main`; any event but a pull request | every lane |
 
   `assurance` recomputes the tier from the same diff and fails if it differs from the one the jobs ran under. It requires every collected test of the tier's lanes, by the lane each lane report records for every collected test, and refuses a reduced tier on any event but a pull request. The coverage ratchet runs in the `full` tier only.
-- **Pre-merge assurance for the reduced tiers (operator, 2026-10-06).** A pre-merge full `merge_group` gate would be preferred, but GitHub does not provide merge queues for personal-account repositories, and AEW stays on the operator's personal account by prior decision. So the reduced tiers are backed by an always-full run of every push to `main`. This is an explicit reduction in pre-merge assurance for docs and web changes, accepted for throughput. A red `main` after a reduced-tier merge is a classification defect: correct `tier.py` and pin the case in `tests/unit/test_ci_tools.py`. If the repository moves to an organization, full merge-group assurance replaces this control; `ci.yml` keeps the `merge_group` trigger, and `merge_group` is always `full`, so no CI change is needed.
+- **Pre-merge assurance for the reduced tiers (operator, 2026-10-06).** A pre-merge full `merge_group` gate would be preferred, but GitHub does not provide merge queues for personal-account repositories, and AEW stays on the operator's personal account by prior decision. So the reduced tiers are backed by an always-full run of every push to `main`. This is an explicit reduction in pre-merge assurance for docs and web changes, accepted for throughput. A red `main` after a reduced-tier merge is triaged as a classification defect: correct `tier.py` and pin the case in `tests/unit/test_ci_tools.py`. If the repository moves to an organization, full merge-group assurance replaces this control; `ci.yml` keeps the `merge_group` trigger, and `merge_group` is always `full`, so no CI change is needed.
 - **The merge gate is the `assurance` job.** It fails unless, per OS and from the lane reports:
   - every job collected the same test set;
   - every collected test ran exactly once across all lanes and shards;

@@ -10,7 +10,7 @@ CHROMIUM_PATH=/staged/chromium/chrome \
 node --experimental-strip-types scripts/browser-live.mjs
 ```
 
-`CHROMIUM_PATH` is optional; the default is the locked Playwright Chromium under `artifacts/playwright/browsers/`. The target must be a root HTTP origin on `127.0.0.1`, with no credential, path, query or fragment. No one-time `/session/` URL is accepted as the target.
+`CHROMIUM_PATH` is optional; the default is the locked Playwright Chromium under `artifacts/playwright/browsers/`. Use a separate checkout of the runner tooling; do not modify or rebuild the approved frozen packaging checkout to add these scripts. Record both identities in F20.6. The target must be a root HTTP origin on `127.0.0.1`, with no credential, path, query or fragment. No one-time `/session/` URL is accepted as the target.
 
 ## Private cookie-file interface, version 1
 

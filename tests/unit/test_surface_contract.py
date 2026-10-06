@@ -281,3 +281,23 @@ def test_the_result_schema_is_registered_and_its_surface_version_matches():
 
     assert schema["$defs"]["stage_result"]["properties"]["surface"]["const"] == SURFACE
     json.dumps(schema)
+
+
+# The primitives the designed stages expand to that nobody has declared yet. Until F15.2 declares them, fail-closed
+# classification makes every stage that names one JUDGMENT_BEARING, so a stage the design calls POLICY_RESOLVED
+# (ticket_start, ticket_request_review) is reported judgment-bearing in the projection. This list makes that explicit:
+# it may only shrink, and F15.2 empties it as it builds each stage.
+PENDING_F15_2 = frozenset({"dispatch.launch", "work.transition", "work.create", "plan.propose", "review.ingest",
+                           "verify.ingest"})
+
+
+def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2():
+    from aew.engine.primitives import spec_for
+
+    undeclared = {p for t in contract.TOOLS.values() for p in t.expands_to if not spec_for(p).declared}
+    assert undeclared == PENDING_F15_2
+    assert all(not contract.TOOLS[t].built for t in contract.TOOLS
+               if set(contract.TOOLS[t].expands_to) & PENDING_F15_2), "a built tool expands to an undeclared primitive"
+    for name in ("ticket_start", "ticket_request_review"):  # the design's POLICY_RESOLVED stages, fail-closed for now
+        t = contract.TOOLS[name]
+        assert t.base_class == POLICY_RESOLVED and effective_class(t, {}) == JUDGMENT_BEARING

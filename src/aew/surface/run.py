@@ -150,13 +150,15 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
             at = call.steps[-1]["primitive"] if call.steps else t.name
             stopped = {"at": at, "boundary": boundary_of(refusal), "error": _error(refusal)}
     projection = _projection(engine, ctx, call.subject if stopped is None else None)
-    result = {
+    # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
+    # authored text too (PR #88 review).
+    result = scrub({
         "ok": stopped is None, "surface": SURFACE, "tool": t.name, "base_operation_class": t.base_class,
         "effective_operation_class": effective_class(t, call.a), "revision": projection["revision"],
         "generation": projection["generation"], "stage_intent_id": None, "policy_binding": None,
         "completed_steps": call.steps, "stopped": stopped,
-        "result": scrub(payload) if isinstance(payload, dict) else None, "projection": projection,
-    }
+        "result": payload if isinstance(payload, dict) else None, "projection": projection,
+    })
     validate("surface", result, source=f"the {t.name} result")
     return result
 

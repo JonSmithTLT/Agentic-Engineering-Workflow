@@ -172,7 +172,8 @@ def test_the_control_part_is_recomputed_exactly_when_its_inputs_change(lab, monk
     real = engine.status
 
     def counted(work_id=None):
-        calls.append(work_id)
+        if work_id is not None:  # the unit's control record: the cached read (guidance is read on every call)
+            calls.append(work_id)
         return real(work_id)
 
     monkeypatch.setattr(engine, "status", counted)
@@ -207,7 +208,7 @@ def test_run_telemetry_is_read_on_every_call_without_a_commit(lab, monkeypatch):
     assert out["runs"][0]["status"] == "lost" and out["runs"][0]["source"] == "local_telemetry"
 
 
-def test_decisions_name_their_stable_tool_bind_the_evidence_and_carry_no_default(lab, monkeypatch):
+def test_decisions_bind_only_reports_of_their_kind_from_the_current_run_and_carry_no_default(lab, monkeypatch):
     p, wid, engine = lab
     real = engine.status
 
@@ -217,10 +218,17 @@ def test_decisions_name_their_stable_tool_bind_the_evidence_and_carry_no_default
             out["work_unit"]["state"] = "REVIEW_PENDING"
         return out
 
+    run_id = "R-INV-0002-1"
     monkeypatch.setattr(engine, "status", review_pending)
     monkeypatch.setattr(engine, "harness_resume", lambda _state: [
-        {"invocation": "INV-0002", "work_unit": wid, "role": "reviewer", "run": "R-INV-0002-1",
-         "status": "ended_with_evidence", "reason": None, "evidence": ["EV-0007"], "action": "prose"}])
+        {"invocation": "INV-0002", "work_unit": wid, "role": "reviewer", "run": run_id,
+         "status": "ended_with_evidence", "reason": None, "evidence": ["EV-0006", "EV-0007", "EV-0005"],
+         "action": "prose"}])
+    monkeypatch.setattr(projection.E, "scan", lambda _root, _wid: ([
+        {"id": "EV-0005", "kind": "review", "producer": {"run": "R-INV-0001-1"}},  # an earlier run's report
+        {"id": "EV-0006", "kind": "check_result", "producer": {"run": run_id}},  # a check, not a report
+        {"id": "EV-0007", "kind": "review", "producer": {"run": run_id}},
+    ], []))
     out = projection.project(engine, CTX, wid)
     [decision] = out["decisions_required"]
     assert decision["decision"] == "ACCEPT_REVIEW_EVIDENCE" and decision["tool"] == "ticket_request_verification"
@@ -228,6 +236,23 @@ def test_decisions_name_their_stable_tool_bind_the_evidence_and_carry_no_default
     assert decision["availability"] == UNKNOWN
     assert decision["arguments"]["review_evidence"] == "EV-0007"
     assert decision["cli_fallback"][:5] == ["review", "ingest", wid, "--evidence", "EV-0007"]
+
+
+def test_the_whole_result_is_scrubbed_including_the_projections_guidance(tmp_path):
+    from aewflow import assign
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    impl.submit("implementation_report", {
+        "claim": "blocked", "result": "blocked",
+        "implementation": {"files_changed": [], "checks_run": [], "deviations": [p.token],
+                           "self_review": {"completed": True, "notes": "blocked"}}})
+    for name, args in (("status", {"work_id": wid}), ("status", {}), ("resume", {})):
+        out = run.run_tool(Engine.discover(p.root), CTX, name, args, token=p.token)
+        assert p.token not in json.dumps(out), name  # result, projection, hints, errors: all of it
+        if name == "status" and args:  # the engine's blocker hint repeats the report's text: redacted there too
+            assert any("aew1.<redacted>" in h for h in out["projection"]["hints"]), out["projection"]["hints"]
 
 
 def test_unqueryable_transitions_are_present_as_unknown(lab, monkeypatch):

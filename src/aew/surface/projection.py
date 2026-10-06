@@ -2,18 +2,19 @@
 
 The one projection module: every ``StageResult`` and the typed ``status`` use it, and later the dashboard's
 ``/attention`` and the scheduler. It derives only from accepted query surfaces (``status``, ``DispatchDecision``,
-committed state) and explicit local telemetry; it is not a second planner. Three parts, by how their answer can
-change:
+committed state, the sealed evidence store) and explicit local telemetry; it is not a second planner. Its parts, by
+how their answer can change:
 
-* **control part** (cached): the subject's state, the engine's hints, blockers, and the transition and decision
+* **control part** (cached): the subject's committed state, its dependency blockers, and the transition and decision
   actions whose guards are not yet queryable (``UNKNOWN``, never ``BLOCKED``). It depends only on the committed
   control file and the project's policy and manifest files, so it is keyed on their identities and recomputed only
   when one changes (a commit, a policy edit), never per call;
-* **legality overlay** (never cached in F15.1): dispatch availability, asked of ``DispatchDecision`` on every call.
-  Its guards also read repository inputs and the authoritative head, which change without a commit; F15.4's
-  ``legality_digest`` is what will let it be keyed;
-* **run overlay** (never cached in F15.1): local run telemetry. Heartbeats change liveness without a commit or a wake;
-  when U1's run health lands, its event watermark keys this part.
+* **overlays** (read on every call in F15.1), because their inputs change without a commit:
+  - legality: dispatch availability, asked of ``DispatchDecision``. Its guards also read repository inputs and the
+    authoritative head; F15.4's ``legality_digest`` is what will let it be keyed;
+  - telemetry: the runs, and the engine's guidance (hints, contradictions), which reads run telemetry and submitted
+    evidence. Heartbeats and submissions change them without a commit or a wake; U1's event watermark will key them;
+  - evidence: the reports a decision binds, resolved by kind, scope and producing run in the sealed evidence store.
 
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
@@ -31,6 +32,7 @@ from typing import Any
 from aew.engine.primitives import spec_for
 from aew.errors import AEWError
 from aew.harness import contract as K
+from aew.knowledge import evidence as E
 from aew.surface import contract
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
 from aew.surface.context import SurfaceContext
@@ -99,20 +101,15 @@ def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> 
 # ---------------------------------------------------------------------------------------------- the control part
 
 def _control_part(engine: Any, subject: str) -> dict[str, Any]:
-    report = engine.status()
-    lead = report.get("lead") or {}
-    part: dict[str, Any] = {"revision": report["revision"], "generation": int(lead.get("generation") or 0),
+    """Committed facts only: nothing here may read run telemetry, submitted evidence or repository inputs."""
+    state = engine.store.read()
+    part: dict[str, Any] = {"revision": state["revision"],
+                            "generation": int((state.get("lead") or {}).get("generation") or 0),
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
-                            "blockers": [], "hints": []}
+                            "blockers": []}
     if subject == "project":
-        part["hints"] = [str(a) for a in report.get("next_actions") or []]
-        for c in report.get("contradictions") or []:
-            part["blockers"].append(_blocker("CONTRADICTION", str(c)))
         return part
-    unit = engine.status(subject)["work_unit"]
-    prefix = f"{subject}: "
-    part["hints"] = [a[len(prefix):] for a in (str(x) for x in report.get("next_actions") or [])
-                     if a.startswith(prefix)]
+    unit = engine.status(subject)["work_unit"]  # hot, or archived as it stands now
     part["state"] = unit.get("state")
     part["unit"] = {"kind": unit.get("kind"), "mutating": bool(unit.get("mutating")),
                     "integration": dict(unit.get("integration") or {})}
@@ -121,15 +118,16 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
         part["blockers"].append(_blocker(kind.upper(), kind.replace("_", " "),
                                          {k: v for k, v in b.items() if k != "kind"}))
     if unit.get("kind") == "ticket":
-        _ticket_actions(part, subject, int(report["revision"]))
+        _ticket_actions(part, subject, int(part["revision"]))
     return part
 
 
 def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
     """Transitions and decisions whose guards are not queryable yet: present, UNKNOWN, never auto-runnable. Each is
     named by its stable typed tool (so the vocabulary does not change when F15.2 builds it) with the primitive command
-    that does it today. Evidence for review and verification decisions comes from the run overlay."""
+    that does it today. A decision that accepts a report is completed per report by the evidence overlay."""
     st, mutating = part["state"], part["unit"]["mutating"]
+    integration = part["unit"]["integration"]
     r = str(rev)
     if st == "RUNNING" and mutating:
         part["actions"].append(_action(
@@ -137,19 +135,26 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
             reason_codes=[GUARD_NOT_QUERYABLE],
             cli_fallback=["work", "transition", wid, "--to", "REVIEW_PENDING", "--expect-rev", r]))
     elif st == "REVIEW_PENDING":
-        part["decisions"].append({"decision": "ACCEPT_REVIEW_EVIDENCE", "role": "reviewer",
-                                  "tool": "ticket_request_verification", "argument": "review_evidence",
+        part["decisions"].append({"decision": "ACCEPT_REVIEW_EVIDENCE", "role": "reviewer", "kind": "review",
+                                  "scope": None, "tool": "ticket_request_verification", "argument": "review_evidence",
                                   "cli": ["review", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
     elif st == "VERIFY_PENDING":
-        part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "tool": "ticket_prepare",
-                                  "argument": "verification_evidence",
+        part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "kind": "verification",
+                                  "scope": "ticket", "tool": "ticket_prepare", "argument": "verification_evidence",
                                   "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
     elif st == "VERIFICATION_FAILED":
         part["decisions"].append({"decision": "CLASSIFY_FAILURE", "tool": None,
                                   "cli": ["verify", "classify", wid, "--as", "<classification>", "--reason",
                                           "<why>", "--expect-rev", r]})
-    elif st == "COMMIT_READY" and (part["unit"]["integration"].get("status") == "prepared"):
-        candidate = part["unit"]["integration"].get("candidate")
+    elif st == "COMMIT_READY" and integration.get("status") == "prepared":
+        # A prepared candidate is validated after integration before it may be published (the engine's own guidance):
+        # by an integration verifier, whose report is the decision offered here, or, in checks mode, by the engine's
+        # own validation (D5), which needs no Lead decision. Publication is offered only once it is validated.
+        part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "kind": "verification",
+                                  "scope": "integration", "tool": None, "argument": None,
+                                  "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
+    elif st == "COMMIT_READY" and integration.get("status") == "validated":
+        candidate = integration.get("candidate")
         part["decisions"].append({"decision": "PUBLISH", "tool": "integration_publish",
                                   "arguments": {"expect_rev": rev, "work_id": wid,
                                                 **({"prepared_candidate": str(candidate)} if candidate else {})},
@@ -177,6 +182,17 @@ def _cached_control_part(engine: Any, subject: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------------------------- the overlays
+
+def _guidance(engine: Any, subject: str) -> tuple[list[str], list[dict[str, Any]]]:
+    """The engine's own guidance, read now: it reflects run telemetry and submitted evidence, which change without a
+    commit. Hints are for a reader and never parsed; contradictions are blockers of the project."""
+    report = engine.status()
+    lines = [str(x) for x in report.get("next_actions") or []]
+    if subject == "project":
+        return lines, [_blocker("CONTRADICTION", str(c)) for c in report.get("contradictions") or []]
+    prefix = f"{subject}: "
+    return [a[len(prefix):] for a in lines if a.startswith(prefix)], []
+
 
 def _dispatch_action(engine: Any, part: dict[str, Any], wid: str) -> tuple[dict[str, Any] | None,
                                                                             list[dict[str, Any]]]:
@@ -221,6 +237,38 @@ def _runs(engine: Any, subject: str) -> list[dict[str, Any]]:
     return out
 
 
+def _reports(engine: Any, subject: str, runs: list[dict[str, Any]], d: dict[str, Any]) -> list[str]:
+    """The reports a decision may accept: in the sealed evidence store, of the decision's kind (and verification
+    scope), produced by the current run of an active invocation of the decision's role that has ended with its
+    evidence. A check result or any other record a run produced is never offered as a report."""
+    runs_of_role = {r["run"] for r in runs if r["role"] == d["role"] and r["status"] == K.ENDED_WITH_EVIDENCE}
+    if not runs_of_role:
+        return []
+    out = []
+    for e in E.scan(Path(engine.aew_root), subject)[0]:
+        if e.get("kind") != d["kind"] or (e.get("producer") or {}).get("run") not in runs_of_role:
+            continue
+        if d["scope"] is not None and (e.get("verification") or {}).get("scope") != d["scope"]:
+            continue
+        out.append(str(e["id"]))
+    return sorted(out)
+
+
+def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for d in part["decisions"]:
+        if "role" not in d:
+            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=d.get("arguments"),
+                                 cli_fallback=list(d["cli"])))
+            continue
+        for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
+            arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e}
+                         if d["argument"] else None)
+            out.append(_decision(d["decision"], subject, tool=d["tool"], evidence=[e], arguments=arguments,
+                                 cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]]))
+    return out
+
+
 # ---------------------------------------------------------------------------------------------- assembly
 
 def project(engine: Any, ctx: SurfaceContext, subject: str | None = None) -> dict[str, Any]:
@@ -229,6 +277,8 @@ def project(engine: Any, ctx: SurfaceContext, subject: str | None = None) -> dic
     part = _cached_control_part(engine, subject)
     actions = [dict(a) for a in part["actions"]]
     blockers = [dict(b) for b in part["blockers"]]
+    hints, contradictions = _guidance(engine, subject)
+    blockers.extend(contradictions)
     dispatch, dispatch_blockers = _dispatch_action(engine, part, subject)
     if dispatch is not None:
         actions.insert(0, dispatch)
@@ -242,23 +292,5 @@ def project(engine: Any, ctx: SurfaceContext, subject: str | None = None) -> dic
     for a in actions:
         a["callable"] = contract.callable_on(contract.tool(a["action"]), ctx.profile)
     return {"revision": part["revision"], "generation": part["generation"], "subject": subject,
-            "state": part["state"], "actions": actions, "decisions_required": _decisions(part, subject, runs),
-            "blockers": blockers, "anomalies": [], "hints": list(part["hints"]), "runs": runs}
-
-
-def _decisions(part: dict[str, Any], subject: str, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out = []
-    for d in part["decisions"]:
-        if "role" in d:  # one decision per inspected report a finished run of that role produced
-            reports = sorted({e for r in runs if r["role"] == d["role"] and r["status"] == K.ENDED_WITH_EVIDENCE
-                              for e in r["evidence"]})
-            for e in reports:
-                out.append(_decision(
-                    d["decision"], subject, tool=d["tool"], evidence=[e],
-                    arguments={"expect_rev": part["revision"], "work_id": subject, d["argument"]: e},
-                    cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]]))
-        else:
-            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=d.get("arguments"),
-                                 cli_fallback=list(d["cli"])))
-    return out
-
+            "state": part["state"], "actions": actions, "decisions_required": _decisions(engine, part, subject, runs),
+            "blockers": blockers, "anomalies": [], "hints": hints, "runs": runs}

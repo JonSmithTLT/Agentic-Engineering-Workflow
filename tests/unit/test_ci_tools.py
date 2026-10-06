@@ -195,7 +195,21 @@ def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
     nightly = yaml.safe_load((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
     report = nightly["jobs"]["report"]
     condition = " ".join(str(report["if"]).split())
-    assert condition.startswith("always()") and "github.event_name == 'schedule'" in condition
-    assert "contains(needs.*.result, 'failure')" in condition and "contains(needs.*.result, 'cancelled')" in condition
     assert set(report["needs"]) == set(nightly["jobs"]) - {"report"}  # every nightly job is reported on
+
+    # Evaluate the expression itself over every event and job outcome, so its grouping is pinned, not just its parts
+    # (PR #92 review: without the parentheses a failed manual run would open the issue). The translation covers
+    # exactly the constructs this condition uses; anything else fails the test.
+    import re
+
+    py = condition.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    py = py.replace("github.event_name", "event")
+    py = re.sub(r"contains\(needs\.\*\.result, '(\w+)'\)", r"('\1' in results)", py)
+    assert re.fullmatch(r"[\w\s()'=.]+", py) and "needs" not in py and "github" not in py, py
+    outcomes = ("success", "failure", "cancelled", "skipped")
+    for event in ("schedule", "workflow_dispatch", "push"):
+        for results in [(o,) for o in outcomes] + [("success", "cancelled"), ("skipped", "failure")]:
+            fires = eval(py, {"__builtins__": {}}, {"event": event, "results": results})  # noqa: S307
+            expected = event == "schedule" and bool({"failure", "cancelled"} & set(results))
+            assert fires == expected, (event, results, condition)
 

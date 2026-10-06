@@ -403,6 +403,30 @@ def _runs_in(value) -> list[dict]:
     return []
 
 
+def test_a_verifier_verdict_that_leaves_the_candidate_ends_a_run_left_running(calc, tmp_path, contained,
+                                                                            monkeypatch):
+    """Re-review R3: whatever moves the candidate out of prepared/validated (here a failing integration verifier,
+    which keeps the integration record) ends a run still marked running, in that transaction, recorded."""
+    policy(calc, checks=SMOKE, post=["unit"])  # the check the verifier helper cites
+    wid = prepared(calc, tmp_path)
+    monkeypatch.setenv("AEW_FAULT", "validate.before_check")
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    from aew.engine.faults import InjectedFault
+
+    with pytest.raises(InjectedFault):
+        validate(calc, wid)
+    monkeypatch.delenv("AEW_FAULT")
+    assert integ(calc, wid)["current_validation_run"]["state"] == "running"
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration", goal_result="fail"))
+    unit = control(calc)["work"][wid]
+    assert unit["state"] != "COMMIT_READY", unit["state"]
+    record = unit.get("integration") or (unit.get("integration_history") or [{}])[-1]
+    run = record["current_validation_run"]
+    assert run["state"] == "abandoned" and run["reason"] == "SUPERSEDED", run
+    assert (calc.root / ".aew" / run["record"]["path"]).is_file()
+    assert_control_invariants(calc)
+
+
 def test_publishing_through_the_verifier_ends_a_run_left_running(calc, tmp_path, contained, monkeypatch):
     """Re-review R1: a checks run interrupted before the Lead validated through the verifier ends with the
     publication, abandoned and recorded, never archived as running."""

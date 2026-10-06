@@ -73,6 +73,9 @@ def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_valida
     refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed", "--token", "x",
                                               "--expect-rev", "1"))
     assert refusal and "confirmed by the operator" in refusal and "credential" not in refusal
+    assert refusal.startswith("`aew integrate breaker reset`"), refusal  # as typed, never sorted (re-review R4)
+    offer = lead_broker.refuses_locally(_ns("lead", "handoff", "offer", "--expect-rev", "1"))
+    assert offer and offer.startswith("`aew lead handoff offer`"), offer
     assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001", "--token", "x",
                                            "--expect-rev", "1")) is None
 

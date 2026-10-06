@@ -98,20 +98,28 @@ def command_path(ns: argparse.Namespace) -> frozenset[str]:
     return frozenset(names)
 
 
+def command_name(ns: argparse.Namespace) -> str:
+    """The command as typed (``lead handoff offer``), for a refusal to name: argparse sets the command, then each
+    sub-command, in order (the path above is a set; sorted, it named commands that do not exist; PR #91 re-review)."""
+    names = [ns.command] if getattr(ns, "command", None) else []
+    names += [v for k, v in vars(ns).items() if k.endswith("_cmd") and isinstance(v, str)]
+    return " ".join(names)
+
+
 def refuses_locally(ns: argparse.Namespace) -> str | None:
     """Inside a Lead session, why this command may not run here, or ``None``: an operator-only command, or a
     Lead-authenticated command nobody has classified Lead-reachable (fail closed). The one reachability check: the
     ``aew`` client applies it before relaying, and the broker again before it runs anything."""
     path = command_path(ns)
     if any(p <= path for p in OPERATOR_CONFIRMED):
-        return (f"`aew {' '.join(sorted(path))}` is confirmed by the operator with a code typed at their own terminal; "
+        return (f"`aew {command_name(ns)}` is confirmed by the operator with a code typed at their own terminal; "
                 "a Lead session cannot run it: ask the operator")
     if any(p <= path for p in OPERATOR_ONLY):
-        return (f"`aew {' '.join(sorted(path))}` would put a Lead credential, offer secret or dashboard session URL "
+        return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
                 "operator actions at the operator's own terminal")
     if hasattr(ns, "token") and path not in LEAD_REACHABLE and path not in NOT_RELAYED:
-        return (f"`aew {' '.join(sorted(path))}` is not classified as reachable from a Lead session; it is refused "
+        return (f"`aew {command_name(ns)}` is not classified as reachable from a Lead session; it is refused "
                 "until it is (lead_broker.LEAD_REACHABLE or OPERATOR_ONLY)")
     return None
 
@@ -277,7 +285,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
         raise errors.PermissionDenied(refusal)
     path = command_path(ns)
     if path in NOT_RELAYED:
-        raise errors.PermissionDenied(f"`aew {' '.join(sorted(path))}` is a transport of the typed Lead surface; it "
+        raise errors.PermissionDenied(f"`aew {command_name(ns)}` is a transport of the typed Lead surface; it "
                                       "is never relayed and never nested in its own cli escape")
     if getattr(ns, "print_credential", False):
         raise errors.PermissionDenied("--print-credential is refused in a Lead session: a credential never goes "

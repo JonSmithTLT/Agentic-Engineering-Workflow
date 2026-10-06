@@ -689,12 +689,25 @@ class Validation:
     def finalize(self, ctx: Any) -> None:
         """A transaction finalizer: every terminal run without its immutable record gets one in the same commit. A run
         ended by retiring its candidate (a state hook, which has no transaction to write through) is recorded here,
-        so no terminal run is ever only a line in integration history (PR #91 review, finding 6)."""
+        so no terminal run is ever only a line in integration history (PR #91 review, finding 6).
+
+        First, a run still marked running on a candidate that is no longer open (the Ticket left COMMIT_READY, or
+        the candidate is publishing, integrated, retired, inconclusive or unavailable, by whatever path: a verifier's
+        verdict, a disposition, a publication) can never commit: it ends here, abandoned as SUPERSEDED (never a
+        breaker event), and is recorded with the rest (PR #91 re-review R1, R3). Its executor, if alive, finds it no
+        longer running at its transaction 2 and records nothing."""
         for wid, unit in ctx.state["work"].items():
-            records = [unit.get("integration") or {}, *(unit.get("integration_history") or [])]
+            integ = unit.get("integration") or {}
+            is_open = unit["state"] == "COMMIT_READY" and integ.get("status") in ("prepared", "validated")
+            records = [integ, *(unit.get("integration_history") or [])]
             for holder in records:
                 for s in SLOTS:
                     run = holder.get(s)
+                    if run and run.get("state") == "running" and (holder is not integ or not is_open):
+                        holder[s] = run = {**run, "state": "abandoned", "reason": "SUPERSEDED",
+                                           "ended_at": _iso(_now()),
+                                           "detail": f"{wid}'s candidate is no longer open "
+                                                     f"({unit['state']}, {integ.get('status')})"}
                     if run and run.get("state") in TERMINAL and not run.get("record"):
                         self._write_record(ctx, wid, run)
 

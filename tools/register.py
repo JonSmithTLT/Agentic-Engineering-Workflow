@@ -10,6 +10,13 @@ dashboard keep reading the markdown; triage tooling reads the YAML.
     python tools/register.py check             # exit 1 if either file is not what render would write
     python tools/register.py import            # one-time: parse future-work.md into future-work.yaml
     python tools/register.py summary           # open rows by section and target
+    python tools/register.py due               # print the decisions-due view
+
+**Decisions due.** ``docs/implementation/decisions-due.yaml`` lists what the operator or the designer still owes the
+register: each item names its register row, what is needed (a decision, a design, or the adoption of one), its owner,
+the point it is due by (``DUE_ORDER``) and the rows it blocks. ``render`` writes ``decisions-due.md`` from it, soonest
+first, with the blocked rows beside what they wait for. ``check`` keeps it current: an item whose row or blocked row
+has closed is stale, and every open question (§4) and every open row targeted **Designer** must have an item.
 
 The markdown is plain GitHub tables, one per section, with optional prose before the table. A cell never contains a
 literal ``|`` (the table would break), so cells split on it. Rows are kept exactly as written: the YAML holds text,
@@ -37,6 +44,15 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 MD = ROOT / "docs" / "implementation" / "future-work.md"
 YAML = ROOT / "docs" / "implementation" / "future-work.yaml"
+DUE_YAML = ROOT / "docs" / "implementation" / "decisions-due.yaml"
+DUE_MD = ROOT / "docs" / "implementation" / "decisions-due.md"
+DUE_SCHEMA = "aew/decisions-due/v1"
+# The points a decision can be due by, soonest first: the gates and M4 phases in their order (docs/README.md), then the
+# later milestones and the register's open-ended targets.
+DUE_ORDER = ("Gate: before F15.2 ships", "M4-D", "M4-E", "M4-F", "M4-G", "M4-H", "M4", "Gate: before internal alpha",
+             "M5", "M6", "Evaluation", "Unscheduled")
+NEEDS = ("decision", "design", "adoption")
+OWNERS = ("operator", "designer", "operator and designer")
 SCHEMA = "aew/register/v1"
 TARGETS = ("Gate", "M4", "M5", "M6", "Hierarchy revision", "M4 candidate", "Designer", "Evaluation",
            "On measured need", "Unscheduled")
@@ -219,11 +235,80 @@ def summary(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# ------------------------------------------------------------------------------------------------------- decisions due
+
+def load_due() -> dict[str, Any]:
+    return yaml.safe_load(DUE_YAML.read_text(encoding="utf-8"))
+
+
+def due_problems(data: dict[str, Any], due: dict[str, Any]) -> list[str]:
+    """Why the decisions-due list no longer matches the register: an item on a closed or unknown row, a blocked row that
+    closed, a field outside its vocabulary, or an open question or Designer row with no item."""
+    out: list[str] = []
+    if due.get("schema") != DUE_SCHEMA:
+        out.append(f"{DUE_YAML.name}: schema is not {DUE_SCHEMA}")
+    open_ids = {r["id"] for r in rows(data) if r["id"]}
+    all_ids = {r["id"] for r in rows(data, open_only=False) if r["id"]}
+    covered: set[str] = set()
+    for n, item in enumerate(due.get("items") or [], 1):
+        where = f"{DUE_YAML.name} item {n} ({item.get('row', '?')})"
+        missing = [k for k in ("row", "needs", "owner", "due", "what") if not item.get(k)]
+        if missing:
+            out.append(f"{where}: missing {', '.join(missing)}")
+            continue
+        if item["row"] not in open_ids:
+            out.append(f"{where}: register row {item['row']} is " + ("closed: remove the item, or reopen the row"
+                       if item["row"] in all_ids else "not in the register"))
+        for blocked in item.get("blocks") or []:
+            if blocked not in open_ids:
+                out.append(f"{where}: blocks {blocked}, which is " + ("closed" if blocked in all_ids else "not in the "
+                           "register"))
+        if item["needs"] not in NEEDS:
+            out.append(f"{where}: needs is one of {', '.join(NEEDS)}")
+        if item["owner"] not in OWNERS:
+            out.append(f"{where}: owner is one of {', '.join(OWNERS)}")
+        if item["due"] not in DUE_ORDER:
+            out.append(f"{where}: due is one of {', '.join(DUE_ORDER)}")
+        covered |= {item["row"], *(item.get("blocks") or [])}
+    for r in rows(data):
+        if r["id"] and r["id"] not in covered and (r["section"] == 4 or r["target"] == "Designer"):
+            out.append(f"register {r['id']} waits for a decision (§4 or **Designer**) but has no item in "
+                       f"{DUE_YAML.name}")
+    return out
+
+
+def _cell(text: str) -> str:
+    return " ".join(str(text).split()).replace("|", "/")
+
+
+def render_due(due: dict[str, Any]) -> str:
+    """The decisions-due view: what is owed, by whom and by when, soonest first; then each blocked row and what it
+    waits for."""
+    items = sorted(due.get("items") or [], key=lambda i: (DUE_ORDER.index(i["due"]), id_key(i["row"])))
+    out = ["# Decisions due", "",
+           "*Generated by `python tools/register.py render` from `decisions-due.yaml`; edit the YAML, never this page. "
+           "Each item points to its row in the [future-work register](future-work.md), which holds the detail.*", "",
+           due["intro"].strip(), "",
+           "## Owed, soonest first", "",
+           "| Due by | Owner | Needs | What | Row | Blocks |", "|---|---|---|---|---|---|"]
+    for i in items:
+        out.append(f"| {i['due']} | {i['owner']} | {i['needs']} | {_cell(i['what'])} | {i['row']} | "
+                   f"{', '.join(i.get('blocks') or []) or '-'} |")
+    blocked: dict[str, list[str]] = {}
+    for i in items:
+        for row in i.get("blocks") or []:
+            blocked.setdefault(row, []).append(f"{i['row']} ({i['needs']}, {i['owner']}, by {i['due']})")
+    out += ["", "## Blocked until then", "", "| Row | Waits for |", "|---|---|"]
+    for row in sorted(blocked, key=id_key):
+        out.append(f"| {row} | {'; '.join(blocked[row])} |")
+    return "\n".join(out) + "\n"
+
+
 # ------------------------------------------------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("command", choices=["render", "check", "import", "summary"])
+    ap.add_argument("command", choices=["render", "check", "import", "summary", "due"])
     args = ap.parse_args(argv)
     if args.command == "import":
         data = parse_markdown(MD.read_text(encoding="utf-8"))
@@ -235,7 +320,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"imported {sum(len(s['rows']) for s in data['sections'])} rows into {YAML.relative_to(ROOT)}")
         return 0
     data = normalize(load())
+    due = load_due()
+    if args.command == "due":
+        print(render_due(due), end="")
+        return 0
     if args.command == "render":
+        DUE_MD.write_text(render_due(due), encoding="utf-8", newline="\n")
         text = dump(data)
         if text != YAML.read_text(encoding="utf-8"):
             YAML.write_text(text, encoding="utf-8", newline="\n")
@@ -245,10 +335,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "summary":
         print(summary(data))
-        for p in problems(data):
+        for p in problems(data) + due_problems(data, due):
             print("problem:", p)
         return 0
     ok = render_markdown(data) == MD.read_text(encoding="utf-8")
+    if render_due(due) != DUE_MD.read_text(encoding="utf-8"):
+        ok = False
+        print(f"{DUE_MD.relative_to(ROOT)} differs from what {DUE_YAML.relative_to(ROOT)} renders")
+    for problem in due_problems(data, due):
+        ok = False
+        print("problem:", problem)
     if dump(data) != YAML.read_text(encoding="utf-8"):
         ok = False
         print(f"{YAML.relative_to(ROOT)} is not normalized (§Closed in id order, canonical layout)")

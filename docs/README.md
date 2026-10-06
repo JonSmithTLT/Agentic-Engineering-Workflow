@@ -33,6 +33,8 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | M4-G | Candidates: Lead and run UX items, the amendment index, Windows coverage, the structural map slice | Planned |
 | M4-H | Acceptance: metrics, the preregistered dogfood, independent review | Planned |
 
+**Decisions due:** [`decisions-due.md`](implementation/decisions-due.md), what the operator and designer owe and what waits for it.
+
 **Gates on the way** ([`future-work.md`](implementation/future-work.md) §1): real-repository dogfood waited on containment
 (built in M4-B) and the custody-hardening item (closed); network containment (F28) before internal alpha; the F15
 promotion before M4-E (met 2026-10-05). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
@@ -96,6 +98,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`implementation-status.md`](implementation/implementation-status.md) | Implemented, staged or designed, capability by capability |
 | [`future-work.md`](implementation/future-work.md) | The register: every deferred item, its gate and its milestone. The one place work is tracked; the ledger points into it |
 | [`future-work.yaml`](implementation/future-work.yaml) | The register's source (E30): the same preamble, sections and rows as structured data. `future-work.md` is rendered from it by `tools/register.py`; `tests/unit/test_register.py` keeps the two identical |
+| [`decisions-due.md`](implementation/decisions-due.md) | **What the operator and designer owe, soonest first**, and the work blocked until then; rendered from [`decisions-due.yaml`](implementation/decisions-due.yaml) by `tools/register.py`, which fails CI when an item goes stale |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |

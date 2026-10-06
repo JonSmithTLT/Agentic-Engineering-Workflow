@@ -104,3 +104,53 @@ def test_a_clean_merge_that_leaves_closed_unsorted_is_still_caught():
                         {c: ("E0" if c == "#" else "x") for c in section["columns"]}]
     assert register.dump(data) != register.dump(register.normalize(copy.deepcopy(data)))
     assert any("not in id order" in p for p in register.problems(data))
+
+
+# ------------------------------------------------------------------------------------------------------- decisions due
+
+DUE = yaml.safe_load(register.DUE_YAML.read_text(encoding="utf-8"))
+
+
+def test_the_decisions_due_view_is_what_its_yaml_renders_and_is_current():
+    """The operator asked for one place that says what decisions are due by when and what they block (2026-10-06):
+    `decisions-due.md` is rendered from its YAML, and every item still points at an open register row."""
+    assert register.render_due(DUE) == register.DUE_MD.read_text(encoding="utf-8"), (
+        "docs/implementation/decisions-due.md is not rendered from decisions-due.yaml: run "
+        "`python tools/register.py render`")
+    assert register.due_problems(DATA, DUE) == []
+
+
+def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
+    data = copy.deepcopy(DATA)
+    closed = next(s for s in data["sections"] if s["title"].startswith("Closed"))
+    questions = next(s for s in data["sections"] if s["number"] == 4)
+    q12 = next(r for r in questions["rows"] if r["#"] == "Q12")
+    questions["rows"].remove(q12)
+    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "Q12"})
+    problems = register.due_problems(data, DUE)
+    assert any("Q12 is closed" in p for p in problems), problems
+    due = copy.deepcopy(DUE)
+    due["items"][0]["blocks"] = ["F2"]  # closed in M4-B
+    assert any("blocks F2, which is closed" in p for p in register.due_problems(DATA, due))
+
+
+def test_every_open_question_and_designer_row_has_an_item():
+    due = copy.deepcopy(DUE)
+    due["items"] = [i for i in due["items"] if i["row"] not in {"Q7", "U10"}]
+    problems = register.due_problems(DATA, due)
+    assert any("Q7 waits for a decision" in p for p in problems), problems
+    assert any("U10 waits for a decision" in p for p in problems), problems
+
+
+def test_an_item_names_a_known_due_point_owner_and_need():
+    due = copy.deepcopy(DUE)
+    due["items"][0] |= {"due": "next week", "owner": "someone", "needs": "vibes"}
+    problems = " ".join(register.due_problems(DATA, due))
+    assert "due is one of" in problems and "owner is one of" in problems and "needs is one of" in problems
+
+
+def test_the_view_lists_the_soonest_first():
+    owed = register.render_due(DUE).split("## Owed, soonest first")[1].split("## Blocked")[0]
+    dues = [line.split(" | ")[0].removeprefix("| ") for line in owed.splitlines() if line.startswith("| ")][1:]
+    order = [register.DUE_ORDER.index(d) for d in dues]
+    assert len(dues) == len(DUE["items"]) and order == sorted(order)

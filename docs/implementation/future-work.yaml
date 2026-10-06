@@ -1310,7 +1310,7 @@ sections:
     Was: 'Conditional requests and caching: ETags cover the whole envelope, `control_revision` and the session''s scope
       included; 200 and 304 behaviour checked against live projections'
     Closed: '2026-10-05'
-    By: 'This PR: `aew.dashboard.etag`, a strong validator over the representation less the snapshot''s time, in the request
+    By: 'PR #87: `aew.dashboard.etag`, a strong validator over the representation less the snapshot''s time, in the request
       scope (path, project, normalized query); `If-None-Match` as a list, `W/` and `*` never matching; a `304` with the
       validator sent, no body, after authentication; tested against live projections (a commit, a revision-only commit,
       telemetry alone); design note §4.12, §5.3'

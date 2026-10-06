@@ -172,6 +172,12 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN); never inside a Lead session")
     q.set_defaults(handler=_lead_tool)
 
+    q = lsub.add_parser("mcp", help="the Lead's MCP server, aew-lead (F15.1): spawned by the Lead's harness in a Lead "
+                                    "session; it holds no credential and forwards every call to the session's broker")
+    q.add_argument("--profile", choices=["normal", "recovery"], default="normal",
+                   help="the surface profile to advertise; the generic cli escape is offered only on recovery")
+    q.set_defaults(handler=_lead_mcp)
+
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
                                         "credential or, by default, any provider key (ADR-0009)")
     p.add_argument("--acquire", action="store_true",
@@ -280,6 +286,15 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
 
     return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile), args.name, arguments,
                         token=token or None, run_cli=cli)
+
+
+def _lead_mcp(args: argparse.Namespace) -> Any:
+    """``aew lead mcp``: serve the typed surface over stdio. It never builds an engine and never reads a credential:
+    every call goes to the Lead session's broker, and without one it refuses to start."""
+    from aew.surface import mcp
+
+    mcp.serve(args.profile)
+    return None
 
 
 def _lead_session(args: argparse.Namespace) -> Any:

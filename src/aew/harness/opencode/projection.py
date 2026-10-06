@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.harness.contract import LaunchContract
+from aew.surface import SERVER_NAME
 
 AGENT = "aew"
 LEAD_AGENT = "aew-lead"
@@ -168,6 +169,12 @@ def session_body(contract: LaunchContract, directory: str, rules: list[dict[str,
 
 # ---------------------------------------------------------------------------------------------- the Lead's TUI
 
+# The Lead's typed tools (F15.1): OpenCode 2.0.18 names an MCP tool `<server>_<tool>` and asks permission for exactly
+# that action, so one rule allows the `aew-lead` server's tools. Each is engine-refused or engine-committed, like the
+# `aew *` shell commands beside it.
+LEAD_MCP_SERVER = SERVER_NAME
+LEAD_MCP_COMMAND = ["aew", "lead", "mcp"]
+
 LEAD_RULES = [
     rule("*", "ask"),
     *(rule(action, "allow") for action in ("read", "glob", "grep")),
@@ -176,6 +183,7 @@ LEAD_RULES = [
     rule("edit", "deny"),
     rule("subagent", "deny"),
     rule("question", "allow"),
+    rule(f"{LEAD_MCP_SERVER}_*", "allow"),
 ]
 
 LEAD_SYSTEM = "\n".join([
@@ -185,6 +193,11 @@ LEAD_SYSTEM = "\n".join([
     "from an earlier conversation.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` "
     "commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).",
+    f"- Your `{SERVER_NAME}` tools are the normal way to read AEW state, wait for runs and checkpoint: `status`, "
+    "`resume`, `work_show`, `explain`, `harness_status`, `harness_wait` (several runs at once; it returns when the "
+    "first ends) and `checkpoint`. Each returns the revision to pass as `expect_rev` next and a projection of what is "
+    "available, blocked or unknown, and of the decisions that are yours. Until typed stages arrive, other changes "
+    "still go through `aew` commands.",
     "- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch "
     "with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its "
     "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
@@ -255,6 +268,12 @@ def lead_config(guide: str = "") -> dict[str, Any]:
     system text so every Lead works from how AEW actually runs here, not by trial and error."""
     system = f"{LEAD_SYSTEM}\n\n{guide}" if guide else LEAD_SYSTEM
     return {"share": "disabled", "default_agent": LEAD_AGENT,
+            # The typed surface's server: spawned by OpenCode in the session's curated environment, with no
+            # `environment` of its own (it holds no credential), and with Code Mode off so its tools are function
+            # tools (2.0.18's default hides MCP tools behind one `execute` tool). Its execution timeout is left at the
+            # pinned default (43,200,000 ms), far above harness_wait's 600 s cap.
+            "mcp": {"servers": {LEAD_MCP_SERVER: {"type": "local", "command": list(LEAD_MCP_COMMAND),
+                                                  "codemode": False}}},
             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
                                     "system": system, "permissions": LEAD_RULES}},
             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}

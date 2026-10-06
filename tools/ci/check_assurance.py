@@ -10,9 +10,15 @@ For every required platform it proves, from the lane reports written by ``pytest
 * the skipped tests are exactly the pinned platform skips (``tests/platform-skips.yaml``);
 * no xfail/xpass occurred unless pinned there.
 
+The change's tier (CI redesign P1, ``tools/ci/tier.py``) says which lanes are required. ``full`` requires every
+collected test; a reduced tier requires every collected test of its lanes, by the lane each report records for every
+collected test. A reduced tier is refused outright on any event but a pull request, and when a report does not record
+the lanes (fail closed).
+
 It also writes a Markdown summary (per-lane counts and timings, slowest tests).
 
     python tools/ci/check_assurance.py REPORT_DIR --skips tests/platform-skips.yaml --require linux,win32
+        [--tier docs|web|full --event pull_request]
 """
 
 from __future__ import annotations
@@ -26,6 +32,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tier as tiers  # noqa: E402  (tools/ci/tier.py: the tiers and the lanes each requires)
 
 REPORT_SCHEMA = "aew/lane-report/v1"
 SKIPS_SCHEMA = "aew/platform-skips/v1"
@@ -72,9 +81,11 @@ def shard_gaps(group: list[dict[str, Any]]) -> list[str]:
 
 
 def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
-          required: list[str]) -> tuple[list[str], dict[str, Any]]:
-    """Return (problems, per-platform facts). No problems means the platform's assurance envelope is complete."""
+          required: list[str], tier: str = "full") -> tuple[list[str], dict[str, Any]]:
+    """Return (problems, per-platform facts). No problems means the platform's assurance envelope is complete for
+    ``tier``: every collected test of the tier's lanes ran exactly once and passed."""
     problems: list[str] = []
+    lanes = None if tier == "full" else set(tiers.LANES[tier])
     facts: dict[str, Any] = {}
     by_platform: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in reports:
@@ -90,7 +101,16 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
         if len(collected_sets) > 1:
             sizes = ", ".join(f"{_label(r)}={len(r['collected'])}" for r in group)
             problems.append(f"{platform}: jobs collected different test sets ({sizes})")
-        collected = set().union(*collected_sets)
+        collected = everything = set().union(*collected_sets)
+        if lanes is not None:
+            lane_of: dict[str, str] = {}
+            for r in group:
+                lane_of.update(r.get("lanes") or {})
+            unknown = sorted(collected - set(lane_of))
+            if unknown:
+                problems.append(f"{platform}: tier {tier} needs each test's lane, but the reports do not record it for "
+                                f"{len(unknown)} collected test(s) (e.g. {unknown[0]})")
+            collected = {nid for nid in collected if lane_of.get(nid) in lanes}
         runs = Counter(nid for r in group for nid in r["results"])
         for r in group:
             if r.get("exitstatus") != 0:
@@ -98,7 +118,7 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
                                 "(failed tests, a usage error, or the isolation guard)")
         for nid in sorted(collected - set(runs)):
             problems.append(f"{platform}: never ran: {nid}")
-        for nid in sorted(set(runs) - collected):
+        for nid in sorted(set(runs) - everything):
             problems.append(f"{platform}: ran but was not collected: {nid}")
         for nid, n in sorted(runs.items()):
             if n > 1:
@@ -115,7 +135,7 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
                 elif res["outcome"] in ("xfailed", "xpassed") and nid not in pinned_xfail:
                     problems.append(f"{platform}: {res['outcome']} but not pinned: {nid}")
         for nid in sorted(pinned_skips):
-            if nid not in collected:
+            if nid not in everything:
                 problems.append(f"{platform}: pinned skip no longer exists: {nid}")
             elif outcomes.get(nid) not in (None, "skipped"):
                 problems.append(f"{platform}: pinned skip now {outcomes[nid]}: {nid} "
@@ -125,9 +145,10 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
     return problems, facts
 
 
-def summary(problems: list[str], facts: dict[str, Any]) -> str:
+def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> str:
     lines = ["## Test assurance", ""]
-    lines.append("**PASS**: every collected test ran exactly once and passed (pinned platform skips excepted)."
+    scope = "" if tier == "full" else f" in the {tier} tier's lanes ({', '.join(tiers.LANES[tier])})"
+    lines.append(f"**PASS**: every collected test{scope} ran exactly once and passed (pinned platform skips excepted)."
                  if not problems else f"**FAIL**: {len(problems)} problem(s).")
     for platform, f in sorted(facts.items()):
         lines += ["", f"### {platform}: {f['collected']} collected, {f['ran']} run, "
@@ -154,10 +175,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skips", type=Path, required=True, help="tests/platform-skips.yaml")
     ap.add_argument("--require", default="linux,win32", help="comma-separated platforms that must be present")
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
+    ap.add_argument("--tier", default="full", choices=tiers.TIERS, help="the change's tier (tools/ci/tier.py)")
+    ap.add_argument("--event", default="", help="the GitHub event: a reduced tier is accepted only for pull_request")
     args = ap.parse_args(argv)
     problems, facts = check(load_reports(args.reports), load_expectations(args.skips),
-                            [p for p in args.require.split(",") if p])
-    text = summary(problems, facts)
+                            [p for p in args.require.split(",") if p], args.tier)
+    if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
+        problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
+                           "reduced tier; a push to main and a merge group are always full")
+    text = summary(problems, facts, args.tier)
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write(text)

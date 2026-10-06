@@ -24,6 +24,7 @@ def _load(name: str):
 
 
 check_assurance = _load("check_assurance")
+tier = _load("tier")
 update_durations = _load("update_durations")
 
 ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
@@ -187,6 +188,213 @@ def test_durations_merge_updates_and_prunes():
     assert merged["schema"] == "aew/test-durations/v1"
     assert merged["platforms"]["win32"] == {ALL[0]: 0.5}  # refreshed; the vanished test and the skip are gone
     assert merged["platforms"]["darwin"] == {"k": 1.0}  # platforms without reports are kept
+
+
+# ------------------------------------------------------------------ the tiered gate (CI redesign P1)
+
+LANE_OF = {ALL[0]: "fast", ALL[1]: "serial", ALL[2]: "regression", SKIP_ID: "integration"}
+
+
+def docs_tier_run(with_lanes: bool = True) -> list[dict]:
+    """A docs-tier run: only the core jobs (fast, then serial) on each OS."""
+    extra = {"lanes": dict(LANE_OF)} if with_lanes else {}
+    runs = []
+    for platform in ("linux", "win32"):
+        runs += [report(platform, "fast", {ALL[0]: "passed"}, **extra),
+                 report(platform, "serial", {ALL[1]: "passed"}, **extra)]
+    return runs
+
+
+@pytest.mark.parametrize(("paths", "expected"), [
+    (["docs/README.md"], "docs"),
+    (["docs/design/requirements-ledger.yaml", "docs/implementation/future-work.yaml"], "docs"),
+    (["AGENTS.md", "CLAUDE.md", "README.md", "eval/m3/README.md", "web/docs/notes.md"], "docs"),
+    (["web/src/App.tsx", "docs/README.md"], "web"),
+    (["web/package-lock.json"], "web"),
+    (["docs/design/dashboard-api-v1-provisional.yaml"], "full"),  # the contract code reads
+    (["web/docs/c0-approval.json"], "full"),  # its approval, read by the dashboard server
+    (["src/aew/README.md"], "full"),  # Markdown under a code root is not documentation
+    (["tests/fixtures/notes.md"], "full"),
+    (["tools/ci/tier.py"], "full"),
+    (["docs/README.md", "src/aew/cli/main.py"], "full"),
+    ([".github/workflows/ci.yml"], "full"),
+    (["pyproject.toml"], "full"),
+    ([".gitleaksignore"], "full"),
+    ([], "full"),  # an empty diff proves nothing
+    (["Src/aew/notes.md"], "full"),  # a Windows checkout puts it in src/ (review of PR #99, finding 5)
+    (["TESTS/fixture.md"], "full"),
+    (["Web/Docs/C0-Approval.json"], "full"),
+    (["DOCS/README.md"], "docs"),
+], ids=lambda v: v if isinstance(v, str) else ",".join(v)[:40] or "empty")
+def test_the_tier_is_the_widest_any_changed_path_needs(paths, expected):
+    assert tier.decide("pull_request", paths, "main") == expected
+
+
+@pytest.mark.parametrize("event", ["push", "merge_group", "workflow_dispatch", "schedule", ""])
+def test_only_a_pull_request_may_take_a_reduced_tier(event):
+    assert tier.decide(event, ["docs/README.md"], "main") == "full"
+
+
+def test_the_command_line_passes_the_base_branch(tmp_path):
+    """The base branch reaches the decision from the command line (PR #99 re-review, B): a docs-only change is docs
+    only into main, and an omitted base is full."""
+    changed = tmp_path / "changed.txt"
+    changed.write_text("docs/README.md\n", encoding="utf-8")
+    for base, expected in (("main", "docs"), ("feature", "full"), (None, "full")):
+        out = tmp_path / f"out-{base}"
+        argv = ["--event", "pull_request", "--paths-file", str(changed), "--github-output", str(out)]
+        assert tier.main(argv + (["--base-ref", base] if base else [])) == 0
+        assert f"tier={expected}\n" in out.read_text(encoding="utf-8"), base
+
+
+def test_a_pull_request_into_another_branch_is_full():
+    """It can be retargeted to main without a new run, so its run must already be full (review of PR #99, 6)."""
+    assert tier.decide("pull_request", ["docs/README.md"], "main") == "docs"
+    for base in ("impl/f15-1-broker-cli", "", "Main"):
+        assert tier.decide("pull_request", ["docs/README.md"], base) == "full", base
+
+
+def test_a_rename_out_of_the_code_is_full_tier(tmp_path, monkeypatch):
+    """With git's default rename detection, moving src/aew/m.py to docs/m.md lists only docs/m.md: the diff must
+    name both sides (review of PR #99, finding 2). Real git, real commits."""
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=tmp_path, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    (tmp_path / "src" / "aew").mkdir(parents=True)
+    (tmp_path / "src" / "aew" / "m.py").write_text("x = 1\n" * 20, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    (tmp_path / "docs").mkdir()
+    git("mv", "src/aew/m.py", "docs/m.md")
+    git("commit", "-q", "-m", "move")
+    monkeypatch.chdir(tmp_path)
+    paths = tier.changed_paths(base, git("rev-parse", "HEAD"))
+    assert paths is not None and "src/aew/m.py" in paths, paths
+    assert tier.decide("pull_request", paths, "main") == "full"
+
+
+GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success"}
+REDUCED = {**GREEN, "lanes": "skipped"}
+
+
+@pytest.mark.parametrize(("tier_name", "results", "ok"), [
+    ("full", GREEN, True),
+    ("docs", REDUCED, True),
+    ("web", REDUCED, True),
+    ("web", {**REDUCED, "web": "failure"}, False),
+    ("full", {**GREEN, "web": "failure"}, False),
+    ("docs", {**REDUCED, "core": "failure"}, False),
+    ("docs", {**REDUCED, "changes": "failure"}, False),
+    ("docs", GREEN, False),  # a reduced tier whose lanes ran: the tier and the jobs disagree
+    ("full", REDUCED, False),  # the full tier with its lanes skipped
+    ("", {**REDUCED, "changes": "failure"}, False),  # the tier unknown: everything required
+    ("", REDUCED, False),  # ... the lanes too, though every other job succeeded (PR #99 re-review, A)
+    ("full", {k: v for k, v in GREEN.items() if k != "static"}, False),  # a needed job missing
+])
+def test_the_gate_requires_every_needed_job_in_every_tier(tier_name, results, ok):
+    """Every needed job, any of which failing fails the gate (review of PR #99, finding 1: a shell && chain followed
+    by another line let a failing web, core or changes job pass)."""
+    assert (tier.job_problems(tier_name, results) == []) is ok
+    jobs = ",".join(f"{k}={v}" for k, v in results.items())
+    assert (tier.main(["--jobs-for", tier_name, "--jobs", jobs]) == 0) is ok
+
+
+def test_a_diff_that_cannot_be_computed_is_full(tmp_path, monkeypatch):
+    assert tier.decide("pull_request", None, "main") == "full"
+    assert tier.changed_paths("", "abc") is None and tier.changed_paths("0" * 40, "abc") is None
+    monkeypatch.chdir(tmp_path)  # not a repository: git fails
+    assert tier.changed_paths("abc", "def") is None
+
+
+def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
+    """A repository file that code, a non-core test, a helper, a CI tool or an eval driver names by its path is an
+    input to more than the core lanes, whatever it looks like: changing it must run the full gate (review of PR #99,
+    finding 4). Both spellings count: a "docs/x/y.md" literal and Path parts ("docs" / "x" / "y.md"). Paths that do
+    not exist here (discovery's conventions for other projects, fixture projects) are not ours. The fast lane's own
+    readers (tests/unit, the spec pin) run in every tier and are left out."""
+    import re
+
+    sources = [*(ROOT / "src").rglob("*.py"), *(ROOT / "tools").rglob("*.py"), *(ROOT / "eval").rglob("*.py"),
+               ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py"),
+               *(ROOT / "tests" / "integration").rglob("*.py"), *(ROOT / "tests" / "regression").rglob("*.py"),
+               *(ROOT / "tests" / "acceptance").rglob("*.py")]
+    literal = re.compile(r'"((?:docs|web|eval)/[^"*?\n]+)"')
+    parts = re.compile(r'"(docs|web|eval)"((?:\s*/\s*"[^"\n]+")+)')
+    # Readers that run only in the core lanes, or never: the register tool is exercised by tests/unit/test_register.py
+    # (fast lane); eval/reviews holds archived review probes kept as they ran, which nothing executes.
+    core_only = {ROOT / "tools" / "register.py", ROOT / "tools" / "ci" / "tier.py"}
+    archived = ROOT / "eval" / "reviews"
+    named: set[str] = set()
+    for f in sources:
+        if f in core_only or archived in f.parents:
+            continue
+        text = f.read_text(encoding="utf-8")
+        named |= {m.group(1) for m in literal.finditer(text)}
+        named |= {"/".join([m.group(1), *re.findall(r'"([^"]+)"', m.group(2))]) for m in parts.finditer(text)}
+    ours = sorted(p for p in named if (ROOT / p).is_file())
+    assert "docs/design/dashboard-api-v1-provisional.yaml" in ours
+    assert [p for p in ours if tier.classify_path(p) != "full"] == []
+
+
+def test_a_complete_docs_tier_run_passes():
+    assert check_assurance.check(docs_tier_run(), EXPECT, ["linux", "win32"], "docs")[0] == []
+
+
+def test_the_docs_tier_still_needs_every_fast_and_serial_test():
+    runs = docs_tier_run()
+    runs[1]["results"].clear()  # linux serial ran nothing
+    assert "linux: never ran: tests/unit/test_a.py::t2" in check_assurance.check(
+        runs, EXPECT, ["linux", "win32"], "docs")[0]
+
+
+def test_a_reduced_tier_without_recorded_lanes_fails_closed():
+    found = check_assurance.check(docs_tier_run(with_lanes=False), EXPECT, ["linux", "win32"], "docs")[0]
+    assert any("needs each test's lane" in p for p in found), found
+
+
+def test_the_full_tier_requires_every_lane():
+    assert any("never ran" in p for p in check_assurance.check(docs_tier_run(), EXPECT, ["linux", "win32"])[0])
+
+
+def test_the_cli_refuses_a_reduced_tier_on_a_push(tmp_path):
+    for i, r in enumerate(docs_tier_run()):
+        (tmp_path / "reports" / f"job{i}").mkdir(parents=True)
+        (tmp_path / "reports" / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    base = [str(tmp_path / "reports"), "--skips", str(tmp_path / "skips.yaml"), "--tier", "docs"]
+    assert check_assurance.main([*base, "--event", "pull_request"]) == 0
+    assert check_assurance.main([*base, "--event", "push"]) == 1
+    assert check_assurance.main([*base, "--event", "merge_group"]) == 1
+
+
+def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_tier():
+    """Structure of .github/workflows/ci.yml: the tier job feeds the lanes and the gate, the gate recomputes it, and a
+    reduced tier passes only with the lanes skipped."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    jobs = wf["jobs"]
+    assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
+    assert "tools/ci/tier.py" in jobs["changes"]["steps"][-1]["run"]
+    assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
+    assert "needs" not in jobs["core"] and "needs" not in jobs["static"]  # core and static run in every tier
+    gate = jobs["assurance"]
+    assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static"} and gate["if"] == "always()"
+    reports = next(s for s in gate["steps"] if "check_assurance.py" in str(s.get("run", "")))
+    assert "if" not in reports  # the lane-report check always runs (review of PR #99, finding 1)
+    final = gate["steps"][-1]
+    assert final["if"] == "always()" and "tools/ci/tier.py --jobs-for" in final["run"]
+    for step in gate["steps"]:  # bash -e ignores a failure in the middle of an && chain: never one in the gate
+        assert "&&" not in str(step.get("run", "")), step.get("name")
+    runs = "\n".join(str(s.get("run", "")) for s in gate["steps"])
+    assert "tools/ci/tier.py" in runs and 'test "$tier" = "$RAN"' in runs
+    assert '--tier "$TIER" --event "$EVENT"' in runs
+    coverage = next(s for s in gate["steps"] if "coverage_gate.py" in str(s.get("run", "")))
+    assert coverage["if"] == "steps.tier.outputs.tier == 'full'"
+    assert '--base-ref "$BASE_REF"' in runs and '--base-ref "$BASE_REF"' in jobs["changes"]["steps"][-1]["run"]
 
 
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():

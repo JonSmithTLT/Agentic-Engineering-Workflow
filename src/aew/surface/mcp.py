@@ -12,6 +12,12 @@ surface profile (the generic ``cli`` escape only on ``recovery``), ``tools/call`
 structured content with ``isError`` from its ``ok``. A call naming an unknown, designed or concealed tool, or with
 arguments outside the tool's schema, is an input error that never reaches the broker; an unreachable broker is a
 transport error, never a fabricated result. Stdout carries the protocol only; diagnostics go to stderr.
+
+Ingress keeps being read while a tool runs: each ``tools/call`` is answered from a worker thread (at most
+``MAX_IN_FLIGHT`` at once), so a ``harness_wait`` of up to ten minutes never queues the Lead's next status,
+checkpoint or ping behind it. Replies are written whole, one at a time, and may arrive out of request order, as
+JSON-RPC allows (each carries its id). Nothing is serialized here beyond stdout: the broker serializes every engine
+call (PR #95 review).
 """
 
 from __future__ import annotations
@@ -21,7 +27,9 @@ import json
 import os
 import re
 import sys
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import IO, Any
 
 from aew.surface import SERVER_NAME, client, contract
@@ -30,6 +38,7 @@ from aew.surface.validate import check_call
 
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
+MAX_IN_FLIGHT = 8  # tool calls answered at once; a further call starts when one of them ends
 BROKER_UNREACHABLE = -32001  # a server error: the Lead broker could not be reached; nothing about AEW is claimed
 # Variables whose presence means this is not the Lead session's curated environment (the broker's own coordinates
 # are expected; any credential, or another bridge's coordinates, is not).
@@ -79,19 +88,40 @@ class Server:
     # ------------------------------------------------------------------ framing
 
     def serve(self, stdin: IO[bytes], stdout: IO[bytes]) -> int:
+        """Read requests until stdin closes; a tool call is answered from a worker so that reading goes on. At end
+        of input the calls in flight still get their answers."""
         reader = io.TextIOWrapper(stdin, encoding="utf-8", newline="\n")
-        for line in reader:
-            if not line.strip():
-                continue
-            for reply in self.handle_line(line):
-                stdout.write((json.dumps(reply, separators=(",", ":")) + "\n").encode("utf-8"))
-                stdout.flush()
+        written = threading.Lock()
+
+        def write(replies: list[dict[str, Any]]) -> None:
+            with written:  # one whole line per reply, never interleaved
+                for reply in replies:
+                    stdout.write((json.dumps(reply, separators=(",", ":")) + "\n").encode("utf-8"))
+                    stdout.flush()
+
+        def answer(message: Any) -> None:
+            try:
+                write(self.respond(message))
+            except Exception as exc:  # stdout gone, or a defect: the reader decides when the session ends
+                self.log.write(f"aew lead mcp: could not answer: {type(exc).__name__}: {exc}\n")
+
+        with ThreadPoolExecutor(MAX_IN_FLIGHT, thread_name_prefix="aew-lead-mcp-call") as calls:
+            for line in reader:
+                if not line.strip():
+                    continue
+                message = _parse(line)
+                if _calls_a_tool(message):
+                    calls.submit(answer, message)
+                else:  # local and immediate: answered in order, as read
+                    write(self.respond(message))
         return 0
 
     def handle_line(self, line: str) -> list[dict[str, Any]]:
-        try:
-            message = json.loads(line)
-        except ValueError:
+        return self.respond(_parse(line))
+
+    def respond(self, message: Any) -> list[dict[str, Any]]:
+        """The replies to one parsed line (``_NOT_JSON`` for a line that was not JSON)."""
+        if message is _NOT_JSON:
             return [_error(None, PARSE_ERROR, "not JSON")]
         if isinstance(message, list):  # a batch: each item answered on its own; notifications get no answer
             if not message:
@@ -156,6 +186,22 @@ class Server:
             raise _RpcError(code, exc.message, {"adapter_input_error": exc.to_dict()}) from None
         return {"content": [{"type": "text", "text": json.dumps(result, separators=(",", ":"))}],
                 "structuredContent": result, "isError": not result["ok"]}
+
+
+_NOT_JSON = object()
+
+
+def _parse(line: str) -> Any:
+    try:
+        return json.loads(line)
+    except ValueError:
+        return _NOT_JSON
+
+
+def _calls_a_tool(message: Any) -> bool:
+    """Whether answering ``message`` may wait on the broker (a ``tools/call``, alone or in a batch)."""
+    items = message if isinstance(message, list) else [message]
+    return any(isinstance(m, dict) and m.get("method") == "tools/call" for m in items)
 
 
 class _RpcError(Exception):

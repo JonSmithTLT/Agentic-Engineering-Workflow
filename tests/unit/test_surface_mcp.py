@@ -132,6 +132,39 @@ def test_stdout_carries_the_protocol_only():
     assert [json.loads(line) for line in lines] == [{"jsonrpc": "2.0", "id": 1, "result": {}}]
 
 
+def test_ingress_is_read_while_a_tool_waits_and_every_call_is_answered():
+    """A `harness_wait` in flight never queues the next request on the same connection (PR #95 review): a status
+    and a ping sent after it are answered while it still blocks, and at end of input it is still answered."""
+    import os
+    import threading
+
+    release = threading.Event()
+
+    def forward(name, arguments, profile):
+        if name == "harness_wait":
+            release.wait(30)
+        return {"ok": True, "revision": 7, "tool": name}
+
+    read_end, write_end = os.pipe()
+    out_read, out_write = os.pipe()
+    stdin, stdout, replies = os.fdopen(read_end, "rb"), os.fdopen(out_write, "wb"), os.fdopen(out_read, "rb")
+    feed = os.fdopen(write_end, "wb")
+    server = threading.Thread(target=lambda: (mcp.Server(forward).serve(stdin, stdout), stdout.close()))
+    server.start()
+    for rid, method, params in [(1, "tools/call", {"name": "harness_wait", "arguments": {"runs": ["R-1"]}}),
+                                (2, "tools/call", {"name": "status", "arguments": {}}), (3, "ping", {})]:
+        feed.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}) + "\n").encode())
+        feed.flush()
+    early = {json.loads(replies.readline())["id"] for _ in range(2)}
+    assert early == {2, 3} and not release.is_set()  # answered while the wait still blocks
+    feed.close()  # end of input with the wait in flight
+    release.set()
+    last = json.loads(replies.readline())
+    assert last["id"] == 1 and last["result"]["structuredContent"]["tool"] == "harness_wait"
+    server.join(10)
+    assert not server.is_alive() and replies.read() == b""
+
+
 # ---------------------------------------------------------------------------------------------- custody
 
 

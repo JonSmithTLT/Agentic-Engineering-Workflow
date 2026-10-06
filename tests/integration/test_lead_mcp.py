@@ -129,6 +129,46 @@ def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabrica
     assert r[-1]["i"] == "end"
 
 
+def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tmp_path, monkeypatch):
+    """The real `aew lead mcp` process and its stdio, in front of a real broker whose run never ends (each single
+    check reports it running, as in the broker's own cooperative-wait tests). A status sent right after a four-second
+    `harness_wait`, on the same connection and before its answer, is answered first and promptly (PR #95 review)."""
+    from aew.engine.api import Engine
+    from aew.harness import lead_broker
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    monkeypatch.setattr(engine, "harness_wait", lambda runs, *, timeout=600.0, any_=False: {
+        "run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True})
+    broker = lead_broker.LeadBroker(engine, p.token)
+    broker.start()
+    try:
+        env = clean_env(broker.env)
+        env.pop("AEW_LEAD_TOKEN", None)
+        kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
+        server = subprocess.Popen([sys.executable, "-m", "aew", "lead", "mcp"], cwd=str(p.root), env=env,
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        assert server.stdin is not None and server.stdout is not None
+        for rid, name, arguments in [(1, "harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 4}),
+                                     (2, "status", {})]:
+            server.stdin.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": "tools/call",
+                                            "params": {"name": name, "arguments": arguments}}) + "\n").encode())
+            server.stdin.flush()
+        sent = time.monotonic()
+        first = json.loads(server.stdout.readline())
+        first_at = time.monotonic() - sent
+        second = json.loads(server.stdout.readline())
+        waited = time.monotonic() - sent
+        server.stdin.close()
+        assert server.wait(timeout=30) == 0
+    finally:
+        broker.close()
+    assert first["id"] == 2 and first["result"]["structuredContent"]["ok"], first
+    assert first_at < 3.0, f"the status waited {first_at:.1f}s behind the wait"
+    assert second["id"] == 1 and second["result"]["structuredContent"]["result"]["timed_out"] is True
+    assert 3.5 <= waited < 20
+
+
 @pytest.mark.parametrize(("extra", "why"), [
     ({}, "live Lead session"),
     ({"AEW_LEAD_BROKER": "nowhere", "AEW_LEAD_BROKER_KEY": "00" * 32, "AEW_LEAD_TOKEN": "aew1.x"}, "AEW_LEAD_TOKEN"),

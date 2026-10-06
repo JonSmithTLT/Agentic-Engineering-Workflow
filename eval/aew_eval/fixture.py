@@ -123,7 +123,8 @@ def _read_tree(root: Path, what: str) -> dict[str, bytes]:
         for name in dirnames + filenames:
             p = here / name
             if is_link(p):
-                raise Invalid(f"{what}: {p.relative_to(root).as_posix()} is a link; a fixture holds regular files")
+                raise Invalid(f"{what}: {p.relative_to(root).as_posix()} is a link or reparse point; a fixture holds "
+                              "regular files")
             if root not in p.resolve().parents:
                 raise Invalid(f"{what}: {p.relative_to(root).as_posix()} resolves outside the tree")
         for name in filenames:

@@ -497,3 +497,14 @@ def test_a_reparse_point_that_is_not_a_link_is_recorded_as_special(tmp_path, mon
     monkeypatch.setattr(fixture.os, "readlink", readlink)
     tree = fixture.files_of(repo)
     assert tree.other == {"alias": fixture.SPECIAL} and tree.files == {}
+
+
+def test_reusing_a_run_name_is_a_refusal_not_a_lost_attempt(tmp_path):
+    """D1: the ledger refuses a run id it holds before writing anything; the earlier attempt is untouched."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path)
+    run(f, case_path, tmp_path)
+    with pytest.raises(runner.Refused, match="already registered"):
+        runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
+                        cases={"C1": case_path}, work=tmp_path / "work2", run_name="r1")
+    assert AttemptLedger(tmp_path / "ledger", f).status() == {"demo/r1": "valid"}

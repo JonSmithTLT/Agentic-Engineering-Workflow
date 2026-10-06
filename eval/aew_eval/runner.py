@@ -120,9 +120,12 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
     try:
         line = ledger.register(run_id=run_id, cell=cell, requested_profile=frozen["profiles"]["roles"],
                                retry_of=retry_of)
+    except Invalid as exc:  # the ledger refused it before writing anything (a counted cell, a reused run id)
+        raise Refused(str(exc)) from None
     except Exception as exc:  # noqa: BLE001
-        # Refused only if the line is provably absent: a failure after it was written (its fsync, say) leaves a
-        # registered attempt, which is runner_lost, never "nothing registered" (PR #100 re-review, N1).
+        # An I/O failure: refused only if the line is provably absent. One that failed after the line was written (its
+        # fsync, say) leaves a registered attempt, runner_lost, never "nothing registered" (PR #100 re-review, N1).
+        # The run id was absent before the call (register raises Invalid for a reused one), so a line now is ours.
         try:
             written = run_id in ledger.attempts()
         except Exception:  # noqa: BLE001 (the ledger cannot be read back: it may hold the line)

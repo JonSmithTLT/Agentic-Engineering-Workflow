@@ -58,6 +58,7 @@ checks the index, and that every citation names a real section of the frozen ver
    - [`workflow-contract-amendment-class0-2026-10-01.md`](design/workflow-contract-amendment-class0-2026-10-01.md): Class 0, enforced from M4-A; its §9 amends the KC §26 acceptance case
    - [`plan-assurance-and-classification-decisions-2026-10-01.md`](design/plan-assurance-and-classification-decisions-2026-10-01.md): Q9 and Q10
    - [`decisions-2026-10-01-containment-and-integration-queue.md`](design/decisions-2026-10-01-containment-and-integration-queue.md): containment and process ownership (Q3, F2, E13, the scratch rule), the integration queue (F10, D4)
+   - [`decisions-2026-10-06-q12-hosting-and-lead-attachment.md`](design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md): Q12, the AEW attachment, the Lead seat and the hosting boundary (AEW owns attachment and authority, the harness owns model execution; reference models); F31, F32
    - [`architecture-review-response-2026-10-04.md`](design/architecture-review-response-2026-10-04.md): the disposition of the ground-up architecture review, accepted 2026-10-05 (Q13); each item it dispositions is tracked in the register or lives in the ADR or design it names
    - [`plan-assurance-and-premise-validation-design-v0.4.md`](design/plan-assurance-and-premise-validation-design-v0.4.md): the post-M3 plan-assurance direction
    - [`ticket-revision-amendment-2026-09-30.md`](design/ticket-revision-amendment-2026-09-30.md): Ticket revisions

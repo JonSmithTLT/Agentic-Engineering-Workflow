@@ -124,11 +124,11 @@ def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
     data = copy.deepcopy(DATA)
     closed = next(s for s in data["sections"] if s["title"].startswith("Closed"))
     questions = next(s for s in data["sections"] if s["number"] == 4)
-    q12 = next(r for r in questions["rows"] if r["#"] == "Q12")
-    questions["rows"].remove(q12)
-    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "Q12"})
+    q11 = next(r for r in questions["rows"] if r["#"] == "Q11")
+    questions["rows"].remove(q11)
+    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "Q11"})
     problems = register.due_problems(data, DUE)
-    assert any("Q12 is closed" in p for p in problems), problems
+    assert any("Q11 is closed" in p for p in problems), problems
     due = copy.deepcopy(DUE)
     due["items"][0]["blocks"] = ["F2"]  # closed in M4-B
     assert any("blocks F2, which is closed" in p for p in register.due_problems(DATA, due))
@@ -162,7 +162,7 @@ def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_
     due = copy.deepcopy(DUE)
     q14 = next(i for i in due["items"] if i["row"] == "Q14")
     due["items"].remove(q14)
-    next(i for i in due["items"] if i["row"] == "Q12")["blocks"].append("Q14")
+    next(i for i in due["items"] if i["row"] == "Q11")["blocks"].append("Q14")
     assert any("Q14 is an open question with no item of its own" in p for p in register.due_problems(DATA, due))
     assert not any("F6" in p for p in register.due_problems(DATA, DUE))  # blocked by Q4's item
 
@@ -170,7 +170,7 @@ def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_
 def test_a_malformed_item_is_named_never_a_crash():
     """PR #104 review, 2: the renderer tolerates what the check refuses, so `check` names the problem."""
     due = copy.deepcopy(DUE)
-    due["items"][0] = {"row": "Q12", "due": "soon"}
+    due["items"][0] = {"row": "Q11", "due": "soon"}
     text = register.render_due(due)
     assert "| soon |" in text
     assert any("missing needs, owner, what" in p for p in register.due_problems(DATA, due))
@@ -193,9 +193,9 @@ def test_items_stay_in_order_and_one_row_has_one_item():
 def test_an_incomplete_item_still_counts_as_its_rows_item():
     """PR #104 re-review, B: the missing field is the one problem; the question is not also reported as uncovered."""
     due = copy.deepcopy(DUE)
-    next(i for i in due["items"] if i["row"] == "Q12").pop("what")
+    next(i for i in due["items"] if i["row"] == "Q11").pop("what")
     problems = register.due_problems(DATA, due)
-    assert any("(Q12): missing what" in p for p in problems) and not any("Q12 is an open question" in p
+    assert any("(Q11): missing what" in p for p in problems) and not any("Q11 is an open question" in p
                                                                          for p in problems), problems
 
 

@@ -15,7 +15,6 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 | Due by | Owner | Needs | What | Row | Blocks |
 |---|---|---|---|---|---|
-| M4-E | designer | decision | Harness hosting, the operator session and native-feature integration (startup, seat and session lifecycle, profile resolution, wrapper ownership, hosting); due in the M4-D/M4-E window (architecture review D-AR5), including the knowledge and capability service identities | Q12 | F18, U6, Q11 |
 | M4-G | designer | decision | The form of the evidence view (`aew evidence show`, or next actions that carry a record's conclusion) | E12 | - |
 | M4-G | operator | decision | Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer limit. | E23 | - |
 | M4-G | operator | decision | Whether the structural map core (T5-A) is in M4-G/H, as far as it makes the M4-H experiment representative, or waits until after the value gate | F22.1 | - |
@@ -29,13 +28,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Gate: before internal alpha | designer | decision | The remote (pull-request) integration target's scope; whether `DONE` needs a second verification on a provider's merge commit; the first provider | Q14 | F23 |
 | M6 | designer | design | A minimal skill delivery path (a hash-pinned project catalog) that does not become a second capability system; needs a design or probe | F26 | U9 |
 | M6 | designer | decision | Reconcile the capability design's six candidate failure classes with the failure-class registry, and add its invariants to the invariant index, before F13 is implemented | Q8 | F13 |
-| M6 | designer | decision | Reconcile the provider research with M3's rules before F12 and F13 are designed further (hosting waits for Q12) | Q11 | F12, F13 |
+| M6 | designer | decision | Reconcile the provider research with M3's rules before F12 and F13 are designed further (Q12 settled hosting on 2026-10-06) | Q11 | F12, F13 |
 | Evaluation | operator and designer | adoption | The deferred recovery rows (4 `REDISPATCH_IF_LOST`, 6 a policy-resolved Investigator, 8 `max_fix_attempts`), each its own adoption after M4-H's base rates; non-governing until then | F15.7 | - |
 | Evaluation | designer | design | Phase 1, the eight-case evaluation corpus from the R1 and SPT misses, with controls, before anything is built | F17 | - |
 | Evaluation | designer | decision | Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture) | O3 | - |
 | Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
 | Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
 | Unscheduled | operator and designer | adoption | ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap bundle's build waits for it | F18.3 | - |
+| Unscheduled | designer | decision | Confirm the Q12 record's §11 reading before F31 is built: WC §8.2's crash rule (in-flight work reconciled as INTERRUPTED/unknown) applies when an invocation's own custody is lost, not when only the Lead's attachment is lost, so Q12 needs no amendment to the frozen specification | F31 | - |
 | Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
 | Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
 | Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |
@@ -49,10 +49,7 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | F6 | Q4 (decision, designer, by Unscheduled) |
 | F12 | Q11 (decision, designer, by M6) |
 | F13 | Q8 (decision, designer, by M6); Q11 (decision, designer, by M6) |
-| F18 | Q12 (decision, designer, by M4-E) |
 | F19 | Q7 (decision, designer, by M4-H) |
 | F23 | Q14 (decision, designer, by Gate: before internal alpha) |
-| Q11 | Q12 (decision, designer, by M4-E) |
 | U4 | F25 (decision, operator and designer, by M4-G) |
-| U6 | Q12 (decision, designer, by M4-E) |
 | U9 | F26 (design, designer, by M6) |

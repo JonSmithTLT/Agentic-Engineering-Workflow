@@ -9,17 +9,6 @@ intro: |
   closes, fails the check until it is removed or updated. A row has at most one item. Every open question (§4) has
   its own item, and every row targeted **Designer** has one or is blocked by one.
 items:
-- row: Q12
-  needs: decision
-  owner: designer
-  due: M4-E
-  what: Harness hosting, the operator session and native-feature integration (startup, seat and session lifecycle, profile
-    resolution, wrapper ownership, hosting); due in the M4-D/M4-E window (architecture review D-AR5), including the knowledge
-    and capability service identities
-  blocks:
-  - F18
-  - U6
-  - Q11
 - row: E12
   needs: decision
   owner: designer
@@ -119,7 +108,8 @@ items:
   needs: decision
   owner: designer
   due: M6
-  what: Reconcile the provider research with M3's rules before F12 and F13 are designed further (hosting waits for Q12)
+  what: Reconcile the provider research with M3's rules before F12 and F13 are designed further (Q12 settled hosting on
+    2026-10-06)
   blocks:
   - F12
   - F13
@@ -155,6 +145,13 @@ items:
   due: Unscheduled
   what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
     bundle's build waits for it
+- row: F31
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: 'Confirm the Q12 record''s §11 reading before F31 is built: WC §8.2''s crash rule (in-flight work reconciled as
+    INTERRUPTED/unknown) applies when an invocation''s own custody is lost, not when only the Lead''s attachment is lost,
+    so Q12 needs no amendment to the frozen specification'
 - row: Q4
   needs: decision
   owner: designer

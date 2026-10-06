@@ -161,17 +161,20 @@ def test_the_cli_escape_expands_fields_from_its_own_stdin(held):
     assert out["ok"] and engine.store.read()["next_action"] == "from a file"
 
 
-@pytest.mark.parametrize(("argv", "stdin", "code"), [
-    (["checkpoint", "--expect-rev", "{rev}"], "token: x\n", "USAGE"),  # a credential never goes through --fields
+@pytest.mark.parametrize(("argv", "stdin", "code", "because"), [
+    # a credential never goes through --fields: refused by the expansion itself, named so (PR #93 re-review)
+    (["checkpoint", "--expect-rev", "{rev}"], "token: x\n", "USAGE", "a credential never goes through --fields"),
     # nor around a broker refusal: the expanded argv meets every one of them
-    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "launch: false\n", "PERMISSION_DENIED"),
+    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "launch: false\n", "PERMISSION_DENIED", None),
 ])
-def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code):
+def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code, because):
     p, wid, engine, broker = held
     rev = _rev(engine)
     argv = [a.replace("{rev}", str(rev)).replace("{wid}", wid) for a in argv] + ["--fields", "-"]
     out = call("cli", {"argv": argv, "stdin": stdin}, profile="recovery")
     assert not out["ok"] and out["stopped"]["error"]["code"] == code, out["stopped"]
+    if because:
+        assert because in out["stopped"]["error"]["message"], out["stopped"]
     assert _rev(engine) == rev
 
 

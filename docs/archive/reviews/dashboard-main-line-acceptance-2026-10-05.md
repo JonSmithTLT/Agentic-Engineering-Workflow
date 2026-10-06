@@ -52,10 +52,12 @@ The acceptance suite adds no new mechanism. It exercises those mechanisms togeth
 
 **Runs:**
 
+Both runs are at this record's commit, on F20.5 after its review fixes.
+
 | Platform | Command | Result |
 |---|---|---|
-| Windows 11 (developer host), Python 3.13 | the dashboard suites, `test_credential_delivery`, `test_register`, `test_requirements_ledger`, `test_spec_amendments`, `test_docs_links` (`-n 6`) | 616 passed, 2 skipped (the two POSIX pty tests, as listed) |
-| Rocky Linux 8.10 VM (kernel 4.18, SELinux enforcing), Python 3.11.13 | the same set (`-n 4`), then the two pty tests (`-p no:xdist`) | 616 passed; then both pty tests passed (2 passed, 21.8 s), F20.6's real-CLI walk included |
+| Windows 11 (developer host), Python 3.13 | the dashboard suites, `test_credential_delivery`, `test_register`, `test_requirements_ledger`, `test_spec_amendments`, `test_docs_links` (`-n 6`) | 633 passed, 3 skipped (the two POSIX pty tests, and the linked-index test, which needs a file link) |
+| Rocky Linux 8.10 VM (kernel 4.18, SELinux enforcing), Python 3.11.13 | the same set (`-n 4`), then the two pty tests (`-p no:xdist`) | 634 passed; then both pty tests passed (2 passed, 34.9 s), F20.6's real-CLI walk included |
 | CI (Windows and Linux matrix, `assurance`) | the full suite | on the PR |
 
 Driving `serve` at a pseudo-terminal found one server defect, fixed in PR #90: the request log wrote synchronously to the terminal, so a terminal that stops reading stalled every request. It also found one test-harness hazard, fixed here in both pty tests: a runner launched in the background inherits SIGINT ignored, so the child now restores the default before it becomes `aew`.

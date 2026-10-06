@@ -6,7 +6,7 @@
   - F20.2 (PR #67);
   - F20.3 (PR #71);
   - F20.4 (PR #87, merged);
-  - F20.5 (PR #90, at `b3ba7bb`).
+  - F20.5 (PR #90, at `759b9cc`).
 
   The F20.6 PR names its own commit.
 - **Contract:** 0.1.2, SHA-256 `68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691`, the digest `web/docs/c0-approval.json` accepts.

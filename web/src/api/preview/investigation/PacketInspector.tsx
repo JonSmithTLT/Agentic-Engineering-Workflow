@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { returnPosition } from './return-focus';
 import { useEffect, useRef, useMemo } from 'react';
 import { useProjection } from '../../../client/queries';
+import { projectionKey } from '../../../client/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { SourceStrip } from '../../../components/Investigation';
 import { Pager } from '../../../components/ProjectionViews';
 import { SafeContent } from '../../../components/Content';
@@ -14,11 +16,18 @@ import { investigationSchemas, packetBindingIssue, knownReceiptTypes, knownDispo
 import type { useComparisonSource } from './session';
 type SourceQuery = ReturnType<typeof useComparisonSource>;
 export const packetTabs = [{ id: 'contents', label: 'Contents' }, { id: 'selection', label: 'Selection & budget' }, { id: 'receipts', label: 'Receipts' }, { id: 'provenance', label: 'Provenance' }];
-function PacketItems({ packet, reader, name, selection, visibility }: { visibility:string; packet: Packet; reader: SourceQuery['reader']; name: string; selection: boolean }) {
+export function PacketItems({ packet, reader, name, selection, visibility, bounded = false }: { bounded?:boolean; visibility:string; packet: Packet; reader: SourceQuery['reader']; name: string; selection: boolean }) {
   const { params, update } = useControls(), section = params.get('packet_section') ?? '', disposition = params.get('packet_disposition') ?? '';
   const route = `/packets/${encodeURIComponent(packet.id)}/items?` + new URLSearchParams({ case: name, source_id: packet.source_id, limit: '50', ...(section ? { section } : {}), ...(disposition ? { disposition } : {}), ...(params.get('packet_cursor') ? { cursor: params.get('packet_cursor')! } : {}) });
   const schema = useMemo(() => investigationSchemas.PacketItemListResponse.superRefine((value, ctx) => { if (value.data.items.some(i => i.packet_id !== packet.id || i.source_id !== packet.source_id || (packet.sections_complete && !packet.sections.some(s => s.id === i.section)))) ctx.addIssue({ code: 'custom', message: 'Packet item binding mismatch' }); }), [packet]);
   const query = useProjection(route, schema, 'history', true, true, reader, false);
+  const client = useQueryClient();
+  useEffect(() => () => {
+    if (!bounded) return;
+    void client.cancelQueries({ queryKey: projectionKey(route, reader), exact: true });
+    client.removeQueries({ queryKey: projectionKey(route, reader), exact: true });
+    reader.forget(route);
+  }, [route, reader, client, bounded]);
   const issue = query.data?.value.data.items.some(i => i.packet_id !== packet.id || i.source_id !== packet.source_id || (packet.sections_complete && !packet.sections.some(s => s.id === i.section))) ? 'Packet item binding mismatch' : undefined;
   return <><div className="filter-bar"><label>Section<select value={section} onChange={event => update({ packet_section: event.target.value, packet_cursor: null })}><option value="">All sections</option>{packet.sections.map(s => <option key={s.id} value={s.id}>{s.title} · {s.count ?? 'Count not supplied'}</option>)}</select></label><label>Disposition<select value={disposition} onChange={event => update({ packet_disposition: event.target.value, packet_cursor: null })}><option value="">All dispositions</option>{knownDispositions.map(s => <option key={s}>{s}</option>)}</select></label></div>
     {!packet.sections_complete && <p className="preview-note">Section summaries are incomplete.</p>}
@@ -29,7 +38,7 @@ function PacketItems({ packet, reader, name, selection, visibility }: { visibili
       {query.error && <p role="status">STALE / DISCONNECTED — showing valid prior item page.</p>}</> : !query.error && !issue && <p role="status">Loading packet items…</p>}
   </>;
 }
-export function PacketInspector({ query, packetId, name, back, backLabel = "Back to comparison" }: { backLabel?:string; query: SourceQuery; packetId: string; name: string; back: () => void }) {
+export function PacketInspector({ query, packetId, name, back, backLabel = "Back to comparison", boundedItemPages = false }: { boundedItemPages?:boolean; backLabel?:string; query: SourceQuery; packetId: string; name: string; back: () => void }) {
   const location = useLocation(), returningReference = useRef(returnPosition(location.state));
   const { params, update } = useControls(), source = query.data?.value.data, tab = params.get('packet_tab') ?? 'contents';
   const association = source?.packets.find(p => p.id === packetId);
@@ -48,7 +57,7 @@ export function PacketInspector({ query, packetId, name, back, backLabel = "Back
       {packetQuery.error && <p role="status">STALE / DISCONNECTED — displaying valid previous packet.</p>}
       <InvestigationTabs prefix="packet" label="Packet sections" tabs={packetTabs} active={tab} select={id => update({ packet_tab: id })} />
       <div role="tabpanel" id={`packet-panel-${tab}`} aria-labelledby={`packet-tab-${tab}`}>
-        {(tab === 'contents' || tab === 'selection') && <>{tab === 'selection' && <section className="panel"><h3>Supplied accounting</h3>{packet.accounting.length ? <div className="table-scroll"><table><thead><tr><th>Unit</th><th>Amount / limit</th><th>Estimator</th><th>Tokenizer</th></tr></thead><tbody>{packet.accounting.map((a, i) => <tr key={i}><td><SemanticValue value={a.unit} known={['TOKENS', 'BYTES']} /></td><td>{a.amount ?? 'Not supplied'} / {a.limit ?? 'Not supplied'}</td><td>{a.estimator_id ?? 'Not supplied'}</td><td>{a.tokenizer_id ?? 'Not supplied'}</td></tr>)}</tbody></table></div> : <p>No accounting supplied.</p>}<p>Policy: {packet.policy_id ?? 'Not supplied'} · Trigger: {packet.trigger ?? 'Not supplied'}</p></section>}<PacketItems packet={packet} reader={query.reader} name={name} selection={tab === 'selection'} visibility={source!.visibility_scope} /></>}
+        {(tab === 'contents' || tab === 'selection') && <>{tab === 'selection' && <section className="panel"><h3>Supplied accounting</h3>{packet.accounting.length ? <div className="table-scroll"><table><thead><tr><th>Unit</th><th>Amount / limit</th><th>Estimator</th><th>Tokenizer</th></tr></thead><tbody>{packet.accounting.map((a, i) => <tr key={i}><td><SemanticValue value={a.unit} known={['TOKENS', 'BYTES']} /></td><td>{a.amount ?? 'Not supplied'} / {a.limit ?? 'Not supplied'}</td><td>{a.estimator_id ?? 'Not supplied'}</td><td>{a.tokenizer_id ?? 'Not supplied'}</td></tr>)}</tbody></table></div> : <p>No accounting supplied.</p>}<p>Policy: {packet.policy_id ?? 'Not supplied'} · Trigger: {packet.trigger ?? 'Not supplied'}</p></section>}<PacketItems bounded={boundedItemPages} packet={packet} reader={query.reader} name={name} selection={tab === 'selection'} visibility={source!.visibility_scope} /></>}
         {tab === 'receipts' && <><p className="scope-note">Missing receipts mean the event is unknown in this projection; they do not establish that it did not occur.</p>{!packet.receipts_complete && <p className="preview-note">Receipt projection is incomplete; no stage can be treated as an exhaustive history.</p>}{[['PREPARATION', 'Preparation', 'No preparation receipt supplied.'], ['DELIVERY', 'Delivery acknowledgment', 'No delivery receipt supplied.'], ['CITATION', 'Output citations', 'No output citation receipt supplied.'], ['BENEFIT', 'Benefit evaluations', 'No benefit evaluation supplied.']].map(([type, title, absent]) => <section className="panel" key={type}><h3>{title}</h3>{packet.receipts.filter(r => r.type === type).length ? packet.receipts.filter(r => r.type === type).map(r => <ReceiptCard key={r.id} receipt={r} />) : <p>{absent}</p>}</section>)}{packet.receipts.filter(r => !knownReceiptTypes.includes(r.type)).map(r => <ReceiptCard key={r.id} receipt={r} />)}</>}
         {tab === 'provenance' && <section className="panel"><dl><dt>Prepared UTC</dt><dd>{packet.prepared_at ?? 'Not supplied'}</dd><dt>Supplied fingerprint</dt><dd><code>{packet.fingerprint ?? 'Not supplied'}</code></dd><dt>Producer</dt><dd>{packet.producer ? `${packet.producer.id} · ${packet.producer.role ?? 'Role not supplied'}` : 'Not supplied'}</dd><dt>Source revision</dt><dd>{packet.source_revision ?? 'Not supplied'}</dd><dt>Environment</dt><dd>{packet.environment.join(' · ') || 'Not supplied'}</dd></dl><h3>Canonical references</h3><References values={packet.canonical_references} /><p>Canonical decisions remain references to their authoritative records. “Included in context” references do not establish delivery, use, or benefit.</p><details><summary>Packet response metadata</summary><SourceStrip source={packetQuery.data!} failed={!!packetQuery.error} readSnapshot={query.reader.context.identity.snapshot} /></details></section>}
       </div></>}

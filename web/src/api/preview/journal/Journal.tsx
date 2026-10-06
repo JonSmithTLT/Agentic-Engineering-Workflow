@@ -13,6 +13,8 @@ import { historicalRequested } from '../../navigation';
 import { accessRefused } from '../../transport';
 import { journalEntry, journalSchemas, journalKinds, applicabilityValues, journalCases, type JournalEntry, type JournalReference } from './schema';
 import { journalContract } from './registration';
+import { ContextAssociations, JournalPacketHost } from './ReuseTrail';
+import { packetTabs } from '../investigation/PacketInspector';
 import { JournalSession, useJournalReader } from './session';
 import { inspectJournal } from './model';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,7 +28,7 @@ export default function JournalKnowledge({ Records }: {
     <div className="knowledge-mode" role="group" aria-label="Knowledge view">
       {['journal', 'records'].map((v) => <button key={v} aria-pressed={view === v} onClick={() => setParams((old) => {
                 const p = new URLSearchParams(old);
-                for (const k of ['selected', 'cursor', 'kind', 'component', 'component_missing', 'panel', 'display', 'inspector', 'field'])
+                for (const k of ['selected', 'cursor', 'kind', 'component', 'component_missing', 'panel', 'display', 'inspector', 'field', 'context_association', 'packet_tab', 'packet_section', 'packet_disposition', 'packet_cursor'])
                     p.delete(k);
                 p.set('view', v);
                 return p;
@@ -47,6 +49,12 @@ function JournalWorkspace({ name }: {
             (params.has('component') && params.has('component_missing')) ? 'Invalid journal presentation. No journal request was sent.' : null;
     if (error)
         return <p role="alert">{error}</p>;
+    if (params.has('context_association')) {
+        if (!params.get('selected') || !journalEntry.shape.id.safeParse(params.get('context_association')).success ||
+            (params.has('packet_tab') && !packetTabs.some(t => t.id === params.get('packet_tab'))))
+            return <p role="alert">Invalid context association presentation. No packet request sent.</p>;
+        return <JournalPacketHost name={name} record={params.get('selected')!} associationId={params.get('context_association')!} />;
+    }
     return <>
     <p className="preview-note" role="note">Journal preview · 0.1.0 PROVISIONAL · Fictional clangd investigation. Preview shape acceptance is not backend acceptance.</p>
     <label className="journal-case">Journal scenario <select aria-label="Journal scenario" value={name} onChange={(e) => setParams((old) => { const p = new URLSearchParams(old); p.set('journal_case', e.target.value); p.delete('cursor'); p.delete('selected'); return p; })}>
@@ -174,6 +182,8 @@ function JournalDetail({ id, name, shown, panel }: {
         // A returning evidence reference owns restoration after the pane is visible.
         if (document.activeElement?.getAttribute('data-evidence-reference'))
             return;
+        if (document.activeElement?.getAttribute('data-context-association'))
+            return;
         if (fromResults.current && !window.matchMedia('(max-width: 1023px)').matches)
             return;
         const frame = requestAnimationFrame(() => {
@@ -226,6 +236,7 @@ function JournalDetail({ id, name, shown, panel }: {
       <details><summary>Producer and prompt identity metadata</summary><dl>{['producer', 'model_id', 'prompt_id', 'prompt_version', 'prompt_digest'].map((k) => <div key={k}><dt>{k}</dt><dd>{k === 'producer' ? r.producer ? `${r.producer.id} · ${r.producer.role ?? 'Role not supplied'}` : 'Not supplied' : String(r[k as 'model_id'] ?? 'Not supplied')}</dd></div>)}</dl><p>Identity metadata only. Raw prompt content is not part of this preview.</p></details>
       <h3>Canonical references</h3><ReferenceList values={r.canonical_references} empty="No canonical references supplied."/>
       <p className="scope-note">Canonical decisions remain references to their authoritative records. “Included in context” references do not establish delivery, use, or benefit.</p>
+      <ContextAssociations name={name} record={r.id} visible={shown && panel === 'provenance'} />
       <h3>Origin relations</h3>
       <p className="scope-note">The graph contains only loaded supplied relations within the displayed bounds. Absence of a relationship is not evidence that no relationship exists.</p>
       <ReferenceList values={r.relations.map((rel) => ({ ...rel.target, title: `${rel.relation}${rel.target.title ? ' · ' + rel.target.title : ''}` }))} empty="No origin relations supplied."/>

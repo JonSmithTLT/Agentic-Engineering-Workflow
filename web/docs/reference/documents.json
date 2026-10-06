@@ -4504,7 +4504,11 @@
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist-demo.SHA256SUMS",
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist.SHA256SUMS",
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/offline-gate.log",
-    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/provenance.json"
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/provenance.json",
+    "web/docs/design/plans/w07-reuse-trail.md",
+    "web/docs/reviews/w07-reuse-plan-review.md",
+    "web/docs/design/plans/w07-authorization.json",
+    "web/docs/design/w07-reuse.manifest.json"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

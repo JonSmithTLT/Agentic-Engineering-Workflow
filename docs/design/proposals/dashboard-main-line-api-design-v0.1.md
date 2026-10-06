@@ -597,9 +597,10 @@ Raised here, relayed by the operator; nothing in `web/` is edited by the main li
    digest from the acceptance record rather than hard-coding it, and re-pin when that change lands.
 2. F20.5's production build: **the main line rebuilds under WSL with the pinned builder** (web agent, 2026-10-05),
    from a clean detached checkout of the explicitly agreed frozen commit, retaining the production `dist/`, the source
-   tree identity and the build hashes. F20 names `7c120b4` (the core freeze, before W02 to W06 merged); **which commit
-   to build is to be agreed** with the web agent and the operator before F20.5, and is never the newest frontend by
-   default.
+   tree identity and the build hashes. **Operator-approved baseline (2026-10-05):**
+   `4f0a710fa4831eefda248dd43cc2e144d1010189` (PR #52 merge), recorded with source/tree, contract and toolchain
+   identities in the [web build agreement](../../../web/docs/reference/f20-production-baseline.md). F20
+   `7c120b4` remains the historical core freeze. Never substitute newest main or silently advance this baseline.
 3. The W01 ledger's answers are in §4.9; when the web agent is satisfied, the ledger rows can record the accepted
    artifact (this note's commit, contract 0.1.2, its digest) as resolved.
 4. F20.6 wants the compiled browser checks to run against a live authenticated server. **Web agent (2026-10-05):**
@@ -607,7 +608,8 @@ Raised here, relayed by the operator; nothing in `web/` is edited by the main li
    URL and a private session-cookie file, starts no fixture servers, keeps credentials out of the evidence, and gives
    the fixture-specific assertions a separate live acceptance path. The demo preview contracts stay excluded from the
    production integration. F20.6 depends on that work; the main line provides the server, the cookie file (0600, in
-   the scratch directory, never in evidence) and the acceptance record.
+   the scratch directory, never in evidence) and the acceptance record. The [web handoff](../../../web/docs/reference/f20-live-browser-handoff.md)
+   records this missing dependency and ownership; cookie-file format and invocation still need agreement before implementation.
 5. The `/history` default order is newest first (seq descending), as `aew history list` orders; `/activity` the same
    by revision. If the frontend assumes ascending order anywhere, say so before F20.2 is reviewed.
 6. The `aew_session` cookie name is kept; `401` responses carry a JSON `Error` body (`SESSION_REQUIRED`,

@@ -269,7 +269,8 @@ sections:
       TLS-13, TLS-14, TLS-17, TLS-26 to TLS-28)'
     Belongs to or gated by: '**M4-E**, after the before-M4-E gate (§1) and M4-D''s lease'
     Notes: Hard gates and reported metrics in the design's §10, measured by the preregistered M4-H dogfood (F19) against
-      the M3 baseline
+      the M3 baseline. **Gated by the pre-F15.2 amendment set (approved 2026-10-05):** F15.4 (digest separation) and F15.5's
+      operator capability before it ships; F15.6 before automatic relaunch is enabled
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport
@@ -278,6 +279,62 @@ sections:
       TLS-28)'
     Belongs to or gated by: '**M6** (M6a for the namespace rules, F13 decides what each role sees)'
     Notes: Designed only, not prototyped; ends the YAML-frontmatter failure class for role reports
+  - '#': F15.4
+    Work: 'Policy digest separation: every execution-policy field classified `legality_affecting` or `operational` (an unclassified
+      field fails schema validation); each staged action records `legality_digest`, `operational_digest`, the revision,
+      the authority generation and any action-specific authorization digest; only a legality mismatch is `STALE_POLICY`,
+      an operational change takes effect at the next safe boundary, and a recovery action snapshots the operational settings
+      it depends on'
+    Source (governing): '[A3, policy binding and digests](../design/policy-binding-digest-amendment-v0.1.md) (approved 2026-10-05;
+      ledger PBD-01 to PBD-10); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) §1, §4, §5 (ledger
+      PFS-01, PFS-03, PFS-04)'
+    Belongs to or gated by: '**Gate: before F15.2 ships** (M4-E); first in the set''s order, because F15.5 and F15.6 depend
+      on the distinction'
+    Notes: Narrows the typed surface's one policy digest (TIS-13, TLS-14) to `legality_digest` for `STALE_POLICY`, so tuning
+      health, steering or recovery never invalidates in-flight legal work. It amends the digest rules of the [Crawl/Walk/Run
+      steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) §6, the [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md)
+      §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5
+  - '#': F15.5
+    Work: 'Crawl / Walk / Run steering over `ActionProjection`, with its operator authority boundary: `aew confirm`, autonomy
+      increases and `PUBLISH_IF_CLEAN` grants only through an operator capability structurally absent from agent shells
+      and model tools (the Lead may request, lower and continue); attributable mode-change records; Walk auto-runs only
+      actions whose declared side effects are all in the allow-list `{control_state}`, with catalog conformance (observed
+      effects within declared); the auto-run envelope (budget, admission, repetition N = 2, the loop deadline) and the invocation
+      hard deadline as an authority-reducing safety action; an out-of-band operator notifier for unattended Run'
+    Source (governing): '[Crawl/Walk/Run steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) (approved
+      2026-10-05; ledger CWR-01 to CWR-12), as amended by [A1, steering authority and execution envelope](../design/steering-authority-execution-envelope-amendment-v0.1.md)
+      (approved 2026-10-05; ledger SAE-01 to SAE-15); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md)
+      (ledger PFS-01 to PFS-04)'
+    Belongs to or gated by: '**M4-E**, with F15.2. **Gate: before F15.2 ships** any mode-changing or confirmation surface:
+      the operator capability must be out of an agent shell''s reach'
+    Notes: Steering changes who confirms an already-legal action and when, never legality, gates or transitions (PBD-07).
+      The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default
+      while M4-H measures, and the product default is not frozen (CWR-12)
+  - '#': F15.6
+    Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
+      recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
+      1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed
+      before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned
+      allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint,
+      or project-wide; operator reset), and a relaunch record binding all of it'
+    Source (governing): '[bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) (approved,
+      limited slice, 2026-10-05; ledger BRP-01 to BRP-07, BRP-09, BRP-10), as amended by [A2, launch-failure recovery safety](../design/launch-failure-recovery-safety-amendment-v0.1.md)
+      (approved 2026-10-05; ledger LFR-01 to LFR-08); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md)
+      (ledger PFS-01 to PFS-04); [A3, policy binding and digests](../design/policy-binding-digest-amendment-v0.1.md) §5
+      (PBD-06)'
+    Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
+      and non-side-effecting (the set''s release gate)'
+    Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
+      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7
+  - '#': F15.7
+    Work: 'The deferred recovery rows: row 4 `REDISPATCH_IF_LOST` (a pre-authorized re-dispatch of a lost clean run, a sibling
+      of `PUBLISH_IF_CLEAN`), row 6 a policy-resolved Investigator after a blocked report, row 8 `max_fix_attempts` (the
+      fix-loop cap)'
+    Source (governing): '[bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) §8, §10
+      (ledger BRP-08, BRP-10)'
+    Belongs to or gated by: '**Evaluation**: after M4-H''s base rates, with F19; each row needs its own adoption, and rows
+      1 and 3 never promote them'
+    Notes: 'Non-governing until adopted: production policy refuses their keys in the `recovery:` namespace as active authority'
   - '#': F16
     Work: 'Explain AEW to the model Lead instead of leaving it to trial and error (operator, 2026-09-30). What each risk
       class requires and what it still guarantees (gates, the roles that run, the evidence produced), and when it applies;
@@ -325,8 +382,8 @@ sections:
       the operator''s session under the hosting model Q12 picks. Bootstrap and hosting only; comprehensive native-feature
       integration stays with M6 (F13)'
     Source (governing): Designer and operator, 2026-10-01; provider research §5 ([`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md));
-      **the design is [install, bootstrap and first-run UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md)**
-      (design frozen, proposed 2026-10-04; ledger IBU)
+      **the design is [install, bootstrap and first-run UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)** (adopted
+      by the designer and the operator 2026-10-05; ledger IBU)
     Belongs to or gated by: '**Unscheduled.** Needs Q12 for host, account and session topology; the design''s commands,
       artifacts and ownership semantics do not (its decision 13), so F18.1 to F18.4 can be scheduled before Q12 if the operator
       wants them'
@@ -337,41 +394,48 @@ sections:
       and `inputs_sha256`), `init --apply` as one atomic attributable apply that refuses stale or expanded proposals, `--accept-proposal`
       for non-interactive use, static-before-trust repository inspection through the T5 generator, and the configuration
       ownership model (AEW edits no user or project harness file; supported Lead sessions use isolated generated configuration)'
-    Source (governing): '[install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md) §3, §4,
-      §7, §10 (ledger IBU-03, IBU-09, IBU-10, IBU-11, IBU-16)'
+    Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §3, §4, §7, §10
+      (ledger IBU-03, IBU-09, IBU-10, IBU-11, IBU-16)'
     Belongs to or gated by: '**Unscheduled** (candidate for M4-G with E21, which it subsumes: the test-command proposal
       is one of its proposals)'
-    Notes: Absorbs E21 when built
+    Notes: Absorbs E21 when built. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level stands between
+      this row and its build
   - '#': F18.2
     Work: '`aew doctor` with ERROR/WARN/INFO rows, a remedy per row, `--todo`, `--json` with stable finding ids, the harness
       dry start and schema probe under isolated configuration by default, `--online` for gateway checks, the conflict-detection
       row for ambient harness files, and never auto-fixing'
-    Source (governing): '[install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md) §6, §6.1,
-      §7 (ledger IBU-14 to IBU-16)'
+    Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §6, §6.1, §7 (ledger
+      IBU-14 to IBU-16)'
     Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry)'
-    Notes: Launch refusals point at the finding id
+    Notes: Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
+      stands between this row and its build
   - '#': F18.3
     Work: 'The air-gap bundle: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse, qualified harness pins and a canonical
       hashed manifest; a detached signature over the manifest from a release identity with an independently provisioned
       trust root; a verifier that rejects traversal, duplicates and mismatches before anything is consumed; `aew doctor
       --bundle --json` as the host acceptance record; tool upgrade separate from project migration with a declared restore
       point'
-    Source (governing): '[install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md) §5 (air-gapped),
+    Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §5 (air-gapped),
       §5.1 (ledger IBU-12, IBU-13); airgap research §7'
     Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; the build follows
       the adoption of ADR-0014)'
-    Notes: 'Key custody and rotation: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md) (proposed for operator adoption
-      2026-10-05; ledger BSG): OpenSSH signatures over a canonical JSON manifest, an independently provisioned `allowed_signers`
-      trust root, the release operator signs locally and never CI, rotation and revocation procedures, the verifier''s refusal
-      rules and the adversarial tests the build must show'
+    Notes: 'Key custody and rotation: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md) (proposed 2026-10-05; ledger
+      BSG). **The designer''s disposition (2026-10-05): one narrow change, then adopt.** D2 signs `built_at` while D5 requires
+      two independent builds to give byte-identical manifest and tar digests: a wall-clock build time makes that impossible,
+      and a commit timestamp silently changes what D3''s signer validity check means. The fix names a deterministic release
+      epoch (from release input both CI and the operator use, such as the tag) as the signed time that key validity uses,
+      with no time-of-rebuild in the reproducible manifest; D1 to D9 otherwise stand. The build waits for that amendment:
+      OpenSSH signatures over a canonical JSON manifest, an independently provisioned `allowed_signers` trust root, the
+      release operator signs locally and never CI, rotation and revocation procedures, the verifier''s refusal rules and
+      the adversarial tests the build must show'
   - '#': F18.4
     Work: 'Organization launch and provider-access seams: the harness launch provider (`direct_binary`, `airgap_bundle`
       or `organization`) selecting a qualified pin that AEW independently verifies after launch; the `aew/harness-qualification/v1`
       manifest (AEW-shipped or organization-approved, the same mandatory conformance); the `provider_access` profile whose
       mTLS and PKI material stays supervisor-side behind the F28 relay; and the seven-point live qualification gate before
       the integration is called supported'
-    Source (governing): '[install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md) §3.1,
-      §10 (ledger IBU-04 to IBU-08, IBU-20)'
+    Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §3.1, §10 (ledger
+      IBU-04 to IBU-08, IBU-20)'
     Belongs to or gated by: '**Unscheduled** (before any organization deployment); its live gate is one bounded task for
       the independent researcher'
     Notes: Depends on F28's relay for the provider path and on E35's qualification seams
@@ -413,7 +477,7 @@ sections:
       at `7c120b4` (main-line review and fix verification ACCEPT, 2026-10-02). Merged to `main` by F20.1 (PR #26); the records
       are `web/docs/reference/integration-checklist.md` and `web/docs/archive/core/frontend-core-review-main-line.md` (index:
       `web/docs/README.md`)'
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), as tickets F20.2 to F20.6 below; F20.1 is done (§9)'
+    Belongs to or gated by: '**M4** (operator, 2026-10-03), as tickets F20.2 to F20.6; F20.1 to F20.4 are done (§9)'
     Notes: 'Contract changes renew its review (C0). Out of scope until then: Queue (no reviewed wire model) and Graph (optional,
       after the freeze; the core contract is not expanded for it). Write actions wait until the typed surface exists, so
       that the dashboard calls the same tools (ARV-01, operator 2026-10-05). Small frontend follow-up, not blocking: an
@@ -424,39 +488,6 @@ sections:
       one from other timestamps (run times, completion). **Lead developer (2026-10-05, PR #57):** when F28 is built the
       run label''s `network` becomes an object (`mode`, `provider_relay`, `egress_allow`), so the dashboard contract needs
       a note for the web developer; a contract change renews C0.'
-  - '#': F20.2
-    Work: 'Read-only API and conformance: serve the accepted GET/HEAD projections of contract 0.1.2 with bounded cursors
-      and filters, and validate every response against the contract in Python tests'
-    Source (governing): Contract 0.1.2 (`docs/design/dashboard-api-v1-provisional.yaml` once F20.1 merges)
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.1'
-    Notes: 'Any contract change renews its C0 review. A unit''s transition history (a lifecycle timeline) is a later contract
-      addition, see F20. **Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §4.5 to §4.11, §5.1: seq-pinned History cursors, revision-pinned hot cursors, the lock-free reader, the projection
-      sources, the reason-code registry'
-  - '#': F20.3
-    Work: 'Dashboard session: **the same credential system as the rest of AEW** (operator, 2026-10-03: one product). The
-      operator starts the dashboard from their own terminal, which confirms presence with the typed-back code takeover uses;
-      that mints a read-only operator credential (`aew1.<id>.<secret>`, verifier only) held in the server''s memory and
-      handed to the browser once, through a one-time URL exchanged for an `HttpOnly`, `SameSite=Strict` cookie. A session
-      lasts about a day or until the server stops; `aew dashboard open` issues a new URL. Nothing is written to control
-      state; no accounts or login page'
-    Source (governing): ADR-0005 (credential form, custody, terminal authorization; its designed follow-up "an operator-issued
-      token held outside the agent's reach"); the W01 backend question ledger
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.1'
-    Notes: 'Ships as a standalone `aew dashboard serve` first; starting it with AEW''s own startup waits for Q12 and F18.
-      A write scope (operator actions) would reuse this credential, by a later decision. **Design note (approved with modifications,
-      designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §4.1 to §4.4, §5.2: the `operator_session` kind, the two-terminal `open` flow, the one-time URL and cookie, the ADR-0005
-      amendment draft'
-  - '#': F20.4
-    Work: 'Conditional requests and caching: ETags cover the whole envelope, `control_revision` and the session''s scope
-      included; 200 and 304 behaviour checked against live projections'
-    Source (governing): Contract 0.1.2; the frontend core review's integration notes
-    Belongs to or gated by: '**M4** (operator, 2026-10-03), after F20.2'
-    Notes: 'A valid 304 keeps the cached envelope (`control_revision`, `generated_at`) and advances only the client''s `last_checked_at`,
-      as W01 behaves; any envelope or revision change changes the validator, so it never gets a 304. **Design note (approved
-      with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md)
-      §4.12, §5.3: the validator excludes `generated_at` and includes the request scope'
   - '#': F20.5
     Work: 'Static serving and server security: the static build in the Python package with an SPA fallback for deep links;
       CSP and security headers; Host and Origin checks (DNS rebinding); request bounds; `127.0.0.1` only (an SSH tunnel
@@ -507,64 +538,73 @@ sections:
       Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition` names; source
       class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`'
   - '#': F22
-    Work: 'Project maps: a deterministic codebase map (directory roles, entry points, build/test locations, language and
-      generated boundaries) with tree-bound freshness and bounded query slices; a model-authored architecture map selected
-      as a navigation reference; language-specific semantic extensions (C/C++ first) that enrich but never replace the structural
-      core'
+    Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
+      that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed
+      into one navigation/context view that never becomes an authority source'
     Source (governing): KC §8.2 to §8.5, §13; architecture review G3; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05) G3, D-AR6; **the design is [project maps v0.4](../design/proposals/project-maps-design-v0.4.md)**
-      (proposed consolidation for the designer's freeze, 2026-10-05; v0.3, design frozen 2026-10-04, governs until v0.4
-      is adopted and is archived under `archive/superseded/`; ledger PMP), with the research behind its semantic layer in
-      `docs/research/` (ledger CXS, CXP, SEF, QRC, LRB, PUI)
-    Belongs to or gated by: '**M4 candidate** for the structural slice F22.1 (M4-G/H if it does not put approved scope at
-      risk); the semantic contract and extractor F22.2 and the sibling indexes F22.3 come **after T5 structural v1**, with
-      M6'
-    Notes: 'A generated map is derived project context, not K0 admission and not Knowledge (v0.3 decision 7). `aew init`
-      ships `null` maps and `UNKNOWN` fields today. The research threads are closed and consolidated into v0.4 (2026-10-05:
-      listing-bound freshness, the semantic-extension contract with the C++ additions, the `map.*` surface, incremental
-      freshness, the architecture bridge, the sibling indexes; the research entries it carries are marked absorbed in the
-      ledger); the designer''s freeze of v0.4 and its §10 is the remaining step, and §11 lists what stays open'
+      (accepted 2026-10-05) G3, D-AR6; **the design is [project maps v0.5](../design/project-maps-design-v0.5.md)** (frozen
+      by the designer and adopted by the operator 2026-10-05; ledger PMP; the repository's v0.4 and v0.3 are archived under
+      `archive/superseded/`), with the research behind it in `docs/research/` (ledger CXS, CXP, SEF, QRC, LRB, PUI)
+    Belongs to or gated by: '**M4 candidate** for the structural core F22.1, and only as far as M4-H''s value experiment
+      needs it (v0.5 §13.2: the value gate takes precedence over mapping infrastructure); the semantic substrate and the
+      C/C++ extension F22.2 and the sibling indexes F22.3 after the gate, with M6'
+    Notes: 'A map is derived project context: never workflow authority, never K0 to K3 admission, never a dispatch gate
+      (v0.5 §1, §3.3, §3.4, §14). `aew init` ships `null` maps and `UNKNOWN` fields today. **v0.5 adopted (2026-10-05)**
+      after an independent hardening review: mechanically tracked structural inputs, the map registry with its own `map_revision`,
+      the closed `map_service` writer, contained extraction from an exact source view, compile commands as data, compile-database
+      provenance, negative-dependency freshness, root manifests over content-addressed chunks, untrusted map text, assurance
+      monotonicity, configuration-qualified queries, and invariants T5-INV-01 to 12 with stable reason codes. The research
+      cycle is closed (§18); implementation follows §16''s slices T5-A to T5-E'
   - '#': F22.1
-    Work: 'The structural map v1: the deterministic generator from Git objects (`ls-tree` at the commit, versioned ruleset,
-      bounded metadata reads, limits and omissions in the record), the immutable `aew/codebase-map/v1` artifact and the
-      manifest pointer moved by an attributable transaction, `aew map generate`, `map show`, `map diff` and `map architecture`,
-      tree-bound computed freshness reported as INFO by `doctor`, architecture-reference selection, and the bounded query
-      slices (scope-intersecting rows, generated hints, diff metadata)'
-    Source (governing): '[project maps v0.4](../design/proposals/project-maps-design-v0.4.md) §1 to §5, §7, §9 (ledger PMP-01
-      to PMP-09, PMP-15 to PMP-18); the probe ([T5 probe results](../archive/reviews/architecture-review-2026-10-04/t5-codebase-map-probe-results.md)):
-      0.1 s and 3.5 KB on AEW, byte-identical across checkouts; [large-repository benchmark](../research/large-repository-benchmark-2026-10-04.md):
+    Work: 'T5-A, the structural core: `aew/codebase-map/v1` generated from Git objects through one input-tracking read API;
+      freshness bound to the path listing plus the metadata blobs actually read, computed per tree pair and never written
+      back; bounded submodule, LFS and symlink behaviour; the immutable artifact selected through the map registry (`aew/map-registry/v1`,
+      its own `map_revision`, never `control_revision`); `aew map generate`, `map show` and `map diff`; deterministic caps
+      and omissions; architecture-reference selection; the bounded pack slices (§11.1); the differential unrecorded-input
+      oracle; the 100k regression, plus a 1M-path measurement before claiming that scale'
+    Source (governing): '[project maps v0.5](../design/project-maps-design-v0.5.md) §2, §3.1, §3.3, §10, §11, §13, §16 T5-A,
+      §17 (ledger PMP-01 to PMP-09, PMP-15, PMP-25 to PMP-30, PMP-62, PMP-67 to PMP-69, PMP-74, PMP-75); the probe ([T5
+      probe results](../archive/reviews/architecture-review-2026-10-04/t5-codebase-map-probe-results.md)): 0.1 s and 3.5
+      KB on AEW, byte-identical across checkouts; [large-repository benchmark](../research/large-repository-benchmark-2026-10-04.md):
       2.1 s and 162 KB at 100k files, no sharding or index needed'
-    Belongs to or gated by: '**M4 candidate** (M4-G/H), the bounded deterministic slice the response allows'
-    Notes: 'No designer-level question blocks it (v0.3 §10). Whole-pack serving is an F19 question, not part of v1. **v0.4
-      drafts the freshness amendment (2026-10-05; its §3 and amended decision 4):** freshness narrows from the whole tree
-      to the tree listing plus the configuration blobs the generator reads, which the probe supports ([T5 probe results](../archive/reviews/architecture-review-2026-10-04/t5-codebase-map-probe-results.md)
-      §3: current through 21 of the last 30 commits instead of 0 of 30); v0.3''s whole-tree rule governs until v0.4 is adopted
-      (ledger PUI-20)'
+    Belongs to or gated by: '**M4 candidate** (M4-G/H): only as far as it makes the M4-H experiment representative (v0.5
+      §13.2); otherwise after the gate'
+    Notes: '**Unblocked by v0.5''s adoption (2026-10-05).** Do not build from earlier prose: v0.4''s manifest pointer moved
+      by an attributable project transaction is replaced by the map registry and `map_revision` (§3.1), and the freshness
+      inputs are the generator''s tracked reads, not a hand-maintained list (§2.4). If a background or asynchronous adoption
+      path is built here, it is `map_service`''s and waits for its ADR amendment (PMP-32, F22.2). Whole-pack serving is
+      an F19 question, not part of v1'
   - '#': F22.2
-    Work: 'The semantic-extension contract and the first extractor: the shared contract (fact kinds with the tiers `compiler_known`,
-      `static_inference` and `unsupported`, the seven reference kinds plus `dependent`, `virtual` and `overrides`, the unit
-      as translation unit, mandatory extractor and toolchain identity, per-unit freshness from input sets, two coverages,
-      generated limitations, `instances[]` for templates and inline definitions, `source: codegen`), the typed `map.*` surface
-      (radius 1 free, radius 2 budgeted), incremental rebuild from the dependency index with atomic publication, a derived
-      rebuildable index, and the C/C++ extractor on compiler-quality tooling with the object-file oracle as its acceptance
-      test'
-    Source (governing): '[project maps v0.4](../design/proposals/project-maps-design-v0.4.md) §6 (ledger PMP-10 to PMP-14,
-      PMP-19 to PMP-21, PMP-23, PMP-24); [semantic-extension framework](../research/semantic-extension-framework-2026-10-04.md)
-      (SEF), [C/C++ extraction](../research/cxx-semantic-extraction-investigation-2026-10-04.md) (CXS), [the C++ contract
-      check](../research/cxx-plus-plus-contract-check-2026-10-04.md) (CXP), [large-repository benchmark](../research/large-repository-benchmark-2026-10-04.md)
+    Work: 'T5-B then T5-C. T5-B, the common semantic substrate: `aew/semantic-map/v1`, the capability, fact and quality
+      schemas, the closed `map_service` writer (`map.artifact.*`, `map.registry.*`, `map.index.*`; its principal encoded
+      by an amendment to ADR-0005''s `service` kind), root manifests over content-addressed chunks with canonical, order-independent
+      serialization, the unit/configuration/extractor/compile-database provenance schema, the derived local query index,
+      retention and GC reachability, and the typed `map.*` surface (configuration-partitioned answers, terminal states,
+      radius 1 free and radius 2 budgeted, candidates-only search). T5-C, the C/C++ extension: an exact source view and
+      extraction contained through the ProcessTree choke point, compile commands parsed as data with side effects redirected
+      and plugin loading refused, compile-database provenance, positive plus negative-resolution dependency freshness per
+      unit, the composite AST plus codegen extractor identity, USR symbols with emitted instances, incremental rebuild,
+      and the C and C++ oracle suites with hostile compile-command and checkout-mutation tests'
+    Source (governing): '[project maps v0.5](../design/project-maps-design-v0.5.md) §3.1, §3.2, §3.4, §3.5, §4 to §8, §16
+      T5-B and T5-C, §17 (ledger PMP-10 to PMP-14, PMP-19, PMP-20, PMP-31 to PMP-58, PMP-70, PMP-71); [semantic-extension
+      framework](../research/semantic-extension-framework-2026-10-04.md) (SEF), [C/C++ extraction](../research/cxx-semantic-extraction-investigation-2026-10-04.md)
+      (CXS), [the C++ contract check](../research/cxx-plus-plus-contract-check-2026-10-04.md) (CXP), [large-repository benchmark](../research/large-repository-benchmark-2026-10-04.md)
       (LRB), [query routing](../research/query-routing-and-retrieval-classification-2026-10-04.md) §7 (QRC-07)'
-    Belongs to or gated by: '**M6** (after F22.1; the contract is consolidated in v0.4 §6.1 and §10 and awaits the designer''s
-      freeze, the extractor an implementation item)'
-    Notes: 'Research capped by the designer (2026-10-05): consolidate T5 v0.4 and freeze the contract with the C++ additions;
-      the five contract questions in SEF-14 are the freeze''s checklist, one already answered (radius)'
+    Belongs to or gated by: '**M6** (after F22.1 and after M4-H''s value gate). T5-B settles root/chunk storage and the
+      registry semantics before T5-C writes a production artifact; T5-C''s design gate (containment and source view, compile-database
+      provenance, negative-dependency freshness, registry revision and custody) is met by v0.5''s adoption'
+    Notes: The contract is frozen (v0.5 §15, thirty-nine decisions) and the research capped; the production C++ extractor's
+      language is the implementer's (§18). Product inclusion of the semantic map is by ablation after the value gate (§13.2)
   - '#': F22.3
-    Work: 'Sibling project-understanding indexes beside the maps, composed when their inputs exist and never fields of the
-      structural record: the test index (test file → directories, and → symbols when a semantic extension exists), public-surface
-      counts per directory (semantic only), and the constraint locator index (oracle rules, invariant-index ids, schema
-      keys, guardrails, ADR sections, requirements-ledger ids with the terms they mention)'
-    Source (governing): '[project maps v0.4](../design/proposals/project-maps-design-v0.4.md) §7.1 (ledger PMP-22); [project
-      understanding and impact analysis](../research/project-understanding-and-impact-analysis-2026-10-04.md) §7, §8 (ledger
-      PUI-19, PUI-20), as corrected by the designer'
+    Work: 'T5-D, sibling project-understanding indexes beside the maps, composed when their inputs exist and never fields
+      of the structural record: the test relationship index (test to paths, symbols or components and the check lane, weaker
+      path/name evidence without semantic facts, never making a test required), the constraint locator index (locators and
+      terms for oracle rules, invariant-index ids, schema fields, guardrails, ADR sections, requirements-ledger ids and
+      amendment-index entries, never rewritten prose), the semantic public-surface projection, and untrusted-string projection
+      tests'
+    Source (governing): '[project maps v0.5](../design/project-maps-design-v0.5.md) §9, §4.9, §16 T5-D (ledger PMP-22, PMP-45,
+      PMP-59 to PMP-61, PMP-72); [project understanding and impact analysis](../research/project-understanding-and-impact-analysis-2026-10-04.md)
+      §7, §8 (ledger PUI-19, PUI-20)'
     Belongs to or gated by: '**Unscheduled**; consumed by F30''s impact surface, which declares which of them were available'
     Notes: Each carries its own freshness; the test index degrades to its structural half without semantic data and says
       so
@@ -600,11 +640,20 @@ sections:
       (accepted 2026-10-05)
     Belongs to or gated by: '**M4 candidate** (M4-G, if bounded). Budget enforcement in `DispatchDecision` stays with F7/M5
       after calibration. The build waits for M4-D''s #60 and #65 (the design note §6)'
-    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **Design note (proposed
-      2026-10-05, its §8 asks eight decisions):** [cost-usage-ledger-design-v0.1.md](../design/proposals/cost-usage-ledger-design-v0.1.md)
+    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **The designer''s disposition
+      (2026-10-05): changes requested before adoption.** R1, R2, R3, R5, R6, R7, R9 and R10 keep their direction; R4 and
+      R8 are revised: (1) the normalized billing counters are non-overlapping, or a price row carries an explicit provider/model
+      billing formula (cached and reasoning tokens may be subsets of input or output, so a generic sum over categories can
+      double-count); (2) a category without a price is unpriced, never zero; (3) the cost estimated for a run binds to a
+      reproducible pricing snapshot or version, and a re-pricing under the current table is a separate projection (estimated
+      at run versus under current prices); (4) a run whose effective models differ from the requested one, or that mixes
+      models without per-model usage, is unpriced (`unpriced_effective_model_mix`) unless the provider reports its cost;
+      (5) the Lead session''s usage is kept durably in cold history (the existing Lead history domain), the 32-entry ring
+      being only its hot projection. **Design note (proposed 2026-10-05, its §8 asks eight decisions):** [cost-usage-ledger-design-v0.1.md](../design/proposals/cost-usage-ledger-design-v0.1.md)
       (ledger CUL): one normalized usage record per run, copied into control state at the Lead''s next transaction on the
-      invocation; trust labels; a project-owned price table with the derived cost computed at read; roll-ups as projections;
-      the Lead session''s own line; aew usage show, runs and lead'
+      invocation; trust labels; a project-owned price table applied through the adapter''s declared token semantics, the
+      derived cost computed at read under the pricing snapshot recorded at copy (revised 2026-10-05 after the designer''s
+      review); roll-ups as projections; the Lead session''s own line; aew usage show, runs and lead'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -906,7 +955,7 @@ sections:
     Source: architecture review I8; [architecture review response](../design/architecture-review-response-2026-10-04.md)
       (accepted 2026-10-05)
     When: '**M4 candidate** (Lead UX)'
-    Notes: The map part is F22; the proposal mechanism it belongs to is F18.1 ([install and bootstrap UX v0.3](../design/proposals/install-bootstrap-ux-design-v0.3.md)
+    Notes: The map part is F22; the proposal mechanism it belongs to is F18.1 ([install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)
       §3), which absorbs it when built
   - '#': E22
     Work: A `doctor` check that the supervisor heartbeat's staleness limit exceeds the measured re-parse on this host
@@ -1008,11 +1057,19 @@ sections:
   rows:
   - '#': U1
     Work: 'Stall detection in `aew harness wait`: return `stalled`, naming the tool and how long, when a tool call has run
-      N minutes with no events'
-    Source: review finding 2; run R-INV-0006-1 hung 20 minutes on a truncated PowerShell here-string
+      N minutes with no events. Built as the run health projection: a field of `harness_status` (and `resume` and the dashboard
+      run), never a store or authority, with H1''s rules: terminal statuses pass through, robust p95 calibration, an incremental
+      cache, `since` from telemetry, an edge-triggered wake'
+    Source: review finding 2; run R-INV-0006-1 hung 20 minutes on a truncated PowerShell here-string; [run health projection
+      design v0.1](../design/run-health-projection-design-v0.1.md) (approved 2026-10-05; ledger RHP-01 to RHP-11), as amended
+      by [H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md) (approved
+      2026-10-05; ledger RHN-01 to RHN-10); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) §1,
+      §4 (PFS-01, PFS-03)
     When: '**M4 candidate** (run UX). Before, or as part of, the Q7 hard dogfood'
     Notes: '`harness status` already shows "in a shell tool since …"; only the Lead''s own polling found it. Also check
-      whether the agent''s shell can get end-of-file on stdin (OpenCode''s choice or AEW''s).'
+      whether the agent''s shell can get end-of-file on stdin (OpenCode''s choice or AEW''s). H1 is required before STALLED/UNRESPONSIVE
+      is a production operator signal; it blocks F15.2 only if F15.2 consumes health. The dashboard''s run item and attention
+      carry the same object (RHP-07), which is a dashboard contract change (F20)'
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
@@ -1041,7 +1098,10 @@ sections:
     Work: Automatic stall recovery (interrupt plus a standard nudge)
     Source: review finding 2
     When: '**On measured need**, only after U1''s deterministic detection has been observed in use'
-    Notes: The Lead's manual recovery worked once it saw the stall.
+    Notes: The Lead's manual recovery worked once it saw the stall. Health never authorizes recovery; any automatic nudge
+      stays this row's separate adoption ([H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md)
+      §8, RHN-09). The approved design keeps it deferred ([run health projection design v0.1](../design/run-health-projection-design-v0.1.md)
+      §2, §11).
   - '#': U8
     Work: Make a run that ended without its expected output conspicuous in `aew harness wait`
     Source: the Lead's debrief
@@ -1231,6 +1291,28 @@ sections:
     Was: Frontend merge and CI integration (`web.yml` called from `ci.yml`, folded into `assurance`; CodeQL `javascript-typescript`)
     Closed: '2026-10-03'
     By: 'PR #26'
+  - '#': F20.2
+    Was: 'Read-only API and conformance: the GET/HEAD projections of contract 0.1.2 with bounded cursors and filters, every
+      response validated against the contract in Python tests'
+    Closed: '2026-10-05'
+    By: 'PR #67: `aew.dashboard` (server, lock-free reader, projections, cursors, contract, reasons), the additive engine
+      reads (`read_committed`, `control_identity`, the History bounds, `over_policy_detail`); design note §4.5 to §4.11,
+      §5.1'
+  - '#': F20.3
+    Was: 'Dashboard session: the operator credential minted at the operator''s terminal, the one-time URL exchanged for
+      an `HttpOnly`, `SameSite=Strict` cookie; `aew dashboard serve`, `open` and `status`'
+    Closed: '2026-10-05'
+    By: 'PR #71: the `operator_session` credential kind (ADR-0005 amendment), the server-console challenge for `open`, one
+      server per project under the endpoint lock, the security acceptance with its negative controls; design note §4.1 to
+      §4.4, §5.2'
+  - '#': F20.4
+    Was: 'Conditional requests and caching: ETags cover the whole envelope, `control_revision` and the session''s scope
+      included; 200 and 304 behaviour checked against live projections'
+    Closed: '2026-10-05'
+    By: 'PR #87: `aew.dashboard.etag`, a strong validator over the representation less the snapshot''s time, in the request
+      scope (path, project, normalized query); `If-None-Match` as a list, `W/` and `*` never matching; a `304` with the
+      validator sent, no body, after authentication; tested against live projections (a commit, a revision-only commit,
+      telemetry alone); design note §4.12, §5.3'
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error
     Closed: '2026-10-01'

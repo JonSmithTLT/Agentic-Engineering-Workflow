@@ -7,7 +7,9 @@ isolated process the model's code never runs in, with a result the model's progr
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -287,22 +289,24 @@ def test_scoring_that_overruns_is_a_failed_score(tmp_path):
     assert score["passed"] is False and score["failure"] == "SCORING_TIMEOUT"
 
 
-def test_the_scoring_process_never_learns_the_root(tmp_path):
-    """Review 4: it scores from an evaluator-owned copy outside the root, so neither its arguments, its working
-    directory nor its environment name the private corpus."""
-    checks = '''
-import os, sys
-
-def checks(tree, run):
-    seen = " ".join([*sys.argv, os.getcwd(), *os.environ.values(), __file__])
-    yield "seen", True, seen
-'''
+def test_the_scoring_process_never_learns_the_root_and_the_oracle_never_touches_the_disk(tmp_path):
+    """Review 4, and the review of 7c743ff (1, 2): the oracle reaches the scoring process on its standard input, so its
+    arguments, working directory and environment name neither the private corpus nor an oracle file, and the checks
+    see their reference material only as ORACLE_FILES."""
     secret = tmp_path / "private"
-    make_oracle(secret, checks=checks)
+    checks = (
+        "import os, sys\n"
+        "def checks(tree, run):\n"
+        "    seen = ' '.join([*sys.argv, os.getcwd(), *os.environ.keys(), *os.environ.values()])\n"
+        f"    yield 'the root is not named', {str(secret)!r} not in seen, seen[-200:]\n"
+        "    yield 'no oracle file', '__file__' not in globals() and 'checks.py' not in seen, ''\n"
+        "    yield 'reference in memory', ORACLE_FILES['reference/expected.txt'] == b'5\\n', list(ORACLE_FILES)\n")
+    path = make_oracle(secret, checks=checks)
+    (path / "reference").mkdir()
+    (path / "reference" / "expected.txt").write_text("5\n", encoding="utf-8", newline="\n")
     oracle = hidden.Oracle.locate(secret, "C1")
     score = hidden.score(oracle, tree_with(tmp_path, {"calc.py": "x = 1\n"}))
-    seen = score["checks"][0]["detail"]
-    assert score["passed"] is True and "private" not in seen.replace(str(tmp_path), "") and str(secret) not in seen
+    assert score["passed"] is True, score
 
 
 def test_the_oracle_scores_from_the_bytes_it_was_hashed_from(tmp_path):
@@ -315,13 +319,54 @@ def test_the_oracle_scores_from_the_bytes_it_was_hashed_from(tmp_path):
     assert score["passed"] is False and [c["name"] for c in score["checks"]] == ["add(2, 3) is 5"]
 
 
-def test_an_oracle_copy_changed_while_scoring_is_a_failed_score(tmp_path):
-    checks = CHECKS + '''
-from pathlib import Path
-Path(__file__).with_name("note.txt").write_text("written while scoring")
-'''
-    score = scored(tmp_path, [FIX], checks=checks)
-    assert score["passed"] is False and score["failure"] == "ORACLE_TAMPERED"
+def test_the_models_programs_get_an_allow_listed_environment(tmp_path, monkeypatch):
+    """Review of 7c743ff, 5: a key in the evaluator's environment never reaches the model's program."""
+    monkeypatch.setenv("AEW_TEST_PROVIDER_KEY", "not-a-real-key")
+    checks = ("import sys\n"
+              "def checks(tree, run):\n"
+              "    ran = run([sys.executable, '-c', 'import os; print(sorted(os.environ))'])\n"
+              "    yield 'no key', 'AEW_TEST_PROVIDER_KEY' not in ran.stdout and ran.returncode == 0, ran\n")
+    secret = tmp_path / "private"
+    make_oracle(secret, checks=checks)
+    score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}))
+    assert score["passed"] is True, score
+
+
+def test_a_held_out_case_is_scored_only_where_scoring_is_contained(tmp_path, monkeypatch):
+    """Review of 7c743ff, 1: where the model's programs cannot be contained (Windows, or Linux without bubblewrap) a
+    program could search the host for the private corpus, so a held-out case is refused there before anything is
+    counted; elsewhere it runs."""
+    f, case, secret = setup(tmp_path, held_out=True)
+    monkeypatch.setattr(hidden, "scoring_contained", lambda: False)
+    with pytest.raises(runner.Refused, match="cannot be contained"):
+        run(f, case, tmp_path, hidden_root=secret)
+    assert nothing_registered(tmp_path)
+    monkeypatch.setattr(hidden, "scoring_contained", lambda: True)
+    assert run(f, case, tmp_path, hidden_root=secret)["outcome"]["score"]["passed"] is True
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                    reason="Linux bubblewrap containment (Windows refuses held-out scoring instead)")
+def test_on_linux_the_models_programs_are_scored_in_a_sandbox(tmp_path):
+    """Review of 7c743ff, 1 and 3: the model's program runs in its own pid namespace (the runner is not among the
+    processes it sees), and the hidden root and the ledger are masked."""
+    secret = tmp_path / "private"
+    ledger = tmp_path / "ledger"
+    ledger.mkdir()
+    (ledger / "attempts.jsonl").write_text("x\n", encoding="utf-8")
+    probe = ("import json, os; pids = [int(p) for p in os.listdir('/proc') if p.isdigit()]; "
+             "seen = lambda p: os.listdir(p) if os.path.isdir(p) else []; "  # masked, or absent from the sandbox
+             f"print(json.dumps([len(pids), {os.getpid()} in pids, seen({str(secret)!r}), seen({str(ledger)!r})]))")
+    checks = ("import json, sys\n"
+              "def checks(tree, run):\n"
+              f"    ran = run([sys.executable, '-c', {probe!r}])\n"
+              "    yield 'probe', ran.returncode == 0, ran.stdout.strip().splitlines()[-1] if ran.stdout else ran\n")
+    make_oracle(secret, checks=checks)
+    score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}),
+                         hide=[ledger])
+    assert score["passed"] is True, score
+    count, runner_seen, root_listing, ledger_listing = json.loads(score["checks"][0]["detail"])
+    assert count <= 3 and runner_seen is False and root_listing == [] and ledger_listing == [], score
 
 
 @pytest.mark.parametrize("stdout", ['{"checks": []}{"checks": []}',

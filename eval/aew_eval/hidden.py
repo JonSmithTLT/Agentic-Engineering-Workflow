@@ -1,42 +1,37 @@
 """The hidden-evaluator channel (evaluation component design v0.2, §5 and §8 step 3; decisions 5 and 7).
 
-The M3 rule stands: hidden checks never enter a repository a model works in, and no model-controlled process can reach
-them. An oracle is a directory in the private repository, ``<root>/cases/<case>/oracle/``, holding ``checks.py`` and
-anything it needs (a ``reference/`` tree, a ``manifest.yaml``). ``<root>`` comes from ``AEW_EVAL_HIDDEN_ROOT``, an
-evaluator-only variable.
+The M3 rule stands: hidden checks never enter a repository a model works in. An oracle is a directory in the private
+repository, ``<root>/cases/<case>/oracle/``, holding ``checks.py`` and anything it needs (a ``reference/`` tree, a
+``manifest.yaml``). ``<root>`` comes from ``AEW_EVAL_HIDDEN_ROOT``, an evaluator-only variable.
 
 * :func:`take_root` reads it, resolves it, and **removes it from this process's environment** before any arm runs, so
   no process an arm starts inherits it.
-* :meth:`Oracle.locate` reads the oracle **once**, before the attempt is registered: those bytes are hashed
-  (``hidden_sha256``, line ends normalized like a fixture's, so Windows and Linux checkouts agree) and are what scores,
-  so an oracle changed on disk afterwards, and changed back, cannot score (PR #105 review, 4). Reading closes every
-  file: no oracle descriptor is open while the arm runs. A cell is refused when its oracle is missing or no longer
-  matches its commitment, and a held-out case (with or without an oracle) is refused once ``exposure.yaml`` records it
-  as exposed (decision 7).
-* :func:`score` runs **after the arm has returned**, on the exported final tree. It writes the oracle's bytes to a new
-  evaluator-owned directory outside the root, runs ``python -I -B score_child.py <copy>/checks.py <tree>`` in an AEW
-  process tree (a job object on Windows, a process group on POSIX) that is ended with everything in it on return or
-  timeout, and deletes the copy. The scoring process never learns the root, never imports the model's code, and reaches
-  the model's program only through ``run`` (see ``score_child``).
-* **What a score is.** The child must exit 0 and write exactly one JSON object with a list of ``{name, ok, detail}``;
-  ``passed`` is computed here (every check ``ok``, at least one). Anything else (no result, extra output, a timeout,
-  a nonzero exit, or the oracle copy changed while scoring) is a **failed score with a reason**, counted against the
-  run, never a retryable ``invalid_measurement``: the model's program must not be able to turn a failure into a retry
-  (review, 3). A broken oracle fails the same way, so an oracle is exercised against the reference (a scripted arm)
-  before an experiment freezes.
+* :meth:`Oracle.locate` reads the oracle **once**, before the attempt is registered. Those bytes are hashed
+  (``hidden_sha256``, line ends normalized like a fixture's, so Windows and Linux checkouts agree), and they are the
+  bytes that score: an oracle changed on disk afterwards, and changed back, cannot score. A cell is refused when its
+  oracle is missing or no longer matches its commitment. A held-out case, with or without an oracle, is refused once
+  ``exposure.yaml`` records it as exposed (decision 7), and wherever scoring cannot be contained (below).
+* :func:`score` runs **after the arm has returned**, on the exported final tree. The oracle's bytes go to the scoring
+  process (``score_child``) on its standard input and **never touch the disk**. That process runs in an AEW process
+  tree, ended on return or timeout. It never learns the root and never imports the model's code. The checks reach the
+  model's program only through ``run``, which gives every program a process tree of its own, ended when it returns
+  (a job object on Windows; on Linux a bubblewrap sandbox in its own pid namespace), and an allow-listed environment.
+* **What a score is.** The child must exit 0 and write exactly one JSON object with a list of ``{name, ok,
+  detail}``; ``passed`` is computed here (every check ``ok``, at least one). Anything else (no result, extra output, a
+  timeout, a nonzero exit) is a **failed score with a reason**, counted against the run, never a retryable
+  ``invalid_measurement``, so the model's program cannot turn a failure into a retry. A broken oracle fails the same
+  way, so an oracle is exercised against the reference (a scripted arm) before an experiment freezes.
 
-A ``checks.py`` defines ``checks(tree, run)`` and yields ``(name, ok, detail)``; ``run(argv, cwd=, input=, env=,
+A ``checks.py`` defines ``checks(tree, run)`` and yields ``(name, ok, detail)``. ``run(argv, cwd=, input=, env=,
 timeout=)`` runs the model's program and returns its exit code and output (``returncode`` is ``None`` on a timeout).
+Reference material is ``ORACLE_FILES`` (``{path: bytes}``), never a path.
 
-Residuals, stated rather than claimed closed:
-
-* **Linux.** Removing the variable does not remove it from ``/proc/<runner>/environ``, and a same-user process can
-  reach another's descriptors through ``/proc``. Arms that run a model on Linux must therefore run it in its own pid
-  namespace, with the hidden root masked in its containment layout (the ``aew`` arm through AEW's containment, the
-  ``raw`` arm alike): a requirement on the arms slice (review, 7). Windows has no such channel; the job object ends
-  every process the scoring started.
-* **The checks see the model's program's output, not its internals.** A check that needs a value calls the program
-  (a one-line ``python -c``) and parses what it prints.
+**Where scoring is contained, and where not.** On Linux with bubblewrap, the model's programs run in a sandbox with
+the hidden root, the ledger and the user's secrets masked, and in their own pid namespace, so the runner's ``/proc``
+entry (which still holds the root's path) is out of reach. Linux without bubblewrap refuses every oracle-scored cell.
+Elsewhere (Windows) a same-user program could search the disk for the private corpus, so held-out cases are refused
+there before anything is counted; other cases score with that exposure stated. The arms that run a model must meet the
+same bar while the model runs: the next slice.
 """
 
 from __future__ import annotations
@@ -122,12 +117,17 @@ def require(root: Path | None, oracle: Oracle | None, *, case: str, commitment: 
         if exposure(root, case):
             raise Invalid(f"case {case} is held out but has been exposed (exposure.yaml): it is no longer held-out "
                           "evidence; replace it, or preregister it as not held out")
+        if not scoring_contained():
+            raise Invalid(f"case {case} is held out, and its scoring cannot be contained here (Linux with bubblewrap "
+                          "only): a model's program could search this host for the private corpus")
     if commitment is None:
         return
     if oracle is None:
         raise Invalid(f"case {case} is scored by a hidden oracle: run with {ENV} set to the private evaluation root")
     if oracle.sha256 != commitment:
         raise Invalid(f"the oracle of case {case} is not the preregistered one (its content hash changed)")
+    if sys.platform.startswith("linux") and not scoring_contained():
+        raise Invalid(f"case {case} is scored by a hidden oracle, and scoring on Linux needs bubblewrap")
 
 
 def _failed(oracle: Oracle, reason: str, detail: str) -> dict[str, Any]:
@@ -149,36 +149,77 @@ def _parse(stdout: str) -> list[dict[str, Any]] | None:
     return checks
 
 
-def score(oracle: Oracle, tree: Path, *, timeout_s: float = SCORE_TIMEOUT_S) -> dict[str, Any]:
-    """Score the exported ``tree`` with the oracle's checks, from a private copy, in an isolated process tree."""
+def scoring_contained() -> bool:
+    """Whether the model's programs can be contained while they are scored: Linux with bubblewrap. Elsewhere a same-user
+    program could search the disk for the private corpus."""
+    from aew.harness.containment.layout import find_bwrap
+
+    return sys.platform.startswith("linux") and find_bwrap() is not None
+
+
+WINDOWS_ENV = ("SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE")
+POSIX_ENV = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ")
+
+
+def program_env(scratch: Path) -> dict[str, str]:
+    """The model's programs' environment: an allow-list (no credential, no provider key, no hidden root), with home and
+    temporary directories in a scratch directory of their own (review of 7c743ff, 5)."""
+    keep = WINDOWS_ENV if sys.platform == "win32" else POSIX_ENV
+    env = {k: os.environ[k] for k in keep if k in os.environ}
+    for name in ("HOME", "USERPROFILE", "TEMP", "TMP") if sys.platform == "win32" else ("HOME",):
+        env[name] = str(scratch)
+    return env
+
+
+def scoring_layout(tree: Path, scratch: Path, hide: list[Path]) -> Any:
+    """Linux: the sandbox the model's programs are scored in. The tree and a scratch directory are writable; the hidden
+    root, the ledger and the user's secrets are masked; its own pid namespace hides every other process, the runner's
+    ``/proc`` entry included."""
+    from aew.harness.containment import layout as L
+
+    bwrap = L.find_bwrap()
+    if bwrap is None:
+        raise Invalid("scoring needs bubblewrap on Linux; nothing scores uncontained there")
+    dirs, files = L._masks(os.path.expanduser("~"), [])  # noqa: SLF001 (the same secret masks as every run)
+    hidden_dirs = [*dirs, *(os.path.realpath(p) for p in hide if p.is_dir())]
+    mask = scratch / ".aew-mask"
+    mask.write_bytes(b"")
+    readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix) if p and os.path.isdir(p)})
+    return L.Layout(role="eval-scoring", access="write", bwrap=bwrap,
+                    writable=(os.path.realpath(tree), os.path.realpath(scratch)), readonly=tuple(readonly),
+                    hide_dirs=tuple(dict.fromkeys(hidden_dirs)), hide_files=files, mask_file=str(mask),
+                    env={"TMPDIR": L.SANDBOX_TMP, "PYTHONDONTWRITEBYTECODE": "1"})
+
+
+def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (),
+          timeout_s: float = SCORE_TIMEOUT_S) -> dict[str, Any]:
+    """Score the exported ``tree`` with the oracle's checks: the oracle's bytes go to the scoring process on its
+    standard input (never to the disk), and that process runs in an AEW process tree ended on return or timeout.
+    ``hide`` names what the model's programs must not see besides the hidden root (the ledger)."""
+    import base64
+    import dataclasses
+
     from aew.harness.procs import ProcessTree
 
-    copy = Path(tempfile.mkdtemp(prefix="aew-eval-oracle-")).resolve()  # TEMP may be an 8.3 name (review, 6)
+    scratch = Path(tempfile.mkdtemp(prefix="aew-eval-scoring-")).resolve()  # TEMP may be an 8.3 name (review, 6)
     try:
-        for rel, data in oracle.files.items():
-            out = copy / rel
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(data)
+        layout = scoring_layout(tree, scratch, list(hide)) if sys.platform.startswith("linux") else None
+        spec = {"files": {rel: base64.b64encode(data).decode("ascii") for rel, data in oracle.files.items()},
+                "layout": dataclasses.asdict(layout) if layout is not None else None,
+                "env": program_env(scratch)}
         env = {k: v for k, v in os.environ.items() if k != ENV}
         procs = ProcessTree()
         try:
-            proc = procs.spawn([sys.executable, "-I", "-B", str(CHILD), str(copy / CHECKS), str(tree)],
-                               cwd=str(copy), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
+            proc = procs.spawn([sys.executable, "-I", "-B", str(CHILD), str(tree)], cwd=str(tree), env=env,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
-                raw_out, raw_err = proc.communicate(timeout=timeout_s)
+                raw_out, raw_err = proc.communicate(input=json.dumps(spec).encode("utf-8"), timeout=timeout_s)
             except subprocess.TimeoutExpired:
                 procs.kill()
                 proc.communicate()
                 return _failed(oracle, "SCORING_TIMEOUT", f"scoring ran over {timeout_s:g} s")
         finally:
             procs.close()
-        try:
-            intact = fixture._digest(fixture._read_tree(copy, "oracle copy")) == oracle.sha256  # noqa: SLF001
-        except Invalid:  # a link or an odd file planted in the copy: tampering, never a retryable runner error
-            intact = False
-        if not intact:
-            return _failed(oracle, "ORACLE_TAMPERED", "the oracle's copy changed while it scored the run")
         stdout, stderr = raw_out.decode("utf-8", "replace"), raw_err.decode("utf-8", "replace")
         checks = _parse(stdout) if proc.returncode == 0 else None
         if checks is None:
@@ -187,4 +228,4 @@ def score(oracle: Oracle, tree: Path, *, timeout_s: float = SCORE_TIMEOUT_S) -> 
         return {"passed": bool(checks) and all(c["ok"] for c in checks), "failure": None, "checks": checks,
                 "hidden_sha256": oracle.sha256}
     finally:
-        shutil.rmtree(copy, ignore_errors=True)
+        shutil.rmtree(scratch, ignore_errors=True)

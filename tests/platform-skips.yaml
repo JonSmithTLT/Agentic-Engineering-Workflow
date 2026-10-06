@@ -4,6 +4,9 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_eval_hidden.py::test_on_linux_the_models_programs_are_scored_in_a_sandbox: >-
+      the model's programs are contained while scored only under Linux bubblewrap (F19 slice 3); Windows refuses
+      held-out scoring instead (tested). Covered on Linux.
     tests/unit/test_store.py::test_a_holder_whose_lock_file_was_removed_commits_nothing: >-
       the lock file is removed while held, which Windows refuses for an open file (area 5 P2 is POSIX-only).
       Covered on Linux.

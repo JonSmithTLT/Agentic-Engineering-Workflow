@@ -161,7 +161,7 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         final = fixture.files_of(repo)
         outcome["changed_paths"] = fixture.changed_paths(start, final)
         if oracle is not None:  # after the arm has returned: no model-controlled process is running
-            outcome["score"] = hidden.score(oracle, _export(final, scratch / "export"))
+            outcome["score"] = hidden.score(oracle, _export(final, scratch / "export"), hide=[ledger_dir])
         else:
             outcome["score"] = scorer(_export(final, scratch / "export")) if scorer else None
     except Exception as exc:  # noqa: BLE001 (the attempt is counted either way; the reason is recorded)

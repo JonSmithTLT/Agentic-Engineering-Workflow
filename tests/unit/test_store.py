@@ -101,6 +101,49 @@ def test_the_windowed_oracle_sees_the_newest_transaction_and_the_full_one_all_hi
         check_invariants(tmp_path)
 
 
+def test_the_windowed_oracle_checks_the_newest_log_records_and_their_chain_link(tmp_path, monkeypatch):
+    """The log half of the window (PR #101 review): the newest transition records and the chain link into them (the
+    record before the window) are checked; an older record is left to the full check; and the window reads the log
+    from that link only, never the whole history."""
+    import store_model
+
+    from aew.engine import outbox
+    from aew.util import dump_yaml, load_yaml
+
+    store = init(tmp_path)
+    for _ in range(6):
+        one_transaction(store)
+
+    def tamper(revision: int):
+        path = tmp_path / outbox.record_path(revision)
+        saved = path.read_bytes()
+        record = load_yaml(path.read_text(encoding="utf-8"))
+        record["h"] = "0" * 64
+        path.write_text(dump_yaml(record), encoding="utf-8", newline="\n")
+        return lambda: path.write_bytes(saved)
+
+    for revision in (6, 4):  # the newest record; the chain link just before the window (window 2: revisions 5, 6)
+        restore = tamper(revision)
+        with pytest.raises(AssertionError):
+            check_invariants(tmp_path, window=2)
+        restore()
+    restore = tamper(1)
+    assert check_invariants(tmp_path, window=2) == 6  # outside the window and its link, by design
+    with pytest.raises(AssertionError):
+        check_invariants(tmp_path)
+    restore()
+    ranges: list[tuple[int, int]] = []
+    real = outbox.read_transitions
+
+    def spy(root, since, through, **kw):
+        ranges.append((since, through))
+        return real(root, since, through, **kw)
+
+    monkeypatch.setattr(store_model.outbox, "read_transitions", spy)
+    assert check_invariants(tmp_path, window=2) == 6
+    assert ranges == [(4, 6)]  # from the link, not from the start of history
+
+
 def test_randomized_crash_iterations(tmp_path, monkeypatch):
     # Merge gate: seed 20260925, 200 iterations. The nightly crash-extended job rotates the seed and raises the count.
     rng = random.Random(int(os.environ.get("AEW_CRASH_SEED", "20260925")))

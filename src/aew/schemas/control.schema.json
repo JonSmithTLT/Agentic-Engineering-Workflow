@@ -409,7 +409,18 @@
       "properties": {
         "next_seq": {"type": "integer", "minimum": 1},
         "lease": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/queue_lease"}]},
-        "entries": {"type": "object", "additionalProperties": {"$ref": "#/$defs/queue_entry"}}
+        "entries": {"type": "object", "additionalProperties": {"$ref": "#/$defs/queue_entry"}},
+        "validation_breaker": {
+          "description": "M4-D5: the validation infrastructure circuit breaker. Operational safety state, never workflow authority: when post-integration validation fails for infrastructure reasons often enough, project-wide, automatic retries stop until the operator resets it.",
+          "type": "object",
+          "required": ["failures", "open"],
+          "additionalProperties": false,
+          "properties": {
+            "failures": {"type": "array", "maxItems": 3, "items": {"type": "object", "required": ["at", "code", "run", "work"], "additionalProperties": false, "properties": {"at": {"type": "string"}, "code": {"type": "string"}, "run": {"type": "string"}, "work": {"type": "string"}}}},
+            "open": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["at", "codes", "runs"]}]},
+            "reset": {"type": "object", "required": ["at"]}
+          }
+        }
       }
     }
   },

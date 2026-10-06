@@ -51,6 +51,7 @@ class Rule:
     via: str
     reason_required: bool = False
     guard: str | None = None
+    also: tuple[str, ...] = ()  # further operations that may take the same edge (the state change is the same one)
 
 
 RULES: dict[tuple[str, str], Rule] = {
@@ -82,7 +83,9 @@ RULES: dict[tuple[str, str], Rule] = {
     ("VERIFIED", "COMMIT_READY"): Rule("transition", guard="all_gates_current"),
     # integration (validate, then publish by CAS; D-op-2)
     ("COMMIT_READY", "DONE"): Rule("integrate.publish"),
-    ("COMMIT_READY", "VERIFICATION_FAILED"): Rule("verify.ingest"),  # post-integration verification failed
+    # Post-integration validation failed: a verifier's report (verify.ingest) or, in checks mode, the engine's own
+    # check evidence (integrate.validate, M4-D5). One edge; neither path manufactures the other's evidence.
+    ("COMMIT_READY", "VERIFICATION_FAILED"): Rule("verify.ingest", also=("integrate.validate",)),
     # plan replacement
     ("REPLAN_REQUIRED", "BLOCKED"): Rule("plan.accept"),
     ("REPLAN_REQUIRED", "READY"): Rule("plan.accept"),
@@ -146,8 +149,8 @@ def next_steps(frm: str, work_id: str = "<T>") -> str:
 
 def check(frm: str, to: str, via: str) -> Rule:
     rule = RULES.get((frm, to))
-    if rule is None or rule.via != via:
-        allowed = sorted(dst for (src, dst), r in RULES.items() if src == frm and r.via == via)
+    if rule is None or (rule.via != via and via not in rule.also):
+        allowed = sorted(dst for (src, dst), r in RULES.items() if src == frm and via in (r.via, *r.also))
         raise IllegalTransition(
             f"{frm} -> {to} is not permitted via {via}. {next_steps(frm)}".rstrip(),
             from_state=frm, to_state=to, via=via, allowed_via_this_operation=allowed,

@@ -36,6 +36,7 @@ from aew.engine.role_ops import Roles
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.status_ops import StatusViews
 from aew.engine.store import ControlStore
+from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
@@ -292,6 +293,7 @@ class Engine:
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates,
                                                       dispatch=dispatch, queue=queue)
         queue.legal = integration.require_legal
+        self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
                                           dispatch=dispatch)
         self._lead = lead = Lead(k, archive=archive, queue=queue)
@@ -316,7 +318,7 @@ class Engine:
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6).
-        k.finalizers.steps.extend([dispatch.finalize, queue.finalize, archive.finalize])
+        k.finalizers.steps.extend([dispatch.finalize, queue.finalize, self._validation.finalize, archive.finalize])
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
@@ -562,6 +564,19 @@ class Engine:
 
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_reconcile(token=token, expect_rev=expect_rev, work_id=work_id)
+
+    def integrate_validate(self, *, token: str, expect_rev: int, work_id: str, wait: bool = False,
+                           diagnostic: bool = False) -> dict[str, Any]:
+        return self._validation.integrate_validate(token=token, expect_rev=expect_rev, work_id=work_id, wait=wait,
+                                                   diagnostic=diagnostic)
+
+    def integrate_breaker_status(self) -> dict[str, Any]:
+        return self._validation.breaker_status()
+
+    def integrate_breaker_reset(self, *, token: str, expect_rev: int, reason: str,
+                                authorization: dict[str, str]) -> dict[str, Any]:
+        return self._validation.breaker_reset(token=token, expect_rev=expect_rev, reason=reason,
+                                              authorization=authorization)
 
     def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
         return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)

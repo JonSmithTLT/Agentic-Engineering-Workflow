@@ -65,9 +65,12 @@ CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeo
                        frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}),
                        # the dashboard's one-time session URL (ADR-0005, 2026-10-05; F20.3)
                        frozenset({"dashboard", "serve"}), frozenset({"dashboard", "open"}))
+# Commands the operator confirms with a typed-back code at their own terminal, which a Lead session has none of:
+# resetting the validation circuit breaker (M4-D5; the breaker stops automatic retries until the operator says so).
+OPERATOR_CONFIRMED = (frozenset({"integrate", "breaker", "reset"}),)
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1 adds the
 # operator's confirmation, autonomy increases and PUBLISH_IF_CLEAN grants here when F15.5 builds them).
-OPERATOR_ONLY = CREDENTIAL_EMITTING
+OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -76,6 +79,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "authority accept", "authority reject", "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
     "harness launch", "harness send", "harness stop", "history audit", "history load", "integrate defer",
     "integrate prepare", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
+    "integrate validate",
     "invoke cancel", "invoke create", "lead handoff cancel", "manifest adopt", "migrate", "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
@@ -94,17 +98,28 @@ def command_path(ns: argparse.Namespace) -> frozenset[str]:
     return frozenset(names)
 
 
+def command_name(ns: argparse.Namespace) -> str:
+    """The command as typed (``lead handoff offer``), for a refusal to name: argparse sets the command, then each
+    sub-command, in order (the path above is a set; sorted, it named commands that do not exist; PR #91 re-review)."""
+    names = [ns.command] if getattr(ns, "command", None) else []
+    names += [v for k, v in vars(ns).items() if k.endswith("_cmd") and isinstance(v, str)]
+    return " ".join(names)
+
+
 def refuses_locally(ns: argparse.Namespace) -> str | None:
     """Inside a Lead session, why this command may not run here, or ``None``: an operator-only command, or a
     Lead-authenticated command nobody has classified Lead-reachable (fail closed). The one reachability check: the
     ``aew`` client applies it before relaying, and the broker again before it runs anything."""
     path = command_path(ns)
+    if any(p <= path for p in OPERATOR_CONFIRMED):
+        return (f"`aew {command_name(ns)}` is confirmed by the operator with a code typed at their own terminal; "
+                "a Lead session cannot run it: ask the operator")
     if any(p <= path for p in OPERATOR_ONLY):
-        return (f"`aew {' '.join(sorted(path))}` would put a Lead credential, offer secret or dashboard session URL "
+        return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
                 "operator actions at the operator's own terminal")
     if hasattr(ns, "token") and path not in LEAD_REACHABLE and path not in NOT_RELAYED:
-        return (f"`aew {' '.join(sorted(path))}` is not classified as reachable from a Lead session; it is refused "
+        return (f"`aew {command_name(ns)}` is not classified as reachable from a Lead session; it is refused "
                 "until it is (lead_broker.LEAD_REACHABLE or OPERATOR_ONLY)")
     return None
 
@@ -270,7 +285,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
         raise errors.PermissionDenied(refusal)
     path = command_path(ns)
     if path in NOT_RELAYED:
-        raise errors.PermissionDenied(f"`aew {' '.join(sorted(path))}` is a transport of the typed Lead surface; it "
+        raise errors.PermissionDenied(f"`aew {command_name(ns)}` is a transport of the typed Lead surface; it "
                                       "is never relayed and never nested in its own cli escape")
     if getattr(ns, "print_credential", False):
         raise errors.PermissionDenied("--print-credential is refused in a Lead session: a credential never goes "

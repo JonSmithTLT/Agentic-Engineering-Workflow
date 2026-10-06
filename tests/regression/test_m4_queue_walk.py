@@ -5,8 +5,10 @@ The composition walk (``test_composition_walk.py``), with mutating concurrency 3
 queue behind each other. Each Ticket changes a module of its own, and now and then ``calc/core.py`` too, so some
 candidates conflict. Added moves: preparing any COMMIT_READY Ticket out of turn, cancelling the lease's custodian,
 a commit to ``main`` from outside AEW (the one automatic rebuild, then AWAITING_DISPOSITION on a second move), and
-reconciling a lease; and since D4 the Lead's defer, requeue and reorder. Every step is followed by the whole oracle,
-queue rules 34-39 included, and injected crashes are followed by a fresh engine.
+reconciling a lease; since D4 the Lead's defer, requeue and reorder; and since D5 checks-mode validation (class 1
+validates by checks, under a stand-in for Linux containment), with an infrastructure failure, a deadline expiry, an
+obligation that changes while the checks run, and crashes inside a run. Every step is followed by the whole oracle,
+queue rules 34-42 included, and injected crashes are followed by a fresh engine.
 
 The default is a short run; the slice's acceptance run is ``AEW_QUEUE_WALK_STEPS=500`` over the three seeds.
 """
@@ -22,19 +24,33 @@ import pytest
 from test_composition_walk import Walk
 
 from aew.engine import transitions
+from aew.engine import validation_ops as VO
+from aew.policy import checks as C
+from aew.policy import validation as V
 from aew.util import dump_yaml, load_yaml
 
 SEEDS = [int(s) for s in os.environ.get("AEW_QUEUE_WALK_SEEDS", "7,19,31").split(",")]
 STEPS = int(os.environ.get("AEW_QUEUE_WALK_STEPS", "60"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+VALIDATE_FAULTS = ["validate.after_pin", "validate.before_check", "validate.before_finished", "validate.after_finished"]
 
 
 class QueueWalk(Walk):
     def __init__(self, tmp_path: Path, seed: int, monkeypatch: pytest.MonkeyPatch) -> None:
         super().__init__(tmp_path, seed, monkeypatch)
         gates = self.root / ".aew/policy/gates.yaml"
-        gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 3}),
-                         encoding="utf-8", newline="\n")
+        policy = load_yaml(gates.read_text(encoding="utf-8"))
+        policy["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}  # D5
+        gates.write_text(dump_yaml({**policy, "mutating_concurrency": 3}), encoding="utf-8", newline="\n")
+        self.gates_path = gates
+        # A stand-in for Linux containment, and a single-threaded walk: between steps no run is executing, so a run
+        # left `running` by an injected crash has lost its executor (as a crashed process would have).
+        monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
+        monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (
+            None, {"filesystem": "os_readonly_roots", "process_ownership": "pid_namespace", "network": "shared",
+                   "mechanism": "walk stand-in"}))
+        monkeypatch.setattr(VO, "executor_alive", lambda run: False)
+        monkeypatch.setattr(V, "BACKOFF_S", 0.0)
         self.outside = 0
         self.edited: set[str] = set()
         while len(self.tickets) < 3:
@@ -129,6 +145,68 @@ class QueueWalk(Walk):
             self.lead("integrate_reorder", work_id=moved, before=None if self.rng.random() < 0.3 else ahead_of,
                       reason="walk: reorder")
 
+    def _holder(self) -> str | None:
+        lease = self.queue()["lease"]
+        return self.queue()["entries"][lease["entry"]]["work"] if lease else None
+
+    def validate_checks(self, wid: str) -> None:
+        """D5: checks-mode validation of the lease holder's candidate, sometimes crashing inside the run."""
+        holder = self._holder()
+        if holder is None:
+            return
+        if self.rng.random() < 0.2:
+            self.mp.setenv("AEW_FAULT", self.rng.choice(VALIDATE_FAULTS))
+            self.mp.setenv("AEW_FAULT_MODE", "raise")
+        self.engine._validation.backoff_s = 0.0
+        self.lead("integrate_validate", work_id=holder)
+
+    def validate_infra(self, wid: str) -> None:
+        """A check that cannot start (resource exhaustion): no retry, and the lease goes to disposition."""
+        holder = self._holder()
+        if holder is None:
+            return
+        real = C.run
+        self.mp.setattr(C, "run", lambda *a, **k: {"exit_code": None, "duration_s": 0.0, "log": "$ x\nENOMEM",
+                                                   "command": ["x"], "outcome": "spawn_failed", "spawn_errno": 12})
+        try:
+            self.lead("integrate_validate", work_id=holder)
+        finally:
+            self.mp.setattr(C, "run", real)  # only this patch: the walk's own stand-ins stay
+
+    def validate_deadline(self, wid: str) -> None:
+        """A run whose deadline has passed before its first check: abandoned, the lease to disposition."""
+        holder = self._holder()
+        if holder is None:
+            return
+        real = V.deadline_s
+        self.mp.setattr(V, "deadline_s", lambda post, checks: 0)
+        try:
+            self.lead("integrate_validate", work_id=holder)
+        finally:
+            self.mp.setattr(V, "deadline_s", real)
+
+    def validate_stale(self, wid: str) -> None:
+        """The obligation changes while the checks run: the run is abandoned and records nothing satisfying."""
+        holder = self._holder()
+        if holder is None:
+            return
+        before = self.gates_path.read_text(encoding="utf-8")
+        real = VO.Validation._execute
+
+        def execute(engine_self, work_id, run):
+            out = real(engine_self, work_id, run)
+            policy = load_yaml(before)
+            policy["post_integration"]["validation"] = "verifier"
+            self.gates_path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+            return out
+
+        self.mp.setattr(VO.Validation, "_execute", execute)
+        try:
+            self.lead("integrate_validate", work_id=holder)
+        finally:
+            self.mp.setattr(VO.Validation, "_execute", real)
+            self.gates_path.write_text(before, encoding="utf-8", newline="\n")
+
     # ------------------------------------------------------------------ choice
 
     def options(self, wid: str) -> list[tuple[str, float]]:
@@ -151,6 +229,12 @@ class QueueWalk(Walk):
                 opts.append(("requeue_entry", 4))
         if lease is not None:
             opts += [("cancel_custodian", 0.4), ("outside_commit", 0.3)]
+            holder = (self.state()["work"].get(self._holder() or "") or {}).get("integration") or {}
+            if holder.get("status") == "prepared":  # D5: checks-mode validation of the leased candidate
+                # class 1 validates by checks here: the verifier path stays possible, but rarer
+                opts = [(n, 2 if n == "integration_verify" else w) for n, w in opts]
+                opts += [("validate_checks", 12), ("validate_infra", 1.5), ("validate_deadline", 1.5),
+                         ("validate_stale", 1.5)]
             if lease["reconcile"] is not None:
                 opts.append(("reconcile_lease", 8))
         return opts

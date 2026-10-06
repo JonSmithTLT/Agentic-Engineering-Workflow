@@ -26,7 +26,7 @@ from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control
 from aew.history.store import History
 from aew.knowledge import evidence as E
-from aew.util import load_yaml, parse_frontmatter
+from aew.util import load_yaml, parse_frontmatter, sha256_file
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -239,6 +239,90 @@ def control_violations(root: Path) -> list[str]:
     problems += segment_violations(Path(root) / ".aew", hot) if hot.get("outbox") else []
     # 34-39. M4-D: the integration queue and its lease (29-33 are ADR-0013's).
     problems += queue_violations(root, hot)
+    # 40-42. M4-D5: checks-mode validation runs and engine-produced evidence.
+    problems += validation_violations(root, state, evidence)
+    return problems
+
+
+def validation_violations(root: Path, state: dict[str, Any],
+                          evidence: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+    """M4-D5 (the M4-D5 plan rev 3): validation runs are durable and exact, and engine evidence stays in its lane."""
+    problems: list[str] = []
+    lease = (state.get("queue") or {}).get("lease")
+    entries = (state.get("queue") or {}).get("entries") or {}
+    gates = yaml.safe_load((root / ".aew/policy/gates.yaml").read_text(encoding="utf-8")) or {}
+    post = gates.get("post_integration") or {}
+    for wid, u in sorted(state["work"].items()):
+        integ = u.get("integration") or {}
+        run = integ.get("current_validation_run")
+        # 40. At most one running run per candidate (authoritative or diagnostic), and only under its entry's lease;
+        #     every terminal run, on the open candidate or a retired one, is kept as an immutable record whose bytes
+        #     match what the state says; run ids are never reused.
+        ids = (integ.get("validation_runs") or {}).get("ids") or []
+        if len(set(ids)) != len(ids):
+            problems.append(f"{wid} reuses validation run ids {ids}")
+        slots = ("current_validation_run", "diagnostic_run")
+        live = [r for r in (integ.get(s) for s in slots) if r and r["state"] == "running"]
+        if len(live) > 1:
+            problems.append(f"{wid} has {len(live)} validation runs running at once")
+        for r in live:
+            holder = (entries.get((lease or {}).get("entry") or "") or {}).get("work")
+            if holder != wid or (lease or {}).get("custodian") != r["custodian"]:
+                problems.append(f"{wid}'s validation run {r['id']} is running without its entry's lease")
+        for holder_record in [integ, *(u.get("integration_history") or [])]:
+            for s in slots:
+                r = holder_record.get(s)
+                if not r or r["state"] == "running":
+                    continue
+                rec = root / ".aew" / ((r.get("record") or {}).get("path") or "missing")
+                if not r.get("record") or not rec.exists() or sha256_file(rec) != r["record"]["sha256"]:
+                    problems.append(f"{wid}'s terminal validation run {r['id']} has no intact record")
+        # 41. Engine evidence (producer.kind engine) is only a check_result, names its validation run, and was produced
+        #     under one of the Ticket's custody invocations.
+        for ev in evidence.setdefault(wid, _evidence(root, wid)).values():
+            prod = ev["producer"]
+            if prod.get("kind") != "engine":
+                continue
+            inv = state["invocations"].get(prod["invocation"]) or {}
+            if ev["kind"] != "check_result" or not prod.get("validation_run") or "role" in prod \
+                    or inv.get("kind") != "integration_attempt" or inv.get("work_unit") != wid:
+                problems.append(f"{ev['id']} is engine evidence outside its lane (kind {ev['kind']}, "
+                                f"producer {prod})")
+        # 42. A checks-mode `validated` candidate has a passing engine result of its committed run, for every policy
+        #     check, on its snapshot, each produced under immutable-source containment (os_readonly_roots): a result
+        #     from a weaker sandbox never counts (the plan rev 3, correction 3; PR #91 re-review, finding 5).
+        validation = integ.get("validation") or {}
+        if integ.get("status") == "validated" and validation.get("mode") == "checks":
+            fp = integ["candidate_snapshot"]["relevant_inputs_fingerprint"]
+            ev_all = evidence.setdefault(wid, _evidence(root, wid))
+            passed = {ev_all[e]["check"]["check_id"] for e in validation.get("evidence") or [] if e in ev_all
+                      and ev_all[e]["result"] == "pass"
+                      and ev_all[e]["producer"].get("validation_run") == validation["run"]
+                      and ev_all[e]["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fp
+                      and ev_all[e]["method"].get("containment") == "os_readonly_roots"}
+            missing = [c for c in post.get("checks") or [] if c not in passed]
+            if missing or (run or {}).get("id") != validation["run"] or (run or {}).get("state") != "committed":
+                problems.append(f"{wid} is validated in checks mode without a committed, contained pass "
+                                f"for {missing or 'its run'}")
+        # 43. A run that passed its deadline never releases the lease by itself: while the candidate it validated is
+        #     still open, its entry is still LEASED (a further attempt within the bound) or went the disposition
+        #     way (AWAITING_DISPOSITION, or DEFERRED by the Lead). QUEUED only after that disposition: the release
+        #     alone marks the candidate `validation_unavailable`, and the Lead may then requeue it (re-review R2).
+        if run and run.get("reason") == "VALIDATION_DEADLINE_EXPIRED" and integ.get("workspace"):
+            mine = [e for e in entries.values() if e.get("work") == wid]
+            state_now = mine[0]["state"] if mine else None
+            disposed = state_now == "QUEUED" and integ.get("status") == "validation_unavailable"
+            if mine and state_now not in ("LEASED", "AWAITING_DISPOSITION", "DEFERRED") and not disposed:
+                problems.append(f"{wid}'s validation run {run['id']} passed its deadline and its entry is "
+                                f"{state_now}: the lease left other than through AWAITING_DISPOSITION")
+        # 44. A run is running only on an open candidate: a published or retired one never keeps a running run
+        #     (it would never be recorded, and the archive would hold it running forever; re-review R1).
+        open_candidate = u["state"] == "COMMIT_READY" and integ.get("status") in ("prepared", "validated")
+        for holder_record in [integ, *(u.get("integration_history") or [])]:
+            for s in slots:
+                r = holder_record.get(s)
+                if r and r["state"] == "running" and (holder_record is not integ or not open_candidate):
+                    problems.append(f"{wid}'s validation run {r['id']} is running on a candidate that is not open")
     return problems
 
 

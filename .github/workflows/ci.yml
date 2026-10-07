@@ -112,16 +112,21 @@ jobs:
       matrix:
         # Shard counts come from measured lane durations (strategy doc, "Runtime budgets").
         include:
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 1, of: 3}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 2, of: 3}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 3, of: 3}
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 1, of: 5}
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 2, of: 5}
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 3, of: 5}
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 4, of: 5}
+          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 5, of: 5}
           - {os: ubuntu-latest, python: "3.11", lane: acceptance, shard: 1, of: 1}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 1, of: 2}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 2, of: 2}
+          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 1, of: 4}
+          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 2, of: 4}
+          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 3, of: 4}
+          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 4, of: 4}
           - {os: ubuntu-latest, python: "3.11", lane: adversarial, shard: 1, of: 1}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 1, of: 3}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 2, of: 3}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 3, of: 3}
+          - {os: windows-latest, python: "3.13", lane: integration, shard: 1, of: 4}
+          - {os: windows-latest, python: "3.13", lane: integration, shard: 2, of: 4}
+          - {os: windows-latest, python: "3.13", lane: integration, shard: 3, of: 4}
+          - {os: windows-latest, python: "3.13", lane: integration, shard: 4, of: 4}
           - {os: windows-latest, python: "3.13", lane: acceptance, shard: 1, of: 2}
           - {os: windows-latest, python: "3.13", lane: acceptance, shard: 2, of: 2}
           - {os: windows-latest, python: "3.13", lane: regression, shard: 1, of: 3}

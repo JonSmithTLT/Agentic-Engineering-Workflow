@@ -739,15 +739,16 @@ sections:
       verifier draining, and no publish on a held result until the current generation accepts it'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
       §4 to §9, §13 and §14 (ledger HSD); ADR-0004, ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
-    Belongs to or gated by: '**Designer.** Waits for the designer to confirm the queue side of the record''s §13 point 5
-      (decisions-due); then the next milestone triage places the build'
+    Belongs to or gated by: '**Unscheduled.** The designer''s clarifications (record §14) leave nothing designer-level before
+      the build; the next milestone triage places it'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
       the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
       keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). Also
       replaces the M4-D3 rule that a takeover or uncarried handoff ends the integration custodian and cancels its verifier
       (ADR-0004 amendment). The Lead's per-invocation cancel and stop stay Lead commands. Native harness subagents only
       where the adapter keeps AEW's invocation identity, role, custody, profile, parent, limits, evidence and provenance
-      (with F13)
+      (with F13). No automatic verifier rerun while the lease is held (record §14.5); a bounded retry under the same custody
+      would need its own recovery design
   - '#': F32
     Work: 'The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved
       open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids,

@@ -247,6 +247,9 @@ it; until then the rule above stands.
 - **What the queue pays.** The lease stays held through the drain and until the held result is accepted or
   discarded, so nothing else integrates meanwhile; nothing would while no Lead is attached, and the drain's hard
   deadline bounds the verifier.
-- **Open for the designer:** confirming the queue side (the lease held across the end of an attachment, the advance
-  publish-if-clean authorization not surviving a generation change, and every way out other than acceptance ending the
-  custodian as an explicit cancel, rather than keeping the lease and re-dispatching verification) before F31 is built.
+- **Confirmed by the designer** (decision record §14.5): the lease is held only while already-admitted post-integration
+  work drains and its result awaits current authority; fresh publish authority is always required, though a clean
+  held result the current generation accepts as still applicable needs no new verification; any other exit, including
+  any other explicit abandonment, cancels the custodian and never releases the lease as though integration succeeded.
+  F31 never reruns verification automatically while holding the lease; a bounded "retry the verifier under the same
+  custody" would be a separately governed recovery action.

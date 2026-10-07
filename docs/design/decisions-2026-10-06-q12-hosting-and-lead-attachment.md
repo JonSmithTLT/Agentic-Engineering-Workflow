@@ -280,11 +280,12 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
    the custodian marks the lease `reconcile` as today, and the existing `aew integrate reconcile` then retires the
    candidate and returns the entry to the queue. The queue waits meanwhile, which costs nothing while no Lead is attached, and the drain's hard
    deadline bounds the verifier. Chosen by the operator over keeping today's cancellation as a named exception to the
-   drain; the designer confirms the queue side before F31 is built (decisions-due).
+   drain; the designer confirmed the queue side (§14.5).
 
 ## 14. Designer clarifications of 2026-10-06 (F31)
 
-The designer answered §11's two readings, §13's stop conditions and §12's question on project access on 2026-10-06.
+The designer answered §11's two readings, §13's stop conditions and §12's question on project access on 2026-10-06,
+and then the queue side of §13 point 5 (point 5).
 These are Q12 and F31 clarifications, not amendments to the frozen WC or KC, unless implementation evidence shows the
 existing contracts behave differently. Recorded as given:
 
@@ -357,6 +358,63 @@ existing contracts behave differently. Recorded as given:
 > introduced by Q12/F31.
 > Please replace wording that simply says "no AEW project access" with "no AEW-mediated project access through the
 > detached attachment" so we do not imply a filesystem containment guarantee we have not adopted.
+
+>
+> **5. The queue side of §13 point 5**
+>
+> Confirmed. Use the first interpretation.
+>
+> 1. Pre-authorized publish does not survive a Lead generation change.
+>
+> A `publish-if-clean` or equivalent advance publish authorization is bound to the generation/authority context that
+> granted it.
+> When that Lead attachment ends:
+>
+> - the integration custodian survives;
+> - the integration lease remains held;
+> - an already-started post-integration verifier may drain;
+> - its result may be recorded and held;
+> - but the old generation's publish authorization is stale.
+>
+> Nothing publishes merely because the held result is clean.
+> The current Lead generation must inspect/accept the held verification result and issue whatever current-authority
+> publish decision is required.
+> A clean held result does not inherently require verification to run again; if the current generation accepts that
+> result as still applicable, it may proceed under fresh current authority.
+>
+> 2. All non-success exits end the custodian and reconcile the integration attempt.
+>
+> While a verification result is merely held awaiting current authority, the custodian remains alive and the
+> integration lease remains held.
+> Once the path is abandoned, however, the custodian ends as an explicit cancellation would.
+> This includes:
+>
+> - the current authority discarding/rejecting the held result;
+> - a verifier/drain stop that prevents obtaining a usable held result;
+> - operator `stop now`;
+> - operator `release to manual`;
+> - another explicit abandonment/cancel decision.
+>
+> On that transition:
+>
+> - terminate/cancel the integration custodian;
+> - do not silently release the integration lease as though integration succeeded;
+> - mark the lease/attempt as requiring reconciliation;
+> - use the existing `aew integrate reconcile` path;
+> - reconciliation retires the integration attempt and returns the Ticket to the appropriate queue state under the
+>   existing contract.
+>
+> This is preferable to retaining the lease and automatically rerunning verification.
+> An automatic rerun would introduce a new retry/recovery policy, could retain a load-bearing integration lease
+> indefinitely, and blurs the distinction between a held valid result and an integration attempt whose completion path
+> has failed.
+> If a future design wants a bounded "retry verifier while retaining integration custody" operation, it should be an
+> explicit separately governed recovery action rather than F31's default behavior.
+> So the queue-side rule is:
+> Lead detach preserves the custodian and lease only while already-admitted post-integration work drains and its result
+> awaits current authority. Fresh publish authority is always required. If that result/path is discarded, stopped, or
+> manually abandoned, the custodian is cancelled and the integration attempt goes through normal reconcile; F31 does
+> not automatically rerun verification while holding the lease.
 
 **The condition in point 2, checked (lead developer, 2026-10-06).** A child's hand-in does not move a Ticket in AEW as
 built. `submit` (`engine/evidence_ops.py`) validates the submission and writes an evidence record only; the Ticket

@@ -17,19 +17,6 @@ items:
     attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
-- row: Q7
-  needs: decision
-  owner: designer
-  due: M4-H
-  what: The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration
-  blocks:
-  - F19
-- row: U3
-  needs: design
-  owner: designer
-  due: M4-H
-  what: The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses;
-    before or as part of Q7
 - row: E19
   needs: design
   owner: operator and designer
@@ -43,6 +30,13 @@ items:
   due: 'Gate: before internal alpha'
   what: Confirm the network containment design v0.2 as adopted; `docs/README.md` lists it as frozen and proposed, while
     its text has landed as ADR-0009's amendment of 2026-10-05 (designed, not built)
+- row: U3
+  needs: design
+  owner: designer
+  due: M5
+  what: 'The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses:
+    decided after M4-H, whose F4 premise contrast measures it (Q7 v0.3.1 §12; a triggered U3 concern flag supports the addendum);
+    not a pre-M4-H blocker'
 - row: F26
   needs: design
   owner: designer
@@ -94,12 +88,6 @@ items:
   owner: operator
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
-- row: F18.3
-  needs: adoption
-  owner: operator and designer
-  due: Unscheduled
-  what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
-    bundle's build waits for it
 - row: Q4
   needs: decision
   owner: designer

@@ -187,6 +187,8 @@ pending: []
 considered:
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
+  - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md
+    reason: decision record (Q7, 2026-10-07); the M4-H evaluation experiment; replaces no WC/KC text
   - path: docs/design/plan-assurance-and-classification-decisions-2026-10-01.md
     reason: decision record (Q9, Q10); its WC change is the Class 0 amendment, indexed above
   - path: docs/design/decisions-2026-10-01-containment-and-integration-queue.md
@@ -295,5 +297,5 @@ considered:
   - path: docs/implementation/adr/0013-knowledge-storage-placement.md
     reason: ADR; places KC §5.2 project knowledge; no normative text replaced
   - path: docs/implementation/adr/0014-release-signing-air-gap-bundle.md
-    reason: ADR (proposed); release signing for the air-gap bundle (F18.3), a release-engineering mechanism; no WC/KC
-      text replaced
+    reason: ADR (adopted 2026-10-07); release signing for the air-gap bundle (F18.3), a release-engineering mechanism; no
+      WC/KC text replaced

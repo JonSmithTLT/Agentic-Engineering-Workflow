@@ -385,7 +385,7 @@ At minimum:
 ```text
 small repository
 medium repository
-large/revelations-scale repository
+large (security-research-platform-scale) repository
 ```
 
 Measure:

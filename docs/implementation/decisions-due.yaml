@@ -139,28 +139,12 @@ items:
   owner: operator
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
-- row: F18.2
-  needs: decision
-  owner: designer
-  due: Unscheduled
-  what: 'Reconcile the install and bootstrap design v0.3 with the F18 hosting design v0.6 where they collide: v0.3 §7''s
-    no-daemon, operator-terminal Lead session (IBU-16) against v0.6''s long-lived gateway and operator-only supervisor socket,
-    and v0.3 §6''s doctor ERROR for a `.aew/` owned by another user or not writable (IBU-14), which v0.6''s supervisor-owned
-    state under a separate identity would trip, and whose obvious remedy (making it writable) is the same-principal collapse
-    v0.6 forbids'
 - row: F18.3
   needs: adoption
   owner: operator and designer
   due: Unscheduled
   what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
     bundle's build waits for it
-- row: F18.8
-  needs: decision
-  owner: designer
-  due: Unscheduled
-  what: 'How network containment''s supervisor-owned credentialing relay (F28, design v0.2 §3) relates to the hosting design
-    v0.6''s gateway, which §4.1 makes the only holder of provider credentials for managed execution: one component, the
-    relay as the gateway''s transport, or two custodians to reconcile'
 - row: Q4
   needs: decision
   owner: designer

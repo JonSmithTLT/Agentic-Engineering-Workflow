@@ -156,6 +156,10 @@ considered:
     reason: decision record (Q3, F2, E13, F10, D4); replaces no WC/KC text
   - path: docs/design/architecture-review-response-2026-10-04.md
     reason: decision record (Q13); routes the review's items to the register, ADRs and designs; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md
+    reason: >-
+      decision record (F18.2, F18.8, 2026-10-06); amends the install and bootstrap design v0.3 narrowly and ADR-0009
+      (one AEW Provider Gateway); replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
     reason: >-
       decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0004, ADR-0005,

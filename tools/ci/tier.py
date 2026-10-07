@@ -4,7 +4,8 @@
 Fail closed: ``full`` unless every changed path is provably documentation (``docs``) or documentation plus the
 dashboard frontend (``web``). A push to ``main``, a merge group, a manual run, an empty diff or a diff that cannot be
 computed is always ``full``. ``main``'s push run is the compensating control for the reduced tiers: a personal-account
-repository has no merge queue, so a reduced-tier change is first run in full when it lands.
+repository has no merge queue, so a reduced-tier change is first run in full by the next ``main`` push run, which
+verifies the cumulative tip (a superseded pending run may be cancelled; strategy §3).
 
     python tools/ci/tier.py --event pull_request --base-ref main --base SHA --head SHA [--github-output FILE]
     python tools/ci/tier.py --event pull_request --base-ref main --paths-file changed.txt

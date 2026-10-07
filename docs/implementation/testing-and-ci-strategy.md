@@ -53,7 +53,7 @@ Deterministic fault points are named code locations, not timings. That is why th
 
 | When | What runs | Blocking |
 |---|---|---|
-| Every push to `main`, the merge queue, a manual run, and every pull request in the `full` tier | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `static` + `assurance` | **Yes** |
+| A push run on `main` (it verifies the newest cumulative tip; see below), the merge queue, a manual run, and every pull request in the `full` tier | `core` per OS (the `fast` lane, then `serial`) + the `integration`, `acceptance`, `regression` and `adversarial` lanes per OS + `static` + `assurance` | **Yes** |
 | A pull request in the `docs` or `web` tier | `core` per OS + `static` + `web` (which runs its checks when `web/` changed) + `assurance` | **Yes** |
 | Nightly (07:17 UTC) and on demand | serial reference run, extended walk, race repetition, extended randomized crashes, extra interpreter matrix | No; failures open an issue |
 

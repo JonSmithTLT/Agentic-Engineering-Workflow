@@ -323,14 +323,15 @@ sections:
       adopt` and `migrate` are refused in a Lead session (`lead_broker.OPERATOR_DECIDED`). What stays here is the same confirmation
       without a terminal, for an operator who is away, through the operator capability. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md)
       §2.2, §2.4.1; operator, 2026-10-07):** the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted
-      in the sealed run manifest, before M4-H executes. **Operator decisions (2026-10-07, M4-E plan approval):** the unattended-Run
-      notifier is a generic operator-configured argv, run supervisor-side without a shell, a JSON event on stdin, a sanitized
-      environment with no credential inheritance, bounded time and output; it must be configured and executable before unattended
-      Run is enabled, and a delivery failure is recorded and surfaced in status and the dashboard''s attention with no workflow
-      effect. `PUBLISH_IF_CLEAN`: the idea note''s §17 governs the predicate and bindings, A1 the grant (the Lead may request,
-      only the operator capability grants), the one-head-move automatic rebuild rule applies, otherwise the governed non-publication/disposition
-      path; no further design text is needed before E6. Steering has no default: a missing `steering.mode` keeps legacy/manual
-      behaviour, and M4-H''s sealed manifest selects its mode'
+      in the sealed run manifest, before M4-H executes. **Operator decisions (2026-10-07, with the M4-E plan''s approval,
+      subject to its independent CLEAR review):** the unattended-Run notifier is a generic operator-configured argv, run
+      supervisor-side without a shell, a JSON event on stdin, a sanitized environment with no credential inheritance, bounded
+      time and output; it must be configured and executable before unattended Run is enabled, and a delivery failure is
+      recorded and surfaced in status and the dashboard''s attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea
+      note''s §17 governs the predicate and bindings, A1 the grant (the Lead may request, only the operator capability grants),
+      the one-head-move automatic rebuild rule applies, otherwise the governed non-publication/disposition path; no further
+      design text is needed before E6. Steering has no default: a missing `steering.mode` keeps legacy/manual behaviour,
+      and M4-H''s sealed manifest selects its mode'
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:

@@ -9,3 +9,5 @@ Plans retain their approved bytes and locations. Nearby approval JSON records bi
 - [w05-evidence-inspection](w05-evidence-inspection.md)
 - [w06-execution-investigation](w06-execution-investigation.md)
 - [work-density-cleanup](work-density-cleanup.md)
+
+- [W07 supplied reuse trail checkpoint](w07-reuse-trail.md) — independently reviewed plan, implementation authorized; fixture acceptance pending.

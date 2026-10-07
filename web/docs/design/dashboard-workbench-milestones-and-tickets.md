@@ -43,7 +43,7 @@ Use W identifiers to distinguish these dashboard milestones from AEW Engine mile
 | W04 — Comparison and context inspection | Compare independently identified records and see context receipts | W01, W02; W03 references for journal/context cross-links | W04-01–03 frontend fixture review ACCEPT at 2808149; CI and operator merge separate |
 | W05 — Evidence and benchmark investigation | Read pinned artifacts; benchmark exploration deferred | W01, W02; W04-01 for paired comparisons | W05-01 accepted frontend fixtures; backend/live pending |
 | W06 — Execution investigation | Follow recorded events, fanout and execution receipts | W01, W02, W05-01; W04 context components where used | W06-01–03 implemented; independent fixture review pending |
-| W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | Not proposed |
+| W07 — Recall and knowledge investigation | Explore supplied evolution, reuse, retrieval and failure relations | W03, W04; evidence components where used | W07-02 first presentation-only checkpoint accepted frontend fixtures at b7a7167; wider milestone deferred; backend/live pending |
 | W08 — Operational obligations | Inspect supplied judgment, consequences and project aggregates | W01, W02; accepted F15/F17 or reviewed fixture proposals | Not proposed |
 | W09 — Portable investigation and evaluated experiments | Rehearse investigations and evaluate narrowly bounded extensions | Feature-specific prerequisites below | Not proposed |
 
@@ -360,7 +360,7 @@ Approval records are factual: leave them pending until the operator actually app
 | W04 | [Plan 1.0](plans/w04-comparison-context.md) | Operator approved 2026-10-03 | W04-01–03 merged at 211e29c | ACCEPT at 2808149; all findings resolved | Preview adoption and live integration pending |
 | W05 | [Plan 1.1](plans/w05-evidence-inspection.md) | Operator approved 2026-10-03 | W05-01 implemented; W05-02 capability gaps recorded | ACCEPT at e875e81; all findings fixed; clean committed-source evidence regenerated | Artifact adoption/live pending; Timeline/CLI gaps preserved; benchmarks deferred |
 | W06 | [Plan 1.1](plans/w06-execution-investigation.md) | Explicit implementation approval 2026-10-04 | W06-01–03 implemented; verification evidence in `web/docs/w06-evidence/` | ACCEPTED independent frontend fixture re-review, 2026-10-04, source 55c48ec; `web/docs/w06-re-review-55c48ec.md` | Blocked on accepted T3 and Engine projections; G7/F7 adapter required |
-| W07 | Not written | Pending | Not started | Pending | Recall projections/policies pending |
+| W07 | [First W07-02 slice](plans/w07-reuse-trail.md) | Authorized implementation after independent plan review; factual record in plan directory | First bounded W07-02 slice accepted; wider W07 deferred; PR merge pending | ACCEPTED formal frontend fixture re-check at b7a7167, 2026-10-06; all three findings fixed | Recall projections/policies and live adoption pending |
 | W08 | Not written | Pending | Not started | Pending | F15/F17/coverage/aggregate projections pending |
 | W09 | Not written | Pending | Not started | Pending | Ticket-specific; fixture training needs none |
 

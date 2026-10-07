@@ -106,6 +106,7 @@ jobs:
           node scripts/browser-w04.mjs
           node scripts/browser-w05.mjs
           node scripts/browser-w06.mjs
+          node scripts/browser-w07.mjs
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -118,6 +119,7 @@ jobs:
             web/output/playwright-w04/
             web/output/playwright-w05/
             web/output/playwright-w06/
+            web/output/playwright-w07/
           if-no-files-found: ignore
           retention-days: 14
 

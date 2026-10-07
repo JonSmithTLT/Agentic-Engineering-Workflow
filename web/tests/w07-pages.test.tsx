@@ -1,0 +1,30 @@
+import { it, expect } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PacketItems } from '../src/api/preview/investigation/PacketInspector';
+import { ReadTransport } from '../src/api/transport';
+import { investigationFixture } from '../src/api/preview/investigation/fixtures';
+it('retains one displayed packet item page and retires validators when filters leave it', async () => {
+  const fixture = investigationFixture('later-ticket'), packet = fixture.packets.find(p => p.id === 'PKT-Later')!;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const validators: (string | null)[] = [];
+  const reader = new ReadTransport(async (input, init) => {
+    const url = new URL(String(input), 'http://demo.test'); validators.push(new Headers(init?.headers).get('If-None-Match'));
+    const items = fixture.items.filter(i => i.packet_id === packet.id && (!url.searchParams.get('section') || i.section === url.searchParams.get('section')));
+    return new Response(JSON.stringify({ schema_version: '0.1.0', project_id: 'aew-demo', control_revision: '42', generated_at: '2026-10-03T12:00:00Z', data: { items, next_cursor: null } }), { headers: { ETag: '"fixed"', 'Content-Type': 'application/json' } });
+  }, undefined, undefined, { base: '/api/preview/investigation/v0.1', routes: /^\/packets/ });
+  reader.context.bind('aew-demo');
+  const view = render(<QueryClientProvider client={client}><MemoryRouter><PacketItems packet={packet} name="later-ticket" reader={reader} visibility="fictional-authorized" selection={false} associatedItemId="PKT-Later-J-05" bounded /></MemoryRouter></QueryClientProvider>);
+  await screen.findByRole('heading', { name: 'J-05 · recall' });
+  expect(document.querySelectorAll('.packet-items > li')).toHaveLength(4);
+  expect(screen.getByText('PKT-Later-J-05')).toBeTruthy();
+  expect(screen.getByText(/Associated item · Packet item/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'recall' } });
+  await waitFor(() => expect(document.querySelectorAll('.packet-items > li')).toHaveLength(1));
+  expect(client.getQueryCache().findAll()).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Section'), { target: { value: '' } });
+  await waitFor(() => expect(document.querySelectorAll('.packet-items > li')).toHaveLength(4));
+  expect(validators.at(-1)).toBeNull(); expect(client.getQueryCache().findAll()).toHaveLength(1);
+  view.unmount(); expect(client.getQueryCache().findAll()).toHaveLength(0);
+});

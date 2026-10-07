@@ -17,49 +17,26 @@ items:
     attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
-- row: Q7
-  needs: decision
-  owner: designer
-  due: M4-H
-  what: The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration
-  blocks:
-  - F19
-- row: U3
-  needs: design
-  owner: designer
-  due: M4-H
-  what: The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses;
-    before or as part of Q7
 - row: E19
   needs: design
   owner: operator and designer
   due: 'Gate: before internal alpha'
-  what: The Ticket-revision contract amendment text, then the consolidated WC/KC re-freeze after M4-E; and the adoption
-    of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists
-    it as proposed
-  blocks:
-  - F4
-- row: F23
-  needs: decision
-  owner: operator and designer
-  due: 'Gate: before internal alpha'
-  what: Which pre-alpha hardening candidates the internal-alpha threat model requires (two-account profile, WSL-hosted runs,
-    remote PR target, terminal-authenticated operator attribution for consequential decisions, Lead lease expiry); no design
-    until then
+  what: The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among
+    them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design
+    v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
 - row: F28
   needs: adoption
   owner: operator
   due: 'Gate: before internal alpha'
   what: Confirm the network containment design v0.2 as adopted; `docs/README.md` lists it as frozen and proposed, while
     its text has landed as ADR-0009's amendment of 2026-10-05 (designed, not built)
-- row: Q14
-  needs: decision
+- row: U3
+  needs: design
   owner: designer
-  due: 'Gate: before internal alpha'
-  what: The remote (pull-request) integration target's scope; whether `DONE` needs a second verification on a provider's
-    merge commit; the first provider
-  blocks:
-  - F23
+  due: M5
+  what: 'The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses:
+    decided after M4-H, whose F4 premise contrast measures it (Q7 v0.3.1 §12; a triggered U3 concern flag supports the addendum);
+    not a pre-M4-H blocker'
 - row: F26
   needs: design
   owner: designer
@@ -111,12 +88,6 @@ items:
   owner: operator
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
-- row: F18.3
-  needs: adoption
-  owner: operator and designer
-  due: Unscheduled
-  what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
-    bundle's build waits for it
 - row: Q4
   needs: decision
   owner: designer
@@ -129,6 +100,13 @@ items:
   owner: designer
   due: Unscheduled
   what: The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16)
+- row: Q14
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: 'Deferred by the operator''s F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR
+    or merge integration becomes a product requirement: the remote (pull-request) integration target''s scope, whether `DONE`
+    needs a second verification on a provider''s merge commit, the first provider'
 - row: U10
   needs: decision
   owner: designer

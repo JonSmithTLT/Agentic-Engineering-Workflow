@@ -40,7 +40,7 @@
 
 **Catalogs:**
 - AEW's built-in deck (`aew/roles/cards/`) is generic: `python_engineer`, `c_engineer`, `code_reviewer`, `security_reviewer`, `verifier`.
-- Each project may add a catalog (`.aew/roles/*.yaml`, referenced from the manifest). IDs must be unique across both catalogs; a collision is a validation error and never silently shadows a built-in card. Domain cards (for example REVELATIONS' Vulnerability Triager or VR Analyst) live in the project catalog.
+- Each project may add a catalog (`.aew/roles/*.yaml`, referenced from the manifest). IDs must be unique across both catalogs; a collision is a validation error and never silently shadows a built-in card. Domain cards (for example a security-research project's Vulnerability Triager or VR Analyst) live in the project catalog.
 
 **Ticket role plan (Lead-owned control state; operator implementation notes 2026-09-25):**
 

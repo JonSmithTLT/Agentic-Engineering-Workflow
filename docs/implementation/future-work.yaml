@@ -57,6 +57,12 @@ sections:
     Condition: 'Network containment on Linux (F28): no internal-alpha security claim calls Linux runs network-contained
       before its live lane passes (designer, 2026-10-04).'
     Source: '[network containment design v0.2](../design/proposals/network-containment-design-v0.2.md) §6'
+  - Gate: '**Before internal alpha**'
+    Condition: 'The F18 and F28 canonical-state and credential boundaries hold on Rocky/Linux: model-controlled processes
+      cannot directly mutate canonical AEW or control state or obtain real provider or workflow credentials except through
+      AEW''s authority paths (operator, 2026-10-07, the F23 decision). Windows and WSL stay development and test platforms
+      with truthfully weaker labels, never evidence for this gate.'
+    Source: '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) (ledger IAT-02, IAT-03)'
 - number: 2
   title: Designed, not implemented
   columns:
@@ -77,16 +83,28 @@ sections:
       (ARV-01, operator 2026-10-05).'
   - '#': F4
     Work: Ticket supersession lineage, and a first-class goal-revision path
-    Source (governing): hierarchy design §8 to §10, §20 (Scenarios A and E)
+    Source (governing): hierarchy design §8 to §10, §20 (Scenarios A and E); [Ticket-revision contract amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)
+      (E19-B v0.4, adopted by the operator 2026-10-06; ledger TRA)
     Belongs to or gated by: '**Hierarchy revision.** Before Leads routinely replace Tickets'
-    Notes: 'Needs Workflow Contract and Knowledge Contract amendments. Observed in the M3 dogfood (T1: a recreated Ticket
-      with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`;
+    Notes: 'Needed Workflow Contract and Knowledge Contract amendments, adopted 2026-10-06 (below). Observed in the M3 dogfood
+      (T1: a recreated Ticket with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`;
       review, and the designer''s decisions D1 to D7, in `ticket-revision-amendment-review-2026-09-30.md`). A material change
       becomes a new immutable revision of the same Ticket, not a replacement. Evidence binds to digests of the fields it
       depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse
       findings carry forward until resolved. A replacement stays for a change of kind, a move to another parent, or a goal
       that no longer overlaps. Evidence: twice a scope mistake cost a Ticket and its correct implementation (M3-D9; `m3-dogfood-report.md`
-      §6.6).'
+      §6.6). **The contract amendment is adopted (operator, 2026-10-06, [E19-B v0.4](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):**
+      it extends WC §7, §8 and invariant 7 and KC §12, and F4 is implementation-ready. Building it is of the size of M4-D
+      and needs its own plan: the field-group registry and digests; revision records and the `aew migrate` step to r1; the
+      evidence binding and computed admissibility (evidence today binds the snapshot and plan revision only, and the snapshot
+      excludes `.aew/`, so nothing binds Ticket inputs yet); the quiesce, commit and abort lifecycle with `revision_pending`;
+      independent confirmation and the operator''s checkpoint; the amendment''s own impact hold and parent coverage. StageIntent
+      binding (the amendment''s §7.4) waits for F15.2. **Lead developer''s build note (the amendment''s §2.3):** the engine
+      cannot prove a free-text title carries no acceptance meaning, so the schema declares the title presentation-only and
+      the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment''s fail-closed
+      rule applies: the title is treated as acceptance-bearing from that revision on, for as long as the content remains
+      in it (so a change to it, its later removal included, is material and bound like acceptance), and the misuse is `UNBOUND_FIELD_ESCAPE`.
+      The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it'
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
       drift; admissibility as a Knowledge Contract concept'
@@ -300,10 +318,13 @@ sections:
       The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default
       while M4-H measures, and the product default is not frozen (CWR-12). **The operator''s sign-off** (operator, 2026-10-06,
       "if my name is attached to it, I should have actually approved"). Built now through the terminal channel. `work staff
-      --by operator` and `authority accept --decided-by operator` and (since PR #118) `manifest adopt` prompt the operator
-      at their own terminal and are refused without it, and a Lead session is refused both (ADR-0006, amendment 2026-10-06);
+      --by operator`, `authority accept --decided-by operator` and (since PR #118) `manifest adopt` prompt the operator
+      at their own terminal and are refused without it, and a Lead session refuses all three (ADR-0006, amendment 2026-10-06);
       `authority accept|reject`, `manifest adopt` and `migrate` are refused in a Lead session (`lead_broker.OPERATOR_DECIDED`).
-      What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability'
+      What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability.
+      **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §2.2, §2.4.1; operator, 2026-10-07):**
+      the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted in the sealed run manifest, before M4-H
+      executes'
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
@@ -319,7 +340,8 @@ sections:
     Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
       and non-side-effecting (the set''s release gate)'
     Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
-      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7
+      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md);
+      operator, 2026-10-07):** with F15.5, the unattended `PUBLISH_IF_CLEAN` authority the AEW arm needs before M4-H executes
   - '#': F15.7
     Work: 'The deferred recovery rows: row 4 `REDISPATCH_IF_LOST` (a pre-authorized re-dispatch of a lost clean run, a sibling
       of `PUBLISH_IF_CLEAN`), row 6 a policy-resolved Investigator after a blocked report, row 8 `max_fix_attempts` (the
@@ -417,24 +439,21 @@ sections:
       the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
       write access (lead developer's reading, record §3)
   - '#': F18.3
-    Work: 'The air-gap bundle: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse, qualified harness pins and a canonical
-      hashed manifest; a detached signature over the manifest from a release identity with an independently provisioned
-      trust root; a verifier that rejects traversal, duplicates and mismatches before anything is consumed; `aew doctor
-      --bundle --json` as the host acceptance record; tool upgrade separate from project migration with a declared restore
-      point'
+    Work: 'The air-gap bundle, three side-by-side artifacts: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse and
+      qualified harness pins, its canonical manifest `aew-bundle-<version>-rl8-py311.json` (committing to the archive''s
+      name, size and SHA-256 and to every member), and `aew-bundle-<version>-rl8-py311.json.sig`, a detached signature over
+      the manifest from a release identity with an independently provisioned trust root; a verifier that rejects traversal,
+      duplicates and mismatches before anything is consumed; `aew doctor --bundle --json` as the host acceptance record;
+      tool upgrade separate from project migration with a declared restore point'
     Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §5 (air-gapped),
       §5.1 (ledger IBU-12, IBU-13); airgap research §7'
-    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; the build follows
-      the adoption of ADR-0014)'
-    Notes: 'Key custody and rotation: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md) (proposed 2026-10-05; ledger
-      BSG). **The designer''s disposition (2026-10-05): one narrow change, then adopt.** D2 signs `built_at` while D5 requires
-      two independent builds to give byte-identical manifest and tar digests: a wall-clock build time makes that impossible,
-      and a commit timestamp silently changes what D3''s signer validity check means. The fix names a deterministic release
-      epoch (from release input both CI and the operator use, such as the tag) as the signed time that key validity uses,
-      with no time-of-rebuild in the reproducible manifest; D1 to D9 otherwise stand. The build waits for that amendment:
-      OpenSSH signatures over a canonical JSON manifest, an independently provisioned `allowed_signers` trust root, the
-      release operator signs locally and never CI, rotation and revocation procedures, the verifier''s refusal rules and
-      the adversarial tests the build must show'
+    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; ADR-0014 adopted
+      2026-10-07, so the build is unblocked)'
+    Notes: 'Key custody, rotation and the verifier: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md), **adopted /
+      design frozen by the operator 2026-10-07** (ledger BSG), after the designer''s one narrow change of 2026-10-05 (`release_epoch`,
+      a deterministic signed release input, replacing a wall-clock `built_at`) and the operator''s hardening change of 2026-10-07
+      (the manifest and its signature beside the archive, never inside it, and the signed manifest authenticating the archive
+      blob before any tar parser runs).'
   - '#': F18.4
     Work: 'Organization launch and provider-access seams: the harness launch provider (`direct_binary`, `airgap_bundle`
       or `organization`) selecting a qualified pin that AEW independently verifies after launch; the `aew/harness-qualification/v1`
@@ -464,7 +483,11 @@ sections:
       §2.1 to §2.3, §6.1, §20.1, §21 (ledger HAA)'
     Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
     Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
-      or invoke lifecycle controls, while the ordinary source workflow stays usable'
+      or invoke lifecycle controls, while the ordinary source workflow stays usable. **F23 (operator, 2026-10-07, [decision
+      record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run
+      as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated
+      harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying
+      an optional stronger deployment (lead developer''s reading, record §2)'
   - '#': F18.7
     Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
       default; PREPARING cleanup; the conversation-taint record and the reattach delta'
@@ -585,7 +608,10 @@ sections:
       holding the corpus is ineligible by default; a preflight that cannot establish isolation releases nothing) and returns
       the final tree for scoring, with the facts only it can observe (whether the AEW checkout was touched, its environment),
       so the run record describes the arm host, not the evaluator. Next: the `aew` and `raw` arms by generalizing `dogfood.py`
-      (the M3 driver still runs them).'
+      (the M3 driver still runs them). **Q7 adopted ([v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), operator,
+      2026-10-07; ledger VGX):** M4-H''s experiment design is frozen. **Prerequisite before M4-H executes:** the evaluator/arm-host
+      split and the held-out task-release runner (decision record of 2026-10-06 on held-out corpus isolation), the cold-start
+      attestation (§5) and the preregistration values of §14'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve
@@ -731,20 +757,6 @@ sections:
     Belongs to or gated by: '**Unscheduled**; consumed by F30''s impact surface, which declares which of them were available'
     Notes: Each carries its own freshness; the test index degrades to its structural half without semantic data and says
       so
-  - '#': F23
-    Work: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
-      a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential
-      decisions, Lead lease expiry'
-    Source (governing): architecture review G5, G10, G12, F-F, F-G, F-K; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05)
-    Belongs to or gated by: '**Unscheduled**: before internal alpha if its threat model requires them; no dedicated design
-      until then (response §14)'
-    Notes: The F2 claim is never widened silently. Remote PR integration changes `DONE`, so it needs contract/ADR work;
-      the [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) (ledger
-      RIT) has the saga, the `integration.target` policy, the adapter interface and what M4-D must not foreclose, and its
-      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04). The F18 hosting design
-      v0.6 §2.1 makes security-principal separation (the two-account profile or an SELinux equivalent) mandatory for any
-      production attachment; it is built as F18.6.
   - '#': F24
     Work: A second real harness adapter (Codex app-server or Claude Code headless) through the existing conformance suite
       and the live lane
@@ -764,13 +776,17 @@ sections:
     Source (governing): architecture review G7, F-D; [architecture review response](../design/architecture-review-response-2026-10-04.md)
       (accepted 2026-10-05); **the design is [the cost and usage ledger v0.2](../design/cost-usage-ledger-design-v0.2.md)**
       (adopted by the designer 2026-10-06 after a narrow revision; ledger CUL)
-    Belongs to or gated by: '**M4** (the main lane: M4-G, then F25, then F19/Q7/U3, then M4-H). Budget enforcement in `DispatchDecision`
+    Belongs to or gated by: '**M4** (the main lane: M4-G, then F25 with F19''s evaluator/arm-host split and F15.5/F15.6''s
+      unattended PUBLISH_IF_CLEAN, the M4-H prerequisites of Q7 v0.3.1 §16, then M4-H). Budget enforcement in `DispatchDecision`
       stays with F7/M5 after calibration'
-    Notes: Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
+    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
       R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment;
       R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes.
-      Implementation-ready except the Lead part, held for the designer's decision on the segment before F31 exists (decisions-due,
-      F25).
+      Implementation-ready except the Lead part, held for the designer''s decision on the segment before F31 exists (decisions-due,
+      F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):**
+      live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement
+      and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general
+      budget enforcement does not move into F25'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -866,6 +882,19 @@ sections:
       model; F19)'
     Notes: Needs the exact ids as the pinned OpenCode reports them and the operator's provider key for the live lane. Relates
       to D5 (routing policy)
+  - '#': F33
+    Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local
+      result, the operator approves pushing that exact commit to an explicit remote and ref, never forced; AEW records an
+      attributable receipt (the accepted local commit, the requested remote and ref, the resulting remote SHA and ref) and
+      checks the pushed remote object resolves to the exact accepted commit; push is never part of correctness or `DONE`,
+      needs no second verification for crossing the network, and its failure is a delivery failure, never a retroactive
+      `VERIFICATION_FAILED`'
+    Source (governing): '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) §1 item
+      6 (ledger IAT-07)'
+    Belongs to or gated by: '**Unscheduled**: allowed for internal alpha, to design or implement as a delivery capability;
+      not an internal-alpha gate'
+    Notes: The bounded form of the remote integration target sketch's push leg; automated PR creation and provider merge
+      handling stay deferred with Q14
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
   columns:
@@ -915,14 +944,6 @@ sections:
     Question: The open questions each design lists
     Owner: Designer
     Source: hierarchy §21; lead/operator §23; isolation §16
-  - '#': Q7
-    Question: 'What the next dogfood should use: tasks where one model session fails or regresses, since this one''s tasks
-      hit a ceiling. The plan assurance design''s §28 proposes task families (T4 replay, diagnosis contrast pairs, oracle
-      weakening, vacuous red, …) and configurations A–F.'
-    Owner: 'Designer. Decided meanwhile: an SPT-derived fixture is scratch, and needs no F2, only when the run''s host-level
-      reach has no writable non-disposable project state or secrets; a disposable clone on the normal development host is
-      not scratch (see F2)'
-    Source: '`m3-dogfood-report.md` §11 and §12; plan assurance design §28 and §29'
   - '#': Q8
     Question: Reconcile the capability design's six candidate failure classes (`CAPABILITY_CONTEXT_BLOAT`, `CAPABILITY_DISCOVERY_FAILURE`,
       `CAPABILITY_AUTHORITY_CONFUSION`, `CAPABILITY_SCHEMA_OVEREXPOSURE`, `HARNESS_FEATURE_SUPPRESSION`, `HARNESS_AUTHORITY_LEAK`)
@@ -941,14 +962,15 @@ sections:
     Owner: Designer
     Source: the provider research §3–§8; ADR-0005; ADR-0009; F12; F13; F17
   - '#': Q14
-    Question: 'The remote integration target''s scope: is a remote (pull-request) integration target wanted before internal
-      alpha, and when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration
-      verification on it or is verification on the candidate plus containment enough? Also undecided: the first provider,
-      whether AEW ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate
-      to AEW''s verification'
+    Question: 'The remote integration target''s scope (not before internal alpha, the operator decided on 2026-10-07, F23):
+      when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration verification
+      on it or is verification on the candidate plus containment enough? Also undecided: the first provider, whether AEW
+      ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate to AEW''s verification'
     Owner: Designer (question 8 of the architecture review's handoff)
     Source: '[remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) §5 and
-      "Not decided here" (ledger RIT-05, RIT-07); F23; M4-D must not foreclose it (RIT-06)'
+      "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07,
+      [F23 decision](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** not an internal-alpha gate;
+      reopened when remote PR or merge integration becomes a product requirement'
 - number: 5
   title: Dogfood findings left open (small)
   columns:
@@ -1083,8 +1105,11 @@ sections:
       #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and
       its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case; the
       typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py`
-      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays
-      open for the Ticket-revision contract amendment (the designer''s text) and the re-freeze'
+      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). **The Ticket-revision
+      contract amendment is adopted (E19-B v0.4, operator, 2026-10-06, [amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):**
+      a fourth overlay extending WC §7, §8 and invariant 7 and KC §12, so the index''s pending debt is empty. The row stays
+      open for the re-freeze, which also replaces an external example project''s name in the frozen texts with neutral wording
+      (operator, 2026-10-06)'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'
     Source: architecture review I3; [architecture review response](../design/architecture-review-response-2026-10-04.md)
@@ -1267,6 +1292,15 @@ sections:
     Notes: '**Partly built (PR #96, 2026-10-06):** the dashboard''s server stack and the doctor are imported only when used,
       about 10% off every CLI call (`aew status` about 920 to 825 ms), pinned by `tests/unit/test_cli_imports.py`. The 200
       ms import target is a measured objective, never a CI assertion'
+  - '#': E50
+    Work: 'Lead inactivity expiry: after long inactivity a Lead attachment is staled or revoked and a fresh attachment and
+      generation are required, under Q12''s semantics; for abandonment cleanup (an attachment left over a long absence),
+      not short-session policing; it never silently kills independently admitted child work'
+    Source: '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) §1 item 4 (ledger
+      IAT-05)'
+    When: '**Unscheduled**: a later bounded improvement, deferred hardening; not an internal-alpha prerequisite (operator,
+      2026-10-07)'
+    Notes: Builds on F31's attachment lifecycle (`aew open` and `aew close`, generations)
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:
@@ -1299,7 +1333,7 @@ sections:
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
-    When: '**Designer** (with F14). Before, or as part of, Q7'
+    When: '**Designer** (with F14). Evaluated in M4-H (Q7 §12: F4''s premise contrast; not a pre-M4-H blocker)'
     Notes: '"I run it in Docker as the headless server" was background, not one of the nine diagnoses the prompt said to
       check, and no role questioned it. F14 §6 types stakeholder statements; this asks that observations stated as fact
       be candidates for premise validation too.'
@@ -1577,6 +1611,17 @@ sections:
       (the SPA fallback, traversal refused); R21''s header set on every response; the exact Host (`421`) and Origin and
       `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request
       log; `serve --static DIR`; design note §4.13, §4.14, §5.4'
+  - '#': F23
+    Was: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
+      a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential
+      decisions, Lead lease expiry'
+    Closed: '2026-10-07'
+    By: 'The operator''s internal-alpha threat-model decision ([decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md);
+      ledger IAT): F18/F28 canonical-state and credential boundaries and the Linux/Rocky target REQUIRED; trusted-engineer
+      use and Windows/WSL development with truthful weaker labels ALLOWED; local OS and session operator attribution SUFFICIENT;
+      a separate full model OS account NOT REQUIRED; Lead inactivity expiry DEFERRED (E50); an operator-approved exact-commit
+      push ALLOWED as a delivery capability (F33); automated PR and merge-provider integration DEFERRED, and Q14 no longer
+      an internal-alpha gate'
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error
     Closed: '2026-10-01'
@@ -1607,6 +1652,18 @@ sections:
     Closed: '2026-10-01'
     By: 'Yes: `ACCEPTANCE_CONDITION_MUTATION` is canonical, with `PROTECTED_ACCEPTANCE_OVERLAP` ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md)
       §3.1). O3 stays open until F14''s fix is accepted'
+  - '#': Q7
+    Was: 'What the next dogfood should use: tasks where one model session fails or regresses, since this one''s tasks hit
+      a ceiling. The plan assurance design''s §28 proposes task families (T4 replay, diagnosis contrast pairs, oracle weakening,
+      vacuous red, …) and configurations A–F.'
+    Closed: '2026-10-07'
+    By: '[Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), adopted and design frozen by the operator (ledger
+      VGX): M4-H is a real value gate in the B+ design, six fixed F1 to F3 cells x 12 runs per arm (144 primary R versus
+      A runs), 30 descriptive R+ runs, 20 separately reported F4 premise runs; the equal-weight fixed-cell risk difference
+      as the estimand, under a Jeffreys-binomial model with a 90% posterior credible interval (benefit needs mean at least
+      +10 points and lower bound above 0); evaluator-side held-out isolation (F19''s rule); cold-start attestation; two
+      blinded mergeability reviewers. Prerequisites before execution: F15.5/F15.6 unattended PUBLISH_IF_CLEAN, F19''s evaluator/arm-host
+      split and release runner, F25 live run-usage telemetry for the evaluator''s experiment-local USD cap'
   - '#': Q9 (decisions)
     Was: The plan assurance design's §33 decisions and its order relative to ADR-0011 and M4
     Closed: '2026-10-01'

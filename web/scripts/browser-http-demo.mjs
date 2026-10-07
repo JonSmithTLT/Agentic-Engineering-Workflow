@@ -41,6 +41,28 @@ async function check(name, viewport, run) {
 try {
   await ready();
   browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH ?? path.resolve('artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome')});
+  await check('HTTP demo loads requested screens without blocking the surrounding shell', {width: 1092, height: 1000}, async (page, requests) => {
+    await page.goto(base + '/overview?fixture=F1');
+    await page.getByRole('heading', {name: 'Overview', exact: true}).waitFor();
+    assert(!requests.some(url => /\/assets\/(Journal|Recorder|Comparison|Reader|Lab|PacketInspector|BoundPacketHost)-/.test(url)), 'Overview does not load unrelated investigation UI');
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    await page.route('**/assets/Journal-*.js', async route => { await held; await route.continue(); });
+    try {
+      await page.getByRole('link', {name: 'Knowledge', exact: true}).click();
+      await page.getByRole('status').filter({hasText: 'Opening Knowledge Journal…'}).waitFor();
+      assert(await page.getByRole('button', {name: 'API panel', exact: true}).isVisible());
+      assert(!requests.some(url => url.includes('/api/preview/journal/')), 'Concealed, unloaded screen has no preview reads');
+    } finally { release(); }
+    await page.getByRole('heading', {name: 'Knowledge Journal', exact: true}).waitFor();
+    assert(!requests.some(url => /\/assets\/(Recorder|Comparison|Reader|Lab)-/.test(url)));
+    await page.getByRole('button', {name: 'API panel', exact: true}).click();
+    await page.getByRole('heading', {name: 'API requests', exact: true}).waitFor();
+    assert(!requests.some(url => /\/assets\/Lab-/.test(url)), 'Requests disclosure needs no Playground UI');
+    await page.getByRole('tab', {name: 'Contract', exact: true}).click();
+    await page.getByRole('heading', {name: 'Contract Playground', exact: true}).waitFor();
+    assert(requests.some(url => /\/assets\/Lab-/.test(url)), 'Explicit Contract disclosure loads the Playground');
+  });
   for (const phone of [false, true]) await check(`${phone ? 'phone' : 'desktop'} HTTP investigation, selection, legend, focus and graph`, {width: phone ? 390 : 1440, height: phone ? 844 : 1000}, async page => {
     await page.goto(base + '/knowledge?fixture=F1');
     await page.locator('.header-tools').getByText('HEALTHY', {exact: true}).waitFor();

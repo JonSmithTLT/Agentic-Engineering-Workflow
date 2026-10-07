@@ -388,7 +388,7 @@ The register gained entries after the M4 triage above: from the architecture rev
 | F3 (the concurrency part) | **In scope** | M4-C: this phase |
 | F21 the M6b knowledge system | **Deferred** | M6b. The response affirms the drafts as the direction; its storage and identity questions are D-AR4 |
 | F22 project maps | **Deferred** | After M4, or a bounded deterministic slice in M4-G/H if it does not put approved scope at risk (response §12). Not an M4 gate |
-| F23 pre-internal-alpha hardening | **Deferred** (implementation) | Implementation stays pre-internal-alpha. Network-containment research (architecture thread T6) is active now and informs it |
+| F23 pre-internal-alpha hardening | **Deferred** (implementation) | Implementation stays pre-internal-alpha. Network-containment research (architecture thread T6) is active now and informs it. **Closed 2026-10-07** by the operator's internal-alpha threat-model decision (F18/F28 boundaries required; most candidates rejected or deferred: E50, F33, Q14) |
 | F24 a second harness adapter | **Deferred** (production adapter) | M5, or earlier if OpenCode drift blocks operation (G4). OpenCode/Codex integration research (thread T9) is active now |
 | F25 the cost and usage ledger | **In scope, before M4-H** | With the evaluation component (thread T2, F19), its first consumer, and available before M4-H's evaluation |
 | F26 minimal skill delivery | **Deferred** | Needs design or a probe (response §7); M6a |

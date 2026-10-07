@@ -136,9 +136,9 @@ def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
 
 def test_every_open_question_and_designer_row_has_an_item():
     due = copy.deepcopy(DUE)
-    due["items"] = [i for i in due["items"] if i["row"] not in {"Q7", "U10"}]
+    due["items"] = [i for i in due["items"] if i["row"] not in {"Q14", "U10"}]
     problems = register.due_problems(DATA, due)
-    assert any("Q7 is an open question with no item" in p for p in problems), problems
+    assert any("Q14 is an open question with no item" in p for p in problems), problems
     assert any("U10 waits for the designer" in p for p in problems), problems
 
 

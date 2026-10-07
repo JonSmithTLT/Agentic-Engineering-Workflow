@@ -71,7 +71,8 @@ class StateReader:
         self._lock = threading.Lock()
         self._state: tuple[tuple[int, int, int] | None, dict[str, Any]] | None = None
         self._manifest: tuple[tuple[int, int, int] | None, dict[str, Any]] | None = None
-        self._gates: tuple[tuple[int, int, int] | None, dict[str, Any]] | None = None
+        # keyed by the gates file's identity and its pin: adopting an edit changes what may be shown
+        self._gates: tuple[tuple[tuple[int, int, int] | None, bool, str | None] | None, dict[str, Any]] | None = None
 
     def snapshot(self) -> Snapshot:
         store = self.engine.store

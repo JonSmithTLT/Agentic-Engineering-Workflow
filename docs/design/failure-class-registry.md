@@ -1,6 +1,6 @@
 # AEW Failure-Class Registry v0.2
 
-**Status:** Cross-document index. v0.2 (2026-10-01, accepted by the designer in review): adds the plan assurance classes (§5) as reconciled by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1).  
+**Status:** Cross-document index. v0.2 (2026-10-01, accepted by the designer in review): adds the plan assurance classes (§5) as reconciled by the designer on 2026-10-01 (`plan-assurance-and-classification-decisions-2026-10-01.md` §3.1). 2026-10-06: adds the Ticket-revision amendment's three classes to §4 (`workflow-contract-amendment-ticket-revisions-2026-10-06.md` §6.2, §6.3, §13).  
 **Authority:** Non-authoritative index. Definitions point to owning design/contract text; this file must not become a second source of workflow authority.  
 **Purpose:** Prevent naming/definition drift across AEW design, dogfood, and evaluation documents.
 
@@ -52,6 +52,9 @@ A class names a failure, not an error code. Engine refusal codes are separate: a
 | `UNAUTHORIZED_SCOPE_CHANGE` | Hierarchy Revision | Lead changes stakeholder-owned intent outside delegated envelope. | Epic objective-change eval. |
 | `LOST_SUPERSESSION_LINEAGE` | Hierarchy Revision | Replacement work lacks durable connection/disposition to superseded work. | Parent closeout + replacement tests. |
 | `STALE_PARENT_INTENT` | Hierarchy Revision | Descendants continue against superseded Epic/Story framing. | Ancestor-plan/revision tests. |
+| `REVISION_LAUNDERING` | Ticket-revision amendment (§6.2) | A Ticket is revised to escape an adverse review, verification result, failed gate or unresolved finding while substantially the same work continues. | The mechanical anti-laundering trigger routes to independent confirmation; conformance cases (§12 items 9 to 11, 28, 29). |
+| `ACCEPTANCE_NARROWING_BY_REVISION` | Ticket-revision amendment (§6.3) | Acceptance is narrowed or rewritten after work or evidence exists so that an unmet obligation disappears, rather than a legitimate objective change being recorded. | Acceptance-group change after acceptance-bearing evidence requires independent confirmation (§4.2); conformance case (§12 item 2). |
+| `UNBOUND_FIELD_ESCAPE` | Ticket-revision amendment (§6.3) | Acceptance-, scope-, authority- or gate-relevant content is moved into or hidden in an unclassified or non-binding field to avoid freshness or gate consequences. | Fail-closed field-group registry (§2.3); conformance cases (§12 items 4, 7). |
 
 Plan assurance's candidate `INTENT_SUBSTITUTION` (derived plan language changes the actual stakeholder objective) is `SILENT_INTENT_REWRITE`.
 

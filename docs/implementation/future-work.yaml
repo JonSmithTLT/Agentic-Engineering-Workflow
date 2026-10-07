@@ -77,7 +77,8 @@ sections:
       (ARV-01, operator 2026-10-05).'
   - '#': F4
     Work: Ticket supersession lineage, and a first-class goal-revision path
-    Source (governing): hierarchy design §8 to §10, §20 (Scenarios A and E)
+    Source (governing): hierarchy design §8 to §10, §20 (Scenarios A and E); [Ticket-revision contract amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)
+      (E19-B v0.4, adopted by the operator 2026-10-06; ledger TRA)
     Belongs to or gated by: '**Hierarchy revision.** Before Leads routinely replace Tickets'
     Notes: 'Needs Workflow Contract and Knowledge Contract amendments. Observed in the M3 dogfood (T1: a recreated Ticket
       with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`;
@@ -86,7 +87,16 @@ sections:
       depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse
       findings carry forward until resolved. A replacement stays for a change of kind, a move to another parent, or a goal
       that no longer overlaps. Evidence: twice a scope mistake cost a Ticket and its correct implementation (M3-D9; `m3-dogfood-report.md`
-      §6.6).'
+      §6.6). **The contract amendment is adopted (operator, 2026-10-06, [E19-B v0.4](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):**
+      it extends WC §7, §8 and invariant 7 and KC §12, and F4 is implementation-ready. Building it is of the size of M4-D
+      and needs its own plan: the field-group registry and digests; revision records and the `aew migrate` step to r1; the
+      evidence binding and computed admissibility (evidence today binds the snapshot and plan revision only, and the snapshot
+      excludes `.aew/`, so nothing binds Ticket inputs yet); the quiesce, commit and abort lifecycle with `revision_pending`;
+      independent confirmation and the operator''s checkpoint; the amendment''s own impact hold and parent coverage. StageIntent
+      binding (§7.4) waits for F15.2. **Lead developer''s build note (§2.3):** the engine cannot prove a free-text title
+      carries no acceptance meaning, so the schema declares the title presentation-only and the engine never reads acceptance
+      from it; a requirement written into a title is `UNBOUND_FIELD_ESCAPE`, a misuse for review to flag rather than something
+      the engine detects'
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
       drift; admissibility as a Knowledge Contract concept'
@@ -1068,8 +1078,11 @@ sections:
       #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and
       its §9, replacing WC §7.4''s Class 0 bullet and example, WC §7.5''s Class 0 path and KC §26''s parent-risk case; the
       typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py`
-      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). The row stays
-      open for the Ticket-revision contract amendment (the designer''s text) and the re-freeze'
+      checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). **The Ticket-revision
+      contract amendment is adopted (E19-B v0.4, operator, 2026-10-06, [amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):**
+      a fourth overlay extending WC §7, §8 and invariant 7 and KC §12, so the index''s pending debt is empty. The row stays
+      open for the re-freeze, which also replaces an external example project''s name in the frozen texts with neutral wording
+      (operator, 2026-10-06)'
   - '#': E20
     Work: '`--json` output on read commands, so the typed action surface wraps structured results, not prose'
     Source: architecture review I3; [architecture review response](../design/architecture-review-response-2026-10-04.md)

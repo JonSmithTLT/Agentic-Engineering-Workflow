@@ -112,6 +112,36 @@ overlays:
         kind: extends
         by: "§1, §4, §5"
 
+  - id: ticket-revisions-2026-10-06
+    path: docs/design/workflow-contract-amendment-ticket-revisions-2026-10-06.md
+    sections: ["2", "3", "4", "5", "6", "7", "8", "9", "10"]
+    status: adopted
+    adoption:
+      at: 2026-10-06
+      by: operator
+      evidence: "Adopted by the operator, 2026-10-06"
+    targets:
+      - doc: WC
+        section: "7"
+        part: Ticket revisions (identity, field groups, replacement, parent envelope and drift, evidence admissibility, adverse evidence)
+        kind: extends
+        by: "§2 to §6"
+      - doc: WC
+        section: "8"
+        part: "Ticket revision as a governed transition: invocation and StageIntent binding, quiesce and commit, impact holds, state rules"
+        kind: extends
+        by: "§7, §8"
+      - doc: WC
+        section: "23"
+        part: "invariant 7: current acceptance is revision-bound"
+        kind: extends
+        by: "§9"
+      - doc: KC
+        section: "12"
+        part: Ticket revisions as first-class durable revision history
+        kind: extends
+        by: "§10"
+
 effective:
   - doc: WC
     section: "7.4"
@@ -135,19 +165,24 @@ effective:
     parts:
       - {part: "the acceptance case", replaced_by: [class0-s9-2026-10-03], head: class0-s9-2026-10-03}
 
-pending:
-  - id: ticket-revisions
-    reason: >-
-      Ticket revisions beside plan revisions, and evidence bound to a Ticket revision: "a spec amendment with an ADR,
-      like ADR-0002's", not yet written (register F4; E19 carries the writing to the designer)
-    decided_in: docs/archive/reviews/ticket-revision-amendment-review-2026-09-30.md
-    decided_evidence: "Knowledge Contract §12 (frozen) and WC §7/§8 and invariant 7 (frozen)"
-    register: [F4, E19]
-    targets:
-      - {doc: KC, section: "12"}
-      - {doc: WC, section: "7"}
-      - {doc: WC, section: "8"}
-      - {doc: WC, section: "23", item: 7}
+  - doc: WC
+    section: "7"
+    parts:
+      - {part: "Ticket revisions (identity, field groups, replacement, parent envelope and drift, evidence admissibility, adverse evidence)", extended_by: [ticket-revisions-2026-10-06]}
+  - doc: WC
+    section: "8"
+    parts:
+      - {part: "Ticket revision as a governed transition: invocation and StageIntent binding, quiesce and commit, impact holds, state rules", extended_by: [ticket-revisions-2026-10-06]}
+  - doc: WC
+    section: "23"
+    parts:
+      - {part: "invariant 7: current acceptance is revision-bound", extended_by: [ticket-revisions-2026-10-06]}
+  - doc: KC
+    section: "12"
+    parts:
+      - {part: "Ticket revisions as first-class durable revision history", extended_by: [ticket-revisions-2026-10-06]}
+
+pending: []
 
 considered:
   - path: docs/design/plan-assurance-and-classification-decisions-2026-10-01.md

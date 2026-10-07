@@ -15,11 +15,8 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 | Due by | Owner | Needs | What | Row | Blocks |
 |---|---|---|---|---|---|
-| M4-G | designer | decision | The form of the evidence view (`aew evidence show`, or next actions that carry a record's conclusion) | E12 | - |
 | M4-G | operator | decision | Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer limit. | E23 | - |
-| M4-G | operator | decision | Whether the structural map core (T5-A) is in M4-G/H, as far as it makes the M4-H experiment representative, or waits until after the value gate | F22.1 | - |
-| M4-G | operator and designer | decision | The cost and usage ledger design note's eight §8 decisions, then its adoption; the designer asked for changes on 2026-10-05 (R4, R8), and the note was revised that day | F25 | U4 |
-| M4-H | operator and designer | decision | How the model arms keep a held-out corpus out of reach while the model runs. Every model-controlled process in both arms can read it today: the raw arm's OpenCode and the Lead's harness are not contained (the Lead's allowed shell reads any file, for example through `git diff --no-index`), and the aew arm's dispatched runs are contained on Linux for writing only (the host stays readable unless a path is in `containment.hide`) and not at all on Windows. Options: contain every model-controlled process of both arms with the hidden root masked (Linux only); a two-account profile (F23); or no private corpus on the arm's host. The aew and raw arms wait for it. | F19 | - |
+| M4-G | designer | decision | Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7) | F25 | - |
 | M4-H | designer | decision | The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration | Q7 | F19 |
 | M4-H | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses; before or as part of Q7 | U3 | - |
 | Gate: before internal alpha | operator and designer | design | The Ticket-revision contract amendment text, then the consolidated WC/KC re-freeze after M4-E; and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed | E19 | F4 |
@@ -50,5 +47,4 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | F13 | Q8 (decision, designer, by M6); Q11 (decision, designer, by M6) |
 | F19 | Q7 (decision, designer, by M4-H) |
 | F23 | Q14 (decision, designer, by Gate: before internal alpha) |
-| U4 | F25 (decision, operator and designer, by M4-G) |
 | U9 | F26 (design, designer, by M6) |

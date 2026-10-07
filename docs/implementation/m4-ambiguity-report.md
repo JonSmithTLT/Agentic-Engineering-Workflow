@@ -366,7 +366,7 @@ Every open entry whose *When* names M4 or an earlier gate, every M4 candidate, a
 | V1 | M4 candidate | **In scope** | M4-G: relaunch re-reads the provider key, or reports the auth failure as its own status |
 | V2 | M4 candidate | **In scope** | M4-G: the refusal names takeover as the next step |
 | V4 | M4 candidate | **In scope** | M4-G: long checks through `aew check run` with the policy's timeout |
-| E12 | M4 candidate | **In scope**, form for the designer | M4-G: `aew evidence show`, unless the designer picks the next-action form |
+| E12 | M4 candidate | **In scope**; the designer chose `aew evidence show` (2026-10-06) | M4-G: `aew evidence show` |
 | U5 | M4 candidate | **Deferred** | Stage commands (M4-E) change the command references. Generate them after M4-E, as part of the guide (F16) |
 | O2 | M4 candidate | **Deferred** | The headless Lead's allow-list follows the git-write decision (M4-B3) and the stage commands. Revisit at M4-E |
 | F4, F5 | Hierarchy revision | **Deferred** | Their own milestone. M4-B5 creates new attempts, not Ticket revisions |
@@ -525,5 +525,6 @@ Real concurrency (two `aew` processes racing a lease grant) runs in the `serial`
 ## Remaining open items (not designer questions)
 
 - **A real Rocky 8 host** for M4-B's kernel regression: a VM or machine with no secrets or real project state within reach, reachable over SSH. The operator provides it before M4-B's exit.
-- **The form of E12** (an evidence view or next actions carrying conclusions): the designer's call, raised at M4-G.
+- **The form of E12** (an evidence view or next actions carrying conclusions): decided by the designer on 2026-10-06,
+  `aew evidence show` (decision record `../design/decisions-2026-10-06-e12-evidence-read-surface.md`).
 - **The invariant index wording for ISO-004** (M4-B6): the designer owns the index.

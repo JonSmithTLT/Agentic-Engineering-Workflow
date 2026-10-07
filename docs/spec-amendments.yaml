@@ -160,6 +160,15 @@ considered:
     reason: >-
       decision record (F18.2, F18.8, 2026-10-06); amends the install and bootstrap design v0.3 narrowly and ADR-0009
       (one AEW Provider Gateway); replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f19-held-out-corpus-isolation.md
+    reason: decision record (F19, 2026-10-06); an M4-H experiment-protocol requirement; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-e12-evidence-read-surface.md
+    reason: decision record (E12, 2026-10-06); a read surface over existing Evidence; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f22-1-structural-map-sequencing.md
+    reason: decision record (F22.1, 2026-10-06); sequencing only; replaces no WC/KC text
+  - path: docs/design/cost-usage-ledger-design-v0.2.md
+    reason: >-
+      adopted design (F25, 2026-10-06); records and projections of usage and cost; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
     reason: >-
       decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0004, ADR-0005,

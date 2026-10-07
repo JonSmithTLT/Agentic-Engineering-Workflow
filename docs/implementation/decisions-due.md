@@ -29,7 +29,6 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Evaluation | designer | decision | Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture) | O3 | - |
 | Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
 | Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
-| Unscheduled | operator and designer | adoption | ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap bundle's build waits for it | F18.3 | - |
 | Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
 | Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
 | Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |

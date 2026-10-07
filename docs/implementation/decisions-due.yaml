@@ -103,12 +103,6 @@ items:
   owner: operator
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
-- row: F18.3
-  needs: adoption
-  owner: operator and designer
-  due: Unscheduled
-  what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
-    bundle's build waits for it
 - row: Q4
   needs: decision
   owner: designer

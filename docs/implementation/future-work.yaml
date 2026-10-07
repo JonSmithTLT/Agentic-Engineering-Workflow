@@ -432,24 +432,21 @@ sections:
       the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
       write access (lead developer's reading, record §3)
   - '#': F18.3
-    Work: 'The air-gap bundle: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse, qualified harness pins and a canonical
-      hashed manifest; a detached signature over the manifest from a release identity with an independently provisioned
-      trust root; a verifier that rejects traversal, duplicates and mismatches before anything is consumed; `aew doctor
-      --bundle --json` as the host acceptance record; tool upgrade separate from project migration with a declared restore
-      point'
+    Work: 'The air-gap bundle, three side-by-side artifacts: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse and
+      qualified harness pins, its canonical manifest `aew-bundle-<version>-rl8-py311.json` (committing to the archive''s
+      name, size and SHA-256 and to every member), and `aew-bundle-<version>-rl8-py311.json.sig`, a detached signature over
+      the manifest from a release identity with an independently provisioned trust root; a verifier that rejects traversal,
+      duplicates and mismatches before anything is consumed; `aew doctor --bundle --json` as the host acceptance record;
+      tool upgrade separate from project migration with a declared restore point'
     Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §5 (air-gapped),
       §5.1 (ledger IBU-12, IBU-13); airgap research §7'
-    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; the build follows
-      the adoption of ADR-0014)'
-    Notes: 'Key custody and rotation: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md) (proposed 2026-10-05; ledger
-      BSG). **The designer''s disposition (2026-10-05): one narrow change, then adopt.** D2 signs `built_at` while D5 requires
-      two independent builds to give byte-identical manifest and tar digests: a wall-clock build time makes that impossible,
-      and a commit timestamp silently changes what D3''s signer validity check means. The fix names a deterministic release
-      epoch (from release input both CI and the operator use, such as the tag) as the signed time that key validity uses,
-      with no time-of-rebuild in the reproducible manifest; D1 to D9 otherwise stand. The build waits for that amendment:
-      OpenSSH signatures over a canonical JSON manifest, an independently provisioned `allowed_signers` trust root, the
-      release operator signs locally and never CI, rotation and revocation procedures, the verifier''s refusal rules and
-      the adversarial tests the build must show'
+    Belongs to or gated by: '**Unscheduled** (packaging and release work; before any air-gapped deployment; ADR-0014 adopted
+      2026-10-07, so the build is unblocked)'
+    Notes: 'Key custody, rotation and the verifier: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md), **adopted /
+      design frozen by the operator 2026-10-07** (ledger BSG), after the designer''s one narrow change of 2026-10-05 (`release_epoch`,
+      a deterministic signed release input, replacing a wall-clock `built_at`) and the operator''s hardening change of 2026-10-07
+      (the manifest and its signature beside the archive, never inside it, and the signed manifest authenticating the archive
+      blob before any tar parser runs).'
   - '#': F18.4
     Work: 'Organization launch and provider-access seams: the harness launch provider (`direct_binary`, `airgap_bundle`
       or `organization`) selecting a qualified pin that AEW independently verifies after launch; the `aew/harness-qualification/v1`

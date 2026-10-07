@@ -722,7 +722,18 @@ sections:
       by an attributable project transaction is replaced by the map registry and `map_revision` (§3.1), and the freshness
       inputs are the generator''s tracked reads, not a hand-maintained list (§2.4). If a background or asynchronous adoption
       path is built here, it is `map_service`''s and waits for its ADR amendment (PMP-32, F22.2). Whole-pack serving is
-      an F19 question, not part of v1'
+      an F19 question, not part of v1. **Built in two pull requests** (the lead developer''s plan, v4, independently reviewed
+      CLEAR on 2026-10-07). **The first (2026-10-07) builds the structural core:** the Git-object reader (replace refs and
+      lazy fetching off, a missing needed object or an old-git partial clone refused with `MAP_CURRENTNESS_UNPROVEN`), the
+      generator and its tracked reads, the record schema, canonical JSON identity, the artifact store, the map registry
+      with its own `<epoch>:<map_revision>`, freshness, `aew map generate/show/diff`, caps and omissions, the differential
+      oracle, the counts-based scale regression and [ADR-0015](adr/0015-project-map-storage-and-registry.md) (ledger MSR).
+      **The second** builds architecture-reference selection, the bounded pack slices and the resume row behind a new `maps.pack_slices`
+      switch (off by default, so M4-H''s treatment is unchanged), pack provenance, the no-authority walk with slices on
+      and the `tools/perf` measurement; it closes this row. Ledger notes: PMP-17 and PMP-18 are carried by this slicing
+      (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. **Operator note:** only the investigator
+      archetype names `codebase_map` in its context; widening that for M4-H is the operator''s configuration call, with
+      the switch. The Q7 cold-start attestation checks `.aew/local/maps/` (ADR-0015)'
   - '#': F22.2
     Work: 'T5-B then T5-C. T5-B, the common semantic substrate: `aew/semantic-map/v1`, the capability, fact and quality
       schemas, the closed `map_service` writer (`map.artifact.*`, `map.registry.*`, `map.index.*`; its principal encoded

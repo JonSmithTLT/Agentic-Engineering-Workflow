@@ -154,7 +154,7 @@ sections:
     Source (governing): '`m1-implementation-plan.md`; `m2-ambiguity-report.md`'
     Belongs to or gated by: '**M6**'
     Notes: 'Extended by F13. Provider selection, packaging and evaluation research (not governing): [`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md);
-      its fit with AEW''s custody and evidence rules is Q11, and hosting is Q12.'
+      its fit with AEW''s custody and evidence rules is Q11, and Q12 settled hosting (2026-10-06).'
   - '#': F13
     Work: 'Capability discovery and progressive disclosure: an Effective Capability Manifest per invocation that keeps available,
       authorized and active apart; lazy expansion from L0 awareness to L3 exact schema; adapters advertising harness-native
@@ -373,14 +373,15 @@ sections:
       its consequential observations with it.'
   - '#': F18
     Work: 'Operator bootstrap and host integration: setting up AEW and its harness on a host, and starting and attaching
-      the operator''s session under the hosting model Q12 picks. Bootstrap and hosting only; comprehensive native-feature
-      integration stays with M6 (F13)'
+      the operator''s session within the hosting boundary Q12 decided (2026-10-06). Bootstrap and hosting only; comprehensive
+      native-feature integration stays with M6 (F13)'
     Source (governing): Designer and operator, 2026-10-01; provider research §5 ([`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md));
       **the design is [install, bootstrap and first-run UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)** (adopted
       by the designer and the operator 2026-10-05; ledger IBU)
-    Belongs to or gated by: '**Unscheduled.** Needs Q12 for host, account and session topology; the design''s commands,
-      artifacts and ownership semantics do not (its decision 13), so F18.1 to F18.4 can be scheduled before Q12 if the operator
-      wants them'
+    Belongs to or gated by: '**Unscheduled.** Q12 is decided ([decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)):
+      AEW owns the attachment and the harness owns model execution, so the hosting design under this row chooses the host,
+      account and session details within that boundary, including where the knowledge, capability and dashboard services
+      run (record §12)'
     Notes: Relates to D2 (installer, deeper harness integration) and U6 (Lead state isolation). Thirteen frozen principles
       and thirteen frozen decisions in the design; no designer-level question blocks the bootstrap and doctor shape.
   - '#': F18.1
@@ -724,6 +725,40 @@ sections:
     Notes: 'A later Profile/Impact design (not T5) owns the record family, the generators, the slot filling, the triggers
       and the narrowing rule. The probe: recall 1.00 at radius 1 for localized changes, 0.54 for a cross-cutting one, about
       two seconds per requirement'
+  - '#': F31
+    Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches
+      a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
+      from canonical state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated
+      project access through the detached attachment (read and query commands refused to that generation), a harness crash
+      or host loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective
+      execution profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash,
+      host loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
+      Lead or the operator accepts them, any of the designer''s stop conditions stops the run at once with an error report,
+      while a legitimate negative result is held like any other), or, by the operator only at the operator terminal, stop
+      now or release to manual; the integration custodian surviving an attachment''s end with its lease held, its post-integration
+      verifier draining, and no publish on a held result until the current generation accepts it'
+    Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
+      §4 to §9, §13 and §14 (ledger HSD); ADR-0004, ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
+    Belongs to or gated by: '**Unscheduled.** The designer''s clarifications (record §14) leave nothing designer-level before
+      the build; the next milestone triage places it'
+    Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
+      the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
+      keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). Also
+      replaces the M4-D3 rule that a takeover or uncarried handoff ends the integration custodian and cancels its verifier
+      (ADR-0004 amendment). The Lead's per-invocation cancel and stop stay Lead commands. Native harness subagents only
+      where the adapter keeps AEW's invocation identity, role, custody, profile, parent, limits, evidence and provenance
+      (with F13). No automatic verifier rerun while the lease is held (record §14.5); a bounded retry under the same custody
+      would need its own recovery design
+  - '#': F32
+    Work: 'The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved
+      open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids,
+      effort variants, a live-lane run) before it is relied on; no workflow semantics keyed to a model''s name'
+    Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
+      §3 (ledger HSD); ADR-0010, amendment of 2026-10-06
+    Belongs to or gated by: '**M4** (M4-H''s preregistration pins the execution profiles, and the raw arm uses the aew arm''s
+      model; F19)'
+    Notes: Needs the exact ids as the pinned OpenCode reports them and the operator's provider key for the live lane. Relates
+      to D5 (routing policy)
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
   columns:
@@ -740,8 +775,8 @@ sections:
   - '#': D2
     Work: An installer, and deeper harness integration (installed commands, one control surface)
     Source: M3 plan §8
-    Target and notes: '**Unscheduled.** Discussed with the operator during M3. F18 (bootstrap and hosting, after Q12) relates
-      to it.'
+    Target and notes: '**Unscheduled.** Discussed with the operator during M3. F18 (bootstrap and hosting; Q12 decided)
+      relates to it.'
   - '#': D3
     Work: Skills for AEW agents (Lead and role skills), made reachable through the capability registry
     Source: M3 plan §8; `docs/skills/` (the operator's proposal package and candidates, added over time); Workflow Contract
@@ -791,26 +826,13 @@ sections:
     Question: 'Reconcile the provider research (`../design/aew-phase6-airgap-capability-research-2026-10-01.md`) with M3''s
       rules before F12 and F13 are designed further. **Provider use is AEW-governed** (designer, 2026-10-01): AEW authorizes,
       health-checks and ends a provider''s use per invocation, and a provider''s credentials stay out of every process the
-      agent can reach (custody, ADR-0005 amendment). How a provider is hosted stays undecided until Q12. Also: index-backed
-      results (language servers, code graphs, decompilers) carry the provider version and index fingerprint, stamped by
-      the engine like `producer.execution`; installer side effects (generated skills, hooks, instructions) are refused,
-      because only AEW''s projection writes harness configuration; the research''s evaluation plan (§8) shares one evaluation
-      harness with F17''s phase 1'
+      agent can reach (custody, ADR-0005 amendment). Q12 settled hosting (2026-10-06): AEW owns capability negotiation and
+      the harness configuration inputs, the harness owns model execution. Also: index-backed results (language servers,
+      code graphs, decompilers) carry the provider version and index fingerprint, stamped by the engine like `producer.execution`;
+      installer side effects (generated skills, hooks, instructions) are refused, because only AEW''s projection writes
+      harness configuration; the research''s evaluation plan (§8) shares one evaluation harness with F17''s phase 1'
     Owner: Designer
     Source: the provider research §3–§8; ADR-0005; ADR-0009; F12; F13; F17
-  - '#': Q12
-    Question: 'Harness hosting, operator session and native-feature integration architecture. Explicitly: **startup** (how
-      an operator starts AEW and its harness); **the seat and session lifecycle** (the Lead seat and the operator''s own
-      session, across exit, crash and takeover; V2, U6); **execution-profile resolution** (where provider, model and effort
-      are resolved when a wrapper or attached host also configures them; ADR-0010); **wrapper ownership** (whether an organizational
-      launcher wrapper or AEW owns the harness process, its configuration and its credentials); **hosting** (AEW''s private
-      server per run, as in M3, an attachable service, or the wrapper); and which native harness features are integrated,
-      and how. Q11''s hosting question and F18 wait for it'
-    Owner: Designer
-    Source: 'the provider research §5; ADR-0009; ADR-0010; D2; U6; V2 Architecture review 2026-10-04 (accepted 2026-10-05,
-      Q13): decide in the M4-D/M4-E window (D-AR5), including knowledge and capability service identities. [ADR-0013](adr/0013-knowledge-storage-placement.md)
-      D9 fixes the knowledge service principal''s authority (project-bound, independent of the Lead generation); its hosting
-      stays here.'
   - '#': Q14
     Question: 'The remote integration target''s scope: is a remote (pull-request) integration target wanted before internal
       alpha, and when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration
@@ -1103,7 +1125,8 @@ sections:
   - '#': U6
     Work: A decision on Lead state isolation
     Source: review finding 5
-    When: '**Unscheduled.** Q12 (seat and session lifecycle) decides it'
+    When: '**Unscheduled.** Unblocked by Q12 (2026-10-06): the harness owns the model session and its conversational state,
+      AEW the attachment; the Lead harness''s configuration and state isolation is chosen with F31 and the F18 hosting design'
     Notes: Role runs keep OpenCode state per run; the Lead TUI uses the operator's own data directory.
   - '#': U7
     Work: Automatic stall recovery (interrupt plus a standard nudge)
@@ -1402,6 +1425,19 @@ sections:
       semantic assertions, no active hard trigger), and a failing Class 0 request is refused with reasons, never silently
       reclassified ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md)
       §2, §3.2); the Workflow Contract amendment is adopted ([`workflow-contract-amendment-class0-2026-10-01.md`](../design/workflow-contract-amendment-class0-2026-10-01.md))
+  - '#': Q12
+    Was: 'Harness hosting, the operator session and native-feature integration: startup, the seat and session lifecycle,
+      execution-profile resolution, wrapper ownership, hosting, and which native harness features are integrated (architecture
+      review D-AR5)'
+    Closed: '2026-10-06'
+    By: 'The designer''s decision, adopted with the operator ([decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)):
+      AEW owns the project attachment, the Lead seat, generations, profile selection and provenance, and the harness owns
+      model execution. An attachment opens and closes (`aew open`, `aew close`) independently of the harness; closing or
+      losing it revokes AEW authority and stales its generation without ending the model, the harness, its context or admitted
+      child work; every attachment is a fresh generation that re-hydrates from canonical state. Reference models: GPT-6
+      Astra for the Lead, Laguna S2.1 the default worker, GPT-5.4 and approved open-source models selectable. Amends ADR-0004,
+      ADR-0005, ADR-0009 and ADR-0010; F31 builds the lifecycle, F32 the reference profiles; F18, Q11 and U6 are unblocked.
+      Where the knowledge, capability and dashboard services run goes to the F18 hosting design (record §12)'
   - '#': Q13
     Was: Accept the architecture review response after the lead developer's review; promote its decisions to their homes;
       decide the five items it did not disposition (ARV-01 to ARV-05)

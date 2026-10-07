@@ -544,3 +544,25 @@ environment has no provider variable; the relay attaches the credential for its 
 the run sent; an unauthorized egress host is refused; the self-test fails closed; a check under `isolated` reaches
 nothing. `tests/unit/test_containment_layout.py`: `--unshare-net` in `bwrap_argv`, the label object, old records read
 unchanged. The M4-B residual test narrows to the server password.
+
+## Amendment 2026-10-06 — Q12: the harness hosts, AEW attaches (designed, not built)
+
+The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-and-lead-attachment.md`](../../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)) settles hosting; register F31 builds what it changes here.
+
+- **The boundary.** AEW and its supervisor own the Lead attachment and its authority, generation creation and
+  revocation, broker and project capabilities, the curated environment, the requested and effective execution
+  profiles, the harness configuration inputs, capability negotiation, and lifecycle observation and provenance. The
+  adapter translates these into the harness's native configuration and lifecycle mechanisms. The harness owns model
+  execution and never becomes workflow authority. A launcher or wrapper may set up, launch, supervise and tear down, but
+  decides no workflow progression, evidence acceptance, retry, gate or other AEW semantics.
+- **The Lead session.** Today `aew lead session -- <harness>` and `aew opencode` tie the Lead broker to the wrapped
+  harness process (with `--acquire`, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it), and a
+  superseded session keeps running as a read-only session. Under Q12 an attachment opens and closes (`aew open`,
+  `aew close`) while the harness and its conversation keep running; a later attachment re-hydrates from canonical
+  project state, which wins over the model's retained context. After `aew close` the model has no AEW project
+  authority and no AEW-mediated project access through the detached attachment, AEW's read and query commands included; the harness itself is not
+  sandboxed away from the project (decision record §14.4).
+- **Native subagents.** A harness's own subagent feature may be used only where the adapter preserves AEW's invocation
+  identity, role, custody, execution profile, parent relationship, limits and evidence and provenance; otherwise AEW
+  dispatches. No
+  native feature may bypass AEW dispatch or create an uncontrolled subagent.

@@ -1,6 +1,6 @@
 # ADR-0005 — Lead authority, credentials, and operator-authorized takeover
 
-- **Status:** Accepted (M1). Amended for M3 (2026-09-29): credential custody and rotation. Amended 2026-10-05: a fourth credential kind, `service`, for project-scoped service principals (ADR-0013 D9; designed, built with M6b). Amended 2026-10-05: a fifth credential kind, `operator_session`, for the read-only dashboard's browser session (register F20.3; built).
+- **Status:** Accepted (M1). Amended for M3 (2026-09-29): credential custody and rotation. Amended 2026-10-05: a fourth credential kind, `service`, for project-scoped service principals (ADR-0013 D9; designed, built with M6b). Amended 2026-10-05: a fifth credential kind, `operator_session`, for the read-only dashboard's browser session (register F20.3; built). Amended 2026-10-06: Q12, the Lead attachment, its generations and the custody of admitted invocations (designed, not built; register F31).
 - **Spec basis:** WC §5 (single-authoritative-Lead, crash-safe authority), §6; KC §7.2, §16; decision D-op-3; plan review §1, §3
 - **Nature:** Resolves semantic gap A2 by operator decision. The mechanism is an implementation choice.
 
@@ -179,3 +179,43 @@ scheme is unchanged: same form, same verifier, same record fields, same lookup. 
   no file under `.aew/`, no log line and no response; `serve` at a real pseudo-terminal (POSIX, serial lane).
   `tests/unit/test_dashboard_session_table.py`: the table, and the kind refused by `require_lead`,
   `require_invocation` and `verify_offer`.
+
+## Amendment 2026-10-06 — Q12: the Lead attachment, generations and child custody (designed, not built)
+
+The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-and-lead-attachment.md`](../../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)) governs this amendment; register F31 builds it. Until F31 is built, the
+behaviour above stands.
+
+- **Lead authority belongs to an AEW attachment, not to a harness process.** An attachment binds a project, the Lead
+  seat, a generation, an effective execution profile and the broker's project capability. The harness and its model
+  may exist before an attachment, outlive it and attach again.
+- **Every attachment is a fresh generation.** Opening one (`aew open`) is a new generation, as acquire, handoff accept
+  and takeover are today. Closing it (`aew close`), or losing it to a harness crash or host loss, revokes the Lead's
+  credential and stales the generation; persistent project state is untouched. An old generation never regains
+  mutation authority, and its calls get `STALE_AUTHORITY`. A closed attachment leaves the model no AEW project
+  authority and no AEW-mediated project access through the detached attachment: every project-scoped AEW surface, read and query commands included, is refused to that
+  generation. It is not a filesystem sandbox (decision record §14.4). A normal model turn ending changes
+  nothing.
+- **What happens to admitted invocations is the operator's choice (decision record §13).** Above, an invocation
+  credential is scoped to the Lead generation and revoked on takeover, and a cooperative handoff interrupts every
+  invocation it does not carry; a Ticket waiting on one becomes `INTERRUPTED`. Under Q12, when a Lead attachment ends
+  (`aew close`, harness crash, host loss, takeover, or a handoff that does not carry them), the operator chooses at the
+  operator terminal:
+  - **drain** (the default, whenever no operator choice is made, including a Lead's own `aew close`): each child keeps
+    its own narrow credential, finishes within a time limit and hands in; its results are recorded and **held**, and
+    nothing moves a Ticket until a current Lead or the operator accepts them. Anything going wrong during the drain
+    stops the run at once and reports an error to the operator (the designer's stop set, decision record §14.3; a
+    legitimate negative result is recorded and held, never a drain failure);
+  - **stop now:** the children are stopped and their credentials revoked, as takeover does today;
+  - **release to manual:** their credentials are revoked and they keep running inside their supervisor's sandbox and
+    limits until their deadline, outside AEW's governance.
+
+  A Lead never chooses stop now or release to manual when its attachment ends; while attached it keeps its
+  per-invocation controls (`aew invoke cancel`, `aew harness stop`), each a recorded Lead decision. The generation an invocation was admitted under stays recorded
+  for provenance and grants no Lead authority. How a draining child's credential outlives that generation is F31's
+  choice.
+- **What does not change.** The credential form, the verifier, compare-and-swap on `--expect-rev`, and takeover's
+  out-of-band operator authorization. Held results satisfy WC §5's stale-writer guard because only their acceptance,
+  by the current generation, moves a Ticket (decision record §14.2, confirmed by the designer; `submit` writes only
+  evidence). WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
+  custody is lost (its supervisor or the AEW host is gone); losing only the Lead's attachment is not that (decision
+  record §14.1, confirmed by the designer: loss of the Lead attachment is not loss of an admitted child's custody).

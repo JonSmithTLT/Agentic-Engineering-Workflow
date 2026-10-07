@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (M3, 2026-09-29). Operator-approved plan: `m3-ambiguity-report.md` §2.4.
   - Proposed in M3 step 0 and implemented in step 1. Subject to the M3 independent review (`m3-reviewer-brief.md`).
+  - Amended 2026-10-06: Q12, the Lead attachment's profile and the reference models (designed, not built; register F31, F32).
 - **Spec basis:**
   - WC §18: model routing is policy, not architecture.
   - WC §9.9 and KC §11: validation provenance "who" includes model/provider.
@@ -99,3 +100,20 @@ A self-declared `producer.model`, `provider` or `harness` stays accepted. The ev
   - Existing evidence is not rewritten.
   - New evidence gains three producer fields.
   - Dispatch output is unchanged; `invoke show` gains `execution_profile`.
+
+## Amendment 2026-10-06 — Q12: the Lead's profile and the reference models (designed, not built)
+
+The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-and-lead-attachment.md`](../../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)) extends this ADR; register F31 and F32 build it.
+
+- **The Lead has a profile too.** AEW owns the requested and effective execution profile of each Lead attachment, as it
+  does each invocation's, and records it with the attachment's provenance.
+- **No silent override.** A harness-native setting that changes the model or profile must never cause AEW to record a
+  different model or profile from the one that actually ran. Today a mismatch between the pin and the effective model
+  is flagged; under Q12 what is recorded is what ran, with the mismatch attributable.
+- **Reference models, not semantics.** The reference topology is GPT-6 Astra for the Lead, Laguna S2.1 as the default
+  worker, and GPT-5.4 and approved open-source models as selectable workers (GPT-5.4 where its capability justifies
+  the cost and rate-limit pressure). These are profiles in `policy/execution.yaml` like any other: no workflow
+  semantics may depend on a model's name, and selection stays capability- and profile-based and attributable.
+- **Qualification (the lead developer's addition, decision record §12, not the decision's text).** Each reference
+  model is qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before
+  it is relied on, as every profile is (F32).

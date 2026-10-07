@@ -9,11 +9,6 @@ intro: |
   closes, fails the check until it is removed or updated. A row has at most one item. Every open question (§4) has
   its own item, and every row targeted **Designer** has one or is blocked by one.
 items:
-- row: E12
-  needs: decision
-  owner: designer
-  due: M4-G
-  what: The form of the evidence view (`aew evidence show`, or next actions that carry a record's conclusion)
 - row: E23
   needs: decision
   owner: operator
@@ -21,20 +16,14 @@ items:
   what: Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration
     shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer
     limit.
-- row: F22.1
-  needs: decision
-  owner: operator
-  due: M4-G
-  what: Whether the structural map core (T5-A) is in M4-G/H, as far as it makes the M4-H experiment representative, or waits
-    until after the value gate
 - row: F25
   needs: decision
-  owner: operator and designer
+  owner: designer
   due: M4-G
-  what: The cost and usage ledger design note's eight §8 decisions, then its adoption; the designer asked for changes on
-    2026-10-05 (R4, R8), and the note was revised that day
-  blocks:
-  - U4
+  what: 'Before F25''s Lead part is built (its run usage does not wait): the Lead usage segment''s boundary while F31''s
+    attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
+    to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
+    by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
 - row: F19
   needs: decision
   owner: operator and designer

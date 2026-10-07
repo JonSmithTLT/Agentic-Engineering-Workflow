@@ -24,16 +24,6 @@ items:
     attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
-- row: F19
-  needs: decision
-  owner: operator and designer
-  due: M4-H
-  what: 'How the model arms keep a held-out corpus out of reach while the model runs. Every model-controlled process in
-    both arms can read it today: the raw arm''s OpenCode and the Lead''s harness are not contained (the Lead''s allowed
-    shell reads any file, for example through `git diff --no-index`), and the aew arm''s dispatched runs are contained on
-    Linux for writing only (the host stays readable unless a path is in `containment.hide`) and not at all on Windows. Options:
-    contain every model-controlled process of both arms with the hidden root masked (Linux only); a two-account profile
-    (F23); or no private corpus on the arm''s host. The aew and raw arms wait for it.'
 - row: Q7
   needs: decision
   owner: designer

@@ -17,7 +17,7 @@ Three fresh-browser trials per route and CPU profile used the HTTP demo, blocked
 | Journal | 333.0 / 359.2 / 379.0 | 165.9 / 167.8 / 171.5 | 1148.3 / 1336.2 / 1397.3 | 508.0 / 527.0 / 562.6 |
 | Packet | 431.7 / 437.2 / 442.4 | 163.0 / 165.6 / 167.8 | 1439.0 / 1584.0 / 1815.7 | 507.2 / 518.0 / 647.9 |
 
-Overview/Work loaded 9 scripts and 1,621,870 decoded script bytes; Journal/packet loaded 20 and 1,688,442 bytes. Baseline was 28 and 1,815,691 bytes throughout. These are local demo observations, not compressed remote transfer estimates or a live-server timing SLA. Three trials are exploratory; CPU emulation is not a physical device. Later first navigation still incurs chunk loading, with visible feedback. Fixture initialization still accounts for substantial bytes and has not been optimized in this checkpoint.
+Overview/Work loaded 9 scripts and 1,622,315 decoded bytes from resource entries with script initiator type; Journal/packet loaded 20 and 1,688,887 bytes on the same basis. Baseline was 28 and 1,815,691 bytes throughout. These are local demo observations, not compressed remote transfer estimates or a live-server timing SLA. Three trials are exploratory; CPU emulation is not a physical device. Later first navigation still incurs chunk loading, with visible feedback. Fixture initialization still accounts for substantial bytes and has not been optimized in this checkpoint.
 
 ## Verification and evidence identity
 

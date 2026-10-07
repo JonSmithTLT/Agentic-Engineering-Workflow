@@ -153,7 +153,7 @@ def test_a_dispatch_the_predicate_cannot_answer_is_unknown_never_blocked(lab, mo
     assert not start["auto_runnable"]
 
 
-def test_a_policy_edit_without_a_commit_changes_availability_on_the_next_call(lab):
+def test_a_policy_edit_changes_availability_on_the_next_call_once_adopted(lab):
     p, wid, engine = lab
     assert _action(run.run_tool(engine, CTX, "status", {"work_id": wid}), "ticket_start")["availability"] == AVAILABLE
     guardrails = Path(p.root) / ".aew/policy/guardrails.yaml"
@@ -161,8 +161,12 @@ def test_a_policy_edit_without_a_commit_changes_availability_on_the_next_call(la
         "schema": "aew/guardrails/v1", "protected_paths": ["calc/**"], "generated_paths": [],
         "ticket_scope_enforcement": True, "review_triggers": [], "dependency_rules": [],
     }), encoding="utf-8", newline="\n")
-    engine = Engine.discover(p.root)
-    start = _action(run.run_tool(engine, CTX, "status", {"work_id": wid}), "ticket_start")
+    # unadopted, the edit is never used: the policy no longer matches its pin, so nothing is offered as callable
+    start = _action(run.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid}), "ticket_start")
+    assert start["availability"] == UNKNOWN and start["reason_codes"] == ["INTEGRITY_ERROR"], start
+    assert not start["callable"]
+    p.adopt_policy()
+    start = _action(run.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid}), "ticket_start")
     assert start["availability"] == BLOCKED, start
 
 

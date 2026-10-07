@@ -101,3 +101,18 @@ def test_verifier_pack_labels_implementer_claims(calc, tmp_path):
     assert "NOT evidence" in text
     assert "Goal-backwards acceptance criteria" in text and "calc.core.subtract(5, 3) == 2" in text
     assert "Available checks" in text and "## Accepted plan" not in text
+
+
+def test_a_pack_quotes_only_the_adopted_guardrails(calc, tmp_path):
+    """The policy pin (PR #118 review, N2): a pack's guardrails text and its recorded hashes come from the adopted
+    bytes, so an edit nobody adopted never reaches the agent; adopting it does."""
+    wid, impl, out = to_review(calc, tmp_path)
+    inv = out["invocation"]
+    guardrails = calc.root / ".aew/policy/guardrails.yaml"
+    guardrails.write_bytes(guardrails.read_bytes() + b"# UNADOPTED-GUARDRAIL-EDIT-5K\n")
+    res = calc.aew("context", "pack", inv)
+    assert res.error["code"] == "INTEGRITY_ERROR", res.error
+    assert "UNADOPTED-GUARDRAIL-EDIT-5K" not in (calc.root / ".aew" / out["pack"]["path"]).read_text(encoding="utf-8")
+    calc.adopt_policy("the reviewed guardrails edit")
+    regen = calc.ok("context", "pack", inv)
+    assert "UNADOPTED-GUARDRAIL-EDIT-5K" in Path(regen["path"]).read_text(encoding="utf-8")

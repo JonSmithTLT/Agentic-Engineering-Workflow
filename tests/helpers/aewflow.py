@@ -59,7 +59,8 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
     }), encoding="utf-8", newline="\n")
     if gates:
         (policy / "gates.yaml").write_text(dump_yaml(gates), encoding="utf-8", newline="\n")
-    p.token = p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
+    p.pin_policy()
+    p.token =p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
     return p
 
 

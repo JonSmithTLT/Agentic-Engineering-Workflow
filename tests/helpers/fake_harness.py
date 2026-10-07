@@ -119,6 +119,7 @@ class HarnessLab:
         # as operator-declared writable roots (recorded on every run's label, like any operator addition).
         policy.setdefault("containment", {"writable": [str(scripts), str(tmp / "sync")]})
         (project.root / ".aew/policy/execution.yaml").write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+        project.pin_policy()  # the lab's policy is the project's starting policy, not an edit under test
         env = {"AEW_HARNESS_ADAPTERS": f"fake={HERE / 'fake_harness.py'}:FakeAdapter",
                SCRIPTS_ENV: str(scripts), "AEW_LAUNCH_ACK_S": "60", **(extra_env or {})}
         return cls(project, tmp, env)

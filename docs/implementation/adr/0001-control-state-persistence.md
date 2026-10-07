@@ -92,3 +92,33 @@ consumers may rely on, not a by-product:
 
 Its own fault point is `log.overflow_unpublished`: committed, with the sidecar not yet written. The crash matrix
 covers it, and every other point now also crashes a transition with an overflow (`tests/helpers/store_model.py`).
+
+## Amendment 2026-10-06 — the policy files are pinned like the manifest (operator decision)
+
+Control state pinned `project.yaml` (`manifest_sha256`) but not the policy files it puts in force (gates, guardrails,
+checks, execution). They were read fresh on each use, so an edit outside AEW changed what every Ticket owes without a
+record (M4 area-5 review, note 6). The operator chose the full pin (2026-10-06): you cannot both hold the power to
+modify the policy and approve the modification.
+
+- **`policy_sha256`** in control state maps each policy file `project.yaml` names, and the execution policy at its
+  conventional path, to its sha256, or to `null` for an absent optional file. `aew init` writes it. It is additive and
+  optional in the schema; older engines refuse a file that carries it, because their top level is closed.
+- **Drift is refused like a manifest edit.** Every Lead transaction checks the pins after the manifest's
+  (`check_manifest_pin`). An edited, created or removed policy file is an `INTEGRITY_ERROR` naming the files
+  (`details.files`). `status` lists it as a contradiction, `doctor` has a `policy-pin` row, and the dashboard's health
+  gives `POLICY_PIN_MISMATCH`.
+- **`aew manifest adopt` accepts both.** It re-pins the manifest and every policy file, hashing each one from the same
+  bytes it validates (gates, guardrails, checks and execution against their schemas). An invalid file is refused,
+  never pinned. The decision record names what was adopted. Adopt asks the operator to type back a one-time code at
+  their own terminal (`operator.authorize`), whatever credential runs it, and records the decision as the operator's;
+  with no terminal it is refused and nothing is pinned. So the Lead, which has no terminal, can never approve a policy
+  change it made; a Lead session also refuses adopt outright (PR #103). Packs quote the guardrails and record both
+  hashes from the adopted bytes, and a missing required policy file is never adopted.
+- **Projects from before the pin** have no `policy_sha256`. That is not drift: nothing is refused, `doctor` warns, and
+  the operator's next `aew manifest adopt` pins them.
+- **What the run-time pins still do.** Check definitions (`check.definition_sha256`), the execution profile pinned at
+  dispatch and the context pack's policy hashes keep their meaning for work in flight. They now see only adopted
+  changes.
+- Tests: `tests/integration/test_authority.py` (edit, removal, an invalid file, a project from before the pin). The
+  test fixtures pin the policy they start with (`Project.pin_policy`) and adopt the edits they are about
+  (`Project.adopt_policy`).

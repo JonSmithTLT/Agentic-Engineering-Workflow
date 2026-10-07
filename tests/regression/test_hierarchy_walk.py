@@ -59,6 +59,7 @@ class HierarchyWalk:
         gates = self.root / ".aew/policy/gates.yaml"  # a cap, so attempt starts compete for read-only slots
         policy = load_yaml(gates.read_text(encoding="utf-8"), source="gates")
         gates.write_text(dump_yaml({**policy, "non_mutating_concurrency": NM_CAP}), encoding="utf-8", newline="\n")
+        self.p.pin_policy()
         self.rng = random.Random(seed)
         self.mp = monkeypatch
         self.token, self.gen = self.p.token, 1

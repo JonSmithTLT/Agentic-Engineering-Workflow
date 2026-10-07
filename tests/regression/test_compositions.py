@@ -477,7 +477,7 @@ def test_every_public_read_of_a_long_lived_engine_sees_the_adopted_manifest(tmp_
     manifest = read_yaml(manifest_path)
     manifest["project"]["name"] = "renamed-by-another-process"
     manifest_path.write_text(dump_yaml(manifest), encoding="utf-8", newline="\n")
-    p.lead("manifest", "adopt", "--reason", "rename")
+    p.adopt_policy("rename")
     assert name_before != "renamed-by-another-process"
     assert engine.manifest["project"]["name"] == "renamed-by-another-process"  # no session opened by caller
     assert engine.status()["project"]["name"] == "renamed-by-another-process"

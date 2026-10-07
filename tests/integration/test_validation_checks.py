@@ -86,9 +86,10 @@ def policy(p, *, checks: dict | None = None, post: list[str] | None = None, vali
         e = load_yaml((pol / "execution.yaml").read_text(encoding="utf-8"))
         e.update(execution)
         (pol / "execution.yaml").write_text(dump_yaml(e), encoding="utf-8", newline="\n")
+    p.pin_policy()
 
 
-SMOKE = {"smoke": {"configured": True, "command": py("import calc.core"), "cwd": ".", "timeout_s": 60}}
+SMOKE ={"smoke": {"configured": True, "command": py("import calc.core"), "cwd": ".", "timeout_s": 60}}
 
 
 def prepared(p, tmp_path, **kw) -> str:
@@ -664,6 +665,7 @@ def _gates(p, **post) -> None:
     g = load_yaml(pol.read_text(encoding="utf-8"))
     g["post_integration"] = post
     pol.write_text(dump_yaml(g), encoding="utf-8", newline="\n")
+    p.pin_policy()
 
 
 def test_with_no_checks_listed_a_verifiers_pass_still_publishes(calc, tmp_path, contained):

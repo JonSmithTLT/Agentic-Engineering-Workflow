@@ -47,6 +47,7 @@ def set_policy(p, name, change):
     policy = load_yaml(path.read_text(encoding="utf-8"))
     change(policy)
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.pin_policy()
 
 
 # ---------------------------------------------------------------- protected conditions (v0.4 §10, §31)

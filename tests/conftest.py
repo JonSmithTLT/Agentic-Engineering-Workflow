@@ -131,6 +131,24 @@ class Project:
         """Run a Lead mutation with the current token and revision."""
         return self.ok(*args, "--token", self.token, "--expect-rev", str(self.rev()))
 
+    def adopt_policy(self, reason: str = "the operator's reviewed policy edit") -> Any:
+        """Accept a manifest or policy edit made in the test, as the operator would: `aew manifest adopt`, confirmed at
+        their own terminal (substituted in-process, as :meth:`as_operator` does)."""
+        return self.as_operator("manifest_adopt", reason=reason)
+
+    def pin_policy(self) -> None:
+        """Fixture setup only: pin the policy files as they are now, with no transition, as if the project had been
+        initialized with them. For fixtures that configure policy before the test starts (so revisions and decision
+        ids stay what the test expects); an edit the test is about goes through :meth:`adopt_policy`."""
+        from invariants import load_control
+
+        from aew.engine.base import POLICY_PINS
+        from aew.engine.store import serialize_control
+
+        state = load_control(self.root)
+        state[POLICY_PINS] = policy_pins(self.root)
+        (self.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+
     def as_operator(self, method: str, **kwargs: Any) -> Any:
         """A Lead mutation the operator confirmed at their own terminal (a decision recorded as theirs). The terminal
         channel is substituted in-process, as the takeover tests do; `test_authority.py` covers the refusal without
@@ -140,6 +158,16 @@ class Project:
         return getattr(Engine.discover(self.root), method)(
             token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty"},
             **kwargs)
+
+
+def policy_pins(root: Path) -> dict[str, str | None]:
+    """The pins `aew manifest adopt` would record for the project at ``root`` now."""
+    from aew.engine.base import policy_files
+    from aew.knowledge.manifest import load_manifest
+    from aew.util import sha256_file
+
+    aew = root / ".aew"
+    return {rel: sha256_file(aew / rel) if (aew / rel).is_file() else None for rel in policy_files(load_manifest(aew))}
 
 
 @pytest.fixture

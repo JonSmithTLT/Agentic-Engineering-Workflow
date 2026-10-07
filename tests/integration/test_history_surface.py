@@ -316,6 +316,7 @@ def test_status_reports_the_audit_backlog_against_policy_not_as_an_alarm(tmp_pat
     policy = load_yaml(gates.read_text(encoding="utf-8"))
     policy["history_audit"] = {"max_unverified_entries": 0}
     gates.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.pin_policy()
     status = p.ok("status", "--json")
     assert status["history_audit"]["policy"]["max_unverified_entries"] == 0
     assert status["history_audit"]["over_policy"] and any("history audit is behind policy" in a

@@ -307,6 +307,7 @@ def test_rotation_while_the_old_runs_check_is_running(lab, tmp_path, sync):
         "slow": {"configured": True, "command": ["{python}", "-c", SLOW_CHECK, str(slow)], "cwd": ".",
                  "timeout_s": 300}}}
     (lab.aew_root / "policy/checks.yaml").write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     watchdog = hold(sync / "watchdog")
     wid, out = assigned(lab, tmp_path, [{"do": "check", "id": "slow"}, touch(sync / "done1")],
                         env=pause_env((WATCHDOG, watchdog)))
@@ -743,6 +744,7 @@ def test_model_and_role_configuration_are_pinned_at_dispatch(lab, tmp_path):
     pinned = inv_show(lab, out["invocation"])["execution_profile"]
     policy = lab.aew_root / "policy" / "execution.yaml"
     policy.write_text(policy.read_text(encoding="utf-8").replace("fake-model", "cheaper-model"), encoding="utf-8")
+    lab.project.adopt_policy()
     assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model", "--token",
                    lab.project.token, "--expect-rev", str(lab.project.rev())).returncode != 0
     lab.script(R2, [{"do": "aew", "args": ["whoami"]}])

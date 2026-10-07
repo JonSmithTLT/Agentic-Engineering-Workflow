@@ -26,7 +26,8 @@ def test_the_baseline_engine_refuses_a_control_file_with_the_queue_and_the_outbo
     assert state["schema"] == "aew/control/v2" and state["queue"]["lease"] is not None
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
     errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(state))
-    assert "Additional properties are not allowed ('outbox', 'queue' were unexpected)" in errors, errors
+    unexpected = "Additional properties are not allowed ('outbox', 'policy_sha256', 'queue' were unexpected)"
+    assert unexpected in errors, errors
     # The custodian is an invocation without a role or credential: the baseline refuses that shape too, so even a
     # file stripped of the queue could not smuggle a lease's custodian past an older engine.
     assert any("'role' is a required property" in e for e in errors), errors

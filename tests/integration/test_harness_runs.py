@@ -97,8 +97,10 @@ def test_launch_preconditions_refuse_before_anything_is_committed(lab, tmp_path)
     policy = lab.aew_root / "policy/execution.yaml"
     saved = policy.read_text(encoding="utf-8")
     policy.unlink()
+    lab.project.pin_policy()
     assert lab.lead_res("work", "assign", wid, "--launch").error["code"] == "ILLEGAL_TRANSITION"
     policy.write_text(saved, encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     # ... and a harness adapter AEW can load.
     unknown = lab.lead_res("work", "assign", wid, "--launch", env={"AEW_HARNESS_ADAPTERS": ""})
     assert unknown.error["code"] == "HARNESS_INCOMPATIBLE"
@@ -116,9 +118,11 @@ def test_relaunch_preconditions(lab, tmp_path):
     guard = lab.aew_root / "policy/guardrails.yaml"
     original = guard.read_text(encoding="utf-8")
     guard.write_text(original + "# edited after dispatch\n", encoding="utf-8", newline="\n")
+    lab.project.adopt_policy()
     drift = lab.lead_res("harness", "launch", inv).error
     assert drift["code"] == "ILLEGAL_TRANSITION" and "context pack" in drift["message"]
     guard.write_text(original, encoding="utf-8", newline="\n")
+    lab.project.adopt_policy()
     # An ended invocation is never launched again.
     lab.lead("invoke", "cancel", inv, "--reason", "done with it")
     assert lab.lead_res("harness", "launch", inv).error["code"] == "ILLEGAL_TRANSITION"
@@ -159,6 +163,7 @@ def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path
         "{python}", "-c", "import pathlib, sys, time\np = pathlib.Path(sys.argv[1])\n"
         "for i in range(3000):\n    p.write_text(str(i))\n    time.sleep(0.1)\n", str(beat)]
     checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
@@ -190,6 +195,7 @@ def test_a_check_in_flight_when_its_run_ends_starts_nothing(lab, tmp_path, sync)
                                            "import pathlib, sys; pathlib.Path(sys.argv[1]).write_text('ran')",
                                            str(beat)]
     checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     gate = sync / "before-spawn"
     gate.write_text("hold", encoding="utf-8")
     wid = create_planned_ticket(lab.project, tmp_path)
@@ -302,6 +308,7 @@ def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, t
     gates = lab.root / ".aew/policy/gates.yaml"
     gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": n}),
                      encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     sync = tmp_path / "sync"
     tickets, runs = [], []
     for i in range(n):

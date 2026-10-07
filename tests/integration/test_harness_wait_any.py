@@ -40,6 +40,7 @@ def held(lab, tmp_path, *names: str) -> dict[str, Path]:
     gates = lab.root / ".aew/policy/gates.yaml"
     gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 2}),
                      encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
     release = {}
     for i, run in enumerate(names):
         release[run] = tmp_path / "sync" / f"release-{i}"

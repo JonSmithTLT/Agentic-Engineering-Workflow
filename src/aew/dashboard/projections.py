@@ -204,6 +204,8 @@ class Projector:
         reasons: list[dict[str, Any]] = []
         if not self.engine.manifest_pin_ok(self.state):
             reasons.append(reason("MANIFEST_PIN_MISMATCH"))
+        if self.engine.policy_pin_drift(self.state, self.s.manifest):
+            reasons.append(reason("POLICY_PIN_MISMATCH"))
         reasons += [reason("CONTRADICTION", text) for text in self._contradictions()]
         status = "UNHEALTHY" if reasons else "HEALTHY"
         audit = self.engine.audit_status(self.state, policy=self._audit_policy())
@@ -224,7 +226,7 @@ class Projector:
 
     def _contradictions(self) -> list[str]:
         try:
-            return self.engine.contradictions(self.state)
+            return self.engine.contradictions(self.state, self.s.manifest)
         except AEWError as exc:
             return [f"the contradiction check itself failed: {exc.message}"]
 

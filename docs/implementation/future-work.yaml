@@ -376,14 +376,17 @@ sections:
       the operator''s session within the hosting boundary Q12 decided (2026-10-06). Bootstrap and hosting only; comprehensive
       native-feature integration stays with M6 (F13)'
     Source (governing): Designer and operator, 2026-10-01; provider research §5 ([`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md));
-      **the design is [install, bootstrap and first-run UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)** (adopted
-      by the designer and the operator 2026-10-05; ledger IBU)
-    Belongs to or gated by: '**Unscheduled.** Q12 is decided ([decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)):
-      AEW owns the attachment and the harness owns model execution, so the hosting design under this row chooses the host,
-      account and session details within that boundary, including where the knowledge, capability and dashboard services
-      run (record §12)'
-    Notes: Relates to D2 (installer, deeper harness integration) and U6 (Lead state isolation). Thirteen frozen principles
-      and thirteen frozen decisions in the design; no designer-level question blocks the bootstrap and doctor shape.
+      **two adopted designs sit alongside each other:** [install, bootstrap and first-run UX v0.3](../design/install-bootstrap-ux-design-v0.3.md)
+      (`aew init`, `aew doctor`, preflight; ledger IBU) and [F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      (Lead hosting, security principals, the attachment and generation lifecycle, the gateway, broker binding, host modes,
+      detach and drain, harness qualification; adopted 2026-10-06, v0.6 a hygiene correction; ledger HAA)
+    Belongs to or gated by: '**Unscheduled.** The hosting slices (F18.5 to F18.14) are a production-hosting track that does
+      not come before M4-H: M4-H runs on the existing Lead-session mechanism under its existing guarantees, and is not evidence
+      for the F18 contract (hosting design §24.2)'
+    Notes: 'Relates to D2 (installer, deeper harness integration) and U6 (Lead state isolation). Thirteen frozen principles
+      and thirteen frozen decisions in the design; no designer-level question blocks the bootstrap and doctor shape. The
+      hosting design''s §21 development-mode rule: until F18.10 exits, only labelled development attachments on disposable
+      projects, their outputs `guarantee: dev`.'
   - '#': F18.1
     Work: '`aew init` proposes, the operator applies: the proposal file (`.aew/local/init-proposal.yaml`, with `proposal_id`
       and `inputs_sha256`), `init --apply` as one atomic attributable apply that refuses stale or expanded proposals, `--accept-proposal`
@@ -433,7 +436,85 @@ sections:
       IBU-04 to IBU-08, IBU-20)'
     Belongs to or gated by: '**Unscheduled** (before any organization deployment); its live gate is one bounded task for
       the independent researcher'
-    Notes: Depends on F28's relay for the provider path and on E35's qualification seams
+    Notes: Depends on F28's relay for the provider path (whose relation to the v0.6 gateway is open, F18.8) and on E35's
+      qualification seams. The hosting design v0.6 §3 and §16 add the qualified support tuple and executable content identity
+      that F18.11 and F18.12 qualify against.
+  - '#': F18.5
+    Work: 'F18-A, contract and state: attachment states (NO_ATTACHMENT, PREPARING, FAILED, ACTIVE, SUSPENDED, DETACHED)
+      and reason codes; the protected-set registry; the support manifest and executable content identity; hot and cold generation
+      records (ADR-0011); guarantee labels (`guarantee: dev`); the operator-only lifecycle contract'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §1, §2.2, §2.3, §3, §8, §16, §18, §19, §21 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: authority and state tests pass; the protected set and the unsupported deployment modes are explicit'
+  - '#': F18.6
+    Work: 'F18-B0, deployment security-principal proof and ergonomics: a dedicated Lead and worker principal or an SELinux-equivalent
+      boundary; an operator-only supervisor socket authorized by peer credentials; supervisor-owned protected state; the
+      group, ACL, git and TUI ergonomic path; refusing a same-principal deployment'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §2.1 to §2.3, §6.1, §20.1, §21 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
+      or invoke lifecycle controls, while the ordinary source workflow stays usable'
+  - '#': F18.7
+    Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
+      default; PREPARING cleanup; the conversation-taint record and the reattach delta'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §5, §6, §7, §8.2, §9, §20.2, §20.4 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: no real project attachment yet unless F18.8 and F18.9 are also satisfied'
+  - '#': F18.8
+    Work: 'F18-C, the load-bearing gateway and broker binding: the gateway principal and provider-credential custody; forced
+      egress; the normalized structural-surface parser; pre-egress enforcement; server-side binding of a response''s `tool_call_id`
+      and argument hash, single-use with expiry; SUSPENDED behaviour; the fail-closed gateway outage policy'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §4, §20.3 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: a direct provider attempt fails; a model switch or tool injection is denied; altered, replayed or unbound
+      tool calls fail; an outage fails closed'
+  - '#': F18.9
+    Work: 'F18-D, detached child handling: close acknowledgement; detached-run attention; bounded credentials; the hard-deadline
+      order; drain semantics, with the drain deadline as a stop condition; StageIntent stale-owner handling'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §10 to §15, §20.5, §24.3 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: a live child survives close safely; credential and process lifecycles are bounded; a completion cannot
+      mutate control state'
+  - '#': F18.10
+    Work: 'F18-E, production attachment enablement: F18.6, F18.7, F18.8 and F18.9 combined into managed project attach;
+      existing-host attach enabled only where the forced gateway path is proven'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §5.2, §9, §21 (the development-mode rule) (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: the first non-development attachment may become ACTIVE'
+  - '#': F18.11
+    Work: 'F18-F, OpenCode qualification: T9''s remaining broker-only, configuration-isolation and model-visible conformance,
+      plus the normalized-surface false-drift test'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §3, §4.4, §16, §17.1 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: the pin passes the full F18 suite or stays unsupported'
+  - '#': F18.12
+    Work: 'F18-G, Codex qualification: qualifying the intended pin with the same versioned suite, plus Codex''s request,
+      delegation and ambient-context checks'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §3, §16, §17.2 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: the pin passes without an architecture exception or stays unsupported'
+  - '#': F18.13
+    Work: 'F18-H, reference topology smoke: the Astra Lead with the Laguna default worker, and GPT-5.4 and open-source overrides
+      where available'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §1.1, §20.6 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: open, work, close and reattach end to end with correct provenance and authority'
+  - '#': F18.14
+    Work: 'F18-I, production-hosting ergonomics observation: measuring principal, ACL, git and TUI friction and operator
+      workarounds before production rollout; M4-H may contribute optional early observations'
+    Source (governing): '[F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md)
+      §6.1, §20.7, §24.2 (ledger HAA)'
+    Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
+    Notes: 'Exit: issues feed deployment UX improvements without weakening authority'
   - '#': F19
     Work: 'One evaluation program: Q7 (the next dogfood), F14 phases 1–4, the F17 corpus and Class 0 sampling share one
       fixture format, runner, run-record schema, hidden-evaluator mechanism, model and profile configuration, and metrics
@@ -638,7 +719,9 @@ sections:
     Notes: The F2 claim is never widened silently. Remote PR integration changes `DONE`, so it needs contract/ADR work;
       the [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) (ledger
       RIT) has the saga, the `integration.target` policy, the adapter interface and what M4-D must not foreclose, and its
-      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04)
+      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04). The F18 hosting design
+      v0.6 §2.1 makes security-principal separation (the two-account profile or an SELinux equivalent) mandatory for any
+      production attachment; it is built as F18.6.
   - '#': F24
     Work: A second real harness adapter (Codex app-server or Claude Code headless) through the existing conformance suite
       and the live lane
@@ -699,7 +782,9 @@ sections:
       works, the bridge''s filesystem socket survives it, the server forwarder costs about 0.7 ms per request, OpenCode
       2.0.18 starts offline, Bun honours the proxy variables. Still to probe: a real streamed turn through the relay, cancellation,
       IPv6 **Lead developer (2026-10-05, PR #57):** M4-D''s deterministic integration checks (D5) inherit F28''s default
-      that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling.'
+      that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling. The F18
+      hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; how this
+      relay and that gateway relate is for the designer (decisions-due, F18.8).'
   - '#': F30
     Work: 'Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with
       two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface
@@ -719,21 +804,22 @@ sections:
       and the narrowing rule. The probe: recall 1.00 at radius 1 for localized changes, 0.54 for a cross-cutting one, about
       two seconds per requirement'
   - '#': F31
-    Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches
-      a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
-      from canonical state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated
-      project access through the detached attachment (read and query commands refused to that generation), a harness crash
-      or host loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective
-      execution profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash,
-      host loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
+    Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches,
+      by a fresh managed launch by default or an opt-in registered existing host, and `aew close` detaches it while the
+      harness keeps running), a fresh Lead generation and fresh broker authority per attachment, re-hydration from canonical
+      state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated project
+      access through the detached attachment (read and query commands refused to that generation), a harness crash or host
+      loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective execution
+      profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash, host
+      loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
       Lead or the operator accepts them, any of the designer''s stop conditions stops the run at once with an error report,
       while a legitimate negative result is held like any other), or, by the operator only at the operator terminal, stop
       now or release to manual; the integration custodian surviving an attachment''s end with its lease held, its post-integration
       verifier draining, and no publish on a held result until the current generation accepts it'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
       §4 to §9, §13 and §14 (ledger HSD); ADR-0004, ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
-    Belongs to or gated by: '**Unscheduled.** The designer''s clarifications (record §14) leave nothing designer-level before
-      the build; the next milestone triage places it'
+    Belongs to or gated by: '**Unscheduled.** Built through the F18 hosting slices (F18.5, F18.7, F18.9, F18.10), so not
+      before M4-H (the hosting design v0.6 §24.2)'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
       the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
       keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). Also
@@ -741,7 +827,10 @@ sections:
       (ADR-0004 amendment). The Lead's per-invocation cancel and stop stay Lead commands. Native harness subagents only
       where the adapter keeps AEW's invocation identity, role, custody, profile, parent, limits, evidence and provenance
       (with F13). No automatic verifier rerun while the lease is held (record §14.5); a bounded retry under the same custody
-      would need its own recovery design
+      would need its own recovery design. Built through the F18 hosting slices, which design the same lifecycle in detail
+      (F18.5 states, F18.7 attach, F18.9 detached children and drain, F18.10 enablement). F31 also decides the Tickets'
+      state under release to manual, which now stops the children as stop now does (the Q12 record's §13 revision) and differs
+      from it only in handing the work to the operator
   - '#': F32
     Work: 'The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved
       open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids,
@@ -1122,8 +1211,8 @@ sections:
   - '#': U6
     Work: A decision on Lead state isolation
     Source: review finding 5
-    When: '**Unscheduled.** Unblocked by Q12 (2026-10-06): the harness owns the model session and its conversational state,
-      AEW the attachment; the Lead harness''s configuration and state isolation is chosen with F31 and the F18 hosting design'
+    When: '**Unscheduled.** Decided by the F18 hosting design v0.6 §5: managed launch with a private configuration and home
+      by default, existing-host attach opt-in with a recorded taint; built with F18.7'
     Notes: Role runs keep OpenCode state per run; the Lead TUI uses the operator's own data directory.
   - '#': U7
     Work: Automatic stall recovery (interrupt plus a standard nudge)

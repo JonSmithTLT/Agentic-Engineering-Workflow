@@ -109,7 +109,9 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
   does each invocation's, and records it with the attachment's provenance.
 - **No silent override.** A harness-native setting that changes the model or profile must never cause AEW to record a
   different model or profile from the one that actually ran. Today a mismatch between the pin and the effective model
-  is flagged; under Q12 what is recorded is what ran, with the mismatch attributable.
+  is flagged; under Q12 what is recorded is what ran, with the mismatch attributable. Under F18 production hosting
+  a mismatch is refused before any request leaves (the hosting design v0.6 §4.5, §4.7, §20.6): the gateway verifies
+  the model and profile pre-egress and the attachment is SUSPENDED, so a mismatched model never runs there.
 - **Reference models, not semantics.** The reference topology is GPT-6 Astra for the Lead, Laguna S2.1 as the default
   worker, and GPT-5.4 and approved open-source models as selectable workers (GPT-5.4 where its capability justifies
   the cost and rate-limit pressure). These are profiles in `policy/execution.yaml` like any other: no workflow

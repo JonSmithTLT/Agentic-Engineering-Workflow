@@ -181,6 +181,10 @@ considered:
     reason: >-
       adopted design (T10, F18, 2026-10-05); installation, bootstrap and first-run mechanics; replaces no WC/KC
       text
+  - path: docs/design/f18-harness-hosting-attachment-authority-design-v0.6.md
+    reason: >-
+      adopted design (F18 hosting v0.6, 2026-10-06): Lead hosting, security principals, the attachment lifecycle,
+      the gateway and broker binding; sits alongside the install and bootstrap design; replaces no WC/KC text
   - path: docs/design/project-maps-design-v0.5.md
     reason: >-
       adopted design (T5, F22, 2026-10-05); derived project-navigation artifacts and their query contracts, never

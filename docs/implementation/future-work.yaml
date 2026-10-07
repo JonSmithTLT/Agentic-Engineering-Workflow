@@ -484,9 +484,9 @@ sections:
     Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
       or invoke lifecycle controls, while the ordinary source workflow stays usable. **F23 (operator, 2026-10-07, [decision
       record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run
-      as a separate human-created OS account; the principal boundary is met around the protected set (supervisor-owned state
-      and the operator-only socket, under a service principal or an SELinux-equivalent boundary), the two-account profile
-      staying an optional stronger deployment (lead developer''s reading, record §2)'
+      as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated
+      harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying
+      an optional stronger deployment (lead developer''s reading, record §2)'
   - '#': F18.7
     Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
       default; PREPARING cleanup; the conversation-taint record and the reattach delta'
@@ -962,11 +962,10 @@ sections:
     Owner: Designer
     Source: the provider research §3–§8; ADR-0005; ADR-0009; F12; F13; F17
   - '#': Q14
-    Question: 'The remote integration target''s scope: is a remote (pull-request) integration target wanted before internal
-      alpha, and when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration
-      verification on it or is verification on the candidate plus containment enough? Also undecided: the first provider,
-      whether AEW ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate
-      to AEW''s verification'
+    Question: 'The remote integration target''s scope (not before internal alpha, the operator decided on 2026-10-07, F23):
+      when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration verification
+      on it or is verification on the candidate plus containment enough? Also undecided: the first provider, whether AEW
+      ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate to AEW''s verification'
     Owner: Designer (question 8 of the architecture review's handoff)
     Source: '[remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) §5 and
       "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07,
@@ -1299,7 +1298,8 @@ sections:
       not short-session policing; it never silently kills independently admitted child work'
     Source: '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) §1 item 4 (ledger
       IAT-05)'
-    When: '**On measured need**: desirable hardening, not an internal-alpha prerequisite (operator, 2026-10-07)'
+    When: '**Unscheduled**: a later bounded improvement, deferred hardening; not an internal-alpha prerequisite (operator,
+      2026-10-07)'
     Notes: Builds on F31's attachment lifecycle (`aew open` and `aew close`, generations)
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)

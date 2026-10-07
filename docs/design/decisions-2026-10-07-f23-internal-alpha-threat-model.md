@@ -105,16 +105,22 @@ developer's readings where it meets what is already adopted.
   requirement. The [remote integration target sketch](proposals/remote-integration-target-sketch-2026-10-04.md) stays a
   proposal for that time.
 - **Reading, operator confirmation (lead developer).** Item 3 rules out MFA, per-decision signing and other new
-  high-friction confirmation. The existing terminal challenge is not one of those. In that challenge the operator types
-  back a one-time code at their own terminal, for the operator-only commands of #103 and for `aew manifest adopt` in
-  the policy pin. It is the mechanism that keeps operator-only capabilities "structurally unavailable to model-controlled
-  processes", which item 3 keeps as a requirement. It is attributed to the local OS user's terminal session, so it
-  stands.
-- **Reading, principals (lead developer).** Item 5 does not require the whole harness to run as a separate human-created
-  OS account. That leaves the F18 hosting design's principal boundary (v0.6 §2.1, built as F18.6) to be met around the
-  protected set: supervisor-owned canonical state and the operator-only lifecycle socket, under a service principal or an
-  SELinux-equivalent boundary. The model's harness keeps running as the user's own account. The two-account profile stays
-  an optional stronger deployment.
+  high-friction confirmation. AEW's existing mechanisms are not of that kind, so both stand:
+  - **The broker's refusal.** The operator-only commands of #103 (`authority accept` and `reject`, `manifest adopt`,
+    `migrate`) are refused in a Lead session by the Lead broker (`OPERATOR_DECIDED`).
+  - **The terminal challenge.** A decision recorded as the operator's (`authority accept --decided-by operator`, `work
+    staff --by operator`, a takeover) needs a one-time code typed back at the operator's own terminal (`aew.operator`).
+
+  Neither of these is what makes operator-only capabilities "structurally unavailable to model-controlled processes"
+  in production. A terminal check is not an absent capability (F18 hosting v0.6 §2.1, §2.3). That property comes from
+  F18.6's principal separation, with the operator-only lifecycle socket authorized by peer credentials. Item 3 keeps
+  the property and changes none of these mechanisms.
+- **Reading, principals (lead developer).** Item 5 removes only the requirement that the whole model harness run as a
+  separate *human-created* OS account. The F18 hosting design v0.6 §2.1 to §2.3 stand unamended: canonical state stays
+  protected from the Lead-host identity, and the operator-only socket must tell the operator from the harness by peer
+  credentials, so a deployment that collapses the two principals is still refused. F18.6 meets this with one of the
+  options v0.6 already names: a dedicated OS identity for the harness (§2.1) or an SELinux-confined domain. Only an SELinux domain
+  would let the harness keep the operator's own uid. The two-account profile stays an optional stronger deployment.
 - **Windows and WSL.** No new mechanism is needed. Runs on these platforms are already labelled by what they actually
   provide (`workdir_separation_only`, `job_object`, `network: not_provided`), and those labels are never evidence for the
   Linux containment contract.

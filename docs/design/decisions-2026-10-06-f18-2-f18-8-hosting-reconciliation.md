@@ -175,7 +175,15 @@ and §2 are the decisions recorded as given; §3 says where they are filed.
   status line points here. Its frozen text is unchanged; where it says there is no daemon and the Lead session is the
   operator's terminal (§7, ledger IBU-16), and where a `.aew/` owned by another user is a doctor ERROR (§6's permissions
   row, IBU-14), §1 governs. The doctor matrix of §1.3 is build work on register F18.2, and its negative checks are the
-  F18-B0 checks of F18.6.
+  F18-B0 checks of F18.6. Until F18.6 builds the principal separation, the rest of F18.2's doctor stays an M4-G
+  candidate; the matrix and the negative checks wait for F18.6.
+- **§6's other `.aew/` row (lead developer's reading).** The decisions-due item also named §6's Filesystem row, "`.aew/`
+  not writable", whose obvious remedy (make `.aew/` writable to whoever runs doctor) is the same-principal collapse v0.6
+  forbids. §1.3 judges "the effective ownership/ACL/principal arrangement" against the configured authority boundary,
+  so it governs writability too: doctor checks that each principal can write what the matrix gives it (the operator's
+  lifecycle operations, the supervisor's protected state, the harness's ordinary project paths) and that the Lead-host
+  identity cannot write the protected set, and never treats `.aew/` as a whole needing to be writable by the invoking
+  user. A remedy never widens the Lead host's write access to the protected set.
 - **The Provider Gateway** is one logical component that register F18.8 builds as the composition of F28's
   credentialing relay with F18's gateway; F28 keeps the network-containment and fixed-upstream credential-routing
   requirements, F18.8 the attachment-aware attestation and broker binding, and F28's generic egress stays a separate,

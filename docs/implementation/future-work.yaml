@@ -404,7 +404,8 @@ sections:
       row for ambient harness files, and never auto-fixing'
     Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §6, §6.1, §7 (ledger
       IBU-14 to IBU-16)'
-    Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry)'
+    Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry). The ownership and permission
+      matrix and the F18-B0 negative checks wait for F18.6 (not before M4-H)'
     Notes: Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
       stands between this row and its build. **The designer's amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
       §1, ledger HRC-01 to HRC-05):** v0.3's no-daemon rule and its operator terminal as the Lead session are superseded
@@ -412,7 +413,9 @@ sections:
       surface, not the Lead session); the permissions row stops treating a `.aew/` owned by another user as an error and
       instead validates an ownership and permission matrix (protected state's ownership or ACL, the Lead-host identity unable
       to write it, the operator's lifecycle operations, ordinary source access, derived projections unable to pass for canonical
-      state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity
+      state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity;
+      the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
+      write access (lead developer's reading, record §3)
   - '#': F18.3
     Work: 'The air-gap bundle: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse, qualified harness pins and a canonical
       hashed manifest; a detached signature over the manifest from a release identity with an independently provisioned

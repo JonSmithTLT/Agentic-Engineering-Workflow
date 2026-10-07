@@ -9,13 +9,6 @@ intro: |
   closes, fails the check until it is removed or updated. A row has at most one item. Every open question (§4) has
   its own item, and every row targeted **Designer** has one or is blocked by one.
 items:
-- row: E23
-  needs: decision
-  owner: operator
-  due: M4-G
-  what: Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration
-    shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer
-    limit.
 - row: F25
   needs: decision
   owner: designer

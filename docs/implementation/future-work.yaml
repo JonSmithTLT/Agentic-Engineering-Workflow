@@ -57,6 +57,12 @@ sections:
     Condition: 'Network containment on Linux (F28): no internal-alpha security claim calls Linux runs network-contained
       before its live lane passes (designer, 2026-10-04).'
     Source: '[network containment design v0.2](../design/proposals/network-containment-design-v0.2.md) §6'
+  - Gate: '**Before internal alpha**'
+    Condition: 'The F18 and F28 canonical-state and credential boundaries hold on Rocky/Linux: model-controlled processes
+      cannot directly mutate canonical AEW or control state or obtain real provider or workflow credentials except through
+      AEW''s authority paths (operator, 2026-10-07, the F23 decision). Windows and WSL stay development and test platforms
+      with truthfully weaker labels, never evidence for this gate.'
+    Source: '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) (ledger IAT-02, IAT-03)'
 - number: 2
   title: Designed, not implemented
   columns:
@@ -476,7 +482,11 @@ sections:
       §2.1 to §2.3, §6.1, §20.1, §21 (ledger HAA)'
     Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
     Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
-      or invoke lifecycle controls, while the ordinary source workflow stays usable'
+      or invoke lifecycle controls, while the ordinary source workflow stays usable. **F23 (operator, 2026-10-07, [decision
+      record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run
+      as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated
+      harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying
+      an optional stronger deployment (lead developer''s reading, record §2)'
   - '#': F18.7
     Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
       default; PREPARING cleanup; the conversation-taint record and the reattach delta'
@@ -746,20 +756,6 @@ sections:
     Belongs to or gated by: '**Unscheduled**; consumed by F30''s impact surface, which declares which of them were available'
     Notes: Each carries its own freshness; the test index degrades to its structural half without semantic data and says
       so
-  - '#': F23
-    Work: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
-      a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential
-      decisions, Lead lease expiry'
-    Source (governing): architecture review G5, G10, G12, F-F, F-G, F-K; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05)
-    Belongs to or gated by: '**Unscheduled**: before internal alpha if its threat model requires them; no dedicated design
-      until then (response §14)'
-    Notes: The F2 claim is never widened silently. Remote PR integration changes `DONE`, so it needs contract/ADR work;
-      the [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) (ledger
-      RIT) has the saga, the `integration.target` policy, the adapter interface and what M4-D must not foreclose, and its
-      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04). The F18 hosting design
-      v0.6 §2.1 makes security-principal separation (the two-account profile or an SELinux equivalent) mandatory for any
-      production attachment; it is built as F18.6.
   - '#': F24
     Work: A second real harness adapter (Codex app-server or Claude Code headless) through the existing conformance suite
       and the live lane
@@ -885,6 +881,19 @@ sections:
       model; F19)'
     Notes: Needs the exact ids as the pinned OpenCode reports them and the operator's provider key for the live lane. Relates
       to D5 (routing policy)
+  - '#': F33
+    Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local
+      result, the operator approves pushing that exact commit to an explicit remote and ref, never forced; AEW records an
+      attributable receipt (the accepted local commit, the requested remote and ref, the resulting remote SHA and ref) and
+      checks the pushed remote object resolves to the exact accepted commit; push is never part of correctness or `DONE`,
+      needs no second verification for crossing the network, and its failure is a delivery failure, never a retroactive
+      `VERIFICATION_FAILED`'
+    Source (governing): '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) §1 item
+      6 (ledger IAT-07)'
+    Belongs to or gated by: '**Unscheduled**: allowed for internal alpha, to design or implement as a delivery capability;
+      not an internal-alpha gate'
+    Notes: The bounded form of the remote integration target sketch's push leg; automated PR creation and provider merge
+      handling stay deferred with Q14
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
   columns:
@@ -952,14 +961,15 @@ sections:
     Owner: Designer
     Source: the provider research §3–§8; ADR-0005; ADR-0009; F12; F13; F17
   - '#': Q14
-    Question: 'The remote integration target''s scope: is a remote (pull-request) integration target wanted before internal
-      alpha, and when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration
-      verification on it or is verification on the candidate plus containment enough? Also undecided: the first provider,
-      whether AEW ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate
-      to AEW''s verification'
+    Question: 'The remote integration target''s scope (not before internal alpha, the operator decided on 2026-10-07, F23):
+      when the provider''s merge commit differs from the candidate, does `DONE` need a second post-integration verification
+      on it or is verification on the candidate plus containment enough? Also undecided: the first provider, whether AEW
+      ever merges through the provider''s API with a precondition, and how the proposal''s CI checks relate to AEW''s verification'
     Owner: Designer (question 8 of the architecture review's handoff)
     Source: '[remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) §5 and
-      "Not decided here" (ledger RIT-05, RIT-07); F23; M4-D must not foreclose it (RIT-06)'
+      "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07,
+      [F23 decision](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** not an internal-alpha gate;
+      reopened when remote PR or merge integration becomes a product requirement'
 - number: 5
   title: Dogfood findings left open (small)
   columns:
@@ -1281,6 +1291,15 @@ sections:
     Notes: '**Partly built (PR #96, 2026-10-06):** the dashboard''s server stack and the doctor are imported only when used,
       about 10% off every CLI call (`aew status` about 920 to 825 ms), pinned by `tests/unit/test_cli_imports.py`. The 200
       ms import target is a measured objective, never a CI assertion'
+  - '#': E50
+    Work: 'Lead inactivity expiry: after long inactivity a Lead attachment is staled or revoked and a fresh attachment and
+      generation are required, under Q12''s semantics; for abandonment cleanup (an attachment left over a long absence),
+      not short-session policing; it never silently kills independently admitted child work'
+    Source: '[F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) §1 item 4 (ledger
+      IAT-05)'
+    When: '**Unscheduled**: a later bounded improvement, deferred hardening; not an internal-alpha prerequisite (operator,
+      2026-10-07)'
+    Notes: Builds on F31's attachment lifecycle (`aew open` and `aew close`, generations)
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:
@@ -1591,6 +1610,17 @@ sections:
       (the SPA fallback, traversal refused); R21''s header set on every response; the exact Host (`421`) and Origin and
       `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request
       log; `serve --static DIR`; design note §4.13, §4.14, §5.4'
+  - '#': F23
+    Was: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
+      a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential
+      decisions, Lead lease expiry'
+    Closed: '2026-10-07'
+    By: 'The operator''s internal-alpha threat-model decision ([decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md);
+      ledger IAT): F18/F28 canonical-state and credential boundaries and the Linux/Rocky target REQUIRED; trusted-engineer
+      use and Windows/WSL development with truthful weaker labels ALLOWED; local OS and session operator attribution SUFFICIENT;
+      a separate full model OS account NOT REQUIRED; Lead inactivity expiry DEFERRED (E50); an operator-approved exact-commit
+      push ALLOWED as a delivery capability (F33); automated PR and merge-provider integration DEFERRED, and Q14 no longer
+      an internal-alpha gate'
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error
     Closed: '2026-10-01'

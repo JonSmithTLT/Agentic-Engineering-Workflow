@@ -663,7 +663,8 @@ sections:
     Notes: Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
       R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment;
       R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes.
-      Implementation-ready.
+      Implementation-ready except the Lead part, held for the designer's decision on the segment before F31 exists (decisions-due,
+      F25).
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'

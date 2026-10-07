@@ -4511,7 +4511,8 @@
     "web/docs/design/w07-reuse.manifest.json",
     "web/docs/reference/backend-questions/w07-backend-question-ledger.md",
     "web/docs/reviews/w07-reuse-checkpoint-1.md",
-    "web/docs/implementation/demo-screen-loading.md"
+    "web/docs/implementation/demo-screen-loading.md",
+    "web/docs/implementation/foreground-refresh-coordination.md"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

@@ -46,21 +46,39 @@ export function installVisibility(
   client: QueryClient,
   doc: Document = document,
 ) {
+  const pending = new Map<object, object>();
+  const revalidate = () => {
+    if (doc.visibilityState !== 'visible' || readClock.manual) return;
+    for (const query of client.getQueryCache().findAll({
+      type: 'active', predicate: query => query.meta?.automaticRevalidation !== false,
+    })) {
+      if (pending.has(query)) continue;
+      const token = {};
+      pending.set(query, token);
+      const release = () => {
+        if (pending.get(query) === token) pending.delete(query);
+      };
+      // First wake supersedes old reads; companion foreground events share it.
+      void client.refetchQueries({ queryKey: query.queryKey, exact: true, type: 'active' })
+        .then(release, release);
+    }
+  };
   const onVisible = () => {
-    if (doc.visibilityState === 'visible' && !readClock.manual)
-      void client.refetchQueries({ type: 'active', predicate: query => query.meta?.automaticRevalidation !== false });
+    if (doc.visibilityState !== 'visible') pending.clear();
+    else revalidate();
   };
   doc.addEventListener('visibilitychange', onVisible);
   const disposeReconciliation = installRevisionReconciliation(client, doc);
-  const onFocus = () => {
-    if (doc.visibilityState === 'visible' && !readClock.manual)
-      void client.refetchQueries({ type: 'active', predicate: query => query.meta?.automaticRevalidation !== false });
-  };
+  const onFocus = revalidate;
+  const onBlur = () => pending.clear();
   window.addEventListener('focus', onFocus);
+  window.addEventListener('blur', onBlur);
   return () => {
     disposeReconciliation();
     doc.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onFocus);
+    window.removeEventListener('blur', onBlur);
+    pending.clear();
   };
 }
 export function useProjection<T>(

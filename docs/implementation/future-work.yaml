@@ -96,9 +96,9 @@ sections:
       binding (the amendment''s §7.4) waits for F15.2. **Lead developer''s build note (the amendment''s §2.3):** the engine
       cannot prove a free-text title carries no acceptance meaning, so the schema declares the title presentation-only and
       the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment''s fail-closed
-      rule applies: the title is treated as acceptance-bearing for that revision (material, and bound like acceptance),
-      and the misuse is `UNBOUND_FIELD_ESCAPE`. The engine cannot detect such content mechanically, so it is review or independent
-      confirmation that finds it'
+      rule applies: the title is treated as acceptance-bearing from that revision on, for as long as the content remains
+      in it (so a change to it, its later removal included, is material and bound like acceptance), and the misuse is `UNBOUND_FIELD_ESCAPE`.
+      The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it'
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
       drift; admissibility as a Knowledge Contract concept'

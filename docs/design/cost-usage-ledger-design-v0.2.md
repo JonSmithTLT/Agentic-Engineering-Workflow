@@ -263,8 +263,10 @@ No surface sums a `missing` run into a total without saying how many it skipped.
 - per **project**: the hot units plus the `recent` ring by default; `--all` walks the history index for archived
   units (bounded by `--since`/`--until`, newest first, as `aew history list` pages) and rehydrates them one at a time.
   Every project-level projection says what it covers (designer, 2026-10-06), so the default view can never be read as
-  a lifetime total: the default carries `scope: recent` and `archive_complete: false`; `--all` carries `scope: all`,
-  with `archive_complete: true` only when the walk covered every archived unit within its bounds.
+  a lifetime total: the default carries `scope: recent` and `archive_complete: false`; an unbounded `--all` carries
+  `scope: all`, with `archive_complete: true` only when the walk covered every archived unit. A bounded `--all` (with
+  `--since` or `--until`) carries `scope: window` and echoes its bounds, so a windowed total is never read as a lifetime
+  one (lead developer, from the review of this version).
 
 Totals are never written back anywhere (not to control state, not to a cache file): a changed price table changes
 `estimated_under_current_prices` on the next read and nothing else, and a late-copied record joins the next read. Wall time sums are labelled `wall_s_sum` (runs overlap;
@@ -291,14 +293,18 @@ Lead session, committed by the broker when the session ended; that is superseded
   the only copy); the model cannot write it (the bridge refuses the transition from the model side, as it refuses
   credential-emitting commands); the Lead's usage is reported beside the units' totals and never added to any unit,
   Ticket or parent; `aew usage lead --all` walks the durable records.
-- **No authority from a late exit:** a stale or detached generation gains no authority because the underlying TUI
-  eventually exits; the record is finalized at detach, under the generation being closed, never at the TUI's exit.
+- **No authority from a late exit:** a stale or detached generation must not later gain authority merely because the
+  underlying TUI eventually exits. A normal close finalizes the record before the generation is revoked.
 - **The source** is the harness's own usage data (for OpenCode, the standalone `session list` or `stats` output; the
   fields are a probe, §7), read at the baseline and again at detach; its derived cost follows R4 exactly (declared
   semantics, snapshot at record, mismatch unpriced).
-- **Before the attachment lifecycle exists (lead developer's reading):** until F31 and the F18 hosting slices build
-  `aew open` and `aew close`, the build bounds a segment by the span in which one Lead session's broker holds one
-  generation's credential, within the rules above.
+- **Before the attachment lifecycle exists (open, for the designer):** F25 is on M4's main lane and F31 is not, so
+  F25's Lead line would ship before `aew open` and `aew close` exist. The lead developer's proposal is to bound a
+  segment by the span in which one Lead session's broker holds one generation's credential. That is close to the
+  per-native-session boundary this revision moved away from, and on a takeover it leaves nobody with current authority
+  assigned to write the superseded segment's `partial` or `unavailable` record. The designer decides the pre-F31
+  boundary, and who writes an interrupted segment's record, before F25's Lead part is built (decisions-due, F25); the
+  run usage of §5.1 to §5.6 does not wait for it.
 
 ### 5.8 Surfaces
 
@@ -346,7 +352,7 @@ Additive edits, each with its own unit test:
 `workspace_ops.py`, `ports.py`, the control schema and the invariants (#65, D3), and D6 rewrites `aew harness wait`
 over the run records. Edits 3, 5 and 6 touch those files, so the build starts after the overlapping M4-D work has merged and
 coordinates D6's run-record reads with the lead developer (both read `runlog.read_record`; neither changes the run
-record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be built first on the same branch. PR numbers named here and in §7 (#60, #65) are implementation notes from 2026-10-05, not
+record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be built first on the same branch. PR numbers named here and in §8 (#60, #65) are implementation notes from 2026-10-05, not
 requirements (designer, 2026-10-06); both have since merged.
 
 ## 7. The build plan and its tests (F25, after approval)
@@ -384,8 +390,10 @@ requirements (designer, 2026-10-06); both have since merged.
   invented figure; a detached generation's TUI exiting later writes nothing and gains no authority; **40
   attachments** leave 40 cold records while the ring holds 32, and `aew usage lead --all` sums all 40;
   `_lead_entry` archives the ended credential unchanged.
-- **Probe (before slice 2's Lead part):** OpenCode's standalone session or stats output after a TUI exit, on the
-  pinned 2.0.18, to confirm which fields exist and whether cost is `0` under a subscription login (U4). Recorded with
+- **Probe (before slice 2's Lead part):** OpenCode's standalone session or stats output on the pinned 2.0.18, read
+  while the conversation is still running and again later in the same conversation (an attachment's baseline and its
+  detach both happen while the harness keeps running), as well as after a TUI exit, to confirm which fields exist,
+  whether per-conversation totals can be differenced, and whether cost is `0` under a subscription login (U4). Recorded with
   the design's evidence; if no readable source exists, the Lead line records `tokens_trust: absent` and says so.
 - **Evidence for the designer's gate:** `tests/unit/test_usage_*.py`, `tests/integration/test_usage_ledger.py`; the
   invariants file gains "every `inv.runs[].usage`, when present, is a well-formed `aew/run-usage/v1` whose `run`

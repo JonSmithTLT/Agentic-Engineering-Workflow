@@ -236,8 +236,8 @@ sources:
     carried:
       "Frozen designer decisions": [EVC-11, EVC-12, EVC-15, EVC-21]
   - prefix: NET
-    path: docs/design/proposals/network-containment-design-v0.2.md
-    role: proposal
+    path: docs/design/network-containment-design-v0.2.md
+    role: adopted-design
     no_requirements:
       "1. Results": probe evidence (P1 to P5, A1, A2, B to E); what it settles is section 2 and the design is section 3
       "3. Frozen design (F-F)": heading; requirements in its subsections

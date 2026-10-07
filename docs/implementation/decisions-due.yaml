@@ -24,12 +24,6 @@ items:
   what: The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among
     them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design
     v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
-- row: F28
-  needs: adoption
-  owner: operator
-  due: 'Gate: before internal alpha'
-  what: Confirm the network containment design v0.2 as adopted; `docs/README.md` lists it as frozen and proposed, while
-    its text has landed as ADR-0009's amendment of 2026-10-05 (designed, not built)
 - row: U3
   needs: design
   owner: designer

@@ -102,12 +102,13 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     p = sub.add_parser("manifest", help="project manifest maintenance")
     msub = p.add_subparsers(dest="manifest_cmd", required=True)
-    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml (the operator, at their own "
-                                         "terminal)")
+    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml or of the policy files it names "
+                                         "(the operator, confirmed at their own terminal)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
-    q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                              reason=a.reason))
+    q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(
+        token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
+            "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
 
     from aew.cli import dashboard_commands, history_commands, work_commands
 

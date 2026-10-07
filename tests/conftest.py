@@ -131,8 +131,9 @@ class Project:
         return self.ok(*args, "--token", self.token, "--expect-rev", str(self.rev()))
 
     def adopt_policy(self, reason: str = "the operator's reviewed policy edit") -> Any:
-        """Accept a policy edit made in the test, as the operator would: `aew manifest adopt` (a recorded decision)."""
-        return self.lead("manifest", "adopt", "--reason", reason)
+        """Accept a manifest or policy edit made in the test, as the operator would: `aew manifest adopt`, confirmed at
+        their own terminal (substituted in-process, as :meth:`as_operator` does)."""
+        return self.as_operator("manifest_adopt", reason=reason)
 
     def pin_policy(self) -> None:
         """Fixture setup only: pin the policy files as they are now, with no transition, as if the project had been

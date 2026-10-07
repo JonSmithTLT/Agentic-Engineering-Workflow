@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
+from aew.errors import IllegalTransition, ValidationFailed
+
 
 def control_bytes(p: Project) -> bytes:
     return (p.root / ".aew/state/control.yaml").read_bytes()
@@ -67,7 +69,7 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
                       "--token", project.token, "--expect-rev", str(project.rev()))
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR"
     assert project.ok("status", "--json")["contradictions"]
-    project.lead("manifest", "adopt", "--reason", "profile corrected by operator")
+    project.adopt_policy("profile corrected by operator")
     assert project.ok("status", "--json")["contradictions"] == []
 
 
@@ -94,23 +96,100 @@ def test_a_policy_file_changed_outside_aew_refuses_every_lead_write_until_adopte
     assert res.error["details"]["files"] == [rel] and control_bytes(project) == before
     assert any(rel in c for c in project.ok("status", "--json")["contradictions"])
     assert _doctor(project, "policy-pin")["status"] == "FAIL"
-    adopted = project.lead("manifest", "adopt", "--reason", "reviewed by the operator")
+    adopted = project.adopt_policy("reviewed by the operator")
     assert adopted["adopted"] == [rel]
     assert project.ok("status", "--json")["contradictions"] == []
     assert _doctor(project, "policy-pin")["status"] == "PASS"
     project.lead("checkpoint", "--next", "y")
-    res = project.aew("manifest", "adopt", "--reason", "again", "--token", project.token,
+    with pytest.raises(IllegalTransition, match="nothing to adopt"):
+        project.adopt_policy("again")
+
+
+def test_adopting_needs_the_operator_at_their_terminal_whatever_the_credential(project):
+    """PR #118 review, finding 1: the power to edit the policy must not also approve the edit. A Lead holding the raw
+    credential (not only a Lead session behind the broker) is refused: with no terminal nothing is recorded, and the
+    engine refuses an adoption without the operator's terminal confirmation."""
+    from aew.engine.api import Engine
+    from aew.errors import OperatorAuthorizationRequired
+
+    gates = project.root / ".aew/policy/gates.yaml"
+    gates.write_bytes(gates.read_bytes() + b"# loosened by whoever holds the credential\n")
+    before = control_bytes(project)
+    res = project.aew("manifest", "adopt", "--reason", "mine", "--token", project.token,
                       "--expect-rev", str(project.rev()))
-    assert res.error["code"] == "ILLEGAL_TRANSITION" and "nothing to adopt" in res.error["message"]
+    assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
+    with pytest.raises(OperatorAuthorizationRequired):
+        Engine.discover(project.root).manifest_adopt(token=project.token, expect_rev=project.rev(), reason="mine",
+                                                     authorization={"authorized_by": "lead"})
+    assert control_bytes(project) == before
+    decision = project.adopt_policy("reviewed by the operator")["decision"]
+    record = (project.root / f".aew/decisions/{decision}.md").read_text(encoding="utf-8")
+    assert "operator-tty" in record
+
+
+def test_a_policy_edit_after_a_transaction_began_is_never_used_by_it(project):
+    """PR #118 review, finding 2: the pin was checked once, on entry, and later reads used whatever was on disk. Every
+    read is held to the pins now, inside a transaction and outside one, so an edit made mid-transaction (and reverted
+    after) can neither be used nor leave no trace."""
+    from aew.engine.api import Engine
+    from aew.errors import IntegrityError
+
+    engine = Engine.discover(project.root)
+    k = engine._k
+    gates = project.root / ".aew/policy/gates.yaml"
+    original = gates.read_bytes()
+    with pytest.raises(IntegrityError, match="gates.yaml"):
+        with k.lead_txn(project.token, project.rev(), "checkpoint") as ctx:
+            k.policy("gates")  # the pinned bytes read fine
+            gates.write_bytes(original + b"# edited mid-transaction\n")
+            ctx.summary = "would have used the edit"
+            k.policy("gates")
+    gates.write_bytes(original)
+    assert project.ok("status", "--json")["contradictions"] == []
+    gates.write_bytes(original + b"# edited between commands\n")
+    with pytest.raises(IntegrityError, match="gates.yaml"):
+        k.policy("gates")  # a read outside any transaction is held to the committed pins too
+
+
+def test_an_unadopted_execution_policy_edit_trusts_no_git_driver(project):
+    """An edit adding a trusted git driver must not make AEW's own git run it before the operator adopts it."""
+    from invariants import load_control
+
+    from aew.engine.api import Engine
+    from aew.engine.base import POLICY_PINS
+    from aew.util import dump_yaml, load_yaml
+
+    path = project.root / ".aew/policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8")) if path.exists() else None
+    if policy is None:
+        pytest.skip("the sample project has no execution policy to trust a driver in")
+    policy.setdefault("containment", {})["trusted_git_drivers"] = ["lfs"]
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    k = Engine.discover(project.root)._k
+    assert k.manifest  # trusted_git_drivers reads the cached manifest, loaded on a session or here
+    assert k.trusted_git_drivers(load_control(project.root)[POLICY_PINS]) == []
+    project.adopt_policy("trust lfs")
+    assert k.trusted_git_drivers(load_control(project.root)[POLICY_PINS]) == ["lfs"]
+
+
+def test_a_missing_required_policy_file_is_never_adopted(project):
+    """PR #118 review, finding 3: only the execution policy may be absent; adopting a deleted gates, guardrails or
+    checks file is refused rather than pinned as absent."""
+    from aew.errors import IntegrityError
+
+    (project.root / ".aew/policy/checks.yaml").unlink()
+    before = control_bytes(project)
+    with pytest.raises(IntegrityError, match="checks.yaml is missing"):
+        project.adopt_policy("deleted")
+    assert control_bytes(project) == before
 
 
 def test_an_invalid_policy_file_is_never_pinned(project):
     gates = project.root / ".aew/policy/gates.yaml"
     gates.write_text("waivable_gates: 5\n", encoding="utf-8")
     before = control_bytes(project)
-    res = project.aew("manifest", "adopt", "--reason", "x", "--token", project.token,
-                      "--expect-rev", str(project.rev()))
-    assert res.returncode != 0 and res.error["code"] != "ILLEGAL_TRANSITION", res.stderr
+    with pytest.raises(ValidationFailed):
+        project.adopt_policy("x")
     assert control_bytes(project) == before
 
 
@@ -124,7 +203,7 @@ def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(proj
     (project.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
     assert _doctor(project, "policy-pin")["status"] == "WARN"
     project.lead("checkpoint", "--next", "x")  # unpinned is not drift: nothing is refused
-    adopted = project.lead("manifest", "adopt", "--reason", "pin the reviewed policy")
+    adopted = project.adopt_policy("pin the reviewed policy")
     assert adopted["adopted"] == []
     assert set(load_control(project.root)["policy_sha256"]) == {
         "policy/checks.yaml", "policy/execution.yaml", "policy/gates.yaml", "policy/guardrails.yaml"}
@@ -216,7 +295,7 @@ def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project
     res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
     assert "aew manifest adopt" in res.error["message"]
     _names_the_operator(res.error["message"])
-    project.lead("manifest", "adopt", "--reason", "reviewed")
+    project.adopt_policy("reviewed")
     control = project.root / ".aew/state/control.yaml"
     control.write_bytes(serialize_control(as_v1(load_control(project.root))))
     res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
@@ -293,7 +372,7 @@ def test_forged_credentials_rejected(project, mangle):
     else:
         token = token.rsplit(".", 1)[0] + "."
     before = control_bytes(project)
-    res = project.aew("manifest", "adopt", "--reason", "x", "--token", token, "--expect-rev", str(project.rev()))
+    res = project.aew("checkpoint", "--next", "x", "--token", token, "--expect-rev", str(project.rev()))
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     assert control_bytes(project) == before
 
@@ -321,9 +400,9 @@ def test_superseded_lead_rejected_after_handoff(project):
     assert accepted["generation"] == 2
 
     before = control_bytes(project)
-    res = project.aew("manifest", "adopt", "--reason", "x", "--token", old, "--expect-rev", str(project.rev()))
+    res = project.aew("checkpoint", "--next", "x", "--token", old, "--expect-rev", str(project.rev()))
     assert res.returncode == 3 and res.error["code"] == "STALE_AUTHORITY"
-    res = project.aew("manifest", "adopt", "--reason", "x", "--token", new, "--expect-rev", str(project.rev() - 1))
+    res = project.aew("checkpoint", "--next", "x", "--token", new, "--expect-rev", str(project.rev() - 1))
     assert res.returncode == 3 and res.error["code"] == "STALE_REVISION"
     assert control_bytes(project) == before
 
@@ -424,7 +503,7 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     assert written, screen
     c_token = written.group(1)
     for stale in (a_token, b_token):
-        res = project.aew("manifest", "adopt", "--reason", "x", "--token", stale, "--expect-rev", str(project.rev()))
+        res = project.aew("checkpoint", "--next", "x", "--token", stale, "--expect-rev", str(project.rev()))
         assert res.error["code"] == "STALE_AUTHORITY"
     decision = (project.root / f".aew/decisions/{result['decision']}.md").read_text()
     assert "operator-tty" in decision and "Lead session lost" in decision

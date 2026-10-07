@@ -99,7 +99,7 @@ def test_long_lived_role_catalog_refreshes_adopted_manifest(tmp_path):
     manifest = read_yaml(manifest_path)
     manifest.setdefault('roles', {})['catalog'] = 'new-roles/'
     manifest_path.write_text(dump_yaml(manifest))
-    p.lead('manifest', 'adopt', '--reason', 'use new role catalog')
+    p.adopt_policy('use new role catalog')
     assert 'special_engineer' in {c['id'] for c in Engine.discover(p.root).role_list()['cards']}
     cards = {c['id'] for c in engine.role_list()['cards']}
     assert 'special_engineer' in cards, 'Long-lived role_list still uses the previous manifest'

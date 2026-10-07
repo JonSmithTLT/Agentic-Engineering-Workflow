@@ -270,7 +270,8 @@ def test_pending_debt_names_real_sections_and_stays_visible():
                 assert re.search(rf"^{t['item']}\. \*\*", span, re.M), (p["id"], t)
             assert (t["doc"], t["section"]) not in replaced, (p["id"], t)
             debts.append(f"{t['doc']} §{t['section']}" + (f" item {t['item']}" if "item" in t else ""))
-    assert debts == ["KC §12", "WC §7", "WC §8", "WC §23 item 7"], "the Ticket-revision debt changed: update the index"
+    # The Ticket-revision debt (KC §12, WC §7, §8, §23 item 7) was cleared by its amendment, adopted 2026-10-06.
+    assert debts == [], "new consolidation debt: name it in the index"
 
 
 def governing_amendments_on_the_map() -> set[str]:

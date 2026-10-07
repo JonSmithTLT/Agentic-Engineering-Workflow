@@ -1,6 +1,8 @@
 # W07 supplied reuse trail — checkpoint 1 review packet
 
-Frontend fixture acceptance: PENDING independent desktop/phone product review. This is the first bounded W07-02 slice; W07-01 and W07-03–05 remain deferred. No accepted or existing provisional wire schema, dependency lock, production package baseline or Engine work record changes.
+Frontend fixture acceptance: CHANGES REQUESTED on initial independent review; correction re-check pending. This is the first bounded W07-02 slice; W07-01 and W07-03–05 remain deferred. No accepted or existing provisional wire schema, dependency lock, production package baseline or Engine work record changes.
+
+Latest correction target and evidence are recorded below under Acceptance corrections; the earlier sections preserve the initial checkpoint.
 
 ## Review target
 
@@ -44,3 +46,35 @@ The Journal measurement initially observed +12 DOM nodes and the same five initi
 Prepared context, delivery acknowledgment, output citation and evaluated benefit remain distinct. Canonical decisions remain references to their authoritative records. “Included in context” references do not establish delivery, use, or benefit.
 
 Backend/live adoption remains separately pending; see [backend questions](../reference/backend-questions/w07-backend-question-ledger.md). The approved packaged frontend remains its agreed baseline until a separate source agreement, rebuild and live gate. The deferred page-density review remains on the register.
+
+## Acceptance corrections — 2026-10-06
+
+The independent main-line review of initial head `fa7e065` requested three minor presentation corrections while confirming the investigation, stage separation, chronology and navigation. Formal re-check of these corrections remains pending; this packet does not claim final frontend acceptance.
+
+Correction commit: `a7d972c67de9a8e555c115dca3744af918c30706`. Final verification commit: `cf7df4508c06397a280520015281661dafb39d2e`, tree `fe93b9a1b6e547299fb182d74a329ee5590d670e`. Subsequent runtime-checkpoint commits change browser-test synchronization only; their runtime builds match the correction exactly.
+
+- The association host supplies presentation context to the shared inspector: association `ASSOC-J05-Later`, originating Journal item `J-05`, packet item `PKT-Later-J-05`, and scenario `later-ticket`. This remains visible on direct links and every inspector tab. Contents and Selection mark the exact matching item; a filter may hide its card while the header retains its identity.
+- The shared packet header labels Source, Invocation, Run and Snapshot in definition-list rows.
+- Demo-only identity tokens keep short identifiers together and bound long tokens to the viewport. No production stylesheet, wire schema or binding-validation change is introduced.
+
+A fresh-context independent correction review is CLEAR at the final verification commit. Its scoped frozen-preview checks passed at 1092×844 and 390×844 in Edge 154.0.4258.53: exact context, one card marker, labeled identities, direct Receipts restoration and no horizontal overflow. A 500-character identity also fit a 290px containing block. These are three-finding checks, not a replacement for the original reviewer's full acceptance disposition. No physical devices or screen-reader coverage is claimed.
+
+### Recovered and regenerated evidence
+
+The original author checkout and raw browser captures were deleted. They remain unrecovered. The original reviewer independently rebuilt `fce8afe` and matched both original inventories; a later author restoration did the same. New correction evidence is generated from a clean detached committed tree rather than relabeling the old evidence.
+
+New freeze: `web/artifacts/commit-freeze/run-Rwv6U0cX`. Pinned builder unchanged: `sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5e5a4d9252360b8b`. Offline gate PASS, 171 unit/component tests and four live-input checks; artifact/docs/typecheck/lint, both builds and production exclusion PASS. Premium strict audit: zero findings.
+
+Production inventory remains `0a0925268c7992a42e9a3fbb0351c52343c8edbeeff824aba5a141298f72dc1a`, byte-identical to the earlier freeze. Corrected demo inventory: `78d52d6ccae62029ff7c155a483b16b9a3adcf86a7db333d50fc04a424c7d17a`.
+
+The previous Chromium 1217 installation was deleted. The browser carrier remains `sha256:b9a4d7136af7f4fecd3848d0ebc1f3c84ad7fb3811f6434211928d8d110e4352` with Playwright 1.59.1; this correction run uses the installed Chromium 1247 through `CHROMIUM_PATH`. Executable SHA-256: `adf078f8f80eb9e980a07b4418af23b0f4008a83bc5756d5588055bc4d76c5a0`. This runtime difference is disclosed rather than claimed identical to the original browser evidence.
+
+Two earlier runs at `a7d972c` timed out in the existing phone Work HTTP keyboard test. The test could focus a child before the preceding two-animation-frame Results focus restoration completed. An isolated diagnostic passed after awaiting that existing focus contract. `fe6dacb` adds that explicit wait before the next keyboard action; every detail-heading/Back/visibility assertion remains intact, with no product change. Original failed logs, the second failure capture and diagnostic are retained in the earlier correction freeze `run-a17Zk4FO`. An independent Edge probe passed both original and synchronized workflows; it does not prove why the original Chromium run failed.
+
+The next full attempt at `fe6dacb` passed W01–W05 but failed the W06 manual-read counter by one request. The event heading appears before its dependent execution read; the copied-link test previously began counting at that early heading. An isolated diagnostic awaiting the existing Captured execution heading passed all four HTTP/worker desktop/phone story paths. `cf7df45` adds that wait, matching the existing `pick` helper and preserving the full 11-second no-new-reads assertion. No product polling behavior changes. Failed logs/capture and diagnostic are retained in `run-Qro2jQUa`; an independent Edge check also observed unchanged request counts at both widths after this boundary.
+
+Final exact-commit regression PASS: nine suites / 126 checks, including the seven authenticated-runner test-adapter checks. Worker and HTTP paths passed; HTTP blocked service workers. W07 exercises the 1092px desktop width and 390px phone layout, exact association/card identity, labeled header, copied links and return focus. Source remained clean and both complete build inventories were unchanged after the run. Browser logs, output archive, command copies/hashes, premium report and scoped independent review are retained with the final freeze. These checks do not establish physical-device, real-zoom or live Engine acceptance.
+
+### Formal re-check task
+
+Repeat the original desktop/phone association flow and direct Receipts link. Establish the association and exact packet-item ID through the visible UI, find its marked card, read the four labeled header identities, and confirm `SNAP-Later` stays together at the original desktop width. Check return navigation still restores the original position. Record the reviewed source/build and acceptance disposition separately; backend adoption and live integration remain pending.

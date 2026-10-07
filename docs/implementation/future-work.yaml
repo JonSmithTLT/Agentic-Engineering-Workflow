@@ -835,7 +835,9 @@ sections:
       where the adapter keeps AEW's invocation identity, role, custody, profile, parent, limits, evidence and provenance
       (with F13). No automatic verifier rerun while the lease is held (record §14.5); a bounded retry under the same custody
       would need its own recovery design. Built through the F18 hosting slices, which design the same lifecycle in detail
-      (F18.5 states, F18.7 attach, F18.9 detached children and drain, F18.10 enablement)
+      (F18.5 states, F18.7 attach, F18.9 detached children and drain, F18.10 enablement). F31 also decides the Tickets'
+      state under release to manual, which now stops the children as stop now does (the Q12 record's §13 revision) and differs
+      from it only in handing the work to the operator
   - '#': F32
     Work: 'The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved
       open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids,

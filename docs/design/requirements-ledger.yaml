@@ -618,14 +618,15 @@ sources:
     role: adopted-design
     no_requirements:
       "2. Non-negotiable authority boundary": heading; requirements in its subsections
-      "3. Support identity and qualification": heading; requirements in its subsections
-      "4. Load-bearing request gateway, attestation and broker binding": heading; requirements in its subsections
       "5. Host modes and guarantee levels": heading; requirements in its subsections
       "7. Bootstrap authority": heading; requirements in its subsections
       "11. Closing with active children: drain custody and attention": heading; requirements in its subsections
       "17. Harness-specific disposition": heading; requirements in its subsections
       "20. Acceptance criteria": heading; requirements in its subsections
       "24. Register and milestone filing": heading; requirements in its subsections
+    carried:
+      "3. Support identity and qualification": [HAA-07]
+      "4. Load-bearing request gateway, attestation and broker binding": [HAA-09, HAA-54]
 
 requirements:
   # ---- KCA: knowledge capture and admission design v0.4 ---------------------------------------------------------

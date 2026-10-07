@@ -254,17 +254,17 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
 |---|---|---|
 | **Drain** (the default) | keep their own narrow credential, finish within a time limit, hand in, and stop | recorded as evidence and **held**: nothing moves a Ticket until a current Lead or the operator accepts it; discarding it sends the work back through the gates |
 | **Stop now** | stopped at once | work product on disk and in logs; the Tickets are `INTERRUPTED` and reconciled after inspection |
-| **Release to manual** | AEW access revoked; they keep running inside their supervisor's sandbox and limits until their deadline | work product outside AEW, for the operator to handle as an ordinary development cycle |
+| **Release to manual** | stopped, with their AEW credentials revoked together with the stop (revised, below) | work product on disk and in logs, handed to the operator outside AEW, for an ordinary development cycle |
 
-1. **Drain is the default.** It applies whenever no operator choice is made: a crash or host loss with nobody at the
-   terminal, or an attachment closed by the Lead.
+1. **Drain is the default.** It applies whenever no operator choice is made, such as a crash or host loss with
+   nobody at the terminal.
 2. **Anything going wrong during a drain stops it at once.** The run is stopped immediately (the plug is pulled) and an
    error is reported to the operator. What counts as going wrong is the designer's stop set (§14.3); a legitimate
    negative result is not one of them.
-3. **A Lead's `aew close` resolves to the same process.** A Lead that closes its attachment probably does so on the
-   operator's decision, and its children get the operator's choice or, without one, the drain. A Lead never chooses
-   **Stop now** or **Release to manual** for its children when its attachment ends: those take work out of AEW's
-   governance, so they are the operator's. This governs only what happens when an attachment ends. While attached, a
+3. **A Lead asks; the operator closes** (revised, below). A Lead that wants its attachment closed prompts the
+   operator, who runs `aew close` and makes the choice for its children. A Lead never chooses **Stop now** or
+   **Release to manual** for its children when its attachment ends: those take work out of AEW's governance, so they
+   are the operator's. This governs only what happens when an attachment ends. While attached, a
    Lead keeps its existing per-invocation controls (`aew invoke cancel`, `aew harness stop`; §5's explicit control
    operation): each is a recorded Lead decision about one invocation under the Lead's own name, never the operator's.
 4. **Held results are the next generation's to accept.** On the next attachment, the operator or the new Lead accepts
@@ -281,6 +281,21 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
    candidate and returns the entry to the queue. The queue waits meanwhile, which costs nothing while no Lead is attached, and the drain's hard
    deadline bounds the verifier. Chosen by the operator over keeping today's cancellation as a named exception to the
    drain; the designer confirmed the queue side (§14.5).
+
+**Revised by the operator later on 2026-10-06, to agree with the F18 hosting design v0.6.** The independent review of
+v0.6's ingestion found two points where v0.6 and this section disagreed; the operator decided both:
+
+- **Only the operator runs `aew close`.** v0.6 §2.3 makes `aew close` operator-only and unreachable from the Lead host
+  and its typed tools. A Lead that wants to close prompts the operator. This was the intent of point 3 ("a Lead that
+  closes its attachment probably does so on the operator's decision"). At a close the operator runs, v0.6 §11.1
+  requires the operator to acknowledge any running children; the drain, stop now or release to manual choice is made
+  there. Drain stays the default whenever no operator choice is made.
+- **Release to manual stops the run.** v0.6 §11.3 and §13 never leave a process running with a revoked credential:
+  the supervisor stops it before or together with the revocation. So release to manual stops the children and hands
+  their work product (files and logs) to the operator outside AEW, rather than letting them run on unattended. The
+  operator chose this over asking for an exception.
+- **Unchanged, and the point that matters to the operator:** `aew close` never forces the Lead's own harness session
+  to close. It removes AEW authority and AEW-mediated access only (§5, §14.4; v0.6 §10).
 
 ## 14. Designer clarifications of 2026-10-06 (F31)
 

@@ -14,7 +14,8 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections import Counter
+from collections.abc import Generator, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,18 @@ LIVE_DIR = "tests/live/"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
+# `aew` processes each test started through the test helper (`conftest.run_aew`), by node id: the cost record's
+# "CLI calls per test" (CI redesign P4, register E43). Counted in the process that runs the test, carried to the
+# report writer in the teardown report's user properties (xdist sends those to the controller).
+CLI_CALLS: Counter[str] = Counter()
+CLI_CALLS_PROPERTY = "aew_cli_calls"
+
+
+def count_cli_call() -> None:
+    """Count one `aew` process for the running test (its node id from pytest's ``PYTEST_CURRENT_TEST``)."""
+    current = os.environ.get("PYTEST_CURRENT_TEST")
+    if current:
+        CLI_CALLS[current.rsplit(" (", 1)[0]] += 1
 SERIAL_UNDER_XDIST = (
     "serial test collected by an xdist worker: its property is timing or real-process concurrency, so it "
     "must never share the machine with other tests. Run it with `pytest --lane serial -p no:xdist` "
@@ -169,6 +182,7 @@ class LanePlugin:
         self.lanes: dict[str, str] = {}  # every collected test's lane: assurance requires only the tier's lanes (P1)
         self.phases: dict[str, dict[str, str]] = {}
         self.durations: dict[str, float] = {}
+        self.cli_calls: dict[str, int] = {}
         self.started = time.perf_counter()
         self.guard_before: dict[str, Any] | None = None
 
@@ -215,6 +229,14 @@ class LanePlugin:
         if _is_worker(item.config) and item.stash.get(LANE_KEY, None) == "serial":
             pytest.fail(SERIAL_UNDER_XDIST, pytrace=False)
 
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(self, item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
+        if call.when == "teardown":
+            calls = CLI_CALLS.pop(item.nodeid, 0)
+            if calls:
+                item.user_properties.append((CLI_CALLS_PROPERTY, calls))
+        yield
+
     # ------------------------------------------------------------------ reporting
 
     def pytest_report_header(self, config: pytest.Config) -> str | None:
@@ -226,6 +248,9 @@ class LanePlugin:
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         self.phases.setdefault(report.nodeid, {})[report.when] = _report_outcome(report)
         self.durations[report.nodeid] = self.durations.get(report.nodeid, 0.0) + report.duration
+        for name, value in report.user_properties:
+            if name == CLI_CALLS_PROPERTY and report.when == "teardown":
+                self.cli_calls[report.nodeid] = int(value)
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
@@ -274,6 +299,7 @@ class LanePlugin:
             "lanes": dict(sorted(self.lanes.items())),
             "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
                         for nid, ph in sorted(self.phases.items())},
+            "cli_calls": dict(sorted(self.cli_calls.items())),
         }
         path = Path(self.report_path)
         path.parent.mkdir(parents=True, exist_ok=True)

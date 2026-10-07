@@ -2,7 +2,8 @@
 
 **Status:** Decision record, governing. **Adopted** by the designer on 2026-10-06. It answers the F19 decisions-due item
 (how the model arms keep a held-out corpus out of reach while the model runs) and needs no further design document. §1
-is the decision recorded as given; §2 says where it is filed and what it means for the evaluation harness as built.
+is the decision recorded as given; §2 says where it is filed and what it means for the evaluation harness as built;
+§3 is the designer's arm-host rule, given the same day in answer to §2.
 
 ## 1. The decision, recorded as given
 
@@ -62,13 +63,46 @@ is the decision recorded as given; §2 says where it is filed and what it means 
     cell's task, registers the attempt, and releases only that task's material (its fixture snapshot, its task
     statement and the arm's pinned configuration, never an oracle or another case) at the trial's start;
   - **the arm host** receives the released material, runs the arm, and returns the final work tree, which the evaluator
-    side scores as today.
+    side scores as today, with the facts only the arm host can observe: whether its AEW checkout was touched
+    (`outcome.safety.checkout_untouched`) and its environment. Today the runner records both from the host it runs on,
+    which after the split would be the evaluator's, so a run record would describe the wrong host.
 
   This comes before the `aew` and `raw` arms run any held-out case, and it is the next F19 slice with the arms.
-- **What "off the arm host" has to mean (lead developer's reading, for the operator).** The corpus lives in the
-  private repository on the operator's workstation. A WSL distribution on a Windows workstation mounts the Windows
-  drives under `/mnt/` by default, and a virtual machine can reach a shared folder, so neither is corpus-free just
-  because the corpus is not in its home directory. An arm host is corpus-free only when no copy of the corpus is on it
-  and none is mounted or shared into it. The arm host's setup records how that holds (for example a virtual machine
-  with no shared folder, or a WSL distribution with automount off), and the runner checks that the hidden root is not
-  reachable from the arm host before it releases a task.
+- **What "off the arm host" means** is the designer's arm-host rule, §3. It replaces the lead developer's first reading
+  (no copy and nothing mounted or shared into the arm host, checked before release), which §3 confirms and extends.
+
+## 3. Designer clarification of 2026-10-06: the arm-host rule
+
+Given in answer to §2's question about WSL distributions and virtual machines, and recorded as given:
+
+> For the arm-host rule, I'd freeze this:
+>
+> Before a task is released, no model-controlled process in that arm may have a filesystem, mount, share,
+> synchronization path, host-integration path, or other readable route to any unreleased corpus material.
+>
+> That matters for exactly the WSL/VM cases you found. A WSL distro is not corpus-free merely because `/home/...` lacks
+> the corpus if the Windows host holding it is readable through `/mnt/c`, Windows interop, or another mounted path.
+> Likewise, a VM is not corpus-free if a host/shared folder exposes the corpus or a parent directory containing it.
+>
+> I would also make the runner fail closed:
+>
+> ```
+> preflight cannot establish corpus isolation
+>     => do not release task
+> ```
+>
+> But I would not turn this into "prove mathematically that the host can never reach the evaluator." That would drag
+> F19 back into full containment/network-security design.
+>
+> So the practical boundary is:
+>
+> No local copy, no parent directory containing it, no mounted/shared/synced path to it, and no obvious
+> host-integration path that can read it.
+>
+> For WSL specifically, if the Windows host itself stores the hidden corpus, I would treat that WSL instance as
+> ineligible by default unless host-drive access/interop is deliberately disabled or otherwise shown not to expose the
+> corpus. The cleaner setup is simply keeping the evaluator/corpus on another machine or environment.
+
+**Filing (lead developer).** The split runner's arm-host preflight checks this boundary before every release and
+refuses to release the task when it cannot establish it; the refusal happens before the attempt's arm starts and is
+recorded with its reason. Ledger HOC-06 to HOC-09 (the rule) and HOC-11 (the preflight).

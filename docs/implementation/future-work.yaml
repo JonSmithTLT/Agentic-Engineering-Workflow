@@ -80,8 +80,8 @@ sections:
     Source (governing): hierarchy design §8 to §10, §20 (Scenarios A and E); [Ticket-revision contract amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)
       (E19-B v0.4, adopted by the operator 2026-10-06; ledger TRA)
     Belongs to or gated by: '**Hierarchy revision.** Before Leads routinely replace Tickets'
-    Notes: 'Needs Workflow Contract and Knowledge Contract amendments. Observed in the M3 dogfood (T1: a recreated Ticket
-      with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`;
+    Notes: 'Needed Workflow Contract and Knowledge Contract amendments, adopted 2026-10-06 (below). Observed in the M3 dogfood
+      (T1: a recreated Ticket with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`;
       review, and the designer''s decisions D1 to D7, in `ticket-revision-amendment-review-2026-09-30.md`). A material change
       becomes a new immutable revision of the same Ticket, not a replacement. Evidence binds to digests of the fields it
       depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse
@@ -93,10 +93,12 @@ sections:
       evidence binding and computed admissibility (evidence today binds the snapshot and plan revision only, and the snapshot
       excludes `.aew/`, so nothing binds Ticket inputs yet); the quiesce, commit and abort lifecycle with `revision_pending`;
       independent confirmation and the operator''s checkpoint; the amendment''s own impact hold and parent coverage. StageIntent
-      binding (§7.4) waits for F15.2. **Lead developer''s build note (§2.3):** the engine cannot prove a free-text title
-      carries no acceptance meaning, so the schema declares the title presentation-only and the engine never reads acceptance
-      from it; a requirement written into a title is `UNBOUND_FIELD_ESCAPE`, a misuse for review to flag rather than something
-      the engine detects'
+      binding (the amendment''s §7.4) waits for F15.2. **Lead developer''s build note (the amendment''s §2.3):** the engine
+      cannot prove a free-text title carries no acceptance meaning, so the schema declares the title presentation-only and
+      the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment''s fail-closed
+      rule applies: the title is treated as acceptance-bearing for that revision (material, and bound like acceptance),
+      and the misuse is `UNBOUND_FIELD_ESCAPE`. The engine cannot detect such content mechanically, so it is review or independent
+      confirmation that finds it'
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
       drift; admissibility as a Knowledge Contract concept'

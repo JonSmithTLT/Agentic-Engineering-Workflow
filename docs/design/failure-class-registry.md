@@ -58,6 +58,8 @@ A class names a failure, not an error code. Engine refusal codes are separate: a
 
 Plan assurance's candidate `INTENT_SUBSTITUTION` (derived plan language changes the actual stakeholder objective) is `SILENT_INTENT_REWRITE`.
 
+The Ticket-revision classes, and why existing classes do not cover them: `ACCEPTANCE_NARROWING_BY_REVISION` is the Ticket-revision case of `ACCEPTANCE_CONDITION_MUTATION`, where the conditions changed through a recorded revision rather than without one; use the narrower name when a revision is the vehicle, the broader one otherwise. `REVISION_LAUNDERING` concerns escaping an adverse result while the work continues, which neither `UNAUTHORIZED_SCOPE_CHANGE` (intent changed outside the envelope) nor `SILENT_INTENT_REWRITE` (no provenance) names. `UNBOUND_FIELD_ESCAPE` concerns where content is placed to avoid binding, which `EVIDENCE_MEANING_DRIFT` (evidence outliving a changed proposition) does not.
+
 ## 5. Plan assurance classes
 
 Owner: `plan-assurance-and-premise-validation-design-v0.4.md`, adopted with this registry revision (§26 for definitions, §28 for the adversarial evaluation suite, §31 for the conformance tests).

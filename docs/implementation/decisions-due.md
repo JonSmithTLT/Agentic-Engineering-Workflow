@@ -15,7 +15,6 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 | Due by | Owner | Needs | What | Row | Blocks |
 |---|---|---|---|---|---|
-| M4-G | operator | decision | Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer limit. | E23 | - |
 | M4-G | designer | decision | Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7) | F25 | - |
 | M4-H | designer | decision | The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration | Q7 | F19 |
 | M4-H | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses; before or as part of Q7 | U3 | - |

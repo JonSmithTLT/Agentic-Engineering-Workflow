@@ -1106,11 +1106,13 @@ sections:
     When: '**On measured need**: after large-host re-parse bounds are measured'
     Notes: '|'
   - '#': E23
-    Work: Measure Windows coverage too and combine it with Linux
+    Work: Measure Windows coverage too and combine it with Linux, in the nightly `reference` run, not the merge gate
     Source: architecture review I10; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05)
-    When: '**M4 candidate**'
-    Notes: Job objects, console and file-replace retries are outside the number today
+      (accepted 2026-10-05); [CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P5.2, §5
+    When: '**M4 candidate** (decided: the nightly, by the operator, CI redesign P5.2, 2026-10-06); to build'
+    Notes: 'Job objects, console and file-replace retries are outside the number today. The merge gate would roughly double
+      the Windows lanes and time out integration (measured on PR #69, closed); a shard has no room for it. A temporary placement
+      for today''s cost, revisited after P3 (E42)'
   - '#': E24
     Work: Typed record models generated from the JSON schemas at build time, or checked `TypedDict`s
     Source: architecture review §4.1; [architecture review response](../design/architecture-review-response-2026-10-04.md)
@@ -1183,6 +1185,88 @@ sections:
     Source: Designer, 2026-10-05 (on the two heading disambiguations of the documentation consolidation, accepted as editorial)
     When: '**On measured need** (the next repeated heading in a source)'
     Notes: The gate is `tests/unit/test_requirements_ledger.py`; the ledger's `section:` field is the heading text today
+  - '#': E42
+    Work: 'CI redesign P3, shared setup: an in-process CLI driver for setup steps (isolated per invocation: the guards that
+      fail a test leaking `AEW_*` variables or a changed working directory apply to every invocation, and it saves and restores
+      cwd, environment, standard streams, logging, parser and module globals, thread locals and context variables, non-project
+      caches, proven by its own tests) and snapshotted starting states (an immutable per-worker template from a declared,
+      checked quiescent and relocatable state; each test an independent copy, worktrees repaired and paths rebound), each
+      helper switched only after one semantic-equivalence oracle shows the same state both ways; then the expensive families
+      migrated one at a time'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P3, §5 (ledger CRD-05 to CRD-09)'
+    When: '**M4 candidate**: after E43 and E44 (design §5, steps 4 and 5, then P3 as step 6)'
+    Notes: The strategy rule it needs is amended in `testing-and-ci-strategy.md` §6 (2026-10-06). Expected 40 to 50% off
+      the slow scenario files; it is what stops the suite's cost growing faster than the product. The integration lanes
+      ran 21 to 26 of their 30 minutes, and `main`'s run for `389e32d` timed one out (30m45s, 2026-10-06)
+  - '#': E43
+    Work: 'CI redesign P4, the cost record: `assurance` writes, from the lane reports it already downloads, queue delay
+      and wall clock, runner-minutes and wall time per lane and shard against `testing-and-ci-strategy.md` §8''s budgets,
+      total pytest time, the slowest 20 tests, each test''s share of its lane, CLI calls per test and the share of collected
+      tests in `durations.json`, as a job summary and an artifact; each lane also prints `--durations=20`; a shard over
+      20 minutes warns, over 25 is a CI-health violation; the job timeout stays the only hard bound; a PR''s summary shows
+      its new tests'' cost, and the reviewer brief asks about it'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P4, §5; [cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md)
+      §5.1, §5.6 (ledger CRD-10, CRD-11, CCI-01, CCI-06)'
+    When: '**M4 candidate**, and first (the investigation: it would have named the 648-second test on its first run)'
+    Notes: 'Adopted 2026-10-06 and never tracked until this row: the test PR #103 added took 648 s, 79% of the Linux fast
+      lane (budget 3 minutes), and nothing read the durations the lane reports already held. A hard wall-clock gate is deferred
+      until runner variance is measured'
+  - '#': E44
+    Work: 'Refresh and rebalance the shards from E43''s record; duration history influences placement only, never which
+      tests run: a missing, stale or corrupt cache falls back to balancing by test count, and the committed `tests/durations.json`
+      is refreshed by an automated PR when drift passes a threshold'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P4, §5 step 5; [cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md)
+      §5.3 (ledger CRD-13, CCI-03)'
+    When: '**M4 candidate**, after E43'
+    Notes: Exactly-once assurance proves membership independently of the cache
+  - '#': E45
+    Work: 'A per-test cost check: a test over a set share of its lane''s time (for example 25%), or a fast-lane test over
+      a set number of seconds, is a CI-health violation reported in the cost record; it **warns and never fails the gate**
+      (operator, 2026-10-06). Any later performance gate is on metrics AEW controls (aggregate pytest time, CLI starts,
+      expensive fixture constructions, the slow-test aggregate, cost per family), judged against baselines with their variance'
+    Source: '[cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md) §5.2; [CI redesign
+      v0.2](../design/ci-redesign-design-v0.2.md) P4 (ledger CCI-02, CRD-12)'
+    When: '**M4 candidate**, with E43'
+    Notes: A share-of-lane rule depends far less on runner speed than raw seconds do
+  - '#': E46
+    Work: Sweep the current fast-lane outliers (a 33.5 s randomized crash test, several 5 to 7 s surface-runner tests) and
+      investigate the store crash slowdown (1 to 7 minutes before the outbox, over 60 after) as a performance regression,
+      never by a bigger budget
+    Source: '[cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md) §5.3; [CI redesign
+      v0.2](../design/ci-redesign-design-v0.2.md) §4 (ledger CCI-03, CRD-14)'
+    When: '**M4 candidate**, after E43, from its record'
+    Notes: '`CLAUDE.md`: a slower test is a regression to find, not a timeout to raise'
+  - '#': E47
+    Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),
+      a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the
+      classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue'
+    Source: '[cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md) §5.4; [CI redesign
+      v0.2](../design/ci-redesign-design-v0.2.md) P1, P4 (ledger CCI-04, CRD-03, CRD-11)'
+    When: '**M4 candidate**, with E43'
+    Notes: '`main`''s run for `389e32d` failed on an integration timeout on 2026-10-06 and was visible only as `failure`
+      in the run list'
+  - '#': E48
+    Work: 'CI redesign P5.1: full lanes on one OS per pull request, both OSes on `main` and the nightly, the second OS running
+      `core` plus its platform-specific lanes'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P5.1, §5 (ledger CRD-16)'
+    When: '**Unscheduled**: deferred (operator, 2026-10-06), revisited only with post-redesign measurements if CI is still
+      too expensive'
+    Notes: 'Trades per-PR proof for throughput: a one-OS regression would be caught after merge'
+  - '#': E49
+    Work: 'CI redesign P5.3: larger runners (8 vCPUs) for the scenario lanes, as an experiment'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P5.3, §5 (ledger CRD-18)'
+    When: '**On measured need**: deferred until P2 and P3 are measured (operator, 2026-10-06)'
+    Notes: Needs an organization or a Team plan; P3 first shows what stays CPU-bound
+  - '#': E41
+    Work: 'CI redesign P2, the rest: import each command group''s module when its command runs, not when `aew` starts (`build_parser()`
+      still imports `work_commands`, `history_commands` and `dashboard_commands`, and so the `aew.dashboard` package, for
+      every command; `aew.history.index` loads through `aew.engine.api`)'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P2, §5 (ledger CRD-04)'
+    When: '**On measured need**: P2''s measurement put the remaining import cost mostly in fixed work every command needs
+      (the JSON-schema library, the engine), so P3 comes first'
+    Notes: '**Partly built (PR #96, 2026-10-06):** the dashboard''s server stack and the doctor are imported only when used,
+      about 10% off every CLI call (`aew status` about 920 to 825 ms), pinned by `tests/unit/test_cli_imports.py`. The 200
+      ms import target is a measured objective, never a CI assertion'
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:
@@ -1426,6 +1510,12 @@ sections:
     By: Found by the architecture review's citation test ([T7 results](../archive/reviews/architecture-review-2026-10-04/t7-citation-test-results.md)
       §3); the row now states the amended behaviour (refused with `CLASS0_INHERITED_ELEVATED_OBLIGATION`, reclassified to
       Class 1, the gate still required), in the documentation consolidation
+  - '#': E40
+    Was: 'CI redesign P1: a merge gate tiered by what changed (`docs`, `web`, `full`), decided fail closed, with an always-full
+      `main` run as the compensating control for the reduced tiers'
+    Closed: '2026-10-06'
+    By: 'PR #99 (`tools/ci/tier.py`, `assurance` recomputing the tier; `testing-and-ci-strategy.md` §3), tracked retroactively
+      when the [CI redesign v0.2](../design/ci-redesign-design-v0.2.md) was ingested'
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)
     Closed: '2026-10-03'

@@ -207,7 +207,8 @@ behaviour above stands.
   - **release to manual:** their credentials are revoked and they keep running inside their supervisor's sandbox and
     limits until their deadline, outside AEW's governance.
 
-  A Lead never chooses stop now or release to manual. The generation an invocation was admitted under stays recorded
+  A Lead never chooses stop now or release to manual when its attachment ends; while attached it keeps its
+  per-invocation controls (`aew invoke cancel`, `aew harness stop`), each a recorded Lead decision. The generation an invocation was admitted under stays recorded
   for provenance and grants no Lead authority. How a draining child's credential outlives that generation is F31's
   choice.
 - **What does not change.** The credential form, the verifier, compare-and-swap on `--expect-rev`, and takeover's

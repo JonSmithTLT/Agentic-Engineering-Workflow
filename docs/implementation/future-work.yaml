@@ -735,14 +735,15 @@ sections:
       a time limit, results held until a current Lead or the operator accepts them, any fault stops the run at once with
       an error report), or, by the operator only at the operator terminal, stop now or release to manual'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
-      §4 to §9 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
+      §4 to §9 and §13 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
     Belongs to or gated by: '**Designer.** Waits for the designer''s confirmations in decisions-due (the record''s §11 reading
       of the frozen specification, and what "no AEW project access" covers, §12); then the next milestone triage places
       the build'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
-      takeover's interruption of every in-flight invocation, and `lead release`'s refusal while invocations are active (record
-      §11). Native harness subagents only where the adapter keeps AEW's invocation identity, custody, profile, parent, limits
-      and provenance (with F13)
+      the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
+      keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). The
+      Lead's per-invocation cancel and stop stay Lead commands. Native harness subagents only where the adapter keeps AEW's
+      invocation identity, role, custody, profile, parent, limits, evidence and provenance (with F13)
   - '#': F32
     Work: 'The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved
       open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids,

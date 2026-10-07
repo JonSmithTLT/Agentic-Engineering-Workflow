@@ -180,8 +180,9 @@ behaviour, then what the decision requires.
 - **Takeover interrupts children.** `aew lead takeover` revokes every in-flight invocation's credential and marks a
   Ticket waiting on one `INTERRUPTED` (ADR-0005; `lead_ops._interrupt_invocations`); invocation credentials are scoped
   to the Lead generation. The decision gives admitted invocations custody independent of the Lead attachment: losing,
-  closing or taking over the attachment does not end them, and a later generation reconciles what they deposit (§7,
-  §8). Cancelling them stays an explicit control operation.
+  closing or taking over the attachment does not by itself end them, and a later generation reconciles what they
+  deposit (§7, §8). §13 makes what happens to them the operator's choice, with drain the default; stop now keeps
+  today's behaviour as an operator choice. Cancelling them stays an explicit control operation.
 - **Handoff interrupts what it does not carry.** `aew lead handoff accept` moves the invocations the offer carries to
   the new generation and interrupts every other one (`lead_ops.lead_handoff_accept`). Under §8 and §13 the invocations
   it does not carry go through the same disposition as any other ended attachment.
@@ -226,7 +227,9 @@ behaviour, then what the decision requires.
 ## 13. Operator decisions of 2026-10-06: in-flight work when an attachment ends
 
 The operator decided these on 2026-10-06, after discussing with the lead developer what revoking a child's credential
-does in AEW as built. They refine §5 and §8: the work is never discarded, but whether AEW keeps governing it is the
+does in AEW as built. Unlike §1 to §10, this section is not recorded as given: it is the lead developer's account of
+decisions the operator gave in conversation, and the operator confirms its wording by approving the pull request that
+adds it. They refine §5 and §8: the work is never discarded, but whether AEW keeps governing it is the
 operator's decision, and a decision with the operator's name on it is one the operator actually made (the operator's
 attribution rule, ADR-0006 amendment).
 
@@ -253,8 +256,10 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
    cannot classify stops the run (fail closed).
 3. **A Lead's `aew close` resolves to the same process.** A Lead that closes its attachment probably does so on the
    operator's decision, and its children get the operator's choice or, without one, the drain. A Lead never chooses
-   **Stop now** or **Release to manual** for its children: those take work out of AEW's governance, so they are the
-   operator's.
+   **Stop now** or **Release to manual** for its children when its attachment ends: those take work out of AEW's
+   governance, so they are the operator's. This governs only what happens when an attachment ends. While attached, a
+   Lead keeps its existing per-invocation controls (`aew invoke cancel`, `aew harness stop`; §5's explicit control
+   operation): each is a recorded Lead decision about one invocation under the Lead's own name, never the operator's.
 4. **Held results are the next generation's to accept.** On the next attachment, the operator or the new Lead accepts
    the held results, which then move their Tickets under the normal rules, or discards them, sending the work back
    through the gates. A held result names the run that produced it and the generation that admitted it.

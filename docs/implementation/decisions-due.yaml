@@ -24,13 +24,6 @@ items:
   what: The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among
     them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design
     v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
-- row: U3
-  needs: design
-  owner: designer
-  due: M5
-  what: 'The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses:
-    decided after M4-H, whose F4 premise contrast measures it (Q7 v0.3.1 §12; a triggered U3 concern flag supports the addendum);
-    not a pre-M4-H blocker'
 - row: F26
   needs: design
   owner: designer
@@ -72,6 +65,13 @@ items:
   owner: designer
   due: Evaluation
   what: Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture)
+- row: U3
+  needs: design
+  owner: designer
+  due: Evaluation
+  what: 'The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses:
+    after M4-H data (operator, 2026-10-07): F4''s premise contrast measures it (Q7 v0.3.1 §12); a strong F4 may close or
+    defer it, a weak F4 may justify later F14/U3 work; not a pre-M4-H blocker'
 - row: E4
   needs: decision
   owner: operator

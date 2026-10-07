@@ -194,13 +194,24 @@ behaviour above stands.
   mutation authority, and its calls get `STALE_AUTHORITY`. A closed attachment leaves the model no AEW project
   authority and no AEW project access (decision record §5; what access covers, §12). A normal model turn ending changes
   nothing.
-- **Admitted invocations keep their own custody.** Above, an invocation credential is scoped to the Lead generation and
-  revoked on takeover, and a Ticket waiting on one becomes `INTERRUPTED`. Under Q12, closing, losing or taking over the
-  Lead attachment does not revoke, interrupt or cancel an already-admitted invocation: it may finish and deposit its
-  outputs and evidence, and a later generation reconciles them. Cancelling one stays an explicit control operation.
-  The generation an invocation was admitted under stays recorded for provenance and grants no Lead authority. How its
-  credential outlives that generation is F31's choice.
+- **What happens to admitted invocations is the operator's choice (decision record §13).** Above, an invocation
+  credential is scoped to the Lead generation and revoked on takeover, and a cooperative handoff interrupts every
+  invocation it does not carry; a Ticket waiting on one becomes `INTERRUPTED`. Under Q12, when a Lead attachment ends
+  (`aew close`, harness crash, host loss, takeover, or a handoff that does not carry them), the operator chooses at the
+  operator terminal:
+  - **drain** (the default, whenever no operator choice is made, including a Lead's own `aew close`): each child keeps
+    its own narrow credential, finishes within a time limit and hands in; its results are recorded and **held**, and
+    nothing moves a Ticket until a current Lead or the operator accepts them. Anything going wrong during the drain
+    stops the run at once and reports an error to the operator;
+  - **stop now:** the children are stopped and their credentials revoked, as takeover does today;
+  - **release to manual:** their credentials are revoked and they keep running inside their supervisor's sandbox and
+    limits until their deadline, outside AEW's governance.
+
+  A Lead never chooses stop now or release to manual. The generation an invocation was admitted under stays recorded
+  for provenance and grants no Lead authority. How a draining child's credential outlives that generation is F31's
+  choice.
 - **What does not change.** The credential form, the verifier, compare-and-swap on `--expect-rev`, and takeover's
-  out-of-band operator authorization. WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
+  out-of-band operator authorization. Held results satisfy WC §5's stale-writer guard because only their acceptance,
+  by the current generation, moves a Ticket (decision record §11, for the designer to confirm). WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
   custody is lost (its supervisor or the AEW host is gone); losing only the Lead's attachment is not that (decision
   record §11, the lead developer's reading, for the designer to confirm before F31 is built).

@@ -730,9 +730,10 @@ sections:
       a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
       from canonical state on attach, stale authority for every older generation, no AEW project authority or access left
       to a closed attachment, a harness crash or host loss that revokes and stales the attachment''s generation, the Lead
-      attachment''s requested and effective execution profile recorded, and admitted invocations whose custody survives
-      the Lead attachment''s close, loss or takeover (a later generation reconciles what they deposit; cancelling them stays
-      an explicit control)'
+      attachment''s requested and effective execution profile recorded, and the operator''s disposition of running children
+      when an attachment ends (close, crash, host loss, takeover or an uncarried handoff): drain by default (finish within
+      a time limit, results held until a current Lead or the operator accepts them, any fault stops the run at once with
+      an error report), or, by the operator only at the operator terminal, stop now or release to manual'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
       §4 to §9 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
     Belongs to or gated by: '**Designer.** Waits for the designer''s confirmations in decisions-due (the record''s §11 reading

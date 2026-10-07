@@ -3,7 +3,8 @@
 **Status:** Decision record, governing. **Adopted** by the designer and the operator on 2026-10-06; it closes register
 question Q12 (harness hosting, the operator session and native-feature integration; architecture review D-AR5). §1 to
 §10 are the decision recorded as given. §11 is the lead developer's account of what it changes in AEW as built, and §12
-what it leaves to later designs. Where this record and an earlier text differ on the Lead seat, the attachment or the
+what it leaves to later designs. §13 is the operator's decision of the same day on what happens to in-flight work when
+an attachment ends, which refines §5 and §8. Where this record and an earlier text differ on the Lead seat, the attachment or the
 hosting boundary, this record wins; ADR-0005, ADR-0009 and ADR-0010 carry amendments that point here.
 
 **What depends on it:** register F31 (the attachment lifecycle, to build) and F32 (the reference execution profiles);
@@ -181,8 +182,17 @@ behaviour, then what the decision requires.
   to the Lead generation. The decision gives admitted invocations custody independent of the Lead attachment: losing,
   closing or taking over the attachment does not end them, and a later generation reconciles what they deposit (§7,
   §8). Cancelling them stays an explicit control operation.
+- **Handoff interrupts what it does not carry.** `aew lead handoff accept` moves the invocations the offer carries to
+  the new generation and interrupts every other one (`lead_ops.lead_handoff_accept`). Under §8 and §13 the invocations
+  it does not carry go through the same disposition as any other ended attachment.
 - **Release refuses active invocations.** `aew lead release` is refused while any invocation is active. `aew close`
-  detaches without cancelling admitted child work (§5).
+  detaches without cancelling admitted child work (§5); §13 says what happens to that work.
+- **Every control write is guarded by the current generation.** WC §5 (crash-safe authority, and its authority table)
+  requires control mutations to be guarded by the current Lead generation or an equivalent stale-writer guard, and
+  `require_invocation` applies that guard to child invocations today. Under §13's drain, a child admitted under an
+  older generation hands in after a newer one is current. Its hand-in is only recorded and held; the write that moves a
+  Ticket is the acceptance, made by the current generation (§13). The lead developer reads that as satisfying WC §5's
+  guard, so no amendment to the frozen specification is needed; the designer confirms before F31 is built.
 - **A lost harness holds the seat.** When the wrapper exits with an invocation active, the seat stays held and only
   `aew lead takeover` recovers it (register V2, closed with a clearer refusal). The decision makes a harness crash or
   host loss revoke and stale that attachment's generation, with a new attachment taking a new generation (§7).
@@ -212,3 +222,39 @@ behaviour, then what the decision requires.
   harness (U6) are implementation choices for F31 and the F18 hosting design, within §10's limit.
 - **Exact model identifiers.** The provider and model ids, effort variants and qualification of the reference models
   through the pinned harness are F32's.
+
+## 13. Operator decisions of 2026-10-06: in-flight work when an attachment ends
+
+The operator decided these on 2026-10-06, after discussing with the lead developer what revoking a child's credential
+does in AEW as built. They refine §5 and §8: the work is never discarded, but whether AEW keeps governing it is the
+operator's decision, and a decision with the operator's name on it is one the operator actually made (the operator's
+attribution rule, ADR-0006 amendment).
+
+**What revocation means.** Revoking a child's credential does not destroy its work. Its files stay in its workspace
+and its run's logs stay readable. What ends is AEW's governance: AEW refuses the child's hand-ins, so they are never
+evidence, no gate passes on them and no Ticket moves on them. The work can still re-enter AEW through the gates (a new
+attempt starting from it) or leave it for an ordinary development cycle.
+
+**The disposition.** When a Lead attachment ends with children running, by `aew close`, harness crash, host loss,
+takeover or a handoff that does not carry them, the operator chooses at the operator terminal what happens to them:
+
+| Choice | The children | Their results |
+|---|---|---|
+| **Drain** (the default) | keep their own narrow credential, finish within a time limit, hand in, and stop | recorded as evidence and **held**: nothing moves a Ticket until a current Lead or the operator accepts it; discarding it sends the work back through the gates |
+| **Stop now** | stopped at once | work product on disk and in logs; the Tickets are `INTERRUPTED` and reconciled after inspection |
+| **Release to manual** | AEW access revoked; they keep running inside their supervisor's sandbox and limits until their deadline | work product outside AEW, for the operator to handle as an ordinary development cycle |
+
+1. **Drain is the default.** It applies whenever no operator choice is made: a crash or host loss with nobody at the
+   terminal, or an attachment closed by the Lead.
+2. **Anything going wrong during a drain stops it at once.** The run is stopped immediately (the plug is pulled) and an
+   error is reported to the operator. *Lead developer's reading, for the designer to check:* "going wrong" is every
+   condition on which a supervisor already stops a run (the harness exiting abnormally, the deadline or step limit, a
+   containment failure, the supervisor's own failure), the drain's time limit, and the operator's stop; a fault F31
+   cannot classify stops the run (fail closed).
+3. **A Lead's `aew close` resolves to the same process.** A Lead that closes its attachment probably does so on the
+   operator's decision, and its children get the operator's choice or, without one, the drain. A Lead never chooses
+   **Stop now** or **Release to manual** for its children: those take work out of AEW's governance, so they are the
+   operator's.
+4. **Held results are the next generation's to accept.** On the next attachment, the operator or the new Lead accepts
+   the held results, which then move their Tickets under the normal rules, or discards them, sending the work back
+   through the gates. A held result names the run that produced it and the generation that admitted it.

@@ -106,7 +106,7 @@ Not recommended now: a Codex adapter implementation (T9's support target says wh
 
 ## 4. The semantic-map brief (2026-10-04, afternoon)
 
-Delivered, in the designer's order: S1 C/C++ investigation (live, measured against the compiler's own output), S2–S5 contract/surface/freshness/bridge (one note), S6 query routing (Revelations as prior), S7 large-repo benchmark. Next, if the designer wants more: a C++ run of S1 (templates and instantiations are the unmeasured fourth category); a C++ or Rust extractor to replace the Python walk if 50k-TU repositories are in scope soon; the S6 evaluation set generated from the curl extraction (A/B/D classes need no labels); and the designer's five S2–S5 decisions.
+Delivered, in the designer's order: S1 C/C++ investigation (live, measured against the compiler's own output), S2–S5 contract/surface/freshness/bridge (one note), S6 query routing (a security-research platform as prior), S7 large-repo benchmark. Next, if the designer wants more: a C++ run of S1 (templates and instantiations are the unmeasured fourth category); a C++ or Rust extractor to replace the Python walk if 50k-TU repositories are in scope soon; the S6 evaluation set generated from the curl extraction (A/B/D classes need no labels); and the designer's five S2–S5 decisions.
 
 ## 5. Third brief and the C++ check (2026-10-05)
 

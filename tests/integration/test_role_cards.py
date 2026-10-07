@@ -23,7 +23,7 @@ TRIAGER = {
     "version": 1, "extends": "investigator",
     "purpose": "Triage candidate vulnerability evidence.",
     "use_when": ["sanitizer crash", "suspected duplicate"],
-    "skills": ["revelations/finding-triage"],
+    "skills": ["example/finding-triage"],
     "required_capabilities": ["candidate_finding_query", "exact_code_search"],
     "optional_capabilities": ["binary_analysis"],
     "outputs": ["vulnerability_triage_report"],

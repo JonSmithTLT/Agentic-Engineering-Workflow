@@ -57,6 +57,8 @@ checks the index, and that every citation names a real section of the frozen ver
 2. **Adopted amendments and decision records** ([`design/`](design/)):
    - [`workflow-contract-amendment-class0-2026-10-01.md`](design/workflow-contract-amendment-class0-2026-10-01.md): Class 0, enforced from M4-A; its §9 amends the KC §26 acceptance case
    - [`plan-assurance-and-classification-decisions-2026-10-01.md`](design/plan-assurance-and-classification-decisions-2026-10-01.md): Q9 and Q10
+   - [`q7-m4h-value-gate-experiment-v0.3.1.md`](design/q7-m4h-value-gate-experiment-v0.3.1.md): Q7, the M4-H value-gate experiment, adopted and design frozen by the operator 2026-10-07: B+ design, six fixed F1 to F3 cells (144 primary runs), descriptive R+ and separate F4 premise runs, a fixed-cell Bayesian decision rule, evaluator-side isolation, cold start; prerequisites F15.5/F15.6, F19, F25
+   - [`workflow-contract-amendment-ticket-revisions-2026-10-06.md`](design/workflow-contract-amendment-ticket-revisions-2026-10-06.md): Ticket revisions (E19-B v0.4, F4), adopted by the operator 2026-10-06: extends WC §7, §8 and invariant 7 and KC §12; stable Ticket identity with immutable, engine-classified revisions, computed evidence admissibility, anti-laundering, quiesce and commit, and the amendment's own impact hold
    - [`decisions-2026-10-01-containment-and-integration-queue.md`](design/decisions-2026-10-01-containment-and-integration-queue.md): containment and process ownership (Q3, F2, E13, the scratch rule), the integration queue (F10, D4)
    - [`decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md`](design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md): F18.2 and F18.8, the narrow amendment of install and bootstrap v0.3 (attachment-scoped services allowed, the operator terminal is not the Lead session, doctor's ownership matrix) and one AEW Provider Gateway composing F28's relay with F18's gateway
    - [`decisions-2026-10-06-f19-held-out-corpus-isolation.md`](design/decisions-2026-10-06-f19-held-out-corpus-isolation.md): F19, held-out corpus isolation for M4-H as an experiment-protocol requirement (the corpus stays off the arm hosts; one task released per trial)
@@ -126,7 +128,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 [0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state ·
 [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D, first slice PR #53) ·
 [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b) ·
-[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (proposed; the designer asked for one narrow change before adoption, 2026-10-05; F18.3)
+[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (adopted 2026-10-07: three side-by-side artifacts, the signed manifest authenticating the archive before it is parsed; F18.3)
 
 Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
 

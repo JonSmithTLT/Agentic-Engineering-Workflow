@@ -2,7 +2,8 @@
 """Refresh tests/durations.json from lane reports (docs/implementation/testing-and-ci-strategy.md).
 
 Durations only balance shards; they never decide which tests run. Prefer the nightly serial `reference`
-reports (no xdist contention). Entries for tests no longer collected are dropped.
+reports (no xdist contention); a full green `main` run's lane reports do when the nightly is stale.
+Entries for tests no longer collected are dropped.
 
     python tools/ci/update_durations.py REPORT_DIR [REPORT_DIR ...] --out tests/durations.json
 """

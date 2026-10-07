@@ -63,7 +63,7 @@ def test_narrowing_and_ordinary_capabilities_are_allowed():
     roles.validate_card(card(extends="investigator", role="vulnerability_triager",
                              required_capabilities=["candidate_finding_query", "exact_code_search"],
                              optional_capabilities=["binary_analysis", "crash_replay", "relationship_discovery"],
-                             skills=["revelations/finding-triage"], outputs=["vulnerability_triage_report"],
+                             skills=["example/finding-triage"], outputs=["vulnerability_triage_report"],
                              use_when=["sanitizer crash", "suspected duplicate"]), source="t")
 
 

@@ -18,7 +18,7 @@ from typing import Any
 
 from aew.errors import UsageError, ValidationFailed
 from aew.schemas import validate
-from aew.util import read_yaml, sha256_file
+from aew.util import load_yaml, sha256_bytes
 
 REL_PATH = "policy/execution.yaml"  # conventional location; project.yaml policy.execution overrides it
 DEFAULT_HARNESS = "opencode"
@@ -82,10 +82,17 @@ def load(aew_root: Path, manifest: dict[str, Any]) -> tuple[dict[str, Any] | Non
     path = policy_path(aew_root, manifest)
     if not path.exists():
         return None, None
-    data = read_yaml(path)
-    validate("execution", data, source=str(path))
-    check_semantics(data, source=str(path))
-    return data, sha256_file(path)
+    raw = path.read_bytes()
+    return parse(raw, source=str(path)), sha256_bytes(raw)
+
+
+def parse(raw: bytes, *, source: str) -> dict[str, Any]:
+    """An execution policy from its file's bytes: parsed, schema-validated and semantically checked. Callers that pin
+    the file hash these same bytes, so what is checked is what is used."""
+    data = load_yaml(raw.decode("utf-8"), source=source)
+    validate("execution", data, source=source)
+    check_semantics(data, source=source)
+    return data
 
 
 def check_semantics(policy: dict[str, Any], *, source: str) -> None:

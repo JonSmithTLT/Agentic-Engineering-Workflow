@@ -253,5 +253,6 @@ def test_dispatch_on_a_base_that_needs_an_untrusted_filter_is_refused_until_trus
         pytest.skip("the sample project has no execution policy to trust a driver in")
     policy.setdefault("containment", {})["trusted_git_drivers"] = ["lfs"]
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.pin_policy()
     res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
     assert "GIT_DRIVER_UNTRUSTED" not in (res.stdout + res.stderr), res.stdout

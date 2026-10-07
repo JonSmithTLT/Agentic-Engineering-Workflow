@@ -41,6 +41,7 @@ REASONS: dict[str, str] = {
     "RUN_LOST": "a harness run's supervisor stopped reporting",
     "RUN_CRASHED": "a harness run ended abnormally",
     "MANIFEST_PIN_MISMATCH": "project.yaml does not match the hash control state pins",
+    "POLICY_PIN_MISMATCH": "a policy file project.yaml names does not match the hash control state pins",
     "BLOCKED_BY": "a dependency or plan condition blocks this unit",
     "STATE_REASON": "the reason the engine recorded with the unit's current state",
     "TRANSITION_REASON": "the reason recorded with the transition",

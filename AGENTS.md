@@ -43,8 +43,10 @@ The author may merge its own pull request when all of these hold on the **curren
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, and the pull request is not a draft.
 
-Merge one pull request at a time. Do not update other branches with `main` unless they conflict: every push to `main`
-runs the full gate, which checks each merge. If `main` goes red, fixing it comes before any other merge.
+Merge one pull request at a time. Do not update other branches with `main` unless they conflict: `main`'s full push
+run checks the merged result. When merges land close together, a superseded pending run may be cancelled and the next
+run verifies the newest tip, which contains every earlier merge (testing strategy §3). If `main` goes red, fixing it
+comes before any other merge.
 
 ## 5. Reserved for the operator
 

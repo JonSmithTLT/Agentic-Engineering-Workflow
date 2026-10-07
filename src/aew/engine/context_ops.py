@@ -11,7 +11,7 @@ from aew.errors import IntegrityError, NotFound
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
-from aew.util import atomic_write, parse_frontmatter, sha256_file, sha256_text
+from aew.util import atomic_write, parse_frontmatter, sha256_bytes, sha256_text
 from aew.workspace import git
 
 if TYPE_CHECKING:
@@ -154,8 +154,7 @@ class ContextPacks:
         plan_text = ""
         if plan:
             _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_path = self.k.aew_root / self.k.manifest["policy"]["guardrails"]
-        checks_path = self.k.aew_root / self.k.manifest["policy"]["checks"]
+        guard_raw, checks_raw = self.k.policy_bytes("guardrails"), self.k.policy_bytes("checks")  # as adopted
         snapshot = inv["snapshot"]
         cutoff = inv.get("evidence_seq_cutoff", 0)
         evidence = [e for e in E.scan(self.k.aew_root, wid)[0] if e.get("seq", 0) <= cutoff]
@@ -188,7 +187,7 @@ class ContextPacks:
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope", "ticket"), specialty=inv.get("specialty"), workspace=inv["workspace"],
             snapshot=snapshot, record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.k.policy("checks")["checks"],
+            guardrails_text=guard_raw.decode("utf-8"), checks=self.k.policy("checks")["checks"],
             authority=self.k.manifest["authority"]["accepted"], diff=diff, diffstat=diffstat,
             check_results=[{"id": e["id"], "check_id": e["check"]["check_id"], "result": e["result"],
                             "exit_code": e["check"]["exit_code"], "log": (e.get("evidence") or [{}])[0].get("path")}
@@ -208,8 +207,8 @@ class ContextPacks:
             {"name": "current_ticket", "path": unit["record"], "sha256": unit["record_sha256"]},
             {"name": "accepted_plan", "path": plan["path"] if plan else None,
              "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
-            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
+            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_bytes(guard_raw)},
+            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_bytes(checks_raw)},
             {"name": "snapshot", "path": None, "sha256": None, "base": base, "tree": fp},
             *[{"name": f"evidence:{e['id']}", "path": e["_path"], "sha256": e["_sha256"]} for e in on_snapshot],
             *self._history_sources(history),
@@ -228,15 +227,14 @@ class ContextPacks:
         plan_text = ""
         if plan:
             _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_path = self.k.aew_root / self.k.manifest["policy"]["guardrails"]
-        checks_path = self.k.aew_root / self.k.manifest["policy"]["checks"]
+        guard_raw, checks_raw = self.k.policy_bytes("guardrails"), self.k.policy_bytes("checks")  # as adopted
         extras = self._m2_pack_extras(state, inv, unit)
         history = self._history_refs(state, inv)
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=roles.archetype(role), work_id=wid, title=unit["title"],
             scope=inv.get("scope"), specialty=inv.get("specialty"), workspace=inv["workspace"],
             snapshot=inv["snapshot"], record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_path.read_text(encoding="utf-8"), checks=self.k.policy("checks")["checks"],
+            guardrails_text=guard_raw.decode("utf-8"), checks=self.k.policy("checks")["checks"],
             authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             card=(card or {}).get("content"), history=history, **extras)
@@ -247,8 +245,8 @@ class ContextPacks:
             {"name": "current_work", "path": unit["record"], "sha256": unit["record_sha256"]},
             {"name": "accepted_plan", "path": plan["path"] if plan else None,
              "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_file(guard_path)},
-            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_file(checks_path)},
+            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_bytes(guard_raw)},
+            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_bytes(checks_raw)},
             {"name": "observation", "path": None, "sha256": None,
              "commit": (inv.get("observation") or {}).get("commit"),
              "tree": inv["snapshot"]["relevant_inputs_fingerprint"]},

@@ -26,7 +26,7 @@ from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
 from aew.policy import execution as X
 from aew.schemas import validate
-from aew.util import read_yaml, sha256_file, utc_now
+from aew.util import load_yaml, read_yaml, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git
 
 WORKSPACE_MARKER = "aew-workspace.yaml"  # stored in a linked worktree's private git dir
@@ -37,10 +37,24 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue")
 
 
+# Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
+# before them, which `aew manifest adopt` pins.
+POLICY_PINS = "policy_sha256"
+_NOT_IN_TXN = object()  # Kernel._txn_pins outside a Lead transaction
+
+
+def policy_files(manifest: dict[str, Any]) -> list[str]:
+    """The policy files a manifest puts in force, as paths under ``.aew``: every ``policy`` entry, and the execution
+    policy at its conventional path when the manifest names none (``aew.policy.execution.policy_path``)."""
+    named = manifest.get("policy") or {}
+    return sorted({*named.values(), named.get("execution") or X.REL_PATH})
+
+
 def as_v1(state: dict[str, Any]) -> dict[str, Any]:
     """A v1 view of a control state: the schema says v1 and every v2-only key is gone. For fixtures and tools that
-    build a v1 project from `aew init`, never for migration (v1 to v2 only)."""
-    return {k: v for k, v in state.items() if k not in V2_ONLY_KEYS} | {"schema": V1}
+    build a v1 project from `aew init`, never for migration (v1 to v2 only). The policy pins go too: a v1 project
+    predates them (a v1 project may gain them later, through `aew manifest adopt`)."""
+    return {k: v for k, v in state.items() if k not in (*V2_ONLY_KEYS, POLICY_PINS)} | {"schema": V1}
 # What a Lead may still do on a v1 project (ADR-0011; implementation plan §3): change the seat, end work in flight (a
 # live run blocks the migration), and adopt a changed manifest (the migration checks the pin). Everything else waits
 # for `aew migrate`, so a v1 project is never refused before the command that clears the refusal exists.
@@ -98,6 +112,9 @@ class Kernel:
         # Lead mutations on a v1 project are refused until `aew migrate`. Only the perf tool sets this, in process, to
         # build the M3 (v1) layout its baselines were measured on (tools/perf/control_plane.py).
         self.legacy_v1_writes = False
+        # The policy pins a Lead transaction checked on entry, so every policy read inside it is held to the same pins
+        # (PR #118 review, finding 2: an edit after the entry check must not be used by the transaction).
+        self._txn_pins: Any = _NOT_IN_TXN
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -112,14 +129,15 @@ class Kernel:
         except Exception as exc:  # surfaced by the ``manifest`` property
             self._manifest, self._manifest_error = None, exc
         self._manifest_seen = self._authority_files_identity()
-        git.trust_drivers(self.trusted_git_drivers())
+        git.trust_drivers(self.trusted_git_drivers(state.get(POLICY_PINS)))
 
-    def trusted_git_drivers(self) -> list[str]:
-        """The git drivers the execution policy trusts. Nothing is trusted when it cannot be read (fail safe: AEW's
-        git then runs no configured program at all)."""
+    def trusted_git_drivers(self, pins: dict[str, str | None] | None) -> list[str]:
+        """The git drivers the execution policy trusts. Nothing is trusted when it cannot be read, or when it differs
+        from its pin (fail safe: AEW's git then runs no configured program at all; an unadopted edit must never add a
+        driver AEW's own git would run)."""
         try:
-            policy, _ = X.load(self.aew_root, self._manifest) if self._manifest else (None, None)
-        except Exception:  # an invalid policy is reported where it is used; it trusts nothing here
+            policy = self._execution_policy(self._manifest, pins)[0] if self._manifest else None
+        except Exception:  # an invalid or unpinned policy is reported where it is used; it trusts nothing here
             policy = None
         return list(((policy or {}).get("containment") or {}).get("trusted_git_drivers") or [])
 
@@ -200,17 +218,73 @@ class Kernel:
         return render.views(state, name, self.aew_root)
 
     def policy(self, name: str) -> dict[str, Any]:
-        path = self.aew_root / self.manifest["policy"][name]
-        data = read_yaml(path)
+        rel = self.manifest["policy"][name]
+        path = self.aew_root / rel
+        raw = self._pinned_bytes(rel, self._pins_in_force())
+        if raw is None:
+            raise FileNotFoundError(str(path))
+        data = load_yaml(raw.decode("utf-8"), source=str(path))
         validate(name, data, source=str(path))
         return data
 
     def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
         """The execution policy and its file hash; ``(None, None)`` when the project has none (ADR-0010)."""
-        return X.load(self.aew_root, self.manifest)
+        return self._execution_policy(self.manifest, self._pins_in_force())
+
+    def _execution_policy(self, manifest: dict[str, Any],
+                          pins: dict[str, str | None] | None) -> tuple[dict[str, Any] | None, str | None]:
+        path = X.policy_path(self.aew_root, manifest)
+        raw = self._pinned_bytes(path.relative_to(self.aew_root).as_posix(), pins)
+        if raw is None:
+            return None, None
+        return X.parse(raw, source=str(path)), sha256_bytes(raw)
+
+    def _pins_in_force(self) -> dict[str, str | None] | None:
+        """The policy pins a read is held to: the open Lead transaction's, else the committed state's (lock-free, the
+        reader's view). ``None`` for a project whose policy was never pinned (doctor warns; adopt pins it)."""
+        if self._txn_pins is not _NOT_IN_TXN:
+            return self._txn_pins
+        return self.store.read_committed().get(POLICY_PINS)
+
+    def policy_bytes(self, name: str) -> bytes:
+        """A policy file's exact bytes as adopted (checked against the pins in force, read once), for callers that
+        quote or hash the file rather than parse it: a context pack's guardrails text and its recorded hashes."""
+        rel = self.manifest["policy"][name]
+        raw = self._pinned_bytes(rel, self._pins_in_force())
+        if raw is None:
+            raise FileNotFoundError(str(self.aew_root / rel))
+        return raw
+
+    def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:
+        """A policy file's bytes, read once and checked against its pin, so what is used is what was adopted: the
+        caller parses these same bytes (no re-read between check and use). ``None`` when the file is absent."""
+        path = self.aew_root / rel
+        raw = path.read_bytes() if path.is_file() else None
+        if pins is not None and (sha256_bytes(raw) if raw is not None else None) != pins.get(rel, "<not pinned>"):
+            raise IntegrityError(
+                f"policy file {AEW_DIR}/{rel} modified outside AEW; the operator reviews the change and runs "
+                "`aew manifest adopt` at their own terminal to accept it", files=[rel])
+        return raw
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return sha256_file(self.aew_root / MANIFEST) == state["manifest_sha256"]
+
+    def policy_pins(self, manifest: dict[str, Any] | None = None) -> dict[str, str | None]:
+        """The sha256 of every policy file ``project.yaml`` names, and of the execution policy at its conventional path
+        when the manifest names none; ``None`` for a file that does not exist (the execution policy is optional)."""
+        return {rel: sha256_file(self.aew_root / rel) if (self.aew_root / rel).is_file() else None
+                for rel in policy_files(self.manifest if manifest is None else manifest)}
+
+    def policy_pin_drift(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str] | None:
+        """The policy files that differ from their pins in control state, or ``None`` for a project whose policy files
+        were never pinned (initialized before the pin; ``aew manifest adopt`` pins them). The manifest pin alone left
+        gates, guardrails, checks and execution policy editable outside AEW, unrecorded (M4 area-5 review, note 6).
+        A lock-free reader passes the manifest it read with ``state``, so this never takes the control lock."""
+        pinned = state.get(POLICY_PINS)
+        if pinned is None:
+            return None
+        current = self.policy_pins(manifest)
+        return sorted(rel for rel in pinned.keys() | current.keys() if pinned.get(rel) != current.get(rel))
 
     def check_manifest_pin(self, state: dict[str, Any]) -> None:
         if not self.manifest_pin_ok(state):
@@ -218,6 +292,11 @@ class Kernel:
                 f"{AEW_DIR}/{MANIFEST} was modified outside AEW; review the change and run "
                 "`aew manifest adopt` at the operator's own terminal to accept it (a Lead session is refused it)",
             )
+        drift = self.policy_pin_drift(state)
+        if drift:
+            raise IntegrityError(
+                f"policy file(s) {', '.join(f'{AEW_DIR}/{rel}' for rel in drift)} modified outside AEW; the operator "
+                "reviews the change and runs `aew manifest adopt` at their own terminal to accept it", files=drift)
 
     def workspaces_root(self) -> Path:
         raw = Path(self.manifest.get("workspaces", {}).get("root", f"../.aew-workspaces/{self.project_id}"))
@@ -259,12 +338,17 @@ class Kernel:
                     schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
             if not _adopting_manifest:
                 self.check_manifest_pin(s.state)
-            ctx = TxnContext(session=s, actor=actor)
-            yield ctx
-            self.finalizers.run(ctx)
-            s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
-                                events=ctx.events),
-                     expect_rev=expect_rev, state=ctx.commit_state)
+            # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
+            self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
+            try:
+                ctx = TxnContext(session=s, actor=actor)
+                yield ctx
+                self.finalizers.run(ctx)
+                s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
+                                    events=ctx.events),
+                         expect_rev=expect_rev, state=ctx.commit_state)
+            finally:
+                self._txn_pins = _NOT_IN_TXN
             for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
                 try:
                     effect()

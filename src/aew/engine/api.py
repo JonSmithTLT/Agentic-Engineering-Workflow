@@ -18,7 +18,7 @@ from typing import Any
 from aew import SPEC_SET
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
-from aew.engine.base import Kernel, TxnContext
+from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
 from aew.engine.context_ops import ContextPacks
 from aew.engine.dispatch import Dispatch
 from aew.engine.evidence_ops import EvidenceCommands, Gates
@@ -128,21 +128,57 @@ class ProjectAdmin:
             ctx.summary = f"authority candidate rejected: {candidate['path']}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str) -> dict[str, Any]:
-        """Accept a reviewed manual edit of project.yaml by re-pinning it (recorded decision)."""
+    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str,
+                       authorization: dict[str, str] | None = None) -> dict[str, Any]:
+        """Accept a reviewed manual edit of project.yaml or of the policy files it names by re-pinning them (recorded
+        decision). A project whose policy files were never pinned has them pinned here. The operator's decision, always
+        confirmed at their own terminal: whoever can edit the policy must not also approve the edit, and a Lead holding
+        the raw credential is refused like a Lead session (PR #118 review, finding 1)."""
+        require_operator_attribution(True, authorization, "adopting an edit of project.yaml or the policy files")
         manifest_path = self.k.aew_root / MANIFEST
         # Credential and revision are checked by lead_txn before any state-dependent answer.
         with self.k.lead_txn(token, expect_rev, "manifest.adopt", reason=reason, _adopting_manifest=True) as ctx:
-            if self.k.manifest_pin_ok(ctx.state):
-                raise IllegalTransition("project.yaml matches its pin; nothing to adopt")
+            manifest_changed = not self.k.manifest_pin_ok(ctx.state)
+            drift = self.k.policy_pin_drift(ctx.state)
+            if not manifest_changed and drift == []:
+                raise IllegalTransition("project.yaml and the policy files match their pins; nothing to adopt")
             raw = manifest_path.read_bytes()  # pin the exact bytes on disk, not a newline-normalized view
-            validate("project", load_yaml(raw.decode("utf-8"), source=str(manifest_path)),
-                     source=str(manifest_path))
-            decision = self.k.new_decision(ctx, "manifest_adoption",
-                                         "Adopted a reviewed manual edit of project.yaml", reason=reason)
+            manifest = load_yaml(raw.decode("utf-8"), source=str(manifest_path))
+            validate("project", manifest, source=str(manifest_path))
+            pins = self._read_policy_pins(manifest)
+            changed = ([MANIFEST] if manifest_changed else []) + (drift or [])
+            what = ", ".join(changed) + (" (policy files pinned for the first time)" if drift is None else "")
+            decision = self.k.new_decision(ctx, "manifest_adoption", f"Adopted a reviewed manual edit of {what}",
+                                         reason=reason, decided_by=dict(ctx.actor, kind="operator",
+                                                                        recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
-            ctx.summary = "manifest re-pinned"
-        return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
+            ctx.state[POLICY_PINS] = pins
+            ctx.summary = f"manifest and policy re-pinned: {what}"
+        return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
+
+    def _read_policy_pins(self, manifest: dict[str, Any]) -> dict[str, str | None]:
+        """The policy files' pins, each hashed from the same bytes it is validated from: a file that does not parse or
+        match its schema is refused, never pinned."""
+        names = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
+        pins: dict[str, str | None] = {}
+        optional = X.policy_path(self.k.aew_root, manifest).relative_to(self.k.aew_root).as_posix()
+        for rel in policy_files(manifest):
+            path = self.k.aew_root / rel
+            if not path.is_file():
+                if rel != optional:  # only the execution policy may be absent (PR #118 review, finding 3)
+                    raise IntegrityError(f"{AEW_DIR}/{rel} is missing: project.yaml names it as required policy; "
+                                         "restore it or change project.yaml before adopting", files=[rel])
+                pins[rel] = None
+                continue
+            raw = path.read_bytes()
+            data = load_yaml(raw.decode("utf-8"), source=str(path))
+            name = names.get(rel, "execution")
+            if name in ("guardrails", "checks", "gates", "execution"):
+                validate(name, data, source=str(path))
+            if name == "execution":
+                X.check_semantics(data, source=str(path))
+            pins[rel] = sha256_bytes(raw)
+        return pins
 
     def _fresh_manifest(self) -> dict[str, Any]:
         return load_manifest(self.k.aew_root)
@@ -213,6 +249,14 @@ class ProjectAdmin:
         add("manifest-pin", "PASS" if self.k.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.k.manifest_pin_ok(state)
             else "project.yaml modified outside AEW; the operator reviews it, then `aew manifest adopt`")
+        drift = self.k.policy_pin_drift(state)
+        if drift is None:
+            add("policy-pin", "WARN", "the policy files are not pinned (a project initialized before the pin): the "
+                "operator reviews them, then `aew manifest adopt` pins them")
+        else:
+            add("policy-pin", "FAIL" if drift else "PASS",
+                f"modified outside AEW: {', '.join(drift)}; the operator reviews them, then `aew manifest adopt`"
+                if drift else "the policy files match their pinned hashes")
         for name in ("guardrails", "checks", "gates"):
             try:
                 self.k.policy(name)
@@ -377,6 +421,7 @@ class Engine:
             "spec_set": SPEC_SET,
             "revision": 0,
             "manifest_sha256": sha256_text(manifest_text),
+            POLICY_PINS: {rel: sha256_text(files[rel]) if rel in files else None for rel in policy_files(manifest)},
             "lead": {"schema": "aew/lead/v1", "status": "vacant", "generation": 0, "session_label": None,
                      "token_id": None, "acquired_at": None, "handoff": None},
             "tokens": {},
@@ -653,11 +698,16 @@ class Engine:
     def manifest(self) -> Any:
         return self._k.manifest
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str) -> dict[str, Any]:
-        return self._project.manifest_adopt(token=token, expect_rev=expect_rev, reason=reason)
+    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str,
+                       authorization: dict[str, str] | None = None) -> dict[str, Any]:
+        return self._project.manifest_adopt(token=token, expect_rev=expect_rev, reason=reason,
+                                            authorization=authorization)
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return self._k.manifest_pin_ok(state)
+
+    def policy_pin_drift(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str] | None:
+        return self._k.policy_pin_drift(state, manifest)
 
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,
@@ -838,8 +888,8 @@ class Engine:
     def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
         return self._history.audit_status(state, policy=policy)
 
-    def contradictions(self, state: dict[str, Any]) -> list[str]:
-        return self._views.contradictions(state)
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]:
+        return self._views.contradictions(state, manifest)
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         return self._resume.next_actions(state)

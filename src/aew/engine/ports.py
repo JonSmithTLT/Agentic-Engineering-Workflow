@@ -178,7 +178,7 @@ class LeadPort(Protocol):
 class StatusViewsPort(Protocol):
     """What other collaborators use of ``StatusViews``."""
 
-    def contradictions(self, state: dict[str, Any]) -> list[str]: ...
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]: ...
 
 
 class HarnessPort(Protocol):

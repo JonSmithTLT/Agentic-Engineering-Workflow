@@ -34,6 +34,7 @@ POLICY = {
 def configure(p, policy=POLICY) -> Path:
     path = p.root / ".aew/policy/execution.yaml"
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.pin_policy()
     return path
 
 
@@ -70,6 +71,7 @@ def test_projects_without_a_policy_file_keep_working(tmp_path):
     """A project initialized before M3 has no execution.yaml: it behaves as unconfigured."""
     p = sample_project(tmp_path)
     (p.root / ".aew/policy/execution.yaml").unlink()
+    p.pin_policy()
     wid = create_planned_ticket(p, tmp_path)
     impl = assign(p, wid)
     implement(impl)

@@ -42,6 +42,7 @@ class QueueWalk(Walk):
         policy = load_yaml(gates.read_text(encoding="utf-8"))
         policy["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}  # D5
         gates.write_text(dump_yaml({**policy, "mutating_concurrency": 3}), encoding="utf-8", newline="\n")
+        self.p.pin_policy()
         self.gates_path = gates
         # A stand-in for Linux containment, and a single-threaded walk: between steps no run is executing, so a run
         # left `running` by an injected crash has lost its executor (as a crashed process would have).

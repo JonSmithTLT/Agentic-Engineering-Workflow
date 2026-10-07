@@ -42,6 +42,9 @@ provider_env: [OPENAI_API_KEY]
 - **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell.
 - **Routing** is most specific first: card, then risk class, then archetype, then default. The profile is pinned on each invocation at dispatch, so editing the policy never changes work already dispatched. The Lead can override one dispatch with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
 
+The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --token <credential> --expect-rev N`
+at your own terminal to accept the change (until then every Lead change is refused).
+
 Then check the project:
 
 ```bash

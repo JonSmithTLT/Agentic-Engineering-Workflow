@@ -142,7 +142,7 @@ def test_an_older_engine_refuses_an_outbox_era_control_file(tmp_path):
     p = sample_project(tmp_path)
     state = load_control(p.root)
     errors = [e.message for e in Draft202012Validator(baseline).iter_errors(state)]
-    assert errors == ["Additional properties are not allowed ('outbox' was unexpected)"]
+    assert errors == ["Additional properties are not allowed ('outbox', 'policy_sha256' were unexpected)"]
     assert baseline["properties"]["last_transition"].get("additionalProperties", True) is not False
 
 

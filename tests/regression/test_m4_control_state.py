@@ -29,7 +29,7 @@ def test_a_manual_manifest_edit_right_after_a_transition_reaches_manifest_adopt(
     p.ok("lead", "show")  # reads work
     res = p.aew("checkpoint", "--next", "y", "--token", p.token, "--expect-rev", str(p.rev()))
     assert res.error["code"] == "INTEGRITY_ERROR" and "manifest adopt" in res.error["message"], res.stderr
-    p.lead("manifest", "adopt", "--reason", "reviewed edit")
+    p.adopt_policy("reviewed edit")
     assert manifest.read_bytes().endswith(b"# reviewed manual edit\n")
     p.lead("checkpoint", "--next", "z")
 

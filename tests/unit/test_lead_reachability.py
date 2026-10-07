@@ -218,8 +218,9 @@ def _messages(tree):
                   if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
                   and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
     parts = {id(v) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for v in n.values}  # read whole, below
+    skip = docstrings | parts  # once per file: rebuilding it per node made this test quadratic (CI fast lane, PR #110)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings | parts:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
             yield node.lineno, node.value
         elif isinstance(node, ast.JoinedStr):
             yield node.lineno, "".join(v.value for v in node.values if isinstance(v, ast.Constant))
@@ -238,9 +239,10 @@ def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
     import aew
 
     stale = []
+    commands = operator_decided_commands()  # builds the whole CLI parser: once, never per message
     for path in Path(aew.__file__).parent.rglob("*.py"):
         for line, text in _messages(ast.parse(path.read_text(encoding="utf-8"))):
-            for command in operator_decided_commands():
+            for command in commands:
                 if f"aew {command}" in text and "operator" not in text and text not in BARE_COMMAND_FIELDS:
                     stale.append(f"{path.name}:{line}: {text[:100]}")
     assert not stale, stale

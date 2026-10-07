@@ -1,6 +1,6 @@
 # W07 supplied reuse trail — checkpoint 1 review packet
 
-Frontend fixture acceptance: CHANGES REQUESTED on initial independent review; correction re-check pending. This is the first bounded W07-02 slice; W07-01 and W07-03–05 remain deferred. No accepted or existing provisional wire schema, dependency lock, production package baseline or Engine work record changes.
+Frontend fixture acceptance: ACCEPTED after formal independent correction re-check on 2026-10-06. This is the first bounded W07-02 slice; W07-01 and W07-03–05 remain deferred. No accepted or existing provisional wire schema, dependency lock, production package baseline or Engine work record changes.
 
 Latest correction target and evidence are recorded below under Acceptance corrections; the earlier sections preserve the initial checkpoint.
 
@@ -49,7 +49,7 @@ Backend/live adoption remains separately pending; see [backend questions](../ref
 
 ## Acceptance corrections — 2026-10-06
 
-The independent main-line review of initial head `fa7e065` requested three minor presentation corrections while confirming the investigation, stage separation, chronology and navigation. Formal re-check of these corrections remains pending; this packet does not claim final frontend acceptance.
+The independent main-line review of initial head `fa7e065` requested three minor presentation corrections while confirming the investigation, stage separation, chronology and navigation. Formal re-check subsequently accepted the corrections at `b7a7167`; see the acceptance record below.
 
 Correction commit: `a7d972c67de9a8e555c115dca3744af918c30706`. Final verification commit: `cf7df4508c06397a280520015281661dafb39d2e`, tree `fe93b9a1b6e547299fb182d74a329ee5590d670e`. Subsequent runtime-checkpoint commits change browser-test synchronization only; their runtime builds match the correction exactly.
 
@@ -78,3 +78,15 @@ Final exact-commit regression PASS: nine suites / 126 checks, including the seve
 ### Formal re-check task
 
 Repeat the original desktop/phone association flow and direct Receipts link. Establish the association and exact packet-item ID through the visible UI, find its marked card, read the four labeled header identities, and confirm `SNAP-Later` stays together at the original desktop width. Check return navigation still restores the original position. Record the reviewed source/build and acceptance disposition separately; backend adoption and live integration remain pending.
+
+## Formal frontend fixture acceptance — 2026-10-06
+
+The independent AEW main-line reviewer appended a formal re-check of PR head `b7a7167aa37deb46947faf355bbbda545fded92b`: **ACCEPTED, all three findings fixed, no new findings**. Reviewed verification source `cf7df4508c06397a280520015281661dafb39d2e`, tree `fe93b9a1b6e547299fb182d74a329ee5590d670e`, and runtime correction `a7d972c`.
+
+The reviewer compared the served demo to the new freeze: 32 of 34 files were byte-identical; the HTTP transport meta tag and blocked service-worker response explain the other two. The reviewer inspected the source diff and completed visible-UI checks at 1092×844 and 390×844, with rendered-DOM reads for focus, scroll, line boxes and overflow.
+
+Both layouts passed association context on direct links, the exact matching item marker, Source/Invocation/Run/Snapshot labels, unbroken identifiers without horizontal overflow, and reference/Back/Journal return restoration. The reviewer reported no new findings. This accepts the first bounded W07-02 frontend fixture slice only; it does not complete the wider W07 milestone or adopt a backend projection.
+
+Limitations: emulated layouts in one desktop browser; no physical devices or real zoom. Long-content fixtures were not re-exercised in the formal re-check; author coverage remains separate. The reviewer did not rerun the author's correction gate or browser suites, relying on retained freeze logs and served-file verification for that evidence. The original author screenshots remain unrecovered. Backend adoption and live integration remain pending; the production package baseline is unchanged.
+
+Source artifact: `w07-review-main-line.md`, supplied by the operator and retained with the local review handoff. Artifact SHA-256: `ec680140454d5f4e3821a23a93607597fba5f385b6c08d382248c003be7a88e3`. This repository-relative summary preserves its disposition and limits without introducing machine-specific checkout paths.

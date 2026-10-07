@@ -185,6 +185,8 @@ effective:
 pending: []
 
 considered:
+  - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
+    reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/plan-assurance-and-classification-decisions-2026-10-01.md
     reason: decision record (Q9, Q10); its WC change is the Class 0 amendment, indexed above
   - path: docs/design/decisions-2026-10-01-containment-and-integration-queue.md

@@ -37,27 +37,12 @@ items:
   what: The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among
     them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design
     v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
-- row: F23
-  needs: decision
-  owner: operator and designer
-  due: 'Gate: before internal alpha'
-  what: Which pre-alpha hardening candidates the internal-alpha threat model requires (two-account profile, WSL-hosted runs,
-    remote PR target, terminal-authenticated operator attribution for consequential decisions, Lead lease expiry); no design
-    until then
 - row: F28
   needs: adoption
   owner: operator
   due: 'Gate: before internal alpha'
   what: Confirm the network containment design v0.2 as adopted; `docs/README.md` lists it as frozen and proposed, while
     its text has landed as ADR-0009's amendment of 2026-10-05 (designed, not built)
-- row: Q14
-  needs: decision
-  owner: designer
-  due: 'Gate: before internal alpha'
-  what: The remote (pull-request) integration target's scope; whether `DONE` needs a second verification on a provider's
-    merge commit; the first provider
-  blocks:
-  - F23
 - row: F26
   needs: design
   owner: designer
@@ -127,6 +112,13 @@ items:
   owner: designer
   due: Unscheduled
   what: The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16)
+- row: Q14
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: 'Deferred by the operator''s F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR
+    or merge integration becomes a product requirement: the remote (pull-request) integration target''s scope, whether `DONE`
+    needs a second verification on a provider''s merge commit, the first provider'
 - row: U10
   needs: decision
   owner: designer

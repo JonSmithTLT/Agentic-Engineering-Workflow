@@ -237,12 +237,16 @@ it; until then the rule above stands.
 - **Its verifier drains.** The post-integration verifier is the custodian's child and gets the drain (decision record
   §13), so it is not cancelled with the attachment. Its result is recorded and held.
 - **Nothing publishes on a held result.** Publishing consumes the verifier's result, so it is the current
-  generation's act (decision record §14.2), even where the earlier generation authorized an advance publish-if-clean.
-  On acceptance, the current generation publishes under the normal rules; on discard, the lease goes through
-  `aew integrate reconcile` and the entry returns to the queue.
+  generation's act (decision record §14.2), even under an advance publish-if-clean bound to an earlier generation.
+  On acceptance, the current generation publishes under the normal rules.
+- **Every other way out is an explicit cancel of the custodian.** A discard of the held result, a drain stop condition
+  ending the verifier (decision record §14.3), and the operator's stop now or release to manual for it each end the
+  custodian as an explicit cancel does. That marks the lease `reconcile` in the same transaction (the M4-D3 rule
+  above), and `aew integrate reconcile` retires the candidate and returns the entry to the queue; `integrate_reconcile`
+  requeues only a lease so marked, so the custodian must be ended first.
 - **What the queue pays.** The lease stays held through the drain and until the held result is accepted or
   discarded, so nothing else integrates meanwhile; nothing would while no Lead is attached, and the drain's hard
-  deadline bounds the verifier. A drain stop condition (decision record §14.3) ends the verifier, and the lease is
-  then reconciled as for any dead custodian.
-- **Open for the designer:** confirming the queue side (the lease held across the end of an attachment, and the
-  advance publish-if-clean authorization not surviving a generation change) before F31 is built.
+  deadline bounds the verifier.
+- **Open for the designer:** confirming the queue side (the lease held across the end of an attachment, the advance
+  publish-if-clean authorization not surviving a generation change, and every way out other than acceptance ending the
+  custodian as an explicit cancel, rather than keeping the lease and re-dispatching verification) before F31 is built.

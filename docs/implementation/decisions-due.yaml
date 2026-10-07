@@ -150,9 +150,11 @@ items:
   owner: designer
   due: Unscheduled
   what: 'Before F31 is built, confirm the queue side of the operator''s choice (Q12 record §13 point 5, ADR-0004 amendment
-    of 2026-10-06): the integration custodian and its lease survive a Lead attachment''s end, the post-integration verifier
-    drains, and an earlier generation''s advance publish-if-clean does not survive the generation change, so nothing publishes
-    until the current generation accepts the held result'
+    of 2026-10-06): the integration custodian and its lease survive a Lead attachment''s end and the post-integration verifier
+    drains; an advance publish-if-clean bound to an earlier generation does not survive the generation change, so nothing
+    publishes until the current generation accepts the held result; and every other way out (a discard, a drain stop, stop
+    now, release to manual) ends the custodian as an explicit cancel, so the existing reconcile retires the candidate and
+    requeues, rather than keeping the lease and re-dispatching verification'
 - row: Q4
   needs: decision
   owner: designer

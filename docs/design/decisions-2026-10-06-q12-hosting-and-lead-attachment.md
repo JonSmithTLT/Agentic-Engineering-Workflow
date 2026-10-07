@@ -273,10 +273,12 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
 5. **The integration custodian survives an attachment's end, and its verifier drains.** The custodian is an
    already-admitted invocation, so the Lead attachment ending does not end it (§8, §14.1), and its lease stays held.
    The post-integration verifier drains like any other child, and its result is held. Nothing is published on a held
-   result: publishing consumes it, so it waits for the current generation's acceptance (§14.2), even where the
-   earlier generation authorized an advance publish-if-clean. On acceptance the current generation publishes under
-   the normal rules; on discard, the lease goes through the existing `aew integrate reconcile` and the entry returns
-   to the queue. The queue waits meanwhile, which costs nothing while no Lead is attached, and the drain's hard
+   result: publishing consumes it, so it waits for the current generation's acceptance (§14.2), even under an advance
+   publish-if-clean bound to an earlier generation. On acceptance the current generation publishes under the normal
+   rules. Every other way out ends the custodian as an explicit cancel does: a discard of the held result, a drain
+   stop condition ending the verifier (§14.3), and the operator's **Stop now** or **Release to manual** for it. Ending
+   the custodian marks the lease `reconcile` as today, and the existing `aew integrate reconcile` then retires the
+   candidate and returns the entry to the queue. The queue waits meanwhile, which costs nothing while no Lead is attached, and the drain's hard
    deadline bounds the verifier. Chosen by the operator over keeping today's cancellation as a named exception to the
    drain; the designer confirms the queue side before F31 is built (decisions-due).
 

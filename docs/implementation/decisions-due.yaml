@@ -21,11 +21,9 @@ items:
   needs: design
   owner: operator and designer
   due: 'Gate: before internal alpha'
-  what: The Ticket-revision contract amendment text, then the consolidated WC/KC re-freeze after M4-E; and the adoption
-    of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists
-    it as proposed
-  blocks:
-  - F4
+  what: The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among
+    them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design
+    v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
 - row: F23
   needs: decision
   owner: operator and designer

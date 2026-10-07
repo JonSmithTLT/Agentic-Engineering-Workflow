@@ -1,3 +1,4 @@
+import '../investigation/identities.css';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,7 @@ function AssociationLink({ association: a, visible, open }: { association: Reuse
       restoreReference(position, button.current); restored.current = true;
     }
   }, [location.state, a.id, visible]);
-  return <section><p><code>{a.id}</code> · Packet <code>{a.target.record_id}</code> · Source <code>{a.target.source_id}</code> · Snapshot <code>{a.target.snapshot_id}</code> · Invocation <code>{a.target.invocation_id}</code> · Run <code>{a.target.run_id ?? 'Not supplied'}</code></p>
+  return <section><p><code className="identity-token">{a.id}</code> · Packet <code className="identity-token">{a.target.record_id}</code> · Source <code className="identity-token">{a.target.source_id}</code> · Snapshot <code className="identity-token">{a.target.snapshot_id}</code> · Invocation <code className="identity-token">{a.target.invocation_id}</code> · Run <code className="identity-token">{a.target.run_id ?? 'Not supplied'}</code></p>
     <button ref={button} data-context-association={a.id} onClick={open}>Inspect associated packet {a.target.record_id}</button></section>;
 }
 export function JournalPacketHost({ name, record, associationId }: { name: string; record: string; associationId: string }) {
@@ -86,5 +87,5 @@ function AssociationItemGate({ association: a, query, back }: { association: Reu
   if (query.error && !source) return <><button onClick={back}>Back to Journal</button><ErrorState error={query.error} retry={() => void query.refetch()} /></>;
   if (!source || proof?.source !== source) return <><button onClick={back}>Back to Journal</button><p role="status">Validating supplied context association…</p></>;
   if (proof.error) return <><button onClick={back}>Back to Journal</button><ErrorState error={proof.error} retry={() => setRetry(n => n + 1)} /></>;
-  return <PacketInspector query={query} packetId={a.target.record_id} name={a.target.case} back={back} backLabel="Back to Journal" boundedItemPages />;
+  return <PacketInspector query={query} packetId={a.target.record_id} name={a.target.case} back={back} backLabel="Back to Journal" boundedItemPages associationContext={{ id: a.id, journalId: a.origin.record_id, itemId: a.target.item_id, case: a.target.case }} />;
 }

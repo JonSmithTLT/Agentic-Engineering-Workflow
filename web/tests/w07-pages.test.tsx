@@ -15,9 +15,11 @@ it('retains one displayed packet item page and retires validators when filters l
     return new Response(JSON.stringify({ schema_version: '0.1.0', project_id: 'aew-demo', control_revision: '42', generated_at: '2026-10-03T12:00:00Z', data: { items, next_cursor: null } }), { headers: { ETag: '"fixed"', 'Content-Type': 'application/json' } });
   }, undefined, undefined, { base: '/api/preview/investigation/v0.1', routes: /^\/packets/ });
   reader.context.bind('aew-demo');
-  const view = render(<QueryClientProvider client={client}><MemoryRouter><PacketItems packet={packet} name="later-ticket" reader={reader} visibility="fictional-authorized" selection={false} bounded /></MemoryRouter></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={client}><MemoryRouter><PacketItems packet={packet} name="later-ticket" reader={reader} visibility="fictional-authorized" selection={false} associatedItemId="PKT-Later-J-05" bounded /></MemoryRouter></QueryClientProvider>);
   await screen.findByRole('heading', { name: 'J-05 · recall' });
   expect(document.querySelectorAll('.packet-items > li')).toHaveLength(4);
+  expect(screen.getByText('PKT-Later-J-05')).toBeTruthy();
+  expect(screen.getByText(/Associated item · Packet item/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'recall' } });
   await waitFor(() => expect(document.querySelectorAll('.packet-items > li')).toHaveLength(1));
   expect(client.getQueryCache().findAll()).toHaveLength(1);

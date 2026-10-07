@@ -6,7 +6,7 @@ question Q12 (harness hosting, the operator session and native-feature integrati
 what it leaves to later designs. §13 is the operator's decision of the same day on what happens to in-flight work when
 an attachment ends, which refines §5 and §8. §14 is the designer's clarifications of the same day, which settle what
 §11 to §13 left for the designer. Where this record and an earlier text differ on the Lead seat, the attachment or the
-hosting boundary, this record wins; ADR-0005, ADR-0009 and ADR-0010 carry amendments that point here.
+hosting boundary, this record wins; ADR-0004, ADR-0005, ADR-0009 and ADR-0010 carry amendments that point here.
 
 **What depends on it:** register F31 (the attachment lifecycle, to build) and F32 (the reference execution profiles);
 F18, F18.1 and F18.2 (bootstrap and hosting, now unblocked); Q11 (provider and harness feature reconciliation, whose
@@ -191,6 +191,11 @@ behaviour, then what the decision requires.
 - **Handoff interrupts what it does not carry.** `aew lead handoff accept` moves the invocations the offer carries to
   the new generation and interrupts every other one (`lead_ops.lead_handoff_accept`). Under §8 and §13 the invocations
   it does not carry go through the same disposition as any other ended attachment.
+- **The integration custodian dies with the Lead.** The integration lease is held by an engine custody invocation
+  (`integration_attempt`: no model, no harness, no credential), and the post-integration verifier is its child. A
+  takeover or an uncarried handoff ends the custodian; the lease is then marked `reconcile` and its children are
+  cancelled in the same transaction (ADR-0004, M4-D3 amendment; `engine/queue_ops.py`). That is stop now, applied
+  automatically. §13 point 5 replaces it.
 - **Release refuses active invocations.** `aew lead release` is refused while any invocation is active. `aew close`
   detaches without cancelling admitted child work (§5); §13 says what happens to that work.
 - **Every control write is guarded by the current generation.** WC §5 (crash-safe authority, and its authority table)
@@ -265,6 +270,15 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
 4. **Held results are the next generation's to accept.** On the next attachment, the operator or the new Lead accepts
    the held results, which then move their Tickets under the normal rules, or discards them, sending the work back
    through the gates. A held result names the run that produced it and the generation that admitted it.
+5. **The integration custodian survives an attachment's end, and its verifier drains.** The custodian is an
+   already-admitted invocation, so the Lead attachment ending does not end it (§8, §14.1), and its lease stays held.
+   The post-integration verifier drains like any other child, and its result is held. Nothing is published on a held
+   result: publishing consumes it, so it waits for the current generation's acceptance (§14.2), even where the
+   earlier generation authorized an advance publish-if-clean. On acceptance the current generation publishes under
+   the normal rules; on discard, the lease goes through the existing `aew integrate reconcile` and the entry returns
+   to the queue. The queue waits meanwhile, which costs nothing while no Lead is attached, and the drain's hard
+   deadline bounds the verifier. Chosen by the operator over keeping today's cancellation as a named exception to the
+   drain; the designer confirms the queue side before F31 is built (decisions-due).
 
 ## 14. Designer clarifications of 2026-10-06 (F31)
 

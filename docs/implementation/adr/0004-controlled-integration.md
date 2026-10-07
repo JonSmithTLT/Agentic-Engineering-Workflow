@@ -1,6 +1,6 @@
 # ADR-0004 — Controlled integration: validate, then publish by ref CAS
 
-- **Status:** Accepted (M1)
+- **Status:** Accepted (M1). Amended 2026-10-06: Q12, the integration custodian outlives a Lead attachment's end (designed, not built; register F31).
 - **Spec basis:** WC §8, §8.1, §13, invariants 4 and 6; KC §9.5; decision D-op-2; plan review §2
 - **Nature:** Resolves semantic gap A1 by operator decision. The mechanism (git worktrees, plumbing) is an implementation choice.
 
@@ -224,3 +224,25 @@ The M4 report's §2.8, built to the M4-D5 plan, revision 3 (approved by the desi
 - **The failure pointer** names a failing check's evidence, whatever order the checks ran in.
 - **Oracle rules 40 to 42:** a running run only under its entry's lease, ids never reused, and every terminal run's record intact; engine evidence only as above; a checks-mode `validated` candidate has a committed passing result for every policy check.
 - **Tests:** `tests/integration/test_validation_checks.py` covers every result path, the obligation pin, identity and history, the containment refusal and `--diagnostic`, the crash table, a lost lease, the deadline (a hung executor and a check past it), the transient allow-list, the breaker and its reset, the rebuild and the producer rules; on Linux, a check that tries to write the candidate is refused by the sandbox.
+
+## Amendment 2026-10-06 — Q12: the custodian outlives the Lead attachment (designed, not built)
+
+The operator's decision in the Q12 decision record ([`decisions-2026-10-06-q12-hosting-and-lead-attachment.md`](../../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
+§13 point 5) changes the M4-D3 rule that a takeover or an uncarried handoff ends the custodian. Register F31 builds
+it; until then the rule above stands.
+
+- **The custodian survives an attachment's end.** A Lead attachment ending (`aew close`, harness crash, host loss,
+  takeover, or a handoff that does not carry it) no longer ends the `integration_attempt` custodian, and its lease
+  stays held. A custodian ended by an explicit cancel, or by its own lease's end, is reconciled as before.
+- **Its verifier drains.** The post-integration verifier is the custodian's child and gets the drain (decision record
+  §13), so it is not cancelled with the attachment. Its result is recorded and held.
+- **Nothing publishes on a held result.** Publishing consumes the verifier's result, so it is the current
+  generation's act (decision record §14.2), even where the earlier generation authorized an advance publish-if-clean.
+  On acceptance, the current generation publishes under the normal rules; on discard, the lease goes through
+  `aew integrate reconcile` and the entry returns to the queue.
+- **What the queue pays.** The lease stays held through the drain and until the held result is accepted or
+  discarded, so nothing else integrates meanwhile; nothing would while no Lead is attached, and the drain's hard
+  deadline bounds the verifier. A drain stop condition (decision record §14.3) ends the verifier, and the lease is
+  then reconciled as for any dead custodian.
+- **Open for the designer:** confirming the queue side (the lease held across the end of an attachment, and the
+  advance publish-if-clean authorization not surviving a generation change) before F31 is built.

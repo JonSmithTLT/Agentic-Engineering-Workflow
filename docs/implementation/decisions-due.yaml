@@ -145,6 +145,14 @@ items:
   due: Unscheduled
   what: ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap
     bundle's build waits for it
+- row: F31
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: 'Before F31 is built, confirm the queue side of the operator''s choice (Q12 record §13 point 5, ADR-0004 amendment
+    of 2026-10-06): the integration custodian and its lease survive a Lead attachment''s end, the post-integration verifier
+    drains, and an earlier generation''s advance publish-if-clean does not survive the generation change, so nothing publishes
+    until the current generation accepts the held result'
 - row: Q4
   needs: decision
   owner: designer

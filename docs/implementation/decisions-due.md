@@ -35,6 +35,7 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
 | Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
 | Unscheduled | operator and designer | adoption | ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap bundle's build waits for it | F18.3 | - |
+| Unscheduled | designer | decision | Before F31 is built, confirm the queue side of the operator's choice (Q12 record §13 point 5, ADR-0004 amendment of 2026-10-06): the integration custodian and its lease survive a Lead attachment's end, the post-integration verifier drains, and an earlier generation's advance publish-if-clean does not survive the generation change, so nothing publishes until the current generation accepts the held result | F31 | - |
 | Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
 | Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
 | Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |

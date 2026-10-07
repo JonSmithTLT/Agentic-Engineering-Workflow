@@ -482,7 +482,8 @@ def test_a_lane_job_over_20_minutes_warns_and_over_25_is_a_violation(minutes, le
             job("static", "2026-10-07T00:00:00Z", "2026-10-07T00:00:10Z", "2026-10-07T00:40:00Z"),
             job("assurance", "2026-10-07T00:30:00Z", "2026-10-07T00:30:05Z", None)]
     rec = cost_record.build([], jobs, None)
-    assert [h["level"] for h in rec["health"]] == ([level] if level else [])  # only test jobs are judged
+    # only test jobs are judged by the shard rule (static's 40 minutes is not a shard)
+    assert [h["level"] for h in rec["health"] if h["kind"] == "job_time"] == ([level] if level else [])
     assert rec["run"]["still_running"] == ["assurance"]
     assert rec["run"]["queue_s"]["max"] == 120.0
     assert rec["run"]["runner_minutes"] == {"ubuntu-latest": round(minutes + 39 + 50 / 60, 1)}
@@ -523,7 +524,8 @@ def test_the_run_counts_its_pending_time_and_skipped_jobs_count_for_nothing():
              "conclusion": "skipped"}]
     rec = cost_record.build([], jobs, None, run={"created_at": "2026-10-07T00:00:00Z"})
     assert rec["run"]["run_pending_s"] == 11 * 60  # created, then pending, then the first job started
-    assert rec["run"]["wall_clock_s"] == 13 * 60  # from the run's creation, not its first job's
+    assert rec["run"]["wall_clock_s"] == 13 * 60  # from the run's creation, a fact...
+    assert rec["run"]["assurance_s"] == 3 * 60  # ...while §8's measure starts at the first job's creation
     assert [j["name"] for j in rec["run"]["jobs"]] == ["core (ubuntu-latest)"]
     assert rec["run"]["runner_minutes"] == {"ubuntu-latest": 2.0}
 
@@ -532,8 +534,27 @@ def test_the_strategy_budgets_are_reported_as_warnings():
     jobs = [job("core (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:04:00Z"),
             job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:07:00Z",
                 "windows-latest")]
-    rec = cost_record.build([timed("linux", "fast", {ALL[0]: 20.0, ALL[1]: 20.0} | {f"x{i}": 20.0 for i in range(8)})],
-                            jobs, None, run={"created_at": "2026-10-06T23:50:00Z"})
+    jobs.append(job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:01:00Z",
+                    "2026-10-07T00:16:00Z"))
+    slow_fast = {ALL[0]: 20.0, ALL[1]: 20.0} | {f"x{i}": 20.0 for i in range(8)}
+    rec = cost_record.build([timed("linux", "fast", slow_fast), timed("win32", "fast", slow_fast)],
+                            jobs, None, run={"created_at": "2026-10-06T23:00:00Z"})
     budgets = [h for h in rec["health"] + rec["platforms"]["linux"]["health"] if h["kind"] == "budget"]
+    # the run took 16 minutes from its first job (over 15), however long it waited before that
     assert {(h.get("job") or h.get("test")) for h in budgets} == {"core (ubuntu-latest)", "the run", "fast lane"}
+    assert rec["platforms"]["win32"]["health"] == []  # §8's fast-lane budget is the Linux lane's
     assert all(h["level"] == "warning" for h in budgets)  # §8 budgets are reported, never violations
+
+
+def test_a_rerun_attempt_counts_only_its_own_jobs():
+    """PR #125 review B: jobs carried over from an earlier attempt keep their old times; they count for nothing."""
+    jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T02:00:00Z", "2026-10-07T00:01:00Z",
+                "2026-10-07T00:20:00Z"),  # carried over: created_at rewritten, started before the attempt
+            job("assurance", "2026-10-07T02:00:00Z", "2026-10-07T02:00:30Z", "2026-10-07T02:01:30Z")]
+    rec = cost_record.build([], jobs, None, run={"created_at": "2026-10-07T00:00:00Z",
+                                                 "run_started_at": "2026-10-07T02:00:00Z"})
+    run = rec["run"]
+    assert run["carried_over"] == ["integration 1/5 (ubuntu-latest)"]
+    assert [j["name"] for j in run["jobs"]] == ["assurance"]
+    assert run["runner_minutes"] == {"ubuntu-latest": 1.0} and run["queue_s"]["total"] == 30.0
+    assert run["assurance_s"] == 90.0 and run["wall_clock_s"] == 90.0 and rec["health"] == []

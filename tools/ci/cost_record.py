@@ -59,27 +59,35 @@ def _seconds(start: str | None, end: str | None) -> float | None:
 
 def job_facts(jobs: list[dict[str, Any]], run: dict[str, Any] | None = None) -> dict[str, Any]:
     """Queue delay, run time and runner-minutes from the GitHub jobs API (``GET .../runs/{id}/jobs``) and, when given,
-    the run itself (``GET .../runs/{id}``: a run can wait as pending before its first job exists). A job that has not
-    completed yet (the one writing this record) counts toward nothing but the list of jobs still running; a skipped
-    job, which never ran, counts toward nothing."""
-    rows, running = [], []
+    the run itself (``GET .../runs/{id}``). Only this attempt counts: on a re-run, jobs carried over from an earlier
+    attempt (started before this attempt's ``run_started_at``) are listed as carried over and count toward nothing. A
+    job that has not completed yet (the one writing this record) counts toward nothing but the list of jobs still
+    running; a skipped job, which never ran, counts toward nothing.
+
+    ``assurance_s`` is §8's measure (the attempt's first job created to its last job done); ``wall_clock_s`` also
+    counts the time the attempt waited as pending before its first job existed, reported as a fact."""
+    attempt_start = _time((run or {}).get("run_started_at")) or _time((run or {}).get("created_at"))
+    rows, running, carried = [], [], []
+    counted = []
     for j in jobs:
         if j.get("conclusion") == "skipped":
+            continue
+        started_at = _time(j.get("started_at"))
+        if attempt_start and started_at and started_at < attempt_start:
+            carried.append(j.get("name", "?"))
             continue
         run_s = _seconds(j.get("started_at"), j.get("completed_at"))
         if run_s is None:
             running.append(j.get("name", "?"))
             continue
-        run_s = max(run_s, 0.0)
-        rows.append({"name": j.get("name", "?"), "queue_s": _seconds(j.get("created_at"), j.get("started_at")),
-                     "run_s": run_s, "conclusion": j.get("conclusion"),
+        counted.append(j)
+        queue = _seconds(j.get("created_at"), j.get("started_at"))
+        rows.append({"name": j.get("name", "?"), "queue_s": None if queue is None else max(queue, 0.0),
+                     "run_s": max(run_s, 0.0), "conclusion": j.get("conclusion"),
                      "os": (j.get("labels") or [None])[0]})
-    created = [t for j in jobs if (t := _time(j.get("created_at")))]
-    run_created = _time((run or {}).get("created_at"))
-    if run_created:
-        created.append(run_created)
-    completed = [t for j in jobs if (t := _time(j.get("completed_at")))]
-    started = [t for j in jobs if j.get("conclusion") != "skipped" and (t := _time(j.get("started_at")))]
+    created = [t for j in counted if (t := _time(j.get("created_at")))]
+    completed = [t for j in counted if (t := _time(j.get("completed_at")))]
+    started = [t for j in counted if (t := _time(j.get("started_at")))]
     minutes: dict[str, float] = defaultdict(float)
     for r in rows:
         minutes[r["os"] or "unknown"] += r["run_s"] / 60
@@ -87,9 +95,13 @@ def job_facts(jobs: list[dict[str, Any]], run: dict[str, Any] | None = None) -> 
     return {
         "jobs": sorted(rows, key=lambda r: r["name"]),
         "still_running": sorted(running),
-        "wall_clock_s": (max(completed) - min(created)).total_seconds() if created and completed else None,
+        "carried_over": sorted(carried),
+        "assurance_s": (max(completed) - min(created)).total_seconds() if created and completed else None,
+        "wall_clock_s": ((max(completed) - min([*created, *([attempt_start] if attempt_start else [])])).total_seconds()
+                         if created and completed else None),
         "queue_s": {"max": max(queues), "total": sum(queues)} if queues else None,
-        "run_pending_s": (min(started) - run_created).total_seconds() if run_created and started else None,
+        "run_pending_s": (max((min(started) - attempt_start).total_seconds(), 0.0)
+                          if attempt_start and started else None),
         "runner_minutes": {k: round(v, 1) for k, v in sorted(minutes.items())},
     }
 
@@ -157,7 +169,7 @@ def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
                                       "slowest": sorted(touched, key=lambda t: -t["seconds"])[:10],
                                       "new": {"count": len(new), "seconds": round(sum(t["seconds"] for t in new), 1),
                                               "slowest": sorted(new, key=lambda t: -t["seconds"])[:10]}}
-        if lane_time.get("fast", 0.0) > FAST_LANE_BUDGET_S:
+        if platform == "linux" and lane_time.get("fast", 0.0) > FAST_LANE_BUDGET_S:  # §8 budgets the Linux lane
             facts["health"].append({"level": "warning", "kind": "budget", "test": "fast lane",
                                     "seconds": round(lane_time["fast"], 1),
                                     "detail": "the fast lane's test time is over §8's "
@@ -181,11 +193,11 @@ def build(reports: list[dict[str, Any]], jobs: list[dict[str, Any]] | None, dura
     if jobs is not None:
         record["run"] = job_facts(jobs, run)
         record["health"] = lane_job_health(record["run"]["jobs"])
-        wall = record["run"]["wall_clock_s"]
-        if run is not None and wall is not None and wall > RUN_BUDGET_S:
-            record["health"].append({"level": "warning", "kind": "budget", "job": "the run", "seconds": round(wall),
-                                     "detail": f"created to last job done is over §8's {RUN_BUDGET_S // 60}-minute "
-                                               "budget"})
+        took = record["run"]["assurance_s"]
+        if took is not None and took > RUN_BUDGET_S:
+            record["health"].append({"level": "warning", "kind": "budget", "job": "the run", "seconds": round(took),
+                                     "detail": f"first job created to last job done is over §8's {RUN_BUDGET_S // 60}-"
+                                               "minute budget"})
     else:
         record["health"] = []
     return record
@@ -208,7 +220,8 @@ def summary(record: dict[str, Any]) -> str:
     run = record.get("run")
     if run:
         q = run["queue_s"] or {}
-        lines += ["", f"Run: {_m(run['wall_clock_s'])} end to end; pending before its first job "
+        lines += ["", f"Run: {_m(run['assurance_s'])} from its first job (§8's measure), {_m(run['wall_clock_s'])} "
+                      "with the time pending before it; pending "
                       f"{_m(run.get('run_pending_s'))}; longest job queue {_m(q.get('max'))}; runner minutes "
                       + ", ".join(f"{k} {v}" for k, v in run["runner_minutes"].items()) + ".", "",
                   "<details><summary>jobs</summary>", "", "| job | queued | ran | result |", "|---|---|---|---|"]

@@ -227,6 +227,8 @@ def summary(record: dict[str, Any]) -> str:
                   "<details><summary>jobs</summary>", "", "| job | queued | ran | result |", "|---|---|---|---|"]
         lines += [f"| {j['name']} | {_m(j['queue_s'])} | {_m(j['run_s'])} | {j['conclusion']} |" for j in run["jobs"]]
         lines += ["", "</details>"]
+        if run.get("carried_over"):
+            lines += ["", f"Carried over from an earlier attempt, not counted: {', '.join(run['carried_over'])}."]
     for platform, f in record["platforms"].items():
         lines += ["", f"### {platform}: {f['pytest_s'] / 60:.1f} min of pytest time, "
                       f"{f['cli_calls']['total']} `aew` calls through the test helper (`conftest.run_aew`; direct "

@@ -1530,11 +1530,13 @@ sections:
       -m aew` starts and fake agents'' calls are not counted, carried in the lane report''s new `cli_calls`), the share
       of collected tests in `tests/durations.json`; a job summary plus the `cost-record` artifact; every lane and both core
       steps print `--durations=20`; a test job over 20 minutes warns, over 25 is a CI-health violation, the 30-minute timeout
-      stays the only hard bound; §8''s budgets are compared as warnings (Linux `core` within 3 minutes, the fast lane''s
-      test time within 3, the run from its creation within 15); the run''s pending time counts. A PR''s summary shows its
-      new tests (in the files it touches and unknown to `tests/durations.json`) and every test in those files. The lead
-      developer''s reviewer brief asks about a change''s test cost from 2026-10-07 (CCI-06). Repeated violations opening
-      an issue stay E47; whether wall-clock ever becomes a hard gate is E51'
+      stays the only hard bound; §8''s budgets are compared as warnings, as §8 defines them (Linux `core` within 3 minutes,
+      the Linux fast lane''s test time within 3, the run from its first job''s creation to its last job done within 15);
+      the time a run waits as pending before its first job is reported as a fact, not judged; on a re-run only that attempt''s
+      jobs count (carried-over jobs are listed and count for nothing). A PR''s summary shows its new tests (in the files
+      it touches and unknown to `tests/durations.json`) and every test in those files. The lead developer''s reviewer brief
+      asks about a change''s test cost from 2026-10-07 (CCI-06). Repeated violations opening an issue stay E47; whether
+      wall-clock ever becomes a hard gate is E51'
   - '#': E45
     Was: 'A per-test cost check: a test over a set share of its lane''s time (for example 25%), or a fast-lane test over
       a set number of seconds, is a CI-health violation reported in the cost record; it **warns and never fails the gate**

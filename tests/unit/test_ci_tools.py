@@ -558,3 +558,4 @@ def test_a_rerun_attempt_counts_only_its_own_jobs():
     assert [j["name"] for j in run["jobs"]] == ["assurance"]
     assert run["runner_minutes"] == {"ubuntu-latest": 1.0} and run["queue_s"]["total"] == 30.0
     assert run["assurance_s"] == 90.0 and run["wall_clock_s"] == 90.0 and rec["health"] == []
+    assert "Carried over from an earlier attempt, not counted: integration 1/5" in cost_record.summary(rec)

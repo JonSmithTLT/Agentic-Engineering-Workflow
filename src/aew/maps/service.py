@@ -31,8 +31,12 @@ def build(repo: Path, commit: str) -> dict[str, Any]:
         return structural.generate(tree, rules.load())
 
 
-def _lead_actor(engine: Any, token: str) -> dict[str, Any]:
-    actor = require_lead(engine.store.read(), token, archived=engine.archived_credential)
+def _lead_actor(engine: Any, token: str, *, committed: bool = False) -> dict[str, Any]:
+    """The current Lead for ``token``, or the refusal (``STALE_AUTHORITY`` for a superseded Lead). ``committed`` reads
+    the committed control state without the control lock (``read_committed``): the check repeated at the publication
+    and selection boundary, where the map registry's lock is already held."""
+    state = engine.store.read_committed() if committed else engine.store.read()
+    actor = require_lead(state, token, archived=engine.archived_credential)
     return {"kind": "lead", "id": actor["token_id"], "generation": actor["generation"]}
 
 
@@ -74,6 +78,9 @@ def generate(engine: Any, *, token: str, commit: str | None = None, select: bool
     if expect is not None:
         store.parse_expectation(expect)  # a malformed expectation is refused before the work
     record = build(engine.repo_root, commit or _default_commit(engine))
+    # Authority is checked again where the command writes, not only before the work (PR #126, operator finding 1): a
+    # handoff or takeover committed during generation refuses the write and the selection (ADR-0015 D4).
+    _lead_actor(engine, token, committed=True)
     sha, root = store.write_artifact(engine.aew_root, record)
     result: dict[str, Any] = {"ok": True, "root": sha, "path": f"{engine.aew_root.name}/{root}",
                               "source_revision": record["source_revision"], "source_tree": record["source_tree"],
@@ -99,7 +106,7 @@ def generate(engine: Any, *, token: str, commit: str | None = None, select: bool
             "--replace-nondeterministic", **report)
     note = {"replaced_nondeterministic": report} if report else None
     new = store.select_structural(engine.aew_root, expect=str(expect), entry=_entry(record, sha, root), actor=actor,
-                                  note=note)
+                                  note=note, authorize=lambda: _lead_actor(engine, token, committed=True))
     result.update(selected=True, map_revision=store.revision_of(new))
     return result
 

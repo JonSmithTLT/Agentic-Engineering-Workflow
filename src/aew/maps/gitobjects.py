@@ -168,8 +168,8 @@ def refuse_lazy_fetch(repo: Path) -> None:
 @contextmanager
 def open_tree(repo: Path, rev: str) -> Iterator[TrackedTree]:
     """The tracked tree of commit ``rev``: a constant number of git processes, whatever the repository's size."""
+    refuse_lazy_fetch(repo)  # before any object is resolved or read
     commit, tree, object_format = resolve(repo, rev)
-    refuse_lazy_fetch(repo)
     entries = list_tree(repo, tree)
     with git.CatFileBatch(repo) as batch:
         yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries, fetch=batch.read)

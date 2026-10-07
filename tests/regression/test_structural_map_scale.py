@@ -27,7 +27,8 @@ def fast_import(repo: Path, paths: int) -> None:
     """``paths`` files over 3-4 levels of directories, a package.json and a ~12 KiB .gitattributes in many of them."""
     kw: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
     repo.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True, capture_output=True, **kw)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True, capture_output=True, timeout=120,
+                   stdin=subprocess.DEVNULL, **kw)
     out = [b"commit refs/heads/main\ncommitter AEW Test <aew-test@invalid> 0 +0000\ndata 7\nsynthe\n"]
 
     def add(path: str, data: bytes) -> None:
@@ -44,7 +45,7 @@ def fast_import(repo: Path, paths: int) -> None:
             add(f"p{i:05d}/package.json", b'{"name": "p%d", "main": "index.js"}' % i)
             add(f"p{i:05d}/sub/.gitattributes", attributes)
     subprocess.run(["git", "fast-import", "--quiet"], cwd=repo, input=b"".join(out), check=True, capture_output=True,
-                   **kw)
+                   timeout=300, **kw)
 
 
 def measured(repo: Path) -> tuple[dict[str, int], dict[str, int], dict[str, Any]]:

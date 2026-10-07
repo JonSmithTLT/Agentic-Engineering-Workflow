@@ -8,6 +8,7 @@ map command changes anything outside ``.aew/local/maps/`` (T5-INV-11)."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -45,7 +46,9 @@ FILES: dict[str, bytes] = {
 
 def g(*args: str, cwd: Path, input: bytes | None = None) -> str:
     kw: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}  # no console window
-    proc = subprocess.run(["git", *args], cwd=cwd, input=input, capture_output=True, check=True, **kw)
+    proc = subprocess.run(["git", *args], cwd=cwd, input=input, capture_output=True, check=True, timeout=120,
+                          stdin=subprocess.DEVNULL if input is None else None,
+                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}, **kw)
     return proc.stdout.decode("utf-8", "surrogateescape").strip()
 
 
@@ -129,6 +132,62 @@ def test_the_record_is_the_one_the_in_memory_generator_gives_for_the_same_tree(t
     real = service.build(repo, "HEAD")
     memory = structural.generate(tree_of(FILES), rules.load())
     assert without_source(real) == without_source(memory)
+
+
+def finishes(work, limit: float = 120.0):
+    """Run ``work`` in a thread and fail fast if it does not finish: a hang is a failure here, never a CI timeout."""
+    import threading
+
+    out: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            out["value"] = work()
+        except BaseException as exc:  # re-raised below, in the test's own thread
+            out["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(limit)
+    assert not thread.is_alive(), f"did not finish within {limit}s"
+    if "error" in out:
+        raise out["error"]
+    return out.get("value")
+
+
+def test_the_batch_reader_serves_many_large_blobs_without_a_pipe_deadlock(tmp_path):
+    """One cat-file --batch process for every blob: each reply is drained before the next request, so large blobs
+    (well over a pipe's buffer) never block either side."""
+    files = {f"d{i:02d}/.gitattributes": bytes([65 + i % 26]) * (1024 * 1024 + i) for i in range(40)}
+    repo = make_repo(tmp_path / "repo", files)
+    oids = {path: g("rev-parse", f"HEAD:{path}", cwd=repo) for path in files}
+
+    def read_all() -> dict[str, bytes]:
+        with aew_git.CatFileBatch(repo) as batch:
+            return {path: batch.read(oid) or b"" for path, oid in oids.items()}
+
+    assert finishes(read_all) == files
+    record = finishes(lambda: service.build(repo, "HEAD"))  # the generator's own path: every one over the blob cap
+    assert record["limits"]["metadata_blob_bytes"]["skipped"] == 40
+
+
+def test_a_batch_reader_that_stops_answering_fails_fast_instead_of_hanging(tmp_path):
+    """The watchdog: a batch process that never replies is stopped after the read timeout and the read fails."""
+    import time
+
+    from aew.errors import GitError
+
+    kw: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
+    batch = aew_git.CatFileBatch(tmp_path, timeout=1.0)
+    batch._proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw)
+    started = time.monotonic()
+    try:
+        with pytest.raises(GitError):
+            finishes(lambda: batch.read("0" * 40), limit=60)
+    finally:
+        batch.__exit__(None, None, None)  # not entered: the stand-in process is the one under test
+    assert time.monotonic() - started < 30
 
 
 # ------------------------------------------------------------------------------------------- the differential oracle
@@ -274,6 +333,76 @@ def test_a_blobless_clone_missing_a_descriptor_is_refused_and_never_fetches(tmp_
     with pytest.raises(MapCurrentnessUnproven) as exc:
         service.build(clone, "HEAD")
     assert exc.value.details["reason"] == "partial_clone"
+
+
+def test_an_old_git_partial_clone_is_refused_before_any_object_is_resolved_or_read(tmp_path, monkeypatch):
+    """PR #126, operator finding 2: on git older than 2.44 a partial clone may fetch a missing object lazily whatever
+    AEW asks, so both generation and freshness refuse before their first object read (only configuration is read)."""
+    repo = make_repo(tmp_path / "repo")
+    record = sealed(repo, "HEAD")  # from the full repository
+    g("config", "uploadpack.allowFilter", "true", cwd=repo)
+    clone = tmp_path / "blobless"
+    g("clone", "-q", "--bare", "--filter=blob:none", repo.as_uri(), str(clone), cwd=tmp_path)
+    monkeypatch.setattr(aew_git, "version", lambda _cwd: (2, 43, 0))
+    calls: list[str] = []
+    real = aew_git.object_git
+
+    def counted(*args: str, **kw: Any):
+        calls.append(args[0])
+        return real(*args, **kw)
+
+    monkeypatch.setattr(aew_git, "object_git", counted)
+    with pytest.raises(MapCurrentnessUnproven) as exc:
+        service.build(clone, "HEAD")
+    assert exc.value.details["reason"] == "partial_clone"
+    assert calls == ["config"], calls  # no rev-parse, ls-tree or cat-file came first
+    calls.clear()
+    F.clear_cache()
+    result = fresh(clone, record, "HEAD")
+    assert result["status"] == "UNKNOWN" and result["reason"] == "partial_clone"
+    assert result["code"] == "MAP_CURRENTNESS_UNPROVEN" and calls == ["config"], calls
+
+
+def _handoff(engine: Any, token: str) -> None:
+    """Hand the Lead seat to a new session: the credential the command started with is superseded."""
+    offer = engine.lead_handoff_offer(token=token, expect_rev=engine.store.read()["revision"])["offer"]
+    engine.lead_handoff_accept(offer=offer, expect_rev=engine.store.read()["revision"])
+
+
+@pytest.mark.parametrize("when", ["during_generation", "after_the_artifact_is_written"])
+def test_a_lead_superseded_while_a_map_is_generated_publishes_and_selects_nothing(project, monkeypatch, when):
+    """PR #126, operator finding 1 (ADR-0015 D4): authority is checked where the command writes. A handoff committed
+    during generation refuses the artifact and the selection; one committed after the artifact is written refuses the
+    selection, inside the registry's lock."""
+    from aew.engine.api import Engine
+    from aew.errors import StaleAuthority
+
+    engine = Engine.discover(project.root)
+    if when == "during_generation":
+        real_build = service.build
+
+        def build_then_handoff(repo: Path, rev: str) -> dict[str, Any]:
+            record = real_build(repo, rev)
+            _handoff(engine, project.token)
+            return record
+
+        monkeypatch.setattr(service, "build", build_then_handoff)
+    else:
+        real_write = store.write_artifact
+
+        def write_then_handoff(aew_root: Path, record: dict[str, Any]):
+            out = real_write(aew_root, record)
+            _handoff(engine, project.token)
+            return out
+
+        monkeypatch.setattr(store, "write_artifact", write_then_handoff)
+    with pytest.raises(StaleAuthority) as exc:
+        service.generate(engine, token=project.token, select=True, expect="none:0")
+    assert "superseded" in exc.value.message
+    maps = project.root / ".aew" / store.MAPS_REL
+    assert not (maps / "registry.json").exists() and not (maps / "registry-log.jsonl").exists()
+    written = list((maps / "structural").glob("*.json")) if (maps / "structural").exists() else []
+    assert len(written) == (0 if when == "during_generation" else 1)
 
 
 def test_an_unknown_commit_is_refused_and_an_option_is_never_a_commit(tmp_path):

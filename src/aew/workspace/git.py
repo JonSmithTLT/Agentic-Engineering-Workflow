@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -327,20 +328,29 @@ NO_LAZY_FETCH_FROM = (2, 44)
 # No console window on Windows (subprocess.CREATE_NO_WINDOW, spelled out so the module type-checks on Linux; POSIX
 # accepts 0).
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+# Bounds on object reads: a one-shot call, and each object a batch reader serves. Generous for a real repository;
+# they exist so that a stuck git fails a command instead of hanging it (PR #126, CI).
+OBJECT_TIMEOUT_S = 300.0
+BATCH_READ_TIMEOUT_S = 120.0
 
 
-def object_git(*args: str, cwd: Path, check: bool = True,
-               input: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
-    """A one-shot git call that reads objects of an exact commit: replace refs off, no lazy fetch, no window. Counted
+def object_git(*args: str, cwd: Path, check: bool = True, input: bytes | None = None,
+               timeout: float = OBJECT_TIMEOUT_S) -> subprocess.CompletedProcess[bytes]:
+    """A one-shot git call that reads objects of an exact commit: replace refs off, no lazy fetch, no window, never
+    waiting on a terminal, and bounded by ``timeout`` (a stuck git fails the command, it never hangs it). Counted
     like every other git process (``profile``), so a per-file spawn shows in the scale regression."""
     if not Path(cwd).is_dir():
         raise GitError(f"git {args[0] if args else ''}: the directory {cwd} does not exist", cwd=str(cwd))
     profile.count("git")
     profile.count(f"git:{args[0] if args else ''}")
     with profile.phase("git"):
-        proc = subprocess.run(["git", *safe_config(cwd, OBJECT_ENV), *args], cwd=cwd, env=_env(OBJECT_ENV),
-                              capture_output=True, input=input,
-                              stdin=subprocess.DEVNULL if input is None else None, creationflags=NO_WINDOW)
+        try:
+            proc = subprocess.run(["git", *safe_config(cwd, OBJECT_ENV), *args], cwd=cwd, env=_env(OBJECT_ENV),
+                                  capture_output=True, input=input, timeout=timeout,
+                                  stdin=subprocess.DEVNULL if input is None else None, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            raise GitError(f"git {' '.join(args)} did not finish within {timeout:g}s and was stopped", cwd=str(cwd),
+                           reason="timeout") from None
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed ({proc.returncode})", cwd=str(cwd),
                        stderr=proc.stderr.decode("utf-8", "replace").strip())
@@ -372,8 +382,9 @@ class CatFileBatch:
 
     Use as a context manager; ``read(oid)`` returns the object's bytes, or None when the object is missing."""
 
-    def __init__(self, cwd: Path) -> None:
+    def __init__(self, cwd: Path, timeout: float = BATCH_READ_TIMEOUT_S) -> None:
         self.cwd = cwd
+        self.timeout = timeout
         self._proc: subprocess.Popen[bytes] | None = None
 
     def __enter__(self) -> CatFileBatch:
@@ -388,20 +399,29 @@ class CatFileBatch:
         proc = self._proc
         if proc is None or proc.stdin is None or proc.stdout is None:
             raise GitError("cat-file --batch is not running", cwd=str(self.cwd))
-        with profile.phase("git"):
-            proc.stdin.write(oid.encode("ascii") + b"\n")
-            proc.stdin.flush()
-            header = proc.stdout.readline()
-            if not header:
-                raise GitError("cat-file --batch ended early", cwd=str(self.cwd))
-            parts = header.split()
-            if len(parts) == 2 and parts[1] == b"missing":
-                return None
-            if len(parts) != 3:
-                raise GitError(f"cat-file --batch: unexpected reply {header[:80]!r}", cwd=str(self.cwd))
-            size = int(parts[2])
-            data = proc.stdout.read(size)
-            proc.stdout.read(1)  # the newline after the content
+        # A pipe read cannot time out on Windows, so a watchdog kills a batch process that stops answering: the read
+        # then ends at EOF and fails, instead of hanging the command.
+        watchdog = threading.Timer(self.timeout, proc.kill)
+        watchdog.daemon = True
+        watchdog.start()
+        try:
+            with profile.phase("git"):
+                proc.stdin.write(oid.encode("ascii") + b"\n")
+                proc.stdin.flush()
+                header = proc.stdout.readline()
+                parts = header.split()
+                if len(parts) == 2 and parts[1] == b"missing":
+                    return None
+                if len(parts) != 3:
+                    raise GitError(f"cat-file --batch: no reply for {oid} ({header[:80]!r}; stopped after "
+                                   f"{self.timeout:g}s?)", cwd=str(self.cwd))
+                size = int(parts[2])
+                data = proc.stdout.read(size)
+                proc.stdout.read(1)  # the newline after the content
+        except OSError as exc:  # the process died (or was stopped): a broken pipe
+            raise GitError(f"cat-file --batch failed: {exc}", cwd=str(self.cwd)) from None
+        finally:
+            watchdog.cancel()
         if len(data) != size:
             raise GitError("cat-file --batch: short read", cwd=str(self.cwd))
         return data

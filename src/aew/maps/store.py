@@ -25,6 +25,7 @@ import json
 import os
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -185,9 +186,12 @@ def parse_expectation(text: str) -> tuple[str, int]:
 
 
 def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
-                      note: dict[str, Any] | None = None) -> dict[str, Any]:
+                      note: dict[str, Any] | None = None,
+                      authorize: Callable[[], object] | None = None) -> dict[str, Any]:
     """Select ``entry`` as the structural map: compare-and-set on the registry's epoch and revision, under the
-    registry's own lock. Appends the log line, then replaces the registry atomically. Returns the new registry."""
+    registry's own lock. ``authorize`` is called under that lock, after the compare and before anything is written,
+    and refuses by raising: the writer's authority is proven at the moment of the write, not only when its command
+    began (ADR-0015 D4). Appends the log line, then replaces the registry atomically. Returns the new registry."""
     expected = parse_expectation(expect)
     with FileLock(aew_root / LOCK_REL) as lock:
         registry = read_registry(aew_root)
@@ -195,6 +199,8 @@ def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], act
         if expected != parse_expectation(current):
             raise StaleRevision(f"expected map revision {expect}, current is {current}: read it again with "
                                 "`aew map show`", domain="map_revision", expected=expect, current=current)
+        if authorize is not None:
+            authorize()
         if registry is None:  # the first selection creates the registry and its epoch, under the lock
             registry = {"schema": REGISTRY_SCHEMA, "epoch": secrets.token_hex(8), "map_revision": 0,
                         "selection_id": None, "selected": {}}

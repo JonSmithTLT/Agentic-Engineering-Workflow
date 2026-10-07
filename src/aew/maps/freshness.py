@@ -2,6 +2,8 @@
 
 Computed on read and never written into the artifact. The order of the checks:
 
+0. a partial clone on a git that cannot be told not to fetch lazily -> ``UNKNOWN`` (``partial_clone``), before any
+   object is read;
 1. the commit ``B`` (or the record's own source tree) does not resolve -> ``UNKNOWN`` (``MAP_CURRENTNESS_UNPROVEN``);
 2. the record's generator version or ruleset differs from the installed generator's -> ``STALE`` (``generator``);
 3. the trees are equal -> ``CURRENT``;
@@ -37,6 +39,10 @@ def _unknown(reason: str, **extra: Any) -> dict[str, Any]:
 
 def freshness(repo: Path, record: dict[str, Any], against: str, identity: dict[str, Any]) -> dict[str, Any]:
     """The record's freshness against commit ``against``; ``identity`` is the installed generator's."""
+    try:  # before any object is resolved: an old git in a partial clone could fetch a missing one lazily
+        gitobjects.refuse_lazy_fetch(repo)
+    except MapCurrentnessUnproven:
+        return _unknown("partial_clone")
     try:
         commit, tree, _ = gitobjects.resolve(repo, against)
     except MapCurrentnessUnproven:

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/codebase-map/v1",
+  "title": "AEW structural codebase map",
+  "description": "Project maps design v0.5 §2.2, §2.3; ADR-0015. A derived, immutable, content-addressed record generated from the Git objects of one commit. artifact_sha256 is the sha256 of the record's canonical JSON without it. Never authority (T5-INV-01).",
+  "type": "object",
+  "required": ["schema", "source_revision", "source_tree", "object_format", "generator", "inputs", "artifact_sha256", "limits", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/codebase-map/v1"},
+    "source_revision": {"$ref": "#/$defs/oid"},
+    "source_tree": {"$ref": "#/$defs/oid"},
+    "object_format": {"enum": ["sha1", "sha256"]},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "ruleset_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"const": "structural"},
+        "version": {"type": "integer", "minimum": 1},
+        "ruleset_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["path_listing_sha256", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "path_listing_sha256": {"$ref": "#/$defs/sha256"},
+        "metadata": {
+          "description": "Exactly the tracker's log: every blob the generator read, and every blob it considered and did not read, sorted by path.",
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["path", "git_oid", "size", "read", "sha256"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {"type": "string", "minLength": 1},
+                  "git_oid": {"$ref": "#/$defs/oid"},
+                  "size": {"type": "integer", "minimum": 0},
+                  "read": {"const": true},
+                  "sha256": {"$ref": "#/$defs/sha256"}
+                }
+              },
+              {
+                "type": "object",
+                "required": ["path", "git_oid", "size", "read", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {"type": "string", "minLength": 1},
+                  "git_oid": {"$ref": "#/$defs/oid"},
+                  "size": {"type": "integer", "minimum": 0},
+                  "read": {"const": false},
+                  "reason": {"enum": ["capped_size", "capped_total"]}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "artifact_sha256": {"$ref": "#/$defs/sha256"},
+    "limits": {
+      "type": "object",
+      "required": ["tracked_paths", "metadata_bytes"],
+      "properties": {
+        "tracked_paths": {
+          "type": "object", "required": ["seen", "capped"],
+          "properties": {"seen": {"type": "integer", "minimum": 0}, "capped": {"type": "boolean"}}
+        },
+        "metadata_bytes": {
+          "type": "object", "required": ["read", "capped"],
+          "properties": {"read": {"type": "integer", "minimum": 0}, "capped": {"type": "boolean"}}
+        }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "required": ["directories", "languages", "build_descriptors", "entry_point_candidates", "test_candidates", "generated_and_vendor", "semantic_prerequisites", "limits_and_omissions"],
+      "additionalProperties": false,
+      "properties": {
+        "directories": {
+          "type": "object",
+          "required": ["rows", "rows_omitted", "submodules", "submodules_omitted"],
+          "properties": {
+            "rows": {"type": "array", "maxItems": 200, "items": {"type": "object", "required": ["path", "depth", "files", "languages", "label"]}},
+            "submodules": {"type": "array", "maxItems": 200, "items": {"type": "object", "required": ["path", "object"]}}
+          }
+        },
+        "languages": {"type": "object", "required": ["counts", "unknown_files", "unknown_extensions"], "properties": {"unknown_extensions": {"type": "array", "maxItems": 20}}},
+        "build_descriptors": {"$ref": "#/$defs/capped_list_200"},
+        "entry_point_candidates": {"$ref": "#/$defs/capped_list_100"},
+        "test_candidates": {"$ref": "#/$defs/capped_list_100"},
+        "generated_and_vendor": {"$ref": "#/$defs/capped_list_200"},
+        "semantic_prerequisites": {"$ref": "#/$defs/capped_list_100"},
+        "limits_and_omissions": {"type": "object", "required": ["caps_hit", "parse_failures", "unsupported", "lfs_pointers", "non_utf8_names"]}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "oid": {"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"},
+    "capped_list_100": {
+      "type": "object", "required": ["items", "omitted"],
+      "properties": {"items": {"type": "array", "maxItems": 100}, "omitted": {"type": "integer", "minimum": 0}}
+    },
+    "capped_list_200": {
+      "type": "object", "required": ["items", "omitted"],
+      "properties": {"items": {"type": "array", "maxItems": 200}, "omitted": {"type": "integer", "minimum": 0}}
+    }
+  }
+}

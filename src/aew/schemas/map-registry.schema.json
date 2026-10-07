@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/map-registry/v1",
+  "title": "AEW project-map registry",
+  "description": "Project maps design v0.5 §3.1; ADR-0015. Which map is the current navigation artifact for each capability, with its own revision domain (epoch and map_revision), never control_revision. Selection is not truth (§3.3).",
+  "type": "object",
+  "required": ["schema", "epoch", "map_revision", "selected"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/map-registry/v1"},
+    "epoch": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "map_revision": {"type": "integer", "minimum": 1},
+    "selected": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "structural": {
+          "type": "object",
+          "required": ["root", "sha256", "source_revision", "source_tree", "object_format", "generator_version", "ruleset_sha256"],
+          "additionalProperties": false,
+          "properties": {
+            "root": {"type": "string", "pattern": "^local/maps/structural/[0-9a-f]{64}\\.json$"},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "source_revision": {"$ref": "#/$defs/oid"},
+            "source_tree": {"$ref": "#/$defs/oid"},
+            "object_format": {"enum": ["sha1", "sha256"]},
+            "generator_version": {"type": "integer", "minimum": 1},
+            "ruleset_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "oid": {"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}
+  }
+}

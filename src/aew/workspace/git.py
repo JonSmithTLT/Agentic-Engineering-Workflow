@@ -155,6 +155,15 @@ def safe_config(cwd: Path, env: dict[str, str] | None = None) -> list[str]:
     return [arg for k, v in pairs for arg in ("-c", f"{k}={v}")]
 
 
+def _env(env: dict[str, str] | None) -> dict[str, str]:
+    full_env = scrub_credentials(dict(os.environ))  # git and its hooks never see an AEW credential (ADR-0009)
+    full_env["GIT_TERMINAL_PROMPT"] = "0"
+    full_env["LC_ALL"] = "C"
+    if env:
+        full_env.update(env)
+    return full_env
+
+
 def git(
     *args: str,
     cwd: Path,
@@ -165,11 +174,7 @@ def git(
     if not Path(cwd).is_dir():  # a worktree removed outside AEW: an AEW error, not a traceback (area 4 F3)
         raise GitError(f"git {args[0] if args else ''}: the directory {cwd} does not exist (removed outside AEW?)",
                        cwd=str(cwd))
-    full_env = scrub_credentials(dict(os.environ))  # git and its hooks never see an AEW credential (ADR-0009)
-    full_env["GIT_TERMINAL_PROMPT"] = "0"
-    full_env["LC_ALL"] = "C"
-    if env:
-        full_env.update(env)
+    full_env = _env(env)
     profile.count("git")
     profile.count(f"git:{args[0] if args else ''}")
     if args and args[0] in DIFF_COMMANDS:
@@ -308,3 +313,110 @@ def untrusted_filters_message(found: list[dict[str, Any]], policy_file: str, *, 
         "in 1; or remove the filter from .gitattributes."
         + ("" if from_doctor else " `aew doctor` lists every configured git driver and whether AEW trusts it.")
     )
+
+
+# --------------------------------------------------------------------------- reading one commit's objects
+#
+# Project maps (register F22.1, ADR-0015) are generated from the Git objects of an exact commit, never from the
+# checkout or the index (design v0.5 §2.2). Two things could still substitute bytes under that commit: replace refs
+# (`refs/replace/*` swaps one object for another on every read) and, in a partial clone, a lazy fetch of a missing
+# object from a promisor remote. Both are switched off; a missing object is reported, never fetched (plan §2).
+
+OBJECT_ENV = {"GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1"}  # the second is honoured from git 2.44
+NO_LAZY_FETCH_FROM = (2, 44)
+# No console window on Windows (subprocess.CREATE_NO_WINDOW, spelled out so the module type-checks on Linux; POSIX
+# accepts 0).
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
+def object_git(*args: str, cwd: Path, check: bool = True,
+               input: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+    """A one-shot git call that reads objects of an exact commit: replace refs off, no lazy fetch, no window. Counted
+    like every other git process (``profile``), so a per-file spawn shows in the scale regression."""
+    if not Path(cwd).is_dir():
+        raise GitError(f"git {args[0] if args else ''}: the directory {cwd} does not exist", cwd=str(cwd))
+    profile.count("git")
+    profile.count(f"git:{args[0] if args else ''}")
+    with profile.phase("git"):
+        proc = subprocess.run(["git", *safe_config(cwd, OBJECT_ENV), *args], cwd=cwd, env=_env(OBJECT_ENV),
+                              capture_output=True, input=input,
+                              stdin=subprocess.DEVNULL if input is None else None, creationflags=NO_WINDOW)
+    if check and proc.returncode != 0:
+        raise GitError(f"git {' '.join(args)} failed ({proc.returncode})", cwd=str(cwd),
+                       stderr=proc.stderr.decode("utf-8", "replace").strip())
+    return proc
+
+
+def version(cwd: Path) -> tuple[int, ...]:
+    """The installed git's version as numbers (``git version 2.46.0.windows.1`` -> (2, 46, 0))."""
+    raw = object_git("version", cwd=cwd).stdout.decode("ascii", "replace").split()
+    numbers = re.findall(r"\d+", raw[2] if len(raw) > 2 else "")
+    return tuple(int(n) for n in numbers[:3])
+
+
+def is_partial_clone(cwd: Path) -> bool:
+    """Whether the repository is a partial clone: ``extensions.partialClone`` set, or a remote marked promisor."""
+    proc = object_git("config", "-z", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor)$",
+                      cwd=cwd, check=False)
+    for item in proc.stdout.split(b"\0"):
+        key, _, value = item.partition(b"\n")
+        if key == b"extensions.partialclone" and value.strip():
+            return True
+        if key.startswith(b"remote.") and value.strip().lower() in {b"true", b"yes", b"on", b"1"}:
+            return True
+    return False
+
+
+class CatFileBatch:
+    """One ``git cat-file --batch`` process serving every blob of a generation: one process, not one per file.
+
+    Use as a context manager; ``read(oid)`` returns the object's bytes, or None when the object is missing."""
+
+    def __init__(self, cwd: Path) -> None:
+        self.cwd = cwd
+        self._proc: subprocess.Popen[bytes] | None = None
+
+    def __enter__(self) -> CatFileBatch:
+        profile.count("git")
+        profile.count("git:cat-file")
+        self._proc = subprocess.Popen(["git", *safe_config(self.cwd, OBJECT_ENV), "cat-file", "--batch"],
+                                      cwd=self.cwd, env=_env(OBJECT_ENV), stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        return self
+
+    def read(self, oid: str) -> bytes | None:
+        proc = self._proc
+        if proc is None or proc.stdin is None or proc.stdout is None:
+            raise GitError("cat-file --batch is not running", cwd=str(self.cwd))
+        with profile.phase("git"):
+            proc.stdin.write(oid.encode("ascii") + b"\n")
+            proc.stdin.flush()
+            header = proc.stdout.readline()
+            if not header:
+                raise GitError("cat-file --batch ended early", cwd=str(self.cwd))
+            parts = header.split()
+            if len(parts) == 2 and parts[1] == b"missing":
+                return None
+            if len(parts) != 3:
+                raise GitError(f"cat-file --batch: unexpected reply {header[:80]!r}", cwd=str(self.cwd))
+            size = int(parts[2])
+            data = proc.stdout.read(size)
+            proc.stdout.read(1)  # the newline after the content
+        if len(data) != size:
+            raise GitError("cat-file --batch: short read", cwd=str(self.cwd))
+        return data
+
+    def __exit__(self, *_exc: object) -> None:
+        proc, self._proc = self._proc, None
+        if proc is None:
+            return
+        try:
+            if proc.stdin is not None:
+                proc.stdin.close()
+            proc.wait(timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            proc.kill()
+            proc.wait()
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()

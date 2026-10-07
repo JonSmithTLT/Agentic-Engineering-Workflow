@@ -47,8 +47,9 @@ async function start() {
     });
     }
     DemoTools = (await import('./api/mock/DemoTools')).default;
+    const { initialScreens } = await import('./api/mock/screens');
     ({ DemoLab, DemoKnowledge, DemoComparison, DemoEvidence, DemoExecution } =
-      await import('./api/mock/screens'));
+      await initialScreens(window.location.pathname));
   }
   let detachVisibility = installVisibility(queryClient);
   // Stop old-document reads when navigation actually hides the page.

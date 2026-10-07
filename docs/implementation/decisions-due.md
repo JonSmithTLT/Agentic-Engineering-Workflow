@@ -16,8 +16,7 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Due by | Owner | Needs | What | Row | Blocks |
 |---|---|---|---|---|---|
 | M4-G | designer | decision | Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7) | F25 | - |
-| M4-H | designer | decision | The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration | Q7 | F19 |
-| M4-H | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses; before or as part of Q7 | U3 | - |
+| M4-H | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses: decided after M4-H, whose F4 premise contrast measures it (Q7 v0.3.1 §12; a triggered U3 concern flag supports the addendum); not a pre-M4-H blocker | U3 | - |
 | Gate: before internal alpha | operator and designer | design | The Ticket-revision contract amendment text, then the consolidated WC/KC re-freeze after M4-E; and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed | E19 | F4 |
 | Gate: before internal alpha | operator and designer | decision | Which pre-alpha hardening candidates the internal-alpha threat model requires (two-account profile, WSL-hosted runs, remote PR target, terminal-authenticated operator attribution for consequential decisions, Lead lease expiry); no design until then | F23 | - |
 | Gate: before internal alpha | operator | adoption | Confirm the network containment design v0.2 as adopted; `docs/README.md` lists it as frozen and proposed, while its text has landed as ADR-0009's amendment of 2026-10-05 (designed, not built) | F28 | - |
@@ -44,6 +43,5 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | F6 | Q4 (decision, designer, by Unscheduled) |
 | F12 | Q11 (decision, designer, by M6) |
 | F13 | Q8 (decision, designer, by M6); Q11 (decision, designer, by M6) |
-| F19 | Q7 (decision, designer, by M4-H) |
 | F23 | Q14 (decision, designer, by Gate: before internal alpha) |
 | U9 | F26 (design, designer, by M6) |

@@ -303,7 +303,9 @@ sections:
       --by operator` and `authority accept --decided-by operator` prompt the operator at their own terminal and are refused
       without it, and a Lead session is refused both (ADR-0006, amendment 2026-10-06); `authority accept|reject`, `manifest
       adopt` and `migrate` are refused in a Lead session (`lead_broker.OPERATOR_DECIDED`). What stays here is the same confirmation
-      without a terminal, for an operator who is away, through the operator capability
+      without a terminal, for an operator who is away, through the operator capability. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md)
+      §2.2, §2.4.1; operator, 2026-10-07):** the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted
+      in the sealed run manifest, before M4-H executes
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
@@ -319,7 +321,8 @@ sections:
     Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
       and non-side-effecting (the set''s release gate)'
     Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
-      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7
+      the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md);
+      operator, 2026-10-07):** with F15.5, the unattended `PUBLISH_IF_CLEAN` authority the AEW arm needs before M4-H executes
   - '#': F15.7
     Work: 'The deferred recovery rows: row 4 `REDISPATCH_IF_LOST` (a pre-authorized re-dispatch of a lost clean run, a sibling
       of `PUBLISH_IF_CLEAN`), row 6 a policy-resolved Investigator after a blocked report, row 8 `max_fix_attempts` (the
@@ -585,7 +588,10 @@ sections:
       holding the corpus is ineligible by default; a preflight that cannot establish isolation releases nothing) and returns
       the final tree for scoring, with the facts only it can observe (whether the AEW checkout was touched, its environment),
       so the run record describes the arm host, not the evaluator. Next: the `aew` and `raw` arms by generalizing `dogfood.py`
-      (the M3 driver still runs them).'
+      (the M3 driver still runs them). **Q7 adopted ([v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), operator,
+      2026-10-07; ledger VGX):** M4-H''s experiment design is frozen. **Prerequisite before M4-H executes:** the evaluator/arm-host
+      split and the held-out task-release runner (decision record of 2026-10-06 on held-out corpus isolation), the cold-start
+      attestation (§5) and the preregistration values of §14'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve
@@ -766,11 +772,14 @@ sections:
       (adopted by the designer 2026-10-06 after a narrow revision; ledger CUL)
     Belongs to or gated by: '**M4** (the main lane: M4-G, then F25, then F19/Q7/U3, then M4-H). Budget enforcement in `DispatchDecision`
       stays with F7/M5 after calibration'
-    Notes: Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
+    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
       R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment;
       R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes.
-      Implementation-ready except the Lead part, held for the designer's decision on the segment before F31 exists (decisions-due,
-      F25).
+      Implementation-ready except the Lead part, held for the designer''s decision on the segment before F31 exists (decisions-due,
+      F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):**
+      live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement
+      and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general
+      budget enforcement does not move into F25'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -915,14 +924,6 @@ sections:
     Question: The open questions each design lists
     Owner: Designer
     Source: hierarchy §21; lead/operator §23; isolation §16
-  - '#': Q7
-    Question: 'What the next dogfood should use: tasks where one model session fails or regresses, since this one''s tasks
-      hit a ceiling. The plan assurance design''s §28 proposes task families (T4 replay, diagnosis contrast pairs, oracle
-      weakening, vacuous red, …) and configurations A–F.'
-    Owner: 'Designer. Decided meanwhile: an SPT-derived fixture is scratch, and needs no F2, only when the run''s host-level
-      reach has no writable non-disposable project state or secrets; a disposable clone on the normal development host is
-      not scratch (see F2)'
-    Source: '`m3-dogfood-report.md` §11 and §12; plan assurance design §28 and §29'
   - '#': Q8
     Question: Reconcile the capability design's six candidate failure classes (`CAPABILITY_CONTEXT_BLOAT`, `CAPABILITY_DISCOVERY_FAILURE`,
       `CAPABILITY_AUTHORITY_CONFUSION`, `CAPABILITY_SCHEMA_OVEREXPOSURE`, `HARNESS_FEATURE_SUPPRESSION`, `HARNESS_AUTHORITY_LEAK`)
@@ -1299,7 +1300,7 @@ sections:
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
-    When: '**Designer** (with F14). Before, or as part of, Q7'
+    When: '**Designer** (with F14). Evaluated in M4-H (Q7 §12: F4''s premise contrast; not a pre-M4-H blocker)'
     Notes: '"I run it in Docker as the headless server" was background, not one of the nine diagnoses the prompt said to
       check, and no role questioned it. F14 §6 types stakeholder statements; this asks that observations stated as fact
       be candidates for premise validation too.'
@@ -1607,6 +1608,18 @@ sections:
     Closed: '2026-10-01'
     By: 'Yes: `ACCEPTANCE_CONDITION_MUTATION` is canonical, with `PROTECTED_ACCEPTANCE_OVERLAP` ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md)
       §3.1). O3 stays open until F14''s fix is accepted'
+  - '#': Q7
+    Was: 'What the next dogfood should use: tasks where one model session fails or regresses, since this one''s tasks hit
+      a ceiling. The plan assurance design''s §28 proposes task families (T4 replay, diagnosis contrast pairs, oracle weakening,
+      vacuous red, …) and configurations A–F.'
+    Closed: '2026-10-07'
+    By: '[Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), adopted and design frozen by the operator (ledger
+      VGX): M4-H is a real value gate in the B+ design, six fixed F1 to F3 cells x 12 runs per arm (144 primary R versus
+      A runs), 30 descriptive R+ runs, 20 separately reported F4 premise runs; a fixed-cell Jeffreys-binomial estimand with
+      a 90% credible interval (benefit needs mean at least +10 points and lower bound above 0); evaluator-side held-out
+      isolation (F19''s rule); cold-start attestation; two blinded mergeability reviewers. Prerequisites before execution:
+      F15.5/F15.6 unattended PUBLISH_IF_CLEAN, F19''s evaluator/arm-host split and release runner, F25 live run-usage telemetry
+      for the evaluator''s experiment-local USD cap'
   - '#': Q9 (decisions)
     Was: The plan assurance design's §33 decisions and its order relative to ADR-0011 and M4
     Closed: '2026-10-01'

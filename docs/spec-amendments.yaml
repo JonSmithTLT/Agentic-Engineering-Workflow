@@ -156,6 +156,8 @@ considered:
     reason: decision record (Q3, F2, E13, F10, D4); replaces no WC/KC text
   - path: docs/design/architecture-review-response-2026-10-04.md
     reason: decision record (Q13); routes the review's items to the register, ADRs and designs; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f19-held-out-corpus-isolation.md
+    reason: decision record (F19, 2026-10-06); an M4-H experiment-protocol requirement; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
     reason: >-
       decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0004, ADR-0005,

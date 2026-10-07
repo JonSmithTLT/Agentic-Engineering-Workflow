@@ -137,6 +137,9 @@ try {
     const results = page.getByRole('region', {name:'Investigation results',exact:true});
     const child = results.getByRole('link', {name:'Validate projection consistency',exact:true});
     await child.waitFor();
+    // Inspect children restores Results focus after history scroll restoration.
+    // Finish that navigation before testing the next keyboard action.
+    await page.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement?.textContent === 'Work');
     await page.evaluate(() => window.scrollTo(0,652));
     await child.focus(); await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-work-heading') === 'T-0001');

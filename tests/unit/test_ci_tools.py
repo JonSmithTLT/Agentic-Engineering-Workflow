@@ -454,7 +454,11 @@ def test_the_cost_record_reports_each_tests_time_share_and_cli_calls():
     assert f["slowest"][0]["cli_calls"] == 12 and f["cli_calls"]["total"] == 12
     assert f["durations_coverage"] == 0.5  # two of the four collected tests are in the durations file
     assert f["changed_tests"]["count"] == 2 and f["changed_tests"]["seconds"] == 3.0
-    assert "Tests in the test files this change touches: 2" in cost_record.summary(rec)
+    # of the two tests in the touched file, only the one the durations file has never seen is new
+    assert f["changed_tests"]["new"]["count"] == 1 and f["changed_tests"]["new"]["slowest"][0]["id"] == ALL[1]
+    text = cost_record.summary(rec)
+    assert "New tests (in the files this change touches" in text and "All tests in the test files" in text
+    assert "through the test helper" in text  # the CLI-call count says what it counts
 
 
 def test_a_test_over_a_quarter_of_its_lane_or_a_slow_fast_lane_test_is_a_health_violation():
@@ -495,16 +499,41 @@ def test_the_cost_record_never_fails_the_job_whatever_it_finds(tmp_path):
     assert cost_record.main([str(tmp_path / "r"), "--jobs", str(jobs), "--out", str(out),
                              "--summary", str(summary_md)]) == 0
     rec = json.loads(out.read_text(encoding="utf-8"))
-    assert rec["schema"] == cost_record.SCHEMA and rec["health"][0]["level"] == "violation"
+    assert rec["schema"] == cost_record.SCHEMA and any(h["level"] == "violation" for h in rec["health"])
     assert "CI health: 3 violation(s)" in summary_md.read_text(encoding="utf-8")
 
 
 def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest_20():
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert ci.count("--durations=20") == 3  # the fast and serial steps of core, and every lane shard
+    assert '--run "$RUNNER_TEMP/run.json"' in ci
     workflow = yaml.safe_load(ci)
     steps = workflow["jobs"]["assurance"]["steps"]
     cost = next(s for s in steps if "cost_record.py" in s.get("run", ""))
     assert cost.get("continue-on-error") is True and cost.get("if") == "always()"
+    # continue-on-error does not cover the job timeout: the step's own timeout keeps a hang from cancelling the gate
+    assert cost.get("timeout-minutes") and cost["timeout-minutes"] < workflow["jobs"]["assurance"]["timeout-minutes"]
     assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read"}
     assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)
+
+
+def test_the_run_counts_its_pending_time_and_skipped_jobs_count_for_nothing():
+    jobs = [job("core (ubuntu-latest)", "2026-10-07T00:10:00Z", "2026-10-07T00:11:00Z", "2026-10-07T00:13:00Z"),
+            {**job("web / web checks", "2026-10-07T00:10:00Z", "2026-10-07T00:10:05Z", "2026-10-07T00:10:04Z"),
+             "conclusion": "skipped"}]
+    rec = cost_record.build([], jobs, None, run={"created_at": "2026-10-07T00:00:00Z"})
+    assert rec["run"]["run_pending_s"] == 11 * 60  # created, then pending, then the first job started
+    assert rec["run"]["wall_clock_s"] == 13 * 60  # from the run's creation, not its first job's
+    assert [j["name"] for j in rec["run"]["jobs"]] == ["core (ubuntu-latest)"]
+    assert rec["run"]["runner_minutes"] == {"ubuntu-latest": 2.0}
+
+
+def test_the_strategy_budgets_are_reported_as_warnings():
+    jobs = [job("core (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:04:00Z"),
+            job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:07:00Z",
+                "windows-latest")]
+    rec = cost_record.build([timed("linux", "fast", {ALL[0]: 20.0, ALL[1]: 20.0} | {f"x{i}": 20.0 for i in range(8)})],
+                            jobs, None, run={"created_at": "2026-10-06T23:50:00Z"})
+    budgets = [h for h in rec["health"] + rec["platforms"]["linux"]["health"] if h["kind"] == "budget"]
+    assert {(h.get("job") or h.get("test")) for h in budgets} == {"core (ubuntu-latest)", "the run", "fast lane"}
+    assert all(h["level"] == "warning" for h in budgets)  # §8 budgets are reported, never violations

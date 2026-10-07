@@ -38,6 +38,11 @@ JOB_WARN_S = 20 * 60  # CRD-11: a shard over 20 minutes warns ...
 JOB_VIOLATION_S = 25 * 60  # ... over 25 is a CI-health violation; the 30-minute job timeout stays the hard bound
 TEST_SHARE_VIOLATION = 0.25  # E45: one test over a quarter of its lane's test time
 FAST_TEST_VIOLATION_S = 30.0  # E45: a fast-lane test over 30 s (the lane's whole budget is 3 minutes, §8)
+# testing-and-ci-strategy.md §8's budgets, reported as warnings (CCI-01): the first CI signal (Linux `core`) within
+# 3 minutes, the fast lane's test time within 3 minutes, and the whole run (created to the last job done) within 15
+CORE_BUDGET_S = 3 * 60
+FAST_LANE_BUDGET_S = 3 * 60
+RUN_BUDGET_S = 15 * 60
 SLOWEST = 20
 # A lane job's name in ci.yml: "integration 2/5 (ubuntu-latest)"; core is "core (windows-latest)".
 JOB_NAME = re.compile(r"^(?P<lane>[a-z]+)(?: (?P<shard>\d+/\d+))? \((?P<os>[a-z0-9.-]+)\)$")
@@ -52,20 +57,29 @@ def _seconds(start: str | None, end: str | None) -> float | None:
     return (b - a).total_seconds() if a and b else None
 
 
-def job_facts(jobs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Queue delay, run time and runner-minutes from the GitHub jobs API (``GET .../runs/{id}/jobs``). A job that has
-    not completed yet (the one writing this record) counts toward nothing but the list of jobs still running."""
+def job_facts(jobs: list[dict[str, Any]], run: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Queue delay, run time and runner-minutes from the GitHub jobs API (``GET .../runs/{id}/jobs``) and, when given,
+    the run itself (``GET .../runs/{id}``: a run can wait as pending before its first job exists). A job that has not
+    completed yet (the one writing this record) counts toward nothing but the list of jobs still running; a skipped
+    job, which never ran, counts toward nothing."""
     rows, running = [], []
     for j in jobs:
+        if j.get("conclusion") == "skipped":
+            continue
         run_s = _seconds(j.get("started_at"), j.get("completed_at"))
         if run_s is None:
             running.append(j.get("name", "?"))
             continue
+        run_s = max(run_s, 0.0)
         rows.append({"name": j.get("name", "?"), "queue_s": _seconds(j.get("created_at"), j.get("started_at")),
                      "run_s": run_s, "conclusion": j.get("conclusion"),
                      "os": (j.get("labels") or [None])[0]})
     created = [t for j in jobs if (t := _time(j.get("created_at")))]
+    run_created = _time((run or {}).get("created_at"))
+    if run_created:
+        created.append(run_created)
     completed = [t for j in jobs if (t := _time(j.get("completed_at")))]
+    started = [t for j in jobs if j.get("conclusion") != "skipped" and (t := _time(j.get("started_at")))]
     minutes: dict[str, float] = defaultdict(float)
     for r in rows:
         minutes[r["os"] or "unknown"] += r["run_s"] / 60
@@ -75,16 +89,20 @@ def job_facts(jobs: list[dict[str, Any]]) -> dict[str, Any]:
         "still_running": sorted(running),
         "wall_clock_s": (max(completed) - min(created)).total_seconds() if created and completed else None,
         "queue_s": {"max": max(queues), "total": sum(queues)} if queues else None,
+        "run_pending_s": (min(started) - run_created).total_seconds() if run_created and started else None,
         "runner_minutes": {k: round(v, 1) for k, v in sorted(minutes.items())},
     }
 
 
 def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """CRD-11 over the jobs that ran tests (core and the lane shards)."""
+    """CRD-11 over the jobs that ran tests (core and the lane shards), and §8's first-signal budget for Linux core."""
     out = []
     for r in jobs:
         if not JOB_NAME.match(r["name"]):
             continue
+        if r["name"] == "core (ubuntu-latest)" and r["run_s"] > CORE_BUDGET_S:
+            out.append({"level": "warning", "kind": "budget", "job": r["name"], "seconds": round(r["run_s"]),
+                        "detail": f"the first CI signal is over §8's {CORE_BUDGET_S // 60}-minute budget"})
         if r["run_s"] > JOB_VIOLATION_S:
             out.append({"level": "violation", "kind": "job_time", "job": r["name"], "seconds": round(r["run_s"]),
                         "detail": f"over {JOB_VIOLATION_S // 60} minutes (the timeout is 30)"})
@@ -132,8 +150,18 @@ def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
             # CCI-06: the cost of the tests a change adds or edits, by the test files its diff touches (a test's node
             # id starts with its file); exact, where a stale durations file would count old tests as new
             touched = [t for t in tests if t["id"].split("::", 1)[0] in changed]
+            # the change's new tests: in a touched file and unknown to the durations file (a test merely sharing a file
+            # with an edit is not new)
+            new = [t for t in touched if t["id"] not in known]
             facts["changed_tests"] = {"count": len(touched), "seconds": round(sum(t["seconds"] for t in touched), 1),
-                                      "slowest": sorted(touched, key=lambda t: -t["seconds"])[:10]}
+                                      "slowest": sorted(touched, key=lambda t: -t["seconds"])[:10],
+                                      "new": {"count": len(new), "seconds": round(sum(t["seconds"] for t in new), 1),
+                                              "slowest": sorted(new, key=lambda t: -t["seconds"])[:10]}}
+        if lane_time.get("fast", 0.0) > FAST_LANE_BUDGET_S:
+            facts["health"].append({"level": "warning", "kind": "budget", "test": "fast lane",
+                                    "seconds": round(lane_time["fast"], 1),
+                                    "detail": "the fast lane's test time is over §8's "
+                                              f"{FAST_LANE_BUDGET_S // 60}-minute budget"})
         for t in tests:
             if t["lane"] == "fast" and t["seconds"] > FAST_TEST_VIOLATION_S:
                 facts["health"].append({"level": "violation", "kind": "fast_test_time", "test": t["id"],
@@ -148,11 +176,16 @@ def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
 
 
 def build(reports: list[dict[str, Any]], jobs: list[dict[str, Any]] | None, durations: dict[str, Any] | None,
-          changed: set[str] | None = None) -> dict[str, Any]:
+          changed: set[str] | None = None, run: dict[str, Any] | None = None) -> dict[str, Any]:
     record: dict[str, Any] = {"schema": SCHEMA, "platforms": test_facts(reports, durations, changed)}
     if jobs is not None:
-        record["run"] = job_facts(jobs)
+        record["run"] = job_facts(jobs, run)
         record["health"] = lane_job_health(record["run"]["jobs"])
+        wall = record["run"]["wall_clock_s"]
+        if run is not None and wall is not None and wall > RUN_BUDGET_S:
+            record["health"].append({"level": "warning", "kind": "budget", "job": "the run", "seconds": round(wall),
+                                     "detail": f"created to last job done is over §8's {RUN_BUDGET_S // 60}-minute "
+                                               "budget"})
     else:
         record["health"] = []
     return record
@@ -175,23 +208,29 @@ def summary(record: dict[str, Any]) -> str:
     run = record.get("run")
     if run:
         q = run["queue_s"] or {}
-        lines += ["", f"Run: {_m(run['wall_clock_s'])} end to end; longest queue {_m(q.get('max'))}; runner minutes "
+        lines += ["", f"Run: {_m(run['wall_clock_s'])} end to end; pending before its first job "
+                      f"{_m(run.get('run_pending_s'))}; longest job queue {_m(q.get('max'))}; runner minutes "
                       + ", ".join(f"{k} {v}" for k, v in run["runner_minutes"].items()) + ".", "",
                   "<details><summary>jobs</summary>", "", "| job | queued | ran | result |", "|---|---|---|---|"]
         lines += [f"| {j['name']} | {_m(j['queue_s'])} | {_m(j['run_s'])} | {j['conclusion']} |" for j in run["jobs"]]
         lines += ["", "</details>"]
     for platform, f in record["platforms"].items():
         lines += ["", f"### {platform}: {f['pytest_s'] / 60:.1f} min of pytest time, "
-                      f"{f['cli_calls']['total']} `aew` calls, durations file covers "
+                      f"{f['cli_calls']['total']} `aew` calls through the test helper (`conftest.run_aew`; direct "
+                      "`python -m aew` starts and fake agents' calls are not counted), durations file covers "
                       + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
                       + " of collected tests", ""]
         if "changed_tests" in f:
             n = f["changed_tests"]
-            lines += [f"Tests in the test files this change touches: {n['count']}, {n['seconds']:.0f} s in all."]
+            lines += [f"New tests (in the files this change touches, unknown to `tests/durations.json`): "
+                      f"{n['new']['count']}, {n['new']['seconds']:.0f} s in all."]
+            lines += [f"- {t['seconds']:.1f}s ({t['share_of_lane']:.0%} of {t['lane']}) `{t['id']}`"
+                      for t in n["new"]["slowest"]]
+            lines += [f"All tests in the test files this change touches: {n['count']}, {n['seconds']:.0f} s in all."]
             lines += [f"- {t['seconds']:.1f}s ({t['share_of_lane']:.0%} of {t['lane']}) `{t['id']}`"
                       for t in n["slowest"]]
             lines.append("")
-        lines += ["<details><summary>slowest tests</summary>", "", "| s | share of lane | aew calls | test |",
+        lines += ["<details><summary>slowest tests</summary>", "", "| s | share of lane | aew calls (helper) | test |",
                   "|---|---|---|---|"]
         lines += [f"| {t['seconds']:.1f} | {t['share_of_lane']:.1%} {t['lane']} | {t['cli_calls']} | `{t['id']}` |"
                   for t in f["slowest"]]
@@ -207,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("reports", type=Path, help="directory searched recursively for lane reports")
     ap.add_argument("--jobs", type=Path, help="the run's jobs as the GitHub API returns them ({'jobs': [...]})")
+    ap.add_argument("--run", type=Path, help="the run itself as the GitHub API returns it (its created_at)")
     ap.add_argument("--durations", type=Path, help="tests/durations.json")
     ap.add_argument("--changed-files", type=Path,
                     help="the change's changed paths, one per line (a pull request's diff against its base)")
@@ -217,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     changed = ({line.strip() for line in args.changed_files.read_text(encoding="utf-8").splitlines() if line.strip()}
                if args.changed_files and args.changed_files.is_file() else None)
     record = build(load_reports(args.reports), jobs.get("jobs") if isinstance(jobs, dict) else None,
-                   _json(args.durations), changed)
+                   _json(args.durations), changed, _json(args.run))
     text = summary(record)
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:

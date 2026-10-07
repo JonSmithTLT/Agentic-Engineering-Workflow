@@ -257,12 +257,16 @@ jobs:
       - name: The cost record (reported, never gated; CI redesign P4, register E43 and E45)
         if: always()
         continue-on-error: true
+        timeout-minutes: 3  # continue-on-error does not cover the job's timeout: a hung call must not cancel the gate
         env:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100"             > "$RUNNER_TEMP/jobs.json" || rm -f "$RUNNER_TEMP/jobs.json"
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100" \
+            > "$RUNNER_TEMP/jobs.json" || rm -f "$RUNNER_TEMP/jobs.json"
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" > "$RUNNER_TEMP/run.json" \
+            || rm -f "$RUNNER_TEMP/run.json"
           changed=()
           if [ -n "$BASE" ]; then
             if git diff --name-only "$BASE"..."$HEAD" > "$RUNNER_TEMP/changed.txt"; then
@@ -270,10 +274,13 @@ jobs:
             fi
           fi
           mkdir -p cost-record
-          python tools/ci/cost_record.py lane-reports --jobs "$RUNNER_TEMP/jobs.json" --durations tests/durations.json             "${changed[@]}" --out cost-record/cost-record.json --summary "$GITHUB_STEP_SUMMARY"
+          python tools/ci/cost_record.py lane-reports --jobs "$RUNNER_TEMP/jobs.json" --run "$RUNNER_TEMP/run.json" \
+            --durations tests/durations.json "${changed[@]}" --out cost-record/cost-record.json \
+            --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         continue-on-error: true
+        timeout-minutes: 3
         with:
           name: cost-record
           path: cost-record/

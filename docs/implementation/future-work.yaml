@@ -1237,6 +1237,13 @@ sections:
     When: '**M4 candidate**, with E43'
     Notes: '`main`''s run for `389e32d` failed on an integration timeout on 2026-10-06 and was visible only as `failure`
       in the run list'
+  - '#': E51
+    Work: 'Decide whether CI wall-clock ever becomes a hard gate (CRD-11''s deferred question): today the cost record reports
+      budgets and shard times as warnings and the job timeout is the only hard bound'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P4 (ledger CRD-11)'
+    When: '**On measured need**: after runner variance is measured from the cost record''s history'
+    Notes: Split from E43 when it closed (2026-10-07); a wall-clock gate must never fail a correct change for runner speed
+      (operator, 2026-10-06)
   - '#': E48
     Work: 'CI redesign P5.1: full lanes on one OS per pull request, both OSes on `main` and the nightly, the second OS running
       `core` plus its platform-specific lanes'
@@ -1519,12 +1526,15 @@ sections:
     By: '`tools/ci/cost_record.py`, run by `assurance` after the assurance check (`if: always()`, `continue-on-error`: reported,
       never gated) from the lane reports and the run''s jobs (GitHub API, `actions: read`): queue delay and end-to-end wall
       clock, runner-minutes per OS, wall time per job, total pytest time and per lane and shard, the slowest 20 tests with
-      each one''s share of its lane and its `aew` calls (counted by the test helper, carried in the lane report''s new `cli_calls`),
-      the share of collected tests in `tests/durations.json`, and on a pull request the cost of the tests in the test files
-      it changes; a job summary plus the `cost-record` artifact; every lane and both core steps print `--durations=20`;
-      a test job over 20 minutes warns, over 25 is a CI-health violation, the 30-minute timeout stays the only hard bound.
-      The reviewer brief asking about a change''s test cost is the lead developer''s (CCI-06); repeated violations opening
-      an issue stay E47'
+      each one''s share of its lane and its `aew` calls through the test helper (counted by `conftest.run_aew`; direct `python
+      -m aew` starts and fake agents'' calls are not counted, carried in the lane report''s new `cli_calls`), the share
+      of collected tests in `tests/durations.json`; a job summary plus the `cost-record` artifact; every lane and both core
+      steps print `--durations=20`; a test job over 20 minutes warns, over 25 is a CI-health violation, the 30-minute timeout
+      stays the only hard bound; §8''s budgets are compared as warnings (Linux `core` within 3 minutes, the fast lane''s
+      test time within 3, the run from its creation within 15); the run''s pending time counts. A PR''s summary shows its
+      new tests (in the files it touches and unknown to `tests/durations.json`) and every test in those files. The lead
+      developer''s reviewer brief asks about a change''s test cost from 2026-10-07 (CCI-06). Repeated violations opening
+      an issue stay E47; whether wall-clock ever becomes a hard gate is E51'
   - '#': E45
     Was: 'A per-test cost check: a test over a set share of its lane''s time (for example 25%), or a fast-lane test over
       a set number of seconds, is a CI-health violation reported in the cost record; it **warns and never fails the gate**

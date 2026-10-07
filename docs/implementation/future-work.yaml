@@ -1161,14 +1161,15 @@ sections:
     When: '**On measured need** (the next repeated heading in a source)'
     Notes: The gate is `tests/unit/test_requirements_ledger.py`; the ledger's `section:` field is the heading text today
   - '#': E42
-    Work: 'CI redesign P3, shared setup: an in-process CLI driver for setup steps (isolated per invocation: cwd, environment,
-      standard streams, logging, parser and module globals, thread locals and context variables, non-project caches, proven
-      by its own tests) and snapshotted starting states (an immutable per-worker template from a declared, checked quiescent
-      and relocatable state; each test an independent copy, worktrees repaired and paths rebound), each helper switched
-      only after one semantic-equivalence oracle shows the same state both ways; then the expensive families migrated one
-      at a time'
+    Work: 'CI redesign P3, shared setup: an in-process CLI driver for setup steps (isolated per invocation: the guards that
+      fail a test leaking `AEW_*` variables or a changed working directory apply to every invocation, and it saves and restores
+      cwd, environment, standard streams, logging, parser and module globals, thread locals and context variables, non-project
+      caches, proven by its own tests) and snapshotted starting states (an immutable per-worker template from a declared,
+      checked quiescent and relocatable state; each test an independent copy, worktrees repaired and paths rebound), each
+      helper switched only after one semantic-equivalence oracle shows the same state both ways; then the expensive families
+      migrated one at a time'
     Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P3, §5 (ledger CRD-05 to CRD-09)'
-    When: '**M4 candidate**: the next CI work after E43 (design §5, step 6)'
+    When: '**M4 candidate**: after E43 and E44 (design §5, steps 4 and 5, then P3 as step 6)'
     Notes: The strategy rule it needs is amended in `testing-and-ci-strategy.md` §6 (2026-10-06). Expected 40 to 50% off
       the slow scenario files; it is what stops the suite's cost growing faster than the product. The integration lanes
       ran 21 to 26 of their 30 minutes, and `main`'s run for `389e32d` timed one out (30m45s, 2026-10-06)
@@ -1231,6 +1232,16 @@ sections:
     Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P5.3, §5 (ledger CRD-18)'
     When: '**On measured need**: deferred until P2 and P3 are measured (operator, 2026-10-06)'
     Notes: Needs an organization or a Team plan; P3 first shows what stays CPU-bound
+  - '#': E41
+    Work: 'CI redesign P2, the rest: import each command group''s module when its command runs, not when `aew` starts (`build_parser()`
+      still imports `work_commands`, `history_commands` and `dashboard_commands`, and so the `aew.dashboard` package, for
+      every command; `aew.history.index` loads through `aew.engine.api`)'
+    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P2, §5 (ledger CRD-04)'
+    When: '**On measured need**: P2''s measurement put the remaining import cost mostly in fixed work every command needs
+      (the JSON-schema library, the engine), so P3 comes first'
+    Notes: '**Partly built (PR #96, 2026-10-06):** the dashboard''s server stack and the doctor are imported only when used,
+      about 10% off every CLI call (`aew status` about 920 to 825 ms), pinned by `tests/unit/test_cli_imports.py`. The 200
+      ms import target is a measured objective, never a CI assertion'
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:
@@ -1480,12 +1491,6 @@ sections:
     Closed: '2026-10-06'
     By: 'PR #99 (`tools/ci/tier.py`, `assurance` recomputing the tier; `testing-and-ci-strategy.md` §3), tracked retroactively
       when the [CI redesign v0.2](../design/ci-redesign-design-v0.2.md) was ingested'
-  - '#': E41
-    Was: 'CI redesign P2: the CLI imports each command group''s module when its command runs'
-    Closed: '2026-10-06'
-    By: 'PR #96 (the dashboard server and the doctor imported only when used, about 10% off every CLI call; a unit test
-      pins that common Lead commands do not import `aew.dashboard`), tracked retroactively when the [CI redesign v0.2](../design/ci-redesign-design-v0.2.md)
-      was ingested'
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)
     Closed: '2026-10-03'

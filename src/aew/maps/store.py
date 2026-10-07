@@ -14,8 +14,9 @@ through this closed path, and the principal in front of it is what F22.2 adds).
   created, so an expectation from before a deletion never matches again) and ``map_revision``; a selection is a
   compare-and-set on both (``<epoch>:<rev>``, or ``none:0`` before there is a registry). A refusal is
   ``STALE_REVISION`` with ``details.domain = "map_revision"``. It never touches control state or ``control_revision``
-  (T5-INV-11), and each selection is appended to ``registry-log.jsonl`` with its actor (§3.3: attributable, not
-  workflow history).
+  (T5-INV-11), and each selection is appended to ``registry-log.jsonl`` with its actor and its ``selection_id``,
+  which the registry also holds (§3.3: attributable, not workflow
+  history).
 """
 
 from __future__ import annotations
@@ -195,15 +196,17 @@ def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], act
             raise StaleRevision(f"expected map revision {expect}, current is {current}: read it again with "
                                 "`aew map show`", domain="map_revision", expected=expect, current=current)
         if registry is None:  # the first selection creates the registry and its epoch, under the lock
-            registry = {"schema": REGISTRY_SCHEMA, "epoch": secrets.token_hex(8), "map_revision": 0, "selected": {}}
+            registry = {"schema": REGISTRY_SCHEMA, "epoch": secrets.token_hex(8), "map_revision": 0,
+                        "selection_id": None, "selected": {}}
         previous = registry["selected"].get("structural")
-        new = {**registry, "map_revision": registry["map_revision"] + 1,
+        new = {**registry, "map_revision": registry["map_revision"] + 1, "selection_id": secrets.token_hex(8),
                "selected": {**registry["selected"], "structural": entry}}
         validate("map-registry", new, source="new map registry")
         if not lock.intact():
             raise IntegrityError(f"the map registry lock {LOCK_REL} was removed while held; nothing was written. "
                                  "Retry (and do not delete .aew/local/maps while a map command runs)")
-        line = {"epoch": new["epoch"], "map_revision": new["map_revision"], "capability": "structural",
+        line = {"epoch": new["epoch"], "map_revision": new["map_revision"], "selection_id": new["selection_id"],
+                "previous_selection_id": registry["selection_id"], "capability": "structural",
                 "previous": previous["sha256"] if previous else None, "new": entry["sha256"], "actor": actor,
                 "at": utc_now(), **(note or {})}
         _append_log(aew_root, line)
@@ -212,8 +215,12 @@ def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], act
 
 
 def _append_log(aew_root: Path, line: dict[str, Any]) -> None:
-    """The log line goes first: a crash before the registry write leaves a logged selection that did not happen
-    (its ``map_revision`` is never the registry's), never a selection nobody can attribute."""
+    """The log line goes first, so no selection the registry holds is missing from the log. A crash or a failed
+    registry write after it leaves a line for a selection that did not take effect, and the next selection may log
+    the same ``(epoch, map_revision)`` again (PR #126 review, F2). Each line therefore carries a random
+    ``selection_id`` and the ``previous_selection_id`` it replaced: the registry holds the id of the selection in
+    effect, and each later line names the one it replaced, so the selections that took effect form one chain back from
+    the registry, and a line off that chain is one that never took effect."""
     path = aew_root / LOG_REL
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "ab") as fh:

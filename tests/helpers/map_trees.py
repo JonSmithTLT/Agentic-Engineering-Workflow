@@ -25,8 +25,10 @@ def tree_of(files: dict[str, Any], *, missing: frozenset[str] = frozenset()) -> 
     for path, spec in files.items():
         if isinstance(spec, bytes):
             oid = blob_id(spec)
-            entries.append(Entry("100644", "blob", oid, len(spec), path))
-            if path not in missing:
+            if path in missing:  # as git lists a blob a partial clone lacks: no size (``BAD``), no object
+                entries.append(Entry("100644", "blob", oid, None, path))
+            else:
+                entries.append(Entry("100644", "blob", oid, len(spec), path))
                 blobs[oid] = spec
         elif spec[0] == "link":
             oid = blob_id(spec[1])

@@ -149,3 +149,33 @@ def test_a_registry_recreated_after_deletion_refuses_an_old_expectation(tmp_path
 def test_a_malformed_expectation_is_a_usage_error(bad):
     with pytest.raises(UsageError):
         store.parse_expectation(bad)
+
+
+def test_a_failed_registry_write_leaves_a_log_line_the_selection_chain_tells_apart(tmp_path, monkeypatch):
+    """PR #126 review, F2 (repro/log_probe.py): the log line is written, the registry write fails, and the next
+    selection logs the same (epoch, map_revision) again. The selection ids say which one took effect."""
+    rec_a, rec_b = record(), record(**{"n.py": b""})
+    a, _ = store.write_artifact(tmp_path, rec_a)
+    b, _ = store.write_artifact(tmp_path, rec_b)
+    first = store.select_structural(tmp_path, expect="none:0", entry=entry(a, rec_a), actor=ACTOR)
+
+    def crash(*_args, **_kwargs):
+        raise OSError("the registry write failed")
+
+    monkeypatch.setattr(store, "atomic_write", crash)
+    with pytest.raises(OSError):
+        store.select_structural(tmp_path, expect=store.revision_of(first), entry=entry(b, rec_b), actor=ACTOR)
+    monkeypatch.undo()
+    final = store.select_structural(tmp_path, expect=store.revision_of(first), entry=entry(a, rec_a), actor=ACTOR)
+    log = [json.loads(line) for line in (tmp_path / store.LOG_REL).read_text(encoding="utf-8").splitlines()]
+    assert [e["map_revision"] for e in log] == [1, 2, 2]  # one revision, two lines: the case the ADR now describes
+    assert len({e["selection_id"] for e in log}) == 3
+    assert log[0]["previous_selection_id"] is None and first["selection_id"] == log[0]["selection_id"]
+    chain, current = [], final["selection_id"]  # from the registry back through previous_selection_id
+    by_id = {e["selection_id"]: e for e in log}
+    while current:
+        chain.append(by_id[current])
+        current = by_id[current]["previous_selection_id"]
+    assert [(e["map_revision"], e["new"]) for e in chain] == [(2, a), (1, a)]
+    phantom = [e for e in log if e not in chain]
+    assert [(e["map_revision"], e["new"]) for e in phantom] == [(2, b)]  # the selection that never took effect

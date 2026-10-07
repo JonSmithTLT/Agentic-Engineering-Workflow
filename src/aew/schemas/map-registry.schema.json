@@ -4,12 +4,13 @@
   "title": "AEW project-map registry",
   "description": "Project maps design v0.5 §3.1; ADR-0015. Which map is the current navigation artifact for each capability, with its own revision domain (epoch and map_revision), never control_revision. Selection is not truth (§3.3).",
   "type": "object",
-  "required": ["schema", "epoch", "map_revision", "selected"],
+  "required": ["schema", "epoch", "map_revision", "selection_id", "selected"],
   "additionalProperties": false,
   "properties": {
     "schema": {"const": "aew/map-registry/v1"},
     "epoch": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
     "map_revision": {"type": "integer", "minimum": 1},
+    "selection_id": {"description": "The random id of the selection in effect; its line in registry-log.jsonl carries the same id (ADR-0015 D6).", "type": "string", "pattern": "^[0-9a-f]{16}$"},
     "selected": {
       "type": "object",
       "additionalProperties": false,

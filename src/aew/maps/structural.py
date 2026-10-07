@@ -62,6 +62,8 @@ class Tree(Protocol):
 
     def entry(self, path: str) -> Entry: ...
 
+    def require(self, paths: list[str]) -> None: ...
+
     def read(self, path: str) -> bytes: ...
 
     def skip(self, path: str, reason: str) -> None: ...
@@ -227,8 +229,10 @@ def _read_metadata(tree: Tree, r: dict[str, Any]) -> _Facts:
         else:  # a symlink: listed, never read or followed (PMP-28)
             f.status[e.path] = "symlink"
             f.unsupported.append({"path": e.path, "reason": "symlink"})
+    candidates.sort(key=lambda c: c.path)
+    tree.require([e.path for e in candidates])  # every missing input named at once, before any read
     total, stopped = 0, False
-    for e in sorted(candidates, key=lambda c: c.path):
+    for e in candidates:
         size = e.size or 0
         if size > BLOB_LIMIT:
             tree.skip(e.path, CAPPED_SIZE)

@@ -26,6 +26,7 @@ from aew.maps.canonical import Entry, listing_sha256, render_bytes, sha256
 from aew.workspace import git
 
 CAPPED_SIZE, CAPPED_TOTAL = "capped_size", "capped_total"
+MISSING_SHOWN = 20
 
 
 class TrackedTree:
@@ -44,6 +45,17 @@ class TrackedTree:
 
     def entry(self, path: str) -> Entry:
         return self._by_path[path]
+
+    def require(self, paths: list[str]) -> None:
+        """Refuse, naming every one of them, when any of the blobs the generator needs is missing (PR #126 review, F3:
+        one refusal per missing input made the operator fetch them one round at a time). ``ls-tree -l`` reads each
+        blob's header for its size, so a listed size proves the object is here; a missing one has none (``BAD``)."""
+        missing = sorted(p for p in paths if self._by_path[p].size is None)
+        if missing:
+            raise MapCurrentnessUnproven(
+                f"{len(missing)} blob(s) the map needs are missing from this repository (a partial clone?), "
+                f"including {missing[0]}: a map is never generated from incomplete source; fetch them, or generate in "
+                "a full clone", reason="missing_object", paths=missing[:MISSING_SHOWN], missing=len(missing))
 
     def read(self, path: str) -> bytes:
         """A regular blob's bytes, logged as an input. The only read API (PMP-27)."""
@@ -130,7 +142,8 @@ def list_tree(repo: Path, tree: str, *, sizes: bool = True) -> list[Entry]:
     raise MapCurrentnessUnproven(
         f"the tree {tree} cannot be read completely (a partial clone?): a map is never generated from incomplete "
         "source; fetch the missing objects, or generate in a full clone", reason="missing_object", object=tree,
-        paths=missing[:20], missing=len(missing), stderr=proc.stderr.decode("utf-8", "replace").strip()[-400:])
+        paths=missing[:MISSING_SHOWN], missing=len(missing),
+        stderr=proc.stderr.decode("utf-8", "replace").strip()[-400:])
 
 
 def missing_blobs(repo: Path, entries: list[Entry]) -> list[str]:

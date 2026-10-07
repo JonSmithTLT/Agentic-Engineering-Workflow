@@ -266,7 +266,9 @@ def test_a_blobless_clone_missing_a_descriptor_is_refused_and_never_fetches(tmp_
     before = g("count-objects", "-v", cwd=clone)
     with pytest.raises(MapCurrentnessUnproven) as exc:
         service.build(clone, "HEAD")
-    assert exc.value.details["reason"] == "missing_object" and exc.value.details["paths"] == [".gitattributes"]
+    assert exc.value.details["reason"] == "missing_object"  # every missing input named at once (review F3)
+    assert exc.value.details["paths"] == [".gitattributes", "big/package.json", "deep/Cargo.toml", "pyproject.toml",
+                                          "ui/.gitattributes", "ui/package.json"]
     assert g("count-objects", "-v", cwd=clone) == before  # nothing was fetched lazily
     monkeypatch.setattr(aew_git, "version", lambda _cwd: (2, 43, 0))  # a git that cannot be told not to fetch
     with pytest.raises(MapCurrentnessUnproven) as exc:

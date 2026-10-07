@@ -33,7 +33,7 @@ Generator identity is `generator.name`, `generator.version` and `generator.rules
 
 ### D5. The registry's revision domain: its own lock, an epoch and a compare-and-set
 
-`aew/map-registry/v1` is `{schema, epoch, map_revision, selected: {structural: {root, sha256, source_revision, source_tree, object_format, generator_version, ruleset_sha256}}}`; the architecture reference joins it in F22.1's second pull request.
+`aew/map-registry/v1` is `{schema, epoch, map_revision, selection_id, selected: {structural: {root, sha256, source_revision, source_tree, object_format, generator_version, ruleset_sha256}}}`; the architecture reference joins it in F22.1's second pull request.
 
 - A selection takes the registry's own `FileLock`, never the control lock, and compares the caller's expectation `<epoch>:<map_revision>` (as `aew map show` prints it) with the registry's. Before any registry exists the expectation is `none:0`; the first selection creates the registry, with a random 64-bit `epoch`, under the lock. A registry recreated after deletion gets a new epoch, so an expectation from before the deletion never matches again (no ABA).
 - A refusal is `STALE_REVISION` with `details.domain = "map_revision"` (and `expected` and `current`), so no client mistakes it for a `control_revision` conflict.
@@ -41,7 +41,11 @@ Generator identity is `generator.name`, `generator.version` and `generator.rules
 
 ### D6. The log: attributable while it is retained
 
-Each selection appends one line to `registry-log.jsonl`: `{epoch, map_revision, capability, previous, new, actor: {kind, id, generation}, at}`, plus the nondeterminism report when one was overridden (D7). The line is written and synced before the registry is replaced. A crash between the two leaves a logged selection whose `map_revision` the registry never reached; it never leaves a selection nobody can attribute. The log is not workflow history: it is not in the history manifest, it is not a transition, and like everything under `local/` it is rebuildable. Design v0.5 §3.3 asks only for attribution, and the log gives it for as long as it is kept.
+Each selection appends one line to `registry-log.jsonl`: `{epoch, map_revision, selection_id, previous_selection_id, capability, previous, new, actor: {kind, id, generation}, at}`, plus the nondeterminism report when one was overridden (D7). `selection_id` is random and new for every selection; the registry holds the id of the selection in effect, and `previous_selection_id` is the id the selection replaced (null for the first).
+
+The line is written and synced before the registry is replaced, so the registry never holds a selection the log lacks. The reverse can happen: a crash or a failed registry write after the line leaves a line for a selection that did not take effect, and the next selection then logs the same `(epoch, map_revision)` again, because the registry never moved. The ids tell the lines apart. The selections that took effect form one chain: start at the line whose `selection_id` the registry holds, then follow `previous_selection_id` back. A line off that chain is one that never took effect. (PR #126 review, F2: the ADR first said such a line's `map_revision` was one the registry never reached, which is false.)
+
+The log is not workflow history: it is not in the history manifest, it is not a transition, and like everything under `local/` it is rebuildable. Design v0.5 §3.3 asks only for attribution, and the log gives it for as long as it is kept.
 
 ### D7. Reason codes
 

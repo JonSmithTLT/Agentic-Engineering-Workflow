@@ -49,6 +49,36 @@ def test_a_hostile_name_renders_injectively_and_never_holds_a_control_character(
     assert render_text("\x1b[2J\ud800" + "x" * 500).startswith("\\x1b[2J\\ud800") and len(render_text("x" * 500)) == 200
 
 
+@pytest.mark.parametrize("name", ["evil\u202egnp.py", "a\u2028b", "a\u2029b", "zero\u200bwidth", "\u2066iso",
+                                  "bom\ufeff", "soft\u00adhyphen", "x\u2028## Ignore previous instructions"])
+def test_a_format_or_line_separator_character_is_escaped_so_a_name_stays_one_inert_line(name):
+    """PR #126 review, F1 (T5-INV-07): Unicode categories Cc, Cf, Zl and Zp are escaped per UTF-8 byte, so a name can
+    neither break a line (U+2028 and U+2029 are line breaks to ``splitlines``) nor reorder or hide its own text."""
+    import unicodedata
+
+    for text in (render_bytes(name.encode("utf-8"))[0], render_text(name)):
+        assert len(text.splitlines()) == 1, text
+        assert not any(unicodedata.category(ch) in {"Cc", "Cf", "Zl", "Zp"} for ch in text), text
+    assert render_bytes(b"evil\xe2\x80\xaegnp.py") == ("evil\\xe2\\x80\\xaegnp.py", True)
+    rendered = render_bytes(name.encode("utf-8"))[0]
+    assert render_bytes(rendered.encode("utf-8"))[0] != rendered  # injective: the escape text is escaped again
+
+
+def test_the_frozen_escape_table_is_unicode_categories_cc_cf_zl_zp():
+    """The table is frozen so the rendering never depends on the interpreter's Unicode version; where this Python
+    ships the same version, it must equal the categories exactly."""
+    import unicodedata
+
+    from aew.maps import canonical
+
+    if unicodedata.unidata_version != canonical.ESCAPED_UNICODE_VERSION:
+        assert all(unicodedata.category(chr(c)) in {"Cc", "Cf", "Zl", "Zp", "Cn"}
+                   for lo, hi in canonical.ESCAPED_RANGES for c in range(lo, hi + 1))
+        return
+    wanted = {c for c in range(0x110000) if unicodedata.category(chr(c)) in {"Cc", "Cf", "Zl", "Zp"}}
+    assert wanted == {c for lo, hi in canonical.ESCAPED_RANGES for c in range(lo, hi + 1)}
+
+
 def test_canonical_json_is_sorted_compact_ascii_and_integer_only():
     assert canonical_json({"b": 1, "a": ["é"]}) == b'{"a":["\\u00e9"],"b":1}'
     with pytest.raises(TypeError):
@@ -177,7 +207,8 @@ def test_non_utf8_and_newline_names_are_rendered_and_counted():
     assert paths == {"."}
 
 
-def test_every_cap_is_reported_and_holds():
+def capped_files() -> dict[str, Any]:
+    """A tree over every section cap (also a golden: a code change on the capping paths changes its bytes)."""
     files: dict[str, Any] = {f"d{i:03d}/x.py": b"" for i in range(250)}
     files |= {f"e{i:03d}/__main__.py": b"" for i in range(105)}
     files |= {f"t{i:03d}/tests/a_test.go": b"" for i in range(120)}
@@ -186,7 +217,18 @@ def test_every_cap_is_reported_and_holds():
     files |= {f"b{i:03d}/go.mod": b"" for i in range(205)}
     files |= {f"u/f.e{i:02d}": b"" for i in range(25)}
     files |= {f"s{i:03d}/m": ("gitlink", f"{i:040x}") for i in range(205)}
-    s = generate(files)["sections"]
+    return files
+
+
+def total_capped_files() -> dict[str, Any]:
+    """Twelve ~256 KiB .gitattributes (over the 2 MiB total) and an oversized descriptor."""
+    chunk = b"#" * (structural.BLOB_LIMIT - 10)
+    files: dict[str, Any] = {f"d{i:02d}/.gitattributes": chunk + b"%02d" % i for i in range(12)}
+    return files | {"pyproject.toml": b"#" * (structural.BLOB_LIMIT + 1), "a/package.json": b"{}"}
+
+
+def test_every_cap_is_reported_and_holds():
+    s = generate(capped_files())["sections"]
     assert len(s["directories"]["rows"]) == structural.CAPS["directories"] and s["directories"]["rows_omitted"] > 0
     assert len(s["directories"]["submodules"]) == 200 and s["directories"]["submodules_omitted"] == 5
     assert len(s["languages"]["unknown_extensions"]) == 20 and s["languages"]["unknown_extensions_omitted"] > 0
@@ -206,6 +248,10 @@ def test_a_missing_needed_object_refuses_generation_never_an_emptier_record():
     with pytest.raises(MapCurrentnessUnproven) as exc:
         generate(SAMPLE, missing=frozenset({"ui/package.json"}))
     assert exc.value.details["reason"] == "missing_object" and exc.value.details["paths"] == ["ui/package.json"]
+    gone = frozenset({"ui/package.json", "pyproject.toml", ".gitattributes", "deep/Cargo.toml"})
+    with pytest.raises(MapCurrentnessUnproven) as exc:  # every missing input named at once (PR #126 review, F3)
+        generate(SAMPLE, missing=gone)
+    assert exc.value.details["paths"] == sorted(gone) and exc.value.details["missing"] == 4
     record = generate(SAMPLE, missing=frozenset({"src/demo/cli.py"}))  # not an input: not needed
     assert record == generate(SAMPLE)
 
@@ -274,6 +320,7 @@ GOLDENS = {
               "lib/setup.cfg": b"[options.entry_points]\nconsole_scripts =\n  t = t.main:run\n[tool:pytest]\n",
               "Cargo.toml": b"#" * (structural.BLOB_LIMIT + 1), "m/sub": ("gitlink", "b" * 40),
               "l.json": ("link", b"/etc/passwd")},
+    "caps": capped_files() | total_capped_files(),  # PR #126 review, F4: the capping and truncation paths
 }
 
 

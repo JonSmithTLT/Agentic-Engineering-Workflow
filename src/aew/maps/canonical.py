@@ -1,8 +1,10 @@
 """Names, canonical bytes and identity for project maps (plan §3.2, §3.3; ADR-0015). Pure: no I/O.
 
 * **Names.** Git paths are bytes. A path is rendered once, here, into a string that is safe everywhere it goes: valid
-  UTF-8 is kept, except that every control character (C0, DEL and C1) and every invalid byte becomes ``\\xNN`` per
-  byte, and a backslash becomes ``\\\\``. The rendering is injective, so two paths never share a name, and it never
+  UTF-8 is kept, except that every control, format and line- or paragraph-separator character (Unicode categories Cc,
+  Cf, Zl and Zp: C0, DEL, C1, bidi overrides, zero-width characters, U+2028, U+2029) and every invalid byte becomes
+  ``\\xNN`` per byte, and a backslash becomes ``\\\\``. A rendered string is one line and displays as what it is. The
+  rendering is injective, so two paths never share a name, and it never
   produces a lone surrogate, so serialization cannot fail on a hostile name.
 * **Identity.** ``artifact_sha256`` is the sha256 of the record's canonical JSON (sorted keys, no whitespace, ASCII,
   integers only) without ``artifact_sha256`` itself; no YAML emitter is involved.
@@ -44,15 +46,28 @@ class Entry:
         return self.mode == GITLINK_MODE or self.type == COMMIT
 
 
+# Every code point in the Unicode categories Cc (C0, DEL, C1), Cf (bidi overrides and isolates, zero-width characters,
+# the BOM, ...), Zl and Zp (U+2028, U+2029: line breaks to Python's ``splitlines``), frozen from Unicode 15.1.0 rather
+# than read from ``unicodedata``: Python 3.11 and 3.13 ship different Unicode versions, and the rendering is part of
+# the record's bytes, so it must not depend on the interpreter (T5-INV-08). A change here changes output bytes: bump
+# ``structural.VERSION`` (PR #126 review, F1; T5-INV-07).
+ESCAPED_RANGES = (
+    (0x0000, 0x001F), (0x007F, 0x009F), (0x00AD, 0x00AD), (0x0600, 0x0605), (0x061C, 0x061C), (0x06DD, 0x06DD),
+    (0x070F, 0x070F), (0x0890, 0x0891), (0x08E2, 0x08E2), (0x180E, 0x180E), (0x200B, 0x200F), (0x2028, 0x202E),
+    (0x2060, 0x2064), (0x2066, 0x206F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
+    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001), (0xE0020, 0xE007F),
+)
+ESCAPED_UNICODE_VERSION = "15.1.0"
+_ESCAPED = frozenset(c for lo, hi in ESCAPED_RANGES for c in range(lo, hi + 1))
+
+
 def _escape_char(ch: str) -> str:
     code = ord(ch)
     if ch == "\\":
         return "\\\\"
     if 0xDC80 <= code <= 0xDCFF:  # an invalid byte, carried by surrogateescape
         return f"\\x{code - 0xDC00:02x}"
-    if code < 0x20 or code == 0x7F:
-        return f"\\x{code:02x}"
-    if 0x80 <= code <= 0x9F:  # C1: escaped per UTF-8 byte, like an invalid byte
+    if code in _ESCAPED:  # per UTF-8 byte, like an invalid byte: the rendering stays injective
         return "".join(f"\\x{b:02x}" for b in ch.encode("utf-8"))
     if 0xD800 <= code <= 0xDFFF:  # a lone surrogate from parsed text (JSON allows one): never emitted raw
         return f"\\u{code:04x}"

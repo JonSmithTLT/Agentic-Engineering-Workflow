@@ -213,3 +213,17 @@ def test_isolation_guard_reports_only_what_changed():
     assert lanes.describe_change(before, after) == [
         "content changed:  M a.py", "vanished: ?? b.txt", "appeared: ?? c.txt", "the global git config changed"]
     assert lanes.describe_change(before, dict(before)) == []
+
+
+@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["in-process", "xdist"])
+def test_the_lane_report_counts_each_tests_cli_calls_including_its_fixtures(tmp_path, workers):
+    """The cost record's "CLI calls per test" (register E43): counted where the test runs, reported by the process that
+    writes the lane report, with xdist in between."""
+    root = scratch(tmp_path, {"tests/integration/test_calls.py": (
+        "import pytest\nimport lanes\n\n@pytest.fixture\ndef started():\n    lanes.count_cli_call()\n\n"
+        "def test_three(started):\n    lanes.count_cli_call()\n    lanes.count_cli_call()\n\n"
+        "def test_none():\n    pass\n")})
+    proc = inner_pytest(root, "--lane", "integration", *workers, "--lane-report", "r.json")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    report = json.loads((root / "r.json").read_text(encoding="utf-8"))
+    assert report["cli_calls"] == {"tests/integration/test_calls.py::test_three": 3}

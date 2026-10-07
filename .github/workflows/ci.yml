@@ -81,12 +81,12 @@ jobs:
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --lane fast
+          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial
+          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -150,7 +150,7 @@ jobs:
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider --durations=15
+          -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -211,6 +211,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read  # the run's jobs, for the cost record's queue and runner times
     steps:
       - uses: actions/checkout@v7
         with:
@@ -251,6 +254,31 @@ jobs:
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
           --require linux,win32 --tier "$TIER" --event "$EVENT" --summary "$GITHUB_STEP_SUMMARY"
+      - name: The cost record (reported, never gated; CI redesign P4, register E43 and E45)
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100"             > "$RUNNER_TEMP/jobs.json" || rm -f "$RUNNER_TEMP/jobs.json"
+          changed=()
+          if [ -n "$BASE" ]; then
+            if git diff --name-only "$BASE"..."$HEAD" > "$RUNNER_TEMP/changed.txt"; then
+              changed=(--changed-files "$RUNNER_TEMP/changed.txt")
+            fi
+          fi
+          mkdir -p cost-record
+          python tools/ci/cost_record.py lane-reports --jobs "$RUNNER_TEMP/jobs.json" --durations tests/durations.json             "${changed[@]}" --out cost-record/cost-record.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: cost-record
+          path: cost-record/
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Coverage holds its baseline (line and branch, Linux lanes; E2; full tier only)
         if: steps.tier.outputs.tier == 'full'
         run: >-

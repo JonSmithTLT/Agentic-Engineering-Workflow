@@ -26,6 +26,7 @@ def _load(name: str):
 check_assurance = _load("check_assurance")
 tier = _load("tier")
 update_durations = _load("update_durations")
+cost_record = _load("cost_record")
 
 ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
        "tests/integration/test_c.py::posix_only"]
@@ -425,3 +426,85 @@ def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
             expected = event == "schedule" and bool({"failure", "cancelled"} & set(results))
             assert fires == expected, (event, results, condition)
 
+
+
+# ---------------------------------------------------------------------------------------- the cost record (E43, E45)
+
+def timed(platform: str, lane: str, seconds: dict[str, float], shard: str | None = None, **kw) -> dict:
+    r = report(platform, lane, {n: "passed" for n in seconds}, shard=shard, **kw)
+    for nid, d in seconds.items():
+        r["results"][nid]["duration"] = d
+    return r
+
+
+def job(name: str, created: str, started: str, completed: str | None, os_label: str = "ubuntu-latest") -> dict:
+    return {"name": name, "created_at": created, "started_at": started, "completed_at": completed,
+            "conclusion": "success" if completed else None, "labels": [os_label]}
+
+
+def test_the_cost_record_reports_each_tests_time_share_and_cli_calls():
+    reports = [timed("linux", "regression", {ALL[2]: 90.0}, shard="1/2", cli_calls={ALL[2]: 12}),
+               timed("linux", "regression", {"tests/regression/test_b.py::t4": 30.0}, shard="2/2"),
+               timed("linux", "fast", {ALL[0]: 1.0, ALL[1]: 2.0})]
+    durations = {"platforms": {"linux": {ALL[0]: 1.0, ALL[2]: 80.0}}}
+    rec = cost_record.build(reports, None, durations, changed={"tests/unit/test_a.py"})
+    f = rec["platforms"]["linux"]
+    assert f["pytest_s"] == 123.0 and f["lanes"] == {"fast": 3.0, "regression": 120.0}
+    assert f["slowest"][0]["id"] == ALL[2] and f["slowest"][0]["share_of_lane"] == 0.75
+    assert f["slowest"][0]["cli_calls"] == 12 and f["cli_calls"]["total"] == 12
+    assert f["durations_coverage"] == 0.5  # two of the four collected tests are in the durations file
+    assert f["changed_tests"]["count"] == 2 and f["changed_tests"]["seconds"] == 3.0
+    assert "Tests in the test files this change touches: 2" in cost_record.summary(rec)
+
+
+def test_a_test_over_a_quarter_of_its_lane_or_a_slow_fast_lane_test_is_a_health_violation():
+    reports = [timed("linux", "regression", {ALL[2]: 90.0, "tests/regression/test_b.py::t4": 30.0}),
+               timed("linux", "fast", {ALL[0]: 31.0, ALL[1]: 29.0})]
+    health = cost_record.build(reports, None, None)["platforms"]["linux"]["health"]
+    assert {(h["kind"], h["test"]) for h in health} == {("test_share", ALL[2]), ("fast_test_time", ALL[0]),
+                                                         ("test_share", ALL[0]), ("test_share", ALL[1])}
+    assert all(h["level"] == "violation" for h in health)
+
+
+def test_a_share_of_a_lane_too_small_to_matter_is_not_a_violation():
+    reports = [timed("linux", "integration", {ALL[3]: 5.0, ALL[2]: 1.0})]
+    assert cost_record.build(reports, None, None)["platforms"]["linux"]["health"] == []
+
+
+@pytest.mark.parametrize("minutes, level", [(19, None), (21, "warning"), (26, "violation")])
+def test_a_lane_job_over_20_minutes_warns_and_over_25_is_a_violation(minutes, level):
+    jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z",
+                f"2026-10-07T00:{2 + minutes:02d}:00Z"),
+            job("static", "2026-10-07T00:00:00Z", "2026-10-07T00:00:10Z", "2026-10-07T00:40:00Z"),
+            job("assurance", "2026-10-07T00:30:00Z", "2026-10-07T00:30:05Z", None)]
+    rec = cost_record.build([], jobs, None)
+    assert [h["level"] for h in rec["health"]] == ([level] if level else [])  # only test jobs are judged
+    assert rec["run"]["still_running"] == ["assurance"]
+    assert rec["run"]["queue_s"]["max"] == 120.0
+    assert rec["run"]["runner_minutes"] == {"ubuntu-latest": round(minutes + 39 + 50 / 60, 1)}
+    assert rec["run"]["wall_clock_s"] == max(40, 2 + minutes) * 60
+
+
+def test_the_cost_record_never_fails_the_job_whatever_it_finds(tmp_path):
+    (tmp_path / "r").mkdir()
+    (tmp_path / "r" / "fast.json").write_text(json.dumps(timed("linux", "fast", {ALL[0]: 600.0})), encoding="utf-8")
+    jobs = tmp_path / "jobs.json"
+    jobs.write_text(json.dumps({"jobs": [job("core (ubuntu-latest)", "2026-10-07T00:00:00Z",
+                                             "2026-10-07T00:00:00Z", "2026-10-07T00:29:00Z")]}), encoding="utf-8")
+    out, summary_md = tmp_path / "cost.json", tmp_path / "summary.md"
+    assert cost_record.main([str(tmp_path / "r"), "--jobs", str(jobs), "--out", str(out),
+                             "--summary", str(summary_md)]) == 0
+    rec = json.loads(out.read_text(encoding="utf-8"))
+    assert rec["schema"] == cost_record.SCHEMA and rec["health"][0]["level"] == "violation"
+    assert "CI health: 3 violation(s)" in summary_md.read_text(encoding="utf-8")
+
+
+def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest_20():
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert ci.count("--durations=20") == 3  # the fast and serial steps of core, and every lane shard
+    workflow = yaml.safe_load(ci)
+    steps = workflow["jobs"]["assurance"]["steps"]
+    cost = next(s for s in steps if "cost_record.py" in s.get("run", ""))
+    assert cost.get("continue-on-error") is True and cost.get("if") == "always()"
+    assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read"}
+    assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)

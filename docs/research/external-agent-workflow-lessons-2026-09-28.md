@@ -240,7 +240,7 @@ Benchmark workspace/isolation strategies on at least:
 
 - small repo;
 - medium repo;
-- large/revelations-scale repo.
+- large (security-research-platform-scale) repo.
 
 Measure:
 

@@ -585,8 +585,8 @@ sections:
       probe results](../archive/reviews/architecture-review-2026-10-04/t5-codebase-map-probe-results.md)): 0.1 s and 3.5
       KB on AEW, byte-identical across checkouts; [large-repository benchmark](../research/large-repository-benchmark-2026-10-04.md):
       2.1 s and 162 KB at 100k files, no sharding or index needed'
-    Belongs to or gated by: '**M4 candidate** (M4-G/H): only as far as it makes the M4-H experiment representative (v0.5
-      §13.2); otherwise after the gate'
+    Belongs to or gated by: '**M4 candidate**, a parallel lane to M4-H (the designer''s [decision record of 2026-10-06](../design/decisions-2026-10-06-f22-1-structural-map-sequencing.md),
+      ledger SMQ): included in M4-H''s configuration only if it passes its own acceptance gates first, never waited for'
     Notes: '**Unblocked by v0.5''s adoption (2026-10-05).** Do not build from earlier prose: v0.4''s manifest pointer moved
       by an attributable project transaction is replaced by the map registry and `map_revision` (§3.1), and the freshness
       inputs are the generator''s tracked reads, not a hand-maintained list (§2.4). If a background or asynchronous adoption
@@ -655,23 +655,14 @@ sections:
     Work: 'An engine-owned cost and usage ledger: per run (model/profile, token categories, wall time, provider-reported
       and price-table cost), rolled up per invocation, Ticket and parent'
     Source (governing): architecture review G7, F-D; [architecture review response](../design/architecture-review-response-2026-10-04.md)
-      (accepted 2026-10-05)
-    Belongs to or gated by: '**M4 candidate** (M4-G, if bounded). Budget enforcement in `DispatchDecision` stays with F7/M5
-      after calibration. The build waits for M4-D''s #60 and #65 (the design note §6)'
-    Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **The designer''s disposition
-      (2026-10-05): changes requested before adoption.** R1, R2, R3, R5, R6, R7, R9 and R10 keep their direction; R4 and
-      R8 are revised: (1) the normalized billing counters are non-overlapping, or a price row carries an explicit provider/model
-      billing formula (cached and reasoning tokens may be subsets of input or output, so a generic sum over categories can
-      double-count); (2) a category without a price is unpriced, never zero; (3) the cost estimated for a run binds to a
-      reproducible pricing snapshot or version, and a re-pricing under the current table is a separate projection (estimated
-      at run versus under current prices); (4) a run whose effective models differ from the requested one, or that mixes
-      models without per-model usage, is unpriced (`unpriced_effective_model_mix`) unless the provider reports its cost;
-      (5) the Lead session''s usage is kept durably in cold history (the existing Lead history domain), the 32-entry ring
-      being only its hot projection. **Design note (proposed 2026-10-05, its §8 asks eight decisions):** [cost-usage-ledger-design-v0.1.md](../design/proposals/cost-usage-ledger-design-v0.1.md)
-      (ledger CUL): one normalized usage record per run, copied into control state at the Lead''s next transaction on the
-      invocation; trust labels; a project-owned price table applied through the adapter''s declared token semantics, the
-      derived cost computed at read under the pricing snapshot recorded at copy (revised 2026-10-05 after the designer''s
-      review); roll-ups as projections; the Lead session''s own line; aew usage show, runs and lead'
+      (accepted 2026-10-05); **the design is [the cost and usage ledger v0.2](../design/cost-usage-ledger-design-v0.2.md)**
+      (adopted by the designer 2026-10-06 after a narrow revision; ledger CUL)
+    Belongs to or gated by: '**M4** (the main lane: M4-G, then F25, then F19/Q7/U3, then M4-H). Budget enforcement in `DispatchDecision`
+      stays with F7/M5 after calibration'
+    Notes: Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
+      R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment;
+      R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes.
+      Implementation-ready.
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -928,12 +919,14 @@ sections:
     When: '**On measured need**'
     Notes: Serializing a run's requests is conservative and correct.
   - '#': E12
-    Work: 'An evidence view: `aew evidence show <id>` (its kind, result, claim, deviations or findings, and body), or next
-      actions that carry a record''s conclusion'
+    Work: '`aew evidence show <id>`, the canonical detailed Evidence read surface, through the existing projection layer
+      with structured output for the typed Lead surface and bounded bodies; normal workflow surfaces keep the record''s
+      conclusion and Evidence ID'
     Source: 'the A6 debriefs: 4 Leads opened evidence files directly, since `aew evidence` has only `ingest` (`m3-evidence-synthesis.md`
-      §3.4)'
-    When: '**M4 candidate** (Lead UX); the designer''s call on the form'
-    Notes: Proposed, not done.
+      §3.4); the designer''s [decision record of 2026-10-06](../design/decisions-2026-10-06-e12-evidence-read-surface.md)
+      (ledger EVR)'
+    When: '**M4 candidate** (M4-G; Lead UX). The designer''s call on the form is made (2026-10-06)'
+    Notes: Decided 2026-10-06; not built. Today `aew evidence` has only `ingest`.
   - '#': E14
     Work: 'CLI fixed cost: import `jsonschema` lazily, so commands that validate nothing do not pay for it'
     Source: a follow-up recorded during M3; `m3-performance.md` (the libyaml half is done there, P1)
@@ -1116,7 +1109,8 @@ sections:
     When: '**Unscheduled.** The operator asked for it if very small'
     Notes: The Lead TUI's usage lives only in OpenCode's own database (cost reported $0, likely a subscription login). Feasible
       after the TUI exits with `opencode session list --standalone --format json` or `stats --json` (never the background
-      service); needs a probe of their fields. Absorbed by F25 when the cost ledger is built.
+      service); needs a probe of their fields. Absorbed by F25 when the cost ledger is built. F25 v0.2 records Lead usage
+      per AEW attachment, not per native TUI session (the designer, 2026-10-06).
   - '#': U5
     Work: Generated per-archetype command references in role briefings and the Lead's guide
     Source: review finding 4; operator note 1

@@ -566,3 +566,26 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
   identity, role, custody, execution profile, parent relationship, limits and evidence and provenance; otherwise AEW
   dispatches. No
   native feature may bypass AEW dispatch or create an uncontrolled subagent.
+
+## Amendment 2026-10-06 — one AEW Provider Gateway (F18.8; designed, not built)
+
+The designer's F18.8 decision (decision record
+[`decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md`](../../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+§2) composes the credentialing relay of the amendment of 2026-10-05 with the F18 hosting design v0.6's request
+gateway into one AEW Provider Gateway. ("The gateway" in the amendment of 2026-10-05 is the upstream provider or
+organization gateway the relay speaks TLS to; here the Provider Gateway always carries its full name.)
+
+- **One logical component.** The relay's fixed-upstream credential routing and the F18 request gateway's attestation
+  are two responsibilities of one provider-traffic authority boundary, the AEW Provider Gateway. Model-controlled
+  traffic reaches the Provider Gateway only through the secretless in-sandbox shim. The Provider Gateway identifies the
+  attachment or run and the qualified pin, attests the request surface and denies before egress on a mismatch, and only
+  then selects the fixed upstream (the provider or organization gateway), attaches the real provider credential,
+  originates TLS or mTLS, observes the response and binds its tool calls single-use.
+- **One custodian.** The provider credential's only holder is the Provider Gateway. The custody rules of "The
+  credentialing relay" above still hold; F18 adds no second credential store or credentialing proxy.
+- **Generic egress stays separate.** The credentialless allowlist proxy never receives a provider credential and cannot
+  widen or select the Provider Gateway's fixed upstream.
+- **Implementation.** The Provider Gateway may be split internally, but a split must not open a gap between the
+  request it attested and the request it credentialed and forwarded. A single composed service is preferred.
+- **What governs what.** The amendment of 2026-10-05 keeps governing network containment and fixed-upstream credential
+  routing (F28); the hosting design governs attachment-aware attestation and broker binding (F18.8).

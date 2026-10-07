@@ -404,9 +404,18 @@ sections:
       row for ambient harness files, and never auto-fixing'
     Source (governing): '[install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §6, §6.1, §7 (ledger
       IBU-14 to IBU-16)'
-    Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry)'
+    Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry). The ownership and permission
+      matrix and the F18-B0 negative checks wait for F18.6 (not before M4-H)'
     Notes: Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
-      stands between this row and its build
+      stands between this row and its build. **The designer's amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+      §1, ledger HRC-01 to HRC-05):** v0.3's no-daemon rule and its operator terminal as the Lead session are superseded
+      (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator's control
+      surface, not the Lead session); the permissions row stops treating a `.aew/` owned by another user as an error and
+      instead validates an ownership and permission matrix (protected state's ownership or ACL, the Lead-host identity unable
+      to write it, the operator's lifecycle operations, ordinary source access, derived projections unable to pass for canonical
+      state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity;
+      the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
+      write access (lead developer's reading, record §3)
   - '#': F18.3
     Work: 'The air-gap bundle: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse, qualified harness pins and a canonical
       hashed manifest; a detached signature over the manifest from a release identity with an independently provisioned
@@ -436,9 +445,9 @@ sections:
       IBU-04 to IBU-08, IBU-20)'
     Belongs to or gated by: '**Unscheduled** (before any organization deployment); its live gate is one bounded task for
       the independent researcher'
-    Notes: Depends on F28's relay for the provider path (whose relation to the v0.6 gateway is open, F18.8) and on E35's
-      qualification seams. The hosting design v0.6 §3 and §16 add the qualified support tuple and executable content identity
-      that F18.11 and F18.12 qualify against.
+    Notes: Depends on F28's relay for the provider path (composed with the v0.6 gateway into one AEW Provider Gateway, designer
+      2026-10-06, F18.8) and on E35's qualification seams. The hosting design v0.6 §3 and §16 add the qualified support
+      tuple and executable content identity that F18.11 and F18.12 qualify against.
   - '#': F18.5
     Work: 'F18-A, contract and state: attachment states (NO_ATTACHMENT, PREPARING, FAILED, ACTIVE, SUSPENDED, DETACHED)
       and reason codes; the protected-set registry; the support manifest and executable content identity; hot and cold generation
@@ -471,7 +480,11 @@ sections:
       §4, §20.3 (ledger HAA)'
     Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
     Notes: 'Exit: a direct provider attempt fails; a model switch or tool injection is denied; altered, replayed or unbound
-      tool calls fail; an outage fails closed'
+      tool calls fail; an outage fails closed. **One AEW Provider Gateway (designer, 2026-10-06, [decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+      §2, ledger HRC-06 to HRC-10):** this row composes F28''s fixed-upstream credentialing relay with the attestation and
+      broker binding into one logical provider path, the only custodian of the provider credential; F28 keeps the network-containment
+      and credential-routing requirements and the separate credentialless generic egress; an internal split may not open
+      a gap between the request attested and the request credentialed and forwarded'
   - '#': F18.9
     Work: 'F18-D, detached child handling: close acknowledgement; detached-run attention; bounded credentials; the hard-deadline
       order; drain semantics, with the drain deadline as a stop condition; StageIntent stale-owner handling'
@@ -793,8 +806,10 @@ sections:
       2.0.18 starts offline, Bun honours the proxy variables. Still to probe: a real streamed turn through the relay, cancellation,
       IPv6 **Lead developer (2026-10-05, PR #57):** M4-D''s deterministic integration checks (D5) inherit F28''s default
       that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling. The F18
-      hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; how this
-      relay and that gateway relate is for the designer (decisions-due, F18.8).'
+      hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; the designer
+      decided on 2026-10-06 that they are one logical AEW Provider Gateway ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+      §2): F28''s relay is not deleted and keeps its containment and fixed-upstream credential-routing requirements, F18.8
+      composes it with attestation and broker binding, and generic egress stays separate and credentialless.'
   - '#': F30
     Work: 'Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with
       two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface

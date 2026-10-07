@@ -1,6 +1,6 @@
-# The cost and usage ledger: the design note for F25 (v0.1)
+# The cost and usage ledger: the design note for F25 (v0.2)
 
-- **Status:** **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8. **Revised 2026-10-05 after the designer's review** (REQUEST CHANGES: R1, R2, R3, R5, R6, R7, R9 and R10 kept; R4 and R8 revised): the reported counters are priced only after being mapped onto non-overlapping billable buckets (§5.3); a missing price is `unpriced`, never zero; a derived cost binds to an immutable pricing snapshot recorded at copy time, with the current-price figure a separate projection; an effective-model mismatch or mix is unpriced unless usage is partitioned per model; the Lead session's usage is archived into the existing cold lead history, the ring of 32 being only the hot projection (§5.7). **Second round (lead developer, 2026-10-05):** a Lead session's usage is its own `history/lead/` record written in its own commit, because one credential spans every session of a seat started without `--acquire` and a slot on the credential would overwrite them; and the semantics of the reported token counters are the adapter's declaration (`token_semantics`), pinned by the harness conformance tests, not a price-row setting (§5.3). Returned for adoption.
+- **Status:** **Adopted** (2026-10-06) by the designer, after a narrow revision made in this version (§10): R8 is revised from Lead-session to attachment and generation accounting (Q12), R7 and R9 gain an explicit projection scope and completeness, and PR numbers in the sequencing are implementation notes, not requirements; the other decisions of §8 are approved as asked. The Lead part (§5.7) is held for the designer's decision on the segment before F31 exists (decisions-due, F25); the rest is implementation-ready. Earlier history: **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8. **Revised 2026-10-05 after the designer's review** (REQUEST CHANGES: R1, R2, R3, R5, R6, R7, R9 and R10 kept; R4 and R8 revised): the reported counters are priced only after being mapped onto non-overlapping billable buckets (§5.3); a missing price is `unpriced`, never zero; a derived cost binds to an immutable pricing snapshot recorded at copy time, with the current-price figure a separate projection; an effective-model mismatch or mix is unpriced unless usage is partitioned per model; the Lead session's usage is archived into the existing cold lead history, the ring of 32 being only the hot projection (§5.7). **Second round (lead developer, 2026-10-05):** a Lead session's usage is its own `history/lead/` record written in its own commit, because one credential spans every session of a seat started without `--acquire` and a slot on the credential would overwrite them; and the semantics of the reported token counters are the adapter's declaration (`token_semantics`), pinned by the harness conformance tests, not a price-row setting (§5.3). Returned for adoption.
   Register F25 (absorbs U4 when built); ledger prefix CUL. Written by the lead developer of the main AEW repository.
   The build is a separate task after approval (the register's model split: this note by Fable, the build by Opus),
   and it waits for M4-D's open PRs (§6).
@@ -25,8 +25,8 @@
 
 - One record per **harness run**, normalized across harnesses, with the model and profile it ran under, token
   categories, wall time, steps, the provider's reported cost when it exists, and a trust label for each of those.
-- One record per **Lead session** (U4): what the operator's own Lead TUI session used, kept apart from the units'
-  work.
+- One record per **Lead attachment** (U4): what the Lead used while an AEW attachment and its generation were active,
+  kept apart from the units' work (revised 2026-10-06, §5.7).
 - A **price table** the project owns (flat prices per billable bucket), applied through the adapter's declared token
   semantics, from which a derived cost is computed at read time under the pricing snapshot recorded when the run was
   copied, and never stored as a fact.
@@ -262,50 +262,59 @@ No surface sums a `missing` run into a total without saying how many it skipped.
   sums its Tickets, an Epic its Stories), each level reporting its own and its descendants' totals separately;
 - per **project**: the hot units plus the `recent` ring by default; `--all` walks the history index for archived
   units (bounded by `--since`/`--until`, newest first, as `aew history list` pages) and rehydrates them one at a time.
+  Every project-level projection says what it covers (designer, 2026-10-06), so the default view can never be read as
+  a lifetime total: the default carries `scope: recent` and `archive_complete: false`; an unbounded `--all` carries
+  `scope: all`, with `archive_complete: true` only when the walk covered every archived unit. A bounded `--all` (with
+  `--since` or `--until`) carries `scope: window` and echoes its bounds, so a windowed total is never read as a lifetime
+  one (lead developer, from the review of this version).
 
 Totals are never written back anywhere (not to control state, not to a cache file): a changed price table changes
 `estimated_under_current_prices` on the next read and nothing else, and a late-copied record joins the next read. Wall time sums are labelled `wall_s_sum` (runs overlap;
 the sum is not elapsed time).
 
-### 5.7 The Lead session's usage (U4): its own ledger line, never summed into units, one cold record per session
+### 5.7 The Lead attachment's usage (U4): its own ledger line, never summed into units, one cold record per attachment
 
-**R8.** `aew lead session` and `aew opencode` (the Lead broker) record the Lead session's usage when the session
-ends, as `aew/lead-session-usage/v1` (`session_label`, `generation`, `token_id`, `started_at`, `ended_at`, `tokens`,
-`tokens_trust`, `provider_cost_usd`, `provider_cost_trust`, `effective`, `token_semantics`, `source`,
-`pricing_sha256`), committed by the broker with the Lead credential it holds, as the broker's own transition
-`lead.session_usage`. That transition does two things in its one commit:
+**R8, revised by the designer on 2026-10-06 for Q12.** The accounting boundary is the AEW attachment and its
+generation, not the native TUI or harness session. A harness conversation may exist before an attachment, survive
+`aew close`, hold ordinary non-AEW work, and later receive another generation, so recording the whole native session
+would charge non-AEW work to AEW and could conflate generations. (The first two versions of R8 recorded one record per
+Lead session, committed by the broker when the session ended; that is superseded.)
 
-- **Cold, the durable copy, one record per session:** it writes an immutable history record
-  `history/lead/NNNNNN.yaml` holding the usage object, through the same staged cold writer the lead archival uses
-  (`archive_ops._write_record`: staged in the commit's redo record, hashed, indexed by the history manifest as kind
-  `lead` with `links: {token, generation, session}`), numbered by the existing `lead_archive` counter. This is
-  *appended per session*, not attached to the credential: the usual seat is one `AEW_LEAD_TOKEN` in the operator's
-  shell that spans every session started without `--acquire` (harness conformance §3), so a slot on the credential
-  would be overwritten by each new session and nothing would reach the cold state until the seat changed, which is
-  exactly the history the designer's review protects (the lead developer's finding on the first revision, 2026-10-05).
-  The cold record is never discarded (ADR-0011); `aew usage lead --all` walks `aew history list --kind lead`,
-  selects the records of this schema, and sums every session ever recorded.
-- **Hot, a projection:** the bounded ring `state["lead"]["sessions"]` (the last 32; the `lead` record is
-  schema-versioned for additions, ADR-0005) for `resume`, `status` and `aew usage lead` without an archive walk. The
-  ring holds the same objects the cold records hold; it is never the only copy.
-
-No new history kind (`lead` exists), no new hot growth path (the ring is bounded), no change to `_lead_entry` (ended
-credentials are archived as before, now without any usage on them). The source is OpenCode's own session data read by
-the broker after the TUI exits (U4's note: the standalone `session list` or `stats` output; the fields are a probe, §7).
-This transition is initiated by the broker process on exit, not by a model request: `lead.cli` through the bridge
-refuses `lead session_usage` as it refuses credential-emitting commands, so the Lead's model cannot write its own usage.
-The Lead's usage is reported beside the units' totals and never added to any unit, Ticket or parent: it is the
-operator's seat, not a unit's work. Its derived cost follows R4 exactly (declared semantics, snapshot at record,
-mismatch unpriced).
+- **One record per accounting segment:** `aew/lead-attachment-usage/v1`, holding `harness_session` (provenance only),
+  `project`, `generation`, `attached_at`, `detached_at`, `usage_delta` (R1's normalized fields: `tokens`,
+  `tokens_trust`, `provider_cost_usd`, `provider_cost_trust`, `effective`, `token_semantics`, `source`),
+  `pricing_sha256` and `completeness` (`complete | partial | unavailable`).
+- **A baseline, then a delta:** a usage baseline is taken and bound when the attachment becomes active, and the
+  attributable delta is finalized at a normal detach or close. A normal close finalizes the attachment's record before
+  revoking its generation. An unexpected loss yields `partial` or `unavailable`; usage is never manufactured.
+- **Kept from the earlier R8:** one immutable cold record per segment, through the staged cold writer
+  (`archive_ops._write_record`) as `history/lead/NNNNNN.yaml`, kind `lead`, indexed by the history manifest and never
+  discarded; a bounded hot projection, the ring `state["lead"]["attachments"]` (the last 32: the same objects, never
+  the only copy); the model cannot write it (the bridge refuses the transition from the model side, as it refuses
+  credential-emitting commands); the Lead's usage is reported beside the units' totals and never added to any unit,
+  Ticket or parent; `aew usage lead --all` walks the durable records.
+- **No authority from a late exit:** a stale or detached generation must not later gain authority merely because the
+  underlying TUI eventually exits. A normal close finalizes the record before the generation is revoked.
+- **The source** is the harness's own usage data (for OpenCode, the standalone `session list` or `stats` output; the
+  fields are a probe, §7), read at the baseline and again at detach; its derived cost follows R4 exactly (declared
+  semantics, snapshot at record, mismatch unpriced).
+- **Before the attachment lifecycle exists (open, for the designer):** F25 is on M4's main lane and F31 is not, so
+  F25's Lead line would ship before `aew open` and `aew close` exist. The lead developer's proposal is to bound a
+  segment by the span in which one Lead session's broker holds one generation's credential. That is close to the
+  per-native-session boundary this revision moved away from, and on a takeover it leaves nobody with current authority
+  assigned to write the superseded segment's `partial` or `unavailable` record. The designer decides the pre-F31
+  boundary, and who writes an interrupted segment's record, before F25's Lead part is built (decisions-due, F25); the
+  run usage of §5.1 to §5.6 does not wait for it.
 
 ### 5.8 Surfaces
 
 **R9.** `aew usage show [WORK-ID] [--all] [--since UTC] [--until UTC] [--json]` (a unit's tree, or the project), `aew
 usage runs [--invocation INV] [--json]` (one row per run with its record and derived cost), `aew usage lead [--json]`
-(the Lead sessions). Text output is a table per level; JSON is the projection of R7 with every count and label. The
+(the Lead attachments). Text output is a table per level; JSON is the projection of R7 with every count and label. The
 same `usage_ops` functions are what F19's collector calls for `aew/eval-run/v1`'s `cost` block and what a later
 dashboard projection would read; nothing is computed twice in two places. `aew status --json` gains one bounded
-`usage` summary for the hot state (runs counted, tokens summed, unpriced count), nothing more.
+`usage` summary for the hot state (runs counted, tokens summed, unpriced count), nothing more. Every project-level
+projection, text and JSON, carries R7's `scope` and `archive_complete` (designer, 2026-10-06).
 
 ### 5.9 Non-goals and later work
 
@@ -325,24 +334,26 @@ Additive edits, each with its own unit test:
    `unknown`); `base.py`'s docstring names both; the harness conformance suite gains the mapping's fixture test.
 2. `harness/supervisor.py`: writes `result.usage_record` (one line beside the existing `result`).
 3. `schemas/control.schema.json`: `invocations.*.runs[]` declared; `usage` optional with `pricing_sha256` and
-   `token_semantics`; `lead.sessions` optional ring; `schemas/pricing.schema.json` (new: flat prices per billable bucket,
-   no semantics); `schemas/lead-session-usage.schema.json` (new, the cold record); the manifest's optional `policy.pricing`.
+   `token_semantics`; `lead.attachments` optional ring; `schemas/pricing.schema.json` (new: flat prices per billable bucket,
+   no semantics); `schemas/lead-attachment-usage.schema.json` (new, the cold record); the manifest's optional `policy.pricing`.
 4. `engine/usage_ops.py` (new): `copy_run_usage(state, inv_id, aew_root)` (R5's idempotent copy, called by the three
    paths, which also records `pricing_sha256` and writes the content-addressed snapshot `.aew/pricing/<sha256>.yaml`
    on first use), the projections of R7 with both derived figures, the price table reader, the bucket mapping by the
    record's `token_semantics` and the derivation (R4).
 5. `engine/evidence_ops.py` (ingestion and `invoke cancel`), `engine/harness_ops.py` (relaunch), `engine/archive_ops.py`
    (the bundle finalizer): one call each to `copy_run_usage`.
-6. `engine/lead_ops.py` and `harness/lead_broker.py`: the `lead.session_usage` transition (one `history/lead/` record
-   through `archive_ops._write_record` plus the ring entry, in one commit) and the broker's exit hook; the bridge's
+6. `engine/lead_ops.py` and `harness/lead_broker.py`: the baseline bound when an attachment becomes active and the
+   `lead.attachment_usage` transition at detach or close (one `history/lead/` record through
+   `archive_ops._write_record` plus the ring entry, in one commit, before the generation is revoked); the bridge's
    refusal of it from the model side; `archive_ops._lead_entry` untouched.
 7. `cli/usage_commands.py` (new) and its registration; `status_ops` gains the bounded summary.
 
-**Sequencing.** M4-D's open PRs change `engine/api.py`, `evidence_ops.py`, `archive_ops.py`, `lead_ops.py`,
+**Sequencing.** M4-D's work changes `engine/api.py`, `evidence_ops.py`, `archive_ops.py`, `lead_ops.py`,
 `workspace_ops.py`, `ports.py`, the control schema and the invariants (#65, D3), and D6 rewrites `aew harness wait`
-over the run records. Edits 3, 5 and 6 touch those files, so the build starts after #60 and #65 merge and
+over the run records. Edits 3, 5 and 6 touch those files, so the build starts after the overlapping M4-D work has merged and
 coordinates D6's run-record reads with the lead developer (both read `runlog.read_record`; neither changes the run
-record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be built first on the same branch.
+record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be built first on the same branch. PR numbers named here and in §8 (#60, #65) are implementation notes from 2026-10-05, not
+requirements (designer, 2026-10-06); both have since merged.
 
 ## 7. The build plan and its tests (F25, after approval)
 
@@ -360,7 +371,7 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
   `estimated_under_current_prices` and leaves `estimated_at_record` byte-identical, a missing snapshot is a doctor
   ERROR; property test: for any set of runs, the unit total equals the sum of invocation totals equals the sum of run
   figures, and the counts (including every unpriced reason) partition the runs.
-- **Slice 2 (after #60 and #65):** the three copy paths, each shown to copy exactly once and to write an `absent`
+- **Slice 2 (after the overlapping M4-D work):** the three copy paths, each shown to copy exactly once and to write an `absent`
   record for a run without a usage record; **a usage copy derives no event** (the transition's typed events are
   empty for that invocation: no `run.added`, no `invocation.status`) and ADR-0012's oracle rules 24 to 26 hold across
   it, with a wait-any consumer woken by its commit (every commit bumps the wake file) still waiting and returning
@@ -372,12 +383,17 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
   rehydration reads it back; a custody invocation without runs rolls up as `invocations_without_runs`;
   `aew usage show` on a project driven to archival (the dashboard suite's world is reusable) equals the sum computed
   from the run directories while they exist, and still answers after `local/harness/runs` is deleted; `--all` pages
-  the archive; the Lead session's usage written at session end by the broker as its own `history/lead/` record plus
-  the ring entry in one commit, refused through the bridge (with a negative control); **40 sessions in one seat without
-  `--acquire`** (one credential throughout) leave 40 cold records while the ring holds 32, and `aew usage lead --all`
-  sums all 40; `_lead_entry` archives the ended credential unchanged.
-- **Probe (before slice 2's Lead part):** OpenCode's standalone session or stats output after a TUI exit, on the
-  pinned 2.0.18, to confirm which fields exist and whether cost is `0` under a subscription login (U4). Recorded with
+  the archive; the Lead attachment's usage: a baseline bound at activation and the delta finalized at a normal close as its own
+  `history/lead/` record plus the ring entry in one commit, before the generation is revoked, refused through the bridge
+  (with a negative control); two attachments over one still-running harness conversation leave two records whose
+  deltas exclude the non-AEW use between them; an unexpected loss leaves `partial` or `unavailable`, never an
+  invented figure; a detached generation's TUI exiting later writes nothing and gains no authority; **40
+  attachments** leave 40 cold records while the ring holds 32, and `aew usage lead --all` sums all 40;
+  `_lead_entry` archives the ended credential unchanged.
+- **Probe (before slice 2's Lead part):** OpenCode's standalone session or stats output on the pinned 2.0.18, read
+  while the conversation is still running and again later in the same conversation (an attachment's baseline and its
+  detach both happen while the harness keeps running), as well as after a TUI exit, to confirm which fields exist,
+  whether per-conversation totals can be differenced, and whether cost is `0` under a subscription login (U4). Recorded with
   the design's evidence; if no readable source exists, the Lead line records `tokens_trust: absent` and says so.
 - **Evidence for the designer's gate:** `tests/unit/test_usage_*.py`, `tests/integration/test_usage_ledger.py`; the
   invariants file gains "every `inv.runs[].usage`, when present, is a well-formed `aew/run-usage/v1` whose `run`
@@ -401,7 +417,8 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
 5. **R8, revised after the designer's review (2026-10-05):** the Lead session's usage as a broker-committed
    `lead.session_usage` transition that writes one `history/lead/` cold record per session (durable, never discarded)
    **and** the bounded hot ring entry in the same commit; `aew usage lead --all` sums every session; refused from the
-   model side; never summed into units. Alternative: no Lead line in v1 (U4 stays open).
+   model side; never summed into units. Alternative: no Lead line in v1 (U4 stays open). *Superseded by the designer's revision of
+   2026-10-06: usage per AEW attachment and generation (§5.7, §10).*
 6. **R9, the surface names** (`aew usage show|runs|lead`) and the one bounded summary in `aew status --json`.
 7. **R10, non-goals:** no budget refusal, no dashboard route, no pruning, no per-step records.
 8. **§6 sequencing:** slice 1 may start now; slice 2 after #60 and #65, coordinated with D6.
@@ -411,3 +428,83 @@ record's existing keys). Edits 1, 2, 4 and 7 collide with nothing and may be bui
 Every requirement here is in `docs/design/requirements-ledger.yaml` under the prefix CUL, tracked by F25 (and U4 for
 the Lead line). The register's F25 row points at this note; U4's note already says F25 absorbs it. The status line
 records the decisions when they are made; the build's PRs link back to the sections they build.
+
+## 10. The designer's disposition (2026-10-06)
+
+The designer's answer to §8, recorded as given. This version (v0.2) makes the edits it asks for: R8 in §5.7, the
+scope and completeness of R7 and R9 in §5.6 and §5.8, and the non-normative PR numbers in §6 and §7. With them, F25 is
+adopted and implementation-ready, except its Lead part, which is held for the designer's decision on the segment
+before F31 exists (§5.7; decisions-due, F25).
+
+> F25 — REQUEST NARROW REVISION, then ADOPT
+>
+> The design is sound. No new design cycle is needed. Seven of the eight §8 decisions are accepted; R8 needs one post-Q12 correction, and R7/R9 need one presentation clarification.
+>
+> 1. R5 placement — APPROVE.
+> Copy run usage into `inv.runs[].usage` at the next legitimate Lead transaction on that invocation. Do not reopen OBX-45 by introducing supervisor-initiated accounting commits. Preserve `provisional` / `missing` states until the durable copy occurs.
+>
+> 2. R4 pricing — APPROVE.
+> Keep usage facts immutable and derive dollar estimates at read time. Preserve:
+>    * adapter-declared/pin-qualified `token_semantics`;
+>    * non-overlapping billable bucket conversion;
+>    * missing price = `unpriced`, never zero;
+>    * immutable pricing snapshot for `estimated_at_record`;
+>    * current table separately for `estimated_under_current_prices`;
+>    * effective-model mismatch/mix unpriced unless usage is partitioned per model;
+>    * requested model is never substituted for effective model when pricing.
+>
+> 3. R3 trust labels — APPROVE.
+> In particular, `zero_with_tokens` means unpriced/unknown economic cost, not free.
+>
+> 4. R7 roll-ups — APPROVE WITH CLARIFICATION.
+> Roll-ups remain projections and are never stored totals.
+> Add an explicit scope/completeness field to project-level projections so the default hot + recent-history view cannot be mistaken for a lifetime project total. Equivalent semantics are sufficient, e.g.:
+>
+> ```
+> scope: recent
+> archive_complete: false
+> ```
+>
+> `--all` is the archive-backed/lifetime projection.
+>
+> 5. R8 Lead usage — REVISE.
+> Q12 makes the AEW attachment/generation, not the native TUI/harness session, the accounting boundary.
+> A harness conversation may exist before attachment, survive `aew close`, contain ordinary non-AEW work, and later receive another AEW generation. Recording the whole native session would therefore attribute non-AEW work to AEW and can conflate generations.
+> Replace “one Lead-session usage record” with an attachment-scoped record, conceptually:
+>
+> ```
+> aew/lead-attachment-usage/v1
+>
+> harness_session: <provenance only>
+> project: ...
+> generation: ...
+> attached_at: ...
+> detached_at: ...
+> usage_delta: ...
+> pricing_sha256: ...
+> completeness: complete | partial | unavailable
+> ```
+>
+> Take/bind a usage baseline when the attachment becomes active and finalize the attributable delta at normal detach/close. Unexpected loss may produce `partial` or `unavailable`; do not manufacture usage.
+> Preserve the good parts of R8:
+>    * one immutable cold record per accounting segment;
+>    * bounded hot projection;
+>    * model cannot write it;
+>    * Lead usage never joins Ticket/unit totals;
+>    * `aew usage lead --all` walks the durable records.
+> Normal close should finalize the attachment record before revoking that generation. A stale/detached generation must not later gain authority merely because the underlying TUI eventually exits.
+>
+> 6. R9 surfaces — APPROVE.
+> Keep `aew usage show|runs|lead`, JSON from the same projection code, and the bounded `aew status --json` summary. Propagate the R7 scope/completeness metadata.
+>
+> 7. R10 non-goals — APPROVE.
+> No budget refusal, dashboard route, local-run pruning, or per-step ledger records in F25. Measurement first; budget enforcement remains later policy work.
+>
+> 8. §6 sequencing — APPROVE, but keep repository scheduling non-normative.
+> Collision-free work may proceed independently. The engine/schema integration slice follows the overlapping M4-D work and coordinates with D6. PR numbers such as `#60/#65` may remain implementation notes, but should not become durable architectural requirements.
+>
+> Disposition
+> Revise R8 to attachment/generation accounting, add explicit projection scope/completeness to R7/R9, and keep PR-number dependencies non-governing.
+> After those edits:
+> F25 is ADOPTED and implementation-ready.
+

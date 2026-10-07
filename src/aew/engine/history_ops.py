@@ -324,8 +324,8 @@ class HistoryCommands:
         see: the checks their verification cites are not covered, so the audit cannot pass (P3-R2). Not damage: the
         unit gets no finding, and ``aew migrate`` records the closure."""
         return [f"entry {seq} ({wid}): archived before bundles recorded the checks its verification cites, which no "
-                "annotation pins yet; `aew migrate` records them" for wid, seq in sorted(closure["legacy"].items(),
-                                                                                        key=lambda kv: kv[1])
+                "annotation pins yet; the operator's `aew migrate` records them"
+                for wid, seq in sorted(closure["legacy"].items(), key=lambda kv: kv[1])
                 if wid not in closure["closed"]]
 
     def _check_index(self, root: dict[str, Any]) -> str:

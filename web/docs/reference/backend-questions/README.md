@@ -7,3 +7,5 @@ These milestone ledgers preserve the questions raised by provisional frontend wo
 - [w04-backend-question-ledger](w04-backend-question-ledger.md)
 - [w05-backend-question-ledger](w05-backend-question-ledger.md)
 - [w06-backend-question-ledger](w06-backend-question-ledger.md)
+
+- [W07 supplied reuse trail](w07-backend-question-ledger.md)

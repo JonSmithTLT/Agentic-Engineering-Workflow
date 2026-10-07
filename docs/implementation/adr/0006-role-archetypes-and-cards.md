@@ -148,3 +148,12 @@ In the operator's acceptance session, an accepted plan promised independent revi
 - **No new semantics beyond that.** The gates, their evaluation and the precedence of operator pins are unchanged; plans accepted before this amendment carry no declaration and bind nothing. Archetype authority is unchanged.
 - Regressions: `tests/regression/test_uat_2026_09_30.py`. The wider plan-assurance design (`future-work.md` F14) remains post-M3.
 
+
+## Amendment 2026-10-06 — a decision recorded as the operator's needs the operator (operator decision)
+
+The operator's rule: **"if my name is attached to it, I should have actually approved."** This closes the operator attribution limit (Decision, above), for this ADR's `selected_by: operator` and for ADR-0005's `authority accept --decided-by operator`.
+
+- **The terminal confirms it.** `aew work staff --by operator` and `aew authority accept --decided-by operator` ask the operator to type back a one-time code at their own controlling terminal (`operator.authorize`, the channel `lead takeover` and `integrate breaker reset` already use), before anything runs. With no terminal they are refused (`OPERATOR_AUTHORIZATION_REQUIRED`) and nothing is recorded. The engine also refuses an operator-attributed record that does not carry the prompt's `authorized_by: operator-tty` (`operator.require_operator_attribution`), and the decision record keeps it. That check only catches a caller that did not ask; the guarantee is the CLI's prompt and the broker's refusal, since an in-process Python caller could supply the record itself.
+- **A Lead session cannot ask.** The Lead broker refuses `--by operator` on `work staff`, before anything runs (`lead_broker.OPERATOR_ATTRIBUTED`). The Lead's own staffing is unchanged. `authority accept` and `reject` are operator-only in a Lead session altogether (PR #103).
+- **Prompts stay rare.** Only a record attributed to the operator prompts. The Lead's own decisions never do. A mechanism that needs no terminal, for an operator who is away, is F15.5's operator capability (register F15.5).
+- Tests: `tests/integration/test_authority.py` (refused without the terminal, at the CLI and the engine; nothing recorded) and `tests/unit/test_lead_reachability.py` (the broker's refusal).

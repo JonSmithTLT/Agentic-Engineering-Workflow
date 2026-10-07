@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "associations": [
+    {
+      "origin": {
+        "contract": "72f0cb0b1a675bf809f4b1f3026a322cfc0e8da20f5e6c3f53e162f2bda48df8",
+        "project_id": "aew-demo",
+        "record_id": "J-05",
+        "case": "story"
+      },
+      "target": {
+        "contract": "79a1ac8460a8c4e39260c37c85197c16041f71e998023f039e292a2249bd436d",
+        "run_id": "CLANGD-R-LATER",
+        "source_revision": "refreshed-db-fictional",
+        "reference_kind": "journal",
+        "cursor": null,
+        "visibility_scope": "fictional-authorized",
+        "item_id": "PKT-Later-J-05",
+        "snapshot_id": "SNAP-Later",
+        "record_id": "PKT-Later",
+        "invocation_id": "CLANGD-INV-Later",
+        "source_id": "SRC-Later",
+        "section": "recall",
+        "case": "later-ticket",
+        "reference_id": "J-05"
+      },
+      "id": "ASSOC-J05-Later"
+    }
+  ]
+}

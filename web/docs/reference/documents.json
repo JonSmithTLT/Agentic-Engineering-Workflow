@@ -4490,6 +4490,8 @@
     "web/docs/reviews/docs-organization-2026-10-04/dist-demo.SHA256SUMS",
     "web/docs/reference/f20-production-baseline.md",
     "web/docs/reference/f20-live-browser-handoff.md",
+    "web/docs/how-to/pr94-offline-builder.md",
+    "web/docs/reference/toolchain/pr94-builder-provenance.json",
     "web/docs/how-to/authenticated-live-browser.md",
     "web/docs/reviews/f20-live-runner-2026-10-05/dist.SHA256SUMS",
     "web/docs/reviews/f20-live-runner-2026-10-05/dist-demo.SHA256SUMS",
@@ -4502,7 +4504,13 @@
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist-demo.SHA256SUMS",
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/dist.SHA256SUMS",
     "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/offline-gate.log",
-    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/provenance.json"
+    "web/docs/reviews/f20-live-runner-pr89-correction-2026-10-06/provenance.json",
+    "web/docs/design/plans/w07-reuse-trail.md",
+    "web/docs/reviews/w07-reuse-plan-review.md",
+    "web/docs/design/plans/w07-authorization.json",
+    "web/docs/design/w07-reuse.manifest.json",
+    "web/docs/reference/backend-questions/w07-backend-question-ledger.md",
+    "web/docs/reviews/w07-reuse-checkpoint-1.md"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

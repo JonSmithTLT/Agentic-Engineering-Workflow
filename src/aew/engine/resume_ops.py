@@ -78,12 +78,13 @@ class Resume:
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
         if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
-            actions.append("migrate the control state to v2 (finished work leaves the hot state): "
-                           "`aew migrate --expect-rev N`")
+            actions.append("migrate the control state to v2 (finished work leaves the hot state): the operator runs "
+                           "`aew migrate --expect-rev N` at their own terminal (a Lead session is refused it)")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
-            actions.append("classify authority candidates: `aew authority list`, then for each "
-                           "`aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> "
-                           "--expect-rev N` or `aew authority reject <candidate> --reason ... --expect-rev N`")
+            actions.append("classify authority candidates (the operator, at their own terminal; a Lead session is "
+                           "refused it): `aew authority list`, then for each `aew authority accept <candidate> "
+                           "--class <contracts|decisions|schemas|source|orientation> --expect-rev N` or "
+                           "`aew authority reject <candidate> --reason ... --expect-rev N`")
         try:
             unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:

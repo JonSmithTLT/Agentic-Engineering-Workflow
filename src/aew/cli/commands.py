@@ -32,6 +32,16 @@ def _lead_token(args: argparse.Namespace) -> str:
     return token
 
 
+def operator_attribution(by: str, text: str) -> dict[str, str] | None:
+    """When a command records its decision as the operator's, the operator's confirmation, typed back at their own
+    terminal (``operator.authorize``); refused without one. Asked before the engine runs anything."""
+    if by != "operator":
+        return None
+    from aew import operator
+
+    return operator.authorize(text)
+
+
 def _read_text_arg(value: str | None) -> str:
     return read_text_input(value)
 
@@ -83,7 +93,7 @@ def register(sub: argparse._SubParsersAction) -> None:
                                                           next_action=a.next_action))
 
     p = sub.add_parser("migrate", help="move a v1 project's control state to v2: finished work leaves the hot state "
-                                       "(Lead; ADR-0011)")
+                                       "(the operator, at their own terminal; ADR-0011)")
     _add_lead(p)
     p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), expect_rev=a.expect_rev))
 
@@ -92,7 +102,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     p = sub.add_parser("manifest", help="project manifest maintenance")
     msub = p.add_subparsers(dest="manifest_cmd", required=True)
-    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml (Lead)")
+    q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml (the operator, at their own "
+                                         "terminal)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
     q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(token=_lead_token(a), expect_rev=a.expect_rev,
@@ -201,12 +212,15 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("candidate")
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
-    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead")
+    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead",
+                   help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
+                        "typed back)")
     q.add_argument("--reason")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).authority_accept(
         token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, klass=a.klass,
-        decided_by=a.decided_by, reason=a.reason))
+        decided_by=a.decided_by, reason=a.reason, authorization=operator_attribution(
+            a.decided_by, f"RECORD as YOUR decision: accept {a.candidate} as {a.klass} authority")))
     q = asub.add_parser("reject")
     q.add_argument("candidate")
     q.add_argument("--reason")

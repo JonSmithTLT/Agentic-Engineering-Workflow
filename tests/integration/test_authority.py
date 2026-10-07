@@ -47,7 +47,8 @@ def test_init_discovers_candidates_but_confers_no_authority(repo):
 
 def test_accept_and_reject_candidates(project):
     cands = {c["path"]: c["id"] for c in project.ok("authority", "list")["candidates"]}
-    res = project.lead("authority", "accept", cands["docs/adr/"], "--class", "decisions", "--decided-by", "operator")
+    res = project.as_operator("authority_accept", candidate_id=cands["docs/adr/"], klass="decisions",
+                              decided_by="operator")
     decision = project.root / f".aew/decisions/{res['decision']}.md"
     assert decision.exists() and "authority_acceptance" in decision.read_text()
     project.lead("authority", "reject", cands["README.md"], "--reason", "orientation only")
@@ -128,6 +129,103 @@ def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(proj
     assert set(load_control(project.root)["policy_sha256"]) == {
         "policy/checks.yaml", "policy/execution.yaml", "policy/gates.yaml", "policy/guardrails.yaml"}
     assert _doctor(project, "policy-pin")["status"] == "PASS"
+
+
+@pytest.mark.parametrize("argv", [
+    ("authority", "accept", "{cand}", "--class", "decisions", "--decided-by", "operator"),
+    ("work", "staff", "{wid}", "--review", "security_reviewer", "--by", "operator", "--pin"),
+])
+def test_a_decision_recorded_as_the_operators_needs_the_operator_at_their_terminal(project, argv):
+    """Operator, 2026-10-06: "if my name is attached to it I should have actually approved". A flag that says the
+    operator decided is refused unless the operator typed the code back at their own terminal; with no terminal (an
+    agent's shell, this test) nothing is recorded. The engine refuses the same without the terminal's authorization."""
+    from aew.engine.api import Engine
+    from aew.errors import OperatorAuthorizationRequired
+
+    cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
+    wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"] \
+        if argv[0] == "work" else ""
+    args = [a.format(cand=cand, wid=wid) for a in argv]
+    before = control_bytes(project)
+    res = project.aew(*args, "--token", project.token, "--expect-rev", str(project.rev()))
+    assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
+    assert control_bytes(project) == before
+    engine = Engine.discover(project.root)
+    with pytest.raises(OperatorAuthorizationRequired):
+        if argv[0] == "work":
+            engine.work_staff(token=project.token, expect_rev=project.rev(), work_id=wid, review=["security_reviewer"],
+                              selected_by="operator", authorization={"authorized_by": "lead"})
+        else:
+            engine.authority_accept(token=project.token, expect_rev=project.rev(), candidate_id=cand,
+                                    klass="decisions", decided_by="operator")
+    assert control_bytes(project) == before
+
+
+@pytest.mark.parametrize("by", ["operator", "lead"])
+def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, monkeypatch, by):
+    """PR #103 re-review, N3: through the real CLI handlers, a record attributed to the operator is confirmed at the
+    terminal and carries `authorized_by: operator-tty`; the Lead's own record never prompts. (The terminal itself is
+    substituted in-process: no terminal exists here.)"""
+    from aew import operator
+    from aew.cli.main import main
+
+    asked: list[str] = []
+    confirmed = {"authorized_by": "operator-tty", "challenge_code": "X"}
+    monkeypatch.setattr(operator, "authorize", lambda text, **_: asked.append(text) or confirmed)
+    monkeypatch.delenv("AEW_LEAD_BROKER", raising=False)
+    monkeypatch.chdir(project.root)
+    cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
+    wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"]
+    assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by, "--token", project.token,
+                 "--expect-rev", str(project.rev())]) == 0
+    assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by, "--token", project.token,
+                 "--expect-rev", str(project.rev())]) == 0
+    decisions = "".join(f.read_text(encoding="utf-8") for f in (project.root / ".aew/decisions").glob("*.md"))
+    if by == "operator":
+        assert [a.split(":")[0] for a in asked] == ["RECORD as YOUR decision", "RECORD as YOUR selection"], asked
+        assert decisions.count("operator-tty") == 2
+    else:
+        assert asked == [] and "operator-tty" not in decisions
+
+
+OPERATOR_DECISIONS = ("authority accept", "authority reject", "manifest adopt", "migrate")
+
+
+def _names_the_operator(text: str) -> None:
+    for command in OPERATOR_DECISIONS:
+        if f"aew {command}" in text:
+            assert "operator" in text, (command, text)
+
+
+def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project):
+    """PR #103 review, F1: a Lead session refuses the operator's decisions, so the next actions and refusals the Lead
+    reads say the operator runs them, at their own terminal, rather than sending the Lead into a refusal."""
+    from invariants import load_control
+
+    from aew.engine.base import as_v1
+    from aew.engine.store import serialize_control
+    from aew.harness import lead_broker
+
+    assert {frozenset(c.split()) for c in OPERATOR_DECISIONS} == set(lead_broker.OPERATOR_DECIDED)
+    actions = project.ok("status", "--json")["next_actions"]
+    assert any("aew authority accept" in a for a in actions), actions
+    for action in actions:
+        _names_the_operator(action)
+    manifest = project.root / ".aew/project.yaml"
+    manifest.write_bytes(manifest.read_bytes() + b"# edited\n")
+    res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
+    assert "aew manifest adopt" in res.error["message"]
+    _names_the_operator(res.error["message"])
+    project.lead("manifest", "adopt", "--reason", "reviewed")
+    control = project.root / ".aew/state/control.yaml"
+    control.write_bytes(serialize_control(as_v1(load_control(project.root))))
+    res = project.aew("checkpoint", "--next", "x", "--token", project.token, "--expect-rev", str(project.rev()))
+    assert res.error["code"] == "MIGRATION_REQUIRED" and "aew migrate" in res.error["message"]
+    _names_the_operator(res.error["message"])
+    actions = project.ok("status", "--json")["next_actions"]
+    assert any("aew migrate" in a for a in actions), actions
+    for action in actions:
+        _names_the_operator(action)
 
 
 # ------------------------------------------------------------------ credentials

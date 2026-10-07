@@ -104,3 +104,106 @@ def test_a_clean_merge_that_leaves_closed_unsorted_is_still_caught():
                         {c: ("E0" if c == "#" else "x") for c in section["columns"]}]
     assert register.dump(data) != register.dump(register.normalize(copy.deepcopy(data)))
     assert any("not in id order" in p for p in register.problems(data))
+
+
+# ------------------------------------------------------------------------------------------------------- decisions due
+
+DUE = yaml.safe_load(register.DUE_YAML.read_text(encoding="utf-8"))
+
+
+def test_the_decisions_due_view_is_what_its_yaml_renders_and_is_current():
+    """The operator asked for one place that says what decisions are due by when and what they block (2026-10-06):
+    `decisions-due.md` is rendered from its YAML, and every item still points at an open register row."""
+    assert register.render_due(DUE) == register.DUE_MD.read_text(encoding="utf-8"), (
+        "docs/implementation/decisions-due.md is not rendered from decisions-due.yaml: run "
+        "`python tools/register.py render`")
+    assert register.due_problems(DATA, DUE) == []
+
+
+def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
+    data = copy.deepcopy(DATA)
+    closed = next(s for s in data["sections"] if s["title"].startswith("Closed"))
+    questions = next(s for s in data["sections"] if s["number"] == 4)
+    q11 = next(r for r in questions["rows"] if r["#"] == "Q11")
+    questions["rows"].remove(q11)
+    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "Q11"})
+    problems = register.due_problems(data, DUE)
+    assert any("Q11 is closed" in p for p in problems), problems
+    due = copy.deepcopy(DUE)
+    due["items"][0]["blocks"] = ["F2"]  # closed in M4-B
+    assert any("blocks F2, which is closed" in p for p in register.due_problems(DATA, due))
+
+
+def test_every_open_question_and_designer_row_has_an_item():
+    due = copy.deepcopy(DUE)
+    due["items"] = [i for i in due["items"] if i["row"] not in {"Q7", "U10"}]
+    problems = register.due_problems(DATA, due)
+    assert any("Q7 is an open question with no item" in p for p in problems), problems
+    assert any("U10 waits for the designer" in p for p in problems), problems
+
+
+def test_an_item_names_a_known_due_point_owner_and_need():
+    due = copy.deepcopy(DUE)
+    due["items"][0] |= {"due": "next week", "owner": "someone", "needs": "vibes"}
+    problems = " ".join(register.due_problems(DATA, due))
+    assert "due is one of" in problems and "owner is one of" in problems and "needs is one of" in problems
+
+
+def test_the_view_lists_the_soonest_first():
+    owed = register.render_due(DUE).split("## Owed, soonest first")[1].split("## Blocked")[0]
+    dues = [line.split(" | ")[0].removeprefix("| ") for line in owed.splitlines() if line.startswith("| ")][1:]
+    order = [register.DUE_ORDER.index(d) for d in dues]
+    assert len(dues) == len(DUE["items"]) and order == sorted(order)
+
+
+def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_blocker():
+    """PR #104 review, 1: an open question is covered only by its own item; a **Designer** row may instead be blocked by
+    one (F6 waits for Q4's decision)."""
+    due = copy.deepcopy(DUE)
+    q14 = next(i for i in due["items"] if i["row"] == "Q14")
+    due["items"].remove(q14)
+    next(i for i in due["items"] if i["row"] == "Q11")["blocks"].append("Q14")
+    assert any("Q14 is an open question with no item of its own" in p for p in register.due_problems(DATA, due))
+    assert not any("F6" in p for p in register.due_problems(DATA, DUE))  # blocked by Q4's item
+
+
+def test_a_malformed_item_is_named_never_a_crash():
+    """PR #104 review, 2: the renderer tolerates what the check refuses, so `check` names the problem."""
+    due = copy.deepcopy(DUE)
+    due["items"][0] = {"row": "Q11", "due": "soon"}
+    text = register.render_due(due)
+    assert "| soon |" in text
+    assert any("missing needs, owner, what" in p for p in register.due_problems(DATA, due))
+
+
+def test_items_stay_in_order_and_one_row_has_one_item():
+    """PR #104 review, 4: items are kept in (due, row) order, like §Closed, so concurrent additions land apart; a merge
+    that leaves two items for one row is refused."""
+    assert DUE["items"] == sorted(DUE["items"], key=register.due_key)
+    due = copy.deepcopy(DUE)
+    due["items"].append(copy.deepcopy(due["items"][0]))
+    problems = register.due_problems(DATA, due)
+    assert any("not in (due, row) order" in p for p in problems), problems
+    due = register.normalize_due(due)
+    assert any(f"{due['items'][0]['row']} has 2 items" in p for p in register.due_problems(DATA, due))
+    assert register.DUE_ORDER.index("M4-D") < register.DUE_ORDER.index("Gate: before F15.2 ships") \
+        < register.DUE_ORDER.index("M4-E")  # docs/README.md's order (review, 3)
+
+
+def test_an_incomplete_item_still_counts_as_its_rows_item():
+    """PR #104 re-review, B: the missing field is the one problem; the question is not also reported as uncovered."""
+    due = copy.deepcopy(DUE)
+    next(i for i in due["items"] if i["row"] == "Q11").pop("what")
+    problems = register.due_problems(DATA, due)
+    assert any("(Q11): missing what" in p for p in problems) and not any("Q11 is an open question" in p
+                                                                         for p in problems), problems
+
+
+def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
+    """PR #104 re-review, A: a decisions-due problem never claims the register's markdown is stale."""
+    due = copy.deepcopy(DUE)
+    due["items"][0]["due"] = "M4-I"
+    monkeypatch.setattr(register, "load_due", lambda: due)
+    assert register.main(["check"]) == 1
+    out = capsys.readouterr().out
+    assert "due is one of" in out and "future-work.md differs" not in out, out

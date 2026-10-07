@@ -147,6 +147,16 @@ class Project:
         state[POLICY_PINS] = policy_pins(self.root)
         (self.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
 
+    def as_operator(self, method: str, **kwargs: Any) -> Any:
+        """A Lead mutation the operator confirmed at their own terminal (a decision recorded as theirs). The terminal
+        channel is substituted in-process, as the takeover tests do; `test_authority.py` covers the refusal without
+        it."""
+        from aew.engine.api import Engine
+
+        return getattr(Engine.discover(self.root), method)(
+            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty"},
+            **kwargs)
+
 
 def policy_pins(root: Path) -> dict[str, str | None]:
     """The pins `aew manifest adopt` would record for the project at ``root`` now."""

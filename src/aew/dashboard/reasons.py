@@ -26,7 +26,8 @@ REASONS: dict[str, str] = {
     "HOST_NOT_ALLOWED": "the request names a host this server does not serve",
     "ORIGIN_NOT_ALLOWED": "the request comes from an origin this server does not serve",
     # capabilities
-    "MIGRATION_REQUIRED": "this project's control state is schema v1; run `aew migrate` (Lead) to enable history",
+    "MIGRATION_REQUIRED": ("this project's control state is schema v1; the operator runs `aew migrate` to "
+                           "enable history"),
     "HISTORY_INDEX_UNAVAILABLE": "the history index could not be read or synced",
     "NOT_IN_CONTRACT_0_1_2": "no route of contract 0.1.2 projects this; a later contract version may",
     "AWAITS_ACTION_PROJECTION": "the action projection arrives with the typed Lead surface (register F15.1); until "

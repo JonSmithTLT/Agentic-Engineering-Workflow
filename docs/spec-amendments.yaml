@@ -156,6 +156,29 @@ considered:
     reason: decision record (Q3, F2, E13, F10, D4); replaces no WC/KC text
   - path: docs/design/architecture-review-response-2026-10-04.md
     reason: decision record (Q13); routes the review's items to the register, ADRs and designs; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md
+    reason: >-
+      decision record (F18.2, F18.8, 2026-10-06); amends the install and bootstrap design v0.3 narrowly and ADR-0009
+      (one AEW Provider Gateway); replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f19-held-out-corpus-isolation.md
+    reason: decision record (F19, 2026-10-06); an M4-H experiment-protocol requirement; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-e12-evidence-read-surface.md
+    reason: decision record (E12, 2026-10-06); a read surface over existing Evidence; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f22-1-structural-map-sequencing.md
+    reason: decision record (F22.1, 2026-10-06); sequencing only; replaces no WC/KC text
+  - path: docs/design/ci-redesign-design-v0.2.md
+    reason: >-
+      adopted design (CI, 2026-10-06); how the test suite and the merge gate run, and the testing strategy's
+      process-boundary rule; replaces no WC/KC text
+  - path: docs/design/cost-usage-ledger-design-v0.2.md
+    reason: >-
+      adopted design (F25, 2026-10-06); records and projections of usage and cost; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
+    reason: >-
+      decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0004, ADR-0005,
+      ADR-0009 and ADR-0010; replaces no WC/KC text (its §11 reads WC §8.2's crash rule and WC §5's stale-writer
+      guard as unchanged, the latter because §13's held results move a Ticket only on the current generation's
+      acceptance; both readings confirmed by the designer, §14)
   - path: docs/design/plan-assurance-and-premise-validation-design-v0.4.md
     reason: >-
       adopted design; its own WC amendment (Phase 5, ratifying assurance predicates) is conditional on dogfood and
@@ -168,6 +191,10 @@ considered:
     reason: >-
       adopted design (T10, F18, 2026-10-05); installation, bootstrap and first-run mechanics; replaces no WC/KC
       text
+  - path: docs/design/f18-harness-hosting-attachment-authority-design-v0.6.md
+    reason: >-
+      adopted design (F18 hosting v0.6, 2026-10-06): Lead hosting, security principals, the attachment lifecycle,
+      the gateway and broker binding; sits alongside the install and bootstrap design; replaces no WC/KC text
   - path: docs/design/project-maps-design-v0.5.md
     reason: >-
       adopted design (T5, F22, 2026-10-05); derived project-navigation artifacts and their query contracts, never

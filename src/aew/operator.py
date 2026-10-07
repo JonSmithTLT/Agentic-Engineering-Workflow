@@ -169,3 +169,15 @@ def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
                     chars.pop()
                 continue
             chars.append(ch)
+
+
+def require_operator_attribution(claimed: bool, authorization: dict[str, str] | None, what: str) -> None:
+    """A record that says the operator decided needs the operator's own confirmation, typed back at their terminal
+    (:func:`authorize`): a flag says who decided, it never proves it (operator, 2026-10-06: "if my name is attached to
+    it I should have actually approved"). The guarantee is the CLI's prompt, which asks before it calls the engine,
+    and the Lead broker's refusal of the flag in a Lead session. This check only makes the engine refuse a caller that
+    did not ask: an in-process Python caller could supply the record itself (PR #103 re-review, N2)."""
+    if claimed and (authorization or {}).get("authorized_by") != "operator-tty":
+        raise OperatorAuthorizationRequired(
+            f"{what} recorded as the operator's needs the operator's confirmation at their own terminal: the "
+            "operator runs the command there and types back the code it shows (a flag is not a sign-off)")

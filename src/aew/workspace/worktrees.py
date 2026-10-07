@@ -100,7 +100,8 @@ def _add(repo_root: Path, path: Path, *args: str) -> None:
         if not any(hint in stderr for hint in LONG_PATH_HINTS):
             raise
         raise GitError(f"the workspace path {path} ({len(str(path))} characters) is too long for git here; set a "
-                       "shorter `workspaces.root` in .aew/project.yaml and run `aew manifest adopt` (for example a "
+                       "shorter `workspaces.root` in .aew/project.yaml, which the operator adopts with "
+                       "`aew manifest adopt` (for example a "
                        "short directory beside the repository), or enable long paths (git config core.longpaths "
                        "true, and Windows long-path support)", path=str(path), length=len(str(path)),
                        stderr=exc.details.get("stderr")) from None

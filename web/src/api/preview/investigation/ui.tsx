@@ -1,9 +1,10 @@
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { LoadError } from '../../../components/States';
 import { z } from 'zod';
 export function useControls() {
   const [params, setParams] = useSearchParams();
-  const update = (values: Record<string, string | null>, replace = false) => setParams(old => { const next = new URLSearchParams(old); for (const [key, value] of Object.entries(values)) { if (value) next.set(key, value); else next.delete(key); } return next; }, { replace });
+  const location = useLocation();
+  const update = (values: Record<string, string | null>, replace = false) => setParams(old => { const next = new URLSearchParams(old); for (const [key, value] of Object.entries(values)) { if (value) next.set(key, value); else next.delete(key); } return next; }, { replace, ...(Number.isInteger(location.state?.reuseOriginIndex) ? { state: location.state } : {}) });
   return { params, update };
 }
 export function ErrorState({ error, retry }: { error: unknown; retry: () => void }) {

@@ -13,8 +13,8 @@ import { invocationStatuses,invocationRoles,harnessStatuses } from '../../vocabu
 import { historicalRequested } from '../../navigation';
 import { id } from '../../schema';
 import { ErrorState,useControls } from '../investigation/ui';
-import { useComparisonSource } from '../investigation/session';
-import { PacketInspector,packetTabs } from '../investigation/PacketInspector';
+import { BoundPacketHost } from '../investigation/BoundPacketHost';
+import { packetTabs } from '../investigation/PacketInspector';
 import { EvidenceReference } from '../evidence/Reference';
 import { inspectionAssociations } from '../evidence/associations';
 import { rememberReference,returnPosition,restoreReference } from '../investigation/return-focus';
@@ -106,8 +106,6 @@ function PacketHost({name,sourceId,locatorId}:{name:string;sourceId:string;locat
  const {params,update}=useControls(),navigate=useNavigate(),originIndex=useRef(window.history.state?.idx>0?window.history.state.idx-1:null),selected=params.get('execution_selected'),mapping=manifest.mappings.find(m=>m.id===locatorId&&m.origin.case===name&&m.origin.source_id===sourceId&&m.origin.record_id===selected&&m.target.contract==='investigation-preview');
  const project=useDashboard().project.data?.value.project_id;
  const valid=!!mapping&&locator.safeParse(mapping).success&&!!project&&mapping.origin.project_id===project;
- const query=useComparisonSource('execution-packet',mapping?.target.case??'story',valid?mapping!.target.source_id:'',false,true,valid?mapping!.target:undefined),s=query.data?.value.data;
- const mismatch=s&&mapping&&(s.snapshot_id!==mapping.target.snapshot_id||s.invocation.id!==mapping.target.invocation_id||s.visibility_scope!==mapping.target.visibility_scope||!s.packets.some(p=>p.id===mapping.target.record_id&&p.run_id===mapping.target.run_id));
- if(!valid||mismatch)return <p role="alert">Cross-preview locator binding mismatch or unavailable mapping. No packet read sent.</p>;
- return <PacketInspector query={query} packetId={mapping!.target.record_id} name={mapping!.target.case} backLabel="Back to recorded execution" back={()=>{const now=window.history.state?.idx;if(originIndex.current!==null&&now>originIndex.current)navigate(originIndex.current-now);else update({execution_locator:null,packet_tab:null,packet_cursor:null,packet_section:null,packet_disposition:null});}}/>;
+ if(!valid)return <p role="alert">Cross-preview locator binding mismatch or unavailable mapping. No packet read sent.</p>;
+ return <BoundPacketHost owner="execution-packet" binding={mapping!.target} name={mapping!.target.case} backLabel="Back to recorded execution" back={()=>{const now=window.history.state?.idx;if(originIndex.current!==null&&now>originIndex.current)navigate(originIndex.current-now);else update({execution_locator:null,packet_tab:null,packet_cursor:null,packet_section:null,packet_disposition:null});}}/>;
 }

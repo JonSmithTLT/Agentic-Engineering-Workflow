@@ -1,0 +1,2 @@
+/* Keep supplied identifiers together when they fit; bound long identities on phone. */
+.identity-token { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: bottom; }

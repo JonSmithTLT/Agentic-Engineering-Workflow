@@ -21,6 +21,7 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
+from aew.operator import require_operator_attribution
 from aew.policy import consistency
 from aew.util import load_yaml, sha256_bytes
 
@@ -168,9 +169,11 @@ class Roles:
         execute: list[str] | None = None, review: list[str] | None = None, verify: list[str] | None = None,
         forbid: list[str] | None = None, remove: list[str] | None = None,
         selected_by: str = "lead", pin: bool = False, reason: str | None = None,
+        authorization: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         if selected_by not in {"lead", "operator"}:
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
+        require_operator_attribution(selected_by == "operator", authorization, "a role selection")
         with self.k.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
@@ -238,7 +241,7 @@ class Roles:
                     f"{work_id} role plan changed" + (f"; overrode operator pins {overrides}" if overrides else ""),
                     work_unit=work_id, reason=reason,
                     decided_by=dict(ctx.actor, kind="operator" if selected_by == "operator" else "lead",
-                                    recorded_by_lead=True))
+                                    recorded_by_lead=True, **(authorization or {})))
             ctx.summary = f"{work_id} staffed"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "role_plan": unit["role_plan"], "decision": decision,

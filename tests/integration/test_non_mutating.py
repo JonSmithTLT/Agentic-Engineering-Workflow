@@ -167,7 +167,7 @@ def test_non_mutating_concurrency_policy_is_enforced_at_dispatch(tmp_path):
 def test_role_plan_rules_apply_to_the_execute_slot(tmp_path):
     p = sample_project(tmp_path)
     wid = create_investigation(p, tmp_path)
-    p.lead("work", "staff", wid, "--execute", "researcher", "--by", "operator", "--pin")
+    p.as_operator("work_staff", work_id=wid, execute=["researcher"], selected_by="operator", pin=True)
     denied = refused(p, "work", "dispatch", wid, "--card", "investigator")
     assert denied["code"] == "PERMISSION_DENIED" and "pinned" in denied["message"]
     p.lead("work", "staff", wid, "--forbid", "planner")

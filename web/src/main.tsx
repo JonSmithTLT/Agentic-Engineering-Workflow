@@ -47,11 +47,9 @@ async function start() {
     });
     }
     DemoTools = (await import('./api/mock/DemoTools')).default;
-    DemoLab = (await import('./api/mock/lab/Lab')).default;
-    DemoKnowledge = (await import('./api/preview/journal/Journal')).default;
-    DemoComparison = (await import('./api/preview/investigation/Comparison')).default;
-    DemoEvidence = (await import('./api/preview/evidence/Reader')).default;
-    DemoExecution = (await import('./api/preview/execution/Recorder')).default;
+    const { initialScreens } = await import('./api/mock/screens');
+    ({ DemoLab, DemoKnowledge, DemoComparison, DemoEvidence, DemoExecution } =
+      await initialScreens(window.location.pathname));
   }
   let detachVisibility = installVisibility(queryClient);
   // Stop old-document reads when navigation actually hides the page.

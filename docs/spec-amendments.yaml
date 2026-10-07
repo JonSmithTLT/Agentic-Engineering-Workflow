@@ -185,6 +185,8 @@ effective:
 pending: []
 
 considered:
+  - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
+    reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md
     reason: decision record (Q7, 2026-10-07); the M4-H evaluation experiment; replaces no WC/KC text
   - path: docs/design/plan-assurance-and-classification-decisions-2026-10-01.md

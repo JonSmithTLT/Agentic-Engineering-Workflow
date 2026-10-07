@@ -436,8 +436,9 @@ sections:
       IBU-04 to IBU-08, IBU-20)'
     Belongs to or gated by: '**Unscheduled** (before any organization deployment); its live gate is one bounded task for
       the independent researcher'
-    Notes: Depends on F28's relay for the provider path and on E35's qualification seams The hosting design v0.6 §3 and
-      §16 add the qualified support tuple and executable content identity that F18.11 and F18.12 qualify against.
+    Notes: Depends on F28's relay for the provider path (whose relation to the v0.6 gateway is open, F18.8) and on E35's
+      qualification seams. The hosting design v0.6 §3 and §16 add the qualified support tuple and executable content identity
+      that F18.11 and F18.12 qualify against.
   - '#': F18.5
     Work: 'F18-A, contract and state: attachment states (NO_ATTACHMENT, PREPARING, FAILED, ACTIVE, SUSPENDED, DETACHED)
       and reason codes; the protected-set registry; the support manifest and executable content identity; hot and cold generation
@@ -717,7 +718,7 @@ sections:
     Notes: The F2 claim is never widened silently. Remote PR integration changes `DONE`, so it needs contract/ADR work;
       the [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) (ledger
       RIT) has the saga, the `integration.target` policy, the adapter interface and what M4-D must not foreclose, and its
-      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04) The F18 hosting design
+      two scope questions are Q14. Network egress control moved to F28 with its design (2026-10-04). The F18 hosting design
       v0.6 §2.1 makes security-principal separation (the two-account profile or an SELinux equivalent) mandatory for any
       production attachment; it is built as F18.6.
   - '#': F24
@@ -788,7 +789,9 @@ sections:
       works, the bridge''s filesystem socket survives it, the server forwarder costs about 0.7 ms per request, OpenCode
       2.0.18 starts offline, Bun honours the proxy variables. Still to probe: a real streamed turn through the relay, cancellation,
       IPv6 **Lead developer (2026-10-05, PR #57):** M4-D''s deterministic integration checks (D5) inherit F28''s default
-      that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling.'
+      that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling. The F18
+      hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; how this
+      relay and that gateway relate is for the designer (decisions-due, F18.8).'
   - '#': F30
     Work: 'Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with
       two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface
@@ -808,21 +811,22 @@ sections:
       and the narrowing rule. The probe: recall 1.00 at radius 1 for localized changes, 0.54 for a cross-cutting one, about
       two seconds per requirement'
   - '#': F31
-    Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches
-      a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
-      from canonical state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated
-      project access through the detached attachment (read and query commands refused to that generation), a harness crash
-      or host loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective
-      execution profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash,
-      host loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
+    Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches,
+      by a fresh managed launch by default or an opt-in registered existing host, and `aew close` detaches it while the
+      harness keeps running), a fresh Lead generation and fresh broker authority per attachment, re-hydration from canonical
+      state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated project
+      access through the detached attachment (read and query commands refused to that generation), a harness crash or host
+      loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective execution
+      profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash, host
+      loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
       Lead or the operator accepts them, any of the designer''s stop conditions stops the run at once with an error report,
       while a legitimate negative result is held like any other), or, by the operator only at the operator terminal, stop
       now or release to manual; the integration custodian surviving an attachment''s end with its lease held, its post-integration
       verifier draining, and no publish on a held result until the current generation accepts it'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
       §4 to §9, §13 and §14 (ledger HSD); ADR-0004, ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
-    Belongs to or gated by: '**Unscheduled.** The designer''s clarifications (record §14) leave nothing designer-level before
-      the build; the next milestone triage places it'
+    Belongs to or gated by: '**Unscheduled.** Built through the F18 hosting slices (F18.5, F18.7, F18.9, F18.10), so not
+      before M4-H (the hosting design v0.6 §24.2)'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
       the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
       keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). Also

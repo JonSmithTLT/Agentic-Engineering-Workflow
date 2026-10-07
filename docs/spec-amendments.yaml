@@ -161,7 +161,7 @@ considered:
       decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0005,
       ADR-0009 and ADR-0010; replaces no WC/KC text (its §11 reads WC §8.2's crash rule and WC §5's stale-writer
       guard as unchanged, the latter because §13's held results move a Ticket only on the current generation's
-      acceptance; the designer confirms)
+      acceptance; both readings confirmed by the designer, §14)
   - path: docs/design/plan-assurance-and-premise-validation-design-v0.4.md
     reason: >-
       adopted design; its own WC amendment (Phase 5, ratifying assurance predicates) is conditional on dogfood and

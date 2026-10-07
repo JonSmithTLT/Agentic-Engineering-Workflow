@@ -4,7 +4,8 @@
 question Q12 (harness hosting, the operator session and native-feature integration; architecture review D-AR5). §1 to
 §10 are the decision recorded as given. §11 is the lead developer's account of what it changes in AEW as built, and §12
 what it leaves to later designs. §13 is the operator's decision of the same day on what happens to in-flight work when
-an attachment ends, which refines §5 and §8. Where this record and an earlier text differ on the Lead seat, the attachment or the
+an attachment ends, which refines §5 and §8. §14 is the designer's clarifications of the same day, which settle what
+§11 to §13 left for the designer. Where this record and an earlier text differ on the Lead seat, the attachment or the
 hosting boundary, this record wins; ADR-0005, ADR-0009 and ADR-0010 carry amendments that point here.
 
 **What depends on it:** register F31 (the attachment lifecycle, to build) and F32 (the reference execution profiles);
@@ -88,6 +89,10 @@ Recorded as given:
 > no AEW project authority or AEW project access.
 >
 > Cancellation of running child work is a separate explicit control operation.
+
+*Wording clarified by the designer (§14.4):* read "no AEW project access" as "no AEW-mediated project access through
+the detached attachment". Every project-scoped AEW surface, read and query commands included, is unavailable to that
+generation. It is not a filesystem sandbox of the harness.
 
 ## 6. Reattachment
 
@@ -174,9 +179,9 @@ behaviour, then what the decision requires.
 - **A superseded session keeps reading.** When the broker's credential stops being current, it closes its bridge and
   the Lead's harness keeps running as a read-only session (`harness/lead_broker.py`): it can still run `aew`'s read
   commands and read the project's files. §5 says that after `aew close` the model has "no AEW project authority or AEW
-  project access". Authority is withdrawn today; access is not. What "access" means for a harness whose working
-  directory is the project (read commands, the files, the dashboard) is for the designer to settle before F31 is
-  built (§12).
+  project access". Authority is withdrawn today; AEW's read commands are not. The designer settled it (§14.4): the
+  detached Lead has no AEW project authority and no AEW-mediated project access through the detached attachment, so AEW's read and query commands are refused to that
+  generation too; the harness is not sandboxed away from the project's files.
 - **Takeover interrupts children.** `aew lead takeover` revokes every in-flight invocation's credential and marks a
   Ticket waiting on one `INTERRUPTED` (ADR-0005; `lead_ops._interrupt_invocations`); invocation credentials are scoped
   to the Lead generation. The decision gives admitted invocations custody independent of the Lead attachment: losing,
@@ -192,8 +197,8 @@ behaviour, then what the decision requires.
   requires control mutations to be guarded by the current Lead generation or an equivalent stale-writer guard, and
   `require_invocation` applies that guard to child invocations today. Under §13's drain, a child admitted under an
   older generation hands in after a newer one is current. Its hand-in is only recorded and held; the write that moves a
-  Ticket is the acceptance, made by the current generation (§13). The lead developer reads that as satisfying WC §5's
-  guard, so no amendment to the frozen specification is needed; the designer confirms before F31 is built.
+  Ticket is the acceptance, made by the current generation (§13). The lead developer read that as satisfying WC §5's
+  guard, and the designer confirmed it (§14.2): no amendment to the frozen specification is needed.
 - **A lost harness holds the seat.** When the wrapper exits with an invocation active, the seat stays held and only
   `aew lead takeover` recovers it (register V2, closed with a clearer refusal). The decision makes a harness crash or
   host loss revoke and stale that attachment's generation, with a new attachment taking a new generation (§7).
@@ -204,7 +209,7 @@ behaviour, then what the decision requires.
   KC §12.4 says the same of in-flight subagents. The lead developer reads these as applying when an invocation's own
   custody is lost (its supervisor or the AEW host is gone), not when only the Lead's attachment is lost: an invocation
   whose supervisor still runs has not crashed. Under that reading the decision needs no change to the frozen
-  specification. The designer confirms the reading before F31 is built.
+  specification. The designer confirmed the reading (§14.1).
 
 ## 12. Not decided here
 
@@ -215,9 +220,8 @@ behaviour, then what the decision requires.
     Lead generation), and its hosting goes to the hosting design under F18 with F21;
   - the dashboard server's process placement stays with F18 and F20;
   - multi-project knowledge visibility (K3), which ADR-0013 left to Q12, is not decided by it and stays with F21.
-- **What "no AEW project access" covers.** §5 removes the closed attachment's AEW project access as well as its
-  authority. Whether that means refusing `aew` read commands, keeping the harness from the project's files (which needs
-  containment of the Lead's harness), or both, is the designer's to settle before F31 is built (decisions-due, F31).
+- **Sandboxing the persistent Lead harness.** Keeping the Lead's harness away from the project's files is a separate
+  containment decision, not introduced by Q12 or F31 (§14.4).
 - **Concrete mechanisms.** Command names beyond `aew open` and `aew close`, the attach handshake, how a child's
   credential outlives the generation it was admitted under, and the configuration and state isolation of the Lead's
   harness (U6) are implementation choices for F31 and the F18 hosting design, within §10's limit.
@@ -250,10 +254,8 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
 1. **Drain is the default.** It applies whenever no operator choice is made: a crash or host loss with nobody at the
    terminal, or an attachment closed by the Lead.
 2. **Anything going wrong during a drain stops it at once.** The run is stopped immediately (the plug is pulled) and an
-   error is reported to the operator. *Lead developer's reading, for the designer to check:* "going wrong" is every
-   condition on which a supervisor already stops a run (the harness exiting abnormally, the deadline or step limit, a
-   containment failure, the supervisor's own failure), the drain's time limit, and the operator's stop; a fault F31
-   cannot classify stops the run (fail closed).
+   error is reported to the operator. What counts as going wrong is the designer's stop set (§14.3); a legitimate
+   negative result is not one of them.
 3. **A Lead's `aew close` resolves to the same process.** A Lead that closes its attachment probably does so on the
    operator's decision, and its children get the operator's choice or, without one, the drain. A Lead never chooses
    **Stop now** or **Release to manual** for its children when its attachment ends: those take work out of AEW's
@@ -263,3 +265,85 @@ takeover or a handoff that does not carry them, the operator chooses at the oper
 4. **Held results are the next generation's to accept.** On the next attachment, the operator or the new Lead accepts
    the held results, which then move their Tickets under the normal rules, or discards them, sending the work back
    through the gates. A held result names the run that produced it and the generation that admitted it.
+
+## 14. Designer clarifications of 2026-10-06 (F31)
+
+The designer answered §11's two readings, §13's stop conditions and §12's question on project access on 2026-10-06.
+These are Q12 and F31 clarifications, not amendments to the frozen WC or KC, unless implementation evidence shows the
+existing contracts behave differently. Recorded as given:
+
+> **1. WC §8.2 / KC §12.4 crash reconciliation**
+>
+> Crash/interruption is scoped to the invocation whose custody is lost.
+> Loss or closure of the Lead attachment does not imply that already-admitted child invocations are interrupted. A
+> child whose own supervisor/custody remains valid continues running under its invocation authority.
+> The existing `INTERRUPTED/unknown` reconciliation rule applies when that child's own custody is lost: e.g. its
+> supervisor/owned execution context dies or another existing custody-loss condition applies.
+> Add an F31 clarification:
+> Loss of a parent/Lead attachment is not loss of an already-admitted child invocation's custody.
+> No WC/KC amendment is needed for this interpretation.
+>
+> **2. WC §5 stale-writer guard**
+>
+> The proposed interpretation is also correct.
+> A child admitted under an older Lead generation may finish later and hand in its result under its own invocation
+> authority. That hand-in may create only the invocation/result/evidence records already permitted by its invocation
+> contract.
+> It does not perform the authoritative acceptance/control mutation that consumes the result.
+> If a newer Lead generation is current, that generation performs any later acceptance, classification or
+> Ticket/control-state transition.
+> Thus:
+> result production/hand-in is invocation authority; result acceptance and workflow advancement use current control
+> authority.
+> WC §5 remains intact. No amendment is needed unless the current implementation couples hand-in directly to a control
+> transition.
+>
+> **3. Drain stop conditions**
+>
+> Use the proposed stop set, with two additions:
+>
+> - loss of a custody/lease/integrity condition required for that invocation to continue safely;
+> - inability to durably record or verify the drain/result state.
+>
+> The complete intended set is therefore:
+>
+> - an existing supervisor stop condition, including abnormal harness/process exit where applicable;
+> - execution deadline or step limit;
+> - containment failure;
+> - supervisor failure;
+> - relevant custody/lease/integrity failure;
+> - drain hard deadline;
+> - operator stop;
+> - durable result/drain-state recording or integrity failure;
+> - any unclassified fault, fail closed.
+>
+> These are not drain failures by themselves:
+>
+> - a new Lead generation attaching;
+> - the old Lead generation becoming stale;
+> - a project/control revision changing;
+> - a child completing with a legitimate FAIL, BLOCKED, inconclusive or other domain result;
+> - a result requiring later Lead classification.
+>
+> Those results are recorded and held. A valid negative result is not an infrastructure failure of the drain.
+>
+> **4. Meaning of "no AEW project access" after `aew close`**
+>
+> Use a third formulation.
+> After `aew close`, the stale/detached Lead has:
+> no AEW project authority and no AEW-mediated project access through the closed attachment.
+> That means all project-scoped AEW surfaces for that Lead generation are unavailable, including AEW read/query
+> commands as well as mutations.
+> It does not mean the persistent harness is filesystem-sandboxed away from the project.
+> The harness/model may remain alive, retain its conversation/context and, if its ordinary harness permissions allow
+> it, continue normal non-AEW filesystem/git/editing work in the project.
+> Sandboxing the persistent Lead harness away from project files is a separate containment decision and is not
+> introduced by Q12/F31.
+> Please replace wording that simply says "no AEW project access" with "no AEW-mediated project access through the
+> detached attachment" so we do not imply a filesystem containment guarantee we have not adopted.
+
+**The condition in point 2, checked (lead developer, 2026-10-06).** A child's hand-in does not move a Ticket in AEW as
+built. `submit` (`engine/evidence_ops.py`) validates the submission and writes an evidence record only; the Ticket
+moves in a separate Lead operation that consumes it (for example `review ingest`, which checks the Ticket is
+`REVIEW_PENDING` and applies the transition). So no WC §5 amendment is needed. §5's quoted wording stays as given;
+everywhere else this record and its amendments use point 4's formulation.

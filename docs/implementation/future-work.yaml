@@ -728,17 +728,18 @@ sections:
   - '#': F31
     Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches
       a running harness, `aew close` detaches it), a fresh Lead generation and fresh broker authority per attachment, re-hydration
-      from canonical state on attach, stale authority for every older generation, no AEW project authority or access left
-      to a closed attachment, a harness crash or host loss that revokes and stales the attachment''s generation, the Lead
-      attachment''s requested and effective execution profile recorded, and the operator''s disposition of running children
-      when an attachment ends (close, crash, host loss, takeover or an uncarried handoff): drain by default (finish within
-      a time limit, results held until a current Lead or the operator accepts them, any fault stops the run at once with
-      an error report), or, by the operator only at the operator terminal, stop now or release to manual'
+      from canonical state on attach, stale authority for every older generation, no AEW project authority and no AEW-mediated
+      project access through the detached attachment (read and query commands refused to that generation), a harness crash
+      or host loss that revokes and stales the attachment''s generation, the Lead attachment''s requested and effective
+      execution profile recorded, and the operator''s disposition of running children when an attachment ends (close, crash,
+      host loss, takeover or an uncarried handoff): drain by default (finish within a time limit, results held until a current
+      Lead or the operator accepts them, any of the designer''s stop conditions stops the run at once with an error report,
+      while a legitimate negative result is held like any other), or, by the operator only at the operator terminal, stop
+      now or release to manual'
     Source (governing): Q12 [decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)
-      §4 to §9 and §13 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
-    Belongs to or gated by: '**Designer.** Waits for the designer''s confirmations in decisions-due (the record''s §11 reading
-      of the frozen specification, and what "no AEW project access" covers, §12); then the next milestone triage places
-      the build'
+      §4 to §9, §13 and §14 (ledger HSD); ADR-0005, ADR-0009 and ADR-0010, amendments of 2026-10-06
+    Belongs to or gated by: '**Unscheduled.** The designer''s clarifications (record §14) leave nothing designer-level before
+      the build; the next milestone triage places it'
     Notes: Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`),
       the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now
       keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). The

@@ -192,7 +192,8 @@ behaviour above stands.
   and takeover are today. Closing it (`aew close`), or losing it to a harness crash or host loss, revokes the Lead's
   credential and stales the generation; persistent project state is untouched. An old generation never regains
   mutation authority, and its calls get `STALE_AUTHORITY`. A closed attachment leaves the model no AEW project
-  authority and no AEW project access (decision record §5; what access covers, §12). A normal model turn ending changes
+  authority and no AEW-mediated project access through the detached attachment: every project-scoped AEW surface, read and query commands included, is refused to that
+  generation. It is not a filesystem sandbox (decision record §14.4). A normal model turn ending changes
   nothing.
 - **What happens to admitted invocations is the operator's choice (decision record §13).** Above, an invocation
   credential is scoped to the Lead generation and revoked on takeover, and a cooperative handoff interrupts every
@@ -202,7 +203,8 @@ behaviour above stands.
   - **drain** (the default, whenever no operator choice is made, including a Lead's own `aew close`): each child keeps
     its own narrow credential, finishes within a time limit and hands in; its results are recorded and **held**, and
     nothing moves a Ticket until a current Lead or the operator accepts them. Anything going wrong during the drain
-    stops the run at once and reports an error to the operator;
+    stops the run at once and reports an error to the operator (the designer's stop set, decision record §14.3; a
+    legitimate negative result is recorded and held, never a drain failure);
   - **stop now:** the children are stopped and their credentials revoked, as takeover does today;
   - **release to manual:** their credentials are revoked and they keep running inside their supervisor's sandbox and
     limits until their deadline, outside AEW's governance.
@@ -213,6 +215,7 @@ behaviour above stands.
   choice.
 - **What does not change.** The credential form, the verifier, compare-and-swap on `--expect-rev`, and takeover's
   out-of-band operator authorization. Held results satisfy WC §5's stale-writer guard because only their acceptance,
-  by the current generation, moves a Ticket (decision record §11, for the designer to confirm). WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
+  by the current generation, moves a Ticket (decision record §14.2, confirmed by the designer; `submit` writes only
+  evidence). WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
   custody is lost (its supervisor or the AEW host is gone); losing only the Lead's attachment is not that (decision
-  record §11, the lead developer's reading, for the designer to confirm before F31 is built).
+  record §14.1, confirmed by the designer: loss of the Lead attachment is not loss of an admitted child's custody).

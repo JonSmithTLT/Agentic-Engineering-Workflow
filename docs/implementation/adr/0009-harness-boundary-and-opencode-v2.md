@@ -560,7 +560,8 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
   superseded session keeps running as a read-only session. Under Q12 an attachment opens and closes (`aew open`,
   `aew close`) while the harness and its conversation keep running; a later attachment re-hydrates from canonical
   project state, which wins over the model's retained context. After `aew close` the model has no AEW project
-  authority or AEW project access (what access covers is for the designer; decision record §12).
+  authority and no AEW-mediated project access through the detached attachment, AEW's read and query commands included; the harness itself is not
+  sandboxed away from the project (decision record §14.4).
 - **Native subagents.** A harness's own subagent feature may be used only where the adapter preserves AEW's invocation
   identity, role, custody, execution profile, parent relationship, limits and evidence and provenance; otherwise AEW
   dispatches. No

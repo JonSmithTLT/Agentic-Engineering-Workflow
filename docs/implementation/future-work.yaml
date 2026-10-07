@@ -770,7 +770,8 @@ sections:
     Source (governing): architecture review G7, F-D; [architecture review response](../design/architecture-review-response-2026-10-04.md)
       (accepted 2026-10-05); **the design is [the cost and usage ledger v0.2](../design/cost-usage-ledger-design-v0.2.md)**
       (adopted by the designer 2026-10-06 after a narrow revision; ledger CUL)
-    Belongs to or gated by: '**M4** (the main lane: M4-G, then F25, then F19/Q7/U3, then M4-H). Budget enforcement in `DispatchDecision`
+    Belongs to or gated by: '**M4** (the main lane: M4-G, then F25 with F19''s evaluator/arm-host split and F15.5/F15.6''s
+      unattended PUBLISH_IF_CLEAN, the M4-H prerequisites of Q7 v0.3.1 §16, then M4-H). Budget enforcement in `DispatchDecision`
       stays with F7/M5 after calibration'
     Notes: 'Needed by F19, routing comparisons and F15''s efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:**
       R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment;
@@ -1615,11 +1616,11 @@ sections:
     Closed: '2026-10-07'
     By: '[Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), adopted and design frozen by the operator (ledger
       VGX): M4-H is a real value gate in the B+ design, six fixed F1 to F3 cells x 12 runs per arm (144 primary R versus
-      A runs), 30 descriptive R+ runs, 20 separately reported F4 premise runs; a fixed-cell Jeffreys-binomial estimand with
-      a 90% credible interval (benefit needs mean at least +10 points and lower bound above 0); evaluator-side held-out
-      isolation (F19''s rule); cold-start attestation; two blinded mergeability reviewers. Prerequisites before execution:
-      F15.5/F15.6 unattended PUBLISH_IF_CLEAN, F19''s evaluator/arm-host split and release runner, F25 live run-usage telemetry
-      for the evaluator''s experiment-local USD cap'
+      A runs), 30 descriptive R+ runs, 20 separately reported F4 premise runs; the equal-weight fixed-cell risk difference
+      as the estimand, under a Jeffreys-binomial model with a 90% posterior credible interval (benefit needs mean at least
+      +10 points and lower bound above 0); evaluator-side held-out isolation (F19''s rule); cold-start attestation; two
+      blinded mergeability reviewers. Prerequisites before execution: F15.5/F15.6 unattended PUBLISH_IF_CLEAN, F19''s evaluator/arm-host
+      split and release runner, F25 live run-usage telemetry for the evaluator''s experiment-local USD cap'
   - '#': Q9 (decisions)
     Was: The plan assurance design's §33 decisions and its order relative to ADR-0011 and M4
     Closed: '2026-10-01'

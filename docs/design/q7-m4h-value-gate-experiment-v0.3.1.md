@@ -819,3 +819,11 @@ The first M4-H value gate remains **B+**, with the validity corrections now froz
 After operator adoption of v0.3, Q7 is **ADOPTED / DESIGN FROZEN**.
 
 Reopen only for another concrete experimental-validity contradiction. Filling the §14 preregistration values does not reopen Q7 unless it alters the causal question, fixed-cell estimand, governing statistical procedure or experiment shape.
+
+## 16. Operator's adoption and M4-H prerequisites (2026-10-07)
+
+Q7 v0.3.1 is **ADOPTED / DESIGN FROZEN** (operator, 2026-10-07), on §15's terms. Before M4-H executes, these are implemented:
+
+- **F15.5/F15.6:** the unattended `PUBLISH_IF_CLEAN` authority required by the AEW arm.
+- **F19:** the evaluator/arm-host split and the held-out task-release runner.
+- **F25:** live run-usage telemetry sufficient for the evaluator to enforce the sealed experimental USD cap. This does not move general product budget enforcement into F25: F25 remains measurement and ledger authority, and the M4-H evaluator consumes its telemetry and performs experiment-local cap termination.

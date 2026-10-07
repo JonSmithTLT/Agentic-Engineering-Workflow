@@ -15,10 +15,8 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 | Due by | Owner | Needs | What | Row | Blocks |
 |---|---|---|---|---|---|
-| M4-G | designer | decision | The form of the evidence view (`aew evidence show`, or next actions that carry a record's conclusion) | E12 | - |
 | M4-G | operator | decision | Whether to measure coverage on the Windows lanes too. Coverage slows a run, and the slowest Windows integration shard already takes 20 to 24 of its 30 minutes, so it needs the shards rebalanced by measured test cost or a longer limit. | E23 | - |
-| M4-G | operator | decision | Whether the structural map core (T5-A) is in M4-G/H, as far as it makes the M4-H experiment representative, or waits until after the value gate | F22.1 | - |
-| M4-G | operator and designer | decision | The cost and usage ledger design note's eight §8 decisions, then its adoption; the designer asked for changes on 2026-10-05 (R4, R8), and the note was revised that day | F25 | U4 |
+| M4-G | designer | decision | Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7) | F25 | - |
 | M4-H | designer | decision | The next dogfood's task families and configurations (plan assurance §28), before M4-H's preregistration | Q7 | F19 |
 | M4-H | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses; before or as part of Q7 | U3 | - |
 | Gate: before internal alpha | operator and designer | design | The Ticket-revision contract amendment text, then the consolidated WC/KC re-freeze after M4-E; and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed | E19 | F4 |
@@ -33,7 +31,9 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | Evaluation | designer | decision | Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture) | O3 | - |
 | Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
 | Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
+| Unscheduled | designer | decision | Reconcile the install and bootstrap design v0.3 with the F18 hosting design v0.6 where they collide: v0.3 §7's no-daemon, operator-terminal Lead session (IBU-16) against v0.6's long-lived gateway and operator-only supervisor socket, and v0.3 §6's doctor ERROR for a `.aew/` owned by another user or not writable (IBU-14), which v0.6's supervisor-owned state under a separate identity would trip, and whose obvious remedy (making it writable) is the same-principal collapse v0.6 forbids | F18.2 | - |
 | Unscheduled | operator and designer | adoption | ADR-0014's one narrow change (a deterministic release epoch as the signed time), then its adoption; the air-gap bundle's build waits for it | F18.3 | - |
+| Unscheduled | designer | decision | How network containment's supervisor-owned credentialing relay (F28, design v0.2 §3) relates to the hosting design v0.6's gateway, which §4.1 makes the only holder of provider credentials for managed execution: one component, the relay as the gateway's transport, or two custodians to reconcile | F18.8 | - |
 | Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
 | Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
 | Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |
@@ -49,5 +49,4 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 | F13 | Q8 (decision, designer, by M6); Q11 (decision, designer, by M6) |
 | F19 | Q7 (decision, designer, by M4-H) |
 | F23 | Q14 (decision, designer, by Gate: before internal alpha) |
-| U4 | F25 (decision, operator and designer, by M4-G) |
 | U9 | F26 (design, designer, by M6) |

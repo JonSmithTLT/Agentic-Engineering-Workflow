@@ -200,14 +200,18 @@ behaviour above stands.
   invocation it does not carry; a Ticket waiting on one becomes `INTERRUPTED`. Under Q12, when a Lead attachment ends
   (`aew close`, harness crash, host loss, takeover, or a handoff that does not carry them), the operator chooses at the
   operator terminal:
-  - **drain** (the default, whenever no operator choice is made, including a Lead's own `aew close`): each child keeps
+  - **drain** (the default, whenever no operator choice is made): each child keeps
     its own narrow credential, finishes within a time limit and hands in; its results are recorded and **held**, and
     nothing moves a Ticket until a current Lead or the operator accepts them. Anything going wrong during the drain
     stops the run at once and reports an error to the operator (the designer's stop set, decision record §14.3; a
     legitimate negative result is recorded and held, never a drain failure);
   - **stop now:** the children are stopped and their credentials revoked, as takeover does today;
-  - **release to manual:** their credentials are revoked and they keep running inside their supervisor's sandbox and
-    limits until their deadline, outside AEW's governance.
+  - **release to manual:** the children are stopped, with their credentials revoked together with the stop, and their
+    work product (files and logs) is handed to the operator outside AEW's governance (decision record §13, revised;
+    the F18 hosting design v0.6 §11.3 never leaves a process running on a revoked credential).
+
+  Only the operator runs `aew close` (v0.6 §2.3); a Lead that wants to close prompts the operator. Closing never
+  forces the Lead's own harness session to end.
 
   A Lead never chooses stop now or release to manual when its attachment ends; while attached it keeps its
   per-invocation controls (`aew invoke cancel`, `aew harness stop`), each a recorded Lead decision. The generation an invocation was admitted under stays recorded

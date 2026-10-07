@@ -158,6 +158,13 @@ considered:
     reason: decision record (Q13); routes the review's items to the register, ADRs and designs; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-f19-held-out-corpus-isolation.md
     reason: decision record (F19, 2026-10-06); an M4-H experiment-protocol requirement; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-e12-evidence-read-surface.md
+    reason: decision record (E12, 2026-10-06); a read surface over existing Evidence; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-06-f22-1-structural-map-sequencing.md
+    reason: decision record (F22.1, 2026-10-06); sequencing only; replaces no WC/KC text
+  - path: docs/design/cost-usage-ledger-design-v0.2.md
+    reason: >-
+      adopted design (F25, 2026-10-06); records and projections of usage and cost; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
     reason: >-
       decision record (Q12, 2026-10-06): the AEW attachment, the Lead seat and the hosting boundary; amends ADR-0004, ADR-0005,
@@ -176,6 +183,10 @@ considered:
     reason: >-
       adopted design (T10, F18, 2026-10-05); installation, bootstrap and first-run mechanics; replaces no WC/KC
       text
+  - path: docs/design/f18-harness-hosting-attachment-authority-design-v0.6.md
+    reason: >-
+      adopted design (F18 hosting v0.6, 2026-10-06): Lead hosting, security principals, the attachment lifecycle,
+      the gateway and broker binding; sits alongside the install and bootstrap design; replaces no WC/KC text
   - path: docs/design/project-maps-design-v0.5.md
     reason: >-
       adopted design (T5, F22, 2026-10-05); derived project-navigation artifacts and their query contracts, never

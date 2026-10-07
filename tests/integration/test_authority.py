@@ -307,6 +307,17 @@ def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project
         _names_the_operator(action)
 
 
+
+def test_an_unadopted_checks_edit_is_named_as_such_in_the_next_actions(project):
+    """PR #118 review, N4: an edit that differs from its pin is not an invalid file: the next action names the
+    operator's adoption, not "fix invalid policy/checks.yaml"."""
+    checks = project.root / ".aew/policy/checks.yaml"
+    checks.write_bytes(checks.read_bytes() + b"# edited\n")
+    actions = project.ok("status", "--json")["next_actions"]
+    assert any("differs from what was adopted" in a and "aew manifest adopt" in a for a in actions), actions
+    assert not any("fix invalid policy/checks.yaml" in a for a in actions), actions
+
+
 # ------------------------------------------------------------------ credentials
 
 

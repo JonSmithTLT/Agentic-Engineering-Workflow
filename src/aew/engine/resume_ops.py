@@ -18,7 +18,7 @@ from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
-from aew.errors import AEWError
+from aew.errors import AEWError, IntegrityError
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
 from aew.knowledge.render import finished_summary, work_graph_lines
@@ -90,6 +90,9 @@ class Resume:
             if unconfigured:
                 actions.append(f"configure checks {unconfigured} in policy/checks.yaml (gates needing them stay "
                                "blocked); the operator then accepts the edit with `aew manifest adopt`")
+        except IntegrityError:  # differs from its pin: an edit nobody adopted yet, not a broken file
+            actions.append("policy/checks.yaml differs from what was adopted: review the edit; the operator accepts it "
+                           "with `aew manifest adopt` at their own terminal, or restore the file")
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())

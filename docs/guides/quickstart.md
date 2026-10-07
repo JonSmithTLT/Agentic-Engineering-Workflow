@@ -25,8 +25,8 @@ aew manifest adopt --reason "configured the test command" --token <credential> -
 ```
 
 The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
-you review it and run `aew manifest adopt` (a recorded decision). A Lead session cannot adopt, so the Lead can never
-approve a policy change it made.
+you review it and run `aew manifest adopt` (a recorded decision). Adopt asks you to type back a one-time code at your
+own terminal, so the Lead, which has no terminal, can never approve a policy change it made.
 
 Hand the credential to the Lead session (for example in its environment as `AEW_LEAD_TOKEN`). It is never written to disk.
 A command that issues a credential writes it only to your terminal, never to standard output, and the JSON result says

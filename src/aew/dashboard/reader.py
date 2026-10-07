@@ -20,10 +20,11 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.api import Engine
+from aew.engine.base import POLICY_PINS
 from aew.errors import AEWError
 from aew.knowledge.manifest import MANIFEST, load_manifest
 from aew.schemas import validate
-from aew.util import read_yaml, utc_now
+from aew.util import load_yaml, sha256_bytes, utc_now
 
 
 @dataclass(frozen=True)
@@ -84,17 +85,24 @@ class StateReader:
                 self._manifest = (manifest_identity, load_manifest(self.engine.aew_root))
             gates_rel = (self._manifest[1].get("policy") or {}).get("gates")
             gates_path = self.engine.aew_root / str(gates_rel) if gates_rel else None
-            gates_identity = _identity(gates_path) if gates_path else None
+            pins = self._state[1].get(POLICY_PINS)
+            gates_pin = pins.get(str(gates_rel)) if isinstance(pins, dict) else None
+            gates_identity = (_identity(gates_path), pins is not None, gates_pin) if gates_path else None
             if self._gates is None or self._gates[0] != gates_identity:
-                self._gates = (gates_identity, self._read_gates(gates_path) if gates_path else {})
+                self._gates = (gates_identity, self._read_gates(gates_path, pins is not None, gates_pin)
+                               if gates_path else {})
             return Snapshot(self.engine, self._state[1], self._manifest[1], self._gates[1], utc_now())
 
     @staticmethod
-    def _read_gates(path: Path) -> dict[str, Any]:
-        """The gates policy as the engine reads it (``Kernel.policy``), without the engine's locked manifest path;
-        an unreadable or invalid policy counts as empty, as the audit's own ``_policy`` treats it."""
+    def _read_gates(path: Path, pinned: bool, pin: str | None) -> dict[str, Any]:
+        """The gates policy as the engine reads it (``Kernel.policy``: as adopted, checked against its pin in the
+        committed state), without the engine's locked manifest path; an unreadable, invalid or unadopted policy counts
+        as empty, as the audit's own ``_policy`` treats it."""
         try:
-            data = read_yaml(path)
+            raw = path.read_bytes()
+            if pinned and sha256_bytes(raw) != pin:
+                return {}
+            data = load_yaml(raw.decode("utf-8"), source=str(path))
             validate("gates", data, source=str(path))
         except (AEWError, OSError):
             return {}

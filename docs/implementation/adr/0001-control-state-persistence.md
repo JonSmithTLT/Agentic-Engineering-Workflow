@@ -109,8 +109,11 @@ modify the policy and approve the modification.
   gives `POLICY_PIN_MISMATCH`.
 - **`aew manifest adopt` accepts both.** It re-pins the manifest and every policy file, hashing each one from the same
   bytes it validates (gates, guardrails, checks and execution against their schemas). An invalid file is refused,
-  never pinned. The decision record names what was adopted. Adopt is operator-only in a Lead session (PR #103), so
-  the Lead can never approve a policy change it made.
+  never pinned. The decision record names what was adopted. Adopt asks the operator to type back a one-time code at
+  their own terminal (`operator.authorize`), whatever credential runs it, and records the decision as the operator's;
+  with no terminal it is refused and nothing is pinned. So the Lead, which has no terminal, can never approve a policy
+  change it made; a Lead session also refuses adopt outright (PR #103). Packs quote the guardrails and record both
+  hashes from the adopted bytes, and a missing required policy file is never adopted.
 - **Projects from before the pin** have no `policy_sha256`. That is not drift: nothing is refused, `doctor` warns, and
   the operator's next `aew manifest adopt` pins them.
 - **What the run-time pins still do.** Check definitions (`check.definition_sha256`), the execution profile pinned at

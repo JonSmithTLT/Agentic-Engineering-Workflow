@@ -246,6 +246,15 @@ class Kernel:
             return self._txn_pins
         return self.store.read_committed().get(POLICY_PINS)
 
+    def policy_bytes(self, name: str) -> bytes:
+        """A policy file's exact bytes as adopted (checked against the pins in force, read once), for callers that
+        quote or hash the file rather than parse it: a context pack's guardrails text and its recorded hashes."""
+        rel = self.manifest["policy"][name]
+        raw = self._pinned_bytes(rel, self._pins_in_force())
+        if raw is None:
+            raise FileNotFoundError(str(self.aew_root / rel))
+        return raw
+
     def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:
         """A policy file's bytes, read once and checked against its pin, so what is used is what was adopted: the
         caller parses these same bytes (no re-read between check and use). ``None`` when the file is absent."""

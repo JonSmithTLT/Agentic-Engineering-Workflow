@@ -125,7 +125,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 [0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state ·
 [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D, first slice PR #53) ·
 [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted; M6b) ·
-[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (proposed; the designer asked for one narrow change before adoption, 2026-10-05; F18.3)
+[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (adopted 2026-10-07: three side-by-side artifacts, the signed manifest authenticating the archive before it is parsed; F18.3)
 
 Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
 

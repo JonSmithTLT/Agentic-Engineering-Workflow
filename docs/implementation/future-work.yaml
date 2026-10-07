@@ -56,7 +56,7 @@ sections:
   - Gate: '**Before internal alpha**'
     Condition: 'Network containment on Linux (F28): no internal-alpha security claim calls Linux runs network-contained
       before its live lane passes (designer, 2026-10-04).'
-    Source: '[network containment design v0.2](../design/proposals/network-containment-design-v0.2.md) §6'
+    Source: '[network containment design v0.2](../design/network-containment-design-v0.2.md) §6'
 - number: 2
   title: Designed, not implemented
   columns:
@@ -792,8 +792,8 @@ sections:
       allowlist proxy; the supervisor reaches the harness server through the same shim; labels `proxy_only`, `isolated`,
       `shared`, `not_provided`; a self-test for egress denial, the bridge and server paths and secret absence; checks default
       to `isolated` and never widen past policy; a sanitized, checksum-pinned OpenCode catalog seed for air-gapped bundles'
-    Source (governing): '[network containment design v0.2](../design/proposals/network-containment-design-v0.2.md) (design
-      frozen, proposed; ledger NET); architecture review G5, F-F'
+    Source (governing): '[network containment design v0.2](../design/network-containment-design-v0.2.md) (adopted by the
+      designer, 2026-10-06; ledger NET); architecture review G5, F-F'
     Belongs to or gated by: '**Gate: before internal alpha** (§1). Not an M4-C or M4-D blocker; depends on M4-B'
     Notes: 'An ADR-0009 label and custody amendment. **The text to land is the frozen v0.2 design''s §3 (designer, 2026-10-05)**,
       which separates CONNECT allowlisting from provider credential injection (its §1.1); the review''s earlier draft ([T6

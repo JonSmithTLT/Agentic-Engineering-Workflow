@@ -432,7 +432,7 @@ The M4-B amendment contains a run's filesystem and processes and leaves its netw
 Linux (truthful topology, PR #50) and `not_provided` on Windows, with a documented residual, the provider key the
 policy names being readable from the agent's shell through the harness server's environment. This amendment adds the
 network dimension and takes the provider key out of the sandbox. Its text is the frozen
-`docs/design/proposals/network-containment-design-v0.2.md` §3 (ledger NET), probed on Rocky Linux 8.10 (kernel 4.18,
+`docs/design/network-containment-design-v0.2.md` §3 (ledger NET), probed on Rocky Linux 8.10 (kernel 4.18,
 bubblewrap 0.4.0, SELinux enforcing) with OpenCode 2.0.18
 (`docs/archive/reviews/architecture-review-2026-10-04/t6-network-containment.md`); the designer accepted the direction
 on 2026-10-04 and fixed this text on 2026-10-05. **Designed, not built:** the implementation is register F28, required

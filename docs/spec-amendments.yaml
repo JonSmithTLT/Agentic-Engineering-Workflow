@@ -166,6 +166,10 @@ considered:
     reason: decision record (E12, 2026-10-06); a read surface over existing Evidence; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-06-f22-1-structural-map-sequencing.md
     reason: decision record (F22.1, 2026-10-06); sequencing only; replaces no WC/KC text
+  - path: docs/design/network-containment-design-v0.2.md
+    reason: >-
+      adopted design (F28, 2026-10-06); how model-controlled runs reach the network, landed as ADR-0009's amendment of
+      2026-10-05; replaces no WC/KC text
   - path: docs/design/ci-redesign-design-v0.2.md
     reason: >-
       adopted design (CI, 2026-10-06); how the test suite and the merge gate run, and the testing strategy's

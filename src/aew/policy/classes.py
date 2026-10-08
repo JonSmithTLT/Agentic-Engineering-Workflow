@@ -12,7 +12,10 @@ effect at the next safe boundary and is recorded, but it never relaxes the polic
 included, still needs the operator's adoption (#118).
 
 A policy file with no classified schema (a manifest ``policy`` entry other than the four) counts wholly as legality,
-which fails closed.
+which fails closed. So does an instance key the schema does not name: the schema's open containers accept it, and the
+engine may read it (PR #130 review, finding 2), so it is digested as legality rather than dropped. A policy map key
+that is not a string is refused: it cannot be ordered against string keys, and ``1`` and ``"1"`` would share a
+pointer (finding 3).
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ import hashlib
 import json
 from collections.abc import Iterator
 from typing import Any
+
+from aew.errors import ValidationFailed
 
 LEGALITY = "legality_affecting"
 OPERATIONAL = "operational"
@@ -72,19 +77,40 @@ def unclassified(schema: dict[str, Any]) -> list[str]:
     return missing
 
 
+def _pointer(path: str, name: str) -> str:
+    return f"{path}/{name.replace('~', '~0').replace('/', '~1')}"  # RFC 6901, so an unnamed key cannot alias a field
+
+
+def _string_keys(value: Any, path: str = "") -> None:
+    """Refuse a mapping key that is not a string anywhere in a policy instance (YAML reads ``1:`` as an integer)."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise ValidationFailed(f"policy key {k!r} at {path or '/'} is not a string; quote it",
+                                       reason="policy_key_not_string", pointer=path or "/")
+            _string_keys(v, _pointer(path, k))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            _string_keys(v, f"{path}/{i}")
+
+
 def leaves(schema: dict[str, Any], instance: Any) -> Iterator[tuple[str, str, Any]]:
-    """``(json-pointer, class, value)`` for every classified value present in ``instance``."""
+    """``(json-pointer, class, value)`` for every value present in ``instance``: its schema class when classified, and
+    legality for a key the schema does not name (fail closed, A3 §8)."""
 
     def walk(node: dict[str, Any], value: Any, path: str) -> Iterator[tuple[str, str, Any]]:
         if not isinstance(value, dict):
+            yield path, LEGALITY, value  # not the container the schema describes: all of it binds legality
             return
         props, values = _children(schema, node)
         for name, child in (props or {}).items():
             if name in value:
-                yield from visit(child, value[name], f"{path}/{name}")
-        if values is not None:
-            for name in sorted(k for k in value if k not in (props or {})):
-                yield from walk(values, value[name], f"{path}/{name}")
+                yield from visit(child, value[name], _pointer(path, name))
+        for name in sorted(k for k in value if k not in (props or {})):
+            if values is not None:
+                yield from walk(values, value[name], _pointer(path, name))
+            else:
+                yield _pointer(path, name), LEGALITY, value[name]
 
     def visit(child: dict[str, Any], value: Any, path: str) -> Iterator[tuple[str, str, Any]]:
         cls = child.get(KEY)
@@ -93,6 +119,7 @@ def leaves(schema: dict[str, Any], instance: Any) -> Iterator[tuple[str, str, An
         else:
             yield from walk(child, value, path)
 
+    _string_keys(instance)
     yield from walk(schema, instance, "")
 
 
@@ -115,6 +142,7 @@ def digests(files: dict[str, tuple[str | None, Any]]) -> dict[str, str]:
         missing = unclassified(schema)
         if missing:
             raise ValueError(f"policy schema {name} has unclassified properties (A3 §8): {', '.join(missing)}")
+        _string_keys(data)
         legal[rel] = {}
         oper[rel] = {}
         for pointer, cls, value in leaves(schema, data):

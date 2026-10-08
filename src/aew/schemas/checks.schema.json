@@ -9,6 +9,7 @@
     "schema": {"x-aew-class": "operational", "const": "aew/checks/v1"},
     "checks": {
       "type": "object",
+      "propertyNames": {"type": "string", "minLength": 1},
       "additionalProperties": {
         "type": "object",
         "required": ["configured"],
@@ -16,7 +17,7 @@
           "configured": {"x-aew-class": "legality_affecting", "type": "boolean"},
           "command": {"x-aew-class": "legality_affecting", "type": ["array", "null"], "items": {"type": "string"}},
           "cwd": {"x-aew-class": "legality_affecting", "type": "string"},
-          "timeout_s": {"x-aew-class": "operational", "type": "number", "exclusiveMinimum": 0},
+          "timeout_s": {"x-aew-class": "legality_affecting", "type": "number", "exclusiveMinimum": 0},
           "description": {"x-aew-class": "operational", "type": "string"}
         }
       }

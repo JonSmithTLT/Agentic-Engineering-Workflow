@@ -9,7 +9,7 @@
   ],
   "properties": {
     "schema": {
-      "x-aew-class": "operational",
+      "x-aew-class": "legality_affecting",
       "const": "aew/guardrails/v1"
     },
     "protected_paths": {
@@ -68,7 +68,7 @@
       }
     },
     "notes": {
-      "x-aew-class": "operational",
+      "x-aew-class": "legality_affecting",
       "type": [
         "string",
         "null"

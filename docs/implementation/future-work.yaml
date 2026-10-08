@@ -302,9 +302,10 @@ sections:
       steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) §6, the [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md)
       §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5. **Built for dispatch
       (M4-E slice E1, 2026-10-07; ADR-0010 amendment):** every field of the gates, guardrails, checks and execution policy
-      schemas is classified in the schema, a test and the digest computation refuse an unclassified one, the two digests
-      are computed from the pinned bytes, and a dispatch decision is stale only on a legality change. Open until M4-E E3
-      binds staged actions to both digests
+      schemas is classified in the schema, a test and the digest computation refuse an unclassified one, a key the schema
+      does not name counts as legality, a check''s definition (its timeout and the guardrails policy included) is legality,
+      the two digests are computed from the pinned bytes, and a dispatch decision is stale only on a legality change. Open
+      until M4-E E3 binds staged actions to both digests
   - '#': F15.5
     Work: 'Crawl / Walk / Run steering over `ActionProjection`, with its operator authority boundary: `aew confirm`, autonomy
       increases and `PUBLISH_IF_CLEAN` grants only through an operator capability structurally absent from agent shells

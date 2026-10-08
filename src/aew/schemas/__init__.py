@@ -30,6 +30,8 @@ SCHEMAS = {
     "transition-events": "transition-events.schema.json",
     "transition-segment": "transition-segment.schema.json",
     "surface": "surface.schema.json",  # the typed Lead surface's result contract (F15.1)
+    "codebase-map": "codebase-map.schema.json",  # project maps (F22.1, ADR-0015)
+    "map-registry": "map-registry.schema.json",
 }
 
 

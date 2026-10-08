@@ -1,0 +1,296 @@
+# The structural map's rule table (design v0.5 §2.3; plan §3.1). Package data: its sha256 is the record's
+# generator.ruleset_sha256, so any edit here makes every existing map STALE (generator) and needs no version bump.
+# A code change to aew/maps/structural.py that changes output bumps structural.VERSION instead (the golden test says so).
+#
+# Names are matched exactly (case-sensitive) unless the key says `lower`; globs use fnmatch against the file's name.
+schema: aew/structural-map-rules/v1
+
+# Language by lower-case extension, then by exact file name.
+languages:
+  .c: C
+  .h: C
+  .cc: C++
+  .cpp: C++
+  .cxx: C++
+  .hh: C++
+  .hpp: C++
+  .hxx: C++
+  .cs: C#
+  .go: Go
+  .rs: Rust
+  .py: Python
+  .pyi: Python
+  .java: Java
+  .kt: Kotlin
+  .kts: Kotlin
+  .scala: Scala
+  .swift: Swift
+  .m: Objective-C
+  .mm: Objective-C++
+  .js: JavaScript
+  .mjs: JavaScript
+  .cjs: JavaScript
+  .jsx: JavaScript
+  .ts: TypeScript
+  .tsx: TypeScript
+  .mts: TypeScript
+  .cts: TypeScript
+  .rb: Ruby
+  .php: PHP
+  .pl: Perl
+  .pm: Perl
+  .lua: Lua
+  .r: R
+  .jl: Julia
+  .dart: Dart
+  .ex: Elixir
+  .exs: Elixir
+  .erl: Erlang
+  .hs: Haskell
+  .ml: OCaml
+  .fs: F#
+  .clj: Clojure
+  .sh: Shell
+  .bash: Shell
+  .zsh: Shell
+  .ps1: PowerShell
+  .bat: Batch
+  .cmd: Batch
+  .sql: SQL
+  .html: HTML
+  .htm: HTML
+  .css: CSS
+  .scss: SCSS
+  .vue: Vue
+  .svelte: Svelte
+  .md: Markdown
+  .rst: reStructuredText
+  .txt: Text
+  .json: JSON
+  .yaml: YAML
+  .yml: YAML
+  .toml: TOML
+  .xml: XML
+  .ini: INI
+  .cfg: INI
+  .cmake: CMake
+  .mk: Makefile
+  .proto: Protocol Buffers
+  .tf: Terraform
+  .s: Assembly
+  .asm: Assembly
+  .f90: Fortran
+  .zig: Zig
+  .nim: Nim
+  .v: Verilog
+  .sv: SystemVerilog
+  .vhd: VHDL
+language_files:
+  Makefile: Makefile
+  GNUmakefile: Makefile
+  makefile: Makefile
+  CMakeLists.txt: CMake
+  Dockerfile: Dockerfile
+  Containerfile: Dockerfile
+  Jenkinsfile: Groovy
+  Rakefile: Ruby
+  Gemfile: Ruby
+  BUILD: Starlark
+  BUILD.bazel: Starlark
+  WORKSPACE: Starlark
+  MODULE.bazel: Starlark
+
+# A directory's label by its own lower-case name; anything else is `unknown` (never guessed).
+directory_labels:
+  src: source
+  source: source
+  lib: source
+  libs: source
+  pkg: source
+  internal: source
+  app: source
+  apps: source
+  packages: source
+  crates: source
+  include: headers
+  test: tests
+  tests: tests
+  testing: tests
+  spec: tests
+  specs: tests
+  __tests__: tests
+  doc: docs
+  docs: docs
+  documentation: docs
+  example: examples
+  examples: examples
+  sample: examples
+  samples: examples
+  script: scripts
+  scripts: scripts
+  tool: tools
+  tools: tools
+  bin: tools
+  config: config
+  configs: config
+  conf: config
+  etc: config
+  .github: ci
+  .gitlab: ci
+  .circleci: ci
+  ci: ci
+  vendor: vendor
+  vendored: vendor
+  third_party: vendor
+  third-party: vendor
+  thirdparty: vendor
+  external: vendor
+  extern: vendor
+  node_modules: vendor
+  generated: generated
+  gen: generated
+  dist: generated
+  assets: assets
+  static: assets
+  resources: assets
+  migrations: migrations
+  benchmarks: benchmarks
+  bench: benchmarks
+  fixtures: fixtures
+
+# Build descriptors by exact file name, then by glob; `parser` names a bounded parser (read only at depth <= 2).
+build_descriptors:
+  pyproject.toml: {kind: python, parser: pyproject}
+  setup.py: {kind: python}
+  setup.cfg: {kind: python, parser: setup_cfg}
+  requirements.txt: {kind: python}
+  Pipfile: {kind: python}
+  package.json: {kind: node, parser: package_json}
+  Cargo.toml: {kind: rust, parser: cargo}
+  go.mod: {kind: go}
+  CMakeLists.txt: {kind: cmake}
+  Makefile: {kind: make}
+  GNUmakefile: {kind: make}
+  makefile: {kind: make}
+  meson.build: {kind: meson}
+  configure.ac: {kind: autotools}
+  configure.in: {kind: autotools}
+  BUILD: {kind: bazel}
+  BUILD.bazel: {kind: bazel}
+  WORKSPACE: {kind: bazel}
+  MODULE.bazel: {kind: bazel}
+  SConstruct: {kind: scons}
+  build.gradle: {kind: gradle}
+  build.gradle.kts: {kind: gradle}
+  settings.gradle: {kind: gradle}
+  pom.xml: {kind: maven}
+  build.xml: {kind: ant}
+  build.sbt: {kind: sbt}
+  Gemfile: {kind: ruby}
+  composer.json: {kind: php}
+  mix.exs: {kind: elixir}
+  Package.swift: {kind: swift}
+  pubspec.yaml: {kind: dart}
+  deno.json: {kind: deno}
+  Dockerfile: {kind: container}
+build_descriptor_globs:
+  "*.csproj": dotnet
+  "*.fsproj": dotnet
+  "*.vcxproj": msbuild
+  "*.sln": dotnet
+  "*.gemspec": ruby
+  "*.cabal": haskell
+  "*.nimble": nim
+
+# Conventional entry points, matched against the whole path (`*` crosses directories).
+entry_point_conventions:
+  - __main__.py
+  - "*/__main__.py"
+  - main.py
+  - src/main.py
+  - manage.py
+  - main.go
+  - "cmd/*/main.go"
+  - src/main.rs
+  - "src/bin/*.rs"
+  - main.c
+  - src/main.c
+  - main.cpp
+  - src/main.cpp
+  - Program.cs
+  - "*/Program.cs"
+  - index.js
+  - src/index.js
+  - src/index.ts
+  - src/main.ts
+
+# Test candidates: directories by lower-case name, file-name globs, and runner configuration files by exact name.
+test_directories: [test, tests, testing, spec, specs, __tests__]
+test_file_patterns:
+  - "test_*.py"
+  - "*_test.py"
+  - "*_test.go"
+  - "*_test.rs"
+  - "*.test.js"
+  - "*.test.ts"
+  - "*.test.tsx"
+  - "*.spec.js"
+  - "*.spec.ts"
+  - "*Test.java"
+  - "*Tests.cs"
+  - "*_spec.rb"
+  - "test_*.c"
+  - "*_test.cpp"
+test_runner_configs:
+  pytest.ini: pytest
+  conftest.py: pytest
+  tox.ini: tox
+  noxfile.py: nox
+  jest.config.js: jest
+  jest.config.ts: jest
+  vitest.config.js: vitest
+  vitest.config.ts: vitest
+  karma.conf.js: karma
+  .mocharc.json: mocha
+  .mocharc.yml: mocha
+  phpunit.xml: phpunit
+  CTestTestfile.cmake: ctest
+  .rspec: rspec
+
+# Generated and vendored hints (navigation, never policy): directory names (lower-case) and file-name globs.
+vendor_directories: [vendor, vendored, third_party, third-party, thirdparty, external, extern, node_modules]
+generated_directories: [generated, gen, dist]
+vendor_globs: []
+generated_globs:
+  - "*.min.js"
+  - "*.min.css"
+  - "*_pb2.py"
+  - "*_pb2_grpc.py"
+  - "*.pb.go"
+  - "*.pb.cc"
+  - "*.pb.h"
+  - "*.generated.*"
+  - "*.g.dart"
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - Cargo.lock
+  - poetry.lock
+  - uv.lock
+  - go.sum
+  - Gemfile.lock
+  - composer.lock
+
+# Prerequisites a semantic extension would look for, by exact file name.
+semantic_prerequisites:
+  compile_commands.json: compile_database
+  compile_flags.txt: compile_flags
+  .clangd: clangd
+  .clang-tidy: clang_tidy
+  tsconfig.json: tsconfig
+  jsconfig.json: jsconfig
+  pyrightconfig.json: pyright
+  mypy.ini: mypy
+  .mypy.ini: mypy
+  go.work: go_workspace
+  rust-project.json: rust_project

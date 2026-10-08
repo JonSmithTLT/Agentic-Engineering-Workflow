@@ -163,6 +163,34 @@ class DispatchUndecided(IntegrityError):
     code = "DISPATCH_UNDECIDED"
 
 
+class MapArtifactCorrupt(IntegrityError):
+    """A project-map artifact no longer hashes to its name, or fails its schema (ADR-0015). Derived state: delete and
+    regenerate it; a map never grants authority, so nothing else depends on it."""
+
+    code = "MAP_ARTIFACT_CORRUPT"
+
+
+class MapRegistryInvalid(IntegrityError):
+    """The project-map registry is malformed (ADR-0015). Deleting ``.aew/local/maps/`` means "no selection"."""
+
+    code = "MAP_REGISTRY_INVALID"
+
+
+class MapArtifactNondeterministic(IntegrityError):
+    """Regenerating the selected map's commit with the same generator identity gave different bytes (design v0.5
+    §17.2). A report, never a lock-out: the registry is left as it is unless the Lead replaces the selection."""
+
+    code = "MAP_ARTIFACT_NONDETERMINISTIC"
+
+
+class MapCurrentnessUnproven(AEWError):
+    """A project map cannot be generated or labelled current from complete inputs (design v0.5 §17.2): a needed Git
+    object is missing, a partial clone could fetch lazily, or a commit does not resolve (``details.reason``)."""
+
+    code = "MAP_CURRENTNESS_UNPROVEN"
+    exit_code = 6
+
+
 class WorkspaceNotAuthority(AEWError):
     """A workspace copy of AEW state was used as if it were authoritative."""
 

@@ -9,7 +9,7 @@ from aewflow import SUBTRACT_PATCH, assign, implement, sample_project
 from invariants import assert_control_invariants
 
 from aew.engine.api import Engine
-from aew.errors import DispatchUndecided, IllegalTransition, UsageError
+from aew.errors import DispatchUndecided, IllegalTransition, IntegrityError, UsageError
 from aew.util import dump_yaml, load_yaml
 
 ALL_ASSERTIONS = ("--class0-assert", "transformation_clear", "--class0-assert", "inputs_complete",
@@ -368,13 +368,15 @@ def test_a_commit_outside_the_lead_transaction_cannot_create_an_undecided_invoca
     assert p.rev() == rev
 
 
-def test_a_decision_made_before_a_policy_edit_admits_nothing(tmp_path):
-    """D6: a decision records the policy digests it was made under; the commit refuses it if they changed."""
+def test_a_policy_edit_during_a_dispatch_is_an_integrity_error_not_staleness(tmp_path):
+    """D6 under the policy pin (#118) and A3: an edit made while a dispatch is deciding is not adopted, so the commit
+    refuses it as an integrity error, never as stale policy, and admits nothing. Staleness is reserved for adopted
+    legality changes (the unit test of the commit check)."""
     p = sample_project(tmp_path)
     wid = ticket(p, tmp_path)
     engine = Engine.discover(p.root)
     rev = p.rev()
-    with pytest.raises(DispatchUndecided, match="policy files"):
+    with pytest.raises(IntegrityError, match="modified outside AEW"):
         with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             set_policy(p, "guardrails", lambda g: g["protected_paths"].append("calc/**"))

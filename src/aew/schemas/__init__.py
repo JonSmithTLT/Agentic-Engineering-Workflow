@@ -38,6 +38,12 @@ def _load(name: str) -> dict[str, Any]:
 
 
 @cache
+def schema(name: str) -> dict[str, Any]:
+    """A schema's parsed content (read-only by convention), e.g. for the policy field classes (A3 §8)."""
+    return _load(name)
+
+
+@cache
 def _registry() -> Registry:
     """Schemas other schemas refer to by ``$id`` (the control state's ``last_transition`` is a transition record)."""
     return Registry().with_resources(

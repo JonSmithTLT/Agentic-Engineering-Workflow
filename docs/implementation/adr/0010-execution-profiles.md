@@ -119,3 +119,26 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
 - **Qualification (the lead developer's addition, decision record §12, not the decision's text).** Each reference
   model is qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before
   it is relied on, as every profile is (F32).
+
+## Amendment 2026-10-07 — A3: two policy digests (built, M4-E slice E1)
+
+The pre-F15.2 amendment A3 ([policy binding and digests](../../design/policy-binding-digest-amendment-v0.1.md); ledger
+PBD) splits what binds a decision to policy. This is built for dispatch, and recorded here because the execution
+policy is this ADR's.
+
+- **Every policy field is classified.** Every property of the four policy schemas the policy pin covers (gates,
+  guardrails, checks, execution) carries `"x-aew-class": "legality_affecting" | "operational"`
+  (`aew.policy.classes`). A property without a class must be a container whose children are all classified. A test
+  walks every schema, and digesting refuses a schema with an unclassified property (A3 §8).
+- **Operational fields:** the execution profile's `deadline_s` (A1 §3.2's invocation hard deadline: authority-reducing
+  only), `gates.post_integration.validation_deadline_s`, a check's `timeout_s`, the `history_audit` reporting
+  thresholds, and descriptions and schema ids. Everything else is legality-affecting: routing, profiles' harness,
+  provider, model, effort and step cap, containment, provider environment names, gates, guardrails and check
+  definitions. A policy file with no classified schema counts as legality in full.
+- **Two digests,** `legality_digest` and `operational_digest`, are computed from the pinned policy bytes. A dispatch
+  decision carries both. Its commit check is bound to `legality_digest` alone, so an operational edit, once adopted,
+  never makes a decision stale. What a decision admits records both, for attribution.
+- **Adoption is unchanged.** The classes never relax the policy pin (PR #118): every edit, operational ones included,
+  takes effect only after the operator's `aew manifest adopt`. Until then a read of the policy is an integrity error,
+  never stale policy.
+- **Staged actions** (the StageIntent, M4-E E3) record the same two digests when the journal lands.

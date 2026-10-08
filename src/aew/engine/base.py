@@ -115,6 +115,7 @@ class Kernel:
         # The policy pins a Lead transaction checked on entry, so every policy read inside it is held to the same pins
         # (PR #118 review, finding 2: an edit after the entry check must not be used by the transaction).
         self._txn_pins: Any = _NOT_IN_TXN
+        self._digest_cache: tuple[Any, dict[str, str]] = (None, {})  # policy_digests: (bytes in force, digests)
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -254,6 +255,25 @@ class Kernel:
         if raw is None:
             raise FileNotFoundError(str(self.aew_root / rel))
         return raw
+
+    def policy_digests(self) -> dict[str, str]:
+        """``legality_digest`` and ``operational_digest`` over every policy file in force, read from the pinned bytes
+        (the pre-F15.2 amendment A3; ``aew.policy.classes``). A file named by a manifest ``policy`` entry is read
+        against that entry's schema; the execution policy at its conventional path is ``execution``."""
+        from aew.policy import classes
+
+        named = {rel: name for name, rel in (self.manifest.get("policy") or {}).items()}
+        pins = self._pins_in_force()
+        raws = {rel: self._pinned_bytes(rel, pins) for rel in policy_files(self.manifest)}
+        # Decisions are computed on every projection; parse only when the bytes in force change.
+        key = tuple((rel, named.get(rel), sha256_bytes(raw) if raw is not None else None) for rel, raw in raws.items())
+        if self._digest_cache[0] != key:
+            files: dict[str, tuple[str | None, Any]] = {
+                rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
+                      None if raw is None else load_yaml(raw.decode("utf-8"), source=str(self.aew_root / rel)))
+                for rel, raw in raws.items()}
+            self._digest_cache = (key, classes.digests(files))
+        return dict(self._digest_cache[1])
 
     def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:
         """A policy file's bytes, read once and checked against its pin, so what is used is what was adopted: the

@@ -324,7 +324,14 @@ sections:
       What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability.
       **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §2.2, §2.4.1; operator, 2026-10-07):**
       the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted in the sealed run manifest, before M4-H
-      executes'
+      executes. **Operator decisions (2026-10-07, with the M4-E plan''s approval, subject to its independent CLEAR review):**
+      the unattended-Run notifier is a generic operator-configured argv, run supervisor-side without a shell, a JSON event
+      on stdin, a sanitized environment with no credential inheritance, bounded time and output; it must be configured and
+      executable before unattended Run is enabled, and a delivery failure is recorded and surfaced in status and the dashboard''s
+      attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea note''s §17 governs the predicate and bindings, A1
+      the grant (the Lead may request, only the operator capability grants), the one-head-move automatic rebuild rule applies,
+      otherwise the governed non-publication/disposition path; no further design text is needed before E6. Steering has
+      no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H''s sealed manifest selects its mode'
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
@@ -684,7 +691,12 @@ sections:
     Notes: 'Proposals for joint review, not governing. Every requirement, including the 70 invariants to merge into the
       invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB).
       Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition` names; source
-      class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`'
+      class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype
+      (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible and absent
+      from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
+      may hold its separate rebuildable FTS substrate instead of `local/history.sqlite`, a change of physical placement
+      only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every
+      D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation'
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
       that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed
@@ -731,9 +743,10 @@ sections:
       **The second** builds architecture-reference selection, the bounded pack slices and the resume row behind a new `maps.pack_slices`
       switch (off by default, so M4-H''s treatment is unchanged), pack provenance, the no-authority walk with slices on
       and the `tools/perf` measurement; it closes this row. Ledger notes: PMP-17 and PMP-18 are carried by this slicing
-      (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. **Operator note:** only the investigator
-      archetype names `codebase_map` in its context; widening that for M4-H is the operator''s configuration call, with
-      the switch. The Q7 cold-start attestation checks `.aew/local/maps/` (ADR-0015)'
+      (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. **M4-H (operator, 2026-10-07):** role
+      packs are not broadened; `codebase_map` stays on the investigator archetype only, implementer and reviewer packs keep
+      their role-specific source and evidence inputs, and any wider map serving must earn itself through later evaluation.
+      The Q7 cold-start attestation checks `.aew/local/maps/` (ADR-0015)'
   - '#': F22.2
     Work: 'T5-B then T5-C. T5-B, the common semantic substrate: `aew/semantic-map/v1`, the capability, fact and quality
       schemas, the closed `map_service` writer (`map.artifact.*`, `map.registry.*`, `map.index.*`; its principal encoded
@@ -1329,7 +1342,9 @@ sections:
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
-    When: '**Designer** (with F14). Evaluated in M4-H (Q7 §12: F4''s premise contrast; not a pre-M4-H blocker)'
+    When: '**Evaluation**: after M4-H data (operator, 2026-10-07). Q7 v0.3.1 made U3 an F4 measurement, not a prerequisite
+      feature: a strong F4 result may close or defer it, a weak one may justify later F14/U3 work (Q7 §12: F4''s premise
+      contrast)'
     Notes: '"I run it in Docker as the headless server" was background, not one of the nine diagnoses the prompt said to
       check, and no role questioned it. F14 §6 types stakeholder statements; this asks that observations stated as fact
       be candidates for premise validation too.'

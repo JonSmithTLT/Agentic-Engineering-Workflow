@@ -94,7 +94,9 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "harness launch", "harness send", "harness stop", "history audit", "history load", "integrate defer",
     "integrate prepare", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
     "integrate validate",
-    "invoke cancel", "invoke create", "lead handoff cancel", "plan accept", "plan adopt",
+    "invoke cancel", "invoke create", "lead handoff cancel",
+    "map generate",  # derived map state under .aew/local/maps/ only, never control state (ADR-0015)
+    "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",

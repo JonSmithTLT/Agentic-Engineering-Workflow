@@ -110,11 +110,12 @@ def register(sub: argparse._SubParsersAction) -> None:
         token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
             "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
 
-    from aew.cli import dashboard_commands, history_commands, work_commands
+    from aew.cli import dashboard_commands, history_commands, map_commands, work_commands
 
     work_commands.register(sub)
     history_commands.register(sub)
     dashboard_commands.register(sub)
+    map_commands.register(sub)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:

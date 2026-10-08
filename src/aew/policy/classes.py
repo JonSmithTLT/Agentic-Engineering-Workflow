@@ -135,6 +135,9 @@ def digests(files: dict[str, tuple[str | None, Any]]) -> dict[str, str]:
     legal: dict[str, Any] = {}
     oper: dict[str, Any] = {}
     for rel, (name, data) in sorted(files.items()):
+        # Every file, the unclassified ones included: their content is digested whole, and canonical JSON cannot
+        # order a non-string key against a string one (review of 76b24be, P2).
+        _string_keys(data)
         if name not in CLASSIFIED or data is None:
             legal[rel] = data  # an unclassified policy file, or an absent one, is legality in full
             continue
@@ -142,7 +145,6 @@ def digests(files: dict[str, tuple[str | None, Any]]) -> dict[str, str]:
         missing = unclassified(schema)
         if missing:
             raise ValueError(f"policy schema {name} has unclassified properties (A3 §8): {', '.join(missing)}")
-        _string_keys(data)
         legal[rel] = {}
         oper[rel] = {}
         for pointer, cls, value in leaves(schema, data):

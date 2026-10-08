@@ -163,3 +163,15 @@ def test_a_non_string_policy_key_is_refused_not_a_crash():
     assert err.value.details["reason"] == "policy_key_not_string"
     with pytest.raises(ValidationFailed):
         validate("checks", {"schema": "aew/checks/v1", "checks": {1: {"configured": False}}}, source="checks.yaml")
+
+
+def test_a_non_string_key_in_a_policy_file_without_a_classified_schema_is_refused_not_a_crash():
+    """Review of 76b24be (P2): a manifest may adopt an extra policy file with no schema. A mapping with mixed integer
+    and string keys is digested whole, so it is refused with a typed error, never a ``TypeError`` from canonical JSON
+    that would crash dispatch and the action projection."""
+    from aew.errors import ValidationFailed
+
+    for content in ({1: "one", "label": "x"}, {"outer": {2: "two", "b": "y"}}, [{3: "three", "c": "z"}]):
+        with pytest.raises(ValidationFailed) as err:
+            _digests(**{"policy/extra.yaml": ("extra", content)})
+        assert err.value.details["reason"] == "policy_key_not_string"

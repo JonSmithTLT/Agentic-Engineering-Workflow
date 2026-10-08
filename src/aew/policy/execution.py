@@ -109,6 +109,15 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
 
 
+PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
+
+
+def pack_slices(policy: dict[str, Any] | None) -> str:
+    """The project-map switch (``maps.pack_slices``, register F22.1 plan §5.1): ``off`` unless the operator set it.
+    Absent policy, absent key and an unreadable policy all mean ``off``, so a map can never change a pack by default."""
+    return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
+
+
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:
     """(profile name, the rule that selected it) for a configured policy."""
     routing = policy["routing"]

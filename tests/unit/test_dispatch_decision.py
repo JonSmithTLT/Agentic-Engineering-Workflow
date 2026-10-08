@@ -30,7 +30,8 @@ NOT_DISPATCHING = {
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
-    "lead takeover", "manifest adopt", "map diff", "map generate", "map show",  # derived map state (F22.1)
+    "lead takeover", "manifest adopt",
+    "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",

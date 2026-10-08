@@ -46,7 +46,13 @@
         "trusted_git_drivers": {"type": "array", "items": {"type": "string", "pattern": "^[^\\s=]+$"}, "uniqueItems": true}
       }
     },
-    "description": {"type": "string"}
+    "description": {"type": "string"},
+    "maps": {
+      "type": "object",
+      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices off (the default) leaves every pack and the Lead's resume view byte-identical to a project without maps; structural adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. Turning it on is the operator's configuration decision.",
+      "additionalProperties": false,
+      "properties": {"pack_slices": {"enum": ["off", "structural"], "default": "off"}}
+    }
   },
   "$defs": {
     "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},

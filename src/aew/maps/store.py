@@ -185,13 +185,24 @@ def parse_expectation(text: str) -> tuple[str, int]:
     return m.group(1), int(m.group(2))
 
 
+CAPABILITIES = {"structural": "sha256", "architecture": "evidence_id"}  # what identifies each capability's selection
+
+
 def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
                       note: dict[str, Any] | None = None,
                       authorize: Callable[[], object] | None = None) -> dict[str, Any]:
-    """Select ``entry`` as the structural map: compare-and-set on the registry's epoch and revision, under the
-    registry's own lock. ``authorize`` is called under that lock, after the compare and before anything is written,
-    and refuses by raising: the writer's authority is proven at the moment of the write, not only when its command
-    began (ADR-0015 D4). Appends the log line, then replaces the registry atomically. Returns the new registry."""
+    """Select ``entry`` as the structural map (``select``)."""
+    return select(aew_root, "structural", expect=expect, entry=entry, actor=actor, note=note, authorize=authorize)
+
+
+def select(aew_root: Path, capability: str, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
+           note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None) -> dict[str, Any]:
+    """Select ``entry`` for ``capability`` (``structural`` or ``architecture``): compare-and-set on the registry's
+    epoch and revision, under the registry's own lock. ``authorize`` is called under that lock, after the compare and
+    before anything is written, and refuses by raising: the writer's authority is proven at the moment of the write,
+    not only when its command began (ADR-0015 D4). Appends the log line, then replaces the registry atomically. Returns
+    the new registry. One revision domain covers every capability: a selection of either moves ``map_revision``."""
+    key = CAPABILITIES[capability]
     expected = parse_expectation(expect)
     with FileLock(aew_root / LOCK_REL) as lock:
         registry = read_registry(aew_root)
@@ -204,16 +215,16 @@ def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], act
         if registry is None:  # the first selection creates the registry and its epoch, under the lock
             registry = {"schema": REGISTRY_SCHEMA, "epoch": secrets.token_hex(8), "map_revision": 0,
                         "selection_id": None, "selected": {}}
-        previous = registry["selected"].get("structural")
+        previous = registry["selected"].get(capability)
         new = {**registry, "map_revision": registry["map_revision"] + 1, "selection_id": secrets.token_hex(8),
-               "selected": {**registry["selected"], "structural": entry}}
+               "selected": {**registry["selected"], capability: entry}}
         validate("map-registry", new, source="new map registry")
         if not lock.intact():
             raise IntegrityError(f"the map registry lock {LOCK_REL} was removed while held; nothing was written. "
                                  "Retry (and do not delete .aew/local/maps while a map command runs)")
         line = {"epoch": new["epoch"], "map_revision": new["map_revision"], "selection_id": new["selection_id"],
-                "previous_selection_id": registry["selection_id"], "capability": "structural",
-                "previous": previous["sha256"] if previous else None, "new": entry["sha256"], "actor": actor,
+                "previous_selection_id": registry["selection_id"], "capability": capability,
+                "previous": previous[key] if previous else None, "new": entry[key], "actor": actor,
                 "at": utc_now(), **(note or {})}
         _append_log(aew_root, line)
         atomic_write(aew_root / REGISTRY_REL, json.dumps(new, indent=2, sort_keys=True) + "\n")

@@ -148,8 +148,8 @@ class StageIntents:
             for n, planned in enumerate(plan, start=1):
                 spec = P.spec_for(planned["primitive"])
                 if spec.primitive_id in P.NOT_STEPS:
-                    raise IllegalTransition(f"step {n}, {planned['primitive']}, does not commit in one Lead "
-                                            "transaction, so it cannot run as one stage step",
+                    raise IllegalTransition(f"step {n}, {planned['primitive']}, cannot run as one stage step: "
+                                            f"{P.NOT_STEPS[spec.primitive_id]}",
                                             reason="not_a_step", primitive=planned["primitive"])
                 if not spec.declared:
                     raise IllegalTransition(f"step {n}, {planned['primitive']}, is not a declared primitive: a stage "
@@ -265,7 +265,9 @@ class StageIntents:
             raise IllegalTransition(f"{binding.key} is out of order: {binding.intent} has committed "
                                     f"{len(si['steps'])} of {len(si['plan'])} step(s)", reason="step_out_of_order")
         planned = si["plan"][binding.n - 1]
-        if ctx.txn_op not in P.commit_ops(planned["primitive"]):
+        if ctx.txn_op not in P.commit_ops(planned["primitive"]) or (
+                planned["primitive"] in P.BY_DECISION
+                and not any(d.allowed and d.entrypoint == planned["primitive"] for d in ctx.dispatch_decisions)):
             raise IllegalTransition(f"{binding.key} plans {planned['primitive']}; this commit is {ctx.txn_op}: a step "
                                     "commits only its planned primitive (#140 review, finding 1)",
                                     reason="step_primitive_mismatch", planned=planned["primitive"], op=ctx.txn_op)

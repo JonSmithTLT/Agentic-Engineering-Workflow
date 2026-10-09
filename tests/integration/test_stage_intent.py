@@ -13,6 +13,7 @@ import yaml
 from aewflow import create_planned_ticket, sample_project
 from invariants import assert_control_invariants, load_control
 
+from aew.engine import primitives as P
 from aew.engine import stage_intents as SI
 from aew.engine.api import Engine
 from aew.errors import IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, StaleRevision
@@ -340,14 +341,15 @@ def test_one_unfinished_stage_without_a_unit(project):
     assert exc.value.details["reason"] == "open_intent"
 
 
-@pytest.mark.parametrize("primitive", sorted(__import__("aew.engine.primitives", fromlist=["NOT_STEPS"]).NOT_STEPS))
+@pytest.mark.parametrize("primitive", sorted(P.NOT_STEPS))
 def test_a_primitive_that_is_not_one_commit_is_refused_at_opening(project, primitive):
-    """#140 re-review, finding 1: a stage step is one primitive in one Lead transaction. A primitive that commits twice,
-    or outside a Lead transaction, is refused when the stage opens, never left to fail at its first commit."""
+    """#140 re-reviews: a stage step is one primitive in one Lead transaction whose op says which primitive committed.
+    A primitive that commits twice, or shares its op, is refused when the stage opens, with its reason."""
     p = project
     with pytest.raises(IllegalTransition) as exc:
         open_stage(p, steps=1, primitive=primitive)
-    assert exc.value.details["reason"] == "not_a_step" and "stage_intents" not in load_control(p.root)
+    assert exc.value.details["reason"] == "not_a_step" and P.NOT_STEPS[primitive] in exc.value.message
+    assert "stage_intents" not in load_control(p.root)
 
 
 def test_a_record_pinned_by_its_unit_is_never_shadowed_by_an_unpinned_copy(project, tmp_path):

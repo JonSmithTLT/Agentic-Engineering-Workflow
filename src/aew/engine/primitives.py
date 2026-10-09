@@ -93,11 +93,19 @@ COMMIT_OPS: dict[str, frozenset[str]] = {
     "invoke.create.parent": frozenset({"invoke.create"}),
     "steering": frozenset({"steering.lower", "steering.request"}),
 }
-# Declared primitives that do not commit in exactly one Lead transaction: a stage step is one primitive in one commit,
-# so these are refused at a stage's opening, never left to fail at their first commit (#140 re-review, finding 1).
-# Publication and validation commit twice (a marker, then the outcome); reconciliation finishes a publication;
-# integration verification is ingested by the verifier, not in a Lead transaction. Their stages arrive with E6.
-NOT_STEPS = frozenset({"integrate.publish", "integrate.validate", "integrate.reconcile", "verify.ingest.integration"})
+# Declared primitives that cannot run as one stage step, each with the reason: a step is one primitive in one Lead
+# transaction whose op says which primitive committed (#140 re-reviews). They are refused at a stage's opening, never
+# left to fail at their first commit. Their stages arrive with E6, which decides how a stage spans them.
+NOT_STEPS: dict[str, str] = {
+    "integrate.publish": "it commits twice (integrate.publishing, then integrate.publish)",
+    "integrate.validate": "it commits twice (integrate.validate, then integrate.validated)",
+    "integrate.reconcile": "it can finish a publication, committing under integrate.publish",
+    "verify.ingest.integration": "it commits under verify.ingest, which Ticket verification shares, so the op cannot "
+                                 "say which of the two committed",
+}
+# Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
+# says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).
+BY_DECISION = frozenset({"invoke.create.mutating", "invoke.create.non_mutating", "invoke.create.parent"})
 
 
 def commit_ops(primitive_id: str) -> frozenset[str]:

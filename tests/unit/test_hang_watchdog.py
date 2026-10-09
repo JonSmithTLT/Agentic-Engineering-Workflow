@@ -1,7 +1,7 @@
-"""The per-test hang watchdog (tests/helpers/watchdog.py; strategy §3, "A test that hangs fails by name"): a test still running after
-``--test-timeout`` is named with every thread's stack, instead of holding its CI job until the job is cancelled and
-nothing is recorded (the 2026-10-08 integration hangs). On POSIX it fails in place and the run carries on; on Windows
-the stacks are written to the dump file the CI job uploads."""
+"""The per-test hang watchdog (tests/helpers/watchdog.py; strategy §3, "A test that hangs fails by name"): a test
+still running after ``--test-timeout`` is named with every thread's stack, instead of holding its CI job until the job
+is cancelled and nothing is recorded (the 2026-10-08 integration hangs). On POSIX it fails in place and the run
+carries on; on Windows the stacks are written to the dump file the CI job uploads."""
 
 from __future__ import annotations
 

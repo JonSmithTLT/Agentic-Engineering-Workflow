@@ -118,15 +118,18 @@ def beat(directory: Path) -> None:
                         return
                 finally:
                     os.close(fd)
+            mode = os.lstat(path).st_mode
         else:  # Windows: no O_NOFOLLOW; touch only what lstat shows is a regular file
             try:
-                regular = stat.S_ISREG(os.lstat(path).st_mode)
+                mode = os.lstat(path).st_mode
             except FileNotFoundError:
                 path.touch()
                 return
-            if regular:
+            if stat.S_ISREG(mode):
                 os.utime(path)
                 return
+        if stat.S_ISDIR(mode):  # never replaceable; on Windows each attempt retries for seconds (#138 review, F2)
+            return
         atomic_write(path, "")  # replaces the link or FIFO itself, never what it points to
     except OSError:
         pass
@@ -206,7 +209,11 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
     """Every queued request file as (name, text), removed from the queue. Nothing here is trusted."""
     queue = directory / "requests"
     out = []
-    for path in sorted(queue.glob("*.json")) if queue.is_dir() else []:
+    try:  # a queue that is a link is not the run's queue: its target's files are never read or removed
+        is_queue = stat.S_ISDIR(os.lstat(queue).st_mode)
+    except OSError:
+        is_queue = False
+    for path in sorted(queue.glob("*.json")) if is_queue else []:
         try:
             # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
             # queue, so a request that could block it would stop the deadline and every later Lead request.
@@ -253,8 +260,34 @@ class EventLog:
 
     def __call__(self, event: dict[str, Any]) -> None:
         line = K.redact(json.dumps({"at": utc_now(), **event}, default=str))
-        with self._lock, self.path.open("a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+        with self._lock:
+            try:
+                fd = _open_append(self.path)
+            except OSError:  # the log is telemetry: one that cannot be appended to never stops the supervisor
+                return
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+
+
+def _open_append(path: Path) -> int:
+    """A descriptor appending to a regular file, created if absent. The supervisor's threads append under one lock,
+    so a FIFO or a link in the run directory must neither block that lock nor redirect the write."""
+    if sys.platform != "win32":
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o644)
+    else:
+        try:
+            if not stat.S_ISREG(os.lstat(path).st_mode):
+                raise OSError(errno.EINVAL, "not a regular file", str(path))
+        except FileNotFoundError:
+            pass
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_BINARY, 0o644)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", str(path))
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
 
 
 def scan_for_credentials(*roots: Path) -> list[str]:

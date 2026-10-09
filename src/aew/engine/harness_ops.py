@@ -496,6 +496,9 @@ class Harness:
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
             raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
+        if len(text) > MAX_SEND_CHARS:
+            raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has {len(text)}. "
+                             "Put the material in a file in the agent's workspace and send its path instead")
         return self._lead_request(token, run, "send", {"text": text}, current=True)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
@@ -656,6 +659,10 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
             break
     return acks
 
+
+# A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
+# surrogate pair), so a message this long always arrives (#138 review, F1).
+MAX_SEND_CHARS = 1 << 20
 
 def _field(record: dict[str, Any] | None, key: str) -> dict[str, Any]:
     """An object field of a run record, or ``{}``: the record is written in the run's own directory, so a field of

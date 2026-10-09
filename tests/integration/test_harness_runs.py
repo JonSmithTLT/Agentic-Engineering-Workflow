@@ -355,3 +355,20 @@ def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
     (runlog.run_dir(lab.aew_root, run) / "run.json").write_text(json.dumps(record), encoding="utf-8")
     [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
     assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])
+
+
+def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp_path):
+    """#138 review, F1: the supervisor reads a request up to a bound, so a message past what always fits is refused
+    with a usage error, never recorded and then dropped."""
+    from aew.engine.harness_ops import MAX_SEND_CHARS
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}])
+    out = lab.lead("work", "assign", wid, "--launch")
+    rev = lab.project.rev()
+    message = tmp_path / "message.txt"
+    message.write_text("é" * (MAX_SEND_CHARS + 1), encoding="utf-8")
+    res = lab.aew("harness", "send", out["launch"]["run"], "--file", str(message), "--token", lab.project.token)
+    assert res.error["code"] == "USAGE" and str(MAX_SEND_CHARS) in res.error["message"]
+    assert lab.project.rev() == rev
+    lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")

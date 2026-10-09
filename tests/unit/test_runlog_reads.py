@@ -29,12 +29,13 @@ def record(directory, status=K.RUNNING):
     (directory / "run.json").write_text(json.dumps({"run": directory.name, "status": status}), encoding="utf-8")
 
 
-def promptly(fn):
-    """``fn()`` within 10 s, from a daemon thread: a read that blocks fails the test instead of hanging it."""
+def promptly(fn, within: float = 10):
+    """``fn()`` within ``within`` seconds, from a daemon thread: a read that blocks fails the test instead of hanging
+    it."""
     out: list = []
     worker = threading.Thread(target=lambda: out.append(fn()), daemon=True)
     worker.start()
-    worker.join(10)
+    worker.join(within)
     assert out, "the read blocked"
     return out[0]
 
@@ -88,10 +89,12 @@ def test_a_record_that_is_a_fifo_a_device_or_a_link_is_none_and_never_blocks(dir
 # ---------------------------------------------------------------- the supervisor's own reads and writes
 
 
-def test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises(directory):
+def test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises_or_waits(directory):
+    """#138 review, F2: a directory is never replaceable, and on Windows each replace retries for seconds; the beat
+    leaves it at once, and the run reads as lost."""
     (directory / "heartbeat").mkdir()
-    runlog.beat(directory)  # the supervisor's beat thread must survive it; the run reads as lost
-    assert runlog.heartbeat_age(directory) is None
+    promptly(lambda: runlog.beat(directory), within=1)
+    assert (directory / "heartbeat").is_dir() and runlog.heartbeat_age(directory) is None
 
 
 @POSIX_ONLY
@@ -149,3 +152,35 @@ def test_teardown_never_acts_on_a_record_the_supervisor_did_not_write(directory,
     monkeypatch.setattr(procs, "kill_pid", lambda pid: pytest.fail(f"killed {pid}"))
     (directory / "run.json").write_text(json.dumps(record), encoding="utf-8")
     assert runlog.end_supervisor(directory) is False
+
+
+@POSIX_ONLY
+def test_a_request_queue_that_is_a_link_is_not_read_or_emptied(directory, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "a.json").write_text('{"kind": "stop"}', encoding="utf-8")
+    os.symlink(elsewhere, directory / "requests")
+    assert runlog.take_requests(directory) == []
+    assert (elsewhere / "a.json").exists()
+
+
+def test_the_event_log_appends_whole_lines(directory):
+    log = runlog.EventLog(directory / "events.jsonl")
+    log({"event": "one"})
+    log({"event": "two"})
+    lines = (directory / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["event"] for line in lines] == ["one", "two"]
+
+
+@POSIX_ONLY
+def test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link(directory, tmp_path):
+    """The supervisor's threads append under one lock: a log that blocked would stall them all, the watchdog
+    included."""
+    os.mkfifo(directory / "events.jsonl")
+    promptly(lambda: runlog.EventLog(directory / "events.jsonl")({"event": "x"}))
+    os.remove(directory / "events.jsonl")
+    target = tmp_path / "target.txt"
+    target.write_text("", encoding="utf-8")
+    os.symlink(target, directory / "events.jsonl")
+    runlog.EventLog(directory / "events.jsonl")({"event": "x"})
+    assert target.read_text(encoding="utf-8") == ""

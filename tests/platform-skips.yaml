@@ -47,6 +47,11 @@ skipped:
       needs POSIX symlinks and FIFOs. Windows beats only a heartbeat lstat shows is a regular file, and a beat on a
       directory never raises on any platform (test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises). Covered
       on Linux.
+    tests/unit/test_runlog_reads.py::test_a_request_queue_that_is_a_link_is_not_read_or_emptied: >-
+      needs POSIX symlinks; the queue is checked with lstat on every platform. Covered on Linux.
+    tests/unit/test_runlog_reads.py::test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link: >-
+      needs POSIX FIFOs and symlinks. Windows appends only to what lstat shows is a regular file, and appends whole
+      lines on every platform (test_the_event_log_appends_whole_lines). Covered on Linux.
     tests/unit/test_runlog_reads.py::test_the_request_queue_never_blocks_on_a_fifo_or_follows_a_link: >-
       needs POSIX FIFOs, /dev/zero and symlinks. The queue is read like a run record, tested on Windows with a
       request past the bound (test_a_request_past_the_bound_is_dropped). Covered on Linux.

@@ -837,7 +837,8 @@ sections:
       (R5''s paths are all such transactions), and copies only ended runs until archival, so a run is not fixed as absent
       while its invocation can still copy it. Archival copies every run (R5): one still live then, such as the run of a
       Ticket cancelled while its agent works, is recorded with its observed status and absent usage, and what it reports
-      later stays in `local/`. Slice 2b (doctor, `aew usage`, the `status` summary, the H2 re-measure) is next'
+      later stays in `local/`. Slice 2b''s doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`);
+      `aew usage`, the `status` summary and the H2 re-measure are next'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'

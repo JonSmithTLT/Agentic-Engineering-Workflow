@@ -282,3 +282,47 @@ def test_links_and_fifos_in_a_run_directory_never_block_a_cancel_or_archival(lab
     [usage] = archived_usage(lab, wid, inv)
     assert (usage["status"], usage["tokens_trust"]) == (status, "absent")
     assert_control_invariants(lab.project)
+
+
+def doctor(lab: HarnessLab) -> dict[str, dict[str, str]]:
+    from aew.engine.api import Engine
+
+    return {c["check"]: c for c in Engine.discover(lab.root).doctor_checks()}
+
+
+def test_doctor_names_a_missing_snapshot_after_a_real_copy(lab, tmp_path):
+    """R4 rule 3: a snapshot a recorded usage names is an ERROR when it is gone (the doctor's FAIL), and the run's
+    estimate at record says unpriced; the table and the copy are reported while all is well."""
+    adopt_prices(lab)
+    wid, inv, run = launched(lab, tmp_path, IMPLEMENT, {"tokens": TOKENS})
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    lab.wait(run)
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    checks = doctor(lab)
+    assert checks["policy:pricing"]["status"] == "PASS" and "1 price row(s)" in checks["policy:pricing"]["detail"]
+    assert checks["pricing-snapshots"]["status"] == "PASS"
+    assert checks["usage-ledger"]["status"] == "PASS" and "1 hot run(s) recorded" in checks["usage-ledger"]["detail"]
+    sha = runs(lab, inv)[0]["usage"]["pricing_sha256"]
+    O.snapshot_path(lab.aew_root, sha).unlink()
+    snapshots = doctor(lab)["pricing-snapshots"]
+    assert snapshots["status"] == "FAIL" and sha in snapshots["detail"]
+
+
+def test_the_snapshot_check_reads_only_the_hot_state_and_the_recent_ring(lab, tmp_path, monkeypatch):
+    """The doctor's read is bounded: the bundles of the recently archived units, never the whole archive."""
+    from aew.engine.archive_ops import Archive
+
+    for i in range(3):
+        wid = create_planned_ticket(lab.project, tmp_path, title=f"Archived {i}")
+        lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed")
+    opened = []
+    real = Archive.bundle
+
+    def counted(self, state, work_id):
+        opened.append(work_id)
+        return real(self, state, work_id)
+
+    monkeypatch.setattr(Archive, "bundle", counted)
+    recent = [r["id"] for r in load_control(lab.root)["recent"]]
+    assert doctor(lab)["pricing-snapshots"]["status"] == "PASS"
+    assert sorted(opened) == sorted(recent) and len(recent) == 3

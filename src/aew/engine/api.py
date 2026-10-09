@@ -30,7 +30,7 @@ from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
-from aew.engine.ports import RolesPort, SteeringPort
+from aew.engine.ports import ArchivePort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -76,10 +76,11 @@ def _slug(name: str) -> str:
 class ProjectAdmin:
     """The project's authority registry, manifest adoption and `aew doctor`."""
 
-    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort, archive: ArchivePort) -> None:
         self.k = k
         self.roles = roles
         self.steering = steering
+        self.archive = archive
 
     def authority_list(self) -> dict[str, Any]:
         self.k.store.read()  # recovery + integrity
@@ -309,6 +310,16 @@ class ProjectAdmin:
                 add("policy:execution", "PASS", f"configured; default profile {execution['routing']['default']}")
         except Exception as exc:
             add("policy:execution", "FAIL", str(exc))
+        # F25 (the cost and usage ledger design v0.2 R4, R6): the price table, the snapshots usage records name (the
+        # hot state and the recent ring: a bounded read; `aew usage show --all` covers the whole archive), and the
+        # hot runs' copy state.
+        add("policy:pricing", *usage_ops.pricing_doctor(self.k.manifest, self.k.pricing))
+        try:
+            recent = [b for r in state.get("recent") or [] if (b := self.archive.bundle(state, r["id"])) is not None]
+            add("pricing-snapshots", *usage_ops.snapshot_doctor(state, self.k.aew_root, recent))
+        except Exception as exc:  # report, never crash
+            add("pricing-snapshots", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
+        add("usage-ledger", *usage_ops.ledger_doctor(state, usage_ops.Reader(self.k.aew_root, None)))
         from aew.harness import containment
         from aew.harness import contract as K
         try:
@@ -383,7 +394,7 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
-        self._project = ProjectAdmin(k, roles=roles, steering=steering)
+        self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)

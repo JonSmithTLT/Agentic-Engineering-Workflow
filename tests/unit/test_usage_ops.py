@@ -303,6 +303,62 @@ def test_a_missing_snapshot_is_a_doctor_failure_and_its_figure_unpriced(tmp_path
     assert row["estimated_at_record"] == {"unpriced": "unpriced_snapshot_missing"}
 
 
+def test_no_price_table_is_reported_never_failed():
+    """R4: a project without a table is told every derived cost is unpriced; the doctor never fails it for that."""
+    status, detail = O.pricing_doctor({"policy": {}}, lambda: None)
+    assert status == "PASS" and detail.startswith("INFO:") and O.UNPRICED_NO_TABLE in detail
+    status, detail = O.pricing_doctor({"policy": {"pricing": "policy/pricing.yaml"}}, lambda: PRICES)
+    assert status == "PASS" and "2 price row(s)" in detail and PRICES.sha256[:12] in detail
+
+
+@pytest.mark.parametrize("error", [ValidationFailed("not aew/pricing/v1"), IntegrityError("modified outside AEW"),
+                                   FileNotFoundError("policy/pricing.yaml")], ids=["malformed", "drifted", "missing"])
+def test_a_malformed_drifted_or_missing_price_table_fails_the_doctor(error):
+    def read():
+        raise error
+
+    status, detail = O.pricing_doctor({"policy": {"pricing": "policy/pricing.yaml"}}, read)
+    assert status == "FAIL" and "policy/pricing.yaml" in detail
+
+
+def test_a_snapshot_named_by_a_hot_or_recent_record_that_is_missing_or_damaged_fails(tmp_path):
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=PRICES)
+    archived = {"invocations": {"I-9": {"runs": [{"run": "R-9", "usage": {"pricing_sha256": "f" * 64}}]}}}
+    status, detail = O.snapshot_doctor(state, tmp_path, [archived])
+    assert status == "FAIL" and "f" * 64 in detail and PRICES.sha256 not in detail  # the bundle's, not the hot one
+    O.snapshot_path(tmp_path, PRICES.sha256).write_bytes(TABLE + b"# altered\n")
+    status, detail = O.snapshot_doctor(state, tmp_path)
+    assert status == "FAIL" and PRICES.sha256 in detail
+
+
+def test_a_damaged_snapshot_file_no_record_names_still_fails(tmp_path):
+    """A copy that met a damaged snapshot records no table (pricing_sha256: null), so no record names the damage:
+    the doctor checks every file in the snapshot directory against its own name."""
+    O.write_pricing_snapshot(tmp_path, PRICES)
+    assert O.snapshot_doctor(hand_state(), tmp_path)[0] == "PASS"
+    O.snapshot_path(tmp_path, PRICES.sha256).write_bytes(b"damaged\n")
+    (tmp_path / O.SNAPSHOT_DIR / "notes.txt").write_text("not a snapshot", encoding="utf-8")
+    status, detail = O.snapshot_doctor(hand_state(), tmp_path)
+    assert status == "FAIL" and f"{PRICES.sha256}.yaml" in detail and "notes.txt" in detail
+
+
+def test_the_ledger_check_counts_recorded_provisional_and_missing_and_reads_only_uncopied_runs(tmp_path):
+    """R6: a missing run (no copy, no run directory) is a WARN, its usage lost; a provisional one awaits its copy. The
+    check reads a run directory only for a run with no copy."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10))
+    run_record(runlog.run_dir(tmp_path, "R-2"), record(input=20))
+    state = hand_state(("I-1", "T-0001", ["R-1"]), ("I-2", "T-0002", ["R-2", "R-3"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=None)
+    read = []
+    reader = O.Reader(tmp_path, None, read_run=lambda run: read.append(run) or runlog.read_record(
+        runlog.run_dir(tmp_path, run)))
+    status, detail = O.ledger_doctor(state, reader)
+    assert status == "WARN" and "1 hot run(s) recorded, 1 provisional" in detail and "1 missing" in detail
+    assert sorted(read) == ["R-2", "R-3"]  # never the copied run's directory
+
+
 # ---------------------------------------------------------------------------------------------- the copy (R5)
 
 

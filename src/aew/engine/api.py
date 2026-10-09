@@ -29,12 +29,13 @@ from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
-from aew.engine.ports import RolesPort
+from aew.engine.ports import RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.status_ops import StatusViews
+from aew.engine.steering import OperatorPrincipal, Steering
 from aew.engine.store import ControlStore
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
@@ -74,9 +75,10 @@ def _slug(name: str) -> str:
 class ProjectAdmin:
     """The project's authority registry, manifest adoption and `aew doctor`."""
 
-    def __init__(self, k: Kernel, *, roles: RolesPort) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort) -> None:
         self.k = k
         self.roles = roles
+        self.steering = steering
 
     def authority_list(self) -> dict[str, Any]:
         self.k.store.read()  # recovery + integrity
@@ -153,6 +155,8 @@ class ProjectAdmin:
                                                                         recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
             ctx.state[POLICY_PINS] = pins
+            # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
+            self.steering.on_adopt(ctx, self.k._execution_policy(manifest, pins)[0])
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
@@ -227,6 +231,31 @@ class ProjectAdmin:
             shown = path.relative_to(self.k.repo_root).as_posix() if inside else str(path)
             return "FAIL", git.untrusted_filters_message(needed, shown, from_doctor=True)
         return "PASS", listing
+
+    def _endpoint_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
+        """The operator endpoint and its label (M4-E plan v3 §2.1): it answers a ping or it does not, and every record
+        it makes is `guarantee: dev` with the same-uid residuals stated."""
+        from aew.harness import operator_client
+
+        try:
+            configured = self.steering.policy_default() is not None
+        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
+            configured = False
+        try:
+            info = operator_client.ping(self.k.aew_root)
+        except AEWError:
+            info = None
+        if info is None:
+            if not configured and "steering" not in state:
+                return "PASS", "not running (steering is not configured; the endpoint is needed only to raise it)"
+            return "WARN", ("not running: raising the Lead's steering mode, and unattended Run's notifications, need "
+                            "`aew operator serve --dev` in the operator's own terminal")
+        host = state["lead"].get("host_uid")
+        same = host is None or host == info.get("uid")
+        return "WARN", (f"running (pid {info['pid']}), guarantee {info['guarantee']}: not A1/F18 production authority "
+                        f"until F18.6{' (the Lead host runs as the same uid)' if same and host is not None else ''}; "
+                        f"process dumpable: {info.get('dumpable')}; same-uid residuals: "
+                        + "; ".join(info.get("residuals") or []))
 
     def doctor_checks(self) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
@@ -303,6 +332,7 @@ class ProjectAdmin:
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
+        add("operator-endpoint", *self._endpoint_doctor(state))
         proposed = [c["id"] for c in self.k.manifest["authority"]["candidates"] if c["status"] == "proposed"]
         if proposed:
             add("authority", "WARN", f"unclassified authority candidates: {proposed}")
@@ -347,7 +377,8 @@ class Engine:
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
-        self._project = ProjectAdmin(k, roles=roles)
+        self._steering = steering = Steering(k)
+        self._project = ProjectAdmin(k, roles=roles, steering=steering)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
@@ -776,7 +807,36 @@ class Engine:
         return self._invocations.snapshot_of(path, workspace_id)
 
     def status(self, work_id: str | None = None) -> dict[str, Any]:
-        return self._resume.status(work_id)
+        out = self._resume.status(work_id)
+        if work_id is None:
+            state = self._k.store.read()
+            view = self._steering.view(state)
+            if view["configured"] or "steering" in state:  # legacy/manual projects show nothing new (decision 3)
+                from aew.harness import operator_client
+
+                out["steering"] = view | {"operator_endpoint": operator_client.status(self._k.aew_root)}
+        return out
+
+    # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
+
+    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "") -> dict[str, Any]:
+        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale)
+
+    def steering_request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
+                         action_ref: str | None = None) -> dict[str, Any]:
+        return self._steering.request(token=token, expect_rev=expect_rev, kind=kind, rationale=rationale, mode=mode,
+                                      action_ref=action_ref)
+
+    def steering_raise_preview(self, mode: str) -> dict[str, Any]:
+        return self._steering.raise_preview(mode)
+
+    def steering_raise(self, principal: OperatorPrincipal, *, mode: str, generation: int,
+                       legality_digest: str) -> dict[str, Any]:
+        """The operator endpoint's commit of a raise; ``principal`` only the endpoint constructs (A1 §1.1)."""
+        return self._steering.raise_mode(principal, mode=mode, generation=generation, legality_digest=legality_digest)
+
+    def steering_view(self) -> dict[str, Any]:
+        return self._steering.view(self._k.store.read())
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
         return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)

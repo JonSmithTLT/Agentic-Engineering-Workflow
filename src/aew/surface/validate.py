@@ -44,4 +44,20 @@ def check_call(name: Any, arguments: Any, profile: str) -> Tool:
         raise AdapterInputError(
             "INVALID_ARGUMENTS", f"{t.name}: the arguments do not match the tool's schema",
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
+    if t.name == "steering":
+        _check_steering(arguments)
     return t
+
+
+def _check_steering(arguments: dict[str, Any]) -> None:
+    """The arguments each `steering` action needs and allows (plan v3 §2.6; frozen decision 8): a mismatch is an input
+    error, never a partial request."""
+    required, allowed = contract.STEERING_ARGUMENTS[arguments["action"]]
+    given = set(arguments) - {"expect_rev", "action"}
+    missing = [a for a in required if a not in arguments]
+    extra = sorted(given - set(allowed))
+    if missing or extra:
+        raise AdapterInputError(
+            "INVALID_ARGUMENTS", f"steering: action {arguments['action']} takes {', '.join(allowed)}",
+            violations=[*(f"{a}: required for {arguments['action']}" for a in missing),
+                        *(f"{a}: not taken by {arguments['action']}" for a in extra)])

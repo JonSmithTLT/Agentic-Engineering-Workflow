@@ -16,8 +16,8 @@ The limit catches hangs, not slowness: it sits well above the slowest recorded t
 is a regression to find, never a reason to raise it.
 
 The stacks also go to a dump file in ``--hang-dir`` (default: the lane report's directory, which CI uploads even when
-a job fails; else the system temporary directory). Each process has one file, emptied after every test that finishes,
-so a non-empty file after a run is a hang.
+a job fails; else the system temporary directory). Each process writes one file while a test runs and removes it when
+the test finishes, so a file left after a run is a hang.
 """
 
 from __future__ import annotations
@@ -126,12 +126,19 @@ class HangWatchdog:
                 self.path.replace(self.path.with_name(f"{self.path.stem}-{self._hangs}.txt"))
                 self._hangs += 1
             else:
-                self._reset("")  # a test that finished leaves no dump
+                self._discard()  # a test that finished leaves no dump
 
-    def pytest_unconfigure(self, config: pytest.Config) -> None:
+    def _discard(self) -> None:
+        """Remove the dump file between tests, not only at exit: the isolation guard (lanes.py) checks the checkout
+        at sessionfinish, before unconfigure, and an in-checkout ``--hang-dir`` or lane report directory would
+        otherwise show a clean run's empty file as a change (#132 review)."""
         if self._file is not None:
             self._file.close()
-            self.path.unlink(missing_ok=True)  # emptied after the last test; a hang's file was renamed
+            self._file = None
+        self.path.unlink(missing_ok=True)
+
+    def pytest_unconfigure(self, config: pytest.Config) -> None:
+        self._discard()  # a hang's file was renamed, so only an interrupted test's can still be here
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_handlecrashitem(self, crashitem: str, report: pytest.TestReport, sched: Any) -> None:

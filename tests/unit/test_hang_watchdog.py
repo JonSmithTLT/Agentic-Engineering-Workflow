@@ -114,3 +114,17 @@ def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
         proc, _ = inner_pytest(root, tmp_path / "hangs", "-p", "no:xdist", *extra)
         assert proc.returncode == 0, proc.stdout + proc.stderr
     assert dumps(tmp_path / "hangs") == []
+
+
+@pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])
+def test_a_clean_run_with_its_dumps_inside_the_checkout_passes_the_isolation_guard(tmp_path, mode):
+    """#132 review: the isolation guard checks the checkout at sessionfinish. A clean test's dump file, kept until
+    unconfigure, showed there as an untracked file and failed a run with an in-checkout ``--hang-dir`` or report."""
+    root = project(tmp_path, "def test_ok():\n    pass\n\n\ndef test_also_ok():\n    pass\n")
+    subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+    (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")  # as the real checkout ignores it
+    hangs = root / "reports"
+    proc, _ = inner_pytest(root, hangs, *mode, "--test-timeout", "600", "--lane-report", str(hangs / "r.json"))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "isolation guard" not in proc.stdout
+    assert list(hangs.glob("hang-*.txt")) == []

@@ -13,12 +13,13 @@ import calendar
 import errno
 import json
 import os
+import re
 import stat
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from aew.harness import contract as K
 from aew.util import atomic_write, utc_now
@@ -38,20 +39,28 @@ def run_dir(aew_root: Path, run: str) -> Path:
 MAX_RECORD_BYTES = 16 << 20
 
 
-def _read_regular(path: Path) -> bytes:
-    """A regular file's bytes, at most ``MAX_RECORD_BYTES``. The run directory is writable by the run's own user,
-    and a Lead transaction reads it under the control lock (the usage copy, F25 R5), the supervisor's watchdog its
-    request queue: a symlink is not followed, a FIFO or device never blocks the open or the read, and a file past the
-    bound is refused, each as an ``OSError``."""
+def _open_regular(path: Path) -> BinaryIO:
+    """A regular file opened for reading. The run directory is writable by the run's own user: a symlink is not
+    followed and a FIFO or device never blocks the open, each refused as an ``OSError``."""
     if os.name == "nt":  # no O_NOFOLLOW: refuse a link or a non-file before opening it
         if not stat.S_ISREG(os.lstat(path).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
-    fd = os.open(path, flags)
-    with os.fdopen(fd, "rb") as f:
-        info = os.fstat(f.fileno())
-        if not stat.S_ISREG(info.st_mode):
+    f = os.fdopen(os.open(path, flags), "rb")
+    try:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
+    except BaseException:
+        f.close()
+        raise
+    return f
+
+
+def _read_regular(path: Path) -> bytes:
+    """A regular file's bytes, at most ``MAX_RECORD_BYTES`` (``_open_regular``). A Lead transaction reads the run
+    directory under the control lock (the usage copy, F25 R5), the supervisor's watchdog its request queue: a file
+    past the bound is refused, as an ``OSError``."""
+    with _open_regular(path) as f:
         data = f.read(MAX_RECORD_BYTES + 1)
     if len(data) > MAX_RECORD_BYTES:
         raise OSError(errno.EFBIG, "past the bound of a run file", str(path))
@@ -289,16 +298,167 @@ def _open_append(path: Path) -> int:
     return fd
 
 
-def scan_for_credentials(*roots: Path) -> list[str]:
-    """Files under ``roots`` containing an AEW credential string (custody property 4)."""
-    found = []
-    for root in roots:
-        if not root.exists():
+SCAN_CHUNK = 1 << 20
+# A credential is recognized from its first 45 characters (``aew1.tk_``, 16 hex digits, a dot and 20 more), so chunks
+# that overlap by more than that never split one past recognition.
+SCAN_OVERLAP = 64
+# What one scan reads at most: the data (never the holes) of every regular file, and the entries it walks. A run's own
+# state is far below both; past them, the rest is reported unscanned rather than clean (#139 review, finding 1).
+SCAN_BUDGET_BYTES = 4 << 30
+SCAN_MAX_ENTRIES = 200_000
+_CREDENTIAL_BYTES = re.compile(K.CREDENTIAL_RE.pattern.encode("ascii"))
+# An entry that vanished between the listing and its read holds nothing: not a reason to call the scan incomplete.
+_GONE = (FileNotFoundError, NotADirectoryError)
+
+
+def credential_scan(*roots: Path) -> dict[str, Any]:
+    """The files under ``roots`` holding an AEW credential string (custody property 4), as the run record keeps it:
+    ``{"clean", "files"}``, and ``unscanned`` when something could not be read whole.
+
+    The supervisor scans as the operator, at the end of a run, a directory the run's own user could write (its
+    ``harness/`` even under containment), so the walk and every read are defensive:
+
+    - the walk is iterative (a deep tree never exhausts the stack) and never enters a link or, on Windows, any other
+      reparse point (a junction): only the run's own directories are walked;
+    - only regular files are read, never through a link and never blocking on a FIFO or device (``_open_regular``);
+    - a file is read in overlapping chunks with its holes skipped (a sparse file costs what it stores), within one
+      budget of bytes and entries for the whole scan.
+
+    Anything the scan could not read (a file or directory it cannot open, the rest past the budget) is counted in
+    ``unscanned``, and then ``clean`` is false: clean means scanned and clean. A link, FIFO, socket or device stores
+    nothing of the run's, so skipping one leaves nothing unscanned."""
+    found: list[str] = []
+    budget = {"bytes": SCAN_BUDGET_BYTES, "entries": SCAN_MAX_ENTRIES, "unscanned": 0}
+    for given in roots:
+        root = native_path(given)
+        try:
+            top = os.lstat(root)
+        except OSError:
             continue
-        for path in [root] if root.is_file() else root.rglob("*"):
+        if stat.S_ISREG(top.st_mode):
+            _scan_file(root, found, budget)
+        elif stat.S_ISDIR(top.st_mode):
+            _walk(root, found, budget)
+    out: dict[str, Any] = {"clean": not found and not budget["unscanned"], "files": [shown_path(f) for f in found]}
+    if budget["unscanned"]:
+        out["unscanned"] = budget["unscanned"]
+    return out
+
+
+def native_path(path: Path, *, windows: bool = os.name == "nt") -> Path:
+    """The path the scan walks and opens. On Windows, the extended-length form (``\\\\?\\``): a plain path is
+    normalized before it reaches the file system, so an entry the listing shows (a name ending in a dot or a space,
+    or one past MAX_PATH without long paths enabled) would open as not found and read as gone, never scanned
+    (#139 re-review, F1). Elsewhere, the path itself."""
+    if not windows:
+        return path
+    import ntpath
+
+    text = ntpath.abspath(str(path))
+    if text.startswith("\\\\?\\"):
+        return Path(text)
+    if text.startswith("\\\\"):  # \\server\share\... is \\?\UNC\server\share\...
+        return Path("\\\\?\\UNC\\" + text[2:])
+    return Path("\\\\?\\" + text)
+
+
+def shown_path(path: str) -> str:
+    """A scanned path as the run record names it: without the extended-length prefix ``native_path`` added."""
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    return path[4:] if path.startswith("\\\\?\\") else path
+
+
+def _walk(root: Path, found: list[str], budget: dict[str, int]) -> None:
+    stack = [root]
+    while stack:
+        directory = stack.pop()
+        listed = []
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:  # the cap holds while listing: one huge directory is never listed whole
+                    if len(listed) >= budget["entries"]:
+                        budget["unscanned"] += 1 + len(stack)
+                        return
+                    listed.append(entry)
+        except _GONE:  # removed or replaced since it was listed: it holds nothing now (#139 re-review, F2)
+            continue
+        except OSError:  # unreadable
+            budget["unscanned"] += 1
+            continue
+        budget["entries"] -= len(listed)
+        for entry in sorted(listed, key=lambda e: e.name):
             try:
-                if path.is_file() and K.CREDENTIAL_RE.search(path.read_bytes().decode("latin-1")):
-                    found.append(str(path))
-            except OSError:
+                info = entry.stat(follow_symlinks=False)
+            except _GONE:
                 continue
-    return found
+            except OSError:
+                budget["unscanned"] += 1
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                # A junction or mount point is a directory that is a reparse point: not the run's own (Windows). A
+                # reparse point that is a file (a cloud or deduplicated file) is read like any other (F3).
+                if not getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                    stack.append(Path(entry.path))
+            elif stat.S_ISREG(info.st_mode):
+                _scan_file(Path(entry.path), found, budget)
+
+
+def _scan_file(path: Path, found: list[str], budget: dict[str, int]) -> None:
+    try:
+        hit = _contains_credential(path, budget)
+    except _GONE:  # renamed or removed since it was listed (an atomic write's temporary file): nothing to read
+        return
+    except OSError:
+        budget["unscanned"] += 1
+        return
+    if hit is None:
+        budget["unscanned"] += 1
+    elif hit:
+        found.append(str(path))
+
+
+def _contains_credential(path: Path, budget: dict[str, int]) -> bool | None:
+    """Whether ``path`` holds a credential; None when the budget ran out before it was read whole."""
+    with _open_regular(path) as f:
+        fd = f.fileno()
+        for start, end in _data_ranges(fd):
+            os.lseek(fd, start, os.SEEK_SET)
+            tail, left = b"", end - start
+            while left > 0:
+                if budget["bytes"] <= 0:
+                    return None
+                chunk = os.read(fd, min(SCAN_CHUNK, left, budget["bytes"]))
+                if not chunk:
+                    break
+                left -= len(chunk)
+                budget["bytes"] -= len(chunk)
+                text = tail + chunk
+                if _CREDENTIAL_BYTES.search(text):
+                    return True
+                tail = text[-SCAN_OVERLAP:]
+    return False
+
+
+def _data_ranges(fd: int) -> list[tuple[int, int]]:
+    """The byte ranges of a file that hold data: holes read as zeros and can hold no credential. The whole file where
+    the platform or filesystem cannot say."""
+    size = os.fstat(fd).st_size
+    seek_data, seek_hole = getattr(os, "SEEK_DATA", None), getattr(os, "SEEK_HOLE", None)
+    if seek_data is None or seek_hole is None:
+        return [(0, size)]
+    ranges, pos = [], 0
+    try:
+        while pos < size:
+            try:
+                start = os.lseek(fd, pos, seek_data)
+            except OSError as exc:
+                if exc.errno == errno.ENXIO:  # no data past pos
+                    break
+                raise
+            end = os.lseek(fd, start, seek_hole)
+            ranges.append((start, end))
+            pos = end
+    except OSError:
+        return [(0, size)]
+    return ranges

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from pathlib import Path
 
 import pytest
 from conftest import IS_WINDOWS
@@ -194,3 +195,153 @@ def test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link(directory
     os.symlink(target, directory / "events.jsonl")
     runlog.EventLog(directory / "events.jsonl")({"event": "x"})
     assert target.read_text(encoding="utf-8") == ""
+
+
+# ---------------------------------------------------------------- the credential scan at a run's end
+
+TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
+
+
+def test_the_credential_scan_finds_a_credential_wherever_chunks_split_it(directory, monkeypatch):
+    """The scan reads in overlapping chunks so a large file is never held whole; a credential that any chunk boundary
+    cuts is still found."""
+    monkeypatch.setattr(runlog, "SCAN_CHUNK", 32)
+    harness = directory / "harness"
+    harness.mkdir()
+    for offset in range(0, 80):
+        f = harness / f"log-{offset}.txt"
+        f.write_text("x" * offset + TOKEN + "\n", encoding="utf-8")
+        assert runlog.credential_scan(directory) == {"clean": False, "files": [str(f)]}, offset
+        f.unlink()
+    (harness / "clean.txt").write_text("x" * 500, encoding="utf-8")
+    assert runlog.credential_scan(directory) == {"clean": True, "files": []}
+    assert runlog.credential_scan(harness / "clean.txt") == {"clean": True, "files": []}  # a file as the root
+
+
+def test_a_scan_past_its_budget_is_unscanned_never_clean(directory, monkeypatch):
+    """#139 review, finding 1: one scan reads a bounded amount; what it could not read makes it incomplete, and an
+    incomplete scan is not clean."""
+    harness = directory / "harness"
+    harness.mkdir()
+    (harness / "a.txt").write_text("x" * 100, encoding="utf-8")
+    (harness / "b.txt").write_text("x" * 100, encoding="utf-8")
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 150)
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [], "unscanned": 1}
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 1 << 20)
+    monkeypatch.setattr(runlog, "SCAN_MAX_ENTRIES", 1)
+    assert runlog.credential_scan(directory)["unscanned"] >= 1
+
+
+def test_a_sparse_file_costs_what_it_stores(directory, monkeypatch):
+    """#139 review, finding 1: a file of holes (`truncate -s 16T`) is not read as zeros. Where the platform cannot say
+    where the holes are, the budget still bounds it."""
+    harness = directory / "harness"
+    harness.mkdir()
+    sparse = harness / "sparse"
+    with open(sparse, "wb") as f:
+        f.truncate(1 << 30)  # 1 GiB of holes
+        f.seek((1 << 30) - len(TOKEN))
+        f.write(TOKEN.encode())
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 1 << 24)  # 16 MiB: enough for the data, never for the holes
+    result = promptly(lambda: runlog.credential_scan(directory), within=30)
+    fd = os.open(sparse, os.O_RDONLY)
+    try:
+        holes_unknown = runlog._data_ranges(fd) == [(0, 1 << 30)]
+    finally:
+        os.close(fd)
+    if holes_unknown:
+        assert result == {"clean": False, "files": [], "unscanned": 1}  # no hole information: bounded, not clean
+    else:
+        assert result == {"clean": False, "files": [str(sparse)]}
+
+
+def test_an_entry_gone_before_it_is_read_holds_nothing(directory, monkeypatch):
+    """#139 re-review, F2: an atomic write's temporary file renamed (or a directory removed) between the listing and
+    the read leaves nothing to scan; the run is still clean. Unreadable is unscanned; gone is not."""
+    harness = directory / "harness"
+    (harness / "sub").mkdir(parents=True)
+    (harness / ".req.tmp").write_text("{}", encoding="utf-8")
+    real_open, real_scandir = runlog._open_regular, os.scandir
+
+    def vanished(path):
+        if path.name == ".req.tmp":
+            raise FileNotFoundError(2, "renamed", str(path))
+        return real_open(path)
+
+    def scandir(path):
+        if Path(path).name == "sub":
+            raise FileNotFoundError(2, "removed", str(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(runlog, "_open_regular", vanished)
+    monkeypatch.setattr(runlog.os, "scandir", scandir)
+    assert runlog.credential_scan(directory) == {"clean": True, "files": []}
+    monkeypatch.setattr(runlog, "_open_regular", lambda p: (_ for _ in ()).throw(PermissionError(13, "denied")))
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [], "unscanned": 1}
+
+
+def test_the_scan_reaches_every_entry_its_listing_shows(directory):
+    """#139 re-review, F1: on Windows a plain path is normalized before the file system sees it, so a name ending in
+    a dot (or a path past MAX_PATH) listed by the walk would open as not found and read as gone. The scan walks and
+    opens extended-length paths there, and names files without the prefix. A name ending in a dot is ordinary
+    elsewhere, so this runs on every platform and proves the Windows case where it matters."""
+    harness = directory / "harness"
+    harness.mkdir()
+    dotted = runlog.native_path(harness) / "notes."
+    with open(dotted, "w", encoding="utf-8") as f:
+        f.write(TOKEN)
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [runlog.shown_path(str(dotted))]}
+
+
+def test_extended_length_paths_are_added_for_the_walk_and_removed_for_the_record():
+    import ntpath
+
+    local = runlog.native_path(Path("C:\\runs\\R-1"), windows=True)
+    assert str(local) == "\\\\?\\" + ntpath.abspath("C:\\runs\\R-1")
+    assert runlog.shown_path(str(local)) == ntpath.abspath("C:\\runs\\R-1")
+    unc = runlog.native_path(Path("\\\\host\\share\\runs"), windows=True)
+    assert str(unc) == "\\\\?\\UNC\\host\\share\\runs"
+    assert runlog.shown_path(str(unc)) == "\\\\host\\share\\runs"
+    assert runlog.native_path(Path("/srv/runs"), windows=False) == Path("/srv/runs")
+
+
+def test_a_deep_tree_is_walked_without_recursion(directory):
+    """#139 review, finding 4: Python 3.11's rglob recursed per level, and a run's deep tree raised RecursionError out
+    of the supervisor before it saved the final record."""
+    levels = [directory / "harness"]
+    levels[0].mkdir()
+    for _ in range(1100):
+        try:
+            (levels[-1] / "d").mkdir()
+        except OSError:  # a path-length limit (Windows): deep enough
+            break
+        levels.append(levels[-1] / "d")
+    leak = levels[-1] / "leak.txt"
+    leak.write_text(TOKEN, encoding="utf-8")
+    try:
+        assert runlog.credential_scan(directory)["files"] == [str(leak)]
+    finally:  # removed deepest first: Python 3.11's shutil.rmtree recurses, and pytest's cleanup would hit the limit
+        leak.unlink()
+        for level in reversed(levels):
+            level.rmdir()
+
+
+@POSIX_ONLY
+def test_the_credential_scan_never_reads_through_a_link_or_blocks_on_a_fifo(directory, tmp_path):
+    """The supervisor scans as the operator a directory the run could write (its harness/ even when contained): a FIFO
+    never stalls the run's end, /dev/zero is never read, and a link (to a file or a directory) is not followed, nor
+    a root that is itself a link."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text(TOKEN, encoding="utf-8")
+    harness = directory / "harness"
+    harness.mkdir()
+    os.mkfifo(harness / "pipe")
+    os.symlink("/dev/zero", harness / "zero")
+    os.symlink(outside / "secret.txt", harness / "linked.txt")
+    os.symlink(outside, harness / "linked-dir")
+    leaked = harness / "leaked.txt"
+    leaked.write_text(TOKEN, encoding="utf-8")
+    assert promptly(lambda: runlog.credential_scan(directory)) == {"clean": False, "files": [str(leaked)]}
+    os.symlink(outside, tmp_path / "root-link")
+    assert runlog.credential_scan(tmp_path / "root-link") == {"clean": True, "files": []}

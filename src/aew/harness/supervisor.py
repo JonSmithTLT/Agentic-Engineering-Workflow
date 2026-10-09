@@ -381,8 +381,10 @@ class Supervisor:
                                          outcomes=self.bridge.outcomes)
         self._event("ended", status=status, reason=reason)
         self._drop_credential()
-        leaks = runlog.scan_for_credentials(self.run_dir)
-        self.record["credential_scan"] = {"clean": not leaks, "files": leaks}
+        try:
+            self.record["credential_scan"] = runlog.credential_scan(self.run_dir)
+        except Exception as exc:  # the final record is saved whatever the scan met; a failed scan is never clean
+            self.record["credential_scan"] = {"clean": False, "files": [], "error": f"{type(exc).__name__}: {exc}"}
         self._save()
 
     def _terminate_adapter(self) -> None:

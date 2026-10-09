@@ -1240,11 +1240,10 @@ sections:
     When: '**M4-G** (proposed, M4-C triage)'
     Notes: 'Harmless today: a `publishing` record is excluded from interruption'
   - '#': E33
-    Work: Stream the credential scan of run state in chunks with overlap, instead of reading each file whole; consider UTF-16
-      transcripts on Windows
+    Work: Consider credentials written as UTF-16 (transcripts on Windows) in the end-of-run credential scan
     Source: independent review of authority and custody, note 5, 2026-10-03
     When: '**On measured need**'
-    Notes: OpenCode's databases grow large
+    Notes: The streaming half is closed (§9, 2026-10-09); the scan matches the credential's ASCII bytes only
   - '#': E35
     Work: 'OpenCode support qualification and adapter seams: `codemode: false` on the Lead''s AEW MCP server, with readiness
       checked through the broker (a missing server fails the Lead closed, never a session without AEW''s control surface);
@@ -1554,6 +1553,13 @@ sections:
       budget tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the
       pack''s budget notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget
       yet: wiring one in waits for a measured budget, and recall fills the last tier when it exists (PR #68)'
+  - '#': E33 (part)
+    Was: Stream the credential scan of run state in chunks with overlap, instead of reading each file whole
+    Closed: '2026-10-09'
+    By: 'PR #139: the end-of-run scan walks the run directory iteratively without entering links or reparse points, reads
+      only regular files without following a link or blocking, in overlapping chunks with holes skipped, within one byte
+      and entry budget; what it cannot read makes `credential_scan` incomplete (`unscanned`), never clean. The UTF-16 half
+      stays as E33'
   - '#': E34
     Was: 'M4-D design inputs from the integration review: the worktree-sync classifier assumed one publisher, and a large
       publish''s control-lock hold had no bound'

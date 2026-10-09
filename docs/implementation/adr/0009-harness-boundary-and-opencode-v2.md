@@ -301,6 +301,18 @@ heartbeat file's creation. In the same gap a relaunch without `--replace` was no
   `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.after_custody_record`.
   It returned `lost` before the fix.
 
+## Amendment 2026-10-09 — the post-run scan reads what the run left defensively, and says when it is incomplete
+
+The post-run scan (above) runs as the operator over a directory the run's own user could write: its `harness/` even
+under containment. It now walks that directory iteratively, never entering a link or, on Windows, another reparse point;
+reads only regular files, never through a link and never blocking on a FIFO or device; and reads each in overlapping
+chunks with its holes skipped, within one budget of bytes and entries per scan (`runlog.credential_scan`). Anything it
+could not read is counted in `credential_scan.unscanned`, and then `clean` is false: **clean means scanned and clean.**
+A scan that fails outright is recorded as not clean with its error, and the run's final record is still saved. On
+Windows the walk opens extended-length paths, so every entry its listing shows is reachable. The scan reads a file's
+main data only (not NTFS alternate data streams or extended attributes): it catches a credential written into a file by
+mistake, not one a model hides on purpose. Register E33's streaming half closes with this (PR #139).
+
 ## Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux (M4-B; F2, E13)
 
 M4-B closes register items F2 (real filesystem containment, the gate before any real-repository dogfood) and E13 (POSIX process ownership). It builds the design approved in `m4-ambiguity-report.md` §2.4, with the designer's correction: the real git metadata is never writable by the agent. The probes behind it are in `docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md`. It was verified on Rocky Linux 8.10 (kernel 4.18, SELinux enforcing, bubblewrap 0.4.0).

@@ -43,6 +43,10 @@ skipped:
     tests/unit/test_runlog_reads.py::test_a_record_that_is_a_fifo_a_device_or_a_link_is_none_and_never_blocks: >-
       needs POSIX FIFOs, /dev/zero and symlinks. Windows refuses a record that is not a regular file before opening
       it, tested with a directory and a record past its bound. Covered on Linux.
+    tests/unit/test_runlog_reads.py::test_the_credential_scan_never_reads_through_a_link_or_blocks_on_a_fifo: >-
+      needs POSIX FIFOs, /dev/zero and symlinks. Windows scans only what lstat shows is a regular file, through the same
+      opener as a run record, and the chunked scan runs on every platform
+      (test_the_credential_scan_finds_a_credential_wherever_chunks_split_it). Covered on Linux.
     tests/unit/test_runlog_reads.py::test_a_beat_never_follows_a_link_or_blocks_on_a_fifo: >-
       needs POSIX symlinks and FIFOs. Windows beats only a heartbeat lstat shows is a regular file, and a beat on a
       directory never raises on any platform (test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises). Covered

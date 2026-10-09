@@ -17,8 +17,9 @@ def _pass(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> None:
     return None
 
 
-def _dispatch() -> Dispatch:
-    return Dispatch(SimpleNamespace(aew_root=None, manifest={}))  # type: ignore[arg-type]
+def _dispatch(legality: str = "L", operational: str = "O") -> Dispatch:
+    digests = {"legality_digest": legality, "operational_digest": operational}
+    return Dispatch(SimpleNamespace(aew_root=None, manifest={}, policy_digests=lambda: dict(digests)))  # type: ignore[arg-type]
 
 
 def _decision(work_id: str, entrypoint: str, revision: int = 7, **facts: Any) -> DispatchDecision:
@@ -113,3 +114,21 @@ def test_the_assurance_guards_refuse_to_run_without_the_archetype():
     d.register_all([GuardRegistration(g, _pass) for g in sorted({g for e in ENTRYPOINTS.values() for g in e.guards})])
     with pytest.raises(IntegrityError, match="without resolving the archetype"):
         d.decide({"revision": 3, "work": {"T-0001": {}}}, "work.assign", "T-0001")
+
+
+def test_a_decision_is_stale_only_when_legality_affecting_policy_changed():
+    """A3 §3 and §9: the commit check binds a decision to the legality digest it was made under. An operational
+    change (a different operational digest) admits the decision; a legality change refuses it."""
+    old = {"I-0001": {"work_unit": "T-0001", "runs": [{"run": 1}]}}
+
+    def admit(decided: dict[str, str]) -> dict[str, Any]:
+        state = {"I-0001": {"work_unit": "T-0001", "runs": [{"run": 1}, {"run": 2}]}}
+        launch = _decision("T-0001", "harness.launch", invocation="I-0001")
+        launch.dependency_digests.update(decided)
+        _dispatch().finalize(_ctx(old, state, [launch]))
+        return state["I-0001"]["runs"][1]["dispatch"]
+
+    recorded = admit({"legality_digest": "L", "operational_digest": "old operational"})
+    assert recorded["legality_digest"] == "L" and recorded["operational_digest"] == "old operational"
+    with pytest.raises(DispatchUndecided, match="legality-affecting policy"):
+        admit({"legality_digest": "old legality", "operational_digest": "O"})

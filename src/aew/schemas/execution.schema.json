@@ -7,9 +7,9 @@
   "required": ["schema", "configured", "profiles", "routing"],
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": "aew/execution/v1"},
-    "configured": {"type": "boolean"},
-    "harness": {"type": "string", "minLength": 1},
+    "schema": {"x-aew-class": "operational", "const": "aew/execution/v1"},
+    "configured": {"x-aew-class": "legality_affecting", "type": "boolean"},
+    "harness": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1},
     "profiles": {
       "type": "object",
       "propertyNames": {"$ref": "#/$defs/name"},
@@ -20,17 +20,19 @@
       "required": ["default"],
       "additionalProperties": false,
       "properties": {
-        "default": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]},
-        "archetypes": {"$ref": "#/$defs/route_map"},
+        "default": {"x-aew-class": "legality_affecting", "oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]},
+        "archetypes": {"x-aew-class": "legality_affecting", "$ref": "#/$defs/route_map"},
         "classes": {
+          "x-aew-class": "legality_affecting",
           "type": "object",
           "propertyNames": {"enum": ["0", "1", "2", "3", "4"]},
           "additionalProperties": {"$ref": "#/$defs/name"}
         },
-        "cards": {"$ref": "#/$defs/route_map"}
+        "cards": {"x-aew-class": "legality_affecting", "$ref": "#/$defs/route_map"}
       }
     },
     "provider_env": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
       "uniqueItems": true
@@ -40,13 +42,13 @@
       "description": "OS filesystem containment of harness runs (F2, Linux; ADR-0009 amendment). mode required (the default) refuses a launch whose sandbox cannot be established or fails its self-test; allow_weaker launches it labelled workdir_separation_only. writable adds existing directories every contained run may write (recorded on each run's label); a root that equals, contains or lies under what containment protects (the project's .aew, its git directories, the runs directory, /tmp, the Python environment, a masked secret) is refused at launch. hide masks further secret files or directories. trusted_git_drivers names the git filter, diff and merge drivers AEW's own git may run (an installed program agents cannot modify, such as git-lfs); every other configured driver, hook and fsmonitor is switched off, and a dispatch whose base assigns an untrusted filter is refused.",
       "additionalProperties": false,
       "properties": {
-        "mode": {"enum": ["required", "allow_weaker"]},
-        "writable": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-        "hide": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-        "trusted_git_drivers": {"type": "array", "items": {"type": "string", "pattern": "^[^\\s=]+$"}, "uniqueItems": true}
+        "mode": {"x-aew-class": "legality_affecting", "enum": ["required", "allow_weaker"]},
+        "writable": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "hide": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "trusted_git_drivers": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "pattern": "^[^\\s=]+$"}, "uniqueItems": true}
       }
     },
-    "description": {"type": "string"}
+    "description": {"x-aew-class": "operational", "type": "string"}
   },
   "$defs": {
     "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
@@ -60,13 +62,13 @@
       "required": ["provider", "model"],
       "additionalProperties": false,
       "properties": {
-        "harness": {"type": "string", "minLength": 1},
-        "provider": {"type": "string", "minLength": 1, "pattern": "^[^/\\s]+$"},
-        "model": {"type": "string", "minLength": 1, "pattern": "^\\S+$"},
-        "effort": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
-        "max_steps": {"type": "integer", "minimum": 1},
-        "deadline_s": {"type": "number", "exclusiveMinimum": 0},
-        "description": {"type": "string"}
+        "harness": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1},
+        "provider": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^[^/\\s]+$"},
+        "model": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^\\S+$"},
+        "effort": {"x-aew-class": "legality_affecting", "type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
+        "max_steps": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 1},
+        "deadline_s": {"x-aew-class": "operational", "type": "number", "exclusiveMinimum": 0},
+        "description": {"x-aew-class": "operational", "type": "string"}
       }
     }
   }

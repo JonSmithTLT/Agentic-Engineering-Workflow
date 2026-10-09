@@ -6,21 +6,22 @@
   "type": "object",
   "required": ["schema", "checks"],
   "properties": {
-    "schema": {"const": "aew/checks/v1"},
+    "schema": {"x-aew-class": "operational", "const": "aew/checks/v1"},
     "checks": {
       "type": "object",
+      "propertyNames": {"type": "string", "minLength": 1},
       "additionalProperties": {
         "type": "object",
         "required": ["configured"],
         "properties": {
-          "configured": {"type": "boolean"},
-          "command": {"type": ["array", "null"], "items": {"type": "string"}},
-          "cwd": {"type": "string"},
-          "timeout_s": {"type": "number", "exclusiveMinimum": 0},
-          "description": {"type": "string"}
+          "configured": {"x-aew-class": "legality_affecting", "type": "boolean"},
+          "command": {"x-aew-class": "legality_affecting", "type": ["array", "null"], "items": {"type": "string"}},
+          "cwd": {"x-aew-class": "legality_affecting", "type": "string"},
+          "timeout_s": {"x-aew-class": "legality_affecting", "type": "number", "exclusiveMinimum": 0},
+          "description": {"x-aew-class": "operational", "type": "string"}
         }
       }
     },
-    "baseline_failures": {"type": "array", "items": {"type": "string"}}
+    "baseline_failures": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string"}}
   }
 }

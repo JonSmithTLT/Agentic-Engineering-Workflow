@@ -119,3 +119,35 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
 - **Qualification (the lead developer's addition, decision record §12, not the decision's text).** Each reference
   model is qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before
   it is relied on, as every profile is (F32).
+
+## Amendment 2026-10-07 — A3: two policy digests (built, M4-E slice E1)
+
+The pre-F15.2 amendment A3 ([policy binding and digests](../../design/policy-binding-digest-amendment-v0.1.md); ledger
+PBD) splits what binds a decision to policy. This is built for dispatch, and recorded here because the execution
+policy is this ADR's.
+
+- **Every policy field is classified.** Every property of the four policy schemas the policy pin covers (gates,
+  guardrails, checks, execution) carries `"x-aew-class": "legality_affecting" | "operational"`
+  (`aew.policy.classes`). A property without a class must be a container whose children are all classified. A test
+  walks every schema, and digesting refuses a schema with an unclassified property (A3 §8).
+- **Operational fields:** the execution profile's `deadline_s` (A1 §3.2's invocation hard deadline: authority-reducing
+  only), `gates.post_integration.validation_deadline_s`, the `history_audit` reporting thresholds, and descriptions and
+  schema ids outside the guardrails policy. Everything else is legality-affecting: routing, profiles' harness,
+  provider, model, effort and step cap, containment, provider environment names, gates, guardrails and check
+  definitions. A policy file with no classified schema counts as legality in full, and so does a key the schema does
+  not name (an open container accepts it, and the engine may read it, as it reads `builtin` on a check entry). A policy
+  map key that is not a string is refused (`VALIDATION_FAILED`, reason `policy_key_not_string`).
+- **A check's definition is legality (a deviation from the M4-E plan's §2.5 table, PR #130 review finding 1).** The
+  table listed a check's `timeout_s` as operational, "a stop bound". But what a check result proves is its definition
+  digest (independent audit I1): a configured check's command, working directory and timeout, and for the builtin
+  guardrails check the whole guardrails policy. A change to any of them unsatisfies the gates the old evidence
+  satisfied and refuses a pinned validation run, which is a legality change. So `checks.*.timeout_s` and every
+  guardrails field (`notes` and the schema id included) are legality-affecting, and a test asserts that no operational
+  field is an input to a check's definition.
+- **Two digests,** `legality_digest` and `operational_digest`, are computed from the pinned policy bytes. A dispatch
+  decision carries both. Its commit check is bound to `legality_digest` alone, so an operational edit, once adopted,
+  never makes a decision stale. What a decision admits records both, for attribution.
+- **Adoption is unchanged.** The classes never relax the policy pin (PR #118): every edit, operational ones included,
+  takes effect only after the operator's `aew manifest adopt`. Until then a read of the policy is an integrity error,
+  never stale policy.
+- **Staged actions** (the StageIntent, M4-E E3) record the same two digests when the journal lands.

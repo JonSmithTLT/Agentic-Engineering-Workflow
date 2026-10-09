@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import pytest
 from aewflow import SUBTRACT_PATCH, assign, implement, sample_project
-from invariants import assert_control_invariants
+from invariants import assert_control_invariants, load_control
 
 from aew.engine.api import Engine
-from aew.errors import DispatchUndecided, IllegalTransition, UsageError
+from aew.errors import DispatchUndecided, IllegalTransition, IntegrityError, UsageError
 from aew.util import dump_yaml, load_yaml
 
 ALL_ASSERTIONS = ("--class0-assert", "transformation_clear", "--class0-assert", "inputs_complete",
@@ -368,15 +368,73 @@ def test_a_commit_outside_the_lead_transaction_cannot_create_an_undecided_invoca
     assert p.rev() == rev
 
 
-def test_a_decision_made_before_a_policy_edit_admits_nothing(tmp_path):
-    """D6: a decision records the policy digests it was made under; the commit refuses it if they changed."""
+def test_a_policy_edit_during_a_dispatch_is_an_integrity_error_not_staleness(tmp_path):
+    """D6 under the policy pin (#118) and A3: an edit made while a dispatch is deciding is not adopted, so the commit
+    refuses it as an integrity error, never as stale policy, and admits nothing. Staleness is reserved for adopted
+    legality changes (the unit test of the commit check)."""
     p = sample_project(tmp_path)
     wid = ticket(p, tmp_path)
     engine = Engine.discover(p.root)
     rev = p.rev()
-    with pytest.raises(DispatchUndecided, match="policy files"):
+    with pytest.raises(IntegrityError, match="modified outside AEW"):
         with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             set_policy(p, "guardrails", lambda g: g["protected_paths"].append("calc/**"))
             engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
     assert p.rev() == rev
+
+
+def test_an_operational_edit_pending_adoption_is_integrity_not_staleness(tmp_path):
+    """A3 and PFS-04 under the policy pin (#118): an operational edit (a reporting threshold) that is not yet adopted
+    still refuses the dispatch as an integrity error, never as stale policy. The classes never relax the pin."""
+    p = sample_project(tmp_path)
+    wid = ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+    rev = p.rev()
+    with pytest.raises(IntegrityError, match="modified outside AEW"):
+        with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
+            card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
+            set_policy(p, "gates", lambda g: g.setdefault("history_audit", {}).update(max_unverified_entries=7))
+            engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
+    assert p.rev() == rev
+
+
+def test_explain_and_the_admitted_invocation_record_both_digests(tmp_path):
+    """A3 §3 and §9: explain shows both digests, and the invocation a decision admits records both, for attribution."""
+    p = sample_project(tmp_path)
+    wid = ticket(p, tmp_path)
+    explained = p.ok("dispatch", "explain", wid, "--json")["dependency_digests"]
+    assert explained["legality_digest"].startswith("sha256:")
+    assert explained["operational_digest"].startswith("sha256:")
+    assign(p, wid)
+    inv = next(i for i in load_control(p.root)["invocations"].values() if i["work_unit"] == wid)
+    assert inv["dispatch"]["legality_digest"] == explained["legality_digest"]
+    assert inv["dispatch"]["operational_digest"] == explained["operational_digest"]
+
+
+def _edit_policy(p, name, change):
+    path = p.root / f".aew/policy/{name}.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    change(policy)
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+
+
+def test_kernel_policy_digests_follow_the_adopted_bytes(tmp_path):
+    """A3 §9 through ``Kernel.policy_digests``: the digests are read from the pinned bytes, an unadopted edit is an
+    integrity error, and after adoption an operational edit changes only ``operational_digest`` while a legality edit
+    changes ``legality_digest`` (so the cache keyed by the bytes in force refreshes)."""
+    p = sample_project(tmp_path)
+    k = Engine.discover(p.root)._k  # one Kernel throughout, so its digest cache is exercised
+    before = k.policy_digests()
+    _edit_policy(p, "gates", lambda g: g.setdefault("history_audit", {}).update(max_unverified_entries=7))
+    with pytest.raises(IntegrityError, match="modified outside AEW"):
+        k.policy_digests()
+    p.adopt_policy()
+    operational = k.policy_digests()
+    assert operational["legality_digest"] == before["legality_digest"]
+    assert operational["operational_digest"] != before["operational_digest"]
+    _edit_policy(p, "guardrails", lambda g: g["protected_paths"].append("calc/**"))
+    p.adopt_policy()
+    legal = k.policy_digests()
+    assert legal["legality_digest"] != operational["legality_digest"]
+    assert legal["operational_digest"] == operational["operational_digest"]

@@ -261,12 +261,11 @@ class EventLog:
     def __call__(self, event: dict[str, Any]) -> None:
         line = K.redact(json.dumps({"at": utc_now(), **event}, default=str))
         with self._lock:
-            try:
-                fd = _open_append(self.path)
-            except OSError:  # the log is telemetry: one that cannot be appended to never stops the supervisor
+            try:  # the log is telemetry: one that cannot be opened or written never stops the supervisor
+                with os.fdopen(_open_append(self.path), "a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+            except OSError:  # a full disk, a file size limit, a byte-range lock on Windows (#138 re-review, F3)
                 return
-            with os.fdopen(fd, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
 
 
 def _open_append(path: Path) -> int:

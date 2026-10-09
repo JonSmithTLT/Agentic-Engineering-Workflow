@@ -172,6 +172,16 @@ def test_the_event_log_appends_whole_lines(directory):
     assert [json.loads(line)["event"] for line in lines] == ["one", "two"]
 
 
+def test_an_event_log_write_that_fails_never_raises_into_the_supervisor(directory, monkeypatch):
+    """#138 re-review, F3: the open succeeds and the write fails (a full disk, a file size limit, a byte-range lock
+    on Windows); the thread that logged carries on."""
+    path = directory / "events.jsonl"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(runlog, "_open_append", lambda p: os.open(p, os.O_RDONLY))  # a write to it fails
+    runlog.EventLog(path)({"event": "x"})
+    assert path.read_text(encoding="utf-8") == ""
+
+
 @POSIX_ONLY
 def test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link(directory, tmp_path):
     """The supervisor's threads append under one lock: a log that blocked would stall them all, the watchdog

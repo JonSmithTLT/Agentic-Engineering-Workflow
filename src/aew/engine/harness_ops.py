@@ -488,6 +488,8 @@ class Harness:
         """Ask a run's supervisor to stop its harness. The invocation stays as it is."""
         if not (reason and reason.strip()):
             raise UsageError("stopping a run needs a reason")
+        if len(reason) > MAX_SEND_CHARS:  # every request file fits the supervisor's bounded read
+            raise UsageError(f"a stop reason is at most {MAX_SEND_CHARS} characters; this one has {len(reason)}")
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
     def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:

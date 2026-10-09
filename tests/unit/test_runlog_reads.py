@@ -252,16 +252,22 @@ def test_a_sparse_file_costs_what_it_stores(directory, monkeypatch):
 def test_a_deep_tree_is_walked_without_recursion(directory):
     """#139 review, finding 4: Python 3.11's rglob recursed per level, and a run's deep tree raised RecursionError out
     of the supervisor before it saved the final record."""
-    deep = directory / "harness"
-    deep.mkdir()
+    levels = [directory / "harness"]
+    levels[0].mkdir()
     for _ in range(1100):
-        deep = deep / "d"
         try:
-            deep.mkdir()
+            (levels[-1] / "d").mkdir()
         except OSError:  # a path-length limit (Windows): deep enough
             break
-    (deep.parent / "leak.txt").write_text(TOKEN, encoding="utf-8")
-    assert runlog.credential_scan(directory)["files"] == [str(deep.parent / "leak.txt")]
+        levels.append(levels[-1] / "d")
+    leak = levels[-1] / "leak.txt"
+    leak.write_text(TOKEN, encoding="utf-8")
+    try:
+        assert runlog.credential_scan(directory)["files"] == [str(leak)]
+    finally:  # removed deepest first: Python 3.11's shutil.rmtree recurses, and pytest's cleanup would hit the limit
+        leak.unlink()
+        for level in reversed(levels):
+            level.rmdir()
 
 
 @POSIX_ONLY

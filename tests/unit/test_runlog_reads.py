@@ -29,12 +29,13 @@ def record(directory, status=K.RUNNING):
     (directory / "run.json").write_text(json.dumps({"run": directory.name, "status": status}), encoding="utf-8")
 
 
-def promptly(fn):
-    """``fn()`` within 10 s, from a daemon thread: a read that blocks fails the test instead of hanging it."""
+def promptly(fn, within: float = 10):
+    """``fn()`` within ``within`` seconds, from a daemon thread: a read that blocks fails the test instead of hanging
+    it."""
     out: list = []
     worker = threading.Thread(target=lambda: out.append(fn()), daemon=True)
     worker.start()
-    worker.join(10)
+    worker.join(within)
     assert out, "the read blocked"
     return out[0]
 
@@ -83,3 +84,113 @@ def test_a_record_that_is_a_fifo_a_device_or_a_link_is_none_and_never_blocks(dir
     os.remove(directory / "run.json")
     os.symlink("real.json", directory / "run.json")
     assert runlog.read_record(directory) is None
+
+
+# ---------------------------------------------------------------- the supervisor's own reads and writes
+
+
+def test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises_or_waits(directory):
+    """#138 review, F2: a directory is never replaceable, and on Windows each replace retries for seconds; the beat
+    leaves it at once, and the run reads as lost."""
+    (directory / "heartbeat").mkdir()
+    promptly(lambda: runlog.beat(directory), within=1)
+    assert (directory / "heartbeat").is_dir() and runlog.heartbeat_age(directory) is None
+
+
+@POSIX_ONLY
+def test_a_beat_never_follows_a_link_or_blocks_on_a_fifo(directory, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    os.symlink(outside / "created", directory / "heartbeat")  # dangling: a followed touch would create it
+    runlog.beat(directory)
+    assert not (outside / "created").exists()
+    assert runlog.heartbeat_age(directory) is not None  # the link was replaced by a heartbeat of its own
+    os.remove(directory / "heartbeat")
+    (outside / "kept").write_text("x", encoding="utf-8")
+    os.utime(outside / "kept", (0, 0))
+    os.symlink(outside / "kept", directory / "heartbeat")
+    runlog.beat(directory)
+    assert os.stat(outside / "kept").st_mtime == 0  # never touched through the link
+    os.remove(directory / "heartbeat")
+    os.mkfifo(directory / "heartbeat")
+    promptly(lambda: runlog.beat(directory))
+    assert runlog.heartbeat_age(directory) is not None
+
+
+def test_a_request_past_the_bound_is_dropped(directory, monkeypatch):
+    queue = directory / "requests"
+    queue.mkdir()
+    (queue / "a.json").write_text('{"kind": "stop"}', encoding="utf-8")
+    (queue / "b.json").write_text("x" * 64, encoding="utf-8")
+    monkeypatch.setattr(runlog, "MAX_RECORD_BYTES", 32)
+    assert runlog.take_requests(directory) == [("a.json", '{"kind": "stop"}')]
+    assert not list(queue.iterdir())  # taken or dropped, never read again
+
+
+@POSIX_ONLY
+def test_the_request_queue_never_blocks_on_a_fifo_or_follows_a_link(directory):
+    """The watchdog loop takes the queue: a request that blocked it would stop the deadline and every later Lead
+    request."""
+    queue = directory / "requests"
+    queue.mkdir()
+    os.mkfifo(queue / "a.json")
+    os.symlink("/dev/zero", queue / "b.json")
+    (queue / "c.json").write_text('{"kind": "stop"}', encoding="utf-8")
+    assert promptly(lambda: runlog.take_requests(directory)) == [("c.json", '{"kind": "stop"}')]
+    assert not list(queue.iterdir())
+
+
+@pytest.mark.parametrize("record", [
+    {"supervisor_pid": 1, "custody_at": ["2026-10-09T00:00:00Z"]},
+    {"supervisor_pid": 1, "custody_at": "yesterday"},
+    {"supervisor_pid": "1", "custody_at": "2026-10-09T00:00:00Z"},
+    {"supervisor_pid": True, "custody_at": "2026-10-09T00:00:00Z"},
+], ids=["custody-not-a-string", "custody-not-a-time", "pid-not-an-int", "pid-a-bool"])
+def test_teardown_never_acts_on_a_record_the_supervisor_did_not_write(directory, monkeypatch, record):
+    from aew.harness import procs
+
+    monkeypatch.setattr(procs, "kill_pid", lambda pid: pytest.fail(f"killed {pid}"))
+    (directory / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    assert runlog.end_supervisor(directory) is False
+
+
+@POSIX_ONLY
+def test_a_request_queue_that_is_a_link_is_not_read_or_emptied(directory, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "a.json").write_text('{"kind": "stop"}', encoding="utf-8")
+    os.symlink(elsewhere, directory / "requests")
+    assert runlog.take_requests(directory) == []
+    assert (elsewhere / "a.json").exists()
+
+
+def test_the_event_log_appends_whole_lines(directory):
+    log = runlog.EventLog(directory / "events.jsonl")
+    log({"event": "one"})
+    log({"event": "two"})
+    lines = (directory / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["event"] for line in lines] == ["one", "two"]
+
+
+def test_an_event_log_write_that_fails_never_raises_into_the_supervisor(directory, monkeypatch):
+    """#138 re-review, F3: the open succeeds and the write fails (a full disk, a file size limit, a byte-range lock
+    on Windows); the thread that logged carries on."""
+    path = directory / "events.jsonl"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(runlog, "_open_append", lambda p: os.open(p, os.O_RDONLY))  # a write to it fails
+    runlog.EventLog(path)({"event": "x"})
+    assert path.read_text(encoding="utf-8") == ""
+
+
+@POSIX_ONLY
+def test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link(directory, tmp_path):
+    """The supervisor's threads append under one lock: a log that blocked would stall them all, the watchdog
+    included."""
+    os.mkfifo(directory / "events.jsonl")
+    promptly(lambda: runlog.EventLog(directory / "events.jsonl")({"event": "x"}))
+    os.remove(directory / "events.jsonl")
+    target = tmp_path / "target.txt"
+    target.write_text("", encoding="utf-8")
+    os.symlink(target, directory / "events.jsonl")
+    runlog.EventLog(directory / "events.jsonl")({"event": "x"})
+    assert target.read_text(encoding="utf-8") == ""

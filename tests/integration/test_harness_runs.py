@@ -339,3 +339,54 @@ def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, t
         assert not any((workspace / f"calc/op{j}.py").exists() for j in range(n) if j != i)
     assert len(workspaces) == n
     assert_control_invariants(lab.project)
+
+
+def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
+    """A run record lives in the run's own directory: a field of another shape lists as absent, and the status of
+    the run and its invocation still reads."""
+    import json
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run = out["launch"]["run"]
+    lab.wait(run)
+    record = {"status": "crashed", "model_check": "x", "result": {"foreign_sessions": "y"}, "containment": ["z"]}
+    (runlog.run_dir(lab.aew_root, run) / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
+    assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])
+
+
+def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp_path):
+    """#138 review, F1: the supervisor reads a request up to a bound, so a message past what always fits is refused
+    with a usage error, never recorded and then dropped."""
+    from aew.engine.harness_ops import MAX_SEND_CHARS
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}])
+    out = lab.lead("work", "assign", wid, "--launch")
+    rev = lab.project.rev()
+    message = tmp_path / "message.txt"
+    message.write_text("é" * (MAX_SEND_CHARS + 1), encoding="utf-8")
+    res = lab.aew("harness", "send", out["launch"]["run"], "--file", str(message), "--token", lab.project.token)
+    assert res.error["code"] == "USAGE" and str(MAX_SEND_CHARS) in res.error["message"]
+    assert lab.project.rev() == rev
+    lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")
+
+
+def test_a_stop_reason_too_long_for_the_supervisor_is_refused(lab, tmp_path):
+    """#138 re-review, F4: a stop request is read with the same bound as a message, so its reason is bounded alike.
+    Called in-process: an argument this long is past what one command-line argument may carry."""
+    from aew.engine.api import Engine
+    from aew.engine.harness_ops import MAX_SEND_CHARS
+    from aew.errors import UsageError
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run, rev = out["launch"]["run"], lab.project.rev()
+    with pytest.raises(UsageError, match=str(MAX_SEND_CHARS)):
+        Engine.discover(lab.root).harness_stop(token=lab.project.token, run=run, reason="é" * (MAX_SEND_CHARS + 1))
+    assert lab.project.rev() == rev
+    assert not list((runlog.run_dir(lab.aew_root, run) / "requests").glob("*.json"))
+    lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")

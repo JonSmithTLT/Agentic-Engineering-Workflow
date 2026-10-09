@@ -335,8 +335,8 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                            "model_check": ((record or {}).get("model_check") or {}).get("status"),
-                            "foreign_sessions": ((record or {}).get("result") or {}).get("foreign_sessions") or [],
+                            "model_check": _field(record, "model_check").get("status"),
+                            "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
@@ -488,6 +488,8 @@ class Harness:
         """Ask a run's supervisor to stop its harness. The invocation stays as it is."""
         if not (reason and reason.strip()):
             raise UsageError("stopping a run needs a reason")
+        if len(reason) > MAX_SEND_CHARS:  # every request file fits the supervisor's bounded read
+            raise UsageError(f"a stop reason is at most {MAX_SEND_CHARS} characters; this one has {len(reason)}")
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
     def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
@@ -496,6 +498,9 @@ class Harness:
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
             raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
+        if len(text) > MAX_SEND_CHARS:
+            raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has {len(text)}. "
+                             "Put the material in a file in the agent's workspace and send its path instead")
         return self._lead_request(token, run, "send", {"text": text}, current=True)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
@@ -655,3 +660,18 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
         if "started" in acks[-1]:
             break
     return acks
+
+
+# A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
+# surrogate pair), so a message this long always arrives (#138 review, F1).
+MAX_SEND_CHARS = 1 << 20
+
+def _field(record: dict[str, Any] | None, key: str) -> dict[str, Any]:
+    """An object field of a run record, or ``{}``: the record is written in the run's own directory, so a field of
+    another shape lists as absent rather than failing ``harness runs``."""
+    value = (record or {}).get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []

@@ -335,8 +335,8 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                            "model_check": ((record or {}).get("model_check") or {}).get("status"),
-                            "foreign_sessions": ((record or {}).get("result") or {}).get("foreign_sessions") or [],
+                            "model_check": _field(record, "model_check").get("status"),
+                            "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
@@ -655,3 +655,14 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
         if "started" in acks[-1]:
             break
     return acks
+
+
+def _field(record: dict[str, Any] | None, key: str) -> dict[str, Any]:
+    """An object field of a run record, or ``{}``: the record is written in the run's own directory, so a field of
+    another shape lists as absent rather than failing ``harness runs``."""
+    value = (record or {}).get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []

@@ -37,10 +37,11 @@ def run_dir(aew_root: Path, run: str) -> Path:
 MAX_RECORD_BYTES = 16 << 20
 
 
-def _read_regular(path: Path) -> str:
-    """A regular file's text, at most ``MAX_RECORD_BYTES``. The run directory is writable by the run's own user, and
-    a Lead transaction reads it under the control lock (the usage copy, F25 R5): a symlink is not followed, a FIFO
-    or device never blocks the open or the read, and a file past the bound is refused, each as an ``OSError``."""
+def _read_regular(path: Path) -> bytes:
+    """A regular file's bytes, at most ``MAX_RECORD_BYTES``. The run directory is writable by the run's own user,
+    and a Lead transaction reads it under the control lock (the usage copy, F25 R5), the supervisor's watchdog its
+    request queue: a symlink is not followed, a FIFO or device never blocks the open or the read, and a file past the
+    bound is refused, each as an ``OSError``."""
     if os.name == "nt":  # no O_NOFOLLOW: refuse a link or a non-file before opening it
         if not stat.S_ISREG(os.lstat(path).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
@@ -52,8 +53,8 @@ def _read_regular(path: Path) -> str:
             raise OSError(errno.EINVAL, "not a regular file", str(path))
         data = f.read(MAX_RECORD_BYTES + 1)
     if len(data) > MAX_RECORD_BYTES:
-        raise OSError(errno.EFBIG, "larger than a run record", str(path))
-    return data.decode("utf-8")
+        raise OSError(errno.EFBIG, "past the bound of a run file", str(path))
+    return data
 
 
 def _read_text(path: Path) -> str | None:
@@ -63,7 +64,7 @@ def _read_text(path: Path) -> str | None:
     deadline = time.monotonic() + 5.0
     while True:
         try:
-            return _read_regular(path)
+            return _read_regular(path).decode("utf-8")
         except FileNotFoundError:
             return None
         except PermissionError:
@@ -95,12 +96,39 @@ def write_record(directory: Path, record: dict[str, Any]) -> None:
 
 
 def beat(directory: Path) -> None:
-    """The heartbeat is the modification time of ``heartbeat``: touching it never collides with a reader."""
+    """The heartbeat is the modification time of ``heartbeat``: touching it never collides with a reader.
+
+    The supervisor runs as the operator, and an uncontained run can write its own run directory: a beat never
+    follows a link (it would create or touch a file wherever the link points) and never blocks on a FIFO. A heartbeat
+    that is not a regular file is replaced by one; one that cannot be replaced (a directory) is left, and the run
+    reads as ``lost``, which is what a supervisor that cannot beat is. A beat never raises."""
     path = directory / "heartbeat"
     try:
-        os.utime(path)
-    except FileNotFoundError:
-        path.touch()
+        if os.utime in os.supports_fd and hasattr(os, "O_NOFOLLOW"):
+            flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
+            try:
+                fd = os.open(path, flags, 0o644)
+            except OSError:  # a link (ELOOP), a FIFO with no reader (ENXIO), a directory (EISDIR)
+                fd = None
+            if fd is not None:
+                try:
+                    if stat.S_ISREG(os.fstat(fd).st_mode):
+                        os.utime(fd)
+                        return
+                finally:
+                    os.close(fd)
+        else:  # Windows: no O_NOFOLLOW; touch only what lstat shows is a regular file
+            try:
+                regular = stat.S_ISREG(os.lstat(path).st_mode)
+            except FileNotFoundError:
+                path.touch()
+                return
+            if regular:
+                os.utime(path)
+                return
+        atomic_write(path, "")  # replaces the link or FIFO itself, never what it points to
+    except OSError:
+        pass
 
 
 def heartbeat_age(directory: Path) -> float | None:
@@ -179,7 +207,9 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
     out = []
     for path in sorted(queue.glob("*.json")) if queue.is_dir() else []:
         try:
-            out.append((path.name, path.read_bytes().decode("utf-8", errors="replace")))
+            # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
+            # queue, so a request that could block it would stop the deadline and every later Lead request.
+            out.append((path.name, _read_regular(path).decode("utf-8", errors="replace")))
         except OSError:
             pass
         try:
@@ -197,9 +227,13 @@ def end_supervisor(directory: Path) -> bool:
 
     record = read_record(directory) or {}
     pid, custody = record.get("supervisor_pid"), record.get("custody_at")
-    if record.get("ended_at") or not pid or not custody:
+    if record.get("ended_at") or not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0 \
+            or not isinstance(custody, str):
+        return False  # a record the supervisor did not write names no process to end
+    try:
+        custody_epoch = calendar.timegm(time.strptime(custody, "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
         return False
-    custody_epoch = calendar.timegm(time.strptime(custody, "%Y-%m-%dT%H:%M:%SZ"))
     if not procs.same_process(pid, custody_epoch):
         return False
     procs.kill_pid(pid)

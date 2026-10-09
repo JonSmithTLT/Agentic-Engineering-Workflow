@@ -339,3 +339,19 @@ def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, t
         assert not any((workspace / f"calc/op{j}.py").exists() for j in range(n) if j != i)
     assert len(workspaces) == n
     assert_control_invariants(lab.project)
+
+
+def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
+    """A run record lives in the run's own directory: a field of another shape lists as absent, and the status of
+    the run and its invocation still reads."""
+    import json
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run = out["launch"]["run"]
+    lab.wait(run)
+    record = {"status": "crashed", "model_check": "x", "result": {"foreign_sessions": "y"}, "containment": ["z"]}
+    (runlog.run_dir(lab.aew_root, run) / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
+    assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])

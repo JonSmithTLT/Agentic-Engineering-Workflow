@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from aew.harness import contract as K
 from aew.util import atomic_write, utc_now
@@ -38,20 +38,28 @@ def run_dir(aew_root: Path, run: str) -> Path:
 MAX_RECORD_BYTES = 16 << 20
 
 
-def _read_regular(path: Path) -> bytes:
-    """A regular file's bytes, at most ``MAX_RECORD_BYTES``. The run directory is writable by the run's own user,
-    and a Lead transaction reads it under the control lock (the usage copy, F25 R5), the supervisor's watchdog its
-    request queue: a symlink is not followed, a FIFO or device never blocks the open or the read, and a file past the
-    bound is refused, each as an ``OSError``."""
+def _open_regular(path: Path) -> BinaryIO:
+    """A regular file opened for reading. The run directory is writable by the run's own user: a symlink is not
+    followed and a FIFO or device never blocks the open, each refused as an ``OSError``."""
     if os.name == "nt":  # no O_NOFOLLOW: refuse a link or a non-file before opening it
         if not stat.S_ISREG(os.lstat(path).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
-    fd = os.open(path, flags)
-    with os.fdopen(fd, "rb") as f:
-        info = os.fstat(f.fileno())
-        if not stat.S_ISREG(info.st_mode):
+    f = os.fdopen(os.open(path, flags), "rb")
+    try:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
+    except BaseException:
+        f.close()
+        raise
+    return f
+
+
+def _read_regular(path: Path) -> bytes:
+    """A regular file's bytes, at most ``MAX_RECORD_BYTES`` (``_open_regular``). A Lead transaction reads the run
+    directory under the control lock (the usage copy, F25 R5), the supervisor's watchdog its request queue: a file
+    past the bound is refused, as an ``OSError``."""
+    with _open_regular(path) as f:
         data = f.read(MAX_RECORD_BYTES + 1)
     if len(data) > MAX_RECORD_BYTES:
         raise OSError(errno.EFBIG, "past the bound of a run file", str(path))
@@ -289,16 +297,40 @@ def _open_append(path: Path) -> int:
     return fd
 
 
+SCAN_CHUNK = 1 << 20
+# A credential is recognized from its first 45 characters (``aew1.tk_``, 16 hex digits, a dot and 20 more), so chunks
+# that overlap by more than that never split one past recognition.
+SCAN_OVERLAP = 64
+
+
 def scan_for_credentials(*roots: Path) -> list[str]:
-    """Files under ``roots`` containing an AEW credential string (custody property 4)."""
+    """Files under ``roots`` containing an AEW credential string (custody property 4).
+
+    The supervisor scans as the operator, at the end of a run, a directory the run's own user could write (its
+    ``harness/`` even under containment). Only regular files are read, without following a link or blocking on a FIFO
+    or device, and in overlapping chunks: a planted link is not read through, a FIFO never stalls the run's end, and a
+    large file is scanned whole without being held in memory."""
     found = []
     for root in roots:
-        if not root.exists():
+        try:
+            top = os.lstat(root)
+        except OSError:
             continue
-        for path in [root] if root.is_file() else root.rglob("*"):
+        for path in [root] if stat.S_ISREG(top.st_mode) else root.rglob("*") if stat.S_ISDIR(top.st_mode) else []:
             try:
-                if path.is_file() and K.CREDENTIAL_RE.search(path.read_bytes().decode("latin-1")):
+                if stat.S_ISREG(os.lstat(path).st_mode) and _contains_credential(path):
                     found.append(str(path))
             except OSError:
                 continue
     return found
+
+
+def _contains_credential(path: Path) -> bool:
+    tail = ""
+    with _open_regular(path) as f:
+        while chunk := f.read(SCAN_CHUNK):
+            text = tail + chunk.decode("latin-1")
+            if K.CREDENTIAL_RE.search(text):
+                return True
+            tail = text[-SCAN_OVERLAP:]
+    return False

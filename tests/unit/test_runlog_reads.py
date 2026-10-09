@@ -194,3 +194,40 @@ def test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link(directory
     os.symlink(target, directory / "events.jsonl")
     runlog.EventLog(directory / "events.jsonl")({"event": "x"})
     assert target.read_text(encoding="utf-8") == ""
+
+
+# ---------------------------------------------------------------- the credential scan at a run's end
+
+TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
+
+
+def test_the_credential_scan_finds_a_credential_wherever_chunks_split_it(directory, monkeypatch):
+    """The scan reads in overlapping chunks so a large file is never held whole; a credential that any chunk boundary
+    cuts is still found."""
+    monkeypatch.setattr(runlog, "SCAN_CHUNK", 32)
+    for offset in range(0, 80):
+        f = directory / "harness" / f"log-{offset}.txt"
+        f.parent.mkdir(exist_ok=True)
+        f.write_text("x" * offset + TOKEN + "\n", encoding="utf-8")
+        assert runlog.scan_for_credentials(directory) == [str(f)], offset
+        f.unlink()
+    (directory / "harness" / "clean.txt").write_text("x" * 500, encoding="utf-8")
+    assert runlog.scan_for_credentials(directory) == []
+
+
+@POSIX_ONLY
+def test_the_credential_scan_never_reads_through_a_link_or_blocks_on_a_fifo(directory, tmp_path):
+    """The supervisor scans as the operator a directory the run could write (its harness/ even when contained): a FIFO
+    never stalls the run's end, /dev/zero is never read, and a link (to a file or a directory) is not followed."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text(TOKEN, encoding="utf-8")
+    harness = directory / "harness"
+    harness.mkdir()
+    os.mkfifo(harness / "pipe")
+    os.symlink("/dev/zero", harness / "zero")
+    os.symlink(outside / "secret.txt", harness / "linked.txt")
+    os.symlink(outside, harness / "linked-dir")
+    leaked = harness / "leaked.txt"
+    leaked.write_text(TOKEN, encoding="utf-8")
+    assert promptly(lambda: runlog.scan_for_credentials(directory)) == [str(leaked)]

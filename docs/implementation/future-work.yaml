@@ -282,7 +282,8 @@ sections:
       covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift,
       the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`,
       immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after
-      every pinned route. Next are E3b (the executor, rules 1 to 7, R5-1) and E3c (`resume`, `resolve`)
+      every pinned route. **E3b (2026-10-09)** adds the surface's executor (`surface/stage.py`), running §3.4 rules 1 to
+      7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. Next is E3c (`resume`, `resolve`)
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport
@@ -367,7 +368,9 @@ sections:
       (PBD-06)'
     Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
       and non-side-effecting (the set''s release gate)'
-    Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
+    Notes: R5-1 is built in the stage executor (M4-E E3b, 2026-10-09; `surface/stage.py`), all five conditions; a guard
+      that is not yet a queryable decision is UNKNOWN and never retried, so only dispatch steps retry until E4. R5-3 is
+      not built. No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
       the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md);
       operator, 2026-10-07):** with F15.5, the unattended `PUBLISH_IF_CLEAN` authority the AEW arm needs before M4-H executes
   - '#': F15.7

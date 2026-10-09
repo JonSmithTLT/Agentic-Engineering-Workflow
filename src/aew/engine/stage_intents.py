@@ -8,8 +8,11 @@ So the journal never claims a step that did not commit, and a step never commits
 
 The finalizer refuses a step whose intent is no longer ACTIVE, whose owning Lead generation is not the current one
 (a takeover never continues a stage implicitly: F18 §14), whose key is already recorded (the idempotency key
-``<SI>:<n>``: a continued stage never repeats a committed step), or whose bound legality digest no longer holds
-(STALE_POLICY: rule 6). The operational digest is recorded with each step, never enforced.
+``<SI>:<n>``: a continued stage never repeats a committed step), that is out of plan order, whose commit is not its
+planned primitive's (``step_primitive_mismatch``), whose primitive commits a second time in one armed block
+(``step_commits_twice``), that retries a judgment-bearing step or any step of a judgment-bearing stage
+(``judgment_replay``: rules 4 and 5), or whose bound legality digest no longer holds (STALE_POLICY: rule 6). The
+operational digest is recorded with each step, never enforced.
 
 An intent is hot (control state ``stage_intents``) only while ACTIVE. It ends COMPLETED (every planned step
 committed), STOPPED_AT_BOUNDARY (stopped after one or more steps), REFUSED (stopped before any) or ABANDONED (closed by
@@ -52,7 +55,7 @@ COMPLETED, STOPPED, REFUSED, ABANDONED = "COMPLETED", "STOPPED_AT_BOUNDARY", "RE
 TERMINAL = (COMPLETED, STOPPED, REFUSED, ABANDONED)
 RECORDS_DIR = "records/stage-intents"
 MAX_STEPS = 16
-CHANNELS = ("mcp", "cli", "test")
+CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
 
 
 def cold_rel(intent_id: str, work_id: str | None) -> str:

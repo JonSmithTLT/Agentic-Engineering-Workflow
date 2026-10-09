@@ -138,7 +138,7 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
                         _, sep, rest = cut.partition("\n")
                         text = "[… earlier text not copied]\n" + (rest if sep and rest else cut)
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text, encoding="utf-8")
+                target.write_text(text, encoding="utf-8", newline="")  # the source's own line ends, untranslated
                 copied.append(target)
             except OSError as exc:
                 failed.append(f"{directory.name}/{name}: {type(exc).__name__}: {exc}")

@@ -87,6 +87,17 @@ def test_a_file_whose_last_line_outruns_the_bound_keeps_that_line(tmp_path):
     assert text.startswith("[… earlier text not copied]") and text.count("q") > D.MAX_COPY_BYTES - 100
 
 
+def test_a_copy_keeps_the_sources_line_ends(tmp_path):
+    """Windows CI on #136: a log written with CRLF line ends was copied as CR CR LF, because the decoded text kept its
+    CR and the text-mode write added another; read back, every line gained a blank one."""
+    lab = Lab(tmp_path / "proj")
+    directory = a_run(lab, "R-INV-0001-1")
+    (directory / "supervisor.log").write_bytes(b"Traceback\r\nRuntimeError: boom\r\n")
+    copied, _ = D.copy_evidence(lab, tmp_path / "out")
+    log = next(p for p in copied if p.name == "supervisor.log.txt")
+    assert log.read_bytes() == b"Traceback\r\nRuntimeError: boom\r\n"
+
+
 def test_two_tests_whose_ids_differ_only_in_punctuation_keep_separate_evidence():
     """#136 review, F2: parametrized ids such as ``[a/b]`` and ``[a b]`` map to one readable name; the full id's
     digest keeps their directories apart."""

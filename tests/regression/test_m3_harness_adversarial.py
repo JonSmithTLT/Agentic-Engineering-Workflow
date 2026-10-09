@@ -186,6 +186,26 @@ def test_harness_wait_keeps_waiting_while_a_just_launched_run_may_still_start(la
     assert_control_invariants(lab.project)
 
 
+def test_a_run_is_never_reported_lost_before_its_first_heartbeat(lab, tmp_path):
+    """Found by CI on PR #132 (Windows): the test two above saw `lost` for a run that then ended with evidence. The
+    supervisor wrote its first `starting` record before its first heartbeat, and writing the record wakes every
+    `harness wait`: a waiter woken into that gap saw a live record with no heartbeat, which reads as `lost`. A held
+    run's first record must already have a heartbeat."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script(R1, IMPLEMENT)
+    held = hold(tmp_path / "supervisor-held")
+    res = lab.lead_res("work", "assign", wid, "--launch", env={
+        "AEW_FAULT": "harness.launch.after_handoff", **pause_env(("harness.supervisor.after_custody_record", held))})
+    assert res.returncode == 86
+    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held right after its first record")
+    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
+    assert early.returncode == 0 and early.json["timed_out"], early.json  # held, alive and waited on: never `lost`
+    held.unlink()
+    done = lab.wait(R1)
+    assert done["status"] == "ended_with_evidence" and len(done["evidence"]) == 2
+    assert_control_invariants(lab.project)
+
+
 def test_a_run_that_takes_long_to_end_is_not_reported_lost(lab, tmp_path):
     """Found by CI on main after PR #7 (Windows): `aew harness wait` reported a healthy run `lost`. Ending a run
     (stopping the harness, for up to 20 s; collecting; scanning its evidence and its directory) happened outside

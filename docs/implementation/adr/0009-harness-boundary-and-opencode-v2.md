@@ -286,6 +286,21 @@ Nothing beat during that. When it took longer than the 10 s staleness limit, `ae
 - **Fix.** The supervisor beats from a background thread while it ends, as it already did while the harness starts. The thread stops once the final record is written. It also stops after at most `TERMINATE_S` + 60 s, so a supervisor stuck while ending still goes stale and is reported `lost`.
 - **Regression.** `test_a_run_that_takes_long_to_end_is_not_reported_lost` in `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.finishing`. It returned `lost` before the fix.
 
+## Amendment 2026-10-09 — a run beats before its first record (found by CI on PR #132)
+
+CI on Windows reported `lost` for a run that then ended with evidence, in
+`test_supervisor_spawns_then_the_launcher_crashes_after_handing_over_custody`. The supervisor wrote its first record
+(`starting`) before its first heartbeat. A non-terminal record with no heartbeat reads as `lost`, and writing a run
+record wakes every `aew harness wait`, so a waiter was woken into exactly that gap. On Linux the gap is under a
+millisecond; on a loaded Windows runner it spans a directory sync, the wake mark's write and rename, and the new
+heartbeat file's creation. In the same gap a relaunch without `--replace` was not refused, and `harness send` refused.
+
+- **Fix.** The supervisor beats (and starts its starting-beat thread) before it writes its first record, so a
+  non-terminal record always has a heartbeat.
+- **Regression.** `test_a_run_is_never_reported_lost_before_its_first_heartbeat` in
+  `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.after_custody_record`.
+  It returned `lost` before the fix.
+
 ## Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux (M4-B; F2, E13)
 
 M4-B closes register items F2 (real filesystem containment, the gate before any real-repository dogfood) and E13 (POSIX process ownership). It builds the design approved in `m4-ambiguity-report.md` §2.4, with the designer's correction: the real git metadata is never writable by the agent. The probes behind it are in `docs/research/containment-and-process-ownership-rocky8-research-2026-10-01.md`. It was verified on Rocky Linux 8.10 (kernel 4.18, SELinux enforcing, bubblewrap 0.4.0).

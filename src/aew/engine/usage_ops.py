@@ -1,0 +1,519 @@
+"""The cost and usage ledger's projections (F25, the cost and usage ledger design v0.2 §5.3 to §5.6, ledger CUL).
+
+Usage facts are the run-usage records (``aew/run-usage/v1``, ``aew.harness.usage``). Everything here is computed
+from them at read time and never written back (R7): a dollar figure is derived, never a fact (R4), and a total is a
+projection, never a stored number. The pieces:
+
+* the price table (``aew/pricing/v1``) and its content-addressed snapshots ``.aew/pricing/<sha256>.yaml``, written on
+  the first usage copy under a digest and never rewritten (R4 rule 3);
+* the bucket mapping by the record's declared ``token_semantics`` and the derivation (R4 rules 1, 2 and 4): unknown
+  semantics, a missing price, an inconsistent counter or an unattributable model is ``unpriced`` with its reason,
+  never zero, and the requested model is never used to price a run;
+* ``copy_run_usage`` (R5): the idempotent copy of a run's record into ``inv.runs[].usage``. Its three call paths
+  (ingestion and cancel, relaunch, archival) and the manifest's ``policy.pricing`` are slice 2 (design §6, §7);
+* the projections per run, invocation, unit and project, with both derived figures, the counts and the project
+  scope (R6, R7).
+
+Money is ``Decimal`` inside the projections, so a total is exactly the sum of its parts at every level; ``to_json``
+turns it into numbers for a surface.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+from aew.errors import IntegrityError, ValidationFailed
+from aew.harness import runlog
+from aew.harness import usage as U
+from aew.schemas import validate
+from aew.util import create_exclusive, load_yaml, sha256_bytes, utc_now
+
+PRICING_SCHEMA = "aew/pricing/v1"
+SNAPSHOT_DIR = "pricing"  # under the AEW root: .aew/pricing/<sha256>.yaml (R4 rule 3)
+
+# Why a figure is unpriced (R4). The first six are named by the design; the rest name the other ways a figure has
+# nothing to price, so no unpriced run is ever silently a zero.
+UNPRICED_SEMANTICS_UNKNOWN = "unpriced_token_semantics_unknown"
+UNPRICED_INCONSISTENT = "unpriced_inconsistent_counters"
+UNPRICED_CATEGORY = "unpriced_category"            # reported as "unpriced_category:<bucket>"
+UNPRICED_MIX = "unpriced_effective_model_mix"
+UNPRICED_MODEL = "unpriced_model"
+UNPRICED_NO_TABLE = "unpriced_no_price_table"      # no table in effect (at record: pricing_sha256 is null)
+UNPRICED_SNAPSHOT_MISSING = "unpriced_snapshot_missing"  # the snapshot the record names is gone (a doctor FAIL)
+UNPRICED_TOKENS_ABSENT = "unpriced_tokens_absent"  # the harness reported no counters
+UNPRICED_TOKENS_PARTIAL = "unpriced_tokens_partial"  # some categories unreported: their zeros are not counts
+UNPRICED_NOT_RECORDED = "unpriced_not_recorded"    # a provisional row has no record-time snapshot yet (R6)
+UNPRICED_USAGE_MISSING = "unpriced_usage_missing"  # neither a copy nor a run directory (R6 `missing`)
+
+# How each declared semantics maps the reported counters onto non-overlapping billable buckets (R4 rule 1): the
+# counter a bucket is carved out of. A counter that includes another bills only the difference, and a difference
+# below zero is an inconsistent record, priced as nothing. Reasoning inside output is billed as output.
+_INCLUDED: dict[str, dict[str, str]] = {
+    U.DISJOINT: {},
+    U.INPUT_INCLUDES_CACHE_READ: {"cache_read": "input"},
+    U.OUTPUT_INCLUDES_REASONING: {"reasoning": "output"},
+    U.INPUT_INCLUDES_CACHE_READ_OUTPUT_INCLUDES_REASONING: {"cache_read": "input", "reasoning": "output"},
+}
+_BILLED_INSIDE = {"reasoning"}  # included in its container and billed at the container's price, not on its own
+
+
+# --------------------------------------------------------------------------- the price table and its snapshots
+
+
+class Prices:
+    """One price table: its exact bytes' digest and its parsed rows."""
+
+    def __init__(self, raw: bytes, *, source: str) -> None:
+        table = load_yaml(raw.decode("utf-8"), source=source)
+        if isinstance(table, dict) and isinstance(table.get("as_of"), date):  # YAML reads `as_of: 2026-10-01` as a date
+            table["as_of"] = table["as_of"].isoformat()
+        validate("pricing", table, source=source)
+        self.sha256 = sha256_bytes(raw)
+        self.raw = raw
+        self.table: dict[str, Any] = table
+
+    def row(self, provider: Any, model: Any) -> dict[str, Any] | None:
+        if not isinstance(provider, str) or not isinstance(model, str):
+            return None
+        return self.table["prices"].get(f"{provider}/{model}")
+
+
+def read_price_table(path: Path) -> Prices | None:
+    """The table at ``path``, or None when there is none (no derived cost: every surface says unpriced). A malformed
+    table is refused (``VALIDATION_FAILED``), never read as an empty one."""
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    try:
+        return Prices(raw, source=str(path))
+    except UnicodeDecodeError as exc:
+        raise ValidationFailed(f"{path}: the price table is not UTF-8 text", reason="pricing_not_text") from exc
+
+
+def snapshot_path(aew_root: Path, sha: str) -> Path:
+    return aew_root / SNAPSHOT_DIR / f"{sha}.yaml"
+
+
+def write_pricing_snapshot(aew_root: Path, prices: Prices) -> str:
+    """The table's exact bytes at ``.aew/pricing/<sha256>.yaml``, written once and never rewritten (R4 rule 3).
+
+    An existing snapshot is left as it is when its bytes match its name; one that does not match is damage and is
+    refused, never repaired by overwriting (``aew doctor`` reports it)."""
+    path = snapshot_path(aew_root, prices.sha256)
+    if path.exists():
+        if sha256_bytes(path.read_bytes()) != prices.sha256:
+            raise IntegrityError(f"the pricing snapshot {path.name} does not match its digest",
+                                 reason="pricing_snapshot_mismatch", sha256=prices.sha256)
+        return prices.sha256
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        create_exclusive(path, prices.raw)
+    except IntegrityError:  # a concurrent writer published the same bytes first: content-addressed, so equal
+        if sha256_bytes(path.read_bytes()) != prices.sha256:
+            raise
+    return prices.sha256
+
+
+def read_pricing_snapshot(aew_root: Path, sha: str) -> Prices | None:
+    """The snapshot a record names, or None when it is absent or does not match its digest."""
+    path = snapshot_path(aew_root, sha)
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if sha256_bytes(raw) != sha:
+        return None
+    try:
+        return Prices(raw, source=str(path))
+    except (ValidationFailed, UnicodeDecodeError):
+        return None
+
+
+def named_snapshots(state: Mapping[str, Any], archived: Iterable[Mapping[str, Any]] = ()) -> set[str]:
+    """Every pricing digest a copied usage record names, in the hot state and in the given archived bundles."""
+    found: set[str] = set()
+    for invocations in [state.get("invocations") or {}, *((b.get("invocations") or {}) for b in archived)]:
+        for inv in invocations.values():
+            for run in inv.get("runs") or []:
+                sha = (run.get("usage") or {}).get("pricing_sha256")
+                if isinstance(sha, str):
+                    found.add(sha)
+    return found
+
+
+def snapshot_doctor(state: Mapping[str, Any], aew_root: Path,
+                    archived: Iterable[Mapping[str, Any]] = ()) -> tuple[str, str]:
+    """``aew doctor``'s check: every snapshot a record names is present and matches its digest (R4: an ERROR, the
+    repository's ``FAIL``). Wired into the doctor with the copy paths (slice 2)."""
+    bad = sorted(sha for sha in named_snapshots(state, archived) if read_pricing_snapshot(aew_root, sha) is None)
+    if bad:
+        return "FAIL", (f"pricing snapshot(s) named by recorded usage are missing or damaged: {', '.join(bad)}; "
+                        f"their runs' estimated_at_record is unpriced ({UNPRICED_SNAPSHOT_MISSING})")
+    return "PASS", "every pricing snapshot named by recorded usage is present and matches its digest"
+
+
+# --------------------------------------------------------------------------- the derivation (R4)
+
+
+def billable_buckets(tokens: Mapping[str, int], semantics: str) -> dict[str, int] | str:
+    """The reported counters as non-overlapping billable buckets under the declared semantics, or the unpriced
+    reason (``unknown`` semantics, or a bucket that would go negative)."""
+    included = _INCLUDED.get(semantics)
+    if included is None:
+        return UNPRICED_SEMANTICS_UNKNOWN
+    buckets = {c: int(tokens.get(c) or 0) for c in U.CATEGORIES}
+    for part, container in included.items():
+        if buckets[part] > buckets[container]:
+            return UNPRICED_INCONSISTENT
+        if part in _BILLED_INSIDE:
+            buckets[part] = 0
+        else:
+            buckets[container] -= buckets[part]
+    return buckets
+
+
+def _price(buckets: Mapping[str, int], row: Mapping[str, Any]) -> Decimal | str:
+    total = Decimal(0)
+    for bucket, count in buckets.items():
+        if not count:
+            continue  # a zero count in an unpriced bucket is fine (R4 rule 2)
+        if bucket not in row:
+            return f"{UNPRICED_CATEGORY}:{bucket}"
+        total += Decimal(count) * Decimal(str(row[bucket]))
+    return total.scaleb(-6)  # prices are per million tokens
+
+
+def _model_key(provider: Any, model: Any) -> str | None:
+    return f"{provider}/{model}" if isinstance(provider, str) and isinstance(model, str) else None
+
+
+def _pieces(record: Mapping[str, Any]) -> list[tuple[Any, Any, Mapping[str, int]]] | str:
+    """What is priced on which row (R4 rule 4): each partition on its own row; otherwise the whole run on its one
+    effective model; otherwise unpriced. The requested model is never consulted."""
+    partitions = record.get("tokens_by_model")
+    if partitions:
+        return [(p.get("provider"), p.get("model"), p.get("tokens") or {}) for p in partitions]
+    models = {(e.get("provider"), e.get("model")) for e in record.get("effective") or []}
+    if len(models) > 1 or record.get("effective_truncated"):
+        return UNPRICED_MIX
+    if not models:
+        return UNPRICED_MODEL
+    (provider, model), = models
+    return [(provider, model, record.get("tokens") or {})]
+
+
+def derive(record: Mapping[str, Any], prices: Prices | None) -> tuple[dict[str, Any], list[tuple[str, Decimal]]]:
+    """A run's derived cost under one table: ``{"usd": Decimal}`` or ``{"unpriced": reason}``, and the priced parts
+    per ``provider/model`` (one part, or one per partition)."""
+    if prices is None:
+        return {"unpriced": UNPRICED_NO_TABLE}, []
+    if record.get("tokens_trust") == "absent":
+        return {"unpriced": UNPRICED_TOKENS_ABSENT}, []
+    semantics = record.get("token_semantics")
+    if semantics not in _INCLUDED:  # `unknown`, or anything the enumeration does not hold: fail closed
+        return {"unpriced": UNPRICED_SEMANTICS_UNKNOWN}, []
+    if record.get("tokens_trust") != "harness_reported":
+        return {"unpriced": UNPRICED_TOKENS_PARTIAL}, []
+    pieces = _pieces(record)
+    if isinstance(pieces, str):
+        return {"unpriced": pieces}, []
+    parts: list[tuple[str, Decimal]] = []
+    for provider, model, tokens in pieces:
+        buckets = billable_buckets(tokens, semantics)
+        if isinstance(buckets, str):
+            return {"unpriced": buckets}, []
+        row = prices.row(provider, model)
+        key = _model_key(provider, model)
+        if row is None or key is None:
+            return {"unpriced": UNPRICED_MODEL}, []
+        usd = _price(buckets, row)
+        if isinstance(usd, str):
+            return {"unpriced": usd}, []
+        parts.append((key, usd))
+    return {"usd": sum((usd for _, usd in parts), Decimal(0))}, parts
+
+
+# --------------------------------------------------------------------------- the copy (R5; called from slice 2)
+
+
+def _valid_record(candidate: Any) -> dict[str, Any] | None:
+    if not isinstance(candidate, dict) or candidate.get("schema") != U.SCHEMA:
+        return None
+    try:
+        validate("run-usage", candidate, source="usage_record")
+    except ValidationFailed:
+        return None
+    return dict(candidate)
+
+
+def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricing: Prices | None,
+                   now: str | None = None) -> list[str]:
+    """Copy each run's usage of one invocation into ``inv.runs[i].usage``, once (R5). Returns the runs copied.
+
+    The run record is read once; its ``result.usage_record`` is taken when it is a well-formed bounded record, and
+    otherwise the run is recorded with absent usage, so a run that crashed before reporting is counted, never
+    omitted. A run whose usage is present is never rewritten. ``pricing`` is the table in effect now (the manifest's
+    ``policy.pricing``, resolved by the caller): its digest is recorded and its snapshot written on first use."""
+    inv = state["invocations"][inv_id]
+    pending = [r for r in inv.get("runs") or [] if "usage" not in r]
+    if not pending:
+        return []
+    sha = write_pricing_snapshot(aew_root, pricing) if pricing is not None else None
+    profile = inv.get("execution_profile") or {}
+    requested = {"provider": profile.get("provider"), "model": profile.get("model"), "effort": profile.get("effort"),
+                 "profile": profile.get("profile")}
+    copied: list[str] = []
+    for entry in pending:
+        status, run_record = runlog.observed_status(runlog.run_dir(aew_root, entry["run"]))
+        result = (run_record or {}).get("result")
+        record = _valid_record((result or {}).get("usage_record") if isinstance(result, dict) else None) \
+            or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
+        check = ((run_record or {}).get("model_check") or {}).get("status")
+        record.update(run=entry["run"], recorded_at=now or utc_now(), status=status, requested=requested,
+                      model_check=check if check in U.MODEL_CHECK else "unreported", pricing_sha256=sha)
+        if _valid_record(record) is None or U.serialized_size(record) > U.MAX_BYTES:
+            # A local record that is well formed alone but does not fit once copied (a requested id past its
+            # bound, say) is kept as a run with unknown usage: the bound holds whatever local/ held.
+            record = {**U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}"),
+                      "run": entry["run"], "recorded_at": record["recorded_at"], "status": status,
+                      "requested": {k: None for k in requested}, "model_check": "unreported", "pricing_sha256": sha}
+        entry["usage"] = record
+        copied.append(entry["run"])
+    return copied
+
+
+# --------------------------------------------------------------------------- projections (R6, R7)
+
+
+def _empty_figure() -> dict[str, Any]:
+    return {"usd": Decimal(0), "priced": 0, "unpriced": 0, "reasons": {}}
+
+
+def empty_totals() -> dict[str, Any]:
+    return {"invocations": 0, "invocations_without_runs": 0, "runs": 0, "recorded": 0, "provisional": 0,
+            "missing": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "wall_s_sum": Decimal(0), "steps": 0,
+            "provider_cost": {"reported_usd": Decimal(0), "reported": 0, "zero_with_tokens": 0, "absent": 0},
+            "estimated_at_record": _empty_figure(), "estimated_under_current_prices": _empty_figure(),
+            "by_model": {}}
+
+
+def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
+    into["usd"] += figure["usd"]
+    into["priced"] += figure["priced"]
+    into["unpriced"] += figure["unpriced"]
+    for reason, n in figure["reasons"].items():
+        into["reasons"][reason] = into["reasons"].get(reason, 0) + n
+
+
+def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]:
+    """``into`` += ``other``, field by field (a roll-up is the plain sum of its parts)."""
+    for key in ("invocations", "invocations_without_runs", "runs", "recorded", "provisional", "missing",
+                "wall_s_sum", "steps"):
+        into[key] += other[key]
+    for cat in U.CATEGORIES:
+        into["tokens"][cat] += other["tokens"][cat]
+    for key, value in other["provider_cost"].items():
+        into["provider_cost"][key] += value
+    for name in ("estimated_at_record", "estimated_under_current_prices"):
+        _add_figure(into[name], other[name])
+    for key, model in other["by_model"].items():
+        mine = into["by_model"].setdefault(key, _empty_model())
+        mine["runs"] += model["runs"]
+        for name in ("estimated_at_record_usd", "estimated_under_current_prices_usd"):
+            mine[name] += model[name]
+        for cat in U.CATEGORIES:
+            mine["tokens"][cat] += model["tokens"][cat]
+    return into
+
+
+def _empty_model() -> dict[str, Any]:
+    return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": Decimal(0),
+            "estimated_under_current_prices_usd": Decimal(0)}
+
+
+class Reader:
+    """What one read of the ledger needs: the AEW root (run directories, snapshots), the table in effect now, and a
+    run-record reader (the run directory by default). Snapshots are read once per reader."""
+
+    def __init__(self, aew_root: Path, current: Prices | None,
+                 read_run: Callable[[str], dict[str, Any] | None] | None = None) -> None:
+        self.aew_root = aew_root
+        self.current = current
+        self._read_run = read_run or (lambda run: runlog.read_record(runlog.run_dir(aew_root, run)))
+        self._snapshots: dict[str, Prices | None] = {}
+
+    def snapshot(self, sha: str) -> Prices | None:
+        if sha not in self._snapshots:
+            self._snapshots[sha] = read_pricing_snapshot(self.aew_root, sha)
+        return self._snapshots[sha]
+
+    def run_row(self, entry: Mapping[str, Any], inv_id: str) -> dict[str, Any]:
+        """One run: its record and where it came from (R6: ``recorded`` in control state, ``provisional`` from the run
+        directory, ``missing`` from neither), both derived figures, and the provider's cost with its trust."""
+        record = entry.get("usage")
+        if record is not None:
+            state = "recorded"
+            sha = record.get("pricing_sha256")
+            if sha is None:
+                at_record: dict[str, Any] = {"unpriced": UNPRICED_NO_TABLE}
+                at_parts: list[tuple[str, Decimal]] = []
+            else:
+                snap = self.snapshot(sha)
+                at_record, at_parts = derive(record, snap) if snap is not None else (
+                    {"unpriced": UNPRICED_SNAPSHOT_MISSING}, [])
+        else:
+            run_record = self._read_run(entry["run"])
+            if run_record is None:
+                return {"run": entry["run"], "invocation": inv_id, "state": "missing", "usage": None,
+                        "pricing_sha256": None, "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
+                        "estimated_under_current_prices": {"unpriced": UNPRICED_USAGE_MISSING},
+                        "provider_cost": {"usd": None, "trust": "absent"}, "_parts": ([], [])}
+            result = run_record.get("result")
+            record = _valid_record(result.get("usage_record") if isinstance(result, dict) else None) \
+                or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
+            state, sha = "provisional", None
+            at_record, at_parts = {"unpriced": UNPRICED_NOT_RECORDED}, []
+        current, current_parts = derive(record, self.current)
+        return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
+                "estimated_at_record": at_record, "estimated_under_current_prices": current,
+                "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
+                "_parts": (at_parts, current_parts)}
+
+    def invocation(self, inv_id: str, inv: Mapping[str, Any]) -> dict[str, Any]:
+        """One invocation: its rows and their sum. An invocation without runs (a custody invocation, or one not yet
+        launched) is normal: counted in ``invocations_without_runs`` and nothing else (R7)."""
+        rows = [self.run_row(entry, inv_id) for entry in inv.get("runs") or []]
+        totals = empty_totals()
+        totals["invocations"] = 1
+        totals["invocations_without_runs"] = 0 if rows else 1
+        for row in rows:
+            _count_row(totals, row)
+        return {"invocation": inv_id, "work_unit": inv.get("work_unit"), "rows": [_public(r) for r in rows],
+                "totals": totals}
+
+
+def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
+    totals["runs"] += 1
+    totals[row["state"]] += 1
+    record = row["usage"]
+    trust = row["provider_cost"]["trust"]
+    totals["provider_cost"][trust if trust in U.PROVIDER_COST_TRUST else "absent"] += 1
+    if trust == "reported":  # never a zero_with_tokens or absent cost (R3)
+        totals["provider_cost"]["reported_usd"] += Decimal(str(row["provider_cost"]["usd"]))
+    for name in ("estimated_at_record", "estimated_under_current_prices"):
+        figure, fig = row[name], totals[name]
+        if "usd" in figure:
+            fig["usd"] += figure["usd"]
+            fig["priced"] += 1
+        else:
+            fig["unpriced"] += 1
+            fig["reasons"][figure["unpriced"]] = fig["reasons"].get(figure["unpriced"], 0) + 1
+    if record is None:
+        return
+    for cat in U.CATEGORIES:
+        totals["tokens"][cat] += int(record["tokens"].get(cat) or 0)
+    if record.get("wall_s") is not None:
+        totals["wall_s_sum"] += Decimal(str(record["wall_s"]))
+    totals["steps"] += int(record.get("steps") or 0)
+    _count_models(totals["by_model"], row)
+
+
+def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
+    """Per effective model: a single-model run under its model, each partition under its own, a mix under
+    ``unpriced_effective_model_mix`` and a run with no effective model under ``no_effective_model``; never under the
+    requested model (R7). A partitioned run counts once under each of its models."""
+    record = row["usage"]
+    pieces = _pieces(record)
+    if isinstance(pieces, str):
+        key = UNPRICED_MIX if pieces == UNPRICED_MIX else "no_effective_model"
+        model = by_model.setdefault(key, _empty_model())
+        model["runs"] += 1
+        for cat in U.CATEGORIES:
+            model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
+        return
+    at_parts, current_parts = (dict(parts) for parts in row["_parts"])
+    for provider, name, tokens in pieces:
+        key = _model_key(provider, name) or "no_effective_model"
+        model = by_model.setdefault(key, _empty_model())
+        model["runs"] += 1
+        for cat in U.CATEGORIES:
+            model["tokens"][cat] += int(tokens.get(cat) or 0)
+        model["estimated_at_record_usd"] += at_parts.get(key, Decimal(0))
+        model["estimated_under_current_prices_usd"] += current_parts.get(key, Decimal(0))
+
+
+def _public(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in row.items() if not k.startswith("_")}
+
+
+def _view(state: Mapping[str, Any], archived: Iterable[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Work units and invocations from the hot state plus rehydrated archive bundles (``{id, unit, invocations}``)."""
+    work = dict(state.get("work") or {})
+    invocations = dict(state.get("invocations") or {})
+    for bundle in archived:
+        work.setdefault(bundle["id"], bundle["unit"])
+        for inv_id, inv in (bundle.get("invocations") or {}).items():
+            invocations.setdefault(inv_id, inv)
+    return work, invocations
+
+
+def unit_projection(state: Mapping[str, Any], unit_id: str, reader: Reader,
+                    archived: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    """A unit's tree (R7): its own invocations' totals, its descendants' totals (a Story sums its Tickets, an Epic its
+    Stories), each kept separate, and each child's projection."""
+    work, invocations = _view(state, archived)
+    return _unit(unit_id, work, invocations, reader)
+
+
+def _unit(unit_id: str, work: Mapping[str, Any], invocations: Mapping[str, Any], reader: Reader) -> dict[str, Any]:
+    unit = work.get(unit_id) or {}
+    own = empty_totals()
+    rendered = []
+    for inv_id in sorted(i for i, inv in invocations.items() if inv.get("work_unit") == unit_id):
+        projected = reader.invocation(inv_id, invocations[inv_id])
+        rendered.append(projected)
+        add_totals(own, projected["totals"])
+    children = [_unit(c, work, invocations, reader) for c in sorted(w for w, u in work.items()
+                                                                     if u.get("parent") == unit_id)]
+    descendants = empty_totals()
+    for child in children:
+        add_totals(descendants, child["own"])
+        add_totals(descendants, child["descendants"])
+    return {"unit": unit_id, "kind": unit.get("kind"), "own": own, "descendants": descendants,
+            "invocations": rendered, "children": children}
+
+
+def project_projection(state: Mapping[str, Any], reader: Reader, archived: Iterable[Mapping[str, Any]] = (), *,
+                       walk_all: bool = False, since: str | None = None, until: str | None = None,
+                       archive_complete: bool = False) -> dict[str, Any]:
+    """The project's totals over the hot state plus the archived units given (the ``recent`` ring by default, the
+    history walk with ``--all``), saying what they cover (R7, the designer's and lead developer's 2026-10-06
+    clarification): ``scope: recent`` is never complete; an unbounded walk is ``scope: all``, complete only when the
+    caller's walk covered every archived unit; a bounded walk is ``scope: window`` with its bounds, never complete."""
+    work, invocations = _view(state, list(archived))
+    totals = empty_totals()
+    for inv_id in sorted(invocations):
+        add_totals(totals, reader.invocation(inv_id, invocations[inv_id])["totals"])
+    if not walk_all:
+        scope: dict[str, Any] = {"scope": "recent", "archive_complete": False}
+    elif since is not None or until is not None:
+        scope = {"scope": "window", "archive_complete": False, "since": since, "until": until}
+    else:
+        scope = {"scope": "all", "archive_complete": bool(archive_complete)}
+    return {**scope, "units": len(work), "totals": totals}
+
+
+def to_json(value: Any) -> Any:
+    """A projection as JSON values: money and wall time as numbers."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, Mapping):
+        return {k: to_json(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [to_json(v) for v in value]
+    return value

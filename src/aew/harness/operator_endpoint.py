@@ -143,7 +143,7 @@ class OperatorEndpoint:
         self.engine = engine
         self.console = console
         self.timeout = timeout
-        self.uid = os.getuid() if hasattr(os, "getuid") else None
+        self.uid = os.getuid() if sys.platform != "win32" else None
         self.pid = os.getpid()
         self.started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._started = procs.started_at(self.pid)

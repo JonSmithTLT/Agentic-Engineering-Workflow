@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import os
+import sys
 from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
@@ -104,7 +105,7 @@ class Lead:
             handoff=None,
         )
         # The Lead host principal (M4-E E2): the operator endpoint labels its records against it (plan v3 §2.1).
-        if hasattr(os, "getuid"):
+        if sys.platform != "win32":
             lead["host_uid"] = os.getuid()
         else:  # pragma: windows-only
             lead.pop("host_uid", None)

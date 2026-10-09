@@ -9,7 +9,7 @@ state, and nothing it reports is evidence: the agent acts on AEW only through th
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,11 @@ class HarnessAdapter(ABC):
     """``launch`` / ``inspect`` / ``send`` / ``interrupt`` / ``terminate`` / ``collect`` for one run."""
 
     name = ""
+    # How the harness's reported token counters overlap, per qualified harness version and provider:
+    # ``{version: {provider: semantics}}``, values from ``aew.harness.usage.TOKEN_SEMANTICS``, each pinned by a harness
+    # conformance test (F25, cost and usage ledger v0.2 R4 rule 1). A version or provider it does not name resolves to
+    # ``unknown``, which is never priced.
+    token_semantics: Mapping[str, Mapping[str, str]] = {}
 
     def __init__(self, tree: ProcessTree, run_dir: Path, emit: Callable[[dict[str, Any]], None]) -> None:
         self.tree = tree
@@ -57,5 +62,10 @@ class HarnessAdapter(ABC):
     def collect(self) -> dict[str, Any]:
         """Non-authoritative facts after the run: usage, sessions, context sizes, and ``effective``: every
         ``{"provider", "model", "effort"}`` the harness actually ran (``effort`` None when not reported).
-        The supervisor compares ``effective`` with the pinned execution profile and flags any mismatch."""
+        The supervisor compares ``effective`` with the pinned execution profile and flags any mismatch.
+
+        ``usage_record``, when the adapter reports usage, is the run's normalized ``aew/run-usage/v1`` record built by
+        ``aew.harness.usage.normalize`` from the adapter's raw snapshot, with the ``token_semantics`` the adapter
+        declares (above) for the providers that ran; the supervisor adds the wall time and keeps it beside the raw
+        ``usage`` (F25 R2). An adapter that cannot read usage omits it: the run's usage then counts as absent."""
         return {}

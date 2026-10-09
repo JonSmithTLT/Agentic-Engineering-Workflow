@@ -38,6 +38,7 @@ from typing import Any
 
 from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
+from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, LaunchContract
 from aew.harness.opencode import capabilities, projection
@@ -45,6 +46,7 @@ from aew.harness.opencode.client import Client, EventStream, OpenCodeError, Open
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
+PAGES = 100  # at most this many pages of 200 messages are read for a run's snapshot (more: `truncated`)
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
@@ -109,6 +111,22 @@ def new_message_id() -> str:
 
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
+    # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
+    # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixture
+    # tests/fixtures/opencode/usage-2.0.18-openai.json.
+    # A provider not named here is `unknown` and is never priced: no other provider is inferred (register F25).
+    #
+    # 2.0.18 / openai -> disjoint, qualified from source (sst/opencode tag v2.0.18, commit
+    # cd9a14a6b688d4021bee381dfd39d2cef9c0f862):
+    # - packages/core/src/session/usage.ts:11-19 stores input = nonCachedInputTokens, output = visibleOutputTokens,
+    #   reasoning = reasoningTokens, cache.read = cacheReadInputTokens, cache.write = cacheWriteInputTokens;
+    # - packages/ai/src/schema/events.ts:20-85: the Usage breakdown fields are non-overlapping, and
+    #   visibleOutputTokens = max(0, outputTokens - reasoningTokens);
+    # - packages/ai/src/protocols/open-responses.ts:843-859 (openai's default Responses route): nonCached =
+    #   input_tokens - (cached_tokens + cache_write_tokens); outputTokens = output_tokens; reasoningTokens =
+    #   output_tokens_details.reasoning_tokens.
+    # So the stored input excludes cache read and write, and the stored output excludes reasoning.
+    token_semantics = {"2.0.18": {"openai": U.DISJOINT}}
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -495,7 +513,8 @@ class OpenCodeAdapter(HarnessAdapter):
             return
         assistant: list[dict[str, Any]] = []
         params: dict[str, str] = {"order": "asc", "limit": "200"}
-        for _ in range(100):
+        truncated = True  # unless the last page is reached: the bounded loop may stop with a next cursor left (F25 R1)
+        for _ in range(PAGES):
             page = self.client.get(f"/api/session/{self.session}/message", params) or {}
             for m in page.get("data") or []:
                 if m.get("type") == "assistant":
@@ -507,10 +526,12 @@ class OpenCodeAdapter(HarnessAdapter):
                                       if m.get("error") else None})
             nxt = (page.get("cursor") or {}).get("next")
             if not nxt:
+                truncated = False
                 break
             params = {"cursor": str(nxt), "limit": "200"}
         info = (self.client.get(f"/api/session/{self.session}") or {}).get("data") or {}
-        self.snapshot = {"assistant": assistant, "session": {k: info.get(k) for k in ("outcome", "tokens", "cost")}}
+        self.snapshot = {"assistant": assistant, "session": {k: info.get(k) for k in ("outcome", "tokens", "cost")},
+                         "truncated": truncated}
         # Every other session in the run's private state (a subagent's, or anyone's): recorded even if the event
         # stream missed its creation.
         for other in (self.client.get("/api/session", location(self.directory)) or {}).get("data") or []:
@@ -553,7 +574,23 @@ class OpenCodeAdapter(HarnessAdapter):
                 out["first_step_input_tokens"] = (first.get("input") or 0) + cached
         elif self.step_models:
             out["effective"] = _effective(self.step_models)
+        out["usage_record"] = self._usage_record(out.get("effective") or [])
         return out
+
+    def _usage_record(self, effective: list[dict[str, Any]]) -> dict[str, Any]:
+        """The normalized ``aew/run-usage/v1`` record (F25 R2): the session's totals, its model calls, and the token
+        semantics declared for the providers that ran, under the OpenCode version that ran them."""
+        snap = self.snapshot
+        source = f"harness:{self.name}"
+        if snap is None:  # no snapshot (the server was gone): the usage is unknown, never zero
+            return U.normalize(None, None, effective, U.UNKNOWN, source=source,
+                               foreign_sessions=len(self.foreign_sessions))
+        contract = getattr(self, "contract", None)
+        pinned = (contract.execution_profile or {}).get("provider") if contract is not None else None
+        providers = [e.get("provider") for e in effective] or [pinned]
+        semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
+        return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
+                           truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
 
 
 def _created(message: dict[str, Any]) -> float:

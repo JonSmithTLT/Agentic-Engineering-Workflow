@@ -828,7 +828,11 @@ sections:
       F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):**
       live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement
       and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general
-      budget enforcement does not move into F25'
+      budget enforcement does not move into F25. **Slice 1 built** (the run-usage record, the OpenCode `usage_record`, the
+      price table schema, the derivation and the projections; [implementation status](implementation-status.md)). The token
+      semantics are qualified only for OpenCode 2.0.18 with `openai` (`disjoint`, from OpenCode''s source); every other
+      provider resolves to `unknown` and stays unpriced until it is qualified with a conformance fixture. Slice 2 (copy
+      paths, control schema, `policy.pricing`, doctor, `aew usage`) is next'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'

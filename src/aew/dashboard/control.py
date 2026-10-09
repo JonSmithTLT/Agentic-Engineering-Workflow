@@ -13,7 +13,6 @@ from __future__ import annotations
 import hmac
 import json
 import os
-import shutil
 import threading
 from collections.abc import Callable
 from multiprocessing import AuthenticationError
@@ -22,7 +21,7 @@ from typing import Any
 
 from aew import errors, operator
 from aew.dashboard.session import SessionTable
-from aew.harness.bridge import private_address, rebuild_error
+from aew.harness.bridge import private_address, rebuild_error, serve_listener, stop_listener
 
 OPEN_TIMEOUT_S = 300.0
 MAX_MESSAGE = 64 * 1024
@@ -65,15 +64,7 @@ class ControlServer:
         self._thread.start()
 
     def _serve(self) -> None:
-        while not self._closed.is_set():
-            try:
-                conn = self._listener.accept()
-            except (AuthenticationError, OSError, EOFError):
-                continue
-            if self._closed.is_set():
-                conn.close()
-                break
-            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+        serve_listener(self._listener, self._closed, self._handle)
 
     def _handle(self, conn: Any) -> None:
         try:
@@ -137,17 +128,9 @@ class ControlServer:
         if self._closed.is_set():
             return
         self._closed.set()
-        if self._thread.is_alive():  # unblock accept() so the serving thread observes the closure
-            try:  # (a listener nobody accepts on would make this connect wait forever on a Windows pipe)
-                Client(self.address, family=self._family, authkey=self.key).close()
-            except Exception:  # noqa: S110, BLE001 (best effort)
-                pass
-        try:
-            self._listener.close()
-        except OSError:
-            pass
-        if self._private_dir:
-            shutil.rmtree(self._private_dir, ignore_errors=True)
+        # Unblock accept() so the serving thread observes the closure, never waiting forever on the wake (the
+        # 2026-10-08 CI hangs: this connect waited on a handshake nobody would answer).
+        stop_listener(self._listener, self.address, self._family, self.key, self._private_dir, serving=self._thread)
 
 
 def _request(raw: bytes) -> tuple[str, dict[str, Any]]:

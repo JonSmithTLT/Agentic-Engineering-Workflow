@@ -158,6 +158,12 @@ skipped:
       PR_SET_DUMPABLE is Linux only; Windows offers no equivalent within one user (ADR-0009 residual). Covered on Linux.
     tests/integration/test_operator_endpoint_pty.py::test_a_same_uid_process_can_neither_read_nor_attach_to_the_endpoint: >-
       ptrace and /proc/<pid>/mem are Linux. Covered on Linux.
+    tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[xdist]: >-
+      interrupting a hung test in place needs SIGALRM, which Windows lacks; there the watchdog writes every thread's
+      stack to the uploaded dump file instead (test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk runs on
+      both). Covered on Linux.
+    tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[no_xdist]: >-
+      as the xdist case: SIGALRM is POSIX only; Windows records the stacks instead. Covered on Linux.
   linux: {}
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

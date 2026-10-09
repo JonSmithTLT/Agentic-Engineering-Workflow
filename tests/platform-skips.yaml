@@ -37,6 +37,18 @@ skipped:
       needs POSIX symlinks. Covered on Linux.
     tests/regression/test_review_2026_09_26.py::test_sync_handles_executable_bit_only_change: >-
       reviewer probe M6; needs a filemode-aware (POSIX) checkout. Covered on Linux.
+    tests/unit/test_runlog_reads.py::test_a_heartbeat_that_is_a_link_is_none_and_never_raises: >-
+      needs POSIX symlinks (a link loop, ENOTDIR). Windows reads the heartbeat through the same lstat and regular-file
+      check, tested with a directory (test_a_heartbeat_or_record_that_is_a_directory_is_none). Covered on Linux.
+    tests/unit/test_runlog_reads.py::test_a_record_that_is_a_fifo_a_device_or_a_link_is_none_and_never_blocks: >-
+      needs POSIX FIFOs, /dev/zero and symlinks. Windows refuses a record that is not a regular file before opening
+      it, tested with a directory and a record past its bound. Covered on Linux.
+    tests/integration/test_usage_ledger.py::test_links_and_fifos_in_a_run_directory_never_block_a_cancel_or_archival[heartbeat-loop]: >-
+      needs POSIX symlinks; the run-directory reads it drives are tested on Windows in tests/unit/test_runlog_reads.py.
+      Covered on Linux.
+    tests/integration/test_usage_ledger.py::test_links_and_fifos_in_a_run_directory_never_block_a_cancel_or_archival[record-fifo]: >-
+      needs POSIX FIFOs; the run-directory reads it drives are tested on Windows in tests/unit/test_runlog_reads.py.
+      Covered on Linux.
     tests/integration/test_containment.py::test_an_escape_fails_at_the_os_and_leaves_the_host_unchanged[absolute_path]: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

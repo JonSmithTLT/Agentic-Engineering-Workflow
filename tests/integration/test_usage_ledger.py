@@ -256,3 +256,29 @@ def test_a_damaged_price_snapshot_never_blocks_a_copy(lab, tmp_path):
     assert (usage["tokens"]["input"], usage["pricing_sha256"]) == (1000, None)
     assert snapshot.read_text(encoding="utf-8") == "damaged\n"  # never repaired by overwriting
     assert_control_invariants(lab.project)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs POSIX symlinks and FIFOs")
+@pytest.mark.parametrize("tamper", ["heartbeat-loop", "record-fifo"])
+def test_links_and_fifos_in_a_run_directory_never_block_a_cancel_or_archival(lab, tmp_path, tamper):
+    """#137 re-review: the copy reads the run directory under the control lock. A heartbeat that is a symlink loop
+    and a record that is a FIFO are no heartbeat and no record: the cancel and the archival commit promptly."""
+    import os
+
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
+    lab.wait(run)
+    directory = runlog.run_dir(lab.aew_root, run)
+    if tamper == "heartbeat-loop":
+        (directory / "run.json").write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+        (directory / "heartbeat").unlink()
+        os.symlink("heartbeat", directory / "heartbeat")
+        status = K.LOST
+    else:
+        (directory / "run.json").unlink()
+        os.mkfifo(directory / "run.json")
+        status = K.UNCONFIRMED
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    [usage] = archived_usage(lab, wid, inv)
+    assert (usage["status"], usage["tokens_trust"]) == (status, "absent")
+    assert_control_invariants(lab.project)

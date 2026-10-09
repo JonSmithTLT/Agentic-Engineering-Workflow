@@ -268,7 +268,8 @@ def _valid_record(candidate: Any) -> dict[str, Any] | None:
         return None
     try:
         validate("run-usage", candidate, source="usage_record")
-    except ValidationFailed:
+        U.serialized_size(candidate)  # a lone surrogate passes the schema but has no UTF-8 form (#133 review, 812943d)
+    except (ValidationFailed, UnicodeEncodeError):
         return None
     return dict(candidate)
 

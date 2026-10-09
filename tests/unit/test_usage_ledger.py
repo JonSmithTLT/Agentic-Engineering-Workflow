@@ -342,6 +342,19 @@ def test_a_requested_id_past_its_bound_is_unknown_and_the_run_keeps_its_counters
     assert U.serialized_size(copied) <= U.MAX_BYTES
 
 
+def test_a_local_record_with_no_utf8_form_is_copied_as_absent_usage(tmp_path):
+    """#133 review (812943d): a record another adapter wrote, holding a lone surrogate the schema accepts, has no
+    UTF-8 form. The copy counts the run with absent usage instead of raising."""
+    rec = record(input=5)
+    rec["effective"] = [{"provider": "openai", "model": json.loads('"x\\ud800"'), "effort": None}]
+    run_record(runlog.run_dir(tmp_path, "R-1"), rec)
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    assert O.copy_run_usage(state, "I-1", tmp_path, pricing=None) == ["R-1"]
+    copied = state["invocations"]["I-1"]["runs"][0]["usage"]
+    assert copied["tokens_trust"] == "absent" and copied["effective"] == []
+    assert U.serialized_size(copied) <= U.MAX_BYTES
+
+
 # ---------------------------------------------------------------------------------------------- projections (R6, R7)
 
 

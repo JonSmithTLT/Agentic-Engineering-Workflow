@@ -109,6 +109,16 @@ def test_identifier_bounds_count_serialized_bytes_not_characters(model, kept):
     assert rec["effective"][0]["model"] == (model if kept else None)
 
 
+def test_an_identifier_with_a_lone_surrogate_is_unknown_never_a_failed_result():
+    """#133 review (0e2bae9): JSON's "\\ud800" parses to a lone surrogate, which has no UTF-8 form. The byte bound
+    must not raise on it: the id is unknown and the record is still built."""
+    model = json.loads('"gpt\\ud800"')
+    rec = U.normalize(None, None, [{"provider": "openai", "model": model, "effort": None}], U.UNKNOWN,
+                      source="harness:opencode")
+    assert rec["effective"] == [{"provider": "openai", "model": None, "effort": None}]
+    assert U.serialized_size(rec) <= U.MAX_BYTES
+
+
 def test_non_ascii_identifiers_at_their_character_bounds_stay_within_two_kib():
     effective = [{"provider": "п" * U.MAX_PROVIDER, "model": "😀" * (U.MAX_MODEL - 1) + str(i),
                   "effort": "é" * U.MAX_EFFORT} for i in range(U.MAX_EFFECTIVE)]

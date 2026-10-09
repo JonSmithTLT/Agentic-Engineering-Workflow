@@ -66,9 +66,11 @@ def identifier(value: Any, limit: int) -> str | None:
     non-ASCII id take up to four times its share, and the record past 2 KiB (#133 review, finding 2)."""
     if not isinstance(value, str) or not value or any(c.isspace() for c in value):
         return None
-    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) - 2 > limit:
+    try:
+        size = len(json.dumps(value, ensure_ascii=False).encode("utf-8")) - 2
+    except UnicodeEncodeError:  # a lone surrogate (JSON "\ud800") has no UTF-8 form: unknown, never a failed result
         return None
-    return value
+    return value if size <= limit else None
 
 
 def _count(value: Any, limit: int = MAX_TOKENS) -> int | None:
@@ -169,7 +171,9 @@ def _partitions(tokens_by_model: Any) -> list[dict[str, Any]] | None:
         # never holds two rows a projection would have to reconcile (#133 review, finding 1).
         if key in out:
             for cat, n in tokens.items():
-                out[key]["tokens"][cat] = min(out[key]["tokens"][cat] + n, MAX_TOKENS)
+                out[key]["tokens"][cat] += n
+                if out[key]["tokens"][cat] > MAX_TOKENS:  # capping would hide a mismatch with the totals: no partition
+                    return None
         else:
             out[key] = {"provider": key[0], "model": key[1], "tokens": tokens}
     # A partition that cannot be bounded is no partition: the run is then priced as a model mix would be (unpriced).

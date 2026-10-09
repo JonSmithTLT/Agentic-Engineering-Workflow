@@ -207,6 +207,36 @@ def test_a_model_reported_twice_is_priced_and_counted_once(tmp_path):
         Decimal("0.002")
 
 
+def test_merged_partitions_past_the_counter_cap_are_no_partition_never_a_capped_match():
+    """#133 review (0e2bae9): capping a merged count at MAX_TOKENS could make partitions that overshoot the totals
+    look reconciled, and price them. A merge past the cap is no partition, so the run is unpriced."""
+    big = U.MAX_TOKENS
+    raw = {"input": big, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    rec = U.normalize({"tokens": raw}, [{}], [GPT, MINI], U.DISJOINT, source="harness:opencode",
+                      tokens_by_model=[{**GPT, "tokens": raw}, {**GPT, "tokens": {**raw, "input": 5}}])
+    assert rec["tokens_by_model"] is None
+    assert "usd" not in O.derive(rec, PRICES)[0]
+
+
+def test_two_partitions_on_one_price_row_keep_their_whole_cost_in_by_model(tmp_path):
+    """#133 review (0e2bae9): ("a/b", "c") and ("a", "b/c") are different pairs but one price row, "a/b/c". The
+    run's by_model row must carry both parts' cost, so by_model sums to the run's total."""
+    table = TABLE + b"  a/b/c: {input: 1.0, output: 1.0, cache_read: 1.0, cache_write: 1.0}\n"
+    prices = O.Prices(table, source="pricing.yaml")
+    flat = {c: 0 for c in U.CATEGORIES}
+    rec = {**record(input=1000), "effective": [{"provider": "a/b", "model": "c", "effort": None},
+                                               {"provider": "a", "model": "b/c", "effort": None}],
+           "tokens_by_model": [{"provider": "a/b", "model": "c", "tokens": {**flat, "input": 400}},
+                               {"provider": "a", "model": "b/c", "tokens": {**flat, "input": 600}}]}
+    assert O.derive(rec, prices)[0] == {"usd": Decimal("0.001")}
+    run_record(runlog.run_dir(tmp_path, "R-1"), rec)
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=prices)
+    by_model = O.Reader(tmp_path, prices).invocation("I-1", state["invocations"]["I-1"])["totals"]["by_model"]
+    assert (by_model["a/b/c"]["runs"], by_model["a/b/c"]["tokens"]["input"]) == (1, 1000)
+    assert by_model["a/b/c"]["estimated_under_current_prices_usd"] == Decimal("0.001")
+
+
 def test_a_model_without_a_row_or_no_effective_model_is_unpriced_model():
     other = {"provider": "anthropic", "model": "x", "effort": None}
     assert O.derive(record(input=5, effective=[other]), PRICES)[0] == {"unpriced": "unpriced_model"}

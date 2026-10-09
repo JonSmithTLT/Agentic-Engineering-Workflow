@@ -211,12 +211,15 @@ def _pieces(record: Mapping[str, Any]) -> list[tuple[Any, Any, Mapping[str, int]
                 return UNPRICED_PARTITION_MISMATCH
         # The schema cannot say "one partition per model", so a repeated model is summed here as normalize() sums it:
         # each model is priced once, on its whole count (#133 review, finding 1).
-        merged: dict[tuple[Any, Any], dict[str, int]] = {}
+        # Merged on the price-row key, not the pair: ("a/b", "c") and ("a", "b/c") are both row "a/b/c".
+        merged: dict[Any, tuple[Any, Any, dict[str, int]]] = {}
         for p in partitions:
-            tokens = merged.setdefault((p.get("provider"), p.get("model")), {})
+            provider, model = p.get("provider"), p.get("model")
+            key = _model_key(provider, model) or (provider, model)
+            tokens = merged.setdefault(key, (provider, model, {}))[2]
             for category, n in (p.get("tokens") or {}).items():
                 tokens[category] = tokens.get(category, 0) + int(n or 0)
-        return [(provider, model, tokens) for (provider, model), tokens in merged.items()]
+        return list(merged.values())
     models = {(e.get("provider"), e.get("model")) for e in record.get("effective") or []}
     if len(models) > 1 or record.get("effective_truncated"):
         return UNPRICED_MIX
@@ -459,7 +462,11 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         for cat in U.CATEGORIES:
             model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
         return
-    at_parts, current_parts = (dict(parts) for parts in row["_parts"])
+    at_parts: dict[str, Decimal] = {}  # summed per key: two parts may share one (a projection is a sum, R6)
+    current_parts: dict[str, Decimal] = {}
+    for acc, parts in zip((at_parts, current_parts), row["_parts"], strict=True):
+        for key, usd in parts:
+            acc[key] = acc.get(key, Decimal(0)) + usd
     counted: set[str] = set()
     for provider, name, tokens in pieces:
         key = _model_key(provider, name) or "no_effective_model"

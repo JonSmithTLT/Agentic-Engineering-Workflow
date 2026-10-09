@@ -13,6 +13,7 @@ read the whole history; the engine's commit-time checks may not (invariant 13).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -246,6 +247,95 @@ def control_violations(root: Path) -> list[str]:
     problems += steering_violations(root, hot)
     # 46. Run usage (F25 R1, R5), over the hot state and every rehydrated bundle.
     problems += usage_violations(state)
+    # 47-49. M4-E E3: the StageIntent journal, hot and cold.
+    problems += stage_intent_violations(root, hot, state)
+    return problems
+
+
+def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
+    """M4-E E3 (plan v3 E3, §2.7; typed surface §3.4).
+
+    47: every hot intent is ACTIVE and schema-valid, owned by a generation that has existed, and its steps are a
+        prefix of its plan under the keys ``<SI>:<n>``, at strictly increasing revisions after it opened and none past
+        the current revision; a unit has at most one.
+    48: every step carries the legality digest the intent bound (nothing commits under drift); a step is retried after
+        a stale revision only when it and the stage are non-judgment, and the intent says so iff some step was.
+    49: every intent ever opened (``counters.stage_intent``) lives in exactly one place: hot, or one immutable cold
+        record that is terminal, valid and its own id, at the path its subject gives it; a unit's pointer (hot or in
+        its bundle) names that record and its hash."""
+    from aew.engine import stage_intents as S
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    aew = Path(root) / ".aew"
+    intents = hot.get("stage_intents") or {}
+    subjects: dict[str, str] = {}
+
+    def journal(si: dict[str, Any], where: str) -> None:
+        for n, (planned, done) in enumerate(zip(si["plan"], si["steps"], strict=False), start=1):
+            if done["n"] != n or done["key"] != f"{si['id']}:{n}" or done["primitive"] != planned["primitive"]:
+                problems.append(f"{where}: step {n} is not its plan's step {n}")
+            if done["legality_digest"] != si["binding"]["legality_digest"]:
+                problems.append(f"{where}: step {n} committed under another legality digest")
+            if done.get("retried_after_stale_revision") and (
+                    "JUDGMENT_BEARING" in (done["operation_class"], si["effective_class"])):
+                problems.append(f"{where}: judgment-bearing step {n} was retried")
+        if len(si["steps"]) > len(si["plan"]):
+            problems.append(f"{where}: more steps than planned")
+        revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"])]
+        if revs != sorted(set(revs)):
+            problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
+        if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):
+            problems.append(f"{where}: the intent's retry flag disagrees with its steps")
+
+    for sid, si in sorted(intents.items()):
+        where = f"stage intent {sid}"
+        try:
+            validate("stage-intent", si, source=where)
+        except Exception as exc:
+            problems.append(f"{where} is not a stage-intent record: {exc}")
+            continue
+        if si["id"] != sid or si["status"] != S.ACTIVE:
+            problems.append(f"{where}: hot but {si['status']} (or filed under another id)")
+        if not 1 <= si["generation"] <= hot["lead"]["generation"]:
+            problems.append(f"{where}: owned by generation {si['generation']}, which never held the seat")
+        if si["steps"] and si["steps"][-1]["revision"] > hot["revision"]:
+            problems.append(f"{where}: a step past the current revision")
+        if si["subject"]["kind"] == "unit":
+            if si["subject"]["id"] in subjects:
+                problems.append(f"{si['subject']['id']} has two unfinished stages: {subjects[si['subject']['id']]} "
+                                f"and {sid}")
+            subjects[si["subject"]["id"]] = sid
+        journal(si, where)
+
+    pointers = {p["id"]: (wid, p) for wid, u in full["work"].items() for p in u.get("stage_intents") or []}
+    for n in range(1, (hot["counters"].get("stage_intent") or 0) + 1):
+        sid = f"SI-{n:04d}"
+        homes = sorted(p.relative_to(aew).as_posix() for p in [*aew.glob(f"work/*/stage-intents/{sid}.yaml"),
+                                                                *aew.glob(f"{S.RECORDS_DIR}/{sid}.yaml")])
+        if sid in intents:
+            if homes:
+                problems.append(f"{sid} is both hot and cold: {homes}")
+            continue
+        if len(homes) != 1:
+            problems.append(f"{sid} was opened and lives in {len(homes)} cold places, not one: {homes}")
+            continue
+        raw = (aew / homes[0]).read_bytes()
+        doc = yaml.safe_load(raw)
+        try:
+            validate("stage-intent", doc, source=homes[0])
+        except Exception as exc:
+            problems.append(f"{homes[0]} is not a stage-intent record: {exc}")
+            continue
+        if doc["id"] != sid or doc["status"] not in S.TERMINAL or doc["closed"]["status"] != doc["status"]:
+            problems.append(f"{homes[0]}: a cold intent must be its own id and terminal")
+        if homes[0] != S.cold_rel(sid, doc["subject"]["id"]) and homes[0] != S.cold_rel(sid, None):
+            problems.append(f"{homes[0]}: not where its subject {doc['subject']['id']} puts it")
+        journal(doc, homes[0])
+        if sid in pointers:
+            wid, pointer = pointers[sid]
+            if pointer["path"] != homes[0] or pointer["sha256"] != hashlib.sha256(raw).hexdigest():
+                problems.append(f"{wid}'s pointer to {sid} does not name its record and hash")
     return problems
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from pathlib import Path
 
 import pytest
 from conftest import IS_WINDOWS
@@ -243,10 +244,40 @@ def test_a_sparse_file_costs_what_it_stores(directory, monkeypatch):
         f.write(TOKEN.encode())
     monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 1 << 24)  # 16 MiB: enough for the data, never for the holes
     result = promptly(lambda: runlog.credential_scan(directory), within=30)
-    if runlog._data_ranges(os.open(sparse, os.O_RDONLY)) == [(0, 1 << 30)]:
+    fd = os.open(sparse, os.O_RDONLY)
+    try:
+        holes_unknown = runlog._data_ranges(fd) == [(0, 1 << 30)]
+    finally:
+        os.close(fd)
+    if holes_unknown:
         assert result == {"clean": False, "files": [], "unscanned": 1}  # no hole information: bounded, not clean
     else:
         assert result == {"clean": False, "files": [str(sparse)]}
+
+
+def test_an_entry_gone_before_it_is_read_holds_nothing(directory, monkeypatch):
+    """#139 re-review, F2: an atomic write's temporary file renamed (or a directory removed) between the listing and
+    the read leaves nothing to scan; the run is still clean. Unreadable is unscanned; gone is not."""
+    harness = directory / "harness"
+    (harness / "sub").mkdir(parents=True)
+    (harness / ".req.tmp").write_text("{}", encoding="utf-8")
+    real_open, real_scandir = runlog._open_regular, os.scandir
+
+    def vanished(path):
+        if path.name == ".req.tmp":
+            raise FileNotFoundError(2, "renamed", str(path))
+        return real_open(path)
+
+    def scandir(path):
+        if Path(path).name == "sub":
+            raise FileNotFoundError(2, "removed", str(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(runlog, "_open_regular", vanished)
+    monkeypatch.setattr(runlog.os, "scandir", scandir)
+    assert runlog.credential_scan(directory) == {"clean": True, "files": []}
+    monkeypatch.setattr(runlog, "_open_regular", lambda p: (_ for _ in ()).throw(PermissionError(13, "denied")))
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [], "unscanned": 1}
 
 
 def test_a_deep_tree_is_walked_without_recursion(directory):

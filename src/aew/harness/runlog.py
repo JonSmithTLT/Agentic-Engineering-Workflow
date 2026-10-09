@@ -307,6 +307,8 @@ SCAN_OVERLAP = 64
 SCAN_BUDGET_BYTES = 4 << 30
 SCAN_MAX_ENTRIES = 200_000
 _CREDENTIAL_BYTES = re.compile(K.CREDENTIAL_RE.pattern.encode("ascii"))
+# An entry that vanished between the listing and its read holds nothing: not a reason to call the scan incomplete.
+_GONE = (FileNotFoundError, NotADirectoryError)
 
 
 def credential_scan(*roots: Path) -> dict[str, Any]:
@@ -346,26 +348,33 @@ def _walk(root: Path, found: list[str], budget: dict[str, int]) -> None:
     stack = [root]
     while stack:
         directory = stack.pop()
+        listed = []
         try:
             with os.scandir(directory) as entries:
-                listed = sorted(entries, key=lambda e: e.name)
-        except OSError:  # unreadable, or gone since it was listed
+                for entry in entries:  # the cap holds while listing: one huge directory is never listed whole
+                    if len(listed) >= budget["entries"]:
+                        budget["unscanned"] += 1 + len(stack)
+                        return
+                    listed.append(entry)
+        except _GONE:  # removed or replaced since it was listed: it holds nothing now (#139 re-review, F2)
+            continue
+        except OSError:  # unreadable
             budget["unscanned"] += 1
             continue
-        for entry in listed:
-            if budget["entries"] <= 0:
-                budget["unscanned"] += 1 + len(stack)
-                return
-            budget["entries"] -= 1
+        budget["entries"] -= len(listed)
+        for entry in sorted(listed, key=lambda e: e.name):
             try:
                 info = entry.stat(follow_symlinks=False)
+            except _GONE:
+                continue
             except OSError:
                 budget["unscanned"] += 1
                 continue
-            if getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
-                continue  # a junction or other reparse point is not the run's own directory (Windows)
             if stat.S_ISDIR(info.st_mode):
-                stack.append(Path(entry.path))
+                # A junction or mount point is a directory that is a reparse point: not the run's own (Windows). A
+                # reparse point that is a file (a cloud or deduplicated file) is read like any other (F3).
+                if not getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                    stack.append(Path(entry.path))
             elif stat.S_ISREG(info.st_mode):
                 _scan_file(Path(entry.path), found, budget)
 
@@ -373,6 +382,8 @@ def _walk(root: Path, found: list[str], budget: dict[str, int]) -> None:
 def _scan_file(path: Path, found: list[str], budget: dict[str, int]) -> None:
     try:
         hit = _contains_credential(path, budget)
+    except _GONE:  # renamed or removed since it was listed (an atomic write's temporary file): nothing to read
+        return
     except OSError:
         budget["unscanned"] += 1
         return

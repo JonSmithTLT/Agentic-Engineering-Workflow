@@ -372,3 +372,21 @@ def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp
     assert res.error["code"] == "USAGE" and str(MAX_SEND_CHARS) in res.error["message"]
     assert lab.project.rev() == rev
     lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")
+
+
+def test_a_stop_reason_too_long_for_the_supervisor_is_refused(lab, tmp_path):
+    """#138 re-review, F4: a stop request is read with the same bound as a message, so its reason is bounded alike.
+    Called in-process: an argument this long is past what one command-line argument may carry."""
+    from aew.engine.api import Engine
+    from aew.engine.harness_ops import MAX_SEND_CHARS
+    from aew.errors import UsageError
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run, rev = out["launch"]["run"], lab.project.rev()
+    with pytest.raises(UsageError, match=str(MAX_SEND_CHARS)):
+        Engine.discover(lab.root).harness_stop(token=lab.project.token, run=run, reason="é" * (MAX_SEND_CHARS + 1))
+    assert lab.project.rev() == rev
+    assert not list((runlog.run_dir(lab.aew_root, run) / "requests").glob("*.json"))
+    lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")

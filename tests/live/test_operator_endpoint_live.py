@@ -56,8 +56,13 @@ def probe_user():
     except KeyError:
         pytest.fail(f"the stand-in user {PROBE_USER} does not exist: the operator creates it once with sudo "
                     "(M4-E plan v3 §10)")
-    if _as_probe("print(1)").returncode != 0:
-        pytest.fail(f"`sudo -n -u {PROBE_USER}` needs a password here; allow it for this test")
+    if subprocess.run(["sudo", "-n", "-u", PROBE_USER, "true"], capture_output=True,
+                      stdin=subprocess.DEVNULL).returncode != 0:
+        pytest.fail(f"`sudo -n -u {PROBE_USER} true` needs a password here; allow it for this test")
+    out = _as_probe("print(1)")
+    if out.returncode != 0:  # sudo works, but the stand-in cannot run this checkout's Python
+        pytest.fail(f"{PROBE_USER} cannot run {sys.executable} with this checkout ({SRC}): it needs read and execute "
+                    f"access to both. The error was: {out.stderr.strip()[-600:]}")
     return PROBE_USER
 
 

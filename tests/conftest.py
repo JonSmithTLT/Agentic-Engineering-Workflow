@@ -13,6 +13,7 @@ import pytest
 IS_WINDOWS = sys.platform == "win32"
 sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 
+import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
@@ -21,6 +22,7 @@ from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks 
 def pytest_addoption(parser: pytest.Parser) -> None:
     lanes.addoption(parser)
     watchdog.addoption(parser)
+    harness_diagnostics.addoption(parser)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -30,6 +32,16 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
     return lanes.ignore_collect(collection_path, config)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
+    outcome = yield
+    harness_diagnostics.report(item, outcome.get_result())
+
+
+def pytest_runtest_logfinish(nodeid: str, location: tuple[str, int | None, str]) -> None:
+    harness_diagnostics.forget()
 
 
 @dataclass

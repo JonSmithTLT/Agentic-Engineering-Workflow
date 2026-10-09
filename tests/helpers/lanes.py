@@ -145,7 +145,8 @@ def _checkout_state(root: Path, ignore: Iterable[Path]) -> dict[str, Any]:
                             capture_output=True)
     dirty: dict[str, str] = {}
     for entry in status.stdout.decode("utf-8", "replace").split("\0") if status.returncode == 0 else []:
-        if len(entry) > 3 and (root / entry[3:]).resolve() not in ignored:
+        path = (root / entry[3:]).resolve()
+        if len(entry) > 3 and path not in ignored and not ignored.intersection(path.parents):
             try:
                 digest = hashlib.sha256((root / entry[3:]).read_bytes()).hexdigest()[:16]
             except OSError:
@@ -264,7 +265,12 @@ class LanePlugin:
             self.guard_before = _checkout_state(self.root, self._own_outputs())
 
     def _own_outputs(self) -> list[Path]:
+        """What the session itself writes, and may write inside the checkout: the reports, and the directory a failed
+        harness test's evidence is copied to (everything under it; #136 review, F4)."""
         outs = [self.report_path, getattr(self.config.option, "xmlpath", None)]
+        import harness_diagnostics
+
+        outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
         return [Path(p) for p in outs if p]
 
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:

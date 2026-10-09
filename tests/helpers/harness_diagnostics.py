@@ -16,6 +16,7 @@ When a test that created a ``HarnessLab`` fails, this module:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from pathlib import Path
@@ -53,13 +54,32 @@ def register(lab: Any) -> None:
     LABS.append(lab)
 
 
+def _read(path: Path) -> bytes:
+    """A file's bytes, retried briefly: on Windows a read can collide with the supervisor's atomic replace of the
+    same file (``runlog._read_text``), and the run is often still live when a test fails."""
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            return path.read_bytes()
+        except PermissionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
+
+
+def _redacted(path: Path) -> str:
+    """The whole file, redacted before anything is cut: a cut through a credential leaves a piece the pattern no
+    longer matches (#136 review, F1)."""
+    return K.redact(_read(path).decode("utf-8", "replace"))
+
+
 def _tail(path: Path, lines: int = TAIL_LINES) -> str:
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = _redacted(path)
     except OSError as exc:
         return f"<unreadable: {type(exc).__name__}>"
-    tail = (line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " …" for line in text.splitlines()[-lines:])
-    return K.redact("\n".join(tail))
+    return "\n".join(line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " …"
+                     for line in text.splitlines()[-lines:])
 
 
 def run_dirs(lab: Any) -> list[Path]:
@@ -93,25 +113,34 @@ def describe(lab: Any) -> str:
 
 
 def _safe(nodeid: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", nodeid)[-150:]
+    """A directory name for one test: readable, bounded for Windows paths, and unique (its full id's digest: two ids
+    that differ only in punctuation, such as parametrized URLs, never share a directory; #136 review, F2)."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", nodeid)[-120:] + "-" + hashlib.sha256(nodeid.encode()).hexdigest()[:10]
 
 
-def copy_evidence(lab: Any, dest: Path) -> list[Path]:
-    """Copy each run's evidence files, redacted, as ``<name>.txt`` (never ``*.json``: see the module docstring)."""
-    copied = []
+def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
+    """Copy each run's evidence files, redacted, as ``<name>.txt`` (never ``*.json``: see the module docstring).
+    Returns what was copied and what could not be: one unreadable file never stops the rest (#136 review, F3)."""
+    copied, failed = [], []
     for directory in run_dirs(lab):
         for name in EVIDENCE:
             src = directory / name
             if not src.is_file():
                 continue
             target = dest / directory.name / (name.replace("/", "__") + ".txt")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            data = src.read_bytes()[-MAX_COPY_BYTES:]
-            text = K.redact(data.decode("utf-8", "replace")) if name != "heartbeat" else \
-                f"mtime age {runlog.heartbeat_age(directory)}s\n"
-            target.write_text(text, encoding="utf-8")
-            copied.append(target)
-    return copied
+            try:
+                if name == "heartbeat":
+                    text = f"mtime age {runlog.heartbeat_age(directory)}s\n"
+                else:  # redacted whole, then the tail kept on a line boundary
+                    text = _redacted(src)
+                    if len(text) > MAX_COPY_BYTES:
+                        text = text[-MAX_COPY_BYTES:].split("\n", 1)[-1]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding="utf-8")
+                copied.append(target)
+            except OSError as exc:
+                failed.append(f"{directory.name}/{name}: {type(exc).__name__}: {exc}")
+    return copied, failed
 
 
 def report(item: pytest.Item, rep: pytest.TestReport) -> None:
@@ -127,12 +156,13 @@ def report(item: pytest.Item, rep: pytest.TestReport) -> None:
     dest = evidence_dir(item.config)
     if dest is not None:
         target = dest / f"{_safe(item.nodeid)}-{rep.when}"
-        try:
-            for i, lab in enumerate(LABS):
-                copy_evidence(lab, target / f"lab{i}" if len(LABS) > 1 else target)
-            sections.append(f"run files copied to {target}")
-        except OSError as exc:
-            sections.append(f"copying run files to {target} failed: {exc}")
+        failed: list[str] = []
+        for i, lab in enumerate(LABS):
+            try:
+                failed += copy_evidence(lab, target / f"lab{i}" if len(LABS) > 1 else target)[1]
+            except OSError as exc:  # the lab's run directory itself could not be listed
+                failed.append(f"{getattr(lab, 'root', '?')}: {type(exc).__name__}: {exc}")
+        sections.append(f"run files copied to {target}" + "".join(f"\n  not copied: {f}" for f in failed))
     rep.sections.append(("aew harness runs", "\n\n".join(sections)))
 
 

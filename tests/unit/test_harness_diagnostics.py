@@ -52,11 +52,54 @@ def test_a_run_is_described_by_its_record_what_an_observer_sees_and_its_logs(tmp
 def test_the_evidence_is_copied_redacted_and_never_as_json(tmp_path):
     lab = Lab(tmp_path / "proj")
     a_run(lab, "R-INV-0001-1", beat=True)
-    copied = D.copy_evidence(lab, tmp_path / "out")
+    copied, failed = D.copy_evidence(lab, tmp_path / "out")
+    assert not failed
     names = sorted(p.name for p in copied)
     assert names == ["harness__transcript.jsonl.txt", "heartbeat.txt", "run.json.txt", "supervisor.log.txt"]
     assert not list((tmp_path / "out").rglob("*.json"))  # the assurance tools read every *.json as a lane report
     assert all(TOKEN not in p.read_text(encoding="utf-8") for p in copied)
+
+
+def test_a_credential_cut_by_a_bound_is_still_redacted(tmp_path):
+    """#136 review, F1: redaction runs on the whole text before a line is cut to its bound or a file to its tail, so
+    a credential straddling the cut never leaves a piece the pattern no longer matches."""
+    lab = Lab(tmp_path / "proj")
+    directory = a_run(lab, "R-INV-0001-1")
+    secret = TOKEN.split(".")[-1]
+    line = "x" * (D.LINE_CHARS - 30) + TOKEN + " tail"  # the token straddles the 300-character cut
+    (directory / "harness" / "transcript.jsonl").write_text(line + "\n", encoding="utf-8")
+    (directory / "harness" / "agent.log").write_text("y" * 10 + TOKEN + "z" * D.MAX_COPY_BYTES, encoding="utf-8")
+    text = D.describe_run(directory)
+    copied, failed = D.copy_evidence(lab, tmp_path / "out")
+    assert not failed
+    for out in [text, *(p.read_text(encoding="utf-8") for p in copied)]:
+        assert secret[:12] not in out
+
+
+def test_two_tests_whose_ids_differ_only_in_punctuation_keep_separate_evidence():
+    """#136 review, F2: parametrized ids such as ``[a/b]`` and ``[a b]`` map to one readable name; the full id's
+    digest keeps their directories apart."""
+    a, b = D._safe("t.py::test[a/b]"), D._safe("t.py::test[a b]")
+    assert a != b and a.startswith("t.py_test_a_b_-") and b.startswith("t.py_test_a_b_-")
+    assert len(D._safe("x" * 500)) <= 131
+
+
+def test_one_unreadable_file_never_stops_the_rest_of_the_copy(tmp_path, monkeypatch):
+    """#136 review, F3: a read that fails (on Windows, a collision with the supervisor's replace of run.json) is
+    reported, and every other file is still copied."""
+    lab = Lab(tmp_path / "proj")
+    a_run(lab, "R-INV-0001-1")
+    real = D._read
+
+    def flaky(path):
+        if path.name == "run.json":
+            raise PermissionError(13, "sharing violation", str(path))
+        return real(path)
+
+    monkeypatch.setattr(D, "_read", flaky)
+    copied, failed = D.copy_evidence(lab, tmp_path / "out")
+    assert [f.split(":")[0] for f in failed] == ["R-INV-0001-1/run.json"]
+    assert sorted(p.name for p in copied) == ["harness__transcript.jsonl.txt", "supervisor.log.txt"]
 
 
 CONFTEST = f'''
@@ -124,10 +167,12 @@ def test_fails_without_a_lab():
 def test_a_failed_harness_test_reports_its_runs_and_keeps_their_files_where_ci_uploads(tmp_path):
     root = tmp_path / "proj"
     (root / "tests" / "unit").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+    (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
     (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     (root / "tests" / "conftest.py").write_text(CONFTEST, encoding="utf-8")
     (root / "tests" / "unit" / "test_d.py").write_text(TESTS, encoding="utf-8")
-    reports = tmp_path / "reports"
+    reports = root / "reports"  # inside the checkout: the copies are the session's own output (#136 review, F4)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
@@ -136,9 +181,11 @@ def test_a_failed_harness_test_reports_its_runs_and_keeps_their_files_where_ci_u
     out = proc.stdout + proc.stderr
     assert proc.returncode == 1, out
     assert "aew harness runs" in out and "recorded crashed" in out and "supervisor error: boom" in out, out
+    assert "isolation guard" not in out, out
     kept = reports / "harness-runs"
     dirs = sorted(p.name for p in kept.iterdir())
-    assert len(dirs) == 1 and "test_fails-call" in dirs[0], dirs  # only the failed test that had a lab
+    # Only the failed test that had a lab keeps files.
+    assert len(dirs) == 1 and "test_fails-" in dirs[0] and dirs[0].endswith("-call"), dirs
     assert (kept / dirs[0] / "R-INV-0001-1" / "supervisor.log.txt").read_text(encoding="utf-8").endswith("boom\n")
     sys.path.insert(0, str(HELPERS.parents[1] / "tools" / "ci"))
     import check_assurance

@@ -19,6 +19,7 @@ from aew.harness import procs
 from aew.harness.bridge import rebuild_error
 
 LOCATOR_REL = "local/operator/endpoint.json"
+LOCK_NAME = "endpoint.lock"  # beside the locator: held by the live endpoint for its whole life
 LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0

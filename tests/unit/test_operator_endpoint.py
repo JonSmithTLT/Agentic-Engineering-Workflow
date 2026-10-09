@@ -400,6 +400,57 @@ def test_one_endpoint_per_project_and_a_stale_locator_is_replaced_only_when_its_
         again.close()
 
 
+def test_concurrent_starters_claim_the_project_once(project):
+    """Review of #134, finding 1: starters racing for one project never both serve. Exactly one claims the endpoint
+    lock; the locator names that one; every other starter is refused."""
+    engine = Engine.discover(project.root)
+    barrier, started, refused = threading.Barrier(6), [], []
+
+    def start() -> None:
+        ep = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True)
+        barrier.wait(10)
+        try:
+            ep.start()
+            started.append(ep)
+        except errors.PermissionDenied as exc:
+            refused.append(exc)
+
+    threads = [threading.Thread(target=start) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    try:
+        assert len(started) == 1 and len(refused) == 5, (started, refused)
+        locator = operator_client.read_locator(operator_client.locator_path(project.root / ".aew"))
+        assert locator is not None and locator["address"] == started[0].address
+        assert operator_client.ping(project.root / ".aew")["pid"] == os.getpid()
+    finally:
+        for ep in started:
+            ep.close()
+
+
+def test_an_unreadable_locator_is_never_taken_for_a_claim(project, endpoint):
+    """Review of #134, finding 1: an unreadable locator does not decide anything. While the live endpoint holds the
+    lock, a starter is refused whatever the file says; once no one holds it, the file is stale by proof and replaced."""
+    ep, _ = endpoint
+    engine = Engine.discover(project.root)
+    locator = operator_client.locator_path(project.root / ".aew")
+    for junk in ("", "{not json", json.dumps({"schema": "other"})):
+        locator.write_text(junk, encoding="utf-8")
+        with pytest.raises(errors.PermissionDenied):
+            operator_endpoint.OperatorEndpoint(engine, console=print, dev=True).start()
+    ep.close()
+    locator.write_text("", encoding="utf-8")  # as a starter that died mid-write would leave it
+    again = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True)
+    again.start()
+    try:
+        assert operator_client.read_locator(locator)["address"] == again.address
+    finally:
+        again.close()
+    assert not locator.exists()
+
+
 def test_one_challenge_at_a_time(project, endpoint):
     ep, console = endpoint
     _adopt(project, mode="crawl")

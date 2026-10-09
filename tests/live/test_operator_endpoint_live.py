@@ -14,7 +14,6 @@ on today's hosts the real Lead runs as the operator's uid, and that production e
 from __future__ import annotations
 
 import os
-import pwd
 import shutil
 import subprocess
 import sys
@@ -50,6 +49,8 @@ print(json.dumps({"reached": True, "reply": json.loads(conn.recv_bytes())}))
 
 @pytest.fixture
 def probe_user():
+    import pwd  # POSIX only: imported after the Linux-only skip, so collecting on Windows never fails (#134 review)
+
     try:
         pwd.getpwnam(PROBE_USER)
     except KeyError:

@@ -14,9 +14,10 @@ an autonomy increase reaches the engine. Three layers, each doing one job (opera
   commit refuses if either moved, and records both digests, the revision and this endpoint's pid and start time.
 
 **One endpoint, never from a Lead session.** It refuses to start inside a Lead session (the broker's environment, or
-a Lead session's broker or harness among its ancestors) and while another endpoint for the project answers. Its
-locator (``.aew/local/operator/endpoint.json``) is created exclusively and only locates: it never authorizes. A stale
-one is replaced only once its process is proven gone.
+a Lead session's broker or harness among its ancestors) and while another endpoint for the project is live: the live
+endpoint holds the project's endpoint lock (``.aew/local/operator/endpoint.lock``) for its whole life, and writes its
+locator (``endpoint.json``) only under it. The locator only locates: it never authorizes. A locator found while the lock
+is free is stale by proof (the OS releases the lock when its holder dies) and is overwritten.
 
 **The label.** Every record is ``guarantee: dev``, and the endpoint starts only with ``--dev``: until F18.6 the
 operator principal cannot be shown distinct from the Lead host's. What a same-uid Lead can still do is
@@ -43,23 +44,26 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors, operator
+from aew.engine.lock import FileLock
 from aew.engine.steering import GUARANTEE, OperatorPrincipal
+from aew.errors import LockTimeout
 from aew.harness import procs
 from aew.harness.bridge import private_address
 from aew.harness.operator_client import (
     CHALLENGE_TIMEOUT_S,
     LOCATOR_SCHEMA,
+    LOCK_NAME,
     MAX_MESSAGE,
     OPERATIONS,
     RESIDUALS,
     WAKE_TIMEOUT_S,
     _request,
-    _same_process,
     locator_path,
     read_locator,
 )
 
 Console = Callable[[str], None]
+CLAIM_TIMEOUT_S = 0.5  # long enough to ride out another starter's failed claim, never a wait for a live endpoint
 
 
 def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
@@ -152,6 +156,7 @@ class OperatorEndpoint:
         self._authorizing = threading.Lock()  # one challenge at a time
         self._engine_lock = threading.Lock()
         self._listener: Any = None
+        self._lock: FileLock | None = None
         self._thread: threading.Thread | None = None
         self.address = ""
         self.family = ""
@@ -161,14 +166,15 @@ class OperatorEndpoint:
     # ------------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
-        """Claim the locator and serve. ``aew operator serve`` hardens its process first (:func:`harden`)."""
-        self._claim_locator()
+        """Claim the project's endpoint lock, then serve. ``aew operator serve`` hardens its process first
+        (:func:`harden`)."""
+        self._claim()
         try:
             self.address, self.family, self._private_dir = private_address()
             self._listener = Listener(self.address, family=self.family)  # no key: the peer check authorizes
-            self._write_locator()
+            self._write_locator()  # under the lock: whatever locator was there is stale
         except BaseException:
-            self._locator.unlink(missing_ok=True)
+            self._release()
             raise
         self._thread = threading.Thread(target=self._serve, name="aew-operator-endpoint", daemon=True)
         self._thread.start()
@@ -200,12 +206,15 @@ class OperatorEndpoint:
             import shutil
 
             shutil.rmtree(self._private_dir, ignore_errors=True)
-        try:
-            data = json.loads(self._locator.read_text(encoding="utf-8"))
-            if data.get("pid") == self.pid:
-                self._locator.unlink(missing_ok=True)
-        except (OSError, ValueError):
-            pass
+        self._release()
+
+    def _release(self) -> None:
+        """Remove this endpoint's locator and release the lock; only the lock's holder ever wrote the locator."""
+        if self._lock is None:
+            return
+        self._locator.unlink(missing_ok=True)
+        self._lock.__exit__(None, None, None)
+        self._lock = None
 
     def _wake(self) -> None:
         try:
@@ -213,25 +222,22 @@ class OperatorEndpoint:
         except Exception:  # noqa: S110, BLE001 (best effort)
             pass
 
-    def _claim_locator(self) -> None:
-        """Create the locator exclusively; replace a stale one only once its process is proven gone."""
+    def _claim(self) -> None:
+        """Hold the project's endpoint lock for this endpoint's lifetime (review of #134, finding 1). Holding it is
+        being the project's endpoint: a second starter is refused while it is held, and once it is free (the OS
+        releases it when its holder dies), any locator left behind is proven stale and is simply overwritten. Claiming
+        and replacing are therefore serialized, and an unreadable locator is never mistaken for a claim."""
         self._locator.parent.mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
-            try:
-                fd = os.open(self._locator, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            except FileExistsError:
-                other = read_locator(self._locator)
-                if other is None or not _same_process(other):
-                    self._locator.unlink(missing_ok=True)  # its process is gone (or the file is not a locator)
-                    continue
-                raise errors.PermissionDenied(
-                    f"another operator endpoint for this project is live (pid {other.get('pid')}, started "
-                    f"{other.get('started_at')}); one endpoint per project: use it, or stop it first",
-                    pid=other.get("pid")) from None
-            with os.fdopen(fd, "w", encoding="utf-8") as f:  # who claims it, from the first byte: never empty
-                f.write(json.dumps(self._locator_data()) + "\n")
-            return
-        raise errors.PermissionDenied("could not claim the operator endpoint's locator; another endpoint is starting")
+        lock = FileLock(self._locator.with_name(LOCK_NAME), timeout=CLAIM_TIMEOUT_S)
+        try:
+            lock.__enter__()
+        except LockTimeout:
+            other = read_locator(self._locator) or {}
+            raise errors.PermissionDenied(
+                "another operator endpoint for this project is live or starting"
+                + (f" (pid {other.get('pid')}, started {other.get('started_at')})" if other.get("pid") else "")
+                + "; one endpoint per project: use it, or stop it first", pid=other.get("pid")) from None
+        self._lock = lock
 
     def _locator_data(self) -> dict[str, Any]:
         return {"schema": LOCATOR_SCHEMA, "address": self.address, "family": self.family, "pid": self.pid,

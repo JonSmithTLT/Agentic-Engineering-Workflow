@@ -11,7 +11,7 @@ from the pinned policy bytes. Only a legality change makes a dispatch decision s
 effect at the next safe boundary and is recorded, but it never relaxes the policy pin: every edit, operational
 included, still needs the operator's adoption (#118).
 
-A policy file with no classified schema (a manifest ``policy`` entry other than the four) counts wholly as legality,
+A policy file with no classified schema (a manifest ``policy`` entry other than the five) counts wholly as legality,
 which fails closed. So does an instance key the schema does not name: the schema's open containers accept it, and the
 engine may read it (PR #130 review, finding 2), so it is digested as legality rather than dropped. A policy map key
 that is not a string is refused: it cannot be ordered against string keys, and ``1`` and ``"1"`` would share a
@@ -31,7 +31,7 @@ LEGALITY = "legality_affecting"
 OPERATIONAL = "operational"
 CLASSES = (LEGALITY, OPERATIONAL)
 KEY = "x-aew-class"
-CLASSIFIED = ("gates", "guardrails", "checks", "execution")
+CLASSIFIED = ("gates", "guardrails", "checks", "execution", "pricing")  # pricing: F25 slice 2, all operational
 
 
 def _resolve(schema: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:

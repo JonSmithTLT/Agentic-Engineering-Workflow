@@ -3,7 +3,7 @@
   "$id": "aew/pricing/v1",
   "title": "The project's price table",
   "description": "Flat USD prices per million tokens, by `<provider>/<model>`, per billable bucket, and nothing else (F25, the cost and usage ledger design v0.2 R4). The table carries no token semantics: how a harness's reported counters overlap is the adapter's declaration (`token_semantics` in the run-usage record), so a row naming anything but a bucket is refused. A bucket a row does not price is unpriced, never zero (R4 rule 2).",
-  "$comment": "Not a classified policy schema (aew.policy.classes.CLASSIFIED) and not yet a manifest policy file: wiring `policy.pricing` into the manifest is F25 slice 2 (design v0.2 §6 edit 3). A manifest policy file with no classified schema is digested as legality in full under the E1 rules, so the wiring must decide its classes then.",
+  "$comment": "A classified policy schema (aew.policy.classes.CLASSIFIED), adopted as the manifest's optional `policy.pricing` (F25 slice 2). Every property is operational: a price changes a derived estimate, never what a dispatch may do, so a price edit never makes a decision stale; it still needs the operator's adoption like every policy edit.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,23 +15,28 @@
   ],
   "properties": {
     "schema": {
+      "x-aew-class": "operational",
       "const": "aew/pricing/v1"
     },
     "currency": {
+      "x-aew-class": "operational",
       "const": "USD"
     },
     "as_of": {
+      "x-aew-class": "operational",
       "description": "The date the prices were taken (YYYY-MM-DD).",
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
     },
     "source": {
+      "x-aew-class": "operational",
       "description": "Where the prices came from, as the operator recorded them.",
       "type": "string",
       "minLength": 1,
       "maxLength": 500
     },
     "prices": {
+      "x-aew-class": "operational",
       "type": "object",
       "propertyNames": {
         "pattern": "^[^/\\s]+/\\S+$"

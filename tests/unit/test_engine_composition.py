@@ -266,5 +266,6 @@ def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine)
     # archival, so a retired entry leaves with its unit); M4-D5: every terminal validation run gets its immutable
     # record (before archival, so a retired candidate's run is recorded before the unit leaves); then ADR-0011 R6.
     assert [named(step) for step in engine._k.finalizers.steps] == ["Dispatch.finalize", "Queue.finalize",
-                                                                     "Validation.finalize", "Archive.finalize"]
+                                                                     "Validation.finalize",
+                                                                     "UsageCopy.finalize", "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7

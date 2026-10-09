@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import IntegrityError, ValidationFailed
+from aew.harness import contract as K
 from aew.harness import runlog
 from aew.harness import usage as U
 from aew.schemas import validate
@@ -275,16 +276,26 @@ def _valid_record(candidate: Any) -> dict[str, Any] | None:
 
 
 def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricing: Prices | None,
-                   now: str | None = None) -> list[str]:
+                   now: str | None = None, final: bool = True) -> list[str]:
     """Copy each run's usage of one invocation into ``inv.runs[i].usage``, once (R5). Returns the runs copied.
 
     The run record is read once; its ``result.usage_record`` is taken when it is a well-formed bounded record, and
     otherwise the run is recorded with absent usage, so a run that crashed before reporting is counted, never
     omitted. A run whose usage is present is never rewritten. ``pricing`` is the table in effect now (the manifest's
-    ``policy.pricing``, resolved by the caller): its digest is recorded and its snapshot written on first use."""
+    ``policy.pricing``, resolved by the caller): its digest is recorded and its snapshot written on first use.
+
+    ``final=False`` (a transaction that ends or relaunches an invocation) copies only runs that have ended: a run
+    still starting or running has not reported its usage yet, and a copy now would fix it as absent for ever. It
+    stays ``provisional`` (R6) until a later transaction on the invocation, and at the latest the unit's archival,
+    which copies every run (``final=True``): the bundle carries the unit's complete usage into the cold state."""
     inv = state["invocations"][inv_id]
     pending = [r for r in inv.get("runs") or [] if "usage" not in r]
     if not pending:
+        return []
+    observed = [(entry, *runlog.observed_status(runlog.run_dir(aew_root, entry["run"]))) for entry in pending]
+    if not final:
+        observed = [o for o in observed if o[1] in K.TERMINAL]
+    if not observed:
         return []
     sha = write_pricing_snapshot(aew_root, pricing) if pricing is not None else None
     profile = inv.get("execution_profile") or {}
@@ -295,8 +306,7 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
                  "effort": U.identifier(profile.get("effort"), U.MAX_EFFORT),
                  "profile": U.identifier(profile.get("profile"), U.MAX_PROFILE)}
     copied: list[str] = []
-    for entry in pending:
-        status, run_record = runlog.observed_status(runlog.run_dir(aew_root, entry["run"]))
+    for entry, status, run_record in observed:
         result = (run_record or {}).get("result")
         record = _valid_record((result or {}).get("usage_record") if isinstance(result, dict) else None) \
             or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
@@ -312,6 +322,59 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
         entry["usage"] = record
         copied.append(entry["run"])
     return copied
+
+
+class UsageCopy:
+    """The usage copy as a Lead transaction's finalizer (see ``finalize``)."""
+
+    def __init__(self, aew_root: Path, pricing: Callable[[], Prices | None]) -> None:
+        self.aew_root, self.pricing = aew_root, pricing
+
+    def finalize(self, ctx: Any) -> None:
+        _finalize(ctx, self.aew_root, self.pricing)
+
+
+def _finalize(ctx: Any, aew_root: Path, pricing: Callable[[], Prices | None]) -> None:
+    """The usage copy as a Lead transaction's finalizer (R5), run before archival so a bundle carries what it copied.
+
+    R5 names the transactions that copy: evidence ingestion, ``invoke cancel``, a relaunch, and archival. Each is a
+    Lead transaction that ends an invocation, adds a run to it, or archives its unit, so the finalizer copies for
+    every invocation whose status or run list this transaction changed (``final=False``: ended runs only) and for
+    every invocation of a unit this commit archives (``final=True``). Covering the transaction rather than each
+    handler means no ingestion path (Ticket, review, verification, non-mutating, parent) can be missed.
+
+    A copy only adds ``usage`` to an existing run entry, so it derives no event (R5): ``run.added`` compares run ids
+    and ``invocation.status`` the status field, and neither changes. ``pricing`` is read once and only when a copy
+    happens, from the pinned bytes: a table edited outside AEW has already refused the transaction at its entry, as
+    any policy edit does. A table that still cannot be read records the copy with no table (``pricing_sha256: null``)
+    rather than fail a cancel or an archival over a price: the usage facts are what is kept."""
+    from aew.engine import hierarchy as H
+
+    state = ctx.state
+    if state.get("schema") != "aew/control/v2":
+        return
+    before = ctx.session.committed_view().get("invocations") or {}
+    archiving = {w for w, u in state["work"].items() if u["state"] in H.TERMINAL}
+    table: list[Prices | None] = []
+
+    def prices() -> Prices | None:
+        if not table:
+            try:
+                table.append(pricing())
+            except (IntegrityError, ValidationFailed, FileNotFoundError, UnicodeDecodeError):
+                table.append(None)
+        return table[0]
+
+    for inv_id, inv in state["invocations"].items():
+        runs = inv.get("runs") or []
+        if not runs or all("usage" in r for r in runs):
+            continue
+        old = before.get(inv_id)
+        final = inv.get("work_unit") in archiving
+        touched = old is not None and (old.get("status") != inv.get("status")
+                                       or [r.get("run") for r in old.get("runs") or []] != [r.get("run") for r in runs])
+        if final or touched:
+            copy_run_usage(state, inv_id, aew_root, pricing=prices(), final=final)
 
 
 # --------------------------------------------------------------------------- projections (R6, R7)

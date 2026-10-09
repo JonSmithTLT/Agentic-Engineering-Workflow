@@ -298,6 +298,50 @@
               "null"
             ]
           },
+          "runs": {
+            "description": "The invocation's harness runs, in launch order (ADR-0009). `usage` is the run's usage, copied once from its run record by the engine's next Lead transaction on the invocation that ends it, relaunches it or archives its unit (F25 R5); absent while the run is provisional (R6). A copy only adds `usage` to an existing entry, so it derives no event (ADR-0012 D2).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "run"
+              ],
+              "properties": {
+                "run": {
+                  "type": "string"
+                },
+                "harness": {
+                  "type": "string"
+                },
+                "token_id": {
+                  "type": "string"
+                },
+                "launched_at": {
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "`launch`/`relaunch`: `aew harness launch`; `dispatch`: launched in the dispatching transaction (--launch).",
+                  "enum": [
+                    "dispatch",
+                    "launch",
+                    "relaunch"
+                  ]
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "requests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "usage": {
+                  "$ref": "../run-usage/v1"
+                }
+              }
+            }
+          },
           "execution_profile": {
             "description": "harness/provider/model/effort pinned at dispatch (ADR-0010); null = none selected",
             "type": [

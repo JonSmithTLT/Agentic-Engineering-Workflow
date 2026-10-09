@@ -257,12 +257,14 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
 
     47: every hot intent is ACTIVE and schema-valid, owned by a generation that has existed, and its steps are a
         prefix of its plan under the keys ``<SI>:<n>``, at strictly increasing revisions after it opened and none past
-        the current revision; a unit has at most one.
+        the current revision; a unit has at most one, and so does the project (a stage with no unit).
     48: every step carries the legality digest the intent bound (nothing commits under drift); a step is retried after
-        a stale revision only when it and the stage are non-judgment, and the intent says so iff some step was.
+        a stale revision only when it and the stage are non-judgment, and the intent says so iff some step was; a stop
+        names the next step, or the last when every step committed (rule 7).
     49: every intent ever opened (``counters.stage_intent``) lives in exactly one place: hot, or one immutable cold
-        record that is terminal, valid and its own id, at the path its subject gives it; a unit's pointer (hot or in
-        its bundle) names that record and its hash."""
+        record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
+        the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
+        note carries the record's hash; a record with no unit (``records/``) is pinned by no hash."""
     from aew.engine import stage_intents as S
     from aew.schemas import validate
 

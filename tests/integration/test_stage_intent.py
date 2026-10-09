@@ -338,3 +338,49 @@ def test_one_unfinished_stage_without_a_unit(project):
     with pytest.raises(IllegalTransition) as exc:
         open_stage(p)
     assert exc.value.details["reason"] == "open_intent"
+
+
+@pytest.mark.parametrize("primitive", sorted(__import__("aew.engine.primitives", fromlist=["NOT_STEPS"]).NOT_STEPS))
+def test_a_primitive_that_is_not_one_commit_is_refused_at_opening(project, primitive):
+    """#140 re-review, finding 1: a stage step is one primitive in one Lead transaction. A primitive that commits twice,
+    or outside a Lead transaction, is refused when the stage opens, never left to fail at its first commit."""
+    p = project
+    with pytest.raises(IllegalTransition) as exc:
+        open_stage(p, steps=1, primitive=primitive)
+    assert exc.value.details["reason"] == "not_a_step" and "stage_intents" not in load_control(p.root)
+
+
+def test_a_record_pinned_by_its_unit_is_never_shadowed_by_an_unpinned_copy(project, tmp_path):
+    """#140 review, finding 5: a copy placed in records/ (the home of a stage with no unit, which no hash pins) never
+    shadows the record a unit's pointer pins by hash."""
+    p = project
+    wid = create_planned_ticket(p, tmp_path)
+    si = open_stage(p, subject=wid)
+    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=si, rationale="the genuine record")
+    forged = p.root / ".aew" / SI.RECORDS_DIR / f"{si}.yaml"
+    forged.parent.mkdir(parents=True, exist_ok=True)
+    genuine = (p.root / ".aew" / f"work/{wid}/stage-intents/{si}.yaml").read_text(encoding="utf-8")
+    forged.write_text(genuine.replace("the genuine record", "a forged record"), encoding="utf-8")
+    assert engine(p).stage_intent(si)["resolution"]["rationale"] == "the genuine record"
+
+
+def test_a_units_stage_record_must_be_pinned_by_its_pointer_or_annotation(project, tmp_path):
+    """Invariant 49 refuses a unit's stage record that no pointer or annotation pins by its hash."""
+    from invariants import control_violations
+
+    p = project
+    hot_wid = create_planned_ticket(p, tmp_path, title="Kept hot")
+    kept = open_stage(p, subject=hot_wid)
+    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=kept, rationale="pinned by its pointer")
+    gone_wid = create_planned_ticket(p, tmp_path, title="Archived first")
+    noted = open_stage(p, subject=gone_wid)
+    p.lead("work", "transition", gone_wid, "--to", "CANCELLED", "--reason", "archived before its stage ended")
+    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=noted, rationale="pinned by an annotation")
+    assert_control_invariants(p)
+    for wid, si in ((hot_wid, kept), (gone_wid, noted)):
+        record = p.root / ".aew" / f"work/{wid}/stage-intents/{si}.yaml"
+        original = record.read_bytes()
+        record.write_bytes(original + b"# altered\n")
+        assert any(f"{wid}" in v and si in v for v in control_violations(p.root)), si
+        record.write_bytes(original)
+    assert_control_invariants(p)

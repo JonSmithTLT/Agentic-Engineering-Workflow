@@ -84,14 +84,24 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
                                                     "unknown", "unknown", None, declared=False)
 
 
-# The Lead transaction a primitive commits under, where it is not the primitive's own id: the three creations share
-# `invoke.create`. The stage journal refuses a step whose commit is not its planned primitive's (M4-E E3).
-COMMIT_OPS = {"invoke.create.mutating": "invoke.create", "invoke.create.non_mutating": "invoke.create",
-              "invoke.create.parent": "invoke.create"}
+# The Lead transactions a primitive commits under, where they are not just its own id: the three creations share
+# `invoke.create`, and steering is a lowering or a request. The stage journal refuses a step whose commit is not one of
+# its planned primitive's (M4-E E3).
+COMMIT_OPS: dict[str, frozenset[str]] = {
+    "invoke.create.mutating": frozenset({"invoke.create"}),
+    "invoke.create.non_mutating": frozenset({"invoke.create"}),
+    "invoke.create.parent": frozenset({"invoke.create"}),
+    "steering": frozenset({"steering.lower", "steering.request"}),
+}
+# Declared primitives that do not commit in exactly one Lead transaction: a stage step is one primitive in one commit,
+# so these are refused at a stage's opening, never left to fail at their first commit (#140 re-review, finding 1).
+# Publication and validation commit twice (a marker, then the outcome); reconciliation finishes a publication;
+# integration verification is ingested by the verifier, not in a Lead transaction. Their stages arrive with E6.
+NOT_STEPS = frozenset({"integrate.publish", "integrate.validate", "integrate.reconcile", "verify.ingest.integration"})
 
 
-def commit_op(primitive_id: str) -> str:
-    return COMMIT_OPS.get(primitive_id, primitive_id)
+def commit_ops(primitive_id: str) -> frozenset[str]:
+    return COMMIT_OPS.get(primitive_id, frozenset({primitive_id}))
 
 
 CLASS_RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}

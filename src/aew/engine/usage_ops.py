@@ -21,6 +21,7 @@ turns it into numbers for a surface.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from decimal import Decimal
@@ -153,15 +154,75 @@ def named_snapshots(state: Mapping[str, Any], archived: Iterable[Mapping[str, An
     return found
 
 
+def pricing_doctor(manifest: Mapping[str, Any], read: Callable[[], Prices | None]) -> tuple[str, str]:
+    """``aew doctor``'s ``policy:pricing`` (R4): no table is reported, never failed (the design's INFO: every derived
+    cost is unpriced); a named table that cannot be read from its pinned bytes, or does not validate, is a FAIL."""
+    rel = (manifest.get("policy") or {}).get("pricing")
+    if rel is None:
+        return "PASS", f"INFO: no price table; every derived cost is unpriced ({UNPRICED_NO_TABLE})"
+    try:
+        prices = read()
+    except Exception as exc:  # the doctor reports; it never stops at the first problem
+        return "FAIL", f"the price table {rel} cannot be used: {getattr(exc, 'code', type(exc).__name__)}: {exc}"
+    if prices is None:
+        return "FAIL", f"the price table {rel} is named but not in force"
+    return "PASS", (f"{rel}: {len(prices.table['prices'])} price row(s) as of {prices.table['as_of']}, "
+                    f"sha256 {prices.sha256[:12]}")
+
+
 def snapshot_doctor(state: Mapping[str, Any], aew_root: Path,
                     archived: Iterable[Mapping[str, Any]] = ()) -> tuple[str, str]:
-    """``aew doctor``'s check: every snapshot a record names is present and matches its digest (R4: an ERROR, the
-    repository's ``FAIL``). Wired into the doctor with the copy paths (slice 2)."""
+    """``aew doctor``'s ``pricing-snapshots`` (R4 rule 3: an ERROR, the repository's ``FAIL``): every snapshot a record
+    names (in the hot state and the given archived bundles: the doctor passes the recent ring, a bounded read) is
+    present and matches its digest, and every file in the snapshot directory is a snapshot of its own name. The second
+    catches damage no record names: a copy that met a damaged snapshot records no table (``pricing_sha256: null``)."""
     bad = sorted(sha for sha in named_snapshots(state, archived) if read_pricing_snapshot(aew_root, sha) is None)
+    stray, leftovers = [], []
+    for p in _snapshot_files(aew_root):
+        if _PUBLISH_LEFTOVER.fullmatch(p.name):
+            leftovers.append(p.name)
+        elif not (p.name.endswith(".yaml") and read_pricing_snapshot(aew_root, p.name[:-5]) is not None):
+            stray.append(p.name)
+    parts = []
     if bad:
-        return "FAIL", (f"pricing snapshot(s) named by recorded usage are missing or damaged: {', '.join(bad)}; "
-                        f"their runs' estimated_at_record is unpriced ({UNPRICED_SNAPSHOT_MISSING})")
-    return "PASS", "every pricing snapshot named by recorded usage is present and matches its digest"
+        parts.append(f"pricing snapshot(s) named by recorded usage are missing or damaged: {', '.join(bad)}; their "
+                     f"runs' estimated_at_record is unpriced ({UNPRICED_SNAPSHOT_MISSING})")
+    if stray:
+        parts.append(f"file(s) in {SNAPSHOT_DIR}/ that are not the snapshot their name says: {', '.join(stray)}")
+    if parts:
+        return "FAIL", ("; ".join(parts) + ". A snapshot is the exact bytes of an adopted price table, named by their "
+                        "sha256 and never rewritten: restore a damaged or missing one from the table's original bytes "
+                        "(version control, a backup), and move aside a file that is not one")
+    if leftovers:  # #141 review, finding 1: a write interrupted before it removed its temporary file
+        return "WARN", (f"leftover temporary file(s) from an interrupted snapshot write, safe to remove: "
+                        f"{', '.join(leftovers)}")
+    return "PASS", ("every pricing snapshot named by recorded usage (hot state and recently archived units) is "
+                    "present and matches its digest")
+
+
+# util.create_exclusive's temporary file (`.<name>.<random>.tmp`), left only if its writer was killed mid-publish.
+_PUBLISH_LEFTOVER = re.compile(r"\.[0-9a-f]{64}\.yaml\..+\.tmp")
+
+
+def _snapshot_files(aew_root: Path) -> list[Path]:
+    directory = aew_root / SNAPSHOT_DIR
+    return sorted(p for p in directory.iterdir() if p.is_file()) if directory.is_dir() else []
+
+
+def ledger_doctor(state: Mapping[str, Any], reader: Reader) -> tuple[str, str]:
+    """``aew doctor``'s ``usage-ledger`` (R6): how many hot runs are recorded, still provisional (in their run
+    directory, awaiting their copy), or missing (neither: their usage is lost). Reads a run directory only for an
+    uncopied run."""
+    counts = {"recorded": 0, "provisional": 0, "missing": 0}
+    for inv_id, inv in (state.get("invocations") or {}).items():
+        for entry in inv.get("runs") or []:
+            counts[reader.run_row(entry, inv_id)["state"]] += 1
+    detail = (f"{counts['recorded']} hot run(s) recorded, {counts['provisional']} provisional (awaiting their copy), "
+              f"{counts['missing']} missing")
+    if counts["missing"]:
+        return "WARN", detail + ": a missing run's usage is lost (no copy and no run directory); totals count it " \
+                                "as missing, never as zero"
+    return "PASS", detail
 
 
 # --------------------------------------------------------------------------- the derivation (R4)

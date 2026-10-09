@@ -287,6 +287,9 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
             problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
         if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):
             problems.append(f"{where}: the intent's retry flag disagrees with its steps")
+        stop, done = si.get("stopped"), len(si["steps"])
+        if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
+            problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
 
     for sid, si in sorted(intents.items()):
         where = f"stage intent {sid}"
@@ -301,11 +304,10 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
             problems.append(f"{where}: owned by generation {si['generation']}, which never held the seat")
         if si["steps"] and si["steps"][-1]["revision"] > hot["revision"]:
             problems.append(f"{where}: a step past the current revision")
-        if si["subject"]["kind"] == "unit":
-            if si["subject"]["id"] in subjects:
-                problems.append(f"{si['subject']['id']} has two unfinished stages: {subjects[si['subject']['id']]} "
-                                f"and {sid}")
-            subjects[si["subject"]["id"]] = sid
+        key = si["subject"]["id"] or "the project"  # one per unit, and one with no unit
+        if key in subjects:
+            problems.append(f"{key} has two unfinished stages: {subjects[key]} and {sid}")
+        subjects[key] = sid
         journal(si, where)
 
     pointers = {p["id"]: (wid, p) for wid, u in full["work"].items() for p in u.get("stage_intents") or []}
@@ -332,10 +334,18 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         if homes[0] != S.cold_rel(sid, doc["subject"]["id"]) and homes[0] != S.cold_rel(sid, None):
             problems.append(f"{homes[0]}: not where its subject {doc['subject']['id']} puts it")
         journal(doc, homes[0])
+        sha = hashlib.sha256(raw).hexdigest()
         if sid in pointers:
             wid, pointer = pointers[sid]
-            if pointer["path"] != homes[0] or pointer["sha256"] != hashlib.sha256(raw).hexdigest():
+            if pointer["path"] != homes[0] or pointer["sha256"] != sha:
                 problems.append(f"{wid}'s pointer to {sid} does not name its record and hash")
+        elif homes[0].startswith("work/"):
+            # A unit's record is pinned by the unit's pointer, or by an annotation on a unit archived first.
+            wid = homes[0].split("/")[1]
+            notes = [yaml.safe_load(a.read_bytes()) for a in (aew / "work" / wid / "annotations").glob("*.yaml")]
+            if not any(n.get("rel") == "stage_intent" and n.get("object") == sid
+                       and n.get("note") == f"{homes[0]} sha256:{sha}" for n in notes):
+                problems.append(f"{homes[0]} is pinned by no pointer or annotation on {wid}")
     return problems
 
 

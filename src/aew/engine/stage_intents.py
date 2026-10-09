@@ -128,14 +128,18 @@ class StageIntents:
             raise UsageError(f"unknown ingress {ingress!r}", allowed=list(CHANNELS))
         if not plan or len(plan) > MAX_STEPS:
             raise UsageError(f"a stage plans 1 to {MAX_STEPS} steps; this one plans {len(plan)}")
+        if base_class not in P.CLASS_RANK or effective_class not in P.CLASS_RANK:
+            raise UsageError("a stage's base and effective class are operation classes",
+                             allowed=list(P.OPERATION_CLASSES))
         with self.k.lead_txn(token, expect_rev, "stage.open") as ctx:
             state = ctx.state
             if subject is not None and subject not in state["work"]:
                 raise NotFound(f"no hot work unit {subject}: a stage's subject is a unit in flight", work_id=subject)
             for other in (state.get("stage_intents") or {}).values():
-                if subject is not None and other["subject"]["id"] == subject:
+                if other["subject"]["id"] == subject:  # one per unit, and one with no unit (§2.7: bounded)
                     raise IllegalTransition(
-                        f"{subject} already has an unfinished stage, {other['id']} ({other['tool']}): resolve it "
+                        f"{subject or 'the project'} already has an unfinished stage, {other['id']} "
+                        f"({other['tool']}): resolve it "
                         "first (`resolve` with continue or abandon, or `aew stage continue|abandon`)",
                         reason="open_intent", intent=other["id"])
             steps = []
@@ -149,6 +153,13 @@ class StageIntents:
                                             reason="undeclared_primitive", primitive=planned["primitive"])
                 steps.append({"n": n, "primitive": spec.primitive_id, "operation_class": spec.operation_class,
                               "key": step_key(sid, n), **({"args": planned["args"]} if "args" in planned else {})})
+            floor = max([P.CLASS_RANK[base_class], *(P.CLASS_RANK[s["operation_class"]] for s in steps)])
+            if P.CLASS_RANK[effective_class] < floor:
+                # R5-1 retries only a non-judgment stage: an effective class below its own row or its steps would
+                # let a judgment be replayed (§3.4 rules 4 and 5; #140 review, finding 2).
+                raise IllegalTransition(
+                    f"a stage's effective class is at least its base class and each step's; {effective_class} is "
+                    f"below {P.OPERATION_CLASSES[floor]}", reason="class_understated")
             d = self.k.policy_digests()
             intent = {
                 "schema": SCHEMA, "id": sid, "tool": tool, "status": ACTIVE, "contract_digest": contract_digest,
@@ -175,6 +186,12 @@ class StageIntents:
         REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand."""
         with self.k.lead_txn(token, expect_rev, "stage.stop") as ctx:
             si = self._active(ctx.state, intent, owner=True)
+            done = len(si["steps"])
+            # The stop is at the next step, or at the last when every step committed and what followed its commit
+            # failed (a launch: rule 7). Never at a step that does not exist (#140 review, finding 3).
+            if n != done + 1 and not (n == done == len(si["plan"])):
+                raise IllegalTransition(f"{intent} cannot stop at step {n}: it committed {done} of "
+                                        f"{len(si['plan'])} step(s)", reason="stop_out_of_order")
             si["stopped"] = {"n": n, "boundary": boundary,
                              "error": {"code": code, "message": message[:2000], "reason": reason},
                              "rev": ctx.session.revision + 1, "at": utc_now()}
@@ -244,6 +261,13 @@ class StageIntents:
             raise IllegalTransition(f"{binding.key} is out of order: {binding.intent} has committed "
                                     f"{len(si['steps'])} of {len(si['plan'])} step(s)", reason="step_out_of_order")
         planned = si["plan"][binding.n - 1]
+        if ctx.txn_op != P.commit_op(planned["primitive"]):
+            raise IllegalTransition(f"{binding.key} plans {planned['primitive']}; this commit is {ctx.txn_op}: a step "
+                                    "commits only its planned primitive (#140 review, finding 1)",
+                                    reason="step_primitive_mismatch", planned=planned["primitive"], op=ctx.txn_op)
+        if binding.retried and P.JUDGMENT_BEARING in (planned["operation_class"], si["effective_class"]):
+            raise IllegalTransition(f"{binding.key} is judgment-bearing or in a judgment-bearing stage: it is never "
+                                    "retried after a stale revision (§3.4 rules 4 and 5)", reason="judgment_replay")
         d = self.k.policy_digests()
         if d["legality_digest"] != si["binding"]["legality_digest"]:
             raise StalePolicy(
@@ -254,8 +278,7 @@ class StageIntents:
         subject = si["subject"]
         outputs = {"units": sorted(set(state["work"]) - set(before["work"])),
                    "invocations": sorted(set(state["invocations"]) - set(before["invocations"])),
-                   "runs": sorted(r["run"] for inv in state["invocations"].values() for r in inv.get("runs") or []
-                                  if r["run"] not in _runs(before))}
+                   "runs": sorted(_runs(state) - _runs(before))}
         if subject["kind"] == "project" and len(outputs["units"]) == 1:
             # A stage that creates its unit (ticket_draft) is that unit's from then on (TRA-25 waits for F4).
             subject.update(kind="unit", id=outputs["units"][0])
@@ -286,8 +309,6 @@ class StageIntents:
         hot = (state.get("stage_intents") or {}).get(intent)
         if hot is not None:
             return dict(hot)
-        if (self.k.aew_root / RECORDS_DIR / f"{intent}.yaml").is_file():
-            return self._load(f"{RECORDS_DIR}/{intent}.yaml", None)
         for unit in state["work"].values():  # bounded by live work
             for p in unit.get("stage_intents") or []:
                 if p["id"] == intent:
@@ -300,6 +321,10 @@ class StageIntents:
         if notes:
             rel, _, sha = str(self.archive.record(notes[-1])["note"]).partition(" sha256:")
             return self._load(rel, sha)
+        # Last: a stage that never had a unit. Its record is immutable but pinned by no hash (register F15.2): read
+        # after every pinned route, so a copy placed here never shadows a unit's (#140 review, finding 5).
+        if (self.k.aew_root / RECORDS_DIR / f"{intent}.yaml").is_file():
+            return self._load(f"{RECORDS_DIR}/{intent}.yaml", None)
         raise NotFound(f"no stage intent {intent}", intent=intent)
 
     # ------------------------------------------------------------------ internals

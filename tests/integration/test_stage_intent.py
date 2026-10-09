@@ -259,3 +259,82 @@ def test_an_unknown_intent_is_not_found(project):
         engine(p).stage_intent("SI-9999")
     with pytest.raises(NotFound):
         engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent="SI-9999", rationale="x")
+
+
+def test_a_step_commits_only_the_primitive_it_planned(project, tmp_path):
+    """#140 review, finding 1: the journal checks the transaction that commits, not only the plan: an undeclared or
+    judgment-bearing primitive never lands as a planned step."""
+    p = project
+    wid = create_planned_ticket(p, tmp_path)
+    si = open_stage(p)
+    rev = p.rev()
+    with SI.step(si, 1), pytest.raises(IllegalTransition) as exc:
+        engine(p).work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="CANCELLED",
+                                  reason="not the planned step")
+    assert exc.value.details["reason"] == "step_primitive_mismatch" and p.rev() == rev
+    assert load_control(p.root)["work"][wid]["state"] != "CANCELLED" and hot(p)[si]["steps"] == []
+
+
+def test_a_judgment_bearing_step_is_never_committed_as_a_retry(project):
+    """#140 review, finding 2 (§3.4 rules 4 and 5): only a non-judgment step of a non-judgment stage is retried after a
+    stale revision; the engine refuses the rest, and records the retry it allows."""
+    p = project
+    judged = engine(p).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest=ZERO, arguments={},
+                                  judgment_inputs=["why"], base_class="JUDGMENT_BEARING",
+                                  effective_class="JUDGMENT_BEARING", plan=[{"primitive": "checkpoint"}],
+                                  subject=None, ingress="test")["intent"]
+    with SI.step(judged, 1, retried=True), pytest.raises(IllegalTransition) as exc:
+        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="replayed judgment")
+    assert exc.value.details["reason"] == "judgment_replay"
+    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=judged, rationale="a test")
+    si = open_stage(p, steps=1)
+    with SI.step(si, 1, retried=True, final=True):
+        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="a mechanical retry")
+    record = engine(p).stage_intent(si)
+    assert record["retried_after_stale_revision"] and record["steps"][0]["retried_after_stale_revision"]
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("base, effective, primitive", [
+    ("MECHANICAL", "MECHANICAL", "work.redispatch"),  # a judgment-bearing step in a stage said to be mechanical
+    ("JUDGMENT_BEARING", "POLICY_RESOLVED", "checkpoint"),  # below the stage's own row
+], ids=["below-a-step", "below-its-row"])
+def test_a_stages_effective_class_is_never_understated(project, base, effective, primitive):
+    """#140 review, finding 2: R5-1 gates on the effective class, so it is at least the row's and every step's."""
+    p = project
+    with pytest.raises(IllegalTransition) as exc:
+        engine(p).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest=ZERO, arguments={},
+                             judgment_inputs=[], base_class=base, effective_class=effective,
+                             plan=[{"primitive": primitive}], subject=None, ingress="test")
+    assert exc.value.details["reason"] == "class_understated" and "stage_intents" not in load_control(p.root)
+
+
+def test_a_stop_names_the_step_it_stopped_at(project):
+    """#140 review, finding 3 (§3.4 rule 3): the recorded boundary is the next step, or the last one when what followed
+    its commit failed; never a step that does not exist."""
+    p = project
+    si = open_stage(p)
+    run_step(p, si, 1)
+    for n in (1, 3, 9):
+        with pytest.raises(IllegalTransition) as exc:
+            engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=si, n=n, boundary="first_refusal",
+                                 code="X", message="x")
+        assert exc.value.details["reason"] == "stop_out_of_order"
+    engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=si, n=2, boundary="first_refusal", code="X",
+                         message="x")
+    assert engine(p).stage_intent(si)["stopped"]["n"] == 2
+    done = open_stage(p, steps=1)
+    run_step(p, done, 1)  # every step committed; its after-commit effect failed (a launch: rule 7)
+    engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=done, n=1, boundary="launch_failed", code="X",
+                         message="the launch failed")
+    assert engine(p).stage_intent(done)["status"] == "STOPPED_AT_BOUNDARY"
+    assert_control_invariants(p)
+
+
+def test_one_unfinished_stage_without_a_unit(project):
+    """#140 review, finding 6 (§2.7): hot intents are bounded by live work; with no unit, one at a time."""
+    p = project
+    open_stage(p)
+    with pytest.raises(IllegalTransition) as exc:
+        open_stage(p)
+    assert exc.value.details["reason"] == "open_intent"

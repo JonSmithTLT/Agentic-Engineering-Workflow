@@ -82,3 +82,16 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
     """The declaration of a primitive, or the fail-closed default for one nobody declared."""
     return SPECS.get(primitive_id) or PrimitiveSpec(primitive_id, JUDGMENT_BEARING, ("undeclared",), (), (),
                                                     "unknown", "unknown", None, declared=False)
+
+
+# The Lead transaction a primitive commits under, where it is not the primitive's own id: the three creations share
+# `invoke.create`. The stage journal refuses a step whose commit is not its planned primitive's (M4-E E3).
+COMMIT_OPS = {"invoke.create.mutating": "invoke.create", "invoke.create.non_mutating": "invoke.create",
+              "invoke.create.parent": "invoke.create"}
+
+
+def commit_op(primitive_id: str) -> str:
+    return COMMIT_OPS.get(primitive_id, primitive_id)
+
+
+CLASS_RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}

@@ -280,8 +280,9 @@ sections:
       operator capability before it ships; F15.6 before automatic relaunch is enabled. **Built so far (M4-E E3a, 2026-10-09)**
       the StageIntent journal in the engine (`engine/stage_intents.py`, schema `aew/stage-intent/v1`, invariants 47-49),
       covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift,
-      the owning generation, and the cold home of an ended intent. Next are E3b (the executor, rules 1 to 7, R5-1) and E3c
-      (`resume`, `resolve`)
+      the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`,
+      immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after
+      every pinned route. Next are E3b (the executor, rules 1 to 7, R5-1) and E3c (`resume`, `resolve`)
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport

@@ -13,6 +13,7 @@ read the whole history; the engine's commit-time checks may not (invariant 13).
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -241,6 +242,46 @@ def control_violations(root: Path) -> list[str]:
     problems += queue_violations(root, hot)
     # 40-42. M4-D5: checks-mode validation runs and engine-produced evidence.
     problems += validation_violations(root, state, evidence)
+    # 43-45. M4-E E2: steering.
+    problems += steering_violations(root, hot)
+    return problems
+
+
+def steering_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """M4-E E2 (plan v3 §2.1, §2.7). 43: an override belongs to a Lead generation that has existed, and every mode
+    and request names a record that exists in records/steering/. 44: only the operator's records raise, and each says
+    `guarantee: dev`. 45: requests are bounded and each is a raise to walk or run, or a confirmation of an action."""
+    steering = state.get("steering")
+    if steering is None:
+        return []
+    problems: list[str] = []
+    records: dict[str, dict[str, Any]] = {}
+    for f in sorted((Path(root) / ".aew" / "records" / "steering").glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            if entry.get("id"):
+                records[entry["id"]] = entry
+    override, standing = steering.get("override"), steering["standing"]
+    if override and override["generation"] > state["lead"]["generation"]:
+        problems.append(f"steering override for generation {override['generation']} is ahead of the Lead")
+    for which, held in (("standing", standing), ("override", override)):
+        if held and held.get("record") and held["record"] not in records:
+            problems.append(f"steering {which} names record {held['record']}, which is not in records/steering/")
+        elif held and held.get("record") and records[held["record"]]["new"] != held["mode"]:
+            problems.append(f"steering {which} mode {held['mode']} disagrees with its record {held['record']}")
+    for rid, record in records.items():
+        if record.get("kind") != "mode_change":
+            continue
+        rank = {None: 0, "crawl": 0, "walk": 1, "run": 2}
+        if rank[record["new"]] > rank[record["previous"]] and record["source"] not in ("raise", "default"):
+            problems.append(f"{rid} raised the mode by {record['source']}: only the operator raises")
+        by = record["by"]
+        guarantee = by.get("guarantee", (by.get("principal") or {}).get("guarantee"))
+        if by["kind"] == "operator" and guarantee != "dev":
+            problems.append(f"{rid} is labelled guarantee {guarantee!r}; nothing before F18.6 is other than dev")
+    requests = steering["requests"]
+    if len(requests) > 8 or any((r["kind"] == "raise") != bool(r.get("mode")) for r in requests):
+        problems.append(f"steering requests are unbounded or malformed: {requests}")
     return problems
 
 

@@ -110,12 +110,13 @@ def register(sub: argparse._SubParsersAction) -> None:
         token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
             "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
 
-    from aew.cli import dashboard_commands, history_commands, map_commands, work_commands
+    from aew.cli import dashboard_commands, history_commands, map_commands, operator_commands, work_commands
 
     work_commands.register(sub)
     history_commands.register(sub)
     dashboard_commands.register(sub)
     map_commands.register(sub)
+    operator_commands.register(sub)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:
@@ -183,6 +184,10 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--list", action="store_true", help="list the catalog: kinds, classes, status, profiles")
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN); never inside a Lead session")
     q.set_defaults(handler=_lead_tool)
+
+    from aew.cli import operator_commands
+
+    operator_commands.register_lead_mode(lsub)
 
     q = lsub.add_parser("mcp", help="the Lead's MCP server, aew-lead (F15.1): spawned by the Lead's harness in a Lead "
                                     "session; it holds no credential and forwards every call to the session's broker")

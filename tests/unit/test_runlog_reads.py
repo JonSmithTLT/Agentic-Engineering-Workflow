@@ -205,20 +205,70 @@ def test_the_credential_scan_finds_a_credential_wherever_chunks_split_it(directo
     """The scan reads in overlapping chunks so a large file is never held whole; a credential that any chunk boundary
     cuts is still found."""
     monkeypatch.setattr(runlog, "SCAN_CHUNK", 32)
+    harness = directory / "harness"
+    harness.mkdir()
     for offset in range(0, 80):
-        f = directory / "harness" / f"log-{offset}.txt"
-        f.parent.mkdir(exist_ok=True)
+        f = harness / f"log-{offset}.txt"
         f.write_text("x" * offset + TOKEN + "\n", encoding="utf-8")
-        assert runlog.scan_for_credentials(directory) == [str(f)], offset
+        assert runlog.credential_scan(directory) == {"clean": False, "files": [str(f)]}, offset
         f.unlink()
-    (directory / "harness" / "clean.txt").write_text("x" * 500, encoding="utf-8")
-    assert runlog.scan_for_credentials(directory) == []
+    (harness / "clean.txt").write_text("x" * 500, encoding="utf-8")
+    assert runlog.credential_scan(directory) == {"clean": True, "files": []}
+    assert runlog.credential_scan(harness / "clean.txt") == {"clean": True, "files": []}  # a file as the root
+
+
+def test_a_scan_past_its_budget_is_unscanned_never_clean(directory, monkeypatch):
+    """#139 review, finding 1: one scan reads a bounded amount; what it could not read makes it incomplete, and an
+    incomplete scan is not clean."""
+    harness = directory / "harness"
+    harness.mkdir()
+    (harness / "a.txt").write_text("x" * 100, encoding="utf-8")
+    (harness / "b.txt").write_text("x" * 100, encoding="utf-8")
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 150)
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [], "unscanned": 1}
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 1 << 20)
+    monkeypatch.setattr(runlog, "SCAN_MAX_ENTRIES", 1)
+    assert runlog.credential_scan(directory)["unscanned"] >= 1
+
+
+def test_a_sparse_file_costs_what_it_stores(directory, monkeypatch):
+    """#139 review, finding 1: a file of holes (`truncate -s 16T`) is not read as zeros. Where the platform cannot say
+    where the holes are, the budget still bounds it."""
+    harness = directory / "harness"
+    harness.mkdir()
+    sparse = harness / "sparse"
+    with open(sparse, "wb") as f:
+        f.truncate(1 << 30)  # 1 GiB of holes
+        f.seek((1 << 30) - len(TOKEN))
+        f.write(TOKEN.encode())
+    monkeypatch.setattr(runlog, "SCAN_BUDGET_BYTES", 1 << 24)  # 16 MiB: enough for the data, never for the holes
+    result = promptly(lambda: runlog.credential_scan(directory), within=30)
+    if runlog._data_ranges(os.open(sparse, os.O_RDONLY)) == [(0, 1 << 30)]:
+        assert result == {"clean": False, "files": [], "unscanned": 1}  # no hole information: bounded, not clean
+    else:
+        assert result == {"clean": False, "files": [str(sparse)]}
+
+
+def test_a_deep_tree_is_walked_without_recursion(directory):
+    """#139 review, finding 4: Python 3.11's rglob recursed per level, and a run's deep tree raised RecursionError out
+    of the supervisor before it saved the final record."""
+    deep = directory / "harness"
+    deep.mkdir()
+    for _ in range(1100):
+        deep = deep / "d"
+        try:
+            deep.mkdir()
+        except OSError:  # a path-length limit (Windows): deep enough
+            break
+    (deep.parent / "leak.txt").write_text(TOKEN, encoding="utf-8")
+    assert runlog.credential_scan(directory)["files"] == [str(deep.parent / "leak.txt")]
 
 
 @POSIX_ONLY
 def test_the_credential_scan_never_reads_through_a_link_or_blocks_on_a_fifo(directory, tmp_path):
     """The supervisor scans as the operator a directory the run could write (its harness/ even when contained): a FIFO
-    never stalls the run's end, /dev/zero is never read, and a link (to a file or a directory) is not followed."""
+    never stalls the run's end, /dev/zero is never read, and a link (to a file or a directory) is not followed, nor
+    a root that is itself a link."""
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "secret.txt").write_text(TOKEN, encoding="utf-8")
@@ -230,4 +280,6 @@ def test_the_credential_scan_never_reads_through_a_link_or_blocks_on_a_fifo(dire
     os.symlink(outside, harness / "linked-dir")
     leaked = harness / "leaked.txt"
     leaked.write_text(TOKEN, encoding="utf-8")
-    assert promptly(lambda: runlog.scan_for_credentials(directory)) == [str(leaked)]
+    assert promptly(lambda: runlog.credential_scan(directory)) == {"clean": False, "files": [str(leaked)]}
+    os.symlink(outside, tmp_path / "root-link")
+    assert runlog.credential_scan(tmp_path / "root-link") == {"clean": True, "files": []}

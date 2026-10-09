@@ -258,7 +258,8 @@ def watch_agent_pid(lab: HarnessLab, run: str, recorded: int) -> Any:
 
 
 def credential_hits(*roots: Path) -> list[str]:
-    return runlog.scan_for_credentials(*roots)
+    """The files under ``roots`` holding a credential string (the run's own scan, over a test's whole tree)."""
+    return runlog.credential_scan(*roots)["files"]
 
 
 def contains_credential(text: str) -> bool:

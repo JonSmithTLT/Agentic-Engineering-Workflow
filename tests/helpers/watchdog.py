@@ -101,6 +101,7 @@ class HangWatchdog:
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
         self._fired = 0
         f = self._reset(self._header(item))
+        armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
         if USE_ALARM:
             previous = signal.signal(signal.SIGALRM, self._on_alarm)
             signal.setitimer(signal.ITIMER_REAL, self.timeout)
@@ -116,7 +117,7 @@ class HangWatchdog:
             else:  # pragma: windows-only
                 faulthandler.cancel_dump_traceback_later()
             if not USE_ALARM:  # pragma: windows-only (the dump, if it ran, is past the header)
-                if os.fstat(f.fileno()).st_size > len(self._header(item).encode("utf-8")):
+                if os.fstat(f.fileno()).st_size > armed_size:
                     self._fired = 1  # faulthandler wrote through the descriptor: only the size shows it
             if self._fired:  # keep this hang's stacks on disk: the next test starts a new file
                 assert self._file is not None

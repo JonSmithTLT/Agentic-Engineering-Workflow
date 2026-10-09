@@ -157,7 +157,7 @@ def _partitions(tokens_by_model: Any) -> list[dict[str, Any]] | None:
         if not isinstance(p, Mapping):
             return None
         tokens, trust = normalize_tokens(p.get("tokens"))
-        if trust == "absent":
+        if trust != "harness_reported":  # a partial partition's zeros are not counts: it is no partition (#133, 2)
             return None
         out.append({"provider": _identifier(p.get("provider"), MAX_PROVIDER),
                     "model": _identifier(p.get("model"), MAX_MODEL), "tokens": tokens})

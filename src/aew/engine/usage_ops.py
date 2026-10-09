@@ -48,6 +48,11 @@ UNPRICED_TOKENS_ABSENT = "unpriced_tokens_absent"  # the harness reported no cou
 UNPRICED_TOKENS_PARTIAL = "unpriced_tokens_partial"  # some categories unreported: their zeros are not counts
 UNPRICED_NOT_RECORDED = "unpriced_not_recorded"    # a provisional row has no record-time snapshot yet (R6)
 UNPRICED_USAGE_MISSING = "unpriced_usage_missing"  # neither a copy nor a run directory (R6 `missing`)
+# The harness could not enumerate every model call (its message paging stopped short): the models it saw are not
+# all the models that ran, so no attribution, and no semantics declared for them, covers the totals (#133 review, 1).
+UNPRICED_INCOMPLETE = "unpriced_model_enumeration_incomplete"
+# Per-model partitions that do not add up to the run's totals: pricing them would drop the difference (#133 review, 2).
+UNPRICED_PARTITION_MISMATCH = "unpriced_partition_mismatch"
 
 # How each declared semantics maps the reported counters onto non-overlapping billable buckets (R4 rule 1): the
 # counter a bucket is carved out of. A counter that includes another bills only the difference, and a difference
@@ -195,8 +200,15 @@ def _model_key(provider: Any, model: Any) -> str | None:
 def _pieces(record: Mapping[str, Any]) -> list[tuple[Any, Any, Mapping[str, int]]] | str:
     """What is priced on which row (R4 rule 4): each partition on its own row; otherwise the whole run on its one
     effective model; otherwise unpriced. The requested model is never consulted."""
+    if record.get("truncated"):
+        return UNPRICED_INCOMPLETE
     partitions = record.get("tokens_by_model")
     if partitions:
+        totals = record.get("tokens") or {}
+        for category in totals.keys() | {c for p in partitions for c in (p.get("tokens") or {})}:
+            if sum(int((p.get("tokens") or {}).get(category) or 0) for p in partitions) != int(
+                    totals.get(category) or 0):
+                return UNPRICED_PARTITION_MISMATCH
         return [(p.get("provider"), p.get("model"), p.get("tokens") or {}) for p in partitions]
     models = {(e.get("provider"), e.get("model")) for e in record.get("effective") or []}
     if len(models) > 1 or record.get("effective_truncated"):

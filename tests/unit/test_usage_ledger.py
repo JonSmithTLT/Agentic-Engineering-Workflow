@@ -157,6 +157,32 @@ def test_a_partitioned_mix_is_priced_per_partition_and_summed():
     assert dict(parts) == {"openai/gpt-6.1": Decimal("0.002"), "openai/gpt-6.1-mini": Decimal("0.0004")}
 
 
+def test_a_truncated_enumeration_is_never_priced_on_the_models_it_saw():
+    """#133 review, finding 1: when the harness's message paging stopped short, the models it saw are not all the
+    models that ran. Pricing the complete session totals on model A would bill omitted model B at A's rate."""
+    rec = record(input=1000, output=400, truncated=True)
+    assert rec["truncated"] and rec["effective"] == [GPT]
+    assert O.derive(rec, PRICES)[0] == {"unpriced": O.UNPRICED_INCOMPLETE}
+    tok = {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    partitioned = record(input=1000, truncated=True, tokens_by_model=[{**GPT, "tokens": {**tok, "input": 1000}}])
+    assert O.derive(partitioned, PRICES)[0] == {"unpriced": O.UNPRICED_INCOMPLETE}
+
+
+def test_a_partial_partition_is_no_partition_and_partitions_must_add_up_to_the_totals():
+    """#133 review, finding 2: a partition reporting only some categories, or partitions that do not reconcile with
+    the session totals, never price part of the run's tokens."""
+    partial = record(input=1000, output=400, effective=[GPT, MINI],
+                     tokens_by_model=[{**GPT, "tokens": {"input": 600}}, {**MINI, "tokens": {"input": 400}}])
+    assert partial.get("tokens_by_model") is None  # zeros the harness never reported are not counts
+    assert O.derive(partial, PRICES)[0] == {"unpriced": O.UNPRICED_MIX}
+    single = record(input=1000, output=400, tokens_by_model=[{**GPT, "tokens": {"input": 1000}}])
+    assert usd(O.derive(single, PRICES)[0]) == Decimal("0.0052")  # the complete totals on the one model: 2 + 3.2
+    tok = {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    short = record(input=1000, output=400, effective=[GPT, MINI], tokens_by_model=[
+        {**GPT, "tokens": {**tok, "input": 600}}, {**MINI, "tokens": {**tok, "input": 400}}])
+    assert O.derive(short, PRICES)[0] == {"unpriced": O.UNPRICED_PARTITION_MISMATCH}  # the 400 output went nowhere
+
+
 def test_a_model_without_a_row_or_no_effective_model_is_unpriced_model():
     other = {"provider": "anthropic", "model": "x", "effort": None}
     assert O.derive(record(input=5, effective=[other]), PRICES)[0] == {"unpriced": "unpriced_model"}

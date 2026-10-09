@@ -209,7 +209,14 @@ def _pieces(record: Mapping[str, Any]) -> list[tuple[Any, Any, Mapping[str, int]
             if sum(int((p.get("tokens") or {}).get(category) or 0) for p in partitions) != int(
                     totals.get(category) or 0):
                 return UNPRICED_PARTITION_MISMATCH
-        return [(p.get("provider"), p.get("model"), p.get("tokens") or {}) for p in partitions]
+        # The schema cannot say "one partition per model", so a repeated model is summed here as normalize() sums it:
+        # each model is priced once, on its whole count (#133 review, finding 1).
+        merged: dict[tuple[Any, Any], dict[str, int]] = {}
+        for p in partitions:
+            tokens = merged.setdefault((p.get("provider"), p.get("model")), {})
+            for category, n in (p.get("tokens") or {}).items():
+                tokens[category] = tokens.get(category, 0) + int(n or 0)
+        return [(provider, model, tokens) for (provider, model), tokens in merged.items()]
     models = {(e.get("provider"), e.get("model")) for e in record.get("effective") or []}
     if len(models) > 1 or record.get("effective_truncated"):
         return UNPRICED_MIX
@@ -277,8 +284,12 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
         return []
     sha = write_pricing_snapshot(aew_root, pricing) if pricing is not None else None
     profile = inv.get("execution_profile") or {}
-    requested = {"provider": profile.get("provider"), "model": profile.get("model"), "effort": profile.get("effort"),
-                 "profile": profile.get("profile")}
+    # Requested ids are bounded as the adapter bounds effective ones: an id past its bound is unknown, so the copy
+    # fits in 2 KiB without discarding the run's counters (#133 review, finding 2).
+    requested = {"provider": U.identifier(profile.get("provider"), U.MAX_PROVIDER),
+                 "model": U.identifier(profile.get("model"), U.MAX_MODEL),
+                 "effort": U.identifier(profile.get("effort"), U.MAX_EFFORT),
+                 "profile": U.identifier(profile.get("profile"), U.MAX_PROFILE)}
     copied: list[str] = []
     for entry in pending:
         status, run_record = runlog.observed_status(runlog.run_dir(aew_root, entry["run"]))
@@ -449,12 +460,16 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
             model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
         return
     at_parts, current_parts = (dict(parts) for parts in row["_parts"])
+    counted: set[str] = set()
     for provider, name, tokens in pieces:
         key = _model_key(provider, name) or "no_effective_model"
         model = by_model.setdefault(key, _empty_model())
-        model["runs"] += 1
         for cat in U.CATEGORIES:
             model["tokens"][cat] += int(tokens.get(cat) or 0)
+        if key in counted:  # two unknown-id partitions share "no_effective_model": one run, its cost added once
+            continue
+        counted.add(key)
+        model["runs"] += 1
         model["estimated_at_record_usd"] += at_parts.get(key, Decimal(0))
         model["estimated_under_current_prices_usd"] += current_parts.get(key, Decimal(0))
 

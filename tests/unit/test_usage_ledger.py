@@ -183,6 +183,30 @@ def test_a_partial_partition_is_no_partition_and_partitions_must_add_up_to_the_t
     assert O.derive(short, PRICES)[0] == {"unpriced": O.UNPRICED_PARTITION_MISMATCH}  # the 400 output went nowhere
 
 
+def test_a_model_reported_twice_is_priced_and_counted_once(tmp_path):
+    """#133 review (fd571ff), finding 1: two partitions naming one model are that model's two shares of the run.
+    400 + 600 input tokens at $2/M is $0.002 and one run, whether the record came through normalize() or not."""
+    tok = {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    rec = record(input=1000, tokens_by_model=[{**GPT, "tokens": {**tok, "input": 400}},
+                                              {**GPT, "tokens": {**tok, "input": 600}}])
+    assert [p["tokens"]["input"] for p in rec["tokens_by_model"]] == [1000]
+    flat = {c: 0 for c in U.CATEGORIES}
+    by_hand = {**rec, "tokens_by_model": [{"provider": "openai", "model": "gpt-6.1", "tokens": {**flat, "input": n}}
+                                          for n in (400, 600)]}  # schema-valid: the schema cannot forbid the repeat
+    validate("run-usage", by_hand, source="test")
+    for usage in (rec, by_hand):
+        figure, parts = O.derive(usage, PRICES)
+        assert figure == {"usd": Decimal("0.002")} and parts == [("openai/gpt-6.1", Decimal("0.002"))]
+    run_record(runlog.run_dir(tmp_path, "R-1"), by_hand)
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=PRICES)
+    totals = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])["totals"]
+    model = totals["by_model"]["openai/gpt-6.1"]
+    assert (model["runs"], model["tokens"]["input"]) == (1, 1000)
+    assert model["estimated_under_current_prices_usd"] == totals["estimated_under_current_prices"]["usd"] == \
+        Decimal("0.002")
+
+
 def test_a_model_without_a_row_or_no_effective_model_is_unpriced_model():
     other = {"provider": "anthropic", "model": "x", "effort": None}
     assert O.derive(record(input=5, effective=[other]), PRICES)[0] == {"unpriced": "unpriced_model"}
@@ -272,6 +296,20 @@ def test_the_copy_is_once_and_a_run_without_a_usage_record_is_absent_not_omitted
     assert O.copy_run_usage(state, "I-1", tmp_path, pricing=PRICES) == []
     assert state["invocations"]["I-1"]["runs"][0]["usage"] == one  # never rewritten
     assert not (tmp_path / "pricing").exists()  # nothing copied, so no snapshot was used
+
+
+def test_a_requested_id_past_its_bound_is_unknown_and_the_run_keeps_its_counters(tmp_path):
+    """#133 review (fd571ff), finding 2: a copy that would not fit is bounded field by field, never by replacing
+    the run's token and cost facts with absent usage."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=1000, cost=0.5))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    state["invocations"]["I-1"]["execution_profile"]["model"] = "é" * U.MAX_MODEL  # 48 characters, 96 bytes
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=None)
+    copied = state["invocations"]["I-1"]["runs"][0]["usage"]
+    assert copied["requested"]["model"] is None and copied["requested"]["provider"] == "openai"
+    assert (copied["tokens"]["input"], copied["tokens_trust"], copied["provider_cost_usd"]) == (
+        1000, "harness_reported", 0.5)
+    assert U.serialized_size(copied) <= U.MAX_BYTES
 
 
 # ---------------------------------------------------------------------------------------------- projections (R6, R7)

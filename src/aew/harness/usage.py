@@ -58,10 +58,15 @@ def serialized_size(record: Mapping[str, Any]) -> int:
     return len(json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
-def _identifier(value: Any, limit: int) -> str | None:
+def identifier(value: Any, limit: int) -> str | None:
     """An identifier within its bound, or None: an over-long or non-string id is not shortened (a shortened model id
-    could name another model's price row); it becomes unknown, which prices nothing."""
-    if not isinstance(value, str) or not value or len(value) > limit or any(c.isspace() for c in value):
+    could name another model's price row); it becomes unknown, which prices nothing.
+
+    The bound is in serialized bytes (UTF-8, JSON-escaped), the unit MAX_BYTES counts: a limit in characters let a
+    non-ASCII id take up to four times its share, and the record past 2 KiB (#133 review, finding 2)."""
+    if not isinstance(value, str) or not value or any(c.isspace() for c in value):
+        return None
+    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) - 2 > limit:
         return None
     return value
 
@@ -135,9 +140,9 @@ def bound_effective(effective: Iterable[Any]) -> tuple[list[dict[str, Any]], int
     for e in effective:
         if not isinstance(e, Mapping):
             continue
-        entry: dict[str, Any] = {"provider": _identifier(e.get("provider"), MAX_PROVIDER),
-                                 "model": _identifier(e.get("model"), MAX_MODEL),
-                                 "effort": _identifier(e.get("effort"), MAX_EFFORT)}
+        entry: dict[str, Any] = {"provider": identifier(e.get("provider"), MAX_PROVIDER),
+                                 "model": identifier(e.get("model"), MAX_MODEL),
+                                 "effort": identifier(e.get("effort"), MAX_EFFORT)}
         # R1's entries are {provider, model, effort}: whether an effort went unreported is the run record's
         # ``model_check`` (its status word is copied beside the record), not a per-entry flag here.
         if entry in out:
@@ -152,17 +157,23 @@ def bound_effective(effective: Iterable[Any]) -> tuple[list[dict[str, Any]], int
 def _partitions(tokens_by_model: Any) -> list[dict[str, Any]] | None:
     if not isinstance(tokens_by_model, Iterable) or isinstance(tokens_by_model, str | bytes | Mapping):
         return None
-    out: list[dict[str, Any]] = []
+    out: dict[tuple[str | None, str | None], dict[str, Any]] = {}
     for p in tokens_by_model:
         if not isinstance(p, Mapping):
             return None
         tokens, trust = normalize_tokens(p.get("tokens"))
         if trust != "harness_reported":  # a partial partition's zeros are not counts: it is no partition (#133, 2)
             return None
-        out.append({"provider": _identifier(p.get("provider"), MAX_PROVIDER),
-                    "model": _identifier(p.get("model"), MAX_MODEL), "tokens": tokens})
+        key = (identifier(p.get("provider"), MAX_PROVIDER), identifier(p.get("model"), MAX_MODEL))
+        # One partition per model: a harness that reports a model twice has its counters summed, so the record
+        # never holds two rows a projection would have to reconcile (#133 review, finding 1).
+        if key in out:
+            for cat, n in tokens.items():
+                out[key]["tokens"][cat] = min(out[key]["tokens"][cat] + n, MAX_TOKENS)
+        else:
+            out[key] = {"provider": key[0], "model": key[1], "tokens": tokens}
     # A partition that cannot be bounded is no partition: the run is then priced as a model mix would be (unpriced).
-    return out if 0 < len(out) <= MAX_EFFECTIVE else None
+    return list(out.values()) if 0 < len(out) <= MAX_EFFECTIVE else None
 
 
 def resolve_semantics(mapping: Mapping[str, Mapping[str, str]], version: Any, providers: Iterable[Any]) -> str:
@@ -217,7 +228,7 @@ def normalize(raw_usage: Any, raw_assistant: Any, effective: Iterable[Any], sema
     usd, cost_trust = provider_cost(usage.get("cost"), tokens)
     bounded, extra = bound_effective(effective)
     record: dict[str, Any] = {
-        "schema": SCHEMA, "source": _identifier(source, MAX_SOURCE) or UNKNOWN, "effective": bounded,
+        "schema": SCHEMA, "source": identifier(source, MAX_SOURCE) or UNKNOWN, "effective": bounded,
         "effective_truncated": extra, "tokens_by_model": None,
         "token_semantics": semantics if semantics in TOKEN_SEMANTICS else UNKNOWN, "wall_s": _wall(wall_s),
         "steps": min(len(steps), MAX_COUNT), "tokens": tokens, "tokens_trust": trust,

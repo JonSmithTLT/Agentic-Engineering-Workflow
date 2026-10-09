@@ -95,6 +95,29 @@ def test_an_over_long_identifier_becomes_unknown_never_a_shortened_id():
     assert rec["effective"] == [{"provider": "openai", "model": None, "effort": "high"}]
 
 
+@pytest.mark.parametrize("model, kept", [
+    ("é" * (U.MAX_MODEL // 2), True),        # 24 characters, 48 bytes: at the bound
+    ("é" * (U.MAX_MODEL // 2 + 1), False),   # 25 characters, 50 bytes
+    ("😀" * (U.MAX_MODEL // 4 + 1), False),  # 13 characters, 52 bytes
+    ('"' * (U.MAX_MODEL // 2 + 1), False),   # 25 characters, 50 once JSON escapes them
+], ids=["two-byte-at-bound", "two-byte-over", "four-byte-over", "escaped-over"])
+def test_identifier_bounds_count_serialized_bytes_not_characters(model, kept):
+    """#133 review (fd571ff), finding 2: the 2 KiB bound counts UTF-8 bytes of the JSON, so the identifier bounds
+    that make it a consequence of the schema count the same unit."""
+    rec = U.normalize(None, None, [{"provider": "openai", "model": model, "effort": None}], U.UNKNOWN,
+                      source="harness:opencode")
+    assert rec["effective"][0]["model"] == (model if kept else None)
+
+
+def test_non_ascii_identifiers_at_their_character_bounds_stay_within_two_kib():
+    effective = [{"provider": "п" * U.MAX_PROVIDER, "model": "😀" * (U.MAX_MODEL - 1) + str(i),
+                  "effort": "é" * U.MAX_EFFORT} for i in range(U.MAX_EFFECTIVE)]
+    partitions = [{**e, "tokens": tokens(1, 1)} for e in effective]
+    rec = U.normalize({"tokens": tokens(8, 8)}, [{}], effective, U.DISJOINT, source="ü" * U.MAX_SOURCE,
+                      tokens_by_model=partitions)
+    assert U.serialized_size({**rec, **U.LONGEST_COPY_FIELDS}) <= U.MAX_BYTES
+
+
 def worst_case(**extra: Any) -> dict[str, Any]:
     big = U.MAX_TOKENS
     effective = [{"provider": "p" * U.MAX_PROVIDER, "model": "m" * (U.MAX_MODEL - 1) + str(i),

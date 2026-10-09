@@ -344,6 +344,19 @@ def test_a_damaged_snapshot_file_no_record_names_still_fails(tmp_path):
     assert status == "FAIL" and f"{PRICES.sha256}.yaml" in detail and "notes.txt" in detail
 
 
+def test_a_publish_leftover_in_the_snapshot_directory_is_never_reported_as_damage(tmp_path):
+    """#141 review, finding 1: a snapshot write killed before it removed its temporary file leaves one behind; it is a
+    WARN that says it is safe to remove, never a FAIL. A FAIL says what to do."""
+    O.write_pricing_snapshot(tmp_path, PRICES)
+    leftover = tmp_path / O.SNAPSHOT_DIR / f".{PRICES.sha256}.yaml.k3j2x.tmp"
+    leftover.write_bytes(TABLE[:10])
+    status, detail = O.snapshot_doctor(hand_state(), tmp_path)
+    assert status == "WARN" and leftover.name in detail and "safe to remove" in detail
+    O.snapshot_path(tmp_path, PRICES.sha256).write_bytes(b"damaged\n")
+    status, detail = O.snapshot_doctor(hand_state(), tmp_path)
+    assert status == "FAIL" and "restore" in detail and leftover.name not in detail
+
+
 def test_the_ledger_check_counts_recorded_provisional_and_missing_and_reads_only_uncopied_runs(tmp_path):
     """R6: a missing run (no copy, no run directory) is a WARN, its usage lost; a provisional one awaits its copy. The
     check reads a run directory only for a run with no copy."""

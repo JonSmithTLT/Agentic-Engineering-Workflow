@@ -309,12 +309,22 @@ def test_doctor_names_a_missing_snapshot_after_a_real_copy(lab, tmp_path):
 
 
 def test_the_snapshot_check_reads_only_the_hot_state_and_the_recent_ring(lab, tmp_path, monkeypatch):
-    """The doctor's read is bounded: the bundles of the recently archived units, never the whole archive."""
+    """The doctor's read is bounded: the bundles of the recently archived units, never the whole archive (#141 review:
+    with a ring smaller than the archive, a unit archived before it is never opened)."""
+    from aew.engine import archive_ops
+    from aew.engine.api import Engine
     from aew.engine.archive_ops import Archive
 
+    # The units are cancelled in this process, so the patched ring size reaches the archive (a CLI child would not
+    # see it).
+    monkeypatch.setattr(archive_ops, "RECENT", 2)
+    archived = []
     for i in range(3):
         wid = create_planned_ticket(lab.project, tmp_path, title=f"Archived {i}")
-        lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed")
+        rev = load_control(lab.root)["revision"]
+        Engine.discover(lab.root).work_transition(token=lab.project.token, expect_rev=rev, work_id=wid, to="CANCELLED",
+                                                  reason="not needed")
+        archived.append(wid)
     opened = []
     real = Archive.bundle
 
@@ -325,4 +335,20 @@ def test_the_snapshot_check_reads_only_the_hot_state_and_the_recent_ring(lab, tm
     monkeypatch.setattr(Archive, "bundle", counted)
     recent = [r["id"] for r in load_control(lab.root)["recent"]]
     assert doctor(lab)["pricing-snapshots"]["status"] == "PASS"
-    assert sorted(opened) == sorted(recent) and len(recent) == 3
+    assert sorted(opened) == sorted(recent) == sorted(archived[1:]) and archived[0] not in opened
+
+
+def test_a_recently_archived_units_snapshot_is_checked(lab, tmp_path):
+    """R4 rule 3, end to end: a run's usage is copied with its table's digest, its unit is archived (the bundle carries
+    the usage), and the snapshot is lost: the doctor names it."""
+    adopt_prices(lab)
+    wid, inv, run = launched(lab, tmp_path, IMPLEMENT, {"tokens": TOKENS})
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    lab.wait(run)
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    sha = runs(lab, inv)[0]["usage"]["pricing_sha256"]
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "archived with its usage")
+    assert wid not in load_control(lab.root)["work"] and doctor(lab)["pricing-snapshots"]["status"] == "PASS"
+    O.snapshot_path(lab.aew_root, sha).unlink()
+    snapshots = doctor(lab)["pricing-snapshots"]
+    assert snapshots["status"] == "FAIL" and sha in snapshots["detail"]

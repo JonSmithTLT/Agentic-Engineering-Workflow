@@ -21,6 +21,7 @@ turns it into numbers for a surface.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from decimal import Decimal
@@ -176,18 +177,31 @@ def snapshot_doctor(state: Mapping[str, Any], aew_root: Path,
     present and matches its digest, and every file in the snapshot directory is a snapshot of its own name. The second
     catches damage no record names: a copy that met a damaged snapshot records no table (``pricing_sha256: null``)."""
     bad = sorted(sha for sha in named_snapshots(state, archived) if read_pricing_snapshot(aew_root, sha) is None)
-    stray = sorted(p.name for p in _snapshot_files(aew_root)
-                   if not (p.name.endswith(".yaml") and read_pricing_snapshot(aew_root, p.name[:-5]) is not None))
-    if bad or stray:
-        parts = []
-        if bad:
-            parts.append(f"pricing snapshot(s) named by recorded usage are missing or damaged: {', '.join(bad)}; "
-                         f"their runs' estimated_at_record is unpriced ({UNPRICED_SNAPSHOT_MISSING})")
-        if stray:
-            parts.append(f"file(s) in {SNAPSHOT_DIR}/ that are not the snapshot their name says: {', '.join(stray)}")
-        return "FAIL", "; ".join(parts)
+    stray, leftovers = [], []
+    for p in _snapshot_files(aew_root):
+        if _PUBLISH_LEFTOVER.fullmatch(p.name):
+            leftovers.append(p.name)
+        elif not (p.name.endswith(".yaml") and read_pricing_snapshot(aew_root, p.name[:-5]) is not None):
+            stray.append(p.name)
+    parts = []
+    if bad:
+        parts.append(f"pricing snapshot(s) named by recorded usage are missing or damaged: {', '.join(bad)}; their "
+                     f"runs' estimated_at_record is unpriced ({UNPRICED_SNAPSHOT_MISSING})")
+    if stray:
+        parts.append(f"file(s) in {SNAPSHOT_DIR}/ that are not the snapshot their name says: {', '.join(stray)}")
+    if parts:
+        return "FAIL", ("; ".join(parts) + ". A snapshot is the exact bytes of an adopted price table, named by their "
+                        "sha256 and never rewritten: restore a damaged or missing one from the table's original bytes "
+                        "(version control, a backup), and move aside a file that is not one")
+    if leftovers:  # #141 review, finding 1: a write interrupted before it removed its temporary file
+        return "WARN", (f"leftover temporary file(s) from an interrupted snapshot write, safe to remove: "
+                        f"{', '.join(leftovers)}")
     return "PASS", ("every pricing snapshot named by recorded usage (hot state and recently archived units) is "
                     "present and matches its digest")
+
+
+# util.create_exclusive's temporary file (`.<name>.<random>.tmp`), left only if its writer was killed mid-publish.
+_PUBLISH_LEFTOVER = re.compile(r"\.[0-9a-f]{64}\.yaml\..+\.tmp")
 
 
 def _snapshot_files(aew_root: Path) -> list[Path]:

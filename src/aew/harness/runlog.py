@@ -14,6 +14,7 @@ import errno
 import json
 import os
 import stat
+import sys
 import threading
 import time
 from pathlib import Path
@@ -104,7 +105,7 @@ def beat(directory: Path) -> None:
     reads as ``lost``, which is what a supervisor that cannot beat is. A beat never raises."""
     path = directory / "heartbeat"
     try:
-        if os.utime in os.supports_fd and hasattr(os, "O_NOFOLLOW"):
+        if sys.platform != "win32":  # utime on a descriptor (os.supports_fd) is POSIX
             flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
             try:
                 fd = os.open(path, flags, 0o644)

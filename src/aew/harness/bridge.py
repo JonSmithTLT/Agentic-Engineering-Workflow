@@ -134,15 +134,7 @@ class BridgeServer:
         self._thread.start()
 
     def _serve(self) -> None:
-        while not self._closed.is_set():
-            try:
-                conn = self._listener.accept()
-            except (AuthenticationError, OSError, EOFError):
-                continue  # a client without the key, or one that went away mid-handshake
-            if self._closed.is_set():
-                conn.close()
-                break
-            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+        serve_listener(self._listener, self._closed, self._handle)
 
     def _count(self, op: str, outcome: str) -> None:
         with self._idle:
@@ -210,16 +202,60 @@ class BridgeServer:
         threading.Thread(target=self._wake, daemon=True).start()
 
     def _wake(self) -> None:
-        try:  # unblock accept() so the serving thread observes the closure
-            Client(self.address, family="AF_PIPE" if IS_WINDOWS else "AF_UNIX", authkey=self.key).close()
-        except Exception:  # noqa: S110 (best effort: the serving thread may already have stopped)
-            pass
+        stop_listener(self._listener, self.address, "AF_PIPE" if IS_WINDOWS else "AF_UNIX", self.key,
+                      self._private_dir, serving=self._thread)
+
+
+# How long stopping a listener waits for the serving thread to take the wake connection. It is taken at once unless
+# the serving thread has already gone; the bound only stops a stop from waiting forever.
+WAKE_TIMEOUT_S = 5.0
+
+
+def serve_listener(listener: Listener, closed: threading.Event, handle: Callable[[Any], None]) -> None:
+    """Accept connections until a connection arrives after ``closed`` is set, handing each to ``handle`` on a thread.
+
+    The closure is observed only after an ``accept``, never between two: a serving thread that left its loop between
+    accepts would leave the wake connection (``stop_listener``) with nobody to answer its handshake. That race hung
+    CI's integration lanes (2026-10-08)."""
+    while True:
         try:
-            self._listener.close()
-        except OSError:
+            conn = listener.accept()
+        except (AuthenticationError, OSError, EOFError):
+            if closed.is_set():
+                return  # the listener is closed, or a closing race: stop_listener's bound covers the wake
+            continue  # a client without the key, or one that went away mid-handshake
+        if closed.is_set():
+            conn.close()
+            return
+        threading.Thread(target=handle, args=(conn,), daemon=True).start()
+
+
+def stop_listener(listener: Listener, address: str, family: str, key: bytes, private_dir: str | None, *,
+                  serving: threading.Thread | None) -> None:
+    """Wake a serving thread blocked in ``accept`` (the caller has set its ``closed`` event), then close the listener.
+
+    The wake is a keyed connection to ourselves. Its handshake needs the serving thread to accept it, so it runs on
+    its own thread and is waited for at most ``WAKE_TIMEOUT_S``: closing the listener afterwards resets a connection
+    nobody accepted, and the wake ends with it. Nothing here waits forever."""
+    def wake() -> None:
+        try:
+            Client(address, family=family, authkey=key).close()
+        except Exception:  # noqa: S110, BLE001 (best effort: the serving thread may already have stopped)
             pass
-        if self._private_dir:
-            shutil.rmtree(self._private_dir, ignore_errors=True)
+
+    waker = None
+    if serving is not None and serving.is_alive():
+        waker = threading.Thread(target=wake, name="aew-listener-wake", daemon=True)
+        waker.start()
+        waker.join(WAKE_TIMEOUT_S)
+    try:
+        listener.close()
+    except OSError:
+        pass
+    if waker is not None:
+        waker.join(WAKE_TIMEOUT_S)
+    if private_dir:
+        shutil.rmtree(private_dir, ignore_errors=True)
 
 
 def available() -> bool:

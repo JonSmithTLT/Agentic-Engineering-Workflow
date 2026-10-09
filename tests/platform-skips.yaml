@@ -145,6 +145,12 @@ skipped:
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.
+    tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[xdist]: >-
+      interrupting a hung test in place needs SIGALRM, which Windows lacks; there the watchdog writes every thread's
+      stack to the uploaded dump file instead (test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk runs on
+      both). Covered on Linux.
+    tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[no_xdist]: >-
+      as the xdist case: SIGALRM is POSIX only; Windows records the stacks instead. Covered on Linux.
   linux: {}
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

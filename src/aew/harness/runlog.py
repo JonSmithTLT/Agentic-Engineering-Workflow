@@ -329,7 +329,8 @@ def credential_scan(*roots: Path) -> dict[str, Any]:
     nothing of the run's, so skipping one leaves nothing unscanned."""
     found: list[str] = []
     budget = {"bytes": SCAN_BUDGET_BYTES, "entries": SCAN_MAX_ENTRIES, "unscanned": 0}
-    for root in roots:
+    for given in roots:
+        root = native_path(given)
         try:
             top = os.lstat(root)
         except OSError:
@@ -338,10 +339,34 @@ def credential_scan(*roots: Path) -> dict[str, Any]:
             _scan_file(root, found, budget)
         elif stat.S_ISDIR(top.st_mode):
             _walk(root, found, budget)
-    out: dict[str, Any] = {"clean": not found and not budget["unscanned"], "files": found}
+    out: dict[str, Any] = {"clean": not found and not budget["unscanned"], "files": [shown_path(f) for f in found]}
     if budget["unscanned"]:
         out["unscanned"] = budget["unscanned"]
     return out
+
+
+def native_path(path: Path, *, windows: bool = os.name == "nt") -> Path:
+    """The path the scan walks and opens. On Windows, the extended-length form (``\\\\?\\``): a plain path is
+    normalized before it reaches the file system, so an entry the listing shows (a name ending in a dot or a space,
+    or one past MAX_PATH without long paths enabled) would open as not found and read as gone, never scanned
+    (#139 re-review, F1). Elsewhere, the path itself."""
+    if not windows:
+        return path
+    import ntpath
+
+    text = ntpath.abspath(str(path))
+    if text.startswith("\\\\?\\"):
+        return Path(text)
+    if text.startswith("\\\\"):  # \\server\share\... is \\?\UNC\server\share\...
+        return Path("\\\\?\\UNC\\" + text[2:])
+    return Path("\\\\?\\" + text)
+
+
+def shown_path(path: str) -> str:
+    """A scanned path as the run record names it: without the extended-length prefix ``native_path`` added."""
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    return path[4:] if path.startswith("\\\\?\\") else path
 
 
 def _walk(root: Path, found: list[str], budget: dict[str, int]) -> None:

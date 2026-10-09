@@ -308,8 +308,10 @@ under containment. It now walks that directory iteratively, never entering a lin
 reads only regular files, never through a link and never blocking on a FIFO or device; and reads each in overlapping
 chunks with its holes skipped, within one budget of bytes and entries per scan (`runlog.credential_scan`). Anything it
 could not read is counted in `credential_scan.unscanned`, and then `clean` is false: **clean means scanned and clean.**
-A scan that fails outright is recorded as not clean with its error, and the run's final record is still saved. Register
-E33's streaming half closes with this (PR #139).
+A scan that fails outright is recorded as not clean with its error, and the run's final record is still saved. On
+Windows the walk opens extended-length paths, so every entry its listing shows is reachable. The scan reads a file's
+main data only (not NTFS alternate data streams or extended attributes): it catches a credential written into a file by
+mistake, not one a model hides on purpose. Register E33's streaming half closes with this (PR #139).
 
 ## Amendment 2026-10-03 — OS filesystem containment and process ownership on Linux (M4-B; F2, E13)
 

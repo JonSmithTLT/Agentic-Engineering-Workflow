@@ -280,6 +280,31 @@ def test_an_entry_gone_before_it_is_read_holds_nothing(directory, monkeypatch):
     assert runlog.credential_scan(directory) == {"clean": False, "files": [], "unscanned": 1}
 
 
+def test_the_scan_reaches_every_entry_its_listing_shows(directory):
+    """#139 re-review, F1: on Windows a plain path is normalized before the file system sees it, so a name ending in
+    a dot (or a path past MAX_PATH) listed by the walk would open as not found and read as gone. The scan walks and
+    opens extended-length paths there, and names files without the prefix. A name ending in a dot is ordinary
+    elsewhere, so this runs on every platform and proves the Windows case where it matters."""
+    harness = directory / "harness"
+    harness.mkdir()
+    dotted = runlog.native_path(harness) / "notes."
+    with open(dotted, "w", encoding="utf-8") as f:
+        f.write(TOKEN)
+    assert runlog.credential_scan(directory) == {"clean": False, "files": [runlog.shown_path(str(dotted))]}
+
+
+def test_extended_length_paths_are_added_for_the_walk_and_removed_for_the_record():
+    import ntpath
+
+    local = runlog.native_path(Path("C:\\runs\\R-1"), windows=True)
+    assert str(local) == "\\\\?\\" + ntpath.abspath("C:\\runs\\R-1")
+    assert runlog.shown_path(str(local)) == ntpath.abspath("C:\\runs\\R-1")
+    unc = runlog.native_path(Path("\\\\host\\share\\runs"), windows=True)
+    assert str(unc) == "\\\\?\\UNC\\host\\share\\runs"
+    assert runlog.shown_path(str(unc)) == "\\\\host\\share\\runs"
+    assert runlog.native_path(Path("/srv/runs"), windows=False) == Path("/srv/runs")
+
+
 def test_a_deep_tree_is_walked_without_recursion(directory):
     """#139 review, finding 4: Python 3.11's rglob recursed per level, and a run's deep tree raised RecursionError out
     of the supervisor before it saved the final record."""

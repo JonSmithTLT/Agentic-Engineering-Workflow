@@ -76,6 +76,17 @@ def test_a_credential_cut_by_a_bound_is_still_redacted(tmp_path):
         assert secret[:12] not in out
 
 
+def test_a_file_whose_last_line_outruns_the_bound_keeps_that_line(tmp_path):
+    """#136 re-review, F5: cutting to a line boundary must never leave nothing, as it did for a long last line."""
+    lab = Lab(tmp_path / "proj")
+    directory = a_run(lab, "R-INV-0001-1")
+    (directory / "harness" / "agent.log").write_text("first\n" + "q" * (D.MAX_COPY_BYTES + 10) + "\n",
+                                                     encoding="utf-8")
+    copied, _ = D.copy_evidence(lab, tmp_path / "out")
+    text = next(p for p in copied if p.name == "harness__agent.log.txt").read_text(encoding="utf-8")
+    assert text.startswith("[… earlier text not copied]") and text.count("q") > D.MAX_COPY_BYTES - 100
+
+
 def test_two_tests_whose_ids_differ_only_in_punctuation_keep_separate_evidence():
     """#136 review, F2: parametrized ids such as ``[a/b]`` and ``[a b]`` map to one readable name; the full id's
     digest keeps their directories apart."""

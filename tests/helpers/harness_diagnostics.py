@@ -133,8 +133,10 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
                     text = f"mtime age {runlog.heartbeat_age(directory)}s\n"
                 else:  # redacted whole, then the tail kept on a line boundary
                     text = _redacted(src)
-                    if len(text) > MAX_COPY_BYTES:
-                        text = text[-MAX_COPY_BYTES:].split("\n", 1)[-1]
+                    if len(text) > MAX_COPY_BYTES:  # the tail, from a line boundary when one leaves anything
+                        cut = text[-MAX_COPY_BYTES:]
+                        _, sep, rest = cut.partition("\n")
+                        text = "[… earlier text not copied]\n" + (rest if sep and rest else cut)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
                 copied.append(target)

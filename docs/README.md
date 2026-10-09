@@ -28,7 +28,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | M4-C | Workspaces for N > 1 concurrent mutating Tickets | Built |
 | M4-D | The integration queue and lease; the transaction outbox (ADR-0012); deterministic integration validation; wait-any; the typed surface's read-only slice (F15.1) | In progress |
 | *(gate)* | The F15 direction promoted to governing: the typed Lead surface v0.2 adopted (designer and operator, 2026-10-05) | Met |
-| M4-E | Stage commands on the typed surface (F15.2), by the [M4-E plan v3](implementation/m4-e-plan-v3.md) (slices E1 to E9) | In progress (E1) |
+| M4-E | Stage commands on the typed surface (F15.2), by the [M4-E plan v3](implementation/m4-e-plan-v3.md) (slices E1 to E9) | In progress (E1 and E2 merged; E3 under way) |
 | M4-F | The queue's normal UX | Planned |
 | M4-G | Candidates: Lead and run UX items, the amendment index, Windows coverage, the structural map slice | Planned |
 | M4-H | Acceptance: metrics, the preregistered dogfood, independent review | Planned |

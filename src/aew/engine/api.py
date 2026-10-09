@@ -35,6 +35,7 @@ from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
+from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
 from aew.engine.store import ControlStore
@@ -396,6 +397,7 @@ class Engine:
         self._steering = steering = Steering(k)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
+        self._stages = stages = StageIntents(k, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -412,8 +414,10 @@ class Engine:
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
-        # (F25 R5) runs just before archival, so a bundle carries every run's usage into the cold state.
-        k.finalizers.steps.extend([dispatch.finalize, queue.finalize, self._validation.finalize,
+        # (F25 R5) runs just before archival, so a bundle carries every run's usage into the cold state. The stage
+        # journal comes first (M4-E E3): a stage step is refused for what it is (STALE_POLICY, a stale owner) before
+        # any other finalizer judges the commit, and a completed stage's record is on its unit before archival.
+        k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
                                    usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, archive.finalize])
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
@@ -855,6 +859,36 @@ class Engine:
 
     def steering_view(self) -> dict[str, Any]:
         return self._steering.view(self._k.store.read())
+
+    # ---------------------------------------------------------------- the stage journal (M4-E E3)
+
+    def policy_digests(self) -> dict[str, str]:
+        """The legality and operational digests in force (A3), which a stage binds and rechecks."""
+        return self._k.policy_digests()
+
+    def stage_open(self, *, token: str, expect_rev: int, tool: str, contract_digest: str, arguments: dict[str, Any],
+                   judgment_inputs: list[str], base_class: str, effective_class: str, plan: list[dict[str, Any]],
+                   subject: str | None, ingress: str) -> dict[str, Any]:
+        return self._stages.open(token=token, expect_rev=expect_rev, tool=tool, contract_digest=contract_digest,
+                                 arguments=arguments, judgment_inputs=judgment_inputs, base_class=base_class,
+                                 effective_class=effective_class, plan=plan, subject=subject, ingress=ingress)
+
+    def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
+                   reason: str | None = None) -> dict[str, Any]:
+        return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
+                                 code=code, message=message, reason=reason)
+
+    def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
+        return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)
+
+    def stage_abandon(self, *, token: str, expect_rev: int, intent: str, rationale: str) -> dict[str, Any]:
+        return self._stages.abandon(token=token, expect_rev=expect_rev, intent=intent, rationale=rationale)
+
+    def stage_intents_view(self) -> list[dict[str, Any]]:
+        return self._stages.view(self._k.store.read())
+
+    def stage_intent(self, intent: str) -> dict[str, Any]:
+        return self._stages.read(self._k.store.read(), intent)
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
         return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)

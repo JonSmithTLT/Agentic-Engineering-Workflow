@@ -524,6 +524,12 @@
           }
         }
       }
+    },
+    "stage_intents": {
+      "description": "M4-E E3 (plan v3 §2.7): the unfinished StageIntents, by id. Only ACTIVE intents are hot; an intent that ends is written to its cold home in the same commit (`work/<T>/stage-intents/<SI>.yaml` with a pointer on the unit, or `records/stage-intents/<SI>.yaml`) and leaves. Bounded by live work: a unit has at most one.",
+      "type": "object",
+      "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
+      "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
     }
   },
   "allOf": [
@@ -542,7 +548,7 @@
             {"required": ["retained_workspaces"]},
             {"required": ["retired_observations"]},
             {"required": ["queue"]},
-            {"required": ["steering"]}
+            {"required": ["steering"]}, {"required": ["stage_intents"]}
           ]
         }
       }
@@ -672,6 +678,21 @@
           "required": ["v1", "v2_at_migration"],
           "additionalProperties": false,
           "properties": {"v1": {"$ref": "#/$defs/sha256"}, "v2_at_migration": {"$ref": "#/$defs/sha256"}}
+        },
+        "stage_intents": {
+          "description": "M4-E E3: the unit's ended StageIntents, each written immutably at `path`; archival carries the list into the unit's bundle, which pins each record.",
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "tool", "status", "path", "sha256", "closed_rev"], "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SI-[0-9]{4,}$"},
+              "tool": {"type": "string"},
+              "status": {"enum": ["COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]},
+              "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "closed_rev": {"type": "integer", "minimum": 1}
+            }
+          }
         },
         "history_refs": {
           "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",

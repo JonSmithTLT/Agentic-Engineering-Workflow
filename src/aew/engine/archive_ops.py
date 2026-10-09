@@ -95,6 +95,7 @@ def pinned_records(entry: dict[str, Any], raw: bytes,
     pins += [(e["path"], e["sha256"]) for e in doc.get("cited_evidence") or []]
     if unit.get("completion_record") and unit.get("completion_sha256"):
         pins.append((unit["completion_record"], unit["completion_sha256"]))
+    pins += [(s["path"], s["sha256"]) for s in unit.get("stage_intents") or []]  # its ended stages (M4-E E3)
     return sorted(set(pins))
 
 
@@ -489,7 +490,8 @@ class Archive:
                  "invocations": invocations, "tokens": tokens,
                  "evidence": sorted({e["id"] for e in [*unit.get("evidence", []), *(cited or [])]}),
                  "integration_commit": [c] if (c := (unit.get("integration") or {}).get("commit")) else [],
-                 "completion": [unit["completion_record"]] if unit.get("completion_record") else []}
+                 "completion": [unit["completion_record"]] if unit.get("completion_record") else [],
+                 "stage_intents": [s["id"] for s in unit.get("stage_intents") or []]}
         return {"kind": "unit", "id": wid, "path": bundle_rel(wid), "sha256": sha, "at": at, "state": unit["state"],
                 "unit_kind": unit["kind"], "title": unit["title"], "parent": unit.get("parent"), "source": "engine",
                 "links": {k: v for k, v in links.items() if v}}

@@ -184,3 +184,68 @@ def test_prices_are_operational_policy_adopted_like_any_other(lab, tmp_path):
     with pytest.raises(AEWError):
         lab.project.adopt_policy()
 
+
+
+def archived_usage(lab: HarnessLab, wid: str, inv: str) -> list[dict[str, Any]]:
+    from aew.schemas import validate
+
+    usages = [r["usage"] for r in archived_invocation(lab, wid, inv)["runs"]]
+    for usage in usages:  # the bundle is never seen by commit validation: each record is checked here
+        validate("run-usage", usage, source="bundle")
+    return usages
+
+
+@pytest.mark.parametrize("record, beat, status", [
+    ([], False, K.UNCONFIRMED),  # not an object: no record at all
+    ({"status": K.CRASHED, "model_check": "x", "result": ["x"]}, False, K.CRASHED),  # fields of the wrong shape
+    ({"status": "bogus"}, True, K.LOST),  # a status the record schema does not know, with a fresh heartbeat
+], ids=["not-an-object", "wrong-shapes", "unknown-status"])
+def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path, record, beat, status):
+    """#137 review, F1 and F2: the run record is written where the run's own user can write. Whatever it holds, a
+    cancel and the unit's archival still commit, and the copy they archive is a valid run-usage record."""
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
+    lab.wait(run)
+    directory = runlog.run_dir(lab.aew_root, run)
+    (directory / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    if beat:
+        runlog.beat(directory)
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    [usage] = archived_usage(lab, wid, inv)
+    assert (usage["run"], usage["status"], usage["tokens_trust"], usage["model_check"]) == (
+        run, status, "absent", "unreported")
+    assert_control_invariants(lab.project)
+
+
+def test_a_run_still_live_at_archival_is_recorded_with_its_observed_status_and_absent_usage(lab, tmp_path):
+    """R5: archival copies every run that still lacks a usage. A Ticket cancelled while its agent works archives the
+    run as it was observed then, with absent usage; what the run reports later stays in local/ and the bundle is never
+    rewritten (#137 review, F3)."""
+    wid, inv, run = launched(lab, tmp_path, [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}],
+                             {"tokens": TOKENS})
+    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] == K.RUNNING,
+              what="the run to start")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    [usage] = archived_usage(lab, wid, inv)
+    assert (usage["status"], usage["tokens_trust"]) == (K.RUNNING, "absent")
+    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] in K.TERMINAL,
+              what="the cancelled run to end")
+    assert archived_usage(lab, wid, inv) == [usage]
+    assert_control_invariants(lab.project)
+
+
+def test_a_damaged_price_snapshot_never_blocks_a_copy(lab, tmp_path):
+    """#137 review, F4: a snapshot whose bytes no longer match its digest is damage for `aew doctor` to report. The
+    transaction that copies a run's usage still commits, with the usage facts and no table (`pricing_sha256: null`)."""
+    adopt_prices(lab)
+    wid, inv, run = launched(lab, tmp_path, IMPLEMENT, {"tokens": TOKENS})
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    lab.wait(run)
+    snapshot = O.snapshot_path(lab.aew_root, O.Prices(TABLE.encode(), source="t").sha256)
+    snapshot.parent.mkdir(parents=True, exist_ok=True)
+    snapshot.write_text("damaged\n", encoding="utf-8")
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    usage = runs(lab, inv)[0]["usage"]
+    assert (usage["tokens"]["input"], usage["pricing_sha256"]) == (1000, None)
+    assert snapshot.read_text(encoding="utf-8") == "damaged\n"  # never repaired by overwriting
+    assert_control_invariants(lab.project)

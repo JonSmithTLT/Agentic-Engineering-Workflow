@@ -264,6 +264,10 @@ def derive(record: Mapping[str, Any], prices: Prices | None) -> tuple[dict[str, 
 # --------------------------------------------------------------------------- the copy (R5; called from slice 2)
 
 
+# The run statuses a copy may record (the run-usage schema's ``status``): the harness's own, and ``lost``.
+RUN_STATUSES = frozenset({*K.TERMINAL, K.STARTING, K.RUNNING, K.UNCONFIRMED, K.LOST})
+
+
 def _valid_record(candidate: Any) -> dict[str, Any] | None:
     if not isinstance(candidate, dict) or candidate.get("schema") != U.SCHEMA:
         return None
@@ -287,7 +291,8 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
     ``final=False`` (a transaction that ends or relaunches an invocation) copies only runs that have ended: a run
     still starting or running has not reported its usage yet, and a copy now would fix it as absent for ever. It
     stays ``provisional`` (R6) until a later transaction on the invocation, and at the latest the unit's archival,
-    which copies every run (``final=True``): the bundle carries the unit's complete usage into the cold state."""
+    which copies every run (``final=True``): the bundle has a record for every run, a run still live then with its
+    observed status and absent usage."""
     inv = state["invocations"][inv_id]
     pending = [r for r in inv.get("runs") or [] if "usage" not in r]
     if not pending:
@@ -297,7 +302,12 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
         observed = [o for o in observed if o[1] in K.TERMINAL]
     if not observed:
         return []
-    sha = write_pricing_snapshot(aew_root, pricing) if pricing is not None else None
+    sha = None
+    if pricing is not None:
+        try:
+            sha = write_pricing_snapshot(aew_root, pricing)
+        except (IntegrityError, OSError):  # a damaged or unwritable snapshot never fails a cancel (#137 review, F4)
+            sha = None
     profile = inv.get("execution_profile") or {}
     # Requested ids are bounded as the adapter bounds effective ones: an id past its bound is unknown, so the copy
     # fits in 2 KiB without discarding the run's counters (#133 review, finding 2).
@@ -307,10 +317,15 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
                  "profile": U.identifier(profile.get("profile"), U.MAX_PROFILE)}
     copied: list[str] = []
     for entry, status, run_record in observed:
+        # The run record is the run's own report, written where the run's user can write: every field is checked
+        # before it is copied, and a status the record schema does not know is a run that stopped reporting (#137
+        # review, F1 and F2: a copy goes into the archive bundle, which commit validation does not see).
+        status = status if status in RUN_STATUSES else K.LOST
         result = (run_record or {}).get("result")
-        record = _valid_record((result or {}).get("usage_record") if isinstance(result, dict) else None) \
+        record = _valid_record(result.get("usage_record") if isinstance(result, dict) else None) \
             or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
-        check = ((run_record or {}).get("model_check") or {}).get("status")
+        model_check = (run_record or {}).get("model_check")
+        check = model_check.get("status") if isinstance(model_check, dict) else None
         record.update(run=entry["run"], recorded_at=now or utc_now(), status=status, requested=requested,
                       model_check=check if check in U.MODEL_CHECK else "unreported", pricing_sha256=sha)
         if _valid_record(record) is None or U.serialized_size(record) > U.MAX_BYTES:
@@ -319,6 +334,9 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
             record = {**U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}"),
                       "run": entry["run"], "recorded_at": record["recorded_at"], "status": status,
                       "requested": {k: None for k in requested}, "model_check": "unreported", "pricing_sha256": sha}
+        if _valid_record(record) is None:  # unreachable while every field above is checked; never archived unchecked
+            raise IntegrityError(f"the usage copy for {entry['run']} is not a run-usage record",
+                                 reason="usage_copy_invalid", run=entry["run"])
         entry["usage"] = record
         copied.append(entry["run"])
     return copied
@@ -346,8 +364,13 @@ def _finalize(ctx: Any, aew_root: Path, pricing: Callable[[], Prices | None]) ->
     A copy only adds ``usage`` to an existing run entry, so it derives no event (R5): ``run.added`` compares run ids
     and ``invocation.status`` the status field, and neither changes. ``pricing`` is read once and only when a copy
     happens, from the pinned bytes: a table edited outside AEW has already refused the transaction at its entry, as
-    any policy edit does. A table that still cannot be read records the copy with no table (``pricing_sha256: null``)
-    rather than fail a cancel or an archival over a price: the usage facts are what is kept."""
+    any policy edit does. A table that still cannot be read, or whose snapshot cannot be written or is damaged, records
+    the copy with no table (``pricing_sha256: null``) rather than fail a cancel or an archival over a price: the usage
+    facts are what is kept.
+
+    A run still live when its unit is archived (a Ticket cancelled while its agent works) is copied with the status
+    observed then and absent usage (R5: archival copies every run that still lacks it). What it reports later stays in
+    ``local/`` only: the hot state no longer holds the invocation, and the bundle is never rewritten."""
     from aew.engine import hierarchy as H
 
     state = ctx.state

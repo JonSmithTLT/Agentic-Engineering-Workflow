@@ -48,9 +48,12 @@ def _read_text(path: Path) -> str | None:
 def read_record(directory: Path) -> dict[str, Any] | None:
     try:
         text = _read_text(directory / "run.json")
-        return json.loads(text) if text is not None else None
+        record = json.loads(text) if text is not None else None
     except (OSError, ValueError):
         return None
+    # The run directory is writable by the run's own user (the supervisor's note on local/): a record that is not an
+    # object is no record, so no reader of it (a cancel's usage copy among them) fails on its shape (#137 review, F1).
+    return record if isinstance(record, dict) else None
 
 
 def write_record(directory: Path, record: dict[str, Any]) -> None:
@@ -86,6 +89,8 @@ def observed_status(directory: Path) -> tuple[str, dict[str, Any] | None]:
     if record is None:
         return K.UNCONFIRMED, None
     status = record.get("status")
+    if not isinstance(status, str):
+        status = None
     if status in K.TERMINAL:
         return status, record
     age = heartbeat_age(directory)

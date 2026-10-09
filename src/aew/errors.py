@@ -131,6 +131,13 @@ class DispatchRefused(IllegalTransition):
     code = "DISPATCH_REFUSED"
 
 
+class SteeringNotConfigured(IllegalTransition):
+    """A steering mode command on a project whose adopted execution policy names no ``steering.mode``: the project keeps
+    legacy/manual behaviour, which is not a fourth mode (M4-E decision 3)."""
+
+    code = "STEERING_NOT_CONFIGURED"
+
+
 class MigrationRequired(IllegalTransition):
     """The project's control state is v1: the Lead migrates it (`aew migrate`) before changing work (ADR-0011)."""
 

@@ -86,6 +86,11 @@
             "null"
           ]
         },
+        "host_uid": {
+          "description": "M4-E E2: the POSIX uid the Lead acquired its seat as (the Lead host principal), so the operator endpoint can say whether the principals collapse (plan v3 §2.1). Absent on Windows and for seats acquired before it.",
+          "type": "integer",
+          "minimum": 0
+        },
         "handoff": {
           "type": [
             "object",
@@ -432,6 +437,49 @@
           }
         }
       }
+    },
+    "steering": {
+      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (an adopted default that is not a raise); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
+      "type": "object",
+      "required": ["default", "standing", "override", "requests"],
+      "additionalProperties": false,
+      "properties": {
+        "default": {"$ref": "#/$defs/steering_mode"},
+        "standing": {
+          "type": "object",
+          "required": ["mode", "record", "rev"],
+          "additionalProperties": false,
+          "properties": {"mode": {"$ref": "#/$defs/steering_mode"}, "record": {"type": ["string", "null"]},
+                         "rev": {"type": "integer", "minimum": 0}}
+        },
+        "override": {"oneOf": [{"type": "null"}, {
+          "type": "object",
+          "required": ["mode", "generation", "record", "rev", "by"],
+          "additionalProperties": false,
+          "properties": {"mode": {"enum": ["crawl", "walk", "run"]}, "generation": {"type": "integer", "minimum": 1},
+                         "record": {"type": "string"}, "rev": {"type": "integer", "minimum": 1},
+                         "by": {"enum": ["operator", "lead"]}}
+        }]},
+        "requests": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "rationale", "generation", "at", "rev"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SQ-[0-9]+$"},
+              "kind": {"enum": ["raise", "confirmation"]},
+              "mode": {"enum": ["walk", "run"]},
+              "action_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+              "rationale": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "generation": {"type": "integer", "minimum": 1},
+              "at": {"type": "string"},
+              "rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [
@@ -449,7 +497,8 @@
             {"required": ["archived_refs"]},
             {"required": ["retained_workspaces"]},
             {"required": ["retired_observations"]},
-            {"required": ["queue"]}
+            {"required": ["queue"]},
+            {"required": ["steering"]}
           ]
         }
       }
@@ -460,6 +509,7 @@
     }
   ],
   "$defs": {
+    "steering_mode": {"enum": ["crawl", "walk", "run", null]},
     "queue_lease": {
       "type": "object",
       "required": ["entry", "custodian", "generation", "granted_at", "reconcile"],

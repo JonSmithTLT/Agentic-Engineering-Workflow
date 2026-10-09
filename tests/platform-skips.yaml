@@ -145,6 +145,19 @@ skipped:
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.
+    tests/unit/test_operator_endpoint.py::test_the_peer_check_refuses_another_principal_before_any_challenge: >-
+      the operator endpoint's peer check reads POSIX peer credentials (SO_PEERCRED); on Windows the named pipe's access
+      list stands in and every record is labelled guarantee dev (M4-E plan v3 §2.1). Covered on Linux.
+    tests/unit/test_operator_endpoint.py::test_the_endpoint_socket_lives_in_a_private_directory: >-
+      the socket directory's 0700 mode is a POSIX property; Windows uses a named pipe. Covered on Linux.
+    tests/integration/test_operator_endpoint_pty.py::test_pty_and_stripped_env_reach_only_the_endpoint: >-
+      POSIX pty operator path (util-linux `script`) for the operator endpoint against a real same-uid Lead session; a
+      Windows console would appear on the desktop. Covered on Linux; the endpoint's protocol, refusals and the Lead
+      session check run on Windows in tests/unit/test_operator_endpoint.py.
+    tests/integration/test_operator_endpoint_pty.py::test_endpoint_is_not_ptrace_readable: >-
+      PR_SET_DUMPABLE is Linux only; Windows offers no equivalent within one user (ADR-0009 residual). Covered on Linux.
+    tests/integration/test_operator_endpoint_pty.py::test_a_same_uid_process_can_neither_read_nor_attach_to_the_endpoint: >-
+      ptrace and /proc/<pid>/mem are Linux. Covered on Linux.
     tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[xdist]: >-
       interrupting a hung test in place needs SIGALRM, which Windows lacks; there the watchdog writes every thread's
       stack to the uploaded dump file instead (test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk runs on

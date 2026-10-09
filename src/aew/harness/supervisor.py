@@ -31,7 +31,7 @@ from typing import Any
 from aew import errors
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, containment, procs, registry, runlog
+from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
@@ -73,6 +73,7 @@ class Supervisor:
         self._checks = procs.CheckTrees()              # the trees of checks running for the agent now
         self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
+        self._started_mono: float | None = None  # when the harness started: the usage record's wall time (F25 R1)
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._lock = threading.Lock()
@@ -178,6 +179,7 @@ class Supervisor:
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
         self.record["status"] = K.RUNNING
         self.record["started_at"] = utc_now()
+        self._started_mono = time.monotonic()
         self.record["harness_pids"] = list(self.tree.pids)
         self._event("started", pids=list(self.tree.pids))
         self._save()
@@ -370,6 +372,7 @@ class Supervisor:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:
             self.record["result"] = {"error": f"{type(exc).__name__}: {exc}"}
+        self._record_usage()
         self._compare_effective()
         self.record["evidence"] = self._evidence()
         self.record.update(status=status, reason=reason, ended_at=utc_now())
@@ -399,6 +402,19 @@ class Supervisor:
             self._event("terminate_timeout", after_s=TERMINATE_S)
         elif failure:
             self._event("terminate_failed", error=failure[0])
+
+    def _record_usage(self) -> None:
+        """``result.usage_record`` as the adapter normalized it, plus the run's wall time, which only the supervisor
+        observes (F25, cost and usage ledger v0.2 R2). The raw ``usage`` stays beside it for diagnosis. A record that
+        is not an ``aew/run-usage/v1`` object is dropped: the engine's copy then counts the run's usage as absent."""
+        result = self.record.get("result")
+        if not isinstance(result, dict) or "usage_record" not in result:
+            return
+        if not isinstance(result["usage_record"], dict) or result["usage_record"].get("schema") != usage.SCHEMA:
+            del result["usage_record"]
+            return
+        wall = time.monotonic() - self._started_mono if self._started_mono is not None else None
+        usage.with_wall_time(result["usage_record"], wall)
 
     def _compare_effective(self) -> None:
         """Requested (pinned) versus effective execution: a mismatch is flagged, never silently accepted."""

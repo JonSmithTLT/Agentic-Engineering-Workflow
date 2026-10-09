@@ -181,6 +181,15 @@ class StatusViewsPort(Protocol):
     def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]: ...
 
 
+class SteeringPort(Protocol):
+    """What other collaborators use of ``Steering`` (M4-E E2): adoption records a default that is not a raise, and
+    doctor asks whether steering is configured."""
+
+    def on_adopt(self, ctx: Any, policy: dict[str, Any] | None) -> None: ...
+
+    def policy_default(self) -> str | None: ...
+
+
 class HarnessPort(Protocol):
     """What other collaborators use of ``Harness``."""
 

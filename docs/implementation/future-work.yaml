@@ -336,7 +336,18 @@ sections:
       attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea note''s §17 governs the predicate and bindings, A1
       the grant (the Lead may request, only the operator capability grants), the one-head-move automatic rebuild rule applies,
       otherwise the governed non-publication/disposition path; no further design text is needed before E6. Steering has
-      no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H''s sealed manifest selects its mode'
+      no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H''s sealed manifest selects its mode.
+      **Built so far (M4-E E2, 2026-10-09):** the operator endpoint (`aew operator serve --dev`: an AF_UNIX socket in a
+      0700 directory with a `SO_PEERCRED` peer check on Linux, a named pipe on Windows, the challenge on the endpoint''s
+      console, a non-dumpable process, one endpoint per project), the `OperatorPrincipal` only it constructs, `aew lead
+      mode raise` through it (bound to the Lead generation and the legality digest shown, ending with that generation),
+      the policy default `execution.steering.mode` (an adopted raise waits for the endpoint), the Lead''s `aew lead mode
+      lower` and the normal `steering` tool (lower, request a raise or a confirmation; requests grant nothing), the notifier''s
+      configuration and the executable check Run needs, and the A1 §1.3 records in `records/steering/`. Control state keeps
+      the mode as `steering.standing` and `steering.override` rather than the plan''s `effective` (the effective mode is
+      derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release
+      gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7),
+      the publication grants (E6b), delivery and the loop (E7)'
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
@@ -495,11 +506,13 @@ sections:
       §2.1 to §2.3, §6.1, §20.1, §21 (ledger HAA)'
     Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
     Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
-      or invoke lifecycle controls, while the ordinary source workflow stays usable. **F23 (operator, 2026-10-07, [decision
-      record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run
-      as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated
-      harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying
-      an optional stronger deployment (lead developer''s reading, record §2)'
+      or invoke lifecycle controls, while the ordinary source workflow stays usable. **M4-E E2 (2026-10-09)** built the
+      operator-only socket with its peer-credential check as F15.5''s operator endpoint, labelled `guarantee: dev` because
+      the principals collapse; A1 production authority (PFS-04 release gate 1, SAE-01 to SAE-03) requires this row. **F23
+      (operator, 2026-10-07, [decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the
+      whole model harness need not run as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this
+      row meets the boundary with a dedicated harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed
+      principal, the two-account profile staying an optional stronger deployment (lead developer''s reading, record §2)'
   - '#': F18.7
     Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
       default; PREPARING cleanup; the conversation-taint record and the reattach delta'
@@ -815,7 +828,11 @@ sections:
       F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):**
       live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement
       and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general
-      budget enforcement does not move into F25'
+      budget enforcement does not move into F25. **Slice 1 built** (the run-usage record, the OpenCode `usage_record`, the
+      price table schema, the derivation and the projections; [implementation status](implementation-status.md)). The token
+      semantics are qualified only for OpenCode 2.0.18 with `openai` (`disjoint`, from OpenCode''s source); every other
+      provider resolves to `unknown` and stays unpriced until it is qualified with a conformance fixture. Slice 2 (copy
+      paths, control schema, `policy.pricing`, doctor, `aew usage`) is next'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -1063,8 +1080,9 @@ sections:
       wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. `test_a_run_that_takes_long_to_end_is_not_reported_lost`
       failed once under coverage on 16 workers (M4-A, 2026-10-03): its 2 s stale window left 1 s over the 1 s beat; widened
       to 4 s, with the wait at 8 s. A run reported `lost` while it started (Windows, PR #132, 2026-10-09) was a real race
-      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). Raise test-side timeouts,
-      never the product''s.'
+      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A failed harness test
+      now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such failure names
+      a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule
       tail (AEW''s rules in order; anything OpenCode appends after them may only deny), then 2.0.22 on the live lane and

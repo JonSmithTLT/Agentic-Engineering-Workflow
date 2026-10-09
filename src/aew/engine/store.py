@@ -173,6 +173,9 @@ class Session:
         return copy.deepcopy(self._committed_state)
 
     def write(self, path: str, content: str, *, immutable: bool = True, fault: str | None = None) -> None:
+        """Stage ``content`` at ``path``; a later write of the same path in this session replaces the earlier one (an
+        append-only record file gains several lines in one transaction: M4-E's steering records)."""
+        self._writes = [w for w in self._writes if w.path != path]
         self._writes.append(PendingWrite(path, content, immutable, fault))
 
     def prewritten(self, path: str, sha256: str) -> None:

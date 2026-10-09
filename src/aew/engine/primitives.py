@@ -73,6 +73,8 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # The Lead's checkpoint (F15.1: the typed surface's one normal-profile mutation): a handoff note and next action,
     # one transaction under the caller's expected revision.
     PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "expected_revision", None),
+    # The Lead's own steering (M4-E E2): a lowering or a request, one transaction; it never raises authority.
+    PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "expected_revision", None),
 )}
 
 

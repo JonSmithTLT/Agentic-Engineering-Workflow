@@ -51,6 +51,14 @@ class StaleAuthority(AEWError):
     exit_code = 3
 
 
+class StalePolicy(AEWError):
+    """The legality policy in force is not the one a staged action was bound to (M4-E E3; typed surface §3.4 rule 6):
+    the step is not committed, and the caller reads the projection again and decides anew."""
+
+    code = "STALE_POLICY"
+    exit_code = 3
+
+
 class StaleRevision(AEWError):
     """The caller's expected control-state revision is not the current one."""
 

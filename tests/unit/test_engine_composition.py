@@ -262,10 +262,11 @@ def test_unit_kinds():
 
 def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine):
     assert isinstance(engine._k.finalizers, seams.TxnFinalizers)
-    # M4-A: no invocation or run commits without a dispatch decision; M4-D: the queue follows its Tickets (before
+    # M4-E E3: a stage step is judged by its journal first (STALE_POLICY, a stale owner); M4-A: no invocation or run
+    # commits without a dispatch decision; M4-D: the queue follows its Tickets (before
     # archival, so a retired entry leaves with its unit); M4-D5: every terminal validation run gets its immutable
     # record (before archival, so a retired candidate's run is recorded before the unit leaves); then ADR-0011 R6.
-    assert [named(step) for step in engine._k.finalizers.steps] == ["Dispatch.finalize", "Queue.finalize",
-                                                                     "Validation.finalize",
-                                                                     "UsageCopy.finalize", "Archive.finalize"]
+    assert [named(step) for step in engine._k.finalizers.steps] == [
+        "StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize", "UsageCopy.finalize",
+        "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7

@@ -37,3 +37,21 @@ def test_queue_is_a_v2_only_key():
     from aew.engine.base import V2_ONLY_KEYS
 
     assert "queue" in V2_ONLY_KEYS  # the v1 rule refuses it (register E36: test_schemas_records.py)
+
+
+def test_the_baseline_engine_refuses_a_control_file_with_an_unfinished_stage(tmp_path):
+    """M4-E E3 (plan v3 §2.7): a hot StageIntent binds a Lead generation and the policy a stage's next step must still
+    satisfy, so an engine that cannot read it must not open the file."""
+    from aew.engine.api import Engine
+    from aew.engine.base import V2_ONLY_KEYS
+
+    p = sample_project(tmp_path)
+    Engine.discover(p.root).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest="0" * 64,
+                                       arguments={}, judgment_inputs=[], base_class="MECHANICAL",
+                                       effective_class="MECHANICAL", plan=[{"primitive": "checkpoint"}],
+                                       subject=None, ingress="test")
+    state = load_control(p.root)
+    assert "stage_intents" in state and "stage_intents" in V2_ONLY_KEYS
+    baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
+    errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(state))
+    assert any("Additional properties are not allowed" in e and "'stage_intents'" in e for e in errors), errors

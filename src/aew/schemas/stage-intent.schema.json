@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/stage-intent/v1",
+  "title": "AEW stage intent",
+  "description": "M4-E E3 (plan v3; typed Lead surface design v0.2 §3.4): the durable journal of one stage call. It opens by CAS on the caller's expected revision as the stage's first commit, binds the call, the state it started from and its planned primitive steps, and records each step as it commits. Hot (control state `stage_intents`) while ACTIVE; written whole and immutable to its cold home when it ends, and never changed after.",
+  "type": "object",
+  "required": ["schema", "id", "tool", "status", "contract_digest", "arguments", "arguments_digest", "judgment_inputs",
+               "base_class", "effective_class", "ingress", "caller", "generation", "opened", "binding", "subject",
+               "plan", "steps", "retried_after_stale_revision", "stopped", "rebound", "resolution", "closed"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/stage-intent/v1"},
+    "id": {"$ref": "#/$defs/intent_id"},
+    "tool": {"$ref": "#/$defs/name"},
+    "status": {"enum": ["ACTIVE", "COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]},
+    "contract_digest": {"$ref": "#/$defs/sha256"},
+    "arguments": {"description": "The call's bound arguments, as the surface validated them (credentials never appear: the surface scrubs them).", "type": "object"},
+    "arguments_digest": {"$ref": "#/$defs/sha256"},
+    "judgment_inputs": {"description": "The judgments the call carries: the tool's required judgments and any promoting argument supplied.", "type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/name"}},
+    "base_class": {"$ref": "#/$defs/operation_class"},
+    "effective_class": {"$ref": "#/$defs/operation_class"},
+    "ingress": {"enum": ["mcp", "cli", "test"]},
+    "caller": {"type": "object", "description": "The Lead actor that opened the intent."},
+    "generation": {"description": "The Lead generation that owns the intent: only it may commit a step; `resolve continue` rebinds it (F18 §14).", "type": "integer", "minimum": 1},
+    "opened": {
+      "type": "object", "required": ["expect_rev", "rev", "at"], "additionalProperties": false,
+      "properties": {"expect_rev": {"type": "integer", "minimum": 0}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}}
+    },
+    "binding": {
+      "description": "What every step is checked against. A legality digest that moved is STALE_POLICY (rule 6); the operational digest is recorded, never enforced. The authorization, obligations and lease bindings arrive with E5b and E6.",
+      "type": "object", "required": ["legality_digest", "operational_digest", "authorization_digest", "obligations_digest", "lease"], "additionalProperties": false,
+      "properties": {
+        "legality_digest": {"$ref": "#/$defs/policy_digest"},
+        "operational_digest": {"$ref": "#/$defs/policy_digest"},
+        "authorization_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/policy_digest"}]},
+        "obligations_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/policy_digest"}]},
+        "lease": {"type": ["null", "string"]}
+      }
+    },
+    "subject": {
+      "type": "object", "required": ["kind", "id", "start"], "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["unit", "project"]},
+        "id": {"type": ["null", "string"]},
+        "start": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/unit_state"}]}
+      }
+    },
+    "plan": {
+      "type": "array", "minItems": 1, "maxItems": 16,
+      "items": {
+        "type": "object", "required": ["n", "primitive", "operation_class", "key"], "additionalProperties": false,
+        "properties": {
+          "n": {"type": "integer", "minimum": 1},
+          "primitive": {"$ref": "#/$defs/name"},
+          "operation_class": {"$ref": "#/$defs/operation_class"},
+          "key": {"$ref": "#/$defs/step_key"},
+          "args": {"type": "object", "description": "The step's bound arguments; a value may be {\"$from\": [m, field]}, resolved from step m's recorded outputs."}
+        }
+      }
+    },
+    "steps": {
+      "description": "The steps committed, in plan order: each in the same commit as its primitive, under its idempotency key `<id>:<n>`.",
+      "type": "array", "maxItems": 16,
+      "items": {
+        "type": "object", "required": ["n", "key", "primitive", "operation_class", "revision", "refs", "summary", "outputs", "subject_after", "legality_digest", "operational_digest", "at"], "additionalProperties": false,
+        "properties": {
+          "n": {"type": "integer", "minimum": 1},
+          "key": {"$ref": "#/$defs/step_key"},
+          "primitive": {"$ref": "#/$defs/name"},
+          "operation_class": {"$ref": "#/$defs/operation_class"},
+          "revision": {"type": "integer", "minimum": 1},
+          "refs": {"type": "array", "maxItems": 64, "items": {"type": "string"}},
+          "summary": {"type": ["null", "string"]},
+          "outputs": {
+            "type": "object", "required": ["units", "invocations", "runs"], "additionalProperties": false,
+            "properties": {
+              "units": {"type": "array", "items": {"type": "string"}},
+              "invocations": {"type": "array", "items": {"type": "string"}},
+              "runs": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "subject_after": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/unit_state"}]},
+          "legality_digest": {"$ref": "#/$defs/policy_digest"},
+          "operational_digest": {"$ref": "#/$defs/policy_digest"},
+          "retried_after_stale_revision": {"const": true},
+          "at": {"type": "string"}
+        }
+      }
+    },
+    "retried_after_stale_revision": {"description": "R5-1: some step was retried once after STALE_REVISION.", "type": "boolean"},
+    "stopped": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "required": ["n", "boundary", "error", "rev", "at"], "additionalProperties": false,
+          "properties": {
+            "n": {"type": "integer", "minimum": 1},
+            "boundary": {"$ref": "#/$defs/name"},
+            "error": {
+              "type": "object", "required": ["code", "message"], "additionalProperties": false,
+              "properties": {"code": {"type": "string"}, "message": {"type": "string", "maxLength": 2000}, "reason": {"type": ["null", "string"]}}
+            },
+            "rev": {"type": "integer", "minimum": 1},
+            "at": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "rebound": {
+      "type": "array", "maxItems": 16,
+      "items": {
+        "type": "object", "required": ["from_generation", "to_generation", "rev", "at"], "additionalProperties": false,
+        "properties": {"from_generation": {"type": "integer"}, "to_generation": {"type": "integer"}, "rev": {"type": "integer"}, "at": {"type": "string"}}
+      }
+    },
+    "resolution": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "required": ["choice", "rationale", "generation", "rev", "at"], "additionalProperties": false,
+          "properties": {"choice": {"enum": ["continue", "abandon"]}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}, "generation": {"type": "integer"}, "rev": {"type": "integer"}, "at": {"type": "string"}}
+        }
+      ]
+    },
+    "closed": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "required": ["status", "rev", "at"], "additionalProperties": false,
+          "properties": {"status": {"enum": ["COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}}
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "intent_id": {"type": "string", "pattern": "^SI-[0-9]{4,}$"},
+    "step_key": {"type": "string", "pattern": "^SI-[0-9]{4,}:[0-9]+$"},
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "policy_digest": {"description": "A digest as aew.policy.classes writes it.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED", "JUDGMENT_BEARING"]},
+    "unit_state": {
+      "type": "object", "required": ["state", "record_sha256"], "additionalProperties": false,
+      "properties": {"state": {"type": "string"}, "record_sha256": {"$ref": "#/$defs/sha256"}}
+    }
+  }
+}

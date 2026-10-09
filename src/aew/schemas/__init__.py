@@ -34,6 +34,7 @@ SCHEMAS = {
     "map-registry": "map-registry.schema.json",
     "run-usage": "run-usage.schema.json",  # a harness run's usage (F25, cost and usage ledger v0.2 R1)
     "pricing": "pricing.schema.json",  # the price table, the manifest's optional policy.pricing (F25 R4)
+    "stage-intent": "stage-intent.schema.json",  # the StageIntent journal (M4-E E3)
 }
 
 

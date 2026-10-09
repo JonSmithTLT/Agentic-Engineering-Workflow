@@ -81,12 +81,12 @@ jobs:
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast
+          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
+          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -152,6 +152,7 @@ jobs:
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
+          --test-timeout 600
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()

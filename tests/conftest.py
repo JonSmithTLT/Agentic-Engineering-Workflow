@@ -14,15 +14,18 @@ IS_WINDOWS = sys.platform == "win32"
 sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
+import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     lanes.addoption(parser)
+    watchdog.addoption(parser)
 
 
 def pytest_configure(config: pytest.Config) -> None:
     lanes.configure(config)
+    watchdog.configure(config)
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:

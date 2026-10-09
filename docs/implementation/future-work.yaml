@@ -1669,7 +1669,7 @@ sections:
     Was: 'T5-A, the structural core (project maps v0.5 §2, §3, §10, §11, §16 T5-A): the structural codebase map from Git
       objects with mechanically tracked inputs, its registry with its own `map_revision`, `aew map generate/show/diff`,
       architecture-reference selection and the bounded pack slices, as a parallel lane to M4-H (SMQ-01)'
-    Closed: '2026-10-07'
+    Closed: '2026-10-09'
     By: 'Two pull requests of the lead developer''s plan (v4, independently reviewed CLEAR). PR #126 built the structural
       core and [ADR-0015](adr/0015-project-map-storage-and-registry.md) (ledger MSR). The second built `aew map select-architecture`,
       the execution policy''s `maps.pack_slices` switch (off by default: packs and the resume view are byte-identical to

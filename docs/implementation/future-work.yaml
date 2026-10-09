@@ -137,7 +137,16 @@ sections:
     Belongs to or gated by: '**On measured need** (frozen; ARV-01, operator 2026-10-05: not before M4-D and a multi-agent
       dogfood show the need). Revisit when dogfood evidence justifies it; staging in its §24 (M3.x or M4 holds, then the
       M5 scheduler)'
-    Notes: M3 kept the extension points (runs, `send`, continuations).
+    Notes: M3 kept the extension points (runs, `send`, continuations). **F9-A1 proposed (2026-10-09, not adopted; [amendment
+      v0.1](../design/proposals/f9-a1-lead-worker-messaging-and-adaptive-supervision-amendment-v0.1.md), ledger LWM):**
+      first-class durable Lead-worker messaging (identity, reply chains, idempotency, harness delivery as transport only,
+      Ticket, revision and invocation bindings) and adaptive Lead supervision (an advisory supervision-candidate projection,
+      spot checks that never satisfy a gate, design target C), staged F9-A to F9-D; it states that the measured need this
+      row waits for now exists, and asks for a qualified supervision path before heterogeneous lower-tier worker fanout
+      becomes a normal production mode (§22). F9 v0.1's invariants are unchanged (§26). Its adoption is a decisions-due
+      item. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
+      adopted 2026-10-09; ledger WCR, row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker
+      findings (WCR-12, WCR-30); a cross-reference, not new scope.
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
     Source (governing): '`m1-implementation-plan.md`; `implementation-status.md`'
@@ -166,7 +175,9 @@ sections:
     Work: Dynamic scheduler
     Source (governing): Workflow Contract; `implementation-status.md`
     Belongs to or gated by: '**M5**'
-    Notes: '|'
+    Notes: '**Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
+      adopted 2026-10-09; ledger WCR, row F34):** with F15, the primary owner of removing workflow choreography and mechanically
+      advancing legal work (WCR-11, WCR-29); a cross-reference, not new scope.'
   - '#': F12
     Work: Workbench capability manifests, resolver, provider health in `doctor`, an MCP adapter over the Engine API
     Source (governing): '`m1-implementation-plan.md`; `m2-ambiguity-report.md`'
@@ -188,7 +199,10 @@ sections:
       and invariants: Q8. Provider research: [`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md)
       (Q11). Comprehensive native-feature integration stays here, not in F18. Harness-native research v0.3 (ledger HNI):
       capability state is keyed by adapter, pinned version and schema/probe identity, and what a harness advertises is kept
-      apart from what reaches the model.'
+      apart from what reaches the model. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
+      adopted 2026-10-09; ledger WCR, row F34):** the capability registry (F12, F13) is the primary owner of resolving intent
+      to the cheapest adequate authorized capability without the model understanding the plumbing (WCR-14, WCR-32); a cross-reference,
+      not new scope.'
   - '#': F14
     Work: 'Plan assurance and premise validation before mutating dispatch: raw stakeholder intent kept apart from derived
       interpretation, with statements typed (requirement, observation, diagnosis, inference, decision); acceptance reconstructed
@@ -265,7 +279,9 @@ sections:
       MCP first, as the frozen design says, because v0.2''s broker-side custody answers the review''s second-credential-holder
       concern; the review''s recommendation is historical input. The work is F15.1 to F15.3 below. ARV-04 (operator, 2026-10-05):
       the typed surface is one of the two mechanisms named to keep the operator and designer''s serial path short; the other
-      is F8''s operator inbox.'
+      is F8''s operator inbox. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
+      adopted 2026-10-09; ledger WCR, row F34):** F15 and the M5 scheduler (F11) are the primary owners of removing workflow
+      ceremony (WCR-11, WCR-29); a cross-reference, not new scope.'
   - '#': F15.2
     Work: 'Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency
       digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review
@@ -290,7 +306,11 @@ sections:
     Source (governing): '[typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md) §6, §11 (ledger TLS-23,
       TLS-28)'
     Belongs to or gated by: '**M6** (M6a for the namespace rules, F13 decides what each role sees)'
-    Notes: Designed only, not prototyped; ends the YAML-frontmatter failure class for role reports
+    Notes: 'Designed only, not prototyped; ends the YAML-frontmatter failure class for role reports. **Designer ruling (2026-10-09,
+      [decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md), KDR-01, KDR-02):**
+      worker tool delivery is this role server: typed tools in the sandbox, requests through the supervisor bridge, credentials
+      supervisor-side; knowledge, map and helper operations (the `aew-knowledge` namespace among them) extend it and never
+      add another worker credential surface'
   - '#': F15.4
     Work: 'Policy digest separation: every execution-policy field classified `legality_affecting` or `operational` (an unclassified
       field fails schema validation); each staged action records `legality_digest`, `operational_digest`, the revision,
@@ -697,9 +717,12 @@ sections:
     Work: 'The M6b knowledge system: capture and admission of reusable knowledge (K0 references, K1 Cases, K2 Lessons, K3
       held), guarded recall and context routing, and their shared semantics (identity, provenance, orthogonal state, receipts,
       visibility composition, provider boundary)'
-    Source (governing): '[knowledge capture/admission v0.4](../design/proposals/aew-knowledge-capture-admission-design-v0.4.md),
-      [shared semantics v0.4](../design/proposals/aew-knowledge-capture-recall-shared-semantics-v0.4.md), [recall/routing
-      v0.3](../design/proposals/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md); research basis [v0.1](../research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md)'
+    Source (governing): '**Adopted and governing (operator, 2026-10-09; [adoption decision](../design/decisions-2026-10-09-knowledge-system-adoption.md),
+      ledger KAD):** [knowledge capture/admission v0.4](../design/aew-knowledge-capture-admission-design-v0.4.md), [shared
+      semantics v0.4](../design/aew-knowledge-capture-recall-shared-semantics-v0.4.md), [recall/routing v0.3](../design/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md)
+      and [ADR-0013](adr/0013-knowledge-storage-placement.md), adopted together; the designer''s rulings on worker tool
+      delivery and reviewer independence ([decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md),
+      ledger KDR); research basis [v0.1](../research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md)'
     Belongs to or gated by: '**M6** (M6b), after F19''s fixtures. **Arm B first** (explicit guarded raw-history search over
       FTS5 in the history SQLite) and its A/B result is the first stop/go gate; the K1 source-class replay is a pre-build
       gate for Cases; K2 only after held-out gates. Storage and the service identity are placed by [ADR-0013](adr/0013-knowledge-storage-placement.md)
@@ -711,15 +734,30 @@ sections:
       ADR-0005/ADR-0009/ADR-0013 amendment text (E37) and, later, the capture service itself. The review''s prototype proved
       the placement; its lessons and the defects not to inherit are in [the prototype lessons](../research/knowledge-manifest-prototype-lessons-2026-10-04.md)
       (ledger KMP; the ADR governs)'
-    Notes: 'Proposals for joint review, not governing. Every requirement, including the 70 invariants to merge into the
-      invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB).
-      Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition` names; source
-      class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype
-      (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible and absent
-      from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
-      may hold its separate rebuildable FTS substrate instead of `local/history.sqlite`, a change of physical placement
-      only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every
-      D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation'
+    Notes: '**Adopted (operator, 2026-10-09):** the three designs moved from `design/proposals/` to `design/` and govern
+      M6b, with ADR-0013; the adoption accepts their architecture and authority boundaries and authorizes no K1/K2 production
+      machinery ahead of the stop/go gates (KAD-02). Lookup is a normal capability of every admitted role, ordinarily discoverable,
+      with broad tool availability and a narrow default payload; roles differ in answer depth, and request modes stay query
+      intent, never authority (record §2 to §4). **Next work, the implementation-readiness package (record §8; KAD-12 to
+      KAD-14), without returning to the operator:** reconcile and freeze field names and the glossary across the set; qualify
+      ADR-0013''s assumptions against the current tree; define the exact Arm B indexed corpus; the concrete request-mode/role
+      matrix (with the designer''s reviewer-independence rule: by default hide the current implementer''s reasoning and
+      private working state, keep the canonical objective, plan, diff, checks, findings and failures the role needs, broader
+      same-Ticket history through explicit investigation mode; KDR-03 to KDR-05); compact and expanded result shapes; the
+      F19-compatible A/B corpus and rubric; K1 template replay only after Arm B is measurable; ranking, vectors, rerankers,
+      discovery thresholds and K2 policy left to evidence. **Arm B stays first** (record §7): its prototype is being built
+      separately on `impl/f21-arm-b-prototype`. Worker delivery of knowledge tools is F15.3''s `aew-run` bridge (KDR-01,
+      KDR-02). Every requirement, including the 70 invariants to merge into the invariant index, is tracked in the requirements
+      ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09);
+      qualified `workflow_disposition`/`knowledge_disposition` names; source class authenticates provenance, not validity;
+      runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype (designer and operator, 2026-10-07):** pulled
+      forward as a prototype in its own worktree, not model-visible and absent from the Q7/M4-H treatment; the operator
+      approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite` may hold its separate rebuildable
+      FTS substrate instead of `local/history.sqlite`, a change of physical placement only (locator-only rows, authentication
+      before use, the full audit, disposable and non-authoritative status and every D8 guarantee unchanged), and not a decision
+      about final K1/K2 physical consolidation. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
+      adopted 2026-10-09; ledger WCR, row F34):** F21 is the primary owner of avoiding rediscovery of prior project experience
+      (WCR-13, WCR-31); the adoption record §6 cites the requirement; a cross-reference, not new scope.'
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
       that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed
@@ -738,7 +776,12 @@ sections:
       the closed `map_service` writer, contained extraction from an exact source view, compile commands as data, compile-database
       provenance, negative-dependency freshness, root manifests over content-addressed chunks, untrusted map text, assurance
       monotonicity, configuration-qualified queries, and invariants T5-INV-01 to 12 with stable reason codes. The research
-      cycle is closed (§18); implementation follows §16''s slices T5-A to T5-E'
+      cycle is closed (§18); implementation follows §16''s slices T5-A to T5-E. **Deterministic work conservation ([requirement
+      v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):**
+      project maps (T5) are the primary owner of deterministic repository orientation, locators, semantic relationships,
+      test and constraint indexes and impact assistance, the requirement''s flagship (WCR-05 to WCR-10, WCR-20, WCR-28);
+      its success condition is that even a frontier model prefers the map''s query surfaces to ad hoc search for supported
+      questions; a cross-reference, not new scope.'
   - '#': F22.1
     Work: 'T5-A, the structural core: `aew/codebase-map/v1` generated from Git objects through one input-tracking read API;
       freshness bound to the path listing plus the metadata blobs actually read, computed per tree pair and never written
@@ -845,7 +888,10 @@ sections:
       later stays in `local/`. Slice 2b''s doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`).
       The snapshot check reads the hot state and the recently archived units only, never the whole archive, so a doctor
       run stays bounded; a snapshot named only by an older bundle is not checked there, and `aew usage show --all` (next)
-      reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next'
+      reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **Deterministic
+      work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09;
+      ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model
+      dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope.'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -954,6 +1000,19 @@ sections:
       not an internal-alpha gate'
     Notes: The bounded form of the remote integration target sketch's push leg; automated PR creation and provider merge
       handling stay deferred with Q14
+  - '#': F34
+    Work: 'Deterministic work conservation, the cross-cutting requirement''s own obligations: the design review question
+      (is the model being asked to do something AEW could safely and deterministically do itself?) asked of every significant
+      feature or workflow, and the measurement that it works: navigation, workflow-ceremony and multi-agent metrics and
+      the useful-reasoning ratio, on F25''s usage substrate and F19''s evaluation program'
+    Source (governing): '[deterministic work conservation requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md)
+      (adopted by the operator 2026-10-09; ledger WCR) §1, §15 to §19, §21 to §24, §26'
+    Belongs to or gated by: '**Unscheduled**: the design review question applies from adoption to each new design; the metrics
+      are measured where F25 and F19 make them available (dogfood, M4-H, M6b''s A/B arms)'
+    Notes: 'No subsystem owns the requirement itself (§25); its applications live on their owner rows: F22 (T5 project maps),
+      F15 and F11 (stage actions and the M5 scheduler), F9 (coordination), F21 (knowledge), F12 and F13 (the capability
+      registry), F25 (measurement). Deterministic-first, not deterministic-only (§24): correctness and authority take precedence
+      over cost (§15). Not a build item'
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
   columns:

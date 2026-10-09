@@ -107,6 +107,11 @@ class HarnessLab:
     env: dict[str, str] = field(default_factory=dict)
     sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
 
+    def __post_init__(self) -> None:
+        import harness_diagnostics  # a failed test reports and keeps this lab's runs (register E3)
+
+        harness_diagnostics.register(self)
+
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
                extra_env: dict[str, str] | None = None) -> HarnessLab:
@@ -175,7 +180,11 @@ class HarnessLab:
         for entry in self.transcript(run):
             if entry["i"] == i:
                 return entry["result"]
-        raise AssertionError(f"{run} has no transcript step {i}: {self.transcript(run)}")
+        import harness_diagnostics
+
+        # Name why the step is missing: a run that ended early (lost, crashed) says so in its record and logs.
+        raise AssertionError(f"{run} has no transcript step {i}: {self.transcript(run)}\n"
+                             f"{harness_diagnostics.describe_run(runlog.run_dir(self.aew_root, run))}")
 
     def until(self, predicate: Any, timeout: float = 60, what: str = "condition") -> Any:
         deadline = time.monotonic() + timeout

@@ -199,14 +199,21 @@ def archived_usage(lab: HarnessLab, wid: str, inv: str) -> list[dict[str, Any]]:
     ([], False, K.UNCONFIRMED),  # not an object: no record at all
     ({"status": K.CRASHED, "model_check": "x", "result": ["x"]}, False, K.CRASHED),  # fields of the wrong shape
     ({"status": "bogus"}, True, K.LOST),  # a status the record schema does not know, with a fresh heartbeat
-], ids=["not-an-object", "wrong-shapes", "unknown-status"])
+    ({"status": ["x"]}, True, K.STARTING),  # a status that is not a string: no status, so possibly live (observers)
+    ('{"status": "crashed", "result": ' + "[" * 200_000 + "]" * 200_000 + "}", False, K.UNCONFIRMED),  # too deep
+    ({"status": K.CRASHED, "result": "NAN-USAGE"}, False, K.CRASHED),  # a usage with a NaN in it (#137 re-review)
+], ids=["not-an-object", "wrong-shapes", "unknown-status", "status-not-a-string", "nested-too-deep", "nan"])
 def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path, record, beat, status):
     """#137 review, F1 and F2: the run record is written where the run's own user can write. Whatever it holds, a
     cancel and the unit's archival still commit, and the copy they archive is a valid run-usage record."""
     wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
     lab.wait(run)
     directory = runlog.run_dir(lab.aew_root, run)
-    (directory / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    if isinstance(record, dict) and record.get("result") == "NAN-USAGE":  # the run's own record, with wall_s NaN
+        usage = runlog.read_record(directory)["result"]["usage_record"]  # type: ignore[index]
+        record = {**record, "result": {"usage_record": {**usage, "wall_s": float("nan")}}}
+    text = record if isinstance(record, str) else json.dumps(record)
+    (directory / "run.json").write_text(text, encoding="utf-8")
     if beat:
         runlog.beat(directory)
     lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")

@@ -20,6 +20,7 @@ turns it into numbers for a surface.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from decimal import Decimal
@@ -274,7 +275,10 @@ def _valid_record(candidate: Any) -> dict[str, Any] | None:
     try:
         validate("run-usage", candidate, source="usage_record")
         U.serialized_size(candidate)  # a lone surrogate passes the schema but has no UTF-8 form (#133 review, 812943d)
-    except (ValidationFailed, UnicodeEncodeError):
+        # NaN passes every schema bound (each comparison with it is false) and is not JSON: a copy goes into the
+        # control state and the archive bundle, so a non-finite number is no record (#137 re-review, F2).
+        json.dumps(candidate, allow_nan=False)
+    except (ValidationFailed, UnicodeEncodeError, ValueError):
         return None
     return dict(candidate)
 

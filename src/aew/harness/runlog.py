@@ -49,7 +49,7 @@ def read_record(directory: Path) -> dict[str, Any] | None:
     try:
         text = _read_text(directory / "run.json")
         record = json.loads(text) if text is not None else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # nesting past the parser's depth is no record (#137 re-review, F1)
         return None
     # The run directory is writable by the run's own user (the supervisor's note on local/): a record that is not an
     # object is no record, so no reader of it (a cancel's usage copy among them) fails on its shape (#137 review, F1).

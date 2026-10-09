@@ -28,7 +28,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | M4-C | Workspaces for N > 1 concurrent mutating Tickets | Built |
 | M4-D | The integration queue and lease; the transaction outbox (ADR-0012); deterministic integration validation; wait-any; the typed surface's read-only slice (F15.1) | In progress |
 | *(gate)* | The F15 direction promoted to governing: the typed Lead surface v0.2 adopted (designer and operator, 2026-10-05) | Met |
-| M4-E | Stage commands on the typed surface (F15.2) | Planned |
+| M4-E | Stage commands on the typed surface (F15.2), by the [M4-E plan v3](implementation/m4-e-plan-v3.md) (slices E1 to E9) | In progress (E1 and E2 merged; E3 under way) |
 | M4-F | The queue's normal UX | Planned |
 | M4-G | Candidates: Lead and run UX items, the amendment index, Windows coverage, the structural map slice | Planned |
 | M4-H | Acceptance: metrics, the preregistered dogfood, independent review | Planned |
@@ -87,7 +87,8 @@ checks the index, and that every citation names a real section of the frozen ver
      - [`run-health-projection-implementation-note-v0.1.md`](design/run-health-projection-implementation-note-v0.1.md): H1 (U1), the health projection's implementation rules
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
-4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved.
+4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved,
+   and for M4-E [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) (approved by the operator 2026-10-07, review CLEAR).
 5. **Cross-document indexes** (they point, they do not decide): [`spec-amendments.yaml`](spec-amendments.yaml): every adopted amendment to the frozen WC and KC, the sections it replaces or extends, the effective section, and the pending consolidation debt (register E19); [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
 
 Everything in [`design/proposals/`](design/proposals/) and [`research/`](research/) is input, not governing. Everything
@@ -112,6 +113,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`future-work.yaml`](implementation/future-work.yaml) | The register's source (E30): the same preamble, sections and rows as structured data. `future-work.md` is rendered from it by `tools/register.py`; `tests/unit/test_register.py` keeps the two identical |
 | [`decisions-due.md`](implementation/decisions-due.md) | **What the operator and designer owe, soonest first**, and the work blocked until then; rendered from [`decisions-due.yaml`](implementation/decisions-due.yaml) by `tools/register.py`, which fails CI when an item goes stale |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
+| [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) | The M4-E plan: governed stages on the typed Lead surface, its cross-cutting designs, the operator's decisions of 2026-10-07 and slices E1 to E9 |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 

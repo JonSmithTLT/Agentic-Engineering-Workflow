@@ -74,17 +74,17 @@ def _strings(description: str, *, min_items: int = 0, max_items: int | None = No
     return out
 
 
-EXPECT_REV = {"type": "integer", "minimum": 0,
-              "description": "the `revision` of your last result; if the state moved since, nothing changes "
-                             "(STALE_REVISION)"}
-WORK_ID = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$", "description": "a work unit id, e.g. T-0012"}
-TEXT = {"type": "string", "description": "free text, stored as given; no shell ever sees it"}
+# Descriptions are presentation only, trimmed to keep the normal surface inside its budget with the M4-E tools
+# (plan v3 §2.6; semantics unchanged).
+EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result's revision (CAS)"}
+WORK_ID = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$", "description": "e.g. T-0012"}
+TEXT = {"type": "string", "description": "free text"}
 EVIDENCE_ID = {"type": "string", "minLength": 1, "description": "the evidence id you inspected"}
 EXECUTION = _obj({
     "profile": {"type": "string", "minLength": 1},
     "model": {"type": "string", "minLength": 1, "description": "PROVIDER/MODEL instead of a profile"},
     "effort": {"type": "string", "minLength": 1},
-}, description="a Lead override of execution policy (ADR-0010); supplying it makes the call judgment-bearing")
+}, description="overrides execution policy; makes the call judgment-bearing")
 ASSURANCE = {"description": "'none', or the review and verification cards that become required gates",
              "oneOf": [{"const": "none"},
                        _obj({"review": _strings("review cards"), "verify": _strings("verification cards")})]}
@@ -92,6 +92,12 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
              "affected": _strings("paths the plan changes"),
              "assurance": ASSURANCE, "reason": TEXT},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
+
+# The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
+STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
+STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
+                      "request_raise": (("mode", "rationale"), ("mode", "rationale")),
+                      "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
@@ -157,6 +163,18 @@ TOOLS: dict[str, Tool] = _catalog(
                "next": {**TEXT, "maxLength": NEXT_MAX, "description": "the next intended action"}},
               ("expect_rev",)),
          expands_to=("checkpoint",), mutates=True),
+    # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
+    # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
+    Tool("steering", STAGE, MECHANICAL,
+         "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. Requests grant "
+         "nothing.",
+         _obj({"expect_rev": EXPECT_REV,
+               "action": {"enum": list(STEERING_ACTIONS)},
+               "mode": {"enum": ["crawl", "walk", "run"]},
+               "action_ref": {"type": "string", "minLength": 1},
+               "rationale": TEXT},
+              ("expect_rev", "action")),
+         expands_to=("steering",), mutates=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",

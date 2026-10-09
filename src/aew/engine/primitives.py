@@ -73,6 +73,8 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # The Lead's checkpoint (F15.1: the typed surface's one normal-profile mutation): a handoff note and next action,
     # one transaction under the caller's expected revision.
     PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "expected_revision", None),
+    # The Lead's own steering (M4-E E2): a lowering or a request, one transaction; it never raises authority.
+    PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "expected_revision", None),
 )}
 
 
@@ -80,3 +82,34 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
     """The declaration of a primitive, or the fail-closed default for one nobody declared."""
     return SPECS.get(primitive_id) or PrimitiveSpec(primitive_id, JUDGMENT_BEARING, ("undeclared",), (), (),
                                                     "unknown", "unknown", None, declared=False)
+
+
+# The Lead transactions a primitive commits under, where they are not just its own id: the three creations share
+# `invoke.create`, and steering is a lowering or a request. The stage journal refuses a step whose commit is not one of
+# its planned primitive's (M4-E E3).
+COMMIT_OPS: dict[str, frozenset[str]] = {
+    "invoke.create.mutating": frozenset({"invoke.create"}),
+    "invoke.create.non_mutating": frozenset({"invoke.create"}),
+    "invoke.create.parent": frozenset({"invoke.create"}),
+    "steering": frozenset({"steering.lower", "steering.request"}),
+}
+# Declared primitives that cannot run as one stage step, each with the reason: a step is one primitive in one Lead
+# transaction whose op says which primitive committed (#140 re-reviews). They are refused at a stage's opening, never
+# left to fail at their first commit. Their stages arrive with E6, which decides how a stage spans them.
+NOT_STEPS: dict[str, str] = {
+    "integrate.publish": "it commits twice (integrate.publishing, then integrate.publish)",
+    "integrate.validate": "it commits twice (integrate.validate, then integrate.validated)",
+    "integrate.reconcile": "it can finish a publication, committing under integrate.publish",
+    "verify.ingest.integration": "it commits under verify.ingest, which Ticket verification shares, so the op cannot "
+                                 "say which of the two committed",
+}
+# Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
+# says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).
+BY_DECISION = frozenset({"invoke.create.mutating", "invoke.create.non_mutating", "invoke.create.parent"})
+
+
+def commit_ops(primitive_id: str) -> frozenset[str]:
+    return COMMIT_OPS.get(primitive_id, frozenset({primitive_id}))
+
+
+CLASS_RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}

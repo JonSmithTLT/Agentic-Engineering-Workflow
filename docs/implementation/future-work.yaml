@@ -277,7 +277,12 @@ sections:
     Belongs to or gated by: '**M4-E**, after the before-M4-E gate (§1) and M4-D''s lease'
     Notes: Hard gates and reported metrics in the design's §10, measured by the preregistered M4-H dogfood (F19) against
       the M3 baseline. **Gated by the pre-F15.2 amendment set (approved 2026-10-05):** F15.4 (digest separation) and F15.5's
-      operator capability before it ships; F15.6 before automatic relaunch is enabled
+      operator capability before it ships; F15.6 before automatic relaunch is enabled. **Built so far (M4-E E3a, 2026-10-09)**
+      the StageIntent journal in the engine (`engine/stage_intents.py`, schema `aew/stage-intent/v1`, invariants 47-49),
+      covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift,
+      the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`,
+      immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after
+      every pinned route. Next are E3b (the executor, rules 1 to 7, R5-1) and E3c (`resume`, `resolve`)
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport
@@ -300,7 +305,12 @@ sections:
     Notes: Narrows the typed surface's one policy digest (TIS-13, TLS-14) to `legality_digest` for `STALE_POLICY`, so tuning
       health, steering or recovery never invalidates in-flight legal work. It amends the digest rules of the [Crawl/Walk/Run
       steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) §6, the [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md)
-      §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5
+      §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5. **Built for dispatch
+      (M4-E slice E1, 2026-10-07; ADR-0010 amendment):** every field of the gates, guardrails, checks and execution policy
+      schemas is classified in the schema, a test and the digest computation refuse an unclassified one, a key the schema
+      does not name counts as legality, a check''s definition (its timeout and the guardrails policy included) is legality,
+      the two digests are computed from the pinned bytes, and a dispatch decision is stale only on a legality change. Open
+      until M4-E E3 binds staged actions to both digests
   - '#': F15.5
     Work: 'Crawl / Walk / Run steering over `ActionProjection`, with its operator authority boundary: `aew confirm`, autonomy
       increases and `PUBLISH_IF_CLEAN` grants only through an operator capability structurally absent from agent shells
@@ -324,7 +334,25 @@ sections:
       What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability.
       **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §2.2, §2.4.1; operator, 2026-10-07):**
       the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted in the sealed run manifest, before M4-H
-      executes'
+      executes. **Operator decisions (2026-10-07, with the M4-E plan''s approval, subject to its independent CLEAR review):**
+      the unattended-Run notifier is a generic operator-configured argv, run supervisor-side without a shell, a JSON event
+      on stdin, a sanitized environment with no credential inheritance, bounded time and output; it must be configured and
+      executable before unattended Run is enabled, and a delivery failure is recorded and surfaced in status and the dashboard''s
+      attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea note''s §17 governs the predicate and bindings, A1
+      the grant (the Lead may request, only the operator capability grants), the one-head-move automatic rebuild rule applies,
+      otherwise the governed non-publication/disposition path; no further design text is needed before E6. Steering has
+      no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H''s sealed manifest selects its mode.
+      **Built so far (M4-E E2, 2026-10-09):** the operator endpoint (`aew operator serve --dev`: an AF_UNIX socket in a
+      0700 directory with a `SO_PEERCRED` peer check on Linux, a named pipe on Windows, the challenge on the endpoint''s
+      console, a non-dumpable process, one endpoint per project), the `OperatorPrincipal` only it constructs, `aew lead
+      mode raise` through it (bound to the Lead generation and the legality digest shown, ending with that generation),
+      the policy default `execution.steering.mode` (an adopted raise waits for the endpoint), the Lead''s `aew lead mode
+      lower` and the normal `steering` tool (lower, request a raise or a confirmation; requests grant nothing), the notifier''s
+      configuration and the executable check Run needs, and the A1 §1.3 records in `records/steering/`. Control state keeps
+      the mode as `steering.standing` and `steering.override` rather than the plan''s `effective` (the effective mode is
+      derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release
+      gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7),
+      the publication grants (E6b), delivery and the loop (E7)'
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
       recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed:
@@ -483,11 +511,13 @@ sections:
       §2.1 to §2.3, §6.1, §20.1, §21 (ledger HAA)'
     Belongs to or gated by: '**Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track'
     Notes: 'Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set
-      or invoke lifecycle controls, while the ordinary source workflow stays usable. **F23 (operator, 2026-10-07, [decision
-      record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run
-      as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated
-      harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying
-      an optional stronger deployment (lead developer''s reading, record §2)'
+      or invoke lifecycle controls, while the ordinary source workflow stays usable. **M4-E E2 (2026-10-09)** built the
+      operator-only socket with its peer-credential check as F15.5''s operator endpoint, labelled `guarantee: dev` because
+      the principals collapse; A1 production authority (PFS-04 release gate 1, SAE-01 to SAE-03) requires this row. **F23
+      (operator, 2026-10-07, [decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the
+      whole model harness need not run as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this
+      row meets the boundary with a dedicated harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed
+      principal, the two-account profile staying an optional stronger deployment (lead developer''s reading, record §2)'
   - '#': F18.7
     Work: 'F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by
       default; PREPARING cleanup; the conversation-taint record and the reattach delta'
@@ -684,7 +714,12 @@ sections:
     Notes: 'Proposals for joint review, not governing. Every requirement, including the 70 invariants to merge into the
       invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB).
       Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition` names; source
-      class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`'
+      class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype
+      (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible and absent
+      from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
+      may hold its separate rebuildable FTS substrate instead of `local/history.sqlite`, a change of physical placement
+      only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every
+      D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation'
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
       that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed
@@ -767,7 +802,19 @@ sections:
       F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):**
       live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement
       and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general
-      budget enforcement does not move into F25'
+      budget enforcement does not move into F25. **Slice 1 built** (the run-usage record, the OpenCode `usage_record`, the
+      price table schema, the derivation and the projections; [implementation status](implementation-status.md)). The token
+      semantics are qualified only for OpenCode 2.0.18 with `openai` (`disjoint`, from OpenCode''s source); every other
+      provider resolves to `unknown` and stays unpriced until it is qualified with a conformance fixture. **Slice 2a built**
+      (the copy as a Lead-transaction finalizer, the control schema, invariant 46, `policy.pricing` as an operational policy
+      file). The copy runs for every transaction that ends or relaunches an invocation rather than in each named handler
+      (R5''s paths are all such transactions), and copies only ended runs until archival, so a run is not fixed as absent
+      while its invocation can still copy it. Archival copies every run (R5): one still live then, such as the run of a
+      Ticket cancelled while its agent works, is recorded with its observed status and absent usage, and what it reports
+      later stays in `local/`. Slice 2b''s doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`).
+      The snapshot check reads the hot state and the recently archived units only, never the whole archive, so a doctor
+      run stays bounded; a snapshot named only by an older bundle is not checked there, and `aew usage show --all` (next)
+      reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next'
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
       into the run''s private harness state, as the smallest subset of the future F13 registry'
@@ -1014,7 +1061,10 @@ sections:
       after PR #7 (fixed: ADR-0009 amendment 2026-10-01, the heartbeat continues while a run ends). The launch acknowledgement
       wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. `test_a_run_that_takes_long_to_end_is_not_reported_lost`
       failed once under coverage on 16 workers (M4-A, 2026-10-03): its 2 s stale window left 1 s over the 1 s beat; widened
-      to 4 s, with the wait at 8 s. Raise test-side timeouts, never the product''s.'
+      to 4 s, with the wait at 8 s. A run reported `lost` while it started (Windows, PR #132, 2026-10-09) was a real race
+      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A failed harness test
+      now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such failure names
+      a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule
       tail (AEW''s rules in order; anything OpenCode appends after them may only deny), then 2.0.22 on the live lane and
@@ -1167,11 +1217,10 @@ sections:
     When: '**M4-G** (proposed, M4-C triage)'
     Notes: 'Harmless today: a `publishing` record is excluded from interruption'
   - '#': E33
-    Work: Stream the credential scan of run state in chunks with overlap, instead of reading each file whole; consider UTF-16
-      transcripts on Windows
+    Work: Consider credentials written as UTF-16 (transcripts on Windows) in the end-of-run credential scan
     Source: independent review of authority and custody, note 5, 2026-10-03
     When: '**On measured need**'
-    Notes: OpenCode's databases grow large
+    Notes: The streaming half is closed (§9, 2026-10-09); the scan matches the credential's ASCII bytes only
   - '#': E35
     Work: 'OpenCode support qualification and adapter seams: `codemode: false` on the Lead''s AEW MCP server, with readiness
       checked through the broker (a missing server fails the Lead closed, never a session without AEW''s control surface);
@@ -1299,7 +1348,9 @@ sections:
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'
     Source: review §"How good is the report?"; the headless premise
-    When: '**Designer** (with F14). Evaluated in M4-H (Q7 §12: F4''s premise contrast; not a pre-M4-H blocker)'
+    When: '**Evaluation**: after M4-H data (operator, 2026-10-07). Q7 v0.3.1 made U3 an F4 measurement, not a prerequisite
+      feature: a strong F4 result may close or defer it, a weak one may justify later F14/U3 work (Q7 §12: F4''s premise
+      contrast)'
     Notes: '"I run it in Docker as the headless server" was background, not one of the nine diagnoses the prompt said to
       check, and no role questioned it. F14 §6 types stakeholder statements; this asks that observations stated as fact
       be candidates for premise validation too.'
@@ -1479,6 +1530,13 @@ sections:
       budget tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the
       pack''s budget notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget
       yet: wiring one in waits for a measured budget, and recall fills the last tier when it exists (PR #68)'
+  - '#': E33 (part)
+    Was: Stream the credential scan of run state in chunks with overlap, instead of reading each file whole
+    Closed: '2026-10-09'
+    By: 'PR #139: the end-of-run scan walks the run directory iteratively without entering links or reparse points, reads
+      only regular files without following a link or blocking, in overlapping chunks with holes skipped, within one byte
+      and entry budget; what it cannot read makes `credential_scan` incomplete (`unscanned`), never clean. The UTF-16 half
+      stays as E33'
   - '#': E34
     Was: 'M4-D design inputs from the integration review: the worktree-sync classifier assumed one publisher, and a large
       publish''s control-lock hold had no bound'
@@ -1616,12 +1674,14 @@ sections:
       core and [ADR-0015](adr/0015-project-map-storage-and-registry.md) (ledger MSR). The second built `aew map select-architecture`,
       the execution policy''s `maps.pack_slices` switch (off by default: packs and the resume view are byte-identical to
       a project without maps, so the Q7/M4-H treatment is unchanged), the bounded slice in the packs of roles whose context
-      names `codebase_map` (today only the investigator; widening that is the operator''s configuration call), pack provenance
-      with pinned regeneration, the resume row, the no-authority walk and `tools/perf/structural_map.py` (measured on Windows:
-      0.67 s at 10,000 paths and 3.0 s at 100,000, four git processes each; no very-large-repository support is claimed
-      beyond 100,000 paths), with ADR-0015''s amendment of 2026-10-07. Turning the switch on for M4-H is the operator''s
-      decision (SMQ-01). Ledger notes: PMP-17 and PMP-18 are carried by this slicing (T5-A only); PMP-73 is T5-E, evaluated
-      with F19; PUI-20 is absorbed by PMP-07. The Q7 cold-start attestation checks `.aew/local/maps/`'
+      names `codebase_map` (only the investigator: the operator decided on 2026-10-07 that role packs are not broadened
+      for M4-H, implementer and reviewer packs keep their role-specific source and evidence inputs, and wider map serving
+      must earn itself through later evaluation), pack provenance with pinned regeneration, the resume row, the no-authority
+      walk and `tools/perf/structural_map.py` (measured on Windows: 0.67 s at 10,000 paths and 3.0 s at 100,000, four git
+      processes each; no very-large-repository support is claimed beyond 100,000 paths), with ADR-0015''s amendment of 2026-10-07.
+      Turning the switch on for M4-H is the operator''s decision (SMQ-01). Ledger notes: PMP-17 and PMP-18 are carried by
+      this slicing (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. The Q7 cold-start attestation
+      checks `.aew/local/maps/`'
   - '#': F23
     Was: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
       a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential

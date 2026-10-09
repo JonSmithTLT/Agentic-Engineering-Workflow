@@ -86,6 +86,11 @@
             "null"
           ]
         },
+        "host_uid": {
+          "description": "M4-E E2: the POSIX uid the Lead acquired its seat as (the Lead host principal), so the operator endpoint can say whether the principals collapse (plan v3 §2.1). Absent on Windows and for seats acquired before it.",
+          "type": "integer",
+          "minimum": 0
+        },
         "handoff": {
           "type": [
             "object",
@@ -293,6 +298,50 @@
               "null"
             ]
           },
+          "runs": {
+            "description": "The invocation's harness runs, in launch order (ADR-0009). `usage` is the run's usage, copied once from its run record by the engine's next Lead transaction on the invocation that ends it, relaunches it or archives its unit (F25 R5); absent while the run is provisional (R6). A copy only adds `usage` to an existing entry, so it derives no event (ADR-0012 D2).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "run"
+              ],
+              "properties": {
+                "run": {
+                  "type": "string"
+                },
+                "harness": {
+                  "type": "string"
+                },
+                "token_id": {
+                  "type": "string"
+                },
+                "launched_at": {
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "`launch`/`relaunch`: `aew harness launch`; `dispatch`: launched in the dispatching transaction (--launch).",
+                  "enum": [
+                    "dispatch",
+                    "launch",
+                    "relaunch"
+                  ]
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "requests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "usage": {
+                  "$ref": "../run-usage/v1"
+                }
+              }
+            }
+          },
           "execution_profile": {
             "description": "harness/provider/model/effort pinned at dispatch (ADR-0010); null = none selected",
             "type": [
@@ -432,6 +481,55 @@
           }
         }
       }
+    },
+    "steering": {
+      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (an adopted default that is not a raise); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
+      "type": "object",
+      "required": ["default", "standing", "override", "requests"],
+      "additionalProperties": false,
+      "properties": {
+        "default": {"$ref": "#/$defs/steering_mode"},
+        "standing": {
+          "type": "object",
+          "required": ["mode", "record", "rev"],
+          "additionalProperties": false,
+          "properties": {"mode": {"$ref": "#/$defs/steering_mode"}, "record": {"type": ["string", "null"]},
+                         "rev": {"type": "integer", "minimum": 0}}
+        },
+        "override": {"oneOf": [{"type": "null"}, {
+          "type": "object",
+          "required": ["mode", "generation", "record", "rev", "by"],
+          "additionalProperties": false,
+          "properties": {"mode": {"enum": ["crawl", "walk", "run"]}, "generation": {"type": "integer", "minimum": 1},
+                         "record": {"type": "string"}, "rev": {"type": "integer", "minimum": 1},
+                         "by": {"enum": ["operator", "lead"]}}
+        }]},
+        "requests": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "rationale", "generation", "at", "rev"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SQ-[0-9]+$"},
+              "kind": {"enum": ["raise", "confirmation"]},
+              "mode": {"enum": ["walk", "run"]},
+              "action_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+              "rationale": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "generation": {"type": "integer", "minimum": 1},
+              "at": {"type": "string"},
+              "rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "stage_intents": {
+      "description": "M4-E E3 (plan v3 §2.7): the unfinished StageIntents, by id. Only ACTIVE intents are hot; an intent that ends is written to its cold home in the same commit (`work/<T>/stage-intents/<SI>.yaml` with a pointer on the unit, or `records/stage-intents/<SI>.yaml`) and leaves. Bounded by live work: a unit has at most one.",
+      "type": "object",
+      "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
+      "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
     }
   },
   "allOf": [
@@ -449,7 +547,8 @@
             {"required": ["archived_refs"]},
             {"required": ["retained_workspaces"]},
             {"required": ["retired_observations"]},
-            {"required": ["queue"]}
+            {"required": ["queue"]},
+            {"required": ["steering"]}, {"required": ["stage_intents"]}
           ]
         }
       }
@@ -460,6 +559,7 @@
     }
   ],
   "$defs": {
+    "steering_mode": {"enum": ["crawl", "walk", "run", null]},
     "queue_lease": {
       "type": "object",
       "required": ["entry", "custodian", "generation", "granted_at", "reconcile"],
@@ -578,6 +678,21 @@
           "required": ["v1", "v2_at_migration"],
           "additionalProperties": false,
           "properties": {"v1": {"$ref": "#/$defs/sha256"}, "v2_at_migration": {"$ref": "#/$defs/sha256"}}
+        },
+        "stage_intents": {
+          "description": "M4-E E3: the unit's ended StageIntents, each written immutably at `path`; archival carries the list into the unit's bundle, which pins each record.",
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "tool", "status", "path", "sha256", "closed_rev"], "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SI-[0-9]{4,}$"},
+              "tool": {"type": "string"},
+              "status": {"enum": ["COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]},
+              "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "closed_rev": {"type": "integer", "minimum": 1}
+            }
+          }
         },
         "history_refs": {
           "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",

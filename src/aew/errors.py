@@ -51,6 +51,14 @@ class StaleAuthority(AEWError):
     exit_code = 3
 
 
+class StalePolicy(AEWError):
+    """The legality policy in force is not the one a staged action was bound to (M4-E E3; typed surface §3.4 rule 6):
+    the step is not committed, and the caller reads the projection again and decides anew."""
+
+    code = "STALE_POLICY"
+    exit_code = 3
+
+
 class StaleRevision(AEWError):
     """The caller's expected control-state revision is not the current one."""
 
@@ -129,6 +137,13 @@ class DispatchRefused(IllegalTransition):
     eligible. ``details`` carries every blocking condition and reason code (``aew dispatch explain`` shows the same)."""
 
     code = "DISPATCH_REFUSED"
+
+
+class SteeringNotConfigured(IllegalTransition):
+    """A steering mode command on a project whose adopted execution policy names no ``steering.mode``: the project keeps
+    legacy/manual behaviour, which is not a fourth mode (M4-E decision 3)."""
+
+    code = "STEERING_NOT_CONFIGURED"
 
 
 class MigrationRequired(IllegalTransition):

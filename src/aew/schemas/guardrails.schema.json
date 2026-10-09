@@ -9,24 +9,29 @@
   ],
   "properties": {
     "schema": {
+      "x-aew-class": "legality_affecting",
       "const": "aew/guardrails/v1"
     },
     "protected_paths": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "generated_paths": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "ticket_scope_enforcement": {
+      "x-aew-class": "legality_affecting",
       "type": "boolean"
     },
     "review_triggers": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "type": "object",
@@ -55,6 +60,7 @@
       }
     },
     "dependency_rules": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "description": "Representable in M1; deterministic enforcement is Designed.",
       "items": {
@@ -62,6 +68,7 @@
       }
     },
     "notes": {
+      "x-aew-class": "legality_affecting",
       "type": [
         "string",
         "null"

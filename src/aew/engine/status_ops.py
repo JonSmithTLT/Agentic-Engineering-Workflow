@@ -78,6 +78,19 @@ class StatusViews:
             "",
             *report["work_graph"],
         ]
+        steering = report.get("steering")
+        if steering:  # M4-E E2: the effective mode, a raise pending at the endpoint, and the endpoint's label
+            endpoint = steering.get("operator_endpoint") or {}
+            lines += ["", f"Steering: effective {steering['effective'] or 'none'} (policy default "
+                          f"{steering['default'] or 'none'}; {steering['source']}"
+                          + (f", {steering['record']}" if steering.get("record") else "") + ")"]
+            if steering.get("pending_raise"):
+                lines.append(f"  {steering['pending_raise']}")
+            lines += [f"  request {r['id']}: {r['kind']} {r.get('mode') or r.get('action_ref')} ({r['rationale']})"
+                      for r in steering.get("requests") or []]
+            lines.append(f"  operator endpoint: running (pid {endpoint.get('pid')}, guarantee "
+                         f"{endpoint.get('guarantee')})" if endpoint.get("running") else
+                         "  operator endpoint: not running (`aew operator serve --dev`)")
         if report.get("hierarchy"):
             lines += ["", "Hierarchy", *(f"  {h}" for h in report["hierarchy"])]
         if report["next_actions"]:

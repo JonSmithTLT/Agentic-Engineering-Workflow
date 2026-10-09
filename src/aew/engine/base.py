@@ -34,7 +34,8 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # The top-level control-state keys only a v2 document may carry: the one definition of the set (register E36). The
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
-V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue")
+V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
+                "steering", "stage_intents")
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -68,6 +69,8 @@ class TxnContext:
     summary: str | None = None
     refs: list[str] = field(default_factory=list)
     op: str | None = None  # overrides the transaction's op when the outcome differs (e.g. integrate.stale)
+    # The op the transaction was entered under: what the stage journal checks a step against (M4-E E3).
+    txn_op: str = ""
     # The Lead's execution selection (--profile/--model/--effort) for the invocation this dispatch creates;
     # None selects from policy (ADR-0010).
     execution_request: dict[str, Any] | None = None
@@ -115,6 +118,7 @@ class Kernel:
         # The policy pins a Lead transaction checked on entry, so every policy read inside it is held to the same pins
         # (PR #118 review, finding 2: an edit after the entry check must not be used by the transaction).
         self._txn_pins: Any = _NOT_IN_TXN
+        self._digest_cache: tuple[Any, dict[str, str]] = (None, {})  # policy_digests: (bytes in force, digests)
 
     # ------------------------------------------------------------------ manifest (review 2026-09-26 M8)
 
@@ -255,6 +259,39 @@ class Kernel:
             raise FileNotFoundError(str(self.aew_root / rel))
         return raw
 
+    def pricing(self) -> Any:
+        """The adopted price table (``usage_ops.Prices``), or ``None`` when the manifest names no ``policy.pricing``
+        (F25 R4: no derived cost, and every surface says unpriced). Read from the pinned bytes, as every policy file
+        is, so the digest a usage copy records is the digest of the table that was adopted."""
+        from aew.engine.usage_ops import Prices
+
+        rel = (self.manifest.get("policy") or {}).get("pricing")
+        if rel is None:
+            return None
+        raw = self._pinned_bytes(rel, self._pins_in_force())
+        if raw is None:
+            raise FileNotFoundError(str(self.aew_root / rel))
+        return Prices(raw, source=str(self.aew_root / rel))
+
+    def policy_digests(self) -> dict[str, str]:
+        """``legality_digest`` and ``operational_digest`` over every policy file in force, read from the pinned bytes
+        (the pre-F15.2 amendment A3; ``aew.policy.classes``). A file named by a manifest ``policy`` entry is read
+        against that entry's schema; the execution policy at its conventional path is ``execution``."""
+        from aew.policy import classes
+
+        named = {rel: name for name, rel in (self.manifest.get("policy") or {}).items()}
+        pins = self._pins_in_force()
+        raws = {rel: self._pinned_bytes(rel, pins) for rel in policy_files(self.manifest)}
+        # Decisions are computed on every projection; parse only when the bytes in force change.
+        key = tuple((rel, named.get(rel), sha256_bytes(raw) if raw is not None else None) for rel, raw in raws.items())
+        if self._digest_cache[0] != key:
+            files: dict[str, tuple[str | None, Any]] = {
+                rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
+                      None if raw is None else load_yaml(raw.decode("utf-8"), source=str(self.aew_root / rel)))
+                for rel, raw in raws.items()}
+            self._digest_cache = (key, classes.digests(files))
+        return dict(self._digest_cache[1])
+
     def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:
         """A policy file's bytes, read once and checked against its pin, so what is used is what was adopted: the
         caller parses these same bytes (no re-read between check and use). ``None`` when the file is absent."""
@@ -341,7 +378,7 @@ class Kernel:
             # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
             self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
             try:
-                ctx = TxnContext(session=s, actor=actor)
+                ctx = TxnContext(session=s, actor=actor, txn_op=op)
                 yield ctx
                 self.finalizers.run(ctx)
                 s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,

@@ -82,9 +82,14 @@ OPERATOR_DECIDED = (frozenset({"authority", "accept"}), frozenset({"authority", 
 # so a Lead session may run the command but never with this argument.
 OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
                        frozenset({"authority", "accept"}): ("decided_by", "operator")}
-# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1 adds the
-# operator's confirmation, autonomy increases and PUBLISH_IF_CLEAN grants here when F15.5 builds them).
-OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED
+# The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
+# through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
+# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). E6b and E7 add the grants and
+# `confirm` here.
+OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
+                     frozenset({"operator", "ping"}))
+# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
+OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -95,6 +100,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "integrate prepare", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
     "integrate validate",
     "invoke cancel", "invoke create", "lead handoff cancel",
+    "lead mode lower",  # a restriction the Lead makes for its own generation (A1 §1.2)
     "map generate", "map select-architecture",  # derived map state under .aew/local/maps/ only (ADR-0015)
     "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
@@ -133,6 +139,10 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     if any(p <= path for p in OPERATOR_DECIDED):
         return (f"`aew {command_name(ns)}` is the operator's decision, made at their own terminal; a Lead session "
                 "cannot run it or record it as theirs: ask the operator")
+    if any(p <= path for p in OPERATOR_ENDPOINT):
+        return (f"`aew {command_name(ns)}` is the operator's, through the operator endpoint in their own terminal; a "
+                "Lead session can neither raise its own steering mode nor reach the endpoint: request a raise with "
+                "the `steering` tool (action request_raise), or lower the mode with `aew lead mode lower`")
     dest, value = OPERATOR_ATTRIBUTED.get(path, ("", None))
     if value is not None and getattr(ns, dest, None) == value:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "

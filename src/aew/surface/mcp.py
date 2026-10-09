@@ -73,7 +73,8 @@ def environment_problem(env: dict[str, str]) -> str | None:
 def tool_entry(t: contract.Tool) -> dict[str, Any]:
     """One entry of ``tools/list``. The result schema is not advertised per tool (§4.4: it is structured content)."""
     return {"name": t.name, "description": t.description, "inputSchema": t.input_schema,
-            "annotations": {"title": t.name.replace("_", " "), "readOnlyHint": not t.mutates,
+            # No optional `title`: the name says it, and the bytes are budgeted (plan v3 §2.6).
+            "annotations": {"readOnlyHint": not t.mutates,
                             "destructiveHint": False, "idempotentHint": t.kind in (contract.QUERY, contract.WAIT),
                             "openWorldHint": False}}
 

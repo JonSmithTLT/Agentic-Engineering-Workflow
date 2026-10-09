@@ -12,19 +12,23 @@
   ],
   "properties": {
     "schema": {
+      "x-aew-class": "operational",
       "const": "aew/gates/v1"
     },
     "mutating_concurrency": {
+      "x-aew-class": "legality_affecting",
       "type": "integer",
       "minimum": 1
     },
     "local_checks": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "risk_paths": {
+      "x-aew-class": "legality_affecting",
       "type": "object",
       "required": [
         "0",
@@ -48,15 +52,18 @@
       ],
       "properties": {
         "verification": {
+          "x-aew-class": "legality_affecting",
           "type": "boolean"
         },
         "checks": {
+          "x-aew-class": "legality_affecting",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "validation": {
+          "x-aew-class": "legality_affecting",
           "description": "M4-D5: how a candidate is validated after integration. `verifier` (the default) dispatches a model verifier; `checks` runs `checks` deterministically under the lease, contained, with no model. A map chooses by the Ticket's LOCAL risk class; an inherited integration-verifier obligation always overrides it.",
           "oneOf": [
             {"enum": ["verifier", "checks"]},
@@ -75,6 +82,7 @@
           ]
         },
         "validation_deadline_s": {
+          "x-aew-class": "operational",
           "description": "M4-D5: the hard deadline of one checks-mode validation run, executor included. Default: the checks' timeouts plus an orchestration allowance, capped at six hours.",
           "type": "integer",
           "minimum": 1
@@ -82,12 +90,14 @@
       }
     },
     "waivable_gates": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "waivable_finding_severities": {
+      "x-aew-class": "legality_affecting",
       "type": "array",
       "items": {
         "enum": [
@@ -99,6 +109,7 @@
       }
     },
     "non_mutating_paths": {
+      "x-aew-class": "legality_affecting",
       "type": "object",
       "required": [
         "0",
@@ -116,6 +127,7 @@
       "description": "gate paths for non-mutating Tickets (ADR-0008)"
     },
     "parent_paths": {
+      "x-aew-class": "legality_affecting",
       "type": "object",
       "required": [
         "0",
@@ -137,9 +149,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_unverified_entries": {"type": "integer", "minimum": 0},
-        "max_unverified_age_hours": {"type": "number", "minimum": 0},
-        "max_full_age_days": {"type": "number", "minimum": 0}
+        "max_unverified_entries": {"x-aew-class": "operational", "type": "integer", "minimum": 0},
+        "max_unverified_age_hours": {"x-aew-class": "operational", "type": "number", "minimum": 0},
+        "max_full_age_days": {"x-aew-class": "operational", "type": "number", "minimum": 0}
       }
     },
     "class0": {
@@ -147,12 +159,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_scope_files": {"type": "integer", "minimum": 1},
-        "max_scope_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
-        "fraction_min_tree_files": {"type": "integer", "minimum": 0}
+        "max_scope_files": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 1},
+        "max_scope_fraction": {"x-aew-class": "legality_affecting", "type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "fraction_min_tree_files": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 0}
       }
     },
     "non_mutating_concurrency": {
+      "x-aew-class": "legality_affecting",
       "type": [
         "integer",
         "null"
@@ -160,6 +173,7 @@
       "minimum": 1
     },
     "max_publish_paths": {
+      "x-aew-class": "legality_affecting",
       "description": "The most paths one integration candidate may change (register E34). A publish syncs every changed path into the authoritative checkout while it holds the control lock, at a few milliseconds a path, so a larger change is refused at prepare, before anything is published. Default 2000.",
       "type": ["integer", "null"],
       "minimum": 1

@@ -47,6 +47,8 @@ class FakeAdapter(HarnessAdapter):
             from aew.errors import HarnessIncompatible
             raise HarnessIncompatible("fake capability probe: required operation session.fork is missing")
         pin = contract.execution_profile
+        self.usage = header.get("usage")  # the session totals a script declares (F25): {"tokens": {...}, "cost": n}
+        self.semantics = header.get("token_semantics", "disjoint")
         self.effective = header.get("effective") or [
             {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}]
         hdir = self.run_dir / "harness"
@@ -87,7 +89,13 @@ class FakeAdapter(HarnessAdapter):
         if not hasattr(self, "transcript"):
             return {}
         lines = self.transcript.read_text(encoding="utf-8").splitlines() if self.transcript.exists() else []
-        return {"effective": self.effective, "sessions": [self.session], "transcript_steps": len(lines)}
+        out = {"effective": self.effective, "sessions": [self.session], "transcript_steps": len(lines)}
+        if self.usage is not None:  # a scripted harness that reports usage, as the OpenCode adapter does (F25 R2)
+            from aew.harness import usage as U
+
+            out["usage_record"] = U.normalize(self.usage, [{}] * len(lines), self.effective, self.semantics,
+                                              source="harness:fake")
+        return out
 
 
 # ---------------------------------------------------------------------------------------------- test helpers
@@ -106,6 +114,11 @@ class HarnessLab:
     tmp: Path
     env: dict[str, str] = field(default_factory=dict)
     sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
+
+    def __post_init__(self) -> None:
+        import harness_diagnostics  # a failed test reports and keeps this lab's runs (register E3)
+
+        harness_diagnostics.register(self)
 
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
@@ -175,7 +188,11 @@ class HarnessLab:
         for entry in self.transcript(run):
             if entry["i"] == i:
                 return entry["result"]
-        raise AssertionError(f"{run} has no transcript step {i}: {self.transcript(run)}")
+        import harness_diagnostics
+
+        # Name why the step is missing: a run that ended early (lost, crashed) says so in its record and logs.
+        raise AssertionError(f"{run} has no transcript step {i}: {self.transcript(run)}\n"
+                             f"{harness_diagnostics.describe_run(runlog.run_dir(self.aew_root, run))}")
 
     def until(self, predicate: Any, timeout: float = 60, what: str = "condition") -> Any:
         deadline = time.monotonic() + timeout
@@ -241,7 +258,8 @@ def watch_agent_pid(lab: HarnessLab, run: str, recorded: int) -> Any:
 
 
 def credential_hits(*roots: Path) -> list[str]:
-    return runlog.scan_for_credentials(*roots)
+    """The files under ``roots`` holding a credential string (the run's own scan, over a test's whole tree)."""
+    return runlog.credential_scan(*roots)["files"]
 
 
 def contains_credential(text: str) -> bool:

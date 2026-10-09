@@ -142,7 +142,10 @@ def test_an_older_engine_refuses_an_outbox_era_control_file(tmp_path):
     p = sample_project(tmp_path)
     state = load_control(p.root)
     errors = [e.message for e in Draft202012Validator(baseline).iter_errors(state)]
-    assert errors == ["Additional properties are not allowed ('outbox', 'policy_sha256' were unexpected)"]
+    expected = ["Additional properties are not allowed ('outbox', 'policy_sha256' were unexpected)"]
+    if sys.platform != "win32":  # M4-E E2: a POSIX Lead records host_uid, one more key the baseline never knew
+        expected.append("Additional properties are not allowed ('host_uid' was unexpected)")
+    assert errors == expected
     assert baseline["properties"]["last_transition"].get("additionalProperties", True) is not False
 
 

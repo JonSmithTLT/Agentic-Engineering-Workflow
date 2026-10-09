@@ -591,8 +591,9 @@ def scan_secrets(root: Path, secret: str | None) -> dict[str, Any]:
                     leaked.append(str(p.relative_to(root)))
             except OSError:
                 continue
-    return {"aew_credentials": runlog.scan_for_credentials(root), "provider_key_files": leaked,
-            "provider_key_checked": bool(secret)}
+    scan = runlog.credential_scan(root)  # files holding a credential, and whether the scan read everything
+    return {"aew_credentials": scan["files"], "aew_scan_complete": not scan.get("unscanned"),
+            "provider_key_files": leaked, "provider_key_checked": bool(secret)}
 
 
 def stop_leftovers(repo: Path) -> list[str]:

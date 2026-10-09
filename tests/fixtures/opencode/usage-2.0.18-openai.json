@@ -1,0 +1,60 @@
+{
+  "harness": "opencode",
+  "version": "2.0.18",
+  "provider": "openai",
+  "token_semantics": "disjoint",
+  "source": {
+    "repository": "sst/opencode",
+    "tag": "v2.0.18",
+    "commit": "cd9a14a6b688d4021bee381dfd39d2cef9c0f862",
+    "evidence": [
+      {
+        "file": "packages/core/src/session/usage.ts",
+        "lines": "11-19",
+        "says": "the stored message tokens are input = nonCachedInputTokens, output = visibleOutputTokens, reasoning = reasoningTokens, cache.read = cacheReadInputTokens, cache.write = cacheWriteInputTokens"
+      },
+      {
+        "file": "packages/ai/src/schema/events.ts",
+        "lines": "20-85",
+        "says": "the Usage breakdown fields are non-overlapping; visibleOutputTokens = max(0, outputTokens - reasoningTokens)"
+      },
+      {
+        "file": "packages/ai/src/protocols/open-responses.ts",
+        "lines": "843-859",
+        "says": "openai's default Responses route: nonCached = input_tokens - (cached_tokens + cache_write_tokens); outputTokens = output_tokens; reasoningTokens = output_tokens_details.reasoning_tokens"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "reasoning, cache read and cache write",
+      "raw": {
+        "input_tokens": 12000,
+        "input_tokens_details": {"cached_tokens": 8000, "cache_write_tokens": 1000},
+        "output_tokens": 3000,
+        "output_tokens_details": {"reasoning_tokens": 1200}
+      },
+      "stored": {"input": 3000, "output": 1800, "reasoning": 1200, "cache": {"read": 8000, "write": 1000}}
+    },
+    {
+      "name": "no cache and no reasoning",
+      "raw": {
+        "input_tokens": 500,
+        "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+        "output_tokens": 120,
+        "output_tokens_details": {"reasoning_tokens": 0}
+      },
+      "stored": {"input": 500, "output": 120, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    },
+    {
+      "name": "all output is reasoning, half the input cached",
+      "raw": {
+        "input_tokens": 2048,
+        "input_tokens_details": {"cached_tokens": 1024, "cache_write_tokens": 0},
+        "output_tokens": 900,
+        "output_tokens_details": {"reasoning_tokens": 900}
+      },
+      "stored": {"input": 1024, "output": 0, "reasoning": 900, "cache": {"read": 1024, "write": 0}}
+    }
+  ]
+}

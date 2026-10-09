@@ -97,7 +97,7 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "cli",
+        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}
@@ -126,7 +126,7 @@ def test_judgment_bearing_rows_name_their_judgments_and_others_name_none():
 
 def test_only_workflow_advancing_rows_are_progression_rows():
     for t in contract.TOOLS.values():
-        if t.kind in (contract.QUERY, contract.WAIT, contract.PRIMITIVE) or t.name == "checkpoint":
+        if t.kind in (contract.QUERY, contract.WAIT, contract.PRIMITIVE) or t.name in ("checkpoint", "steering"):
             assert not t.progression, t.name
         elif t.kind in (contract.STAGE, contract.DECISION):
             assert t.progression, t.name

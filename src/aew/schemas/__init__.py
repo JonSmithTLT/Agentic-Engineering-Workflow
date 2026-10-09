@@ -32,11 +32,20 @@ SCHEMAS = {
     "surface": "surface.schema.json",  # the typed Lead surface's result contract (F15.1)
     "codebase-map": "codebase-map.schema.json",  # project maps (F22.1, ADR-0015)
     "map-registry": "map-registry.schema.json",
+    "run-usage": "run-usage.schema.json",  # a harness run's usage (F25, cost and usage ledger v0.2 R1)
+    "pricing": "pricing.schema.json",  # the price table, the manifest's optional policy.pricing (F25 R4)
+    "stage-intent": "stage-intent.schema.json",  # the StageIntent journal (M4-E E3)
 }
 
 
 def _load(name: str) -> dict[str, Any]:
     return json.loads(resources.files(__name__).joinpath(SCHEMAS[name]).read_text(encoding="utf-8"))
+
+
+@cache
+def schema(name: str) -> dict[str, Any]:
+    """A schema's parsed content (read-only by convention), e.g. for the policy field classes (A3 §8)."""
+    return _load(name)
 
 
 @cache

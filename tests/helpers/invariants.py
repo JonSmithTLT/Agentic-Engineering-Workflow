@@ -13,6 +13,8 @@ read the whole history; the engine's commit-time checks may not (invariant 13).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -241,6 +243,177 @@ def control_violations(root: Path) -> list[str]:
     problems += queue_violations(root, hot)
     # 40-42. M4-D5: checks-mode validation runs and engine-produced evidence.
     problems += validation_violations(root, state, evidence)
+    # 43-45. M4-E E2: steering.
+    problems += steering_violations(root, hot)
+    # 46. Run usage (F25 R1, R5), over the hot state and every rehydrated bundle.
+    problems += usage_violations(state)
+    # 47-49. M4-E E3: the StageIntent journal, hot and cold.
+    problems += stage_intent_violations(root, hot, state)
+    return problems
+
+
+def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
+    """M4-E E3 (plan v3 E3, §2.7; typed surface §3.4).
+
+    47: every hot intent is ACTIVE and schema-valid, owned by a generation that has existed, and its steps are a
+        prefix of its plan under the keys ``<SI>:<n>``, at strictly increasing revisions after it opened and none past
+        the current revision; a unit has at most one, and so does the project (a stage with no unit).
+    48: every step carries the legality digest the intent bound (nothing commits under drift); a step is retried after
+        a stale revision only when it and the stage are non-judgment, and the intent says so iff some step was; a stop
+        names the next step, or the last when every step committed (rule 7).
+    49: every intent ever opened (``counters.stage_intent``) lives in exactly one place: hot, or one immutable cold
+        record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
+        the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
+        note carries the record's hash; a record with no unit (``records/``) is pinned by no hash."""
+    from aew.engine import stage_intents as S
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    aew = Path(root) / ".aew"
+    intents = hot.get("stage_intents") or {}
+    subjects: dict[str, str] = {}
+
+    def journal(si: dict[str, Any], where: str) -> None:
+        for n, (planned, done) in enumerate(zip(si["plan"], si["steps"], strict=False), start=1):
+            if done["n"] != n or done["key"] != f"{si['id']}:{n}" or done["primitive"] != planned["primitive"]:
+                problems.append(f"{where}: step {n} is not its plan's step {n}")
+            if done["legality_digest"] != si["binding"]["legality_digest"]:
+                problems.append(f"{where}: step {n} committed under another legality digest")
+            if done.get("retried_after_stale_revision") and (
+                    "JUDGMENT_BEARING" in (done["operation_class"], si["effective_class"])):
+                problems.append(f"{where}: judgment-bearing step {n} was retried")
+        if len(si["steps"]) > len(si["plan"]):
+            problems.append(f"{where}: more steps than planned")
+        revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"])]
+        if revs != sorted(set(revs)):
+            problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
+        if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):
+            problems.append(f"{where}: the intent's retry flag disagrees with its steps")
+        stop, done = si.get("stopped"), len(si["steps"])
+        if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
+            problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
+
+    for sid, si in sorted(intents.items()):
+        where = f"stage intent {sid}"
+        try:
+            validate("stage-intent", si, source=where)
+        except Exception as exc:
+            problems.append(f"{where} is not a stage-intent record: {exc}")
+            continue
+        if si["id"] != sid or si["status"] != S.ACTIVE:
+            problems.append(f"{where}: hot but {si['status']} (or filed under another id)")
+        if not 1 <= si["generation"] <= hot["lead"]["generation"]:
+            problems.append(f"{where}: owned by generation {si['generation']}, which never held the seat")
+        if si["steps"] and si["steps"][-1]["revision"] > hot["revision"]:
+            problems.append(f"{where}: a step past the current revision")
+        key = si["subject"]["id"] or "the project"  # one per unit, and one with no unit
+        if key in subjects:
+            problems.append(f"{key} has two unfinished stages: {subjects[key]} and {sid}")
+        subjects[key] = sid
+        journal(si, where)
+
+    pointers = {p["id"]: (wid, p) for wid, u in full["work"].items() for p in u.get("stage_intents") or []}
+    for n in range(1, (hot["counters"].get("stage_intent") or 0) + 1):
+        sid = f"SI-{n:04d}"
+        homes = sorted(p.relative_to(aew).as_posix() for p in [*aew.glob(f"work/*/stage-intents/{sid}.yaml"),
+                                                                *aew.glob(f"{S.RECORDS_DIR}/{sid}.yaml")])
+        if sid in intents:
+            if homes:
+                problems.append(f"{sid} is both hot and cold: {homes}")
+            continue
+        if len(homes) != 1:
+            problems.append(f"{sid} was opened and lives in {len(homes)} cold places, not one: {homes}")
+            continue
+        raw = (aew / homes[0]).read_bytes()
+        doc = yaml.safe_load(raw)
+        try:
+            validate("stage-intent", doc, source=homes[0])
+        except Exception as exc:
+            problems.append(f"{homes[0]} is not a stage-intent record: {exc}")
+            continue
+        if doc["id"] != sid or doc["status"] not in S.TERMINAL or doc["closed"]["status"] != doc["status"]:
+            problems.append(f"{homes[0]}: a cold intent must be its own id and terminal")
+        if homes[0] != S.cold_rel(sid, doc["subject"]["id"]) and homes[0] != S.cold_rel(sid, None):
+            problems.append(f"{homes[0]}: not where its subject {doc['subject']['id']} puts it")
+        journal(doc, homes[0])
+        sha = hashlib.sha256(raw).hexdigest()
+        if sid in pointers:
+            wid, pointer = pointers[sid]
+            if pointer["path"] != homes[0] or pointer["sha256"] != sha:
+                problems.append(f"{wid}'s pointer to {sid} does not name its record and hash")
+        elif homes[0].startswith("work/"):
+            # A unit's record is pinned by the unit's pointer, or by an annotation on a unit archived first.
+            wid = homes[0].split("/")[1]
+            notes = [yaml.safe_load(a.read_bytes()) for a in (aew / "work" / wid / "annotations").glob("*.yaml")]
+            if not any(n.get("rel") == "stage_intent" and n.get("object") == sid
+                       and n.get("note") == f"{homes[0]} sha256:{sha}" for n in notes):
+                problems.append(f"{homes[0]} is pinned by no pointer or annotation on {wid}")
+    return problems
+
+
+def steering_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """M4-E E2 (plan v3 §2.1, §2.7). 43: an override belongs to a Lead generation that has existed, and every mode
+    and request names a record that exists in records/steering/. 44: only the operator's records raise, and each says
+    `guarantee: dev`. 45: requests are bounded and each is a raise to walk or run, or a confirmation of an action."""
+    steering = state.get("steering")
+    if steering is None:
+        return []
+    problems: list[str] = []
+    records: dict[str, dict[str, Any]] = {}
+    for f in sorted((Path(root) / ".aew" / "records" / "steering").glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            if entry.get("id"):
+                records[entry["id"]] = entry
+    override, standing = steering.get("override"), steering["standing"]
+    if override and override["generation"] > state["lead"]["generation"]:
+        problems.append(f"steering override for generation {override['generation']} is ahead of the Lead")
+    for which, held in (("standing", standing), ("override", override)):
+        if held and held.get("record") and held["record"] not in records:
+            problems.append(f"steering {which} names record {held['record']}, which is not in records/steering/")
+        elif held and held.get("record") and records[held["record"]]["new"] != held["mode"]:
+            problems.append(f"steering {which} mode {held['mode']} disagrees with its record {held['record']}")
+    for rid, record in records.items():
+        if record.get("kind") != "mode_change":
+            continue
+        rank = {None: 0, "crawl": 0, "walk": 1, "run": 2}
+        if rank[record["new"]] > rank[record["previous"]] and record["source"] not in ("raise", "default"):
+            problems.append(f"{rid} raised the mode by {record['source']}: only the operator raises")
+        by = record["by"]
+        guarantee = by.get("guarantee", (by.get("principal") or {}).get("guarantee"))
+        if by["kind"] == "operator" and guarantee != "dev":
+            problems.append(f"{rid} is labelled guarantee {guarantee!r}; nothing before F18.6 is other than dev")
+    requests = steering["requests"]
+    if len(requests) > 8 or any((r["kind"] == "raise") != bool(r.get("mode")) for r in requests):
+        problems.append(f"steering requests are unbounded or malformed: {requests}")
+    return problems
+
+
+def usage_violations(state: dict[str, Any]) -> list[str]:
+    """F25 (the cost and usage ledger design v0.2 R1, R5). 46: every ``inv.runs[].usage``, when present, is a
+    well-formed ``aew/run-usage/v1`` whose ``run`` names its own entry, at most 2 KiB serialized, with at most 8
+    distinct effective entries; a run is copied once, so a usage never names another run."""
+    from aew.harness import usage as U
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    for inv_id, inv in sorted(state["invocations"].items()):
+        for entry in inv.get("runs") or []:
+            usage = entry.get("usage")
+            if usage is None:
+                continue
+            try:
+                validate("run-usage", usage, source=f"{inv_id} {entry.get('run')}")
+            except Exception as exc:  # the invariant reports; it never stops at the first bad record
+                problems.append(f"{inv_id} run {entry.get('run')}: usage is not a run-usage record: {exc}")
+                continue
+            if usage["run"] != entry["run"]:
+                problems.append(f"{inv_id} run {entry['run']} holds the usage of {usage['run']}")
+            if U.serialized_size(usage) > U.MAX_BYTES:
+                problems.append(f"{inv_id} run {entry['run']}: usage is {U.serialized_size(usage)} bytes, over 2 KiB")
+            distinct = {(e.get("provider"), e.get("model"), e.get("effort")) for e in usage.get("effective") or []}
+            if len(distinct) > U.MAX_EFFECTIVE:
+                problems.append(f"{inv_id} run {entry['run']}: {len(distinct)} distinct effective entries, over 8")
     return problems
 
 

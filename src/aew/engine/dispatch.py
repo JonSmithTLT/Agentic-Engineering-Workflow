@@ -168,7 +168,10 @@ class DispatchDecision:
         """What the invocation or run records about the decision that admitted it."""
         return {"entrypoint": self.entrypoint, "channel": self.channel, "revision": self.revision,
                 "generation": self.generation, "decision": self.digest(),
-                "obligations": [o["code"] for o in self.obligations]}
+                "obligations": [o["code"] for o in self.obligations],
+                # A3 §3 and §9: what is admitted records both digests, for attribution
+                **{k: self.dependency_digests[k] for k in ("legality_digest", "operational_digest")
+                   if k in self.dependency_digests}}
 
     def require(self) -> DispatchDecision:
         """Raise when not allowed: a migrated check's own error first (so its code and message are unchanged),
@@ -274,11 +277,14 @@ class Dispatch:
         return decision
 
     def _policy_digests(self) -> dict[str, Any]:
+        """The per-file hashes (attribution) and A3's two digests. Only ``legality_digest`` binds a decision: an
+        operational change (a timeout, a deadline, a description) never makes a dispatch decision stale."""
         from aew.util import sha256_file
 
         names = ("gates", "guardrails", "checks")
         return {"policy": {n: sha256_file(self.k.aew_root / self.k.manifest["policy"][n]) for n in names
-                           if n in self.k.manifest.get("policy", {})}}
+                           if n in self.k.manifest.get("policy", {})},
+                **self.k.policy_digests()}
 
     def decide_in(self, ctx: TxnContext, entrypoint: str, work_id: str, **args: Any) -> DispatchDecision:
         """Decide inside a dispatch transaction, record the decision for the commit check, and require it."""
@@ -297,15 +303,16 @@ class Dispatch:
         admitting decision on what it admitted."""
         before = ctx.session.committed_view().get("invocations") or {}
         allowed = [d for d in ctx.dispatch_decisions if d.allowed]
-        policy = self._policy_digests()["policy"] if allowed else {}
+        legality = self._policy_digests()["legality_digest"] if allowed else None
         for d in allowed:
             if d.revision != ctx.session.revision:  # never an old ALLOW
                 raise DispatchUndecided(f"a dispatch decision for {d.work_id} was computed at revision {d.revision}, "
                                         f"not this transaction's {ctx.session.revision}")
-            if d.dependency_digests.get("policy", policy) != policy:  # nor one made under since-changed policy
-                raise DispatchUndecided(f"a dispatch decision for {d.work_id} was made under policy files that have "
-                                        "changed since; dispatch again", decided=d.dependency_digests.get("policy"),
-                                        current=policy)
+            # Nor one made under since-changed legality-affecting policy (A3 §3). An operational change binds nothing.
+            if d.dependency_digests.get("legality_digest", legality) != legality:
+                raise DispatchUndecided(f"a dispatch decision for {d.work_id} was made under legality-affecting policy "
+                                        "that has changed since; dispatch again",
+                                        decided=d.dependency_digests.get("legality_digest"), current=legality)
         used: set[int] = set()  # a decision admits one new invocation: the one it checked
         for inv_id, inv in ctx.state.get("invocations", {}).items():
             old = before.get(inv_id)

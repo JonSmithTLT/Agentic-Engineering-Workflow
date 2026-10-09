@@ -155,9 +155,27 @@ def _checkpoint(c: Call) -> Any:
     return out
 
 
+def _steering(c: Call) -> Any:
+    """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a request. A request grants nothing; only
+    the operator raises or confirms, at the operator endpoint."""
+    action = c.a["action"]
+    if action == "lower":
+        out = c.engine.steering_lower(token=c.token(), expect_rev=c.a["expect_rev"], mode=c.a["mode"],
+                                      rationale=c.a.get("rationale") or "")
+        c.committed("steering", out, f"steering mode lowered to {out.get('mode')}", [str(out.get("record"))])
+        return out
+    kind = "raise" if action == "request_raise" else "confirmation"
+    out = c.engine.steering_request(token=c.token(), expect_rev=c.a["expect_rev"], kind=kind,
+                                    rationale=c.a["rationale"], mode=c.a.get("mode"), action_ref=c.a.get("action_ref"))
+    c.committed("steering", out, f"steering request {out.get('request')} recorded (grants nothing)",
+                [str(out.get("request"))])
+    return out
+
+
 RUNNERS: dict[str, Runner] = {
     "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
-    "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint, "cli": _cli,
+    "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
+    "steering": _steering, "cli": _cli,
 }
 
 

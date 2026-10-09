@@ -150,8 +150,11 @@ class Supervisor:
         profile = inv["execution_profile"] or {}
         self.record.update(work_unit=inv["work_unit"], role=inv["role"], harness=profile.get("harness"),
                            execution_profile=profile)
-        self._save()  # status: starting — from here the run is visibly held, not merely unconfirmed
+        # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
+        # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
         self._starting_beats()
+        self._save()  # status: starting — from here the run is visibly held, not merely unconfirmed
+        faults.pause("harness.supervisor.after_custody_record")  # tests: a supervisor slow right after its first record
         self._send_ack({"custody": True, "run": self.run, "pid": os.getpid()})
         try:
             contract = self.engine.harness_contract(state, self.inv_id, self.run)

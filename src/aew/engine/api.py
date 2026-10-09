@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import SPEC_SET
+from aew.engine import usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
@@ -179,6 +180,10 @@ class ProjectAdmin:
             name = names.get(rel, "execution")
             if name in ("guardrails", "checks", "gates", "execution"):
                 validate(name, data, source=str(path))
+            if name == "pricing":  # parsed as the ledger parses it (a YAML date is the table's `as_of` string)
+                from aew.engine.usage_ops import Prices
+
+                Prices(raw, source=str(path))
             if name == "execution":
                 X.check_semantics(data, source=str(path))
             pins[rel] = sha256_bytes(raw)
@@ -395,8 +400,10 @@ class Engine:
         dispatch.require_complete()
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
-        # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6).
-        k.finalizers.steps.extend([dispatch.finalize, queue.finalize, self._validation.finalize, archive.finalize])
+        # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
+        # (F25 R5) runs just before archival, so a bundle carries every run's usage into the cold state.
+        k.finalizers.steps.extend([dispatch.finalize, queue.finalize, self._validation.finalize,
+                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, archive.finalize])
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod

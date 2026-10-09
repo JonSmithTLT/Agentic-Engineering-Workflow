@@ -257,6 +257,20 @@ class Kernel:
             raise FileNotFoundError(str(self.aew_root / rel))
         return raw
 
+    def pricing(self) -> Any:
+        """The adopted price table (``usage_ops.Prices``), or ``None`` when the manifest names no ``policy.pricing``
+        (F25 R4: no derived cost, and every surface says unpriced). Read from the pinned bytes, as every policy file
+        is, so the digest a usage copy records is the digest of the table that was adopted."""
+        from aew.engine.usage_ops import Prices
+
+        rel = (self.manifest.get("policy") or {}).get("pricing")
+        if rel is None:
+            return None
+        raw = self._pinned_bytes(rel, self._pins_in_force())
+        if raw is None:
+            raise FileNotFoundError(str(self.aew_root / rel))
+        return Prices(raw, source=str(self.aew_root / rel))
+
     def policy_digests(self) -> dict[str, str]:
         """``legality_digest`` and ``operational_digest`` over every policy file in force, read from the pinned bytes
         (the pre-F15.2 amendment A3; ``aew.policy.classes``). A file named by a manifest ``policy`` entry is read

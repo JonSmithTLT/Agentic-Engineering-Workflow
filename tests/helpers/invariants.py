@@ -244,6 +244,8 @@ def control_violations(root: Path) -> list[str]:
     problems += validation_violations(root, state, evidence)
     # 43-45. M4-E E2: steering.
     problems += steering_violations(root, hot)
+    # 46. Run usage (F25 R1, R5), over the hot state and every rehydrated bundle.
+    problems += usage_violations(state)
     return problems
 
 
@@ -282,6 +284,34 @@ def steering_violations(root: Path, state: dict[str, Any]) -> list[str]:
     requests = steering["requests"]
     if len(requests) > 8 or any((r["kind"] == "raise") != bool(r.get("mode")) for r in requests):
         problems.append(f"steering requests are unbounded or malformed: {requests}")
+    return problems
+
+
+def usage_violations(state: dict[str, Any]) -> list[str]:
+    """F25 (the cost and usage ledger design v0.2 R1, R5). 46: every ``inv.runs[].usage``, when present, is a
+    well-formed ``aew/run-usage/v1`` whose ``run`` names its own entry, at most 2 KiB serialized, with at most 8
+    distinct effective entries; a run is copied once, so a usage never names another run."""
+    from aew.harness import usage as U
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    for inv_id, inv in sorted(state["invocations"].items()):
+        for entry in inv.get("runs") or []:
+            usage = entry.get("usage")
+            if usage is None:
+                continue
+            try:
+                validate("run-usage", usage, source=f"{inv_id} {entry.get('run')}")
+            except Exception as exc:  # the invariant reports; it never stops at the first bad record
+                problems.append(f"{inv_id} run {entry.get('run')}: usage is not a run-usage record: {exc}")
+                continue
+            if usage["run"] != entry["run"]:
+                problems.append(f"{inv_id} run {entry['run']} holds the usage of {usage['run']}")
+            if U.serialized_size(usage) > U.MAX_BYTES:
+                problems.append(f"{inv_id} run {entry['run']}: usage is {U.serialized_size(usage)} bytes, over 2 KiB")
+            distinct = {(e.get("provider"), e.get("model"), e.get("effort")) for e in usage.get("effective") or []}
+            if len(distinct) > U.MAX_EFFECTIVE:
+                problems.append(f"{inv_id} run {entry['run']}: {len(distinct)} distinct effective entries, over 8")
     return problems
 
 

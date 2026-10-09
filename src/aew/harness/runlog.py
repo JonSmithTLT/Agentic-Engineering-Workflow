@@ -10,8 +10,10 @@ credential; the supervisor scans the directory for one when the run ends.
 from __future__ import annotations
 
 import calendar
+import errno
 import json
 import os
+import stat
 import threading
 import time
 from pathlib import Path
@@ -30,17 +32,42 @@ def run_dir(aew_root: Path, run: str) -> Path:
     return aew_root / RUNS_REL / run
 
 
+# A run record's own bound: its timeline and the bridge's request list grow with the run, but never near this. A file
+# past it is not a record the supervisor wrote, and is not read whole under the control lock (#137 re-review).
+MAX_RECORD_BYTES = 16 << 20
+
+
+def _read_regular(path: Path) -> str:
+    """A regular file's text, at most ``MAX_RECORD_BYTES``. The run directory is writable by the run's own user, and
+    a Lead transaction reads it under the control lock (the usage copy, F25 R5): a symlink is not followed, a FIFO
+    or device never blocks the open or the read, and a file past the bound is refused, each as an ``OSError``."""
+    if os.name == "nt":  # no O_NOFOLLOW: refuse a link or a non-file before opening it
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", str(path))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, "rb") as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", str(path))
+        data = f.read(MAX_RECORD_BYTES + 1)
+    if len(data) > MAX_RECORD_BYTES:
+        raise OSError(errno.EFBIG, "larger than a run record", str(path))
+    return data.decode("utf-8")
+
+
 def _read_text(path: Path) -> str | None:
     """None only when the file does not exist. On Windows a reader can briefly collide with a writer's atomic
-    replace (a sharing violation): that is retried, never mistaken for absence."""
+    replace (a sharing violation): that is retried, never mistaken for absence. Elsewhere a permission error is
+    final: retrying it would only hold the control lock longer."""
     deadline = time.monotonic() + 5.0
     while True:
         try:
-            return path.read_text(encoding="utf-8")
+            return _read_regular(path)
         except FileNotFoundError:
             return None
         except PermissionError:
-            if time.monotonic() > deadline:
+            if os.name != "nt" or time.monotonic() > deadline:
                 raise
             time.sleep(0.02)
 
@@ -48,9 +75,12 @@ def _read_text(path: Path) -> str | None:
 def read_record(directory: Path) -> dict[str, Any] | None:
     try:
         text = _read_text(directory / "run.json")
-        return json.loads(text) if text is not None else None
-    except (OSError, ValueError):
+        record = json.loads(text) if text is not None else None
+    except (OSError, ValueError, RecursionError):  # nesting past the parser's depth is no record (#137 re-review, F1)
         return None
+    # The run directory is writable by the run's own user (the supervisor's note on local/): a record that is not an
+    # object is no record, so no reader of it (a cancel's usage copy among them) fails on its shape (#137 review, F1).
+    return record if isinstance(record, dict) else None
 
 
 def write_record(directory: Path, record: dict[str, Any]) -> None:
@@ -74,10 +104,16 @@ def beat(directory: Path) -> None:
 
 
 def heartbeat_age(directory: Path) -> float | None:
+    """The heartbeat's age, or None when there is none. Only a regular file beats: the file is not followed, and a
+    link, a directory or one that cannot be read is no heartbeat (the run reads as ``lost``), never an error that
+    fails the reader (#137 re-review: the run's own user can replace it)."""
     try:
-        return max(0.0, time.time() - (directory / "heartbeat").stat().st_mtime)
-    except FileNotFoundError:
+        info = os.lstat(directory / "heartbeat")
+    except OSError:
         return None
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    return max(0.0, time.time() - info.st_mtime)
 
 
 def observed_status(directory: Path) -> tuple[str, dict[str, Any] | None]:
@@ -86,6 +122,8 @@ def observed_status(directory: Path) -> tuple[str, dict[str, Any] | None]:
     if record is None:
         return K.UNCONFIRMED, None
     status = record.get("status")
+    if not isinstance(status, str):
+        status = None
     if status in K.TERMINAL:
         return status, record
     age = heartbeat_age(directory)

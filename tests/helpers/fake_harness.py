@@ -47,6 +47,8 @@ class FakeAdapter(HarnessAdapter):
             from aew.errors import HarnessIncompatible
             raise HarnessIncompatible("fake capability probe: required operation session.fork is missing")
         pin = contract.execution_profile
+        self.usage = header.get("usage")  # the session totals a script declares (F25): {"tokens": {...}, "cost": n}
+        self.semantics = header.get("token_semantics", "disjoint")
         self.effective = header.get("effective") or [
             {"provider": pin.get("provider"), "model": pin.get("model"), "effort": pin.get("effort")}]
         hdir = self.run_dir / "harness"
@@ -87,7 +89,13 @@ class FakeAdapter(HarnessAdapter):
         if not hasattr(self, "transcript"):
             return {}
         lines = self.transcript.read_text(encoding="utf-8").splitlines() if self.transcript.exists() else []
-        return {"effective": self.effective, "sessions": [self.session], "transcript_steps": len(lines)}
+        out = {"effective": self.effective, "sessions": [self.session], "transcript_steps": len(lines)}
+        if self.usage is not None:  # a scripted harness that reports usage, as the OpenCode adapter does (F25 R2)
+            from aew.harness import usage as U
+
+            out["usage_record"] = U.normalize(self.usage, [{}] * len(lines), self.effective, self.semantics,
+                                              source="harness:fake")
+        return out
 
 
 # ---------------------------------------------------------------------------------------------- test helpers

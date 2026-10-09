@@ -33,7 +33,7 @@ SCHEMAS = {
     "codebase-map": "codebase-map.schema.json",  # project maps (F22.1, ADR-0015)
     "map-registry": "map-registry.schema.json",
     "run-usage": "run-usage.schema.json",  # a harness run's usage (F25, cost and usage ledger v0.2 R1)
-    "pricing": "pricing.schema.json",  # the project's price table (F25 R4); not a manifest policy file yet
+    "pricing": "pricing.schema.json",  # the price table, the manifest's optional policy.pricing (F25 R4)
 }
 
 

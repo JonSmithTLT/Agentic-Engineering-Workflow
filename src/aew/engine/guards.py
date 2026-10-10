@@ -15,11 +15,14 @@ transition and ingest guards the Ticket stages use on the same substrate, its :c
   migrated primitive whose answer depends on a guard that is not (a transition rule's named guard, per unit kind).
 
 A query never raises a refusal: every refusal is its blocker. It raises only what is not a guard's answer, such as an
-integrity failure (a policy edit awaiting adoption), and the caller reports that as ``UNKNOWN`` with its code.
+integrity failure (a policy edit awaiting adoption), and the caller reports that as ``UNKNOWN`` with its code. Anything
+else a query raises is an engine defect: it too is ``UNKNOWN`` (``GUARD_QUERY_DEFECT``), logged, and never crashes the
+``resume``, ``status`` or projection that asked (PR #170 review, finding 2).
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -32,6 +35,9 @@ if TYPE_CHECKING:
 
 AVAILABLE, BLOCKED, UNKNOWN = "AVAILABLE", "BLOCKED", "UNKNOWN"
 GUARD_NOT_QUERYABLE = "GUARD_NOT_QUERYABLE"  # the guard has no query form yet: its own commit decides it
+GUARD_QUERY_DEFECT = "GUARD_QUERY_DEFECT"  # a query raised something that is not a refusal: an engine defect
+
+log = logging.getLogger(__name__)
 
 GuardQuery = Callable[[dict[str, Any], str, dict[str, Any]], "Blocker | NotQueryable | None"]
 
@@ -112,6 +118,10 @@ class GuardQueries:
         except AEWError as err:  # not a guard's answer (an integrity failure, a decision that cannot be asked)
             return {**out, "availability": UNKNOWN, "blocking_conditions": [], "reason_codes": [err.code],
                     "unanswered": {"code": err.code, "message": err.message}}
+        except Exception as err:  # noqa: BLE001  a defect answers UNKNOWN and is logged, never crashing resume or status
+            log.exception("guard query of %s for %s raised %s", primitive, work_id, type(err).__name__)
+            return {**out, "availability": UNKNOWN, "blocking_conditions": [], "reason_codes": [GUARD_QUERY_DEFECT],
+                    "unanswered": {"code": GUARD_QUERY_DEFECT, "message": f"{type(err).__name__}: {err}"}}
         if isinstance(found, NotQueryable):
             return {**out, "availability": UNKNOWN, "blocking_conditions": [], "reason_codes": [GUARD_NOT_QUERYABLE],
                     "not_queryable": found.guard}

@@ -175,3 +175,20 @@ def test_the_answer_is_tri_state_and_an_integrity_failure_is_never_a_blocker():
     assert dispatch["availability"] == BLOCKED and dispatch["reason_codes"] == ["CONCURRENCY_LIMIT"]
     assert queries.answer(state, "dispatch.launch", "T-0001", {})["availability"] == UNKNOWN  # covered, not asked
     assert queries.answer(state, "verify.classify", "T-0001", {})["reason_codes"] == [GUARD_NOT_QUERYABLE]
+
+
+def test_a_query_that_raises_a_defect_answers_unknown_and_is_logged(caplog):
+    """PR #170 review, finding 2: an exception that is not a refusal never escapes into resume or status."""
+    def decide(*_a, **_k):
+        raise AssertionError("not asked")
+
+    queries = GuardQueries(decide)
+
+    def broken(s, w, a):
+        return a["title"]  # a KeyError: an engine defect, not a refusal
+
+    queries.register("work.create", broken)
+    with caplog.at_level("ERROR", logger="aew.engine.guards"):
+        answer = queries.answer({"revision": 1}, "work.create", None, {})
+    assert answer["availability"] == UNKNOWN and answer["reason_codes"] == ["GUARD_QUERY_DEFECT"]
+    assert "KeyError" in answer["unanswered"]["message"] and "work.create" in caplog.text

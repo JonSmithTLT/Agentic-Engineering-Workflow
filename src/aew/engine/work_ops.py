@@ -414,6 +414,9 @@ class WorkCommands:
         acceptance_checks, acceptance_inputs = a.get("acceptance_checks"), a.get("acceptance_inputs")
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
+        title = a.get("title")
+        if not isinstance(title, str) or not title.strip():  # the query is a public answer (PR #170 review, 2)
+            raise UsageError("a unit needs a title that is not blank")
         if not isinstance(risk_class, int) or not 0 <= risk_class <= 4:
             raise UsageError("risk class must be 0..4")
         if a.get("min_descendant_class") is not None and not a.get("rationale"):

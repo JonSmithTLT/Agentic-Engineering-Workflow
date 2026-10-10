@@ -283,6 +283,7 @@ def _create(engine: Engine, p: Any, fields: dict[str, Any]) -> Callable[[int], A
     ({"class0_assertions": ["inputs_complete"]}, "USAGE"),  # only with class 0
     ({"parent": "S-0099"}, "NOT_FOUND"),
     ({"depends_on": ["T-0099"]}, "NOT_FOUND"),
+    ({"title": "  "}, "USAGE"),  # a blank title (PR #170 review, finding 2)
     ({"card": "code_reviewer"}, "USAGE"),  # a reviewer card cannot fill the execute slot
     ({"card": "no_such_card"}, "NOT_FOUND"),
 ])
@@ -381,3 +382,10 @@ def test_guard_query_matches_execute_a_state_hooks_refusal(tmp_path, to):
     answer = equivalent(engine, "work.transition", wid, {"to": to, "reason": "r"},
                         _transition(engine, p, wid, to, "r"))
     assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "publish" in answer["blocking_conditions"][0]["message"]
+
+
+def test_a_create_query_missing_its_title_is_a_usage_refusal_not_an_exception(ready):
+    """PR #170 review, finding 2: the query is a public answer, asked with whatever a stage stored."""
+    _p, _wid, engine = ready
+    answer = engine.guard_query("work.create", None, {"kind": "ticket", "risk_class": 1})
+    assert answer["availability"] == BLOCKED and answer["reason_codes"] == ["USAGE"]

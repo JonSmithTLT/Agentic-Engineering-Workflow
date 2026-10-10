@@ -20,9 +20,8 @@ __all__ = ["CODES", "AdapterInputError", "check_call"]
 
 @cache
 def _validator(name: str) -> Draft202012Validator:
-    t = contract.TOOLS[name]
-    Draft202012Validator.check_schema(t.input_schema)
-    return Draft202012Validator(t.input_schema)
+    # The argument schemas are AEW's own: test_surface_contract checks them against the metaschema once.
+    return Draft202012Validator(contract.TOOLS[name].input_schema)
 
 
 def check_call(name: Any, arguments: Any, profile: str) -> Tool:

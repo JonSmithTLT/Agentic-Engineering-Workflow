@@ -67,12 +67,32 @@
         "max_output_bytes": {"x-aew-class": "operational", "type": "integer", "minimum": 1, "maximum": 65536}
       }
     },
+    "recall": {
+      "type": "object",
+      "description": "Register F21's Arm B prototype (the lead developer's plan v6). raw_history_search \"off\" (the default, also when absent; quote it, since YAML reads a bare off as a boolean, which is refused with its cause and fix) leaves `aew history search` unregistered and creates no search index; explicit registers it for an operator terminal or a Lead shell, never inside an invocation. Read only from the adopted bytes of this file: an edit counts once the operator adopts it. Operational: it changes no dispatch, gate, transition, pack or resume.",
+      "additionalProperties": false,
+      "properties": {
+        "raw_history_search": {"x-aew-class": "operational", "enum": ["off", "explicit"], "default": "off"}
+      }
+    },
     "description": {"x-aew-class": "operational", "type": "string"},
     "maps": {
       "type": "object",
       "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices \"off\" (the default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps; structural adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. Turning it on is the operator's configuration decision.",
       "additionalProperties": false,
       "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}}
+    },
+    "coordination": {
+      "type": "object",
+      "description": "Lead-worker coordination messages (register F9, F9-A; ADR-0017). messaging disabled (the default, also when absent) means absent: nothing is recorded, and no tool, command, bridge operation, prompt line or control-state key exists for messaging. enabled lets the Lead message an active worker and the worker reply on its thread, without a new invocation; the engine records messages from F9-A's first slice, and the Lead's tool, the worker's reply operations and delivery arrive with the later slices. A message is coordination, never authority: recording one commits nothing, and no gate, transition or dispatch reads it. Read only from the adopted bytes of this file: an edit counts once the operator adopts it (`aew manifest adopt`), and neither `aew init`, the shipped default policy nor `aew migrate` writes the key. Operational: it changes no dispatch, gate or transition.",
+      "additionalProperties": false,
+      "properties": {"messaging": {"x-aew-class": "operational", "enum": ["disabled", "enabled"]}}
+    },
+    "surface": {
+      "type": "object",
+      "description": "How the typed Lead surface presents its tools (F9-A plan D-33). presentation standard (the default, also when absent) or compact: shorter tool and argument descriptions, with every name, type, bound, required set and annotation unchanged, so that an evaluation arm without messaging can present the same text as one with it. The compact text arrives with the Lead's message tool (F9-A); until then both values present the standard text. Operational: it changes no tool's semantics.",
+      "additionalProperties": false,
+      "properties": {"presentation": {"x-aew-class": "operational", "enum": ["standard", "compact"]}}
     }
   },
   "$defs": {

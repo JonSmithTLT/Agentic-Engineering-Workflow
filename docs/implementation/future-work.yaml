@@ -116,7 +116,12 @@ sections:
       draft Ticket may correct its parent before its identity becomes governing. KC §9.4 promotion is a distinct hierarchy-expansion
       operation: allowed after work starts, it preserves the original Ticket identity, evidence and history, the effective
       risk or class floor and the inherited non-waivable gates and guardrails. Until the implementation text is updated,
-      ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19''s re-freeze'
+      ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19''s re-freeze. **Plan:** [the
+      F4 plan v8](f4-ticket-revisions-plan.md) (review CLEAR), slices S1 to S12, recorded in [ADR-0016](adr/0016-ticket-revisions.md).
+      **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization
+      and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every
+      slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50).
+      No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals)'
 
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
@@ -185,7 +190,11 @@ sections:
       F9-A1 was ingested (PR #145), which meets the record''s §11 ingestion item (AEA-35), and is now adopted. With the
       adoption, the recitation (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B''s,
       F9-C''s supervision candidates ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D''s harness;
-      no peer-worker inspection outside existing coordination and supervision policy'
+      no peer-worker inspection outside existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09)
+      and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits
+      for M4-E''s E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies,
+      bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing
+      is written'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -819,7 +828,13 @@ sections:
       and designer, 2026-10-09; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA):** F9 messaging
       stays off in M4-H''s frozen treatment, which is not amended; messaging is evaluated separately here using the F9 A/B/C/D
       supervision arms (F9-A1 §16 and §20: A no proactive supervision, B messaging available only, C AEW-recommended adaptive
-      supervision, D mandatory periodic supervision), with F9-A built behind a switch with disabled-state identity tests'
+      supervision, D mandatory periodic supervision), with F9-A built behind a switch with disabled-state identity tests.
+      **F21''s Arm B prototype and M4-H (2026-10-09):** the sealed M4-H configuration has `recall.raw_history_search: "off"`,
+      so `aew history search` is absent from both arms whether or not the prototype has merged; the M4-H cold-start attestation
+      must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
+      never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
+      package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -895,8 +910,8 @@ sections:
       (ledger DMS), from the lead developer''s plan v6 (CLEAR after five independent reviews); the operator''s approval
       of 2026-10-09 and sign-off of 2026-10-10, the search route included (note §1); the [dashboard design note](../design/proposals/dashboard-main-line-api-design-v0.1.md)
       §2 and §8 (a contract change renews C0)'
-    Belongs to or gated by: '**M4 candidate** (the operator, 2026-10-09). S1 after W1; S2 after PR #148 (Arm B) and W1;
-      S3 after the web developer''s UI, with the operator''s approval of the new frontend baseline'
+    Belongs to or gated by: '**M4 candidate** (the operator, 2026-10-09). S1 after W1; S2 after W1 (PR #148, Arm B, has
+      merged); S3 after the web developer''s UI, with the operator''s approval of the new frontend baseline'
     Notes: 'S0 changes nothing served: every 0.1.2 route answers byte for byte, and the six routes stay pending (answered
       exactly as without them) until S1 and S2 serve them. The web developer may amend the additions in W1; the main line
       stays green whatever they amend, and S1 records the amendments in the note and marks it adopted. If #148''s merged
@@ -913,11 +928,12 @@ sections:
       delivery and reviewer independence ([decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md),
       ledger KDR); research basis [v0.1](../research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md)'
     Belongs to or gated by: '**M6** (M6b), after F19''s fixtures. **Arm B first** (explicit guarded raw-history search over
-      FTS5 in the history SQLite) and its A/B result is the first stop/go gate; the K1 source-class replay is a pre-build
-      gate for Cases; K2 only after held-out gates. Storage and the service identity are placed by [ADR-0013](adr/0013-knowledge-storage-placement.md)
-      (accepted 2026-10-04; ledger KST): knowledge records are history-manifest entries, a closed `knowledge_service` principal
-      commits policy-resolved work, and the capture watermark is the contiguous prefix of terminal receipts. It authorizes
-      no K1 or K2 build ahead of the Arm B sequence. **D9 is proven:** the [service-identity spike](../research/knowledge-service-identity-spike-2026-10-04.md)
+      a separate FTS5 substrate beside the history SQLite, ADR-0013 D8''s note of 2026-10-07) and its A/B result is the
+      first stop/go gate; the K1 source-class replay is a pre-build gate for Cases; K2 only after held-out gates. Storage
+      and the service identity are placed by [ADR-0013](adr/0013-knowledge-storage-placement.md) (accepted 2026-10-04; ledger
+      KST): knowledge records are history-manifest entries, a closed `knowledge_service` principal commits policy-resolved
+      work, and the capture watermark is the contiguous prefix of terminal receipts. It authorizes no K1 or K2 build ahead
+      of the Arm B sequence. **D9 is proven:** the [service-identity spike](../research/knowledge-service-identity-spike-2026-10-04.md)
       (ledger KSI) built the `service` credential kind, `service_txn` and store-enforced closure on a review branch and
       passed the designer''s seven properties on Windows and Rocky 8 (takeover through a real pty); what remains is the
       ADR-0005/ADR-0009/ADR-0013 amendment text (E37) and, later, the capture service itself. The review''s prototype proved
@@ -935,10 +951,10 @@ sections:
       role actually requires; broader historical prose from that Ticket can require an explicit investigation mode, which
       the matrix settles; KDR-03 to KDR-05); compact and expanded result shapes; the F19-compatible A/B corpus and rubric;
       K1 template replay only after Arm B is measurable; ranking, vectors, rerankers, discovery thresholds and K2 policy
-      left to evidence. **Arm B stays first** (record §7): its prototype is being built separately on `impl/f21-arm-b-prototype`.
-      Worker delivery of knowledge tools is F15.3''s `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the
-      70 invariants to merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`)
-      (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition`
+      left to evidence. **Arm B stays first** (record §7): its prototype is built separately (PR #148, below). Worker delivery
+      of knowledge tools is F15.3''s `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the 70 invariants to
+      merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA,
+      KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition`
       names; source class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm
       B prototype (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible
       and absent from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
@@ -951,13 +967,25 @@ sections:
       AEA-36):** Knowledge stays on-demand and tool-driven, never injected into worker context before Arm B''s evaluation
       earns it; after Arm B, `knowledge.search` and `knowledge.get` are exposed through the same `aew-run` read surface
       (F15.8). The record''s §14 repeats the reviewer-independence rule (AEA-40, consistent with KDR-03 to KDR-05) and places
-      its enforcement in engine and context request binding; the pack half of the filter is F35. **Dashboard route (F20.8,
-      operator 2026-10-09 and 2026-10-10):** an operator-facing `/history/search` sits behind the same `recall.raw_history_search`
+      its enforcement in engine and context request binding; the pack half of the filter is F35. **Prototype built (2026-10-09,
+      the lead developer''s plan v6, independently reviewed CLEAR):** behind `recall.raw_history_search` in the execution
+      policy (`"off"` by default, quoted since YAML reads a bare off as a boolean, which is refused with its cause and fix;
+      read from the adopted bytes only; operational class), `aew history search` exists only when the switch is `explicit`
+      and is otherwise absent from help, usage and the parser; it refuses inside an invocation''s environment (a discoverability
+      guard, not a security boundary). The substrate `local/recall/history-fts.sqlite` (`aew.engine.recall`) indexes each
+      archived entry''s record and the evidence it holds, never plans, unit or completion records, check logs or credential
+      bundles; it is built only by a search (bounded: 2 s or 500 documents per call, then `coverage_incomplete`), `history
+      reindex` and the full audit, and never on a commit path. Every hit is authenticated and re-matched against the authenticated
+      text; a disagreeing row drops its candidate and marks the substrate stale. Not model-visible, not evaluated: no pack,
+      resume, role guide, surface row, MCP tool or dashboard route, and absent from the Q7/M4-H treatment (the M4-H cold-start
+      attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory; F19). The A/B evaluation
+      is F19''s, after the readiness package (adoption record §8). **Dashboard route (F20.8, operator 2026-10-09 and 2026-10-10):**
+      an operator-facing `/history/search`, its own slice outside the prototype''s scope fence, sits behind the same `recall.raw_history_search`
       switch, read from the request''s snapshot and failing closed; it is absent while the switch is off, so it is absent
       in M4-H''s sealed configuration, and it is never model-visible (operator session only). The dashboard''s lock-free
       path never resets, discards or deletes the search substrate: a moved, stale, foreign or unusable substrate is a coverage
-      reason, and the CLI''s search or reindex repairs it. Its additive engine parameters are S2''s, after #148 merges;
-      #148 itself is not widened.'
+      reason, and the CLI''s search or reindex repairs it. Its additive engine parameters are S2''s, now that #148 has merged;
+      #148 itself was not widened.'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1456,8 +1484,12 @@ sections:
       self-test''s and the harness adapter''s own launch bounds plus 60 s (620 s for OpenCode at its defaults; `AEW_RUN_START_S`
       overrides it), so a wedged start reads `lost` within the deadline plus 10 s and never becomes `running` (ADR-0009
       amendment 2026-10-09, a run''s start has a deadline). A failed harness test now reports and keeps its runs'' record
-      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. Raise test-side
-      timeouts, never the product''s.'
+      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. `test_a_waiter_parses_no_control_state_between_commits`
+      (OBX-38) failed on a loaded Windows host, alone at `main` and once under 8 workers in PR #149''s review (2026-10-09):
+      its 4 s wait closed before the Ticket''s commits landed, so only the initial read was counted. Fixed test-side: the
+      commits land after the waiter''s initial read, the test waits until the waiter has parsed the last of them, then ends
+      the wait through a run''s record; it counts parses against the commits'' revisions, with no time window. Raise or
+      restructure test-side timing, never the product''s.'
 
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule

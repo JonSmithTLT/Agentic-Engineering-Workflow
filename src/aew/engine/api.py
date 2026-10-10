@@ -21,6 +21,7 @@ from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
 from aew.engine.context_ops import ContextPacks
+from aew.engine.coordination_ops import Coordination
 from aew.engine.dispatch import Dispatch
 from aew.engine.evidence_ops import EvidenceCommands, Gates
 from aew.engine.harness_ops import Harness
@@ -400,6 +401,8 @@ class Engine:
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
         self._stages = stages = StageIntents(k, archive=archive)
+        # Coordination messages (F9-A MS1): recording commits nothing, so the collaborator joins no seam.
+        self._coordination = Coordination(k, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -764,6 +767,23 @@ class Engine:
     def policy_pin_drift(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str] | None:
         return self._k.policy_pin_drift(state, manifest)
 
+    def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
+                            in_reply_to: str | None = None, refs: list[str] | None = None,
+                            idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
+        return self._coordination.message_record_lead(token=token, expect_rev=expect_rev, to=to, body=body, kind=kind,
+                                                      in_reply_to=in_reply_to, refs=refs,
+                                                      idempotency_id=idempotency_id, channel=channel)
+
+    def message_record_worker(self, *, invocation_token: str, in_reply_to: str | None, body: str,
+                              kind: str | None = None, refs: list[str] | None = None,
+                              idempotency_id: str | None = None, channel: str = "run_bridge") -> dict[str, Any]:
+        return self._coordination.message_record_worker(invocation_token=invocation_token, in_reply_to=in_reply_to,
+                                                        body=body, kind=kind, refs=refs,
+                                                        idempotency_id=idempotency_id, channel=channel)
+
+    def message_thread(self, invocation: str) -> dict[str, Any]:
+        return self._coordination.message_thread(invocation)
+
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,
                      resulting_transition: dict[str, Any] | None = None, reason: str | None = None,
@@ -983,6 +1003,12 @@ class Engine:
 
     def history_reindex(self) -> dict[str, Any]:
         return self._history.history_reindex()
+
+    def history_search(self, terms: list[str], *, kinds: list[str] | None = None, since: str | None = None,
+                       until: str | None = None, limit: int = 10) -> dict[str, Any]:
+        """Register F21's Arm B prototype: explicit raw-history search, only while switched on
+        (``aew.engine.recall``)."""
+        return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)

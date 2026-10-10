@@ -73,6 +73,13 @@ class PermissionDenied(AEWError):
     exit_code = 4
 
 
+class CapabilityUnavailable(PermissionDenied):
+    """A capability that is switched off for this project, or refused where it was called (``details["reason"]``).
+    Such a refusal is a discoverability guard, never a security boundary: what the capability reads stays readable."""
+
+    code = "CAPABILITY_UNAVAILABLE"
+
+
 class OperatorAuthorizationRequired(PermissionDenied):
     """An operation needs out-of-band operator authorization that was not given."""
 
@@ -152,6 +159,66 @@ class MigrationRequired(IllegalTransition):
     code = "MIGRATION_REQUIRED"
 
 
+class MessagingDisabled(IllegalTransition):
+    """A coordination message on a project whose adopted execution policy does not set ``coordination.messaging:
+    enabled`` (F9-A, ADR-0017): nothing is recorded. ``details.reason``: ``switched_off`` (absent or ``disabled``) or
+    ``not_adopted`` (the policy differs from what the operator adopted, so the switch reads off)."""
+
+    code = "MESSAGING_DISABLED"
+
+
+class CoordinationLimit(IllegalTransition):
+    """A coordination message beyond one of its bounds (F9-A plan D-7). ``details.bound`` names the bound."""
+
+    code = "COORDINATION_LIMIT"
+
+
+class LeadInboxFull(CoordinationLimit):
+    """A worker message while the thread already holds the most worker messages not yet shown to the Lead (D-7)."""
+
+    code = "LEAD_INBOX_FULL"
+
+
+class IdempotencyConflict(IllegalTransition):
+    """An idempotency id already names a message on the thread with other content (D-8): a retry must repeat the
+    original exactly, and a new message needs a new id."""
+
+    code = "IDEMPOTENCY_CONFLICT"
+
+
+class ReplyNotInThread(ValidationFailed):
+    """``in_reply_to`` does not name an earlier message of the same thread, or a worker message names no Lead message
+    (D-10). ``details.reason``: ``missing``, ``unknown`` or ``not_a_lead_message``."""
+
+    code = "REPLY_NOT_IN_THREAD"
+
+
+class RefUnknown(ValidationFailed):
+    """A message ref names an AEW id that does not exist, or is malformed (D-12)."""
+
+    code = "REF_UNKNOWN"
+
+
+class NotAWorker(IllegalTransition):
+    """A coordination message to an invocation that is not a role-bearing worker: an engine custody invocation (D-17).
+    """
+
+    code = "NOT_A_WORKER"
+
+
+class RecipientIndependent(IllegalTransition):
+    """A coordination message to an independent confirmer (F4's scope ``revision``), which never receives Lead text
+    (F9-A plan D-34)."""
+
+    code = "RECIPIENT_INDEPENDENT"
+
+
+class RefOutOfScope(PermissionDenied):
+    """A worker's message ref names something outside its own unit, thread, Ticket and runs (D-12)."""
+
+    code = "REF_OUT_OF_SCOPE"
+
+
 class ObservationMutated(PermissionDenied):
     """A read-only (non-mutating) invocation changed its observation workspace (ADR-0008)."""
 
@@ -221,6 +288,14 @@ class GitError(AEWError):
 class LockTimeout(AEWError):
     code = "LOCK_TIMEOUT"
     exit_code = 8
+
+
+class Unavailable(AEWError):
+    """This environment cannot provide a capability (``details["reason"]``), such as a SQLite built without FTS5 for
+    the raw-history search. Nothing else is affected."""
+
+    code = "UNAVAILABLE"
+    exit_code = 10
 
 
 class HarnessError(AEWError):

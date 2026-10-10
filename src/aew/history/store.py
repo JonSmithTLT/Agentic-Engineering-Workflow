@@ -298,6 +298,20 @@ class History:
             out.append(copy.deepcopy(entry))
         return out
 
+    def pinned_entry(self, root: dict[str, Any], seq: int) -> dict[str, Any]:
+        """Entry ``seq`` of the history ``root`` pins, proven as ``authenticate`` proves an index row's (the tail may
+        hold later entries), for a reader that has only a position: the raw-history search's locator (register F21,
+        Arm B). An ``IntegrityError`` when ``root`` holds no such entry or its files do not prove it."""
+        if not isinstance(seq, int) or isinstance(seq, bool) or not 1 <= seq <= root["count"]:
+            raise IntegrityError(f"the history root does not hold position {seq!r}")
+        sealed = root["sealed_head"]
+        seg = M.segment_of(seq)
+        doc = self._proven_segment(root, seg) if sealed and seg <= sealed["seq"] else self._tail_through(root)
+        entry = doc["entries"][seq - doc["start"]["count"] - 1]
+        if entry.get("seq") != seq:
+            raise IntegrityError(f"history entry {seq} is out of place")
+        return copy.deepcopy(entry)
+
     def entry(self, root: dict[str, Any], seq: int, *, tail_raw: Any = _READ) -> dict[str, Any]:
         """Entry ``seq`` of the history ``root`` pins (1-based)."""
         if not 1 <= seq <= root["count"]:

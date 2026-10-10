@@ -24,6 +24,7 @@ from store_model import segment_violations  # a sibling helper: rule 27 over sea
 
 from aew.engine import hierarchy as H
 from aew.engine import outbox
+from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control
 from aew.history.store import History
@@ -249,6 +250,29 @@ def control_violations(root: Path) -> list[str]:
     problems += usage_violations(state)
     # 47-49. M4-E E3: the StageIntent journal, hot and cold.
     problems += stage_intent_violations(root, hot, state)
+    # 50. F4 S1: every unit key and record field is classified by the Ticket field registry.
+    problems += ticket_field_violations(root, state)
+    return problems
+
+
+def ticket_field_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """50. Every control-state key of every unit, hot or archived, and every frontmatter field of every hot unit's
+    record is classified by the Ticket field registry (F4 plan §3.3 and §9.2, the S1 meta-test over the walks).
+
+    An unclassified input still fails closed into the acceptance group at run time; this rule makes the slice that
+    adds a key classify it (one line in ``src/aew/schemas/ticket-field-registry.v1.json``)."""
+    problems: list[str] = []
+    archived = set(state.get("_archived") or [])
+    for wid, unit in sorted(state["work"].items()):
+        keys = TF.unclassified_control_keys(unit)
+        if keys:
+            problems.append(f"{wid}: unit keys the Ticket field registry does not classify: {keys}")
+        rec = Path(root) / ".aew" / str(unit.get("record") or "missing")
+        if wid not in archived and rec.is_file():
+            meta, _ = parse_frontmatter(rec.read_text(encoding="utf-8"), source=str(rec))
+            paths = TF.unclassified_record_paths(meta)
+            if paths:
+                problems.append(f"{wid}: record fields the Ticket field registry does not classify: {paths}")
     return problems
 
 

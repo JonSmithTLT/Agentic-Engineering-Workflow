@@ -18,7 +18,10 @@ def _audit(a: argparse.Namespace):
     return _engine(a).history_audit(full=a.full, token=_lead_token(a), expect_rev=a.expect_rev)
 
 
-def register(sub: argparse._SubParsersAction) -> None:
+def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:
+    """``recall_search``: register `history search` (register F21, Arm B), which exists only while the adopted execution
+    policy switches it on (``aew.engine.recall.recall_search_enabled``, computed by the caller). Off, the parser is
+    exactly the one without it: its help, usage and invalid-choice list do not name it."""
     p = sub.add_parser("history", help="finished work: show, list, follow links, load as reference, audit")
     hsub = p.add_subparsers(dest="history_cmd", required=True)
 
@@ -84,3 +87,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = hsub.add_parser("reindex", help="rebuild the derived history index from the manifest")
     _add_json(q)
     q.set_defaults(handler=lambda a: _engine(a).history_reindex())
+
+    if recall_search:
+        q = hsub.add_parser("search", help="explicit raw-history search: archived records and the evidence they hold, "
+                                           "authenticated, expandable with `history show` (not admitted Knowledge)")
+        q.add_argument("terms", nargs="+", metavar="TERM",
+                       help="each term is matched as a quoted phrase (no search operators); all terms must match")
+        q.add_argument("--kind", action="append", metavar="KIND",
+                       help="unit, annotation, audit, lead or evidence (repeatable)")
+        q.add_argument("--since", metavar="UTC", help="archived from this time, e.g. 2026-10-01T00:00:00Z")
+        q.add_argument("--until", metavar="UTC", help="archived up to this time")
+        q.add_argument("--limit", type=int, default=10, help="at most this many hits (default 10, maximum 50)")
+        _add_json(q)
+        q.set_defaults(handler=lambda a: _engine(a).history_search(a.terms, kinds=a.kind, since=a.since,
+                                                                  until=a.until, limit=a.limit))

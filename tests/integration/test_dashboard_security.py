@@ -724,6 +724,18 @@ def test_a_header_block_outside_strict_field_syntax_is_refused_and_ends_its_conn
     assert status == 400 and error_code(raw) == "INVALID_REQUEST", (form, status)
 
 
+def test_a_long_header_line_outside_the_field_grammar_is_refused_promptly(live):
+    """The field-grammar check is linear in the line's length: a colon-less line of repeated token characters, as
+    long as the header bound admits, is refused ``400`` at once, never after a long regex backtrack. The time bound
+    is generous: a polynomial check takes minutes on this line, a linear one milliseconds."""
+    line = b"!" * (SV.MAX_HEADER_BYTES - 512)
+    request = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\n".encode("latin-1") + line + b"\r\n\r\n"
+    started = time.monotonic()
+    status, _, raw = _one_answer_then_the_end(live, request)
+    assert status == 400 and error_code(raw) == "INVALID_REQUEST"
+    assert time.monotonic() - started < 10.0
+
+
 def test_header_lines_in_the_field_grammar_are_served_on_a_kept_alive_connection(live):
     """The field grammar refuses nothing a client may send: browser-like headers, an empty value, a tab-led value,
     a value with colons and runs of spaces, and LF-only line endings are all served, twice on one connection,

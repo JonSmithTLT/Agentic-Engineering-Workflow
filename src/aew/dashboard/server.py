@@ -210,8 +210,11 @@ def has_body(headers: Any) -> bool:
 
 
 # RFC 9112 §5 field line: a token name, the colon, then a value of visible bytes, SP and HTAB only (no CR, LF, NUL
-# or other control byte). An allow-list: any line outside it is refused, whatever its form.
-FIELD_LINE = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+:[\t\x20-\x7e\x80-\xff]*")
+# or other control byte). An allow-list: any line outside it is refused, whatever its form. The line is split at its
+# first colon and each part matched by one character class on its own, so the check is linear in the line's length
+# (one pattern with the name's repetition before the colon can backtrack: CodeQL's polynomial-regex alert).
+FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+FIELD_VALUE = re.compile(rb"[\t\x20-\x7e\x80-\xff]*")
 
 
 def bad_field_syntax(block: bytes) -> bool:
@@ -223,7 +226,10 @@ def bad_field_syntax(block: bytes) -> bool:
             line = line[:-1]
         if not line:  # the blank line that ends the block
             continue
-        if b"\r" in line or FIELD_LINE.fullmatch(line) is None:
+        if b"\r" in line:
+            return True
+        name, colon, value = line.partition(b":")
+        if not colon or FIELD_NAME.fullmatch(name) is None or FIELD_VALUE.fullmatch(value) is None:
             return True
     return False
 

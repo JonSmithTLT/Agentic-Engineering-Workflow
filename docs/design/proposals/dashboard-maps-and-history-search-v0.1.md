@@ -1,8 +1,9 @@
 # Dashboard maps and raw-history search: the contract 0.1.3 change note (v0.1)
 
-- **Status:** **Approved, being built** (operator, 2026-10-10: the whole plan, including the raw-history search route).
-  Proposed 2026-10-10 by the main line, as slice S0. The additions in Appendix A are not yet adopted in a contract:
-  every route they add is pending. Register F20.8; ledger prefix DMS.
+- **Status:** **Approved, being built** (operator, 2026-10-10: the whole plan, including the raw-history search route);
+  as adopted in contract `0.1.3` at `0c21d9c`; served at adoption: `/history/search`. Proposed 2026-10-10 by the main
+  line, as slice S0; the web developer adopted Appendix A unamended (W1, PR #173), and S2 serves the search. A route
+  the line does not list is pending until its slice serves it and adds it there. Register F20.8; ledger prefix DMS.
 - **Owns:** the main line's proposal for contract 0.1.3: six routes (five maps routes and the conditional
   `/history/search`), two capability keys, the compatibility rule, and the readiness that keeps `main` green whatever
   the web developer amends.
@@ -148,11 +149,12 @@ that run is green whatever W1 amends in the additions:
 - **This note against the contract** (`tests/unit/test_dashboard_contract_note.py`). Appendix A must compile as JSON
   Schema 2020-12 and, merged into 0.1.2, pass §3.1's check with every 0.1.2 path covered. Against the accepted
   contract, the mode follows this note's status line:
-  - **before adoption** (now), one-way: the accepted contract compiles and passes the check against 0.1.2. Any W1
+  - **before adoption**, one-way: the accepted contract compiles and passes the check against 0.1.2. Any W1
     amendment of the additions passes;
-  - **the adopted line**, which S1 writes into the status: "as adopted in contract `<V>` at `<sha>`; served at
-    adoption: `<routes>`", with the routes this server serves at that commit (S2 appends `/history/search` when it
-    serves it), and with Appendix A updated to the adopted shapes;
+  - **the adopted line**, which the first of S1 and S2 to serve a route writes into the status:
+    "as adopted in contract `<V>` at `<sha>`; served at adoption: `<routes>`", with the routes this server serves at
+    that commit (the other slice appends its routes when it serves them), and with Appendix A updated to the adopted
+    shapes;
   - **strict at the adopted version:** while the accepted contract's version equals `<V>`, its paths and components
     must equal 0.1.2 plus Appendix A once descriptions are removed;
   - **a later version** (a 0.1.4): the check against the adopted contract (the vendored 0.1.2 plus Appendix A), covering
@@ -351,11 +353,12 @@ PR #148 merges ─────────────────► S2
 - **S0:** this note, the readiness of §3.3, and the register row. Nothing served changes.
 - **W1:** the web developer adopts the contract; its full main-line run is green whatever the additions say. If it is
   red anyway, the fault is S0's: the main line fixes it in a new pull request.
-- **S1 (after W1):** the five maps routes, the bounded readers, the cursors and reasons, and the adopted line in this
-  note.
+- **S1 (after W1):** the five maps routes, the bounded readers, the cursors and reasons, and its routes in the
+  adopted line of this note.
 - **S2 (after PR #148 and W1):** the conditional route and its additive engine parameters; the CLI's behaviour and
   output stay byte-identical. If #148's merged result lacks something Appendix A needs, the additions are amended in
-  0.1.4 before S2 serves the route; meanwhile the route stays pending.
+  0.1.4 before S2 serves the route; meanwhile the route stays pending. #148's result needed no amendment: S2 wrote the
+  adopted line with `/history/search`.
 - **S3 (after the web UI):** the build re-import under the pinned builder, the acceptance suite extended to the new
   pages, and the operator's approval of the new frontend baseline (the design note's §6.2 rule).
 

@@ -617,7 +617,7 @@ _CONTRACT = "ROOT / CT.CONTRACT_REL"  # the dashboard contract: its literal path
 # which the guard reads (it is `full` through tier.SHARED)
 NONLITERAL_ALLOWED: dict[str, frozenset[str]] = {
     **{f"tests/integration/test_dashboard_{name}.py": frozenset({_CONTRACT})
-       for name in ("acceptance", "api", "conditional", "security", "session")},
+       for name in ("acceptance", "api", "conditional", "history_search", "security", "session")},
     # DEBRIEF_ROOT is a directory under the system temp directory, not the repository
     "eval/m3/dogfood/dogfood.py": frozenset({"DEBRIEF_ROOT / name / 'lead-1'"}),
 }

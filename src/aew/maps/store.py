@@ -101,12 +101,17 @@ def read_artifact(aew_root: Path, sha: str) -> dict[str, Any]:
 # larger one is refused by the dashboard only (``MAP_ARTIFACT_CORRUPT``, ``too_large``); the CLI reads it as before.
 MAP_FILE_MAX = 16 << 20
 
-Identity = tuple[int, int, int, int]
+Identity = tuple[int, int, int, int, int]
 
 
 def file_identity(st: os.stat_result) -> Identity:
-    """What says a file is the same file: device, inode (Windows: the file index), size and modification time."""
-    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+    """What says a file is the same file: device, inode (Windows: the file index), size, modification time and
+    change time. A freed inode is reused at once, and ``mtime`` has the kernel clock's coarse tick (about 1 ms), so a
+    file rewritten at the same size within one tick keeps the other four; ``ctime`` also moves on an ``os.utime``
+    restore of ``mtime`` (review of #178, finding A). POSIX only: on Windows ``st_ctime`` is the creation time from
+    ``lstat`` but the change time from ``fstat`` (Python 3.13), so it would never match itself, and an NTFS file id
+    carries a sequence number, so a freed one is not reused at once."""
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns if os.name != "nt" else 0)
 
 
 class NotARegularFile(OSError):

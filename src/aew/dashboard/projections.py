@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ from aew.engine.history_ops import _public as public_entry
 from aew.errors import (
     AEWError,
     GitError,
+    HistoryMoved,
     IntegrityError,
     LockTimeout,
     MapArtifactCorrupt,
@@ -917,21 +919,14 @@ class Projector:
         reader = self._maps()
         st = reader.stat(root)
         key = (root, MS.file_identity(st))
-        known = reader.summaries.get(key)
-        if known is not None and known["status"] == "CORRUPT":
-            raise MapArtifactCorrupt(f"the stored map {root} is corrupt ({known['why']})", root=root,
-                                     reason=known["why"])
+        known = reader.summaries.get(key)  # only AVAILABLE summaries are kept: a corrupt map is read again
         cached = reader.details.get(key)
         if known is not None and cached is not None and (cached[1] is not None or not detail):
             return known["summary"], cached[0], cached[1], 0
         if budget is not None and st.st_size > budget:
             raise _OverBudget
         vocab = self._vocab()
-        try:
-            record, identity = reader.load(root, st)
-        except MapArtifactCorrupt as exc:
-            reader.summaries.put(key, {"status": "CORRUPT", "why": str(exc.details.get("reason") or "unreadable")})
-            raise
+        record, identity = reader.load(root, st)  # a corrupt verdict is never cached (review of #178, finding A)
         key = (root, identity)
         summary = MV.summary(root, selected=False, record=record, vocab=vocab)
         inputs = record["inputs"]
@@ -966,10 +961,13 @@ class Projector:
                                    reason="malformed_id")
         # Archived evidence goes through the derived history index: never the control lock, never a long wait
         # (review of #178, finding 1). A busy index or a commit that moved history meanwhile is "read again later".
+        # Only the race and a busy index are "read again later" (review of #178, findings B and C): a query of an
+        # index already synced meets a lock as SQLite's own error; a missing or altered record is damage, which
+        # maps.service.architecture reports UNAVAILABLE.
         try:
             with self.archive.lockfree_reads(ARCHIVE_WAIT_S):
                 meta, _, _ = self.locate_evidence(evidence_id)
-        except (IntegrityError, LockTimeout) as exc:
+        except (HistoryMoved, LockTimeout, sqlite3.DatabaseError) as exc:
             raise _HistoryBusy from exc
         return meta
 

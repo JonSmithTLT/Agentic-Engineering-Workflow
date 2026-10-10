@@ -17,6 +17,7 @@ import http.client
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -567,7 +568,31 @@ def test_a_missing_or_corrupt_selected_map_is_data_and_by_root_a_404_or_a_422(la
         assert data["reasons"][0]["code"] == "MAP_MISSING" and data["summary"] is None
         client.error(f"/maps/structural/{root}", 404, "NOT_FOUND")
         path.write_bytes(good)
+        st = os.lstat(path)  # a new mtime, whatever the clock's tick (the same-tick case is the next test's)
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
         assert client.data("/maps")["structural"]["state"] == "AVAILABLE"
+
+
+def test_a_repaired_map_reads_available_even_when_its_inode_size_and_mtime_repeat(lab):
+    """Review of #178, finding A: a same-size artifact unlinked and written again within one timestamp tick keeps
+    its device, inode (reused at once on xfs and ext4), size and ``mtime``. The tick is simulated by restoring the
+    corrupt file's ``mtime``: the repaired map must read AVAILABLE (a corrupt verdict is never cached, and the
+    identity carries ``ctime``, which a restore cannot set)."""
+    p, _ = lab
+    root = generate(p, select=True)
+    path = artifact(p, root)
+    good = path.read_bytes()
+    with served(p) as client:
+        path.write_bytes(good.replace(b'"structural"', b'"structuraX"', 1))  # the same size
+        corrupt = os.lstat(path)
+        assert client.data("/maps")["structural"]["reasons"][0]["code"] == "MAP_CORRUPT"
+        client.error(f"/maps/structural/{root}", 422, "MAP_ARTIFACT_CORRUPT")
+        path.unlink()
+        path.write_bytes(good)
+        os.utime(path, ns=(corrupt.st_atime_ns, corrupt.st_mtime_ns))  # the same tick
+        assert os.lstat(path).st_size == corrupt.st_size
+        assert client.data("/maps")["structural"]["state"] == "AVAILABLE"
+        assert client.data(f"/maps/structural/{root}")["summary"]["status"] == "AVAILABLE"
 
 
 def test_a_float_in_a_record_is_not_canonical_and_refused(lab):
@@ -787,6 +812,56 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             assert "read again later" in arch["freshness"]["reasons"][0]["message"]
             again = client.data("/maps")["architecture"]["freshness"]  # the lock still held, the index free
             assert again["status"] == "CURRENT" and calls["read"] == 0
+
+
+def test_a_locked_index_on_a_warm_read_is_unknown_not_a_500(lab):
+    """Review of #178, finding B: once a plain reader has synced and kept the history index, the archived lookup
+    queries it without a sync; another process holding it ``BEGIN EXCLUSIVE`` then raises SQLite's own error after the
+    2 s bound, which is ``ARCHITECTURE_UNKNOWN`` ("read again later"), with the structural map still served."""
+    p, tmp = lab
+    generate(p, select=True)
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    with served(p) as client:
+        assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"
+        assert client.get("/history")[0] == 200  # a plain reader syncs and keeps the index
+        conn = sqlite3.connect(p.root / ".aew" / HI.INDEX_REL, timeout=1, isolation_level=None)
+        conn.execute("BEGIN EXCLUSIVE")
+        try:
+            started = time.monotonic()
+            status, _, raw = client.get("/maps", timeout=120)
+            took = time.monotonic() - started
+        finally:
+            conn.execute("ROLLBACK")
+            conn.close()
+        assert status == 200, raw[:300]
+        data = json.loads(raw)["data"]
+        assert took < 10, took
+        assert data["structural"]["state"] == "AVAILABLE"
+        arch = data["architecture"]["freshness"]
+        assert arch["status"] == "UNKNOWN" and arch["reasons"][0]["code"] == "ARCHITECTURE_UNKNOWN"
+        assert "read again later" in arch["reasons"][0]["message"]
+        assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"  # the index free again
+
+
+def test_damaged_history_is_unavailable_not_busy(lab, monkeypatch):
+    """Review of #178, finding C: only the sync's race and a busy index are "read again later". A missing or altered
+    history record is damage: the reference stays ``ARCHITECTURE_UNAVAILABLE``, as before the lock-free mode."""
+    p, tmp = lab
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    with served(p) as client:
+        assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"
+        engine = client.server.engine
+        engine.archive._synced = None
+
+        def damaged(*args: Any, **kwargs: Any) -> Any:
+            raise IntegrityError("history record work/T-0001/archive.yaml is missing")
+
+        monkeypatch.setattr(engine.archive, "bundle", damaged)
+        arch = client.data("/maps")["architecture"]["freshness"]
+        assert arch["status"] == "UNAVAILABLE" and arch["reasons"][0]["code"] == "ARCHITECTURE_UNAVAILABLE"
+        assert "read again later" not in json.dumps(arch)
 
 
 def test_a_lock_free_reader_bounds_the_index_wait_and_leaves_the_cli_readers_alone(lab):
@@ -1083,7 +1158,8 @@ def valid_maximal(record: dict[str, Any], tag: str) -> dict[str, Any]:
     """Review of #178, finding 2: every allowlisted field of every item at its maximum and valid, so nothing is dropped:
     every list at the API's cap, every row with the 20 longest language names, a count for every known language (at
     most 100), the longest vocabulary values, every repository string past the cut (backslashes: two serialized bytes
-    each) and every number at ``2**53 - 1``. ``tag`` makes two such maps disjoint, item for item."""
+    each) and every number at ``2**53 - 1`` (``2**53 - 2`` for any tag but ``a``). ``tag`` makes two such maps
+    disjoint, item for item, and differ in every counter."""
     vocab = MV.vocabulary(MR.load())
 
     def longest(name: str, n: int = 1) -> list[str]:
@@ -1092,7 +1168,7 @@ def valid_maximal(record: dict[str, Any], tag: str) -> dict[str, Any]:
     def text(i: int) -> str:
         return f"{tag}{i}" + "\\" * 300
 
-    big = 2**53 - 1
+    big = 2**53 - 1 if tag == "a" else 2**53 - 2  # two maps: every counter differs between them
     langs = longest("language", 20)
     out = copy.deepcopy(record)
     s = out["sections"]
@@ -1160,6 +1236,9 @@ def test_the_ceilings_hold_on_a_valid_maximal_map_and_on_the_diff_of_two_disjoin
         assert_bounded(diff)
         rows = diff["data"]["sections"]["directories"]["rows"]
         assert len(rows["added"]) == 200 and len(rows["removed"]) == 200  # disjoint: every kept item on both sides
+        sections = diff["data"]["sections"]
+        assert len(sections["languages"]["values"]) == 2 + every_language  # 2: unknown_files and its omitted count
+        assert all(s["values"] for s in sections.values())  # every section has its counters changed
 
 
 def test_every_response_stays_within_its_ceiling_on_a_generated_and_a_planted_worst_case(tmp_path):

@@ -185,9 +185,10 @@ class MapsReader:
     lock, so a read sees one whole registry, before or after a selection. Every file is read bounded and
     type-checked (``maps.store.read_bounded``), and only when its identity changed. Its caches hold inputs that are
     immutable or keyed by everything they depend on, never a response: the registry by its identity, summaries
-    (:data:`SUMMARIES` entries) and projected details (:data:`DETAIL_BYTES`, size-aware) by root and file identity,
-    and the architecture reference's freshness (:data:`ARCHITECTURE` entries) by evidence, observed commit and head.
-    The server builds one projection at a time, which is what serializes this reader."""
+    (:data:`SUMMARIES` entries, AVAILABLE only) and projected details (:data:`DETAIL_BYTES`, size-aware) by root and
+    file identity (``maps.store.file_identity``), and the architecture reference's freshness (:data:`ARCHITECTURE`
+    entries) by evidence, observed commit and head. The server builds one projection at a time, which is what
+    serializes this reader."""
 
     SUMMARIES = 256
     DETAIL_BYTES = 32 << 20

@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
-from aew.errors import IntegrityError, ValidationFailed
+from aew.errors import HistoryMoved, IntegrityError, ValidationFailed
 from aew.history import manifest as M
 from aew.history.index import INDEX_REL, HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
@@ -281,9 +281,10 @@ class Archive:
     @contextmanager
     def lockfree_reads(self, wait_s: float) -> Iterator[None]:
         """Archived reads, on this thread, that never take the control lock and never wait long on the derived
-        index: an index busy past ``wait_s`` is ``LockTimeout``, and a sync that meets a later commit is
-        ``IntegrityError`` instead of the re-read of state (``store.read()``) that a CLI reader does (register F20.8:
-        the dashboard's ``/maps``, which a reader polls). The caller reports either as "read again later"."""
+        index: an index busy past ``wait_s`` is ``LockTimeout`` on a sync and ``sqlite3.DatabaseError`` on a query of an
+        index already synced, and a sync that meets a later commit is ``HistoryMoved`` instead of the re-read of state
+        (``store.read()``) that a CLI reader does (register F20.8: the dashboard's ``/maps``, which a reader polls).
+        The caller reports these as "read again later"; any other ``IntegrityError`` is damage, reported as such."""
         previous = getattr(self._reader, "wait_s", None)
         self._reader.wait_s = wait_s
         try:
@@ -690,8 +691,10 @@ class Archive:
                 if lockfree is None:  # a lock-free reader's short-bound index is never kept for other readers
                     self._synced = (key, self._index_stat(), index)
                 return index
-            except IntegrityError:
-                if self.k.store.held or lockfree is not None or attempt == 2:  # a lock-free reader never re-reads
+            except IntegrityError as exc:
+                if lockfree is not None:  # a lock-free reader never re-reads state: the race is reported as such
+                    raise HistoryMoved(str(exc)) from exc
+                if self.k.store.held or attempt == 2:
                     raise
                 state = self.k.store.read()
         raise AssertionError("unreachable")

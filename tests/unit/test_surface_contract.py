@@ -251,13 +251,13 @@ def test_a_decision_never_carries_a_default():
     ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
     ("integration_publish", {}, RECOVERY, "TOOL_NOT_BUILT"),
     # M4-E E5b: only the follow_up choice takes, and needs, the Ticket that follows it up
-    ("resolve", {"expect_rev": 1, "subject": "AN-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "AN-0001", "choice": "accept_risk", "follow_up": "T-0002",
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "AN-0001", "choice": "follow_up", "follow_up": "not a ticket",
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
@@ -369,8 +369,8 @@ def test_every_staged_primitive_is_declared():
 
     effects = {"control_state", "credential", "workspace", "harness_process", "authoritative_ref"}
     for t in contract.TOOLS.values():
-        if not (t.built and t.kind == contract.STAGE and len(t.expands_to) > 1):
-            continue
+        if not (t.built and t.kind == contract.STAGE and len(t.expands_to) > 1) or t.name == "resolve":
+            continue  # `resolve` runs one of its primitives by choice: never a planned sequence
         assert t.name in stage.STAGES, f"{t.name} is built but has no planner"
         for p in t.expands_to:
             spec = spec_for(p)

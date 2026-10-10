@@ -193,11 +193,7 @@ def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
         return planner(a)
     found = SA.stage_cards(engine, name, a)
     if found["unresolved"]:
-        gates = ", ".join(u["gate"] for u in found["unresolved"])
-        raise errors.IllegalTransition(
-            f"{name} cannot choose a card for {gates}: several cards (or none) satisfy it. Staff the slot first (`aew "
-            "work staff`), a recorded choice, then call the stage again", reason=SA.CARD_CHOICE_REQUIRED,
-            unresolved=found["unresolved"])
+        raise SA.card_choice_refusal(name, found["unresolved"])
     return planner(a, found["cards"])
 
 

@@ -534,7 +534,7 @@
     "anomalies": {
       "description": "M4-E E5b (plan v3 §2.4, §2.7): the open anomalies, by id: recorded existing signals (WORKSPACE_MUTATED, OBSERVATION_MUTATED, a live contradiction). Only open ones are hot; the Lead's disposition moves one, with its disposition, to its cold record (`work/<T>/dispositions/<DP>.yaml`, or `records/dispositions/`) in the same commit. Bounded by what is open, and deduplicated by `key` while open.",
       "type": "object",
-      "propertyNames": {"pattern": "^AN-[0-9]{4,}$"},
+      "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
     "coordination_store": {
@@ -720,12 +720,12 @@
       "required": ["id", "source", "severity", "subject", "detail", "details", "key", "opened_at", "rev", "disposition"],
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string", "pattern": "^AN-[0-9]{4,}$"},
+        "id": {"type": "string", "pattern": "^ANM-[0-9]{4,}$"},
         "source": {"type": "string", "minLength": 1},
         "severity": {"enum": ["high", "low"]},
         "subject": {"type": ["string", "null"]},
         "detail": {"type": "string", "maxLength": 2000},
-        "details": {"type": "object"},
+        "details": {"type": "object", "additionalProperties": false, "properties": {"invocation": {"type": "string", "maxLength": 64}, "work_id": {"type": "string", "maxLength": 64}, "changed": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 300}}}},
         "key": {"type": "string", "minLength": 1},
         "opened_at": {"type": "string"},
         "rev": {"type": "integer", "minimum": 1},

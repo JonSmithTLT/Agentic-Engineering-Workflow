@@ -140,6 +140,13 @@ def _items(engine: Any, subject: str, **kw: Any) -> list[dict[str, Any]]:
         return []
 
 
+def _disposal_refusal(engine: Any, anomaly: str) -> dict[str, Any] | None:
+    try:
+        return engine.anomaly_disposal_refusal(anomaly)
+    except AEWError as exc:  # it could not be asked now: say so, never AVAILABLE
+        return {"code": exc.code, "message": exc.message, "details": dict(exc.details)}
+
+
 def _anomalies(state: dict[str, Any], subject: str) -> list[dict[str, Any]]:
     """The open anomalies that concern the subject (every one, for the project), committed facts (M4-E E5b)."""
     return [dict(a) for _, a in sorted((state.get("anomalies") or {}).items())
@@ -152,7 +159,6 @@ def _anomaly_decisions(part: dict[str, Any]) -> None:
     for a in part["anomalies"]:
         part["decisions"].append({"decision": "DISPOSE_ANOMALY", "tool": "resolve", "evidence": [a["id"]],
                                   "arguments": {"expect_rev": part["revision"], "subject": a["id"]},
-                                  "availability": AVAILABLE,
                                   "cli": ["work", "dispose", a["id"], "--choice",
                                           "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
                                           "--expect-rev", r]})
@@ -337,6 +343,11 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
         if "role" not in d:
             arguments = d.get("arguments")
             found = d.get("availability", UNKNOWN)
+            if d["decision"] == "DISPOSE_ANOMALY":  # the disposal's own query, read now: a live contradiction (m4)
+                refused = _disposal_refusal(engine, d["evidence"][0])
+                found = BLOCKED if refused else AVAILABLE
+                if refused:
+                    blockers.append(_blocker(refused["code"], refused["message"], refused["details"]))
             if arguments is not None and d["tool"] and SA.migrated(d["tool"]):  # PUBLISH: its stage's (M4-E E4b)
                 composed = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
                                                                      if k != "expect_rev"})

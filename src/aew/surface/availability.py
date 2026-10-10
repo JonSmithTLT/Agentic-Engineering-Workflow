@@ -29,7 +29,7 @@ from collections.abc import Callable
 from typing import Any
 
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN
-from aew.errors import AEWError
+from aew.errors import AEWError, CardChoiceRequired
 from aew.surface import contract
 
 RESOLVE_STAGE = "RESOLVE_STAGE"  # an unfinished stage holds the subject: `resolve` it first (the projection's decision)
@@ -103,6 +103,17 @@ APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], boo
 CARDS: dict[str, tuple[int, str]] = {"ticket_request_review": (2, "review"),
                                      "ticket_request_verification": (3, "verify")}
 CARD_CHOICE_REQUIRED = "CARD_CHOICE_REQUIRED"  # a required gate several cards (or none) satisfy: the Lead staffs it
+
+
+def card_choice_refusal(stage: str, unresolved: list[dict[str, Any]]) -> CardChoiceRequired:
+    """The refusal of a request stage that cannot choose a card: the planner raises it, availability answers it."""
+    several = [u["gate"] for u in unresolved if u["candidates"]]
+    none = [u["gate"] for u in unresolved if not u["candidates"]]
+    parts = ([f"several cards satisfy {', '.join(several)}: staff the slot first (`aew work staff`), a recorded "
+              "choice"] if several else []) + ([f"no card in the catalog satisfies {', '.join(none)}: add a role card "
+                                                "with that specialty"] if none else [])
+    return CardChoiceRequired(f"{stage} cannot choose a card: {'; '.join(parts)}; then call the stage again",
+                              unresolved=unresolved)
 
 
 def card_args(base: dict[str, Any], card: str | None) -> dict[str, Any]:
@@ -206,13 +217,10 @@ def _per_card(engine: Any, stage: str, arguments: dict[str, Any], current: dict[
         found = stage_cards(engine, stage, arguments, state=current)
     except AEWError as err:  # not a guard's answer (an integrity failure): the stage is UNKNOWN, never BLOCKED
         return {"availability": UNKNOWN, "reason_codes": [err.code], "blocking_conditions": [], "cards": []}
-    if found["unresolved"]:
-        gates = ", ".join(u["gate"] for u in found["unresolved"])
-        return {"availability": BLOCKED, "reason_codes": [CARD_CHOICE_REQUIRED], "cards": [],
-                "blocking_conditions": [{"code": CARD_CHOICE_REQUIRED,
-                                         "message": f"no single card satisfies {gates}: staff the slot first (`aew "
-                                                    "work staff`), a recorded choice",
-                                         "details": {"unresolved": found["unresolved"]}}]}
+    if found["unresolved"]:  # the planner's own refusal, as its blocker (one code on both paths: PR 182 review, n4)
+        err = card_choice_refusal(stage, found["unresolved"])
+        return {"availability": BLOCKED, "reason_codes": [err.code], "cards": [],
+                "blocking_conditions": [{"code": err.code, "message": err.message, "details": dict(err.details)}]}
     answers = [engine.guard_query(primitive, work_id, card_args(args, card), state=scratch) for card in found["cards"]]
     found_at = [a["availability"] for a in answers]
     overall = BLOCKED if BLOCKED in found_at else UNKNOWN if UNKNOWN in found_at else AVAILABLE

@@ -12,6 +12,9 @@ from typing import Any
 class AEWError(Exception):
     code = "AEW_ERROR"
     exit_code = 1
+    # What a refusal recorded of itself after it was refused (M4-E E5b: an anomaly, and the revision it moved to),
+    # reported beside the error, never in its code, message or details.
+    recorded: dict[str, Any] | None = None
 
     def __init__(self, message: str, **details: Any) -> None:
         super().__init__(message)
@@ -100,6 +103,13 @@ class DispositionRequired(GateUnsatisfied):
     has not disposed of (M4-E plan v3 §2.4): a gate input, shared by the primitive and the stage."""
 
     code = "DISPOSITION_REQUIRED"
+
+
+class CardChoiceRequired(IllegalTransition):
+    """A request stage cannot choose the card a required gate needs: several cards satisfy it (the Lead staffs the
+    slot), or none does (a card is missing from the catalog). M4-E E5b."""
+
+    code = "CARD_CHOICE_REQUIRED"
 
 
 class DependencyUnsatisfied(IllegalTransition):

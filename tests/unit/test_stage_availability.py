@@ -18,7 +18,7 @@ from guard_reads import GUARD_READS
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN, GuardQueries, NotQueryable
 from aew.engine.seams import MUTATING, NON_MUTATING, GuardTable
-from aew.errors import GateUnsatisfied, IllegalTransition, IntegrityError
+from aew.errors import GateUnsatisfied, IntegrityError
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.classify import auto_runnable, effective_class
@@ -412,16 +412,23 @@ def test_a_request_stage_asks_each_cards_decision_and_blocks_on_any():
 
 def test_a_requirement_no_single_card_satisfies_blocks_the_request_stage():
     """Choosing among several cards is the Lead's (`aew work staff`), never the stage's: the step is BLOCKED with
-    CARD_CHOICE_REQUIRED, and the planner refuses the call the same way (``stage.plan_for``)."""
+    CARD_CHOICE_REQUIRED, and the planner refuses the call with the same error (one code, message and details on both
+    paths: PR 182 review, n4). With no candidate at all, it says a card is missing rather than to staff one."""
+    from aew.errors import CardChoiceRequired
     from aew.surface import stage
 
-    engine = FakeEngine(_state("RUNNING"))
-    engine.unresolved = [{"gate": "review_security", "candidates": ["a", "b"]}]
-    out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
-    assert out["availability"] == BLOCKED and SA.CARD_CHOICE_REQUIRED in out["reason_codes"]
-    with pytest.raises(IllegalTransition) as exc:
-        stage.plan_for(engine, "ticket_request_review", {"work_id": "T-0001", "expect_rev": 1})
-    assert exc.value.details["reason"] == SA.CARD_CHOICE_REQUIRED
+    for unresolved, says in (([{"gate": "review_security", "candidates": ["a", "b"]}], "aew work staff"),
+                             ([{"gate": "review_security", "candidates": []}], "no card in the catalog")):
+        engine = FakeEngine(_state("RUNNING"))
+        engine.unresolved = unresolved
+        out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
+        assert out["availability"] == BLOCKED and out["reason_codes"] == [SA.CARD_CHOICE_REQUIRED]
+        with pytest.raises(CardChoiceRequired) as exc:
+            stage.plan_for(engine, "ticket_request_review", {"work_id": "T-0001", "expect_rev": 1})
+        [blocker] = out["blockers"]
+        assert (blocker["code"], blocker["message"], blocker["details"]) == (
+            exc.value.code, exc.value.message, exc.value.details)
+        assert says in exc.value.message
 
 
 @pytest.mark.parametrize("name", sorted(SA.CARDS))

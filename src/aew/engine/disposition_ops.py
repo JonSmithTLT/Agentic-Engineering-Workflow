@@ -3,8 +3,9 @@
 **`requires_disposition`** is a generic, legality-affecting gates policy property (the designer, 2026-10-01):
 ``gates.requires_disposition: {review_severities: [...], unrequired_verification_results: [...]}``, empty by default so
 that nothing changes until a project lists something. It marks a non-required review finding whose severity is listed,
-and a verification claim whose result is listed while that result is not already a gate failure. Required findings are
-unchanged: they are resolved by a later review, never disposed of.
+and a verification claim whose result is listed while that result is not already a gate failure (under the current
+outcome rules every listed result already is, so this half marks nothing until the designer defines decision D4).
+Required findings are unchanged: they are resolved by a later review, never disposed of.
 
 - **The guard.** ``review.ingest`` and ``verify.ingest`` refuse to advance a Ticket past a marked item the Lead has not
   disposed of (``DISPOSITION_REQUIRED``, a gate input in the ingest's own query: :func:`require_disposed`). The
@@ -23,10 +24,16 @@ beside its subject Ticket (or under ``records/dispositions/`` when it concerns t
 - ``WORKSPACE_MUTATED`` and ``OBSERVATION_MUTATED`` (high): every such refusal. A refusal inside a Lead transaction is
   recorded by a follow-up commit under the same Lead credential (:meth:`Dispositions.record_refusal`); one met by a
   worker (a reviewer's submission or check) is a signal file under ``.aew/local/anomalies/`` (a worker commits no
-  control state), recorded by the next Lead commit (:meth:`Dispositions.finalize`). A signal only reduces authority,
-  so a forged one is a nuisance the Lead disposes of, never a grant.
-- a live control-state contradiction (``contradictions()``, high), recorded by the next Lead commit. While it is still
-  live it cannot be disposed of: the Lead removes its cause first.
+  control state), recorded by the next Lead commit (:meth:`Dispositions.finalize`). The Lead takes from a signal file
+  only its source and the invocation that was refused, and only for an invocation in flight: the subject, the key and
+  the text are the engine's own, derived from that invocation (``_signalled_entry``), and a commit reads a bounded
+  number of bounded files. A signal only reduces authority, never grants any.
+- a control-state contradiction (``contradictions()``, high) that is live both when a Lead commit starts and as it
+  leaves the state (a contradiction the commit itself resolves, such as the policy drift an adoption accepts, is never
+  recorded), leaving out the engine's own retried housekeeping, which heals itself. While it is still live it cannot
+  be disposed of (``still_live``, which the projection's decision answers too): the Lead removes its cause first.
+
+Anomaly ids are ``ANM-n``: the archive's annotations already use ``AN-n``.
 
 E7 and E8 add their sources. A high anomaly adds no primitive guard and changes no refusal (n6): it stops the steering
 loop (E7), fails PIC's clause 7 (E6b), and makes its subject's projected actions ``auto_runnable: false``
@@ -71,8 +78,16 @@ CONTRADICTION = "CONTRADICTION"
 # The E5b sources and their severity (plan v3 §2.4); E7 and E8 add theirs.
 SOURCES = {"WORKSPACE_MUTATED": HIGH, "OBSERVATION_MUTATED": HIGH, CONTRADICTION: HIGH}
 SIGNALLED = (WorkspaceMutated, ObservationMutated)  # the refusals that are recorded as anomalies
-ANOMALY_ID = re.compile(r"^AN-[0-9]{4,}$")
+ANOMALY_PREFIX = "ANM"  # not "AN": the archive's annotations use it (PR 182 review, m5)
+ANOMALY_ID = re.compile(r"^ANM-[0-9]{4,}$")
 SPOOL_REL = "local/anomalies"  # worker-side signals, under .aew (never control state)
+MAX_SIGNAL_FILES = 16  # signal files one commit reads; the rest wait for the next (PR 182 review, m3)
+MAX_SIGNAL_BYTES = 4096  # a larger file is no signal the engine wrote: dropped unread
+MAX_CHANGED = 20  # changed paths kept on an anomaly, each cut to MAX_PATH characters
+MAX_PATH = 300
+# The engine's own words for a signalled refusal (the Lead's projection never shows a worker's text).
+SIGNAL_TEXT = {"WORKSPACE_MUTATED": "{inv} ({role}) changed the workspace it evaluates; its report was refused",
+               "OBSERVATION_MUTATED": "{inv} ({role}) changed its read-only observation; its report was refused"}
 RECORDS_DIR = "records/dispositions"
 UNIT_KEY = "dispositions"  # the hot index on a live Ticket
 MAX_TEXT = 2000
@@ -132,6 +147,20 @@ def unit_items(marked: tuple[frozenset[str], frozenset[str]], unit: dict[str, An
             if f.get("status") == "noted" and f["id"] not in waived and finding_marked(marked, f)]
 
 
+# The states in which an ingest could still be refused on a marked item (PR 182 review, n6): a finding before the
+# review that advances the Ticket past it (a later cycle back to RUNNING gates it again), a claim while its
+# verification is pending (Ticket scope) or its candidate is prepared (integration scope).
+FINDING_GATED = frozenset({"ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_FAILED"})
+CLAIM_GATED = frozenset({"VERIFY_PENDING", "COMMIT_READY"})
+
+
+def still_gated(unit: dict[str, Any] | None, item: dict[str, Any]) -> bool:
+    """Whether ``item`` can still hold an ingest of ``unit`` (a hot unit, in a state before the advance it gates)."""
+    if not unit:
+        return False
+    return unit.get("state") in (FINDING_GATED if item["kind"] == "finding" else CLAIM_GATED)
+
+
 def disposed(unit: dict[str, Any] | None) -> set[str]:
     return {p["subject"] for p in (unit or {}).get(UNIT_KEY) or []}
 
@@ -157,14 +186,18 @@ def require_disposed(items: list[dict[str, Any]], unit: dict[str, Any], work_id:
 
 def signal(aew_root: Path, exc: AEWError, work_id: str | None) -> None:
     """Record a refusal met outside a Lead transaction as a signal file the next Lead commit records (a worker commits
-    no control state). Best effort: it never changes the refusal."""
+    no control state): its source and the refused invocation, nothing else the Lead would take on trust. Best effort:
+    it never changes the refusal."""
     try:
-        entry = _from_refusal(exc, work_id)
+        invocation = str(exc.details.get("invocation") or "")
+        if not invocation:
+            return
         spool = aew_root / SPOOL_REL
         spool.mkdir(parents=True, exist_ok=True)
-        path = spool / f"{entry['key']}.json"
+        name = sha256_bytes(f"{exc.code}:{invocation}".encode())[:32]
+        path = spool / f"{name}.json"
         if not path.exists():
-            path.write_text(json.dumps(entry, sort_keys=True), encoding="utf-8")
+            path.write_text(json.dumps({"source": exc.code, "invocation": invocation}), encoding="utf-8")
     except (OSError, ValueError, TypeError):
         pass
 
@@ -179,11 +212,30 @@ def signalled(aew_root: Path, work_id: str | None) -> Iterator[None]:
         raise
 
 
+def _bounded_details(details: dict[str, Any]) -> dict[str, Any]:
+    """The details an anomaly keeps: the refused invocation or unit, and a bounded list of changed paths."""
+    out: dict[str, Any] = {}
+    for k in ("invocation", "work_id"):
+        if isinstance(details.get(k), str):
+            out[k] = details[k][:64]
+    changed = details.get("changed")
+    if isinstance(changed, list):
+        out["changed"] = [str(c)[:MAX_PATH] for c in changed[:MAX_CHANGED]]
+    return out
+
+
+def anomaly_key(source: str, subject: str | None, details: dict[str, Any]) -> str:
+    """The key an open anomaly is deduplicated by, derived by the engine from what it records: its source, its subject
+    and the invocation or unit refused (never a key a signal file states: PR 182 review, m2)."""
+    return sha256_bytes(json.dumps([source, subject, details.get("invocation"), details.get("work_id")],
+                                   sort_keys=True).encode("utf-8"))[:32]
+
+
 def _from_refusal(exc: AEWError, work_id: str | None) -> dict[str, Any]:
-    details = {k: v for k, v in exc.details.items() if k in ("invocation", "work_id", "changed", "stale")}
+    details = _bounded_details(exc.details)
     detail = f"{exc.code}: {exc.message}"[:MAX_TEXT]
-    key = sha256_bytes(json.dumps([exc.code, work_id, details], sort_keys=True, default=str).encode("utf-8"))[:32]
-    return {"source": exc.code, "subject": work_id, "detail": detail, "details": details, "key": key}
+    return {"source": exc.code, "subject": work_id, "detail": detail, "details": details,
+            "key": anomaly_key(exc.code, work_id, details)}
 
 
 # ---------------------------------------------------------------------------------------------- the collaborator
@@ -209,7 +261,7 @@ class Dispositions:
         if any(a["key"] == key for a in open_.values()):
             return None
         state["counters"]["anomaly"] = state["counters"].get("anomaly", 0) + 1
-        an = format_id("AN", state["counters"]["anomaly"])
+        an = format_id(ANOMALY_PREFIX, state["counters"]["anomaly"])
         state.setdefault("anomalies", {})[an] = {
             "id": an, "source": source, "severity": SOURCES.get(source, HIGH), "subject": subject,
             "detail": detail[:MAX_TEXT], "details": details or {}, "key": key, "opened_at": utc_now(), "rev": rev,
@@ -224,8 +276,10 @@ class Dispositions:
     def record_refusal(self, token: str, exc: AEWError) -> None:
         """A Lead transaction was refused with a recorded signal (``SIGNALLED``): record it as an anomaly in a commit
         of its own, under the same credential and without an expected revision (it records what was refused, like a
-        run request), then let the refusal propagate unchanged. A credential that no longer holds the seat records
-        nothing; nothing here ever masks the refusal."""
+        run request), then let the refusal propagate unchanged (its code, message and details are the guard's, as the
+        query answered them). The refusal carries what was recorded beside them (``recorded``: the anomaly and the
+        revision it moved to), which the CLI reports so its caller re-reads first (PR 182 review, n5). A credential that
+        no longer holds the seat records nothing; nothing here ever masks the refusal."""
         if not isinstance(exc, SIGNALLED):
             return
         try:
@@ -236,40 +290,76 @@ class Dispositions:
                 an = self.open(state, source=entry["source"], subject=entry["subject"], detail=entry["detail"],
                                key=entry["key"], details=entry["details"], rev=s.revision + 1)
                 if an is not None:
-                    s.commit(Transition(op="anomaly.record", actor=actor,
-                                        summary=f"anomaly {an} ({entry['source']}) recorded from a refused call",
-                                        refs=[an]))
+                    rev = s.commit(Transition(op="anomaly.record", actor=actor,
+                                              summary=f"anomaly {an} ({entry['source']}) recorded from a refused call",
+                                              refs=[an]))
+                    exc.recorded = {"anomaly": an, "revision": rev,
+                                    "message": f"the refusal was recorded as anomaly {an}: the control revision is "
+                                               f"now {rev}; read it again before your next call"}
         except (AEWError, OSError):
             pass
 
     def finalize(self, ctx: TxnContext) -> None:
-        """Every Lead commit records what is signalled and not recorded yet: worker-side signal files, and the
-        contradictions live in the committed state it starts from (read before this transaction's own writes land, so
-        a record it rewrites is never mistaken for one modified outside AEW). The signal files go after the commit."""
+        """Every Lead commit records what is signalled and not recorded yet: at most ``MAX_SIGNAL_FILES`` worker-side
+        signal files (each validated, ``_signalled_entry``; the rest wait for the next commit), and the contradictions
+        live both in the committed state it starts from and in the state it leaves (``live_contradictions``). The
+        signal files it read go after the commit."""
         state = ctx.state
         if state.get("schema") != V2:
             return
         rev = ctx.session.revision + 1
         spool = self.k.aew_root / SPOOL_REL
         folded: list[Path] = []
-        for path in sorted(spool.glob("*.json")) if spool.is_dir() else []:
-            try:
-                entry = json.loads(path.read_text(encoding="utf-8"))
-                source, key = str(entry["source"]), str(entry["key"])
-            except (OSError, ValueError, KeyError, TypeError):
-                folded.append(path)  # unreadable: dropped, never recorded as something it does not say
-                continue
-            if source in SOURCES and source != CONTRADICTION:
-                details = entry.get("details") if isinstance(entry.get("details"), dict) else {}
-                self.open(state, source=source, subject=self._subject_of(state, details, entry.get("subject")),
-                          detail=str(entry.get("detail") or source), key=key, details=details, rev=rev)
+        for path in sorted(spool.glob("*.json"))[:MAX_SIGNAL_FILES] if spool.is_dir() else []:
             folded.append(path)
-        for text in self.views.contradictions(ctx.session.committed_view()):
-            subject = _contradiction_subject(state, text)
-            self.open(state, source=CONTRADICTION, subject=subject, detail=text,
-                      key=sha256_bytes(text.encode("utf-8"))[:32], rev=rev)
+            entry = self._signalled_entry(state, path)
+            if entry is not None:
+                self.open(state, **entry, rev=rev)
+        for text in self.live_contradictions(ctx.session.committed_view(), state):
+            self.open(state, source=CONTRADICTION, subject=_contradiction_subject(state, text), detail=text,
+                      key=anomaly_key(CONTRADICTION, None, {"work_id": text}), rev=rev)
         if folded:
             ctx.after_commit.append(lambda: _unlink(folded))
+
+    def _signalled_entry(self, state: dict[str, Any], path: Path) -> dict[str, Any] | None:
+        """What the Lead records of one signal file, or None: the file is small and well formed, names a signalled
+        source and an invocation in flight; the subject, key and text are derived from that invocation by the engine,
+        never taken from the file."""
+        try:
+            if path.stat().st_size > MAX_SIGNAL_BYTES:
+                return None
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            source, invocation = entry["source"], entry["invocation"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        inv = state["invocations"].get(invocation) if isinstance(invocation, str) else None
+        if source not in SIGNAL_TEXT or inv is None or inv.get("work_unit") not in state["work"]:
+            return None
+        subject = inv["work_unit"]
+        details = {"invocation": invocation}
+        return {"source": source, "subject": subject, "details": details,
+                "detail": f"{source}: " + SIGNAL_TEXT[source].format(inv=invocation, role=inv.get("role")),
+                "key": anomaly_key(source, subject, details)}
+
+    def live_contradictions(self, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+        """The contradictions to record: live in the committed state a transaction starts from and still live in the
+        state it leaves (one it resolves, such as the drift an adoption accepts, is not: PR 182 review, M1), without the
+        engine's own retried housekeeping (m1). Read from ``before`` first, so a record the transaction rewrites, whose
+        new bytes are not on disk yet, is never taken for one modified outside AEW."""
+        first = self.views.contradictions(before, housekeeping=False)
+        if not first:
+            return []
+        still = set(self.views.contradictions(after, housekeeping=False))
+        return [text for text in first if text in still]
+
+    def disposal_refusal(self, state: dict[str, Any], an: str) -> IllegalTransition | None:
+        """Why open anomaly ``an`` cannot be disposed of now, or None: one query for the projection's decision and the
+        disposal's own refusal (PR 182 review, m4). A contradiction cannot be while it is still live."""
+        anomaly = (state.get("anomalies") or {}).get(an) or {}
+        if anomaly.get("source") == CONTRADICTION and anomaly.get("detail") in self.views.contradictions(state):
+            return IllegalTransition(f"{an} is a contradiction that is still live ({anomaly['detail']}): remove its "
+                                     "cause first, then dispose of it", reason="still_live", anomaly=an)
+        return None
 
     # ------------------------------------------------------------------ the Lead's disposition
 
@@ -318,9 +408,9 @@ class Dispositions:
         anomaly = (state.get("anomalies") or {}).get(an)
         if anomaly is None:
             raise NotFound(f"no open anomaly {an}: the projection's anomalies list the open ones", anomaly=an)
-        if anomaly["source"] == CONTRADICTION and anomaly["detail"] in self.views.contradictions(state):
-            raise IllegalTransition(f"{an} is a contradiction that is still live ({anomaly['detail']}): remove its "
-                                    "cause first, then dispose of it", reason="still_live", anomaly=an)
+        refused = self.disposal_refusal(state, an)
+        if refused is not None:
+            raise refused
         return dict(anomaly)
 
     def _item(self, state: dict[str, Any], subject: str) -> tuple[str, str, str]:
@@ -328,7 +418,7 @@ class Dispositions:
         evidence, sep, local = subject.partition("#")
         if not sep or not local:
             raise UsageError(f"{subject!r} names no finding, claim or anomaly: a finding is <evidence>#<finding>, a "
-                             "claim <evidence>#claim-<n>, an anomaly AN-<n>")
+                             "claim <evidence>#claim-<n>, an anomaly ANM-<n>")
         owners = [i for i in state["invocations"] if evidence.startswith(f"{i}-")]
         if not owners:
             raise NotFound(f"no report {evidence} of work in flight", evidence=evidence)
@@ -353,11 +443,20 @@ class Dispositions:
         return found["kind"], wid, evidence
 
     def _follow_up(self, state: dict[str, Any], follow_up: str, wid: str | None) -> None:
+        """A follow-up is another Ticket that is still to be done: in flight, and not finished or cancelled (PR 182
+        review, n3)."""
+        from aew.engine import transitions
+
         if follow_up == wid:
             raise IllegalTransition(f"{follow_up} is the subject's own Ticket: a follow-up is another Ticket",
                                     reason="follow_up_is_subject")
-        if follow_up not in state["work"] and self.archive.bundle(state, follow_up) is None:
-            raise NotFound(f"no work unit {follow_up} to follow it up", work_id=follow_up)
+        unit = state["work"].get(follow_up)
+        if unit is None:
+            raise NotFound(f"no Ticket {follow_up} in flight to follow it up (a finished one cannot)",
+                           work_id=follow_up)
+        if unit["kind"] != "ticket" or unit["state"] in transitions.TERMINAL:
+            raise IllegalTransition(f"{follow_up} is a {unit['kind']} in state {unit['state']}: a follow-up is a "
+                                    "Ticket still to be done", reason="follow_up_not_open", work_id=follow_up)
 
     def _write(self, ctx: TxnContext, record: dict[str, Any], wid: str | None) -> None:
         """The record, immutable, beside its live Ticket with a pointer on it; beside an archived one with an
@@ -369,12 +468,16 @@ class Dispositions:
         text = yaml.safe_dump(record, sort_keys=False, allow_unicode=True)
         ctx.session.write(rel, text, immutable=True)
         sha = sha256_bytes(text.encode("utf-8"))
+        subject = record["subject"]["id"]
         if unit is not None:
-            unit.setdefault(UNIT_KEY, []).append({"id": record["id"], "subject": record["subject"]["id"],
+            unit.setdefault(UNIT_KEY, []).append({"id": record["id"], "subject": subject,
                                                   "kind": record["subject"]["kind"], "choice": record["choice"],
                                                   "path": rel, "sha256": sha, "rev": record["rev"]})
-        elif archived:
-            self.archive.annotate(ctx, wid, "disposition", record["id"], note=f"{rel} sha256:{sha}")
+        elif archived:  # linked by its id and, for an anomaly, by the anomaly's (m5)
+            for obj in dict.fromkeys((record["id"], subject if record["anomaly"] else record["id"])):
+                self.archive.annotate(ctx, wid, "disposition", obj, note=f"{rel} sha256:{sha}")
+        elif record["anomaly"] is not None:  # the project's: the same record under the anomaly's own id too (m5)
+            ctx.session.write(cold_rel(subject, None), text, immutable=True)
         ctx.refs.append(rel)
 
     # ------------------------------------------------------------------ reads

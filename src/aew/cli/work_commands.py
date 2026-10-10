@@ -270,7 +270,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     q = wsub.add_parser("dispose", help="dispose of a finding or claim policy marks requires_disposition, or of an "
                                         "anomaly (Lead; the typed `resolve` tool's CLI form)")
-    q.add_argument("subject", help="a finding <evidence>#<finding>, a claim <evidence>#claim-<n>, or an anomaly AN-<n>")
+    q.add_argument("subject",
+                   help="a finding <evidence>#<finding>, a claim <evidence>#claim-<n>, or an anomaly ANM-<n>")
     q.add_argument("--choice", required=True, choices=["accept_risk", "follow_up", "not_applicable"])
     q.add_argument("--follow-up", dest="follow_up", help="with --choice follow_up: the Ticket that follows it up")
     q.add_argument("--rationale", required=True, help="why (recorded with the disposition)")

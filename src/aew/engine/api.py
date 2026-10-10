@@ -1014,6 +1014,13 @@ class Engine:
         """A disposition record, by its id or its subject (TIS-35: found without scanning)."""
         return self._dispositions.read(self._k.store.read(), ref)
 
+    def anomaly_disposal_refusal(self, anomaly: str) -> dict[str, Any] | None:
+        """Why the open anomaly cannot be disposed of now (its refusal's code, message and details), or None: the
+        query the disposal's own refusal uses (PR 182 review, m4)."""
+        refused = self._dispositions.disposal_refusal(self._k.store.read(), anomaly)
+        return None if refused is None else {"code": refused.code, "message": refused.message,
+                                             "details": dict(refused.details)}
+
     def anomalies_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open anomalies (hot), by id."""
         state = self._k.store.read() if state is None else state
@@ -1035,7 +1042,8 @@ class Engine:
             ev = self._gates.find_evidence(work_id, eid)
             items += DO.report_items(marked, ev, advances=DO.report_advances(ev))
         seen: set[str] = set()
-        return [i for i in DO.undisposed(items, unit) if not (i["id"] in seen or seen.add(i["id"]))]
+        return [i for i in DO.undisposed(items, unit) if DO.still_gated(unit, i)
+                and not (i["id"] in seen or seen.add(i["id"]))]
 
     def stage_intents_view(self) -> list[dict[str, Any]]:
         return self._stages.view(self._k.store.read())

@@ -152,16 +152,14 @@ def _disposition_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tup
 
 
 def _high_anomaly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Project, str | None, list[Any]]:
-    """A READY Ticket with an open high anomaly about it (a recorded WORKSPACE_MUTATED signal)."""
-    from aew.engine import disposition_ops as DO
-    from aew.errors import WorkspaceMutated
+    """A READY Ticket with an open high anomaly about it (recorded as a signalled WORKSPACE_MUTATED is)."""
+    from test_stages_request import seed_anomaly
 
     p = sample_project(tmp_path)
     lab = launching(p, tmp_path, monkeypatch)
     lab.script("default", [{"do": "hang"}])
     wid = create_planned_ticket(p, tmp_path)
-    DO.signal(p.root / ".aew", WorkspaceMutated("seeded", work_id=wid), wid)
-    p.lead("checkpoint", "--next", "records the signal")
+    seed_anomaly(p, wid)
     return p, wid, [lab.cleanup]
 
 

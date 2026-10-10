@@ -11,7 +11,7 @@
     "schema": {"const": "aew/disposition/v1"},
     "id": {"type": "string", "pattern": "^DP-[0-9]{4,}$"},
     "subject": {
-      "description": "What is disposed of: a finding `<evidence>#<finding>`, a claim `<evidence>#claim-<n>` (with the report), or an anomaly `AN-<n>`.",
+      "description": "What is disposed of: a finding `<evidence>#<finding>`, a claim `<evidence>#claim-<n>` (with the report), or an anomaly `ANM-<n>`.",
       "type": "object", "required": ["id", "kind", "evidence"], "additionalProperties": false,
       "properties": {
         "id": {"type": "string", "minLength": 1},
@@ -36,12 +36,12 @@
           "required": ["id", "source", "severity", "subject", "detail", "details", "key", "opened_at", "rev", "disposition"],
           "additionalProperties": false,
           "properties": {
-            "id": {"type": "string", "pattern": "^AN-[0-9]{4,}$"},
+            "id": {"type": "string", "pattern": "^ANM-[0-9]{4,}$"},
             "source": {"type": "string", "minLength": 1},
             "severity": {"enum": ["high", "low"]},
             "subject": {"type": ["string", "null"]},
             "detail": {"type": "string"},
-            "details": {"type": "object"},
+            "details": {"type": "object", "additionalProperties": false, "properties": {"invocation": {"type": "string", "maxLength": 64}, "work_id": {"type": "string", "maxLength": 64}, "changed": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 300}}}},
             "key": {"type": "string"},
             "opened_at": {"type": "string"},
             "rev": {"type": "integer", "minimum": 1},

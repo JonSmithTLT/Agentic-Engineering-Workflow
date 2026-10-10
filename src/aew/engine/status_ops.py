@@ -17,9 +17,13 @@ class StatusViews:
     def __init__(self, k: Kernel) -> None:
         self.k = k
 
-    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]:
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
+                       housekeeping: bool = True) -> list[str]:
         """Detected inconsistencies the Lead must resolve rather than silently pick a side (KC §15.1). A lock-free
-        reader passes the manifest it read with ``state``, so the check never takes the control lock."""
+        reader passes the manifest it read with ``state``, so the check never takes the control lock. Without
+        ``housekeeping``, the lines that report the engine's own retried cleanup (a retired observation's worktree
+        still on disk, pruned by a later operation) are left out: they heal themselves, so they are never recorded as
+        anomalies (M4-E E5b; PR 182 review, m1)."""
         found = []
         if not self.k.manifest_pin_ok(state):
             found.append("project.yaml does not match its pinned hash (modified outside AEW)")
@@ -46,7 +50,7 @@ class StatusViews:
                 found.append(f"{r['work_id']}: workspace {r['id']} was retained after integration because it holds "
                              f"changes that are not in the integrated commit ({r['path']}); inspect them, then carry "
                              "them into a new Ticket or discard them")
-        for o in state.get("retired_observations", []):  # of archived invocations: listed until removed
+        for o in state.get("retired_observations", []) if housekeeping else []:  # archived invocations': until removed
             if Path(o["path"]).exists():
                 found.append(f"{o['invocation']}: retired observation worktree still on disk at {o['path']} (its "
                              "removal is retried at every Lead commit)")
@@ -54,7 +58,7 @@ class StatusViews:
             if inv["status"] == "active" and state["lead"]["status"] == "vacant":
                 found.append(f"{inv_id}: active invocation but no Lead holds authority")
             obs = inv.get("observation") or {}
-            if obs and obs.get("status") != "active" and Path(obs["path"]).exists():
+            if housekeeping and obs and obs.get("status") != "active" and Path(obs["path"]).exists():
                 found.append(f"{inv_id}: retired observation worktree still on disk at {obs['path']} (it is pruned by "
                              "the next non-mutating operation)")
         from aew.engine import hierarchy as H

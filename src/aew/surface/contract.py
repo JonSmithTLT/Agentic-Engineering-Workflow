@@ -220,7 +220,10 @@ TOOLS: dict[str, Tool] = _catalog(
                "follow_up": WORK_ID_PATTERN,
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
               ("expect_rev", "subject", "choice", "rationale")),
-         expands_to=("stage.resolve",), required_judgments=("stage_resolution",), mutates=True, progression=True),
+         # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
+         # review, n2), each with its own judgment. Neither field is advertised.
+         expands_to=("stage.resolve", "work.dispose"), required_judgments=("stage_resolution", "disposition"),
+         mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",

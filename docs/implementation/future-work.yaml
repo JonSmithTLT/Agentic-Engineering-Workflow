@@ -449,10 +449,14 @@ sections:
       BLOCKED with `RESOLVE_STAGE` (never auto-runnable), and `work.transition` declares the workspace and harness process
       a cancellation ends (PR 177 review). The normal advertised surface is 7,996 bytes, 11 tools; with every M4-E tool
       built it stays at 11,805 of 11,900. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
-      ledger MIC):** D4 revises the M4-E plan v3 §2.4's `gates.requires_disposition.unrequired_verification_results`, keeping
-      it only for unrequired claims whose verification result is `inconclusive` or `not_run`, and it never makes a gate
-      fail; such a result needs the Lead's disposition (MIC-07, MIC-08). E5b (pull request 182) is implementing it; not
-      yet built
+      ledger MIC):** D4 decided. It revises [M4-E plan v3](m4-e-plan-v3.md) §2.4's `gates.requires_disposition.unrequired_verification_results`
+      (this row carries the revision; the plan's text is not edited), keeping it only for unrequired claims whose verification
+      result is `inconclusive` or `not_run`, which become non-gating, failing neither the report's outcome nor a gate and
+      needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It needs the claim-model definition
+      first, which neither the code nor the documents have (a way to mark a claim unrequired and what makes it so, a `not_run`
+      result, outcome and gate rules that do not fail on such a claim, the key's enum changed to `inconclusive` and `not_run`;
+      MIC-16), owed through this row's design item in [decisions due](decisions-due.md), filed with E5b (pull request 182).
+      Until then the verification half marks nothing yet
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
@@ -534,8 +538,10 @@ sections:
       gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7),
       the publication grants (E6b), delivery and the loop (E7). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
       ledger MIC):** D2, M4-H''s per-run ceremony through the constrained evaluator relay is an acceptable human-intent
-      channel for this row''s endpoint challenge under `guarantee: dev` (MIC-02; F19). D5, E7''s notifier stays the operator''s;
-      the Lead''s wake for worker replies is F9''s lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
+      channel for this row''s endpoint challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention
+      disposition table, drafted from E7''s event vocabulary, is exhaustive and sealed before calibration; a confirmation
+      is never pre-granted (MIC-04 to MIC-06; F19). D5, E7''s notifier stays the operator''s; the Lead''s wake for worker
+      replies is F9''s lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
 
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
@@ -959,13 +965,13 @@ sections:
       D1, F25''s G1 is approved, so M4-H''s counted cost is F25''s settled figure under its boundary, which F19 hashes into
       the run record (MIC-01). D2 (F19''s G1), each counted AEW-arm run gets its own operator ceremony (the mode raise and
       the publication grant) through the constrained evaluator relay, an acceptable human-intent channel under M4-E''s `guarantee:
-      dev`; no campaign-scoped grant (MIC-02). The relay''s conditions are binding: it shows the bound action verbatim,
-      strips terminal control sequences, and cannot answer a challenge itself, which a static test proves (MIC-03). D3 (F19''s
-      G2), the request and attention disposition table is exhaustive and sealed before calibration: every AEW request or
-      attention kind, drafted by the lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied
-      or an operator-only halt; a confirmation is never pre-granted; a high anomaly that needs a disposition is an operator-only
-      halt; the fixed texts go to the Lead''s session as a user message; the designer confirms the table before the seal
-      (MIC-04 to MIC-06)'
+      dev`, for v1; a campaign-scoped grant (new authority) is revisited only if the ceremony proves impractical in calibration
+      (MIC-02). The relay''s conditions are binding: it shows the bound action verbatim, strips terminal control sequences,
+      and cannot answer a challenge itself, which a static test proves (MIC-03). D3 (F19''s G2), the request and attention
+      disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the
+      lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation
+      is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the
+      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

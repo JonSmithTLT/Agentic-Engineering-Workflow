@@ -8,8 +8,9 @@ M4-E's plan. D6 to D8 answer the runtime probe of Claude Code 2.1.296 (register 
 adapter. §1 is the decisions as given; §2 gives the context of each; §3 says where they are filed.
 
 The plans the brief drew on (F25's M4-H telemetry plan v4, F19's M4-H instrument plan v5 and the sequencing amendment
-of the M4-E plan) are not in the repository; this record names them by register row and slice. None of the decisions
-blocks work being built now; most are needed before M4-H's pre-calibration seal.
+of the M4-E plan) are not in the repository; this record names them by register row and slice. The
+[M4-E plan v3](../implementation/m4-e-plan-v3.md) is, and D4 revises its §2.4. None of the decisions blocks work being
+built now; most are needed before M4-H's pre-calibration seal.
 
 ## 1. The decisions, recorded as given
 
@@ -63,10 +64,11 @@ strips terminal control sequences, and cannot answer a challenge itself (a stati
 
 The questions were whether a challenge relayed over the evaluator's forced-command channel is an acceptable
 human-intent channel under M4-E's `guarantee: dev`, or whether a campaign-scoped grant is wanted instead (new
-authority, which the plan does not invent). The brief recommended the per-run ceremony, with the relay's three
+authority, which the plan does not invent). The brief recommended the per-run ceremony for v1, with the relay's three
 properties as its conditions: the operator's time becomes the campaign's pace (an estimated 8 to 10 calendar days),
-and no new authority is created. D2 approves the per-run ceremony through that constrained relay; the three properties
-are binding conditions on it.
+and no new authority is created. D2 approves the per-run ceremony through that constrained relay for v1; the three
+properties are binding conditions on it, and a campaign-scoped grant (new authority) is revisited only if the ceremony
+proves impractical in calibration.
 
 ### D3. How the AEW arm's mid-run requests are answered (F19's G2)
 
@@ -81,15 +83,24 @@ builder. D3 approves: the table is exhaustive and sealed before calibration.
 
 ### D4. The verification half of `requires_disposition` (M4-E, E5b)
 
-The M4-E plan v3 §2.4 adds the policy key `gates.requires_disposition` with two halves, `review_severities` and
-`unrequired_verification_results`. Under today's outcome rules any claim that did not pass already fails the gate, so
-the verification half, as written, can never mark anything; E5b builds it as written, and E5b's reviewer agreed. The
+The [M4-E plan v3](../implementation/m4-e-plan-v3.md) §2.4 adds the policy key `gates.requires_disposition` with two
+halves, `review_severities` and `unrequired_verification_results`. Under today's outcome rules any claim that did not
+pass already fails the gate, so the verification half, as written, can never mark anything; E5b builds it as written,
+and E5b's reviewer agreed. The
 question was whether to drop the verification half, or to define which verification results should need a Lead
 disposition without failing the gate. The brief recommended defining it narrowly, as unrequired claims that end
 `inconclusive` or `not_run`, and otherwise dropping it.
 
-D4 revises the plan: the verification half is kept only for unrequired claims whose verification result is
-`inconclusive` or `not_run`, and it never makes a gate fail; such a result needs the Lead's disposition, nothing more.
+D4 revises the plan's §2.4: the verification half is kept only for unrequired claims whose verification result is
+`inconclusive` or `not_run`, and those results are non-gating: they fail neither the report's outcome nor a gate, and
+need the Lead's disposition instead. Required claims are unchanged.
+
+Today none of this can mark anything either. A claim's result is `pass`, `fail`, `inconclusive` or `blocked`, a claim
+has no required or unrequired marking, and any claim that did not pass makes its report fail the gate. So D4 needs a
+definition first: (a) a way to mark a claim unrequired, and what makes it so (a card's claim list, policy or the
+verifier); (b) a `not_run` result; (c) report-outcome and gate rules that do not fail on such a claim, for unrequired
+claims only; (d) the key's enum changed to `inconclusive` and `not_run`. Until then the verification half marks
+nothing. That design is owed to F15.2 through a decisions-due item (MIC-16).
 
 ### D5. The "broker's notifier" the Lead was to learn replies from (F9)
 
@@ -106,8 +117,8 @@ C1's pre-request gate, the context budget, uses Claude Code's PostToolBatch hook
 do not run under `--bare`. A non-bare run brings much more with it: a walk of `CLAUDE.md` and `AGENTS.md` up every
 ancestor of the working directory (ignoring HOME); a cross-session channel reachable from the agent's shell; about
 60 KB of reminders and 18 tools, against about 4.5 KB and 3 tools bare; and shell commands backgrounded at their
-timeout rather than killed. The brief judged that each of those breaks an assumption of AEW's containment or of D-22 (the run's deadline
-and its bound on a shell command).
+timeout rather than killed. The brief judged that the ancestor walk, the cross-session channel and the backgrounding
+each break an assumption of AEW's containment or of D-22 (the run's deadline and its bound on a shell command).
 C1's variant G gives the same gate under `--bare`, as a pre-egress check in AEW's provider relay (F28), and the probe
 showed a loopback provider endpoint works. D6 approves bare runs with variant G, as the brief recommended.
 
@@ -129,17 +140,21 @@ explicitly qualified.
 
 ## 3. Filing (lead developer)
 
-- **Ledger:** MIC-01 to MIC-15.
+- **Ledger:** MIC-01 to MIC-16.
 - **D1** is filed on F25 and F19. G1 is approved; F25's slice L7 records its content (ledger CMB, amending EVC-14's
   cost-block source for M4-H only), so no decisions-due item is needed for it. F25's existing item, the Lead part
   (v0.2 §5.7), is a different question and stays open.
-- **D2 and D3** are filed on F19 (its G1 and G2), and D2 also on F15.5 (the operator endpoint and its challenge). The
-  relay's three properties are binding, and the request and attention disposition table is sealed before calibration.
-- **D4** is filed on F15.2. It narrows the M4-E plan v3 §2.4's `unrequired_verification_results`, which no ledger row
-  carries; E5b (pull request 182) is implementing it.
+- **D2 and D3** are filed on F19 (its G1 and G2), and also on F15.5 (D2 for the operator endpoint and its challenge, D3
+  because the table is drafted from E7's vocabulary). The relay's three properties are binding, D2 holds for v1, and
+  the request and attention disposition table is sealed before calibration.
+- **D4** is filed on F15.2. It revises the [M4-E plan v3](../implementation/m4-e-plan-v3.md) §2.4's
+  `unrequired_verification_results`, which no ledger row carries; the plan's text is not edited, and the revision is
+  recorded here, in the ledger (MIC-07, MIC-08) and on F15.2. What it needs before it can mark anything (MIC-16) is a
+  design owed through a decisions-due item on F15.2 (needs: design), filed with E5b (pull request 182), which builds
+  the verification half as plan v3 has it, marking nothing.
 - **D5** is filed on F9 and F15.5. LWA-17's "the broker's notifier" is marked `superseded-by:` MIC-09; its attention
   and resume projections stand. The lane lands in a later F9 slice.
 - **D6 to D8** are filed on F24.2, and D7 also on F40 and as a note on MCD-02, which it confirms for a harness whose
   shell can write.
 - **No decisions-due item** is answered by these decisions: none was filed for F19's G1 and G2, D4 or D5, and F25's
-  item is the Lead part.
+  item is the Lead part. D4 opens one, its definition (MIC-16), filed with E5b rather than here.

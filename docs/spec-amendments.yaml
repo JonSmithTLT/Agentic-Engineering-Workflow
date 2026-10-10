@@ -242,7 +242,7 @@ considered:
   - path: docs/design/decisions-2026-10-10-m4h-instrument-and-claude-code.md
     reason: >-
       decision record (F25, F19, F15.2, F9, F24.2, 2026-10-10, evening); the designer's D1 to D8: M4-H's counted-cost
-      boundary, the per-run ceremony relay and the sealed disposition table, the narrowed verification half of
+      boundary, the per-run ceremony relay and the sealed disposition table, the revised verification half of
       requires_disposition, F9's wait --any lane for the Lead, and the Claude Code adapter's bare runs, writable shell
       and fail-closed project settings; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md

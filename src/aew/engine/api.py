@@ -621,7 +621,7 @@ class Engine:
     def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
         stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
-        return None
+        return self._integration.candidate_overlay(state, work_id)
 
     def guard_queries(self) -> list[str]:
         """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""

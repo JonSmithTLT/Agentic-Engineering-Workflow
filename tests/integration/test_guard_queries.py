@@ -595,6 +595,18 @@ def test_guard_query_matches_execute_integrate_prepare(tmp_path):
                       _prepare(engine, p, "T-0099"))["reason_codes"] == ["NOT_FOUND"]
     assert equivalent(engine, "integrate.prepare", second, {},
                       _prepare(engine, p, second))["reason_codes"] == ["QUEUE_ORDER"]
+    # The candidate a later step takes as produced: on a deep copy, the lease granted and the candidate bound to the
+    # acceptance, nothing merged; the state given is unchanged (M4-E E4b).
+    import copy
+
+    state = engine.store.read()
+    given = copy.deepcopy(state)
+    overlaid = engine.candidate_overlay(state, first)
+    assert state == given and overlaid is not None
+    assert overlaid["queue"]["lease"]["entry"] == next(q for q, e in overlaid["queue"]["entries"].items()
+                                                       if e["work"] == first)
+    assert overlaid["work"][first]["integration"]["status"] == "prepared"
+    assert engine.candidate_overlay(overlaid, second) is None  # another entry holds the lease
     check()
     equivalent(engine, "integrate.prepare", first, {}, _prepare(engine, p, first))  # takes the lease
     check = untouched(p)
@@ -605,8 +617,9 @@ def test_guard_query_matches_execute_integrate_prepare(tmp_path):
 
 def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepare(reviewed):
     """Accepting a passing verification: step 2 sees the VERIFIED state and pinned report step 1 produces, step 3 the
-    COMMIT_READY state and acceptance step 2 produces (the queue entry its commit would make included). The stage is
-    judgment-bearing, so never auto-runnable."""
+    COMMIT_READY state and acceptance step 2 produces (the queue entry its commit would make included), and in
+    verifier mode step 4 the candidate and lease step 3 produces. The stage is judgment-bearing, so never
+    auto-runnable."""
     from aewflow import verify
 
     p, wid, engine, _impl = reviewed
@@ -617,5 +630,13 @@ def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepa
                                                 "arguments": {"verification_evidence": report}})["result"]
     check()
     assert engine.validation_mode(wid) == "verifier"  # the default policy
-    assert [s["availability"] for s in found["steps"][:3]] == [AVAILABLE] * 3, found
+    assert [s["availability"] for s in found["steps"]] == [AVAILABLE] * 5, found
+    assert found["availability"] == AVAILABLE
     assert found["steps"][2]["produced_by"] == {"evidence": 1, "state": 2, "acceptance": 2}
+    # Step 4, the integration verifier's decision, is asked on the candidate and lease step 3 produces (a copy).
+    assert found["steps"][3]["produced_by"]["candidate"] == 3 and found["steps"][4]["covered_by"] == 4
+    # The primitives the stage would run, run directly, agree with each step's answer.
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    p.lead("integrate", "prepare", wid)
+    assert p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")["scope"] == "integration"

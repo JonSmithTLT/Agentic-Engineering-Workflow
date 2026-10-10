@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, transitions
@@ -23,6 +24,7 @@ from aew.engine.dispatch import checked
 from aew.engine.guards import checked as guard_checked
 from aew.engine.guards import refusal
 from aew.errors import (
+    AEWError,
     GateUnsatisfied,
     GitError,
     IllegalTransition,
@@ -53,6 +55,7 @@ OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive"
 # Windows reference machine (tools/perf/publish_sync.py), so 2,000 paths keep the hold near 10 s, well inside the
 # 31 s other writers wait for the lock.
 MAX_PUBLISH_PATHS = 2000
+PRODUCED_CANDIDATE = "<candidate produced by integrate.prepare>"  # a placeholder: the overlay merges nothing
 # States a Ticket may enter while keeping its open integration record: still at (or interrupted in, or
 # awaiting classification of a post-integration failure for) the COMMIT_READY the candidate was built from.
 KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
@@ -152,6 +155,30 @@ class Integration:
             self.dispatch.decide(scratch, "integrate.prepare", work_id).require()
 
         return guard_checked(check)
+
+    def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """A deep copy of ``state`` with ``work_id``'s integration candidate as ``integrate.prepare`` would leave it:
+        the queue in line, the entry's lease granted to a custodian, and a prepared candidate bound to the Ticket's
+        acceptance (its worktree and commit are placeholders: nothing is merged or checked out). A later stage step's
+        guard (the integration verifier's dispatch decision) is asked on it (M4-E E4b, plan v3 E4). None when no lease
+        could be granted (no entry, or another entry holds it): the prepare step is BLOCKED there anyway."""
+        scratch = copy.deepcopy(state)
+        self.queue.sync(scratch)
+        unit = scratch["work"].get(work_id)
+        if unit is None:
+            return None
+        if Q.queued(scratch):
+            if Q.entry_of(scratch, work_id)[0] is None:
+                return None
+            try:
+                self.queue.grant(SimpleNamespace(state=scratch, refs=[]), work_id)  # type: ignore[arg-type]
+            except AEWError:
+                return None
+        attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
+        unit["integration"] = {"status": "prepared", "binding": self.gates.integration_binding(unit),
+                               "attempt": attempt, "candidate": PRODUCED_CANDIDATE,
+                               "workspace": PRODUCED_CANDIDATE, "workspace_id": PRODUCED_CANDIDATE}
+        return scratch
 
     def validation_mode(self, state: dict[str, Any], work_id: str) -> str | None:
         """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None for no unit."""

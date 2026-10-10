@@ -19,10 +19,12 @@ operator (N3). Nothing here grants, moves or commits anything: a notification is
 
 **Once per occurrence.** Each event has a key naming its occurrence; the delivery log
 (``.aew/local/notify/deliveries.jsonl``) records it once, delivered, failed or dropped, and a key it holds is never
-delivered again, across passes and endpoint restarts.
+delivered again, across passes and endpoint restarts. An event leaves the watcher's outstanding set only once that
+log records it, so stopping the endpoint loses nothing.
 
-**Delivery** (decision 1) on one thread with a bounded queue, never holding the endpoint's ``_authorizing`` or
-``_engine_lock`` (a slow notifier never delays a challenge), through an engine of its own: the adopted execution
+**Delivery** (decision 1) on one thread serving two lanes (control state and liveness first; :class:`Watcher`),
+never holding the endpoint's ``_authorizing`` or ``_engine_lock`` (a slow notifier never delays a challenge),
+through an engine of its own: the adopted execution
 policy's ``notify.command`` as an argv with no shell, the event as JSON on stdin, the sanitized environment
 (:func:`sanitized_env`), ``CREATE_NO_WINDOW`` on Windows and a new session on POSIX (``procs.ProcessTree``),
 ``close_fds=True`` (the child inherits no endpoint lock or listener handle). Past ``timeout_s`` the process tree is
@@ -37,7 +39,6 @@ import collections
 import json
 import logging
 import os
-import queue
 import re
 import stat
 import subprocess
@@ -47,6 +48,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aew import errors
 from aew.harness import broker_liveness, event_spool, procs, runlog
 from aew.harness import contract as K
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
@@ -59,8 +61,11 @@ PAYLOAD_SCHEMA = "aew/notify-event/v1"
 STATE_SCHEMA = "aew/notify-state/v1"
 DEFAULT_TIMEOUT_S = 10
 DEFAULT_MAX_OUTPUT_BYTES = 65536
-QUEUE_MAX = 64  # events waiting for the delivery thread; past it an event is dropped and counted
-RATE_PER_MINUTE = 10  # deliveries per spool writer per minute (amendment 1, m9)
+SPOOL_QUEUE_MAX = 64  # spool events waiting for the delivery thread; past it a spool event is dropped and counted
+RATE_PER_MINUTE = 10  # deliveries per spool writer, and of liveness events, per minute (amendment 1, m9)
+SPOOL_PER_MINUTE = 30  # spool deliveries per minute across every writer: many writers cannot flood together
+SPOOL_ALL = "*spool"  # the rate window shared by every spool writer
+LIVENESS = "*liveness"  # the rate window of the (forgeable) liveness record's events
 MAX_CATCHUP = 1024  # transitions read per pass; a watcher further behind skips the older ones, counted
 LOG_MAX_BYTES = 1 << 20
 LOG_KEEP = 2  # rotated delivery logs kept: deliveries.1.jsonl, deliveries.2.jsonl
@@ -261,8 +266,9 @@ def deliveries(aew_root: Path) -> list[dict[str, Any]]:
 
 
 def summary(aew_root: Path) -> dict[str, Any] | None:
-    """What ``status`` and the dashboard show: deliveries and failures, the last failure, and what was dropped.
-    ``attention`` is true while the latest delivery failed (a later success clears it; the counts stay). ``None``
+    """What ``status`` and the dashboard show: deliveries and failures, the last failure, what was dropped, and a
+    watcher source that keeps failing. ``attention`` is true while the latest delivery failed or the latest pass had a
+    failing source (a later success clears it; the counts stay). ``None``
     when the endpoint has never watched this project. Read from the watcher's ``state.json``, checked field by
     field: a local file, never trusted for anything but display."""
     path = notify_dir(aew_root) / STATE
@@ -287,7 +293,15 @@ def summary(aew_root: Path) -> dict[str, Any] | None:
                            "updated_at": event_spool.clean(data.get("updated_at"), 40)}
     if last is not None:
         out["last_failure"] = {k: event_spool.clean(last.get(k)) for k in ("event", "at", "reason", "detail")}
-    out["attention"] = out["consecutive_failures"] > 0
+    out["consecutive_pass_failures"] = count(data.get("consecutive_pass_failures"))
+    pass_error = _dict(data.get("last_pass_error"))
+    if out["consecutive_pass_failures"] and pass_error:
+        listed = pass_error.get("sources")
+        sources: list[Any] = listed if isinstance(listed, list) else []
+        out["pass_error"] = {"sources": [event_spool.clean(x, 32) for x in sources[:8]],
+                             "error": event_spool.clean(pass_error.get("error")),
+                             "at": event_spool.clean(pass_error.get("at"), 40)}
+    out["attention"] = out["consecutive_failures"] > 0 or out["consecutive_pass_failures"] > 0
     return out
 
 
@@ -296,7 +310,23 @@ def summary(aew_root: Path) -> dict[str, Any] | None:
 
 class Watcher:
     """The endpoint's watcher (the endpoint starts and stops it). It reads, derives and delivers; it never commits.
-    It runs on its own engine for the project, so it shares no object with the endpoint's operations."""
+    It runs on its own engine for the project, so it shares no object with the endpoint's operations.
+
+    **Sources are isolated.** Each pass derives and offers its sources one at a time (the transition log, the open
+    control-state conditions, the liveness record, the spool), each in its own ``try``: a source that fails is
+    counted and shown in ``status`` (``last_pass_error``), and never stops the others.
+
+    **Two lanes.** Control-state and liveness events go to the urgent lane, which the delivery thread always serves
+    first, and are never recorded with a non-final outcome: they are bounded by the state they come from (the
+    transition catch-up bound, the open conditions; liveness is rate-bounded). Spool events, untrusted, go to a
+    bounded lane, rate-bounded per writer and across writers; past those bounds a line is dropped, recorded and
+    counted.
+
+    **Nothing is lost at a restart.** An event leaves the outstanding set only once the delivery log records it. The
+    persisted transition cursor never passes an unrecorded transition event (a restart derives it again from the
+    hash-chained log); outstanding spool events are persisted and offered again, always as unauthenticated; liveness
+    and the open conditions are derived again while they hold. A delivery that ``close()`` kills is not recorded, so
+    it is not a failure: it stays outstanding."""
 
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         from aew.engine.api import Engine
@@ -304,19 +334,22 @@ class Watcher:
         self.engine = Engine(Path(repo_root), Path(aew_root))
         self.aew_root = Path(aew_root)
         self.log = DeliveryLog(self.aew_root)
-        self._mu = threading.Lock()  # the counts, the pending sets and the cursor snapshot
+        self._mu = threading.Lock()  # the counts, the lanes, the outstanding set and the cursor snapshot
+        self._cv = threading.Condition(self._mu)
         self._save_mu = threading.Lock()  # one state.json write at a time
         self._pass_mu = threading.Lock()  # one pass at a time: a pass owns the cursors
         self._closed = threading.Event()
-        self._queue: queue.Queue[tuple[str, dict[str, Any], str | None]] = queue.Queue(QUEUE_MAX)
-        self._pending: set[str] = set()
-        self._pending_writers: collections.Counter[str] = collections.Counter()
+        self._urgent: collections.deque[str] = collections.deque()
+        self._spool: collections.deque[str] = collections.deque()
+        self._outstanding: dict[str, dict[str, Any]] = {}  # offered, not yet recorded: {body, writer, lane, rev}
+        self._busy = 0
         self._rate: dict[str, collections.deque[float]] = {}
         self._tree: procs.ProcessTree | None = None
         self._watch_thread: threading.Thread | None = None
         self._deliver_thread: threading.Thread | None = None
         saved = _saved_state(self.aew_root)
-        self.control_rev: int | None = saved.get("control_rev") if isinstance(saved.get("control_rev"), int) else None
+        rev = saved.get("control_rev")
+        self.control_rev: int | None = rev if isinstance(rev, int) and not isinstance(rev, bool) else None
         cursors, dropped = _dict(saved.get("cursors")), _dict(saved.get("dropped"))
         self.cursors: dict[str, dict[str, Any]] = {
             str(w): {"offset": max(0, c["offset"]), "head": c.get("head") if isinstance(c.get("head"), str) else None,
@@ -329,7 +362,10 @@ class Watcher:
             "consecutive_failures": _count(saved.get("consecutive_failures")),
             "last_failure": _dict(saved.get("last_failure")) or None,
             "last_delivery_at": saved.get("last_delivery_at"),
+            "consecutive_pass_failures": _count(saved.get("consecutive_pass_failures")),
+            "last_pass_error": _dict(saved.get("last_pass_error")) or None,
             "dropped": {str(k)[:32]: _count(v) for k, v in dropped.items()}}
+        self._reoffer = _saved_spool_events(saved.get("outstanding"))
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -340,9 +376,11 @@ class Watcher:
         self._watch_thread.start()
 
     def close(self, timeout: float = 5.0) -> None:
-        """Stop watching; a delivery in flight is killed (its tree with it). Bounded: closing never waits on a
-        notifier."""
+        """Stop watching; a delivery in flight is killed (its tree with it) and stays outstanding, unrecorded.
+        Bounded: closing never waits on a notifier."""
         self._closed.set()
+        with self._cv:
+            self._cv.notify_all()
         tree = self._tree
         if tree is not None:
             tree.kill()
@@ -354,12 +392,13 @@ class Watcher:
     def drain(self, timeout: float = 30.0) -> bool:
         """For tests: wait until every queued event is delivered or recorded."""
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            with self._queue.all_tasks_done:
-                if not self._queue.unfinished_tasks:
-                    return True
-            time.sleep(0.02)
-        return False
+        with self._cv:
+            while self._urgent or self._spool or self._busy:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                self._cv.wait(min(left, 0.1))
+        return True
 
     def _watch_loop(self) -> None:
         from aew.engine import outbox
@@ -373,7 +412,7 @@ class Watcher:
         while not self._closed.is_set():
             try:
                 self.pass_once()
-            except Exception:  # noqa: BLE001  a pass that fails is logged; the next one tries again
+            except Exception:  # noqa: BLE001  a pass's own defect is logged; each source is isolated within it
                 log.exception("the notifier's watcher pass failed")
             seen[0] = self.engine.store.control_identity()
             outbox.wait_for(changed, self.aew_root, timeout=lead_broker.POLL_S)
@@ -386,185 +425,231 @@ class Watcher:
             self._pass()
 
     def _pass(self) -> None:
-        state = self.engine.store.read_committed()
-        events: list[tuple[str, dict[str, Any], str | None]] = []
-        events += self._generation_events(state)
-        events += self._level_events(state)
-        events += self._liveness_events(state)
-        events += self._spool_events(state)
-        for key, body, writer in events:
-            self._offer(key, body, writer)
-        self._retire_spool()
+        failed: list[str] = []
+        error = ""
+        reoffer, self._reoffer = self._reoffer, []
+        for key, body, writer in reoffer:  # spool events outstanding at the last close: never lost at a restart
+            self._offer(key, body, writer=writer, lane="spool")
+        try:
+            state: dict[str, Any] | None = self.engine.store.read_committed()
+        except Exception as exc:  # noqa: BLE001  the control file unreadable now: the spool still delivers
+            state, error = None, f"control_state: {type(exc).__name__}: {exc}"
+            failed.append("control_state")
+        sources = [("spool", self._spool_source)]
+        if state is not None:
+            sources = [("transitions", self._transition_source), ("conditions", self._condition_source),
+                       ("liveness", self._liveness_source), *sources]
+        for name, source in sources:
+            try:
+                source(state)
+            except Exception as exc:  # noqa: BLE001  one source never stops another (counted, shown in status)
+                log.warning("the notifier's %s source failed: %s: %s", name, type(exc).__name__, exc)
+                failed.append(name)
+                error = error or f"{name}: {type(exc).__name__}: {exc}"
+                self._dropped(f"{name}_failed")
+        try:
+            self._retire_spool()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("the notifier could not retire spool files: %s", exc)
         with self._mu:
             self._cursor_snapshot = json.loads(json.dumps(self.cursors))
+            if failed:
+                self.stats["consecutive_pass_failures"] += 1
+                self.stats["last_pass_error"] = {"sources": failed, "error": event_spool.clean(error),
+                                                 "at": utc_now()}
+            else:
+                self.stats["consecutive_pass_failures"] = 0
         self._save()
 
-    def _payload(self, state: dict[str, Any], event: str, *, subject: Any, reason: Any, ref: Any, source: str,
-                 authenticated: bool, revision: int | None = None) -> dict[str, Any]:
+    def _payload(self, state: dict[str, Any] | None, event: str, *, subject: Any, reason: Any, ref: Any,
+                 source: str, authenticated: bool, revision: int | None = None) -> dict[str, Any]:
         def text(value: Any) -> str | None:
             return None if value is None else str(value)
 
+        if revision is None and state is not None:
+            revision = int(state["revision"])
         return payload(event=event, project_id=str(self.engine.project_id), subject=text(subject),
-                       reason=text(reason), ref=text(ref),
-                       revision=int(state["revision"]) if revision is None else revision, source=source,
+                       reason=text(reason), ref=text(ref), revision=revision, source=source,
                        authenticated=authenticated)
 
-    def _generation_events(self, state: dict[str, Any]) -> list[tuple[str, dict[str, Any], str | None]]:
+    def _transition_source(self, state: dict[str, Any] | None) -> None:
         """``generation_ended`` by takeover, handoff or release, from the transition log after the cursor. The
-        first pass the endpoint ever makes starts the cursor at the current revision."""
+        first pass the endpoint ever makes starts the cursor at the current revision. The cursor moves only once
+        the transitions read are offered; a log that cannot be read leaves it where it was."""
         from aew.engine import outbox
 
+        assert state is not None
         rev = int(state["revision"])
         if self.control_rev is None or rev < self.control_rev:
             self.control_rev = rev
-            return []
-        since, out = self.control_rev, []
+            return
+        since = self.control_rev
         if rev - since > MAX_CATCHUP:
             self._dropped("catchup", rev - since - MAX_CATCHUP)
             since = rev - MAX_CATCHUP
-        try:
-            for record in outbox.read_transitions(self.aew_root, since, rev, outbox=state.get("outbox")):
-                reason = GENERATION_OPS.get(record.get("op") or "")
-                if reason is None:
-                    continue
-                ended = next((e.get("from") for e in record.get("events") or [] if e.get("kind") == "lead.generation"),
-                             None)
-                if ended is None:  # a release keeps the generation number: the releasing Lead's
-                    ended = (record.get("actor") or {}).get("generation", state["lead"]["generation"])
-                key = f"generation_ended:{ended}:{reason}:{record['revision']}"
-                out.append((key, self._payload(state, "generation_ended", subject=f"lead generation {ended}",
-                                               reason=reason, ref=record.get("op"), source="control_state",
-                                               authenticated=True, revision=int(record["revision"])), None))
-        except Exception as exc:  # noqa: BLE001  a log the watcher cannot read: counted, never fatal
-            log.warning("the notifier could not read transitions %s..%s: %s", since, rev, exc)
-            self._dropped("unreadable_transitions")
+        found = []
+        for record in outbox.read_transitions(self.aew_root, since, rev, outbox=state.get("outbox")):
+            reason = GENERATION_OPS.get(record.get("op") or "")
+            if reason is None:
+                continue
+            ended = next((e.get("from") for e in record.get("events") or [] if e.get("kind") == "lead.generation"),
+                         None)
+            if ended is None:  # a release keeps the generation number: the releasing Lead's
+                ended = (record.get("actor") or {}).get("generation", state["lead"]["generation"])
+            revision = int(record["revision"])
+            found.append((f"generation_ended:{ended}:{reason}:{revision}", self._payload(
+                state, "generation_ended", subject=f"lead generation {ended}", reason=reason, ref=record.get("op"),
+                source="control_state", authenticated=True, revision=revision), revision))
+        for key, body, revision in found:
+            self._offer(key, body, lane="urgent", rev=revision)
         self.control_rev = rev
-        return out
 
-    def _level_events(self, state: dict[str, Any]) -> list[tuple[str, dict[str, Any], str | None]]:
+    def _condition_source(self, state: dict[str, Any] | None) -> None:
         """Open conditions in control state, each an occurrence by its own record: the Lead's requests (the current
         generation's; they grant nothing), the validation breaker's opening, a lease's reconcile mark."""
-        out: list[tuple[str, dict[str, Any], str | None]] = []
+        assert state is not None
         generation = int(state["lead"]["generation"])
         for r in (state.get("steering") or {}).get("requests") or []:
             if r.get("generation") != generation:
                 continue
             event = "raise_requested" if r.get("kind") == "raise" else "confirmation_requested"
-            out.append((f"{event}:{r['id']}", self._payload(
+            self._offer(f"{event}:{r['id']}", self._payload(
                 state, event, subject=r["id"], reason=r.get("rationale"),
                 ref=r.get("mode") if r.get("kind") == "raise" else r.get("action_ref"), source="control_state",
-                authenticated=True), None))
+                authenticated=True), lane="urgent")
         queue_state = state.get("queue") or {}
         opened = (queue_state.get("validation_breaker") or {}).get("open")
         if opened:
-            out.append((f"breaker_tripped:validation:{opened.get('at')}", self._payload(
+            self._offer(f"breaker_tripped:validation:{opened.get('at')}", self._payload(
                 state, "breaker_tripped", subject="validation_breaker",
                 reason="infrastructure failures: " + ", ".join(map(str, opened.get("codes") or [])),
-                ref=", ".join(map(str, opened.get("runs") or [])), source="control_state", authenticated=True), None))
+                ref=", ".join(map(str, opened.get("runs") or [])), source="control_state", authenticated=True),
+                lane="urgent")
         lease = queue_state.get("lease") or {}
         mark = lease.get("reconcile")
         if mark:
-            out.append((f"custodian_lost:reconcile:{lease.get('entry')}:{lease.get('custodian')}:{mark.get('at')}",
+            self._offer(f"custodian_lost:reconcile:{lease.get('entry')}:{lease.get('custodian')}:{mark.get('at')}",
                         self._payload(state, "custodian_lost", subject=lease.get("custodian"),
                                       reason=mark.get("reason"), ref=lease.get("entry"), source="control_state",
-                                      authenticated=True), None))
-        return out
+                                      authenticated=True), lane="urgent")
 
-    def _liveness_events(self, state: dict[str, Any]) -> list[tuple[str, dict[str, Any], str | None]]:
+    def _liveness_source(self, state: dict[str, Any] | None) -> None:
         from aew.engine.steering import effective
         from aew.harness import lead_broker
 
+        assert state is not None
         generation = int(state["lead"]["generation"])
         verdict = broker_liveness.judge(broker_liveness.read(self.aew_root), generation=generation,
                                         poll_s=lead_broker.POLL_S)
         if verdict is None:
-            return []
-        out: list[tuple[str, dict[str, Any], str | None]] = []
+            return
         subject = f"lead generation {generation}"
         if verdict.reason != "closed":  # a closed record is a clean end, not a generation ending
-            out.append((f"generation_ended:{generation}:{verdict.reason}:{verdict.occurrence}", self._payload(
+            self._offer(f"generation_ended:{generation}:{verdict.reason}:{verdict.occurrence}", self._payload(
                 state, "generation_ended", subject=subject, reason=verdict.reason, ref=broker_liveness.REL,
-                source="liveness", authenticated=False), None))
+                source="liveness", authenticated=False), writer=LIVENESS, lane="urgent")
         if effective(state)["mode"] == "run":  # plan v3 §2.8: while Run is effective, whatever the cause
-            out.append((f"broker_gone:{generation}:{verdict.reason}:{verdict.occurrence}", self._payload(
+            self._offer(f"broker_gone:{generation}:{verdict.reason}:{verdict.occurrence}", self._payload(
                 state, "broker_gone", subject=subject, reason=verdict.reason, ref=broker_liveness.REL,
-                source="liveness", authenticated=False), None))
-        return out
+                source="liveness", authenticated=False), writer=LIVENESS, lane="urgent")
 
-    def _spool_events(self, state: dict[str, Any]) -> list[tuple[str, dict[str, Any], str | None]]:
+    def _spool_source(self, state: dict[str, Any] | None) -> None:
         reader = event_spool.Reader(self.aew_root, self.cursors)
         found = reader.scan()
         for why, n in found.dropped.items():
             self._dropped(why, n)
-        return [(f"{line.event}:{line.key}", self._payload(
-            state, line.event, subject=line.subject, reason=line.reason, ref=line.ref,
-            source=f"spool:{line.writer}", authenticated=False), line.writer) for line in found.lines]
+        known: dict[str, bool] = {}
+        for line in found.lines:
+            if line.writer.startswith(event_spool.RUN_PREFIX):
+                run = line.writer[len(event_spool.RUN_PREFIX):]
+                if run not in known:
+                    known[run] = runlog.run_dir(self.aew_root, run).is_dir()
+                if not known[run]:  # a supervisor writes only for a run whose directory its launcher made
+                    self._dropped("unknown_run")
+                    continue
+            self._offer(f"{line.event}:{line.key}", self._payload(
+                state, line.event, subject=line.subject, reason=line.reason, ref=line.ref,
+                source=f"spool:{line.writer}", authenticated=False), writer=line.writer, lane="spool")
 
     def _retire_spool(self) -> None:
-        """Delete a run's spool file once the run is terminal and every line in it is delivered or dropped."""
+        """Delete a run's spool file once the run is terminal and every line in it is delivered or dropped. The
+        status is read first: a supervisor appends before it writes its terminal record, so once the run reads
+        terminal, a file with nothing unread after that is final."""
         reader = event_spool.Reader(self.aew_root, self.cursors)
         for writer in reader.writers():
-            if not writer.startswith(event_spool.RUN_PREFIX) or reader.unread(writer):
+            if not writer.startswith(event_spool.RUN_PREFIX):
                 continue
-            with self._mu:
-                if self._pending_writers[writer]:
-                    continue
             directory = runlog.run_dir(self.aew_root, writer[len(event_spool.RUN_PREFIX):])
             status, _ = runlog.observed_status(directory)
-            if status in K.TERMINAL or not directory.exists():
-                reader.retire(writer)
+            if (status not in K.TERMINAL and directory.exists()) or reader.unread(writer):
+                continue
+            with self._mu:
+                if any(o["writer"] == writer for o in self._outstanding.values()):
+                    continue
+            reader.retire(writer)
 
     # ------------------------------------------------------------------ queueing and delivery
 
-    def _offer(self, key: str, body: dict[str, Any], writer: str | None) -> None:
+    def _offer(self, key: str, body: dict[str, Any], *, lane: str, writer: str | None = None,
+               rev: int | None = None) -> None:
         with self._mu:
-            if key in self._pending or self.log.seen(key):
+            if key in self._outstanding or self.log.seen(key):
                 return
-        if writer is not None and not self._within_rate(writer):
+        if writer is not None and not self._within_rate(writer, RATE_PER_MINUTE):
             self._record(key, body, {"outcome": "dropped", "reason": "rate"})
             self._dropped("rate")
             return
-        with self._mu:
-            try:
-                self._queue.put_nowait((key, body, writer))
-            except queue.Full:
+        if lane == "spool" and not self._within_rate(SPOOL_ALL, SPOOL_PER_MINUTE):
+            self._record(key, body, {"outcome": "dropped", "reason": "spool_rate"})
+            self._dropped("spool_rate")
+            return
+        with self._cv:
+            if lane == "spool" and len(self._spool) >= SPOOL_QUEUE_MAX:
                 full = True
             else:
                 full = False
-                self._pending.add(key)
-                if writer is not None:
-                    self._pending_writers[writer] += 1
-        if full:
+                self._outstanding[key] = {"body": body, "writer": writer, "lane": lane, "rev": rev}
+                (self._urgent if lane == "urgent" else self._spool).append(key)
+                self._cv.notify_all()
+        if full:  # only an untrusted spool event is ever dropped for room, and then for good, recorded and counted
             self._record(key, body, {"outcome": "dropped", "reason": "queue_full"})
             self._dropped("queue_full")
 
-    def _within_rate(self, writer: str) -> bool:
+    def _within_rate(self, writer: str, limit: int) -> bool:
         now = time.monotonic()
         window = self._rate.setdefault(writer, collections.deque())
         while window and now - window[0] >= 60.0:
             window.popleft()
-        if len(window) >= RATE_PER_MINUTE:
+        if len(window) >= limit:
             return False
         window.append(now)
         return True
 
+    def _next(self) -> str | None:
+        with self._cv:
+            while not self._closed.is_set() and not self._urgent and not self._spool:
+                self._cv.wait(0.2)
+            if self._closed.is_set():
+                return None
+            self._busy += 1
+            return (self._urgent or self._spool).popleft()  # control state and liveness first
+
     def _deliver_loop(self) -> None:
         while not self._closed.is_set():
+            key = self._next()
+            if key is None:
+                return
             try:
-                key, body, writer = self._queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            try:
-                if not self._closed.is_set():
-                    self._deliver_one(key, body)
+                with self._mu:
+                    item = self._outstanding.get(key)
+                if item is not None:
+                    self._deliver_one(key, item["body"])
             except Exception:  # noqa: BLE001  one delivery's defect never stops the next
                 log.exception("the notifier failed to deliver %s", key)
             finally:
-                with self._mu:
-                    self._pending.discard(key)
-                    if writer is not None:
-                        self._pending_writers[writer] -= 1
-                self._queue.task_done()
+                with self._cv:
+                    self._busy -= 1
+                    self._cv.notify_all()
 
     def _deliver_one(self, key: str, body: dict[str, Any]) -> None:
         from aew.engine.steering import notifier_problem
@@ -589,12 +674,15 @@ class Watcher:
                                       cwd=str(self.engine.repo_root), tree=self._tree)
                 finally:
                     self._tree = None
+        if self._closed.is_set():
+            return  # killed by close(), or finished as it closed: not a failure; it stays outstanding
         self._record(key, body, outcome)
 
     def _record(self, key: str, body: dict[str, Any], outcome: dict[str, Any]) -> None:
         entry = {"key": key, "event": body["event"], "source": body["source"], "at": utc_now(), **outcome}
         self.log.record(entry)
         with self._mu:
+            self._outstanding.pop(key, None)
             if outcome["outcome"] == "delivered":
                 self.stats["delivered"] += 1
                 self.stats["consecutive_failures"] = 0
@@ -611,12 +699,18 @@ class Watcher:
             self.stats["dropped"][why] = self.stats["dropped"].get(why, 0) + n
 
     def _save(self) -> None:
-        """Write ``state.json``: the cursors as the last pass left them, and the counts. Both threads save; one
-        lock serializes the writes, and the cursors are the watch thread's snapshot, never its working copy."""
+        """Write ``state.json``: the cursors as the last pass left them, the counts, and what is outstanding. The
+        transition cursor saved never passes an unrecorded transition event; outstanding spool events are saved to
+        be offered again. Both threads save; one lock serializes the writes."""
         with self._save_mu:
             with self._mu:
-                text = json.dumps({"schema": STATE_SCHEMA, "updated_at": utc_now(), "control_rev": self.control_rev,
-                                   "cursors": self._cursor_snapshot, **self.stats}, sort_keys=True, default=str)
+                held = [o["rev"] for o in self._outstanding.values() if o["rev"] is not None]
+                control_rev = min(held) - 1 if held else self.control_rev
+                spool = [{"key": k, "body": o["body"], "writer": o["writer"]}
+                         for k, o in self._outstanding.items() if o["lane"] == "spool"]
+                text = json.dumps({"schema": STATE_SCHEMA, "updated_at": utc_now(), "control_rev": control_rev,
+                                   "cursors": self._cursor_snapshot, "outstanding": spool, **self.stats},
+                                  sort_keys=True, default=str)
             self._write_state(text + "\n")
 
     def _write_state(self, text: str) -> None:
@@ -632,6 +726,28 @@ class Watcher:
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def _saved_spool_events(value: Any) -> list[tuple[str, dict[str, Any], str]]:
+    """Spool events outstanding at the last save, to offer again. ``state.json`` is a local file: each is checked
+    again (a spool key, a spool writer, a valid payload) and is always unauthenticated, whatever the file says."""
+    from aew import schemas
+
+    out: list[tuple[str, dict[str, Any], str]] = []
+    for item in (value if isinstance(value, list) else [])[:SPOOL_QUEUE_MAX]:
+        if not isinstance(item, dict):
+            continue
+        key, body, writer = item.get("key"), item.get("body"), item.get("writer")
+        if not (isinstance(key, str) and isinstance(writer, str) and isinstance(body, dict)
+                and event_spool.WRITER_RE.match(writer) and f":spool:{writer}:" in key):
+            continue
+        body = dict(body, authenticated=False, source=f"spool:{writer}")
+        try:
+            schemas.validate("notify-event", body, source="an outstanding notification")
+        except errors.ValidationFailed:
+            continue
+        out.append((key, body, writer))
+    return out
 
 
 def _dict(value: Any) -> dict[Any, Any]:

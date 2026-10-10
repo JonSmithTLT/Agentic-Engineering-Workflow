@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from legality_modules import LEGALITY_MODULES, legality_modules
 from notifier import adopt, dead_pid, raise_to, received, recorder, request, script, seed, takeover, until
 
 from aew import errors, schemas
 from aew.engine.api import Engine
-from aew.harness import broker_liveness, event_spool, notify, procs
+from aew.harness import broker_liveness, event_spool, notify, procs, runlog
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 
@@ -130,6 +131,7 @@ def test_spool_lines_are_capped_validated_rate_bounded_and_unauthenticated(proje
     root = project.root / ".aew"
     run = "R-INV-0007-1"
     writer = event_spool.run_writer(run)
+    runlog.run_dir(root, run).mkdir(parents=True)  # a supervisor writes only for a run its launcher made
     _spool_lines(root, writer, [
         _line(run, reason="first"),
         "x" * (event_spool.MAX_LINE + 900),  # oversize: dropped once, its rest never parsed
@@ -218,6 +220,13 @@ def _crashed_broker(project) -> None:
         "generation": generation, "beat_at": time.time(), "watchdog_tick_at": time.time(), "wedge_after_s": 62.0})
 
 
+def spooled(project, event: str, reason: str, run: str = "R-INV-0001-1") -> None:
+    """A supervisor's append, for a run whose directory its launcher made."""
+    root = project.root / ".aew"
+    runlog.run_dir(root, run).mkdir(parents=True, exist_ok=True)
+    event_spool.append(root, event_spool.run_writer(run), event, subject=run, reason=reason)
+
+
 def _breaker(state: dict[str, Any]) -> None:
     state["queue"] = {"next_seq": 1, "lease": None, "entries": {}, "validation_breaker": {
         "failures": [], "open": {"at": "2026-10-10T00:00:00Z", "codes": ["SANDBOX_UNAVAILABLE"], "runs": ["V-1"]}}}
@@ -236,10 +245,8 @@ SEEDS = {
     "confirmation_requested": lambda project, mp: request(project, "confirmation"),
     "breaker_tripped[validation]": lambda project, mp: seed(project, _breaker),
     "custodian_lost[reconcile]": lambda project, mp: seed(project, _reconcile),
-    "hard_deadline": lambda project, mp: event_spool.append(
-        project.root / ".aew", "run-R-INV-0001-1", "hard_deadline", subject="R-INV-0001-1", reason="deadline"),
-    "launch_failed": lambda project, mp: event_spool.append(
-        project.root / ".aew", "run-R-INV-0001-1", "launch_failed", subject="R-INV-0001-1", reason="custody refused"),
+    "hard_deadline": lambda project, mp: spooled(project, "hard_deadline", "deadline"),
+    "launch_failed": lambda project, mp: spooled(project, "launch_failed", "custody refused"),
 }
 
 
@@ -284,8 +291,7 @@ def test_the_watcher_moves_no_revision(project, tmp_path, monkeypatch):
     adopt(project, command=command)
     request(project, "raise")
     seed(project, _breaker)
-    event_spool.append(project.root / ".aew", "run-R-INV-0001-1", "launch_failed", subject="R-INV-0001-1",
-                       reason="x")
+    spooled(project, "launch_failed", "x")
     before = project.rev()
     control = (project.root / ".aew/state/control.yaml").read_bytes()
     watcher = notify.Watcher(project.root, project.root / ".aew")
@@ -311,24 +317,17 @@ def test_the_watcher_moves_no_revision(project, tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------------------------- the boundary
 
 
-LEGALITY_MODULES = (
-    # legality, gate, transition, dispatch, plan-assurance and its plan lint, the scope lint (work_ops),
-    # evidence acceptance and publication (CWR §11)
-    "engine/guards.py", "engine/gates.py", "engine/transitions.py", "engine/dispatch.py", "engine/assurance.py",
-    "engine/assurance_ops.py", "engine/evidence_ops.py", "engine/integration_ops.py", "engine/queue_ops.py",
-    "engine/validation_ops.py", "engine/work_ops.py", "surface/availability.py", "surface/classify.py",
-)
-
-
 def test_legality_modules_never_import_notify():
     """CWR §11's static boundary, for the notifier (amendment 1, nit 6): no legality, gate, transition, dispatch,
-    plan-assurance, lint, evidence-acceptance or publication module imports `harness.notify` (or the spool or the
-    liveness record it reads), at module level or inside a function."""
+    plan-assurance, lint, evidence-acceptance or publication module, nor the policy package, imports `harness.notify`
+    (or the spool or the liveness record it reads), at module level or inside a function. The set is the F9 boundary
+    test's, with the guards and the surface's availability and classification (`tests/helpers/legality_modules.py`)."""
     banned = {"aew.harness.notify", "aew.harness.event_spool", "aew.harness.broker_liveness"}
     found = []
-    for rel in LEGALITY_MODULES:
-        path = SRC / rel
-        assert path.is_file(), rel
+    modules = legality_modules()
+    assert len(modules) > len(LEGALITY_MODULES) and all(p.is_file() for p in modules)  # the policy package too
+    for path in modules:
+        rel = path.relative_to(SRC).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 found += [(rel, a.name) for a in node.names if a.name in banned]
@@ -338,3 +337,247 @@ def test_legality_modules_never_import_notify():
                 elif node.module == "aew.harness":
                     found += [(rel, a.name) for a in node.names if f"aew.harness.{a.name}" in banned]
     assert found == []
+
+
+# ---------------------------------------------------------------------------------------------- review of PR #184
+
+
+def _liveness(**over: Any) -> dict[str, Any]:
+    now = time.time()
+    return {"schema": broker_liveness.SCHEMA, "pid": 4242, "process_started": None, "generation": 1, "beat_at": now,
+            "watchdog_tick_at": now, "wedge_after_s": 62.0, **over}
+
+
+@pytest.mark.parametrize("field,value", [("pid", "2" + "0" * 21), ("pid", "0"), ("generation", "2" + "0" * 21),
+                                         ("beat_at", "NaN"), ("watchdog_tick_at", "-Infinity"),
+                                         ("wedge_after_s", "NaN"), ("wedge_after_s", "Infinity"),
+                                         ("closed_at", "1e300")])
+def test_an_out_of_range_or_non_finite_liveness_record_is_rejected(tmp_path, field, value):
+    """A pid no OS can name, or a non-finite or absurd number, is no record the broker wrote: rejected by `read()`,
+    so it can neither fail the watcher nor slip past the staleness and wedge checks (NaN compares false)."""
+    root = tmp_path / ".aew"
+    body = ", ".join(f'"{k}": {value if k == field else json.dumps(v)}' for k, v in _liveness().items())
+    if field not in _liveness():
+        body += f', "{field}": {value}'
+    broker_liveness.path(root).parent.mkdir(parents=True)
+    broker_liveness.path(root).write_text("{" + body + "}", encoding="utf-8")
+    assert broker_liveness.read(root) is None, body
+    broker_liveness.write(root, _liveness())
+    assert broker_liveness.read(root) is not None  # the same record, well formed, is read
+
+
+def test_a_process_check_that_cannot_answer_is_unprovable_never_an_error(monkeypatch):
+    from aew.harness import operator_client
+
+    def overflow(record: dict[str, Any]) -> bool:
+        raise OverflowError("signed integer is greater than maximum")  # Linux's os.kill for a pid past pid_t
+
+    monkeypatch.setattr(operator_client, "same_process", overflow)
+    now = time.time()
+    assert broker_liveness.judge(_liveness(), generation=1, poll_s=1.0, now=now) is None
+    stale = broker_liveness.judge(_liveness(watchdog_tick_at=now - 100), generation=1, poll_s=1.0, now=now)
+    assert stale is not None and stale.reason == "stale"
+
+
+def test_a_failing_source_never_stops_the_others_and_shows_in_status(project, tmp_path, monkeypatch):
+    """Each source is isolated: the liveness record failing (here as Linux's `os.kill` fails for a pid past
+    `pid_t`) never stops control-state or spool notifications, and the failing source is shown in `status`."""
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+
+    def failing(aew_root: Path) -> dict[str, Any]:
+        raise OverflowError("signed integer is greater than maximum")
+
+    monkeypatch.setattr(broker_liveness, "read", failing)
+    watcher = notify.Watcher(project.root, root)
+    watcher.pass_once()
+    request(project, "raise")
+    takeover(project, monkeypatch)
+    spooled(project, "launch_failed", "x")
+    watcher.start()
+    try:
+        until(lambda: {e["event"] for e in received(out)} >= {"generation_ended", "launch_failed"},
+              what="the other sources' events")
+        watcher.pass_once()
+        assert watcher.drain()
+    finally:
+        watcher.close()
+    summary = notify.summary(root)
+    assert summary is not None and summary["attention"] and summary["pass_error"]["sources"] == ["liveness"]
+    assert "OverflowError" in summary["pass_error"]["error"] and summary["dropped"]["liveness_failed"] >= 1
+    engine = Engine.discover(project.root)
+    assert "the notifier's watcher cannot read liveness" in engine.render_status(engine.status())
+
+
+def events_of(out: Path, name: str) -> list[dict[str, Any]]:
+    return [e for e in received(out) if e["event"] == name]
+
+
+def test_spool_floods_never_displace_control_state_events(project, tmp_path, monkeypatch):
+    """Control-state events have their own lane, served first, and are never recorded dropped: seventy runs' spool
+    lines (a burst of failed launches, or a forger) are bounded across writers, and a takeover found meanwhile is
+    still delivered, first."""
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+    watcher = notify.Watcher(project.root, root)
+    watcher.pass_once()
+    for n in range(70):
+        spooled(project, "launch_failed", "x", run=f"R-INV-{n:04d}-1")
+    watcher.pass_once()  # the delivery thread is not running yet: the spool lane fills
+    takeover(project, monkeypatch)
+    watcher.pass_once()
+    assert not [x for x in notify.deliveries(root) if x["event"] == "generation_ended"]  # never a non-final record
+    watcher.start()
+    try:
+        until(lambda: events_of(out, "generation_ended"), 60, "generation_ended")
+        assert watcher.drain(120)
+    finally:
+        watcher.close()
+    got = received(out)
+    assert got[0]["event"] == "generation_ended"  # served before every queued spool event
+    assert len(events_of(out, "launch_failed")) == notify.SPOOL_PER_MINUTE
+    assert notify.summary(root)["dropped"]["spool_rate"] == 70 - notify.SPOOL_PER_MINUTE
+
+
+def test_spool_lines_for_a_run_that_does_not_exist_are_dropped(project, tmp_path):
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+    event_spool.append(root, "run-R-INV-0042-1", "launch_failed", subject="R-INV-0042-1", reason="invented")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        watcher.pass_once()
+        watcher.pass_once()
+        assert watcher.drain()
+    finally:
+        watcher.close()
+    assert received(out) == [] and notify.summary(root)["dropped"]["unknown_run"] == 1
+    assert not event_spool.file_of(root, "run-R-INV-0042-1").exists()  # read, counted, retired
+
+
+def test_queued_events_survive_an_endpoint_restart(project, tmp_path, monkeypatch):
+    """An event leaves the outstanding set only once the log records it: events queued when the endpoint stops are
+    delivered by the next one (the transition cursor saved never passes them; spool events are saved), once."""
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+    watcher = notify.Watcher(project.root, root)
+    watcher.pass_once()
+    takeover(project, monkeypatch)
+    spooled(project, "hard_deadline", "deadline")
+    watcher.pass_once()  # both queued; the delivery thread never ran
+    watcher.close()
+    assert received(out) == [] and notify.deliveries(root) == []
+    again = notify.Watcher(project.root, root)
+    again.start()
+    try:
+        until(lambda: len(received(out)) >= 2, what="both events after the restart")
+        for _ in range(2):
+            again.pass_once()
+        assert again.drain()
+    finally:
+        again.close()
+    assert sorted(e["event"] for e in received(out)) == ["generation_ended", "hard_deadline"]
+    [spool] = events_of(out, "hard_deadline")
+    assert not spool["authenticated"] and spool["source"] == "spool:run-R-INV-0001-1"
+
+
+def test_a_delivery_killed_by_close_is_not_a_failure(project, tmp_path):
+    """Stopping the endpoint kills a delivery in flight: that is not a failed delivery (no count, no attention), and
+    the event stays outstanding for the next endpoint."""
+    started = tmp_path / "started"
+    slow = script(tmp_path, "slow", f"import sys, time\nsys.stdin.read()\nopen({str(started)!r}, 'w').close()\n"
+                                    "time.sleep(60)\n")
+    adopt(project, command=[sys.executable, "-I", slow], timeout_s=30)
+    root = project.root / ".aew"
+    watcher = notify.Watcher(project.root, root)
+    watcher.pass_once()
+    request(project, "raise")
+    watcher.start()
+    try:
+        until(started.exists, what="the slow notifier to start")
+    finally:
+        watcher.close()
+    summary = notify.summary(root)
+    assert summary is not None and summary["failed"] == 0 and not summary["attention"]
+    assert notify.deliveries(root) == []  # not recorded: still outstanding
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    again = notify.Watcher(project.root, root)
+    again.start()
+    try:
+        until(lambda: events_of(out, "raise_requested"), what="the event after the restart")
+        assert again.drain()
+    finally:
+        again.close()
+    assert len(events_of(out, "raise_requested")) == 1
+
+
+def test_a_spool_line_is_bounded_by_its_encoded_bytes(tmp_path):
+    """A reason of characters JSON escapes (twelve bytes each outside the BMP) is shortened until the line fits, so
+    the reader never drops a line a supervisor wrote."""
+    root = tmp_path / ".aew"
+    event_spool.append(root, "run-R-INV-0001-1", "launch_failed", subject="R-INV-0001-1", reason="\U0001F600" * 400)
+    size = event_spool.file_of(root, "run-R-INV-0001-1").stat().st_size
+    found = event_spool.Reader(root, {}).scan()
+    assert size <= event_spool.MAX_LINE + 1 and not found.dropped
+    [line] = found.lines
+    assert line.reason and set(line.reason) == {"\U0001F600"}
+
+
+def test_a_run_file_is_retired_only_after_its_last_line_is_read(project, monkeypatch):
+    """The run's status is read before its file is checked for unread lines: a supervisor appends its last line
+    before its terminal record, so a line appended between the two checks is never deleted unread."""
+    from aew.harness import contract as K
+
+    root = project.root / ".aew"
+    run = "R-INV-0001-1"
+    writer = event_spool.run_writer(run)
+    runlog.run_dir(root, run).mkdir(parents=True)
+    event_spool.append(root, writer, "launch_failed", subject=run, reason="first")
+    watcher = notify.Watcher(project.root, root)
+    assert len(event_spool.Reader(root, watcher.cursors).scan().lines) == 1
+
+    def observed_status(directory: Path) -> tuple[str, None]:  # the supervisor's last append, then its record
+        event_spool.append(root, writer, "hard_deadline", subject=run, reason="deadline")
+        return K.TERMINATED, None
+
+    monkeypatch.setattr(runlog, "observed_status", observed_status)
+    watcher._retire_spool()
+    assert event_spool.file_of(root, writer).exists()
+    assert [x.event for x in event_spool.Reader(root, watcher.cursors).scan().lines] == ["hard_deadline"]
+
+
+def _handoff(project, monkeypatch) -> None:
+    engine = Engine.discover(project.root)
+    offer = engine.lead_handoff_offer(token=project.token, expect_rev=project.rev())["offer"]
+    project.token = engine.lead_handoff_accept(offer=offer, expect_rev=project.rev())["token"]
+
+
+def _release(project, monkeypatch) -> None:
+    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
+
+
+@pytest.mark.parametrize("reason,end", [("takeover", takeover), ("handoff", _handoff), ("release", _release)])
+def test_generation_ended_names_each_control_state_reason(project, tmp_path, monkeypatch, reason, end):
+    """A takeover, an accepted handoff and a release each end the generation, named with its reason, from the
+    transition log: a release keeps the generation number, so it names the releasing Lead's."""
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+    generation = Engine.discover(project.root).store.read()["lead"]["generation"]
+    watcher = notify.Watcher(project.root, root)
+    watcher.pass_once()
+    end(project, monkeypatch)
+    watcher.start()
+    try:
+        watcher.pass_once()
+        assert watcher.drain()
+    finally:
+        watcher.close()
+    [ended] = events_of(out, "generation_ended")
+    assert (ended["reason"], ended["subject"], ended["source"]) == (reason, f"lead generation {generation}",
+                                                                   "control_state")

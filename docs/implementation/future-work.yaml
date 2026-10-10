@@ -544,16 +544,18 @@ sections:
       state lock-free, the event spool and the broker liveness record, commits nothing, and delivers through the adopted
       `notify.command`: an argv with no shell, the event (`aew/notify-event/v1`) on stdin, the sanitized environment, no
       console window, a new session on POSIX, `close_fds`, the process tree killed past `timeout_s`, output past `max_output_bytes`
-      discarded and counted, on one delivery thread with a bounded queue that never holds the endpoint''s locks. Events:
-      `generation_ended` (takeover, handoff, release; crash and stale from the liveness record, for the current generation
-      only), `broker_gone` while Run is effective (crash, stale, or closed), `raise_requested`, `confirmation_requested`,
-      `breaker_tripped` (the validation breaker), `custodian_lost` (the lease''s reconcile mark), `hard_deadline` and `launch_failed`
-      (the supervisor''s spool appends at its deadline stop and its three launch-failure records). Each is delivered once
-      per occurrence (`.aew/local/notify/deliveries.jsonl`). Spool lines are untrusted: capped, validated per writer (`schemas/spool-event.schema.json`),
-      rate-bounded and labelled `authenticated: false`. The broker''s beat thread writes the liveness record every `POLL_S`,
-      with its watchdog''s last iteration and the wedge threshold `store.lock_timeout + 2 × POLL_S`, and `closed_at` on
-      a clean close or a supersession. A delivery failure shows in `status` and the dashboard''s attention and has no workflow
-      effect. Open: `confirm` (M4-E E7c), the publication grants (M4-E E6b), the loop (M4-E E7b), the E6 events (M4-E E7d)'
+      discarded and counted, on one delivery thread that never holds the endpoint''s locks and serves control-state and
+      liveness events before spool events; each source is read on its own, so one that fails never stops the others, and
+      an event leaves the outstanding set only once the delivery log records it. Events: `generation_ended` (takeover, handoff,
+      release; crash and stale from the liveness record, for the current generation only), `broker_gone` while Run is effective
+      (crash, stale, or closed), `raise_requested`, `confirmation_requested`, `breaker_tripped` (the validation breaker),
+      `custodian_lost` (the lease''s reconcile mark), `hard_deadline` and `launch_failed` (the supervisor''s spool appends
+      at its deadline stop and its three launch-failure records). Each is delivered once per occurrence (`.aew/local/notify/deliveries.jsonl`).
+      Spool lines are untrusted: capped, validated per writer (`schemas/spool-event.schema.json`), rate-bounded and labelled
+      `authenticated: false`. The broker''s beat thread writes the liveness record every `POLL_S`, with its watchdog''s
+      last iteration and the wedge threshold `store.lock_timeout + 2 × POLL_S`, and `closed_at` on a clean close or a supersession.
+      A delivery failure shows in `status` and the dashboard''s attention and has no workflow effect. Open: `confirm` (M4-E
+      E7c), the publication grants (M4-E E6b), the loop (M4-E E7b), the E6 events (M4-E E7d)'
 
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality

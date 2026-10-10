@@ -105,7 +105,12 @@ class StatusViews:
             lines += ["", f"Notifier: {notifier['delivered']} delivered, {notifier['failed']} failed"
                           + (f"; dropped: {dropped}" if dropped else "")]
             last = notifier.get("last_failure") or {}
-            if notifier.get("attention"):
+            failing = notifier.get("pass_error")
+            if failing:
+                lines.append(f"  ! the notifier's watcher cannot read {', '.join(failing['sources'])} "
+                             f"({notifier['consecutive_pass_failures']} pass(es) in a row, last at {failing['at']}: "
+                             f"{failing['error']}); its other sources still deliver")
+            if notifier.get("consecutive_failures"):
                 lines.append(f"  ! the latest delivery failed ({last.get('event')} at {last.get('at')}: "
                              f"{last.get('reason')}{'; ' + last['detail'] if last.get('detail') else ''}); check the "
                              "execution policy's `notify.command` and `.aew/local/notify/deliveries.jsonl`")

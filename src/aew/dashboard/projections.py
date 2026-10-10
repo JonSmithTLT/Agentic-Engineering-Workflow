@@ -482,8 +482,15 @@ class Projector:
         if not summary or not summary["attention"]:
             return []
         last = summary.get("last_failure") or {}
-        text = (f"{summary['consecutive_failures']} delivery failure(s) in a row; the latest: {last.get('event')} "
-                f"({last.get('reason')}{': ' + last['detail'] if last.get('detail') else ''})")
+        parts = []
+        if summary["consecutive_failures"]:
+            parts.append(f"{summary['consecutive_failures']} delivery failure(s) in a row; the latest: "
+                         f"{last.get('event')} ({last.get('reason')}"
+                         f"{': ' + last['detail'] if last.get('detail') else ''})")
+        if summary.get("pass_error"):
+            parts.append(f"the watcher cannot read {', '.join(summary['pass_error']['sources'])}: "
+                         f"{summary['pass_error']['error']}")
+        text = "; ".join(parts)
         return [{"id": "AT-notifier", "kind": "anomaly", "severity": "medium",
                  "subject": entity(self.s.project_id, "project", self.s.project_name),
                  "title": "Operator notification failed", "summary": rich(text),

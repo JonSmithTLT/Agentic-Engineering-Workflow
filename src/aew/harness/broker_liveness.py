@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import stat
 import threading
@@ -125,8 +126,23 @@ def write(aew_root: Path, record: dict[str, Any]) -> None:
             pass
 
 
-def _number(value: Any) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+MAX_PID = 2**31 - 1  # a pid_t on Linux, and below every Windows pid: a larger one is not a process the OS can name
+MAX_TIME = 4.0e9  # seconds since the epoch (the year 2096): a time past it is no time the broker wrote
+
+
+def _number(value: Any, *, low: float = 0.0, high: float = MAX_TIME) -> bool:
+    """A finite number in ``[low, high]``: never NaN or an infinity, which compare false with everything and would
+    hide a stale beat or a wedge (review of PR #184)."""
+    return (isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+            and low <= value <= high)
+
+
+def _integer(value: Any, high: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 < value <= high
+
+
+def _refuse_constant(token: str) -> Any:
+    raise ValueError(f"not a JSON number: {token}")
 
 
 def read(aew_root: Path) -> dict[str, Any] | None:
@@ -137,14 +153,14 @@ def read(aew_root: Path) -> dict[str, Any] | None:
         info = os.lstat(target)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:
             return None
-        data = json.loads(target.read_text(encoding="utf-8"))
+        data = json.loads(target.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
         return None
-    if not (isinstance(data.get("pid"), int) and not isinstance(data["pid"], bool) and data["pid"] > 0
-            and isinstance(data.get("generation"), int) and not isinstance(data["generation"], bool)
-            and all(_number(data.get(k)) for k in ("beat_at", "watchdog_tick_at", "wedge_after_s"))
+    if not (_integer(data.get("pid"), MAX_PID) and _integer(data.get("generation"), 2**62)
+            and all(_number(data.get(k)) for k in ("beat_at", "watchdog_tick_at"))
+            and _number(data.get("wedge_after_s"), high=MAX_WEDGE_S * 1000)
             and (data.get("process_started") is None or _number(data["process_started"]))
             and (data.get("closed_at") is None or _number(data["closed_at"]))):
         return None
@@ -172,7 +188,11 @@ def judge(record: dict[str, Any] | None, *, generation: int, poll_s: float,
     process = f"{record['pid']}@{record.get('process_started')}"
     if record.get("closed_at") is not None:
         return Verdict("closed", f"{process}:closed:{record['closed_at']}", "the broker ended cleanly")
-    if not same_process(record):
+    try:
+        gone = not same_process(record)
+    except (OSError, OverflowError, ValueError):  # a process the OS cannot check is unprovable, never an error
+        gone = False
+    if gone:
         return Verdict("crash", f"{process}:crash", f"the broker's process ({record['pid']}) is gone and it never "
                                                     "recorded a clean end")
     now = time.time() if now is None else now

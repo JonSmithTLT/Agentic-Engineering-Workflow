@@ -91,12 +91,7 @@ def append(aew_root: Path, writer: str, event: str, *, subject: str, reason: str
     try:
         if not WRITER_RE.match(writer):
             raise ValueError(f"not a spool writer name: {writer!r}")
-        # The reader keeps MAX_STRING characters of a reason, so nothing more is written: even escaped as \uXXXX, a
-        # line stays well under MAX_LINE.
-        line = {"schema": SCHEMA, "event": event, "at": utc_now(), "subject": str(subject)[:200],
-                "reason": None if reason is None else str(reason)[:MAX_STRING],
-                "ref": None if ref is None else str(ref)[:MAX_STRING]}
-        text = json.dumps(line, sort_keys=True, separators=(",", ":")) + "\n"
+        text = _encode(event, subject=subject, reason=reason, ref=ref)
         target = file_of(aew_root, writer)
         with _lock:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +105,28 @@ def append(aew_root: Path, writer: str, event: str, *, subject: str, reason: str
                 fh.write(text)
     except Exception as exc:  # noqa: BLE001  the spool never fails its writer
         log.warning("the event spool dropped %s for %s: %s: %s", event, writer, type(exc).__name__, exc)
+
+
+def _encode(event: str, *, subject: str, reason: str | None, ref: str | None) -> str:
+    """The line, bounded by its encoded length: JSON escapes a character outside ASCII as ``\\uXXXX`` (twelve bytes
+    for one outside the BMP), so a character cap alone does not bound it (review of PR #184). The reason, then the
+    reference, is shortened until the line, newline excluded, is at most :data:`MAX_LINE` bytes, so the reader never
+    drops a line a supervisor wrote."""
+    reason_text = None if reason is None else str(reason)[:MAX_STRING]
+    ref_text = None if ref is None else str(ref)[:MAX_STRING]
+    at = utc_now()
+    while True:
+        line = {"schema": SCHEMA, "event": event, "at": at, "subject": str(subject)[:200], "reason": reason_text,
+                "ref": ref_text}
+        text = json.dumps(line, sort_keys=True, separators=(",", ":"))
+        if len(text.encode("utf-8")) <= MAX_LINE:
+            return text + "\n"
+        if reason_text:
+            reason_text = reason_text[:len(reason_text) // 2]
+        elif ref_text:
+            ref_text = ref_text[:len(ref_text) // 2]
+        else:
+            raise ValueError("a spool line cannot be bounded")  # the subject alone is capped well under MAX_LINE
 
 
 def _open_append(path: Path) -> int:

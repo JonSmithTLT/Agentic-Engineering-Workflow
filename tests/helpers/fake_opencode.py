@@ -14,7 +14,8 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``<invocation>.json`` | ``default.json``): a list of steps, or ``{"steps", "effective", "health", "server"}``.
 ``server`` knobs: ``catalog_delay_s`` (counted from the first catalog request, not from server start, so a
 slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
-``ignore_config`` (load no configured agent), ``agent_override`` (fields that differ from the projection),
+``ignore_config`` (load no configured agent), ``agents_delay_s`` (list no agent at all until this long after the
+first agent request), ``agent_override`` (fields that differ from the projection),
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
@@ -89,6 +90,7 @@ class Session:
 class FakeOpenCode:
     def __init__(self, scripts: Path) -> None:
         self.catalog_asked: float | None = None
+        self.agents_asked: float | None = None
         self.data_home = Path(os.environ["XDG_DATA_HOME"])
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
@@ -335,6 +337,11 @@ class FakeOpenCode:
         defaults = [{"action": "*", "resource": "*", "effect": "allow"},
                     {"action": "external_directory", "resource": "*", "effect": "ask"},
                     {"action": "read", "resource": "*.env", "effect": "ask"}]
+        now = time.monotonic()
+        if self.agents_asked is None:
+            self.agents_asked = now
+        if now - self.agents_asked < float(self.knobs.get("agents_delay_s") or 0):
+            return []
         out = [{"id": "build", "name": "build", "mode": "primary", "permissions": defaults}]
         if self.knobs.get("ignore_config"):
             return out

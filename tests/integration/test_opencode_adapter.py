@@ -196,7 +196,18 @@ def test_a_missing_effort_variant_fails_closed(lab, tmp_path):
 def test_an_incompatible_server_fails_closed(lab, tmp_path, knobs, expected):
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, **knobs)
-    assert expected in refused_launch(lab, tmp_path)
+    # An ignored configuration is found only when the agent wait runs out, which a slow server also does: `unknown`
+    # (M4-E E8a; PR #185 review, F3). The other refusals are decided on what the server reported.
+    code = "unknown" if knobs.get("ignore_config") else "incompatible_config"
+    assert expected in refused_launch(lab, tmp_path, reason_code=code)
+
+
+def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(lab, tmp_path):
+    """A slow server: no agent at all appears within the agent wait. The launch fails closed, as before, but its
+    code is `unknown` (`launch_cause: agent_load_timeout`), never `incompatible_config` (PR #185 review, F3)."""
+    lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
+    script(lab, IMPLEMENT, agents_delay_s=60)
+    assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown")
 
 
 def test_a_denial_the_server_appends_after_aews_rules_is_accepted(lab, tmp_path):

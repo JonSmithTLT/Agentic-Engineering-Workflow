@@ -53,7 +53,8 @@ def test_unmapped_launch_failure_is_unknown(site):
     assert K.launch_failure_code(site) == K.UNKNOWN_LAUNCH_FAILURE
     # An error that names a cause its code does not tell apart is never mapped by its code (PR #185 review, F1):
     # OpenCode's catalog wait running out is HARNESS_INCOMPATIBLE, but timing-dependent.
-    assert {K.launch_failure_code(site, code, K.CATALOG_TIMEOUT) for _, code in mapped} == {K.UNKNOWN_LAUNCH_FAILURE}
+    assert {K.launch_failure_code(site, code, cause) for _, code in mapped
+            for cause in (K.CATALOG_TIMEOUT, K.AGENT_LOAD_TIMEOUT)} == {K.UNKNOWN_LAUNCH_FAILURE}
     # Every mapped pair, and only these, each with the launch in the integration tests that produces it.
     assert {(s, c) for s in SITES for c in ("STALE_AUTHORITY", "HARNESS_INCOMPATIBLE")
             if K.launch_failure_code(s, c) != K.UNKNOWN_LAUNCH_FAILURE} == mapped

@@ -185,6 +185,30 @@ effective:
 pending: []
 
 considered:
+  - path: docs/design/decisions-2026-10-09-knowledge-system-adoption.md
+    reason: >-
+      decision record (F21, 2026-10-09); adopts the knowledge-system design set and ADR-0013 as the governing M6b
+      direction, with role access and discoverability; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md
+    reason: >-
+      decision record (F21, F15.3, 2026-10-09); worker tool delivery through the aew-run bridge, and reviewer and
+      verifier lookup under the Contract's context independence; replaces no WC/KC text
+  - path: docs/design/aew-knowledge-capture-admission-design-v0.4.md
+    reason: >-
+      adopted design (F21, 2026-10-09); the knowledge capture and admission path, layered on KC v0.4 as its
+      authority and provenance baseline; replaces no WC/KC text
+  - path: docs/design/aew-knowledge-capture-recall-shared-semantics-v0.4.md
+    reason: >-
+      adopted design (F21, 2026-10-09); the semantics shared by the knowledge write and read paths, layered on KC
+      v0.4; replaces no WC/KC text
+  - path: docs/design/aew-knowledge-recall-context-routing-and-agent-use-design-v0.3.md
+    reason: >-
+      adopted design (F21, 2026-10-09); knowledge recall, context routing and agent use, layered on KC v0.4;
+      replaces no WC/KC text
+  - path: docs/design/deterministic-work-conservation-requirement-v0.1.md
+    reason: >-
+      adopted requirement (F34, 2026-10-09); a cross-cutting product requirement that preserves every existing
+      authority and evidence rule (its §15); replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

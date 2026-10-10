@@ -76,7 +76,7 @@ The six classes are the record's §16. "Delta" names the item in §3 that does t
 | Reviewer layout row (record §11; synthesis §2) | implementation-local refinement | F35 | D5 |
 | The Lead's structural map in `resume` (record §11) | existing item — no change (F22.1 PR B, #143) | F22.1 | D1 |
 | Refine F30, F9/F20/M5, the execution-profile schema, serving policy and independence filter (record §11) | implementation-local refinement | F30, F15.9, F9, F20.7, F11, F35, F36, F15.8 | D5 to D11 |
-| Ingest F9-A1 (record §11) | existing item — no change: already ingested (PR #145, ledger LWM); its adoption is the decisions-due item | F9 | — |
+| Ingest F9-A1 (record §11) | existing item — no change: already ingested (PR #145, ledger LWM); its adoption is the decisions-due item (adopted later the same day; see D13) | F9 | — |
 | `knowledge.search` and `knowledge.get` after Arm B (record §11) | existing item — no change (F21's sequence), hosted by F15.8 | F21, F15.8 | D12 |
 | The five probes (record §12; synthesis §9) | F19 probe | F19 | D14 |
 | Non-goals (record §13; synthesis §10) | existing item — no change | F34 | — |
@@ -333,6 +333,10 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Operator or designer action:** none new.
 
 ### D13. F9 once F9-A1 is adopted
+
+*Update, 2026-10-09: F9-A1 was adopted the same day ([decision record](../design/decisions-2026-10-09-f9-a1-adoption.md),
+ledger LWA): F9-A first, behind a switch, and off in M4-H's frozen treatment. The register's F9 row carries the
+result; the entry below is the planning pass as written before it.*
 
 - **Owner:** F9. **Class:** existing item — no change.
 - **Depends on:** the decisions-due adoption of F9-A1 (already ingested, PR #145).

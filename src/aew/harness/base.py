@@ -27,6 +27,8 @@ class HarnessAdapter(ABC):
     # conformance test (F25, cost and usage ledger v0.2 R4 rule 1). A version or provider it does not name resolves to
     # ``unknown``, which is never priced.
     token_semantics: Mapping[str, Mapping[str, str]] = {}
+    # The longest a successful ``launch`` can take, for an adapter that does not compute it (``launch_bound_s``).
+    LAUNCH_BOUND_S = 240.0
 
     def __init__(self, tree: ProcessTree, run_dir: Path, emit: Callable[[dict[str, Any]], None]) -> None:
         self.tree = tree
@@ -42,6 +44,13 @@ class HarnessAdapter(ABC):
         ``agent_env`` is the complete environment for every model-controlled process: it carries no AEW
         credential, no provider secret and no harness server password.
         """
+
+    @classmethod
+    def launch_bound_s(cls) -> float:
+        """The longest a successful ``launch`` can take: its steps' own timeouts in series, from the settings this
+        process runs with. The supervisor's start deadline is derived from it, so it never cuts off a start that is
+        still within the adapter's own bounds (ADR-0009 amendment 2026-10-09)."""
+        return cls.LAUNCH_BOUND_S
 
     @abstractmethod
     def inspect(self) -> dict[str, Any]:

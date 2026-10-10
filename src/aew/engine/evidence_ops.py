@@ -9,6 +9,7 @@ Authority split (WC §6, KC §16):
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -857,9 +858,10 @@ class EvidenceCommands:
     def _query_ticket_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """Accepting a review report for a mutating Ticket: it is REVIEW_PENDING; the report is a sealed review of it by
         a reviewer independent of the implementer, of the workspace's current snapshot, bound to the current plan and
-        attempt; every finding it resolves is known. It records the report, the reference the ingest pins, and the
-        state the report's outcome implies (REVIEW_FAILED, else REVIEW_PASSED; a review still pending elsewhere is the
-        next step's guard's to see)."""
+        attempt; every finding it resolves is known; and the state change its outcome implies is one the state hooks
+        allow. It records the report, the reference the ingest pins, and the state the outcome leaves the Ticket in
+        (:meth:`_review_outcome`, the same function the ingest uses: REVIEW_FAILED, REVIEW_PASSED, or REVIEW_PENDING
+        while another required review is outstanding)."""
         evidence_id = str(args.get("evidence"))
 
         def check() -> None:
@@ -884,13 +886,52 @@ class EvidenceCommands:
             for rid in resolved:
                 if not any(f["id"] == rid for f in findings):
                     raise ValidationFailed(f"review resolves unknown finding {rid}")
-            still_open = [f for f in G.open_required_findings(unit) if f["id"] not in resolved]
-            failed = (ev["review"]["disposition"] != "pass" or bool(still_open)
-                      or any(f["required"] for f in ev["review"]["findings"]))
+            to, _open, _pending = self._review_outcome(state, work_id, ev)
+            if to is not None:  # the change the ingest makes: the table's edge and the state hooks (finding 1)
+                transitions.check(unit["state"], to, "review.ingest")
+                require(self.units.state_change_query(unit, {"from": unit["state"], "to": to}))
             args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev),
-                                                to="REVIEW_FAILED" if failed else "REVIEW_PASSED")
+                                                to=to or unit["state"])
 
         return guard_checked(check)
+
+    def _apply_review(self, unit: dict[str, Any], ev: dict[str, Any]) -> None:
+        """What ingesting review ``ev`` changes on ``unit`` (the transaction's, or a copy): the findings it resolves are
+        resolved, the findings it reports and the unit does not know yet are recorded (required ones open), and the
+        report is pinned. Idempotent: applied twice, the second time changes nothing."""
+        findings = unit.setdefault("findings", [])
+        known = {f["id"] for f in findings}
+        for rid in ev["review"].get("resolved_findings", []):
+            target = next(f for f in findings if f["id"] == rid)  # known: the query checked every one
+            target.update(status="resolved", resolved_by=ev["id"])
+        for f in ev["review"]["findings"]:
+            fid = f"{ev['id']}#{f['id']}"
+            if fid not in known:
+                findings.append({"id": fid, "severity": f["severity"], "summary": f["summary"],
+                                 "location": f.get("location"), "required": f["required"],
+                                 "status": "open" if f["required"] else "noted", "source": ev["id"]})
+        self.gates.ingest_ref(unit, ev)
+
+    def _review_outcome(self, state: dict[str, Any], work_id: str,
+                        ev: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]], dict[str, str]]:
+        """The outcome of ingesting review ``ev``, computed on a copy (PR #170 review, finding 4: one function for the
+        query's prediction and the ingest itself): the review applied (:meth:`_apply_review`) and its reviewer's
+        invocation completed, then the state it moves the Ticket to (REVIEW_FAILED on a disposition other than pass or
+        an open required finding, waived ones aside; None while another required review is outstanding; else
+        REVIEW_PASSED), the open required findings, and the review gates still unmet."""
+        unit = copy.deepcopy(state["work"][work_id])
+        self._apply_review(unit, ev)
+        reviewer = ev["producer"]["invocation"]
+        invocations = dict(state["invocations"])
+        if (invocations.get(reviewer) or {}).get("status") == "active":
+            invocations[reviewer] = {**invocations[reviewer], "status": "completed"}
+        scratch = {**state, "work": {**state["work"], work_id: unit}, "invocations": invocations}
+        open_required = G.open_required_findings(unit)
+        gc = self.gates.gate_context(scratch, work_id)
+        pending = G.unmet(gc["gates"], self.gates.review_gates(gc))
+        if ev["review"]["disposition"] != "pass" or open_required:
+            return "REVIEW_FAILED", open_required, pending
+        return (None if pending else "REVIEW_PASSED"), open_required, pending  # None: other reviews outstanding
 
     def _ingest_ticket_review(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "review.ingest") as ctx:
@@ -901,28 +942,11 @@ class EvidenceCommands:
             require(self.review_ingest_query(state, work_id, args))  # the guard, as `explain` and a stage ask it
             unit = state["work"][work_id]
             ev = args["found"]["evidence"]
-            findings = unit.setdefault("findings", [])
-            known = {f["id"] for f in findings}
-            for rid in ev["review"].get("resolved_findings", []):
-                target = next(f for f in findings if f["id"] == rid)  # known: the query checked every one
-                target.update(status="resolved", resolved_by=evidence_id)
-            for f in ev["review"]["findings"]:
-                fid = f"{evidence_id}#{f['id']}"
-                if fid not in known:
-                    findings.append({"id": fid, "severity": f["severity"], "summary": f["summary"],
-                                     "location": f.get("location"), "required": f["required"],
-                                     "status": "open" if f["required"] else "noted", "source": evidence_id})
-            self.gates.ingest_ref(unit, ev)
+            self._apply_review(unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
-            open_required = G.open_required_findings(unit)
-            gc = self.gates.gate_context(state, work_id)
-            pending = G.unmet(gc["gates"], self.gates.review_gates(gc))
-            if ev["review"]["disposition"] != "pass" or open_required:
-                to = "REVIEW_FAILED"
-            elif pending:
-                to = None  # other required reviews (triggered/inherited) still outstanding
-            else:
-                to = "REVIEW_PASSED"
+            # The outcome, by the function the query predicted it with (it applies the review to a copy: applied
+            # already here, so a no-op there).
+            to, open_required, pending = self._review_outcome(state, work_id, ev)
             change = None
             if to:
                 transitions.check(unit["state"], to, "review.ingest")

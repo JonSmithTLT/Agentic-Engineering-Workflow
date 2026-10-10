@@ -389,3 +389,54 @@ def test_a_create_query_missing_its_title_is_a_usage_refusal_not_an_exception(re
     _p, _wid, engine = ready
     answer = engine.guard_query("work.create", None, {"kind": "ticket", "risk_class": 1})
     assert answer["availability"] == BLOCKED and answer["reason_codes"] == ["USAGE"]
+
+
+def test_the_ingest_predicts_reviews_still_pending_as_the_ingest_leaves_them(tmp_path):
+    """PR #170 review, finding 4: one outcome function for the prediction and the ingest. A general review accepted
+    while a triggered specialist review is outstanding leaves the Ticket REVIEW_PENDING; the query predicts exactly
+    that, so the verification stage is BLOCKED at step 2 with the refusal running it meets (ILLEGAL_TRANSITION)."""
+    from aewflow import SUBTRACT_PATCH, assign, implement, review
+
+    p = sample_project(tmp_path, guardrails={
+        "schema": "aew/guardrails/v1", "protected_paths": ["vendor/**"], "generated_paths": [],
+        "ticket_scope_enforcement": True, "dependency_rules": [],
+        "review_triggers": [{"name": "security", "paths": ["calc/crypto*.py"]}]})
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid), {**SUBTRACT_PATCH, "calc/crypto_util.py": "KEY_BITS = 256\n"})
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    engine = Engine.discover(p.root)
+    general = review(p, wid)
+    stage = _verification_stage(engine, wid, general)
+    assert [s["availability"] for s in stage["steps"][:2]] == [AVAILABLE, BLOCKED]
+    assert stage["steps"][1]["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    args: dict[str, Any] = {"evidence": general}
+    equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, general))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "REVIEW_PENDING"
+    with pytest.raises(AEWError) as refused:
+        engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+    assert refused.value.code == stage["steps"][1]["reason_codes"][0]
+    special = review(p, wid, specialty="security")
+    args = {"evidence": special}
+    equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, special))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "REVIEW_PASSED"
+
+
+def test_a_failing_reviews_predicted_state_is_the_ingests(implemented):
+    from aewflow import review
+
+    p, wid, engine, _impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    report = review(p, wid, disposition="changes_required",
+                    findings=[{"id": "F1", "severity": "major", "summary": "missing test", "required": True}])
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, report))
+    unit = engine.store.read()["work"][wid]
+    assert args["found"]["to"] == unit["state"] == "REVIEW_FAILED"
+    # The outcome function applies the review to a copy: applied again to the ingested unit, it changes nothing.
+    again = engine._evidence._review_outcome(engine.store.read(), wid, args["found"]["evidence"])
+    assert again[0] == "REVIEW_FAILED" and [f["id"] for f in again[1]] == [f"{report}#F1"]
+    assert engine.store.read()["work"][wid]["findings"] == unit["findings"]
+    # A waived required finding is not open: the outcome reads it through the same rule the gates do.
+    waived = engine.store.read()
+    waived["work"][wid]["waivers"] = [{"finding": f"{report}#F1", "reason": "accepted risk"}]
+    assert engine._evidence._review_outcome(waived, wid, args["found"]["evidence"])[1] == []

@@ -8,10 +8,12 @@ less what later slices add (the reset is S6's, the supervisor S8's, the classifi
 
 1. **Refuse before anything is counted** (:class:`Refused`): the frozen inputs, as the single-host runner checks them;
    the arm must be ``scripted`` (deny by default: every model arm waits for its supervisor, S8 and S9); a case with an
-   oracle must have the committed one on this side.
-2. **Preflight** the arm host, bound to the run, the treatment, the base and the snapshot. A held-out case is never
-   released on a preflight that is not established (HOC-11): the refusal is recorded in the release ledger, and
-   nothing is registered.
+   oracle must have the committed one on this side; and no retry while the verdicts are provisional (below).
+2. **Preflight** the arm host, bound to the run, the treatment, the base and the snapshot. A preflight is established
+   only when it says so **and** has checks that all passed; one that claims it without them is refused. No cell is
+   released on a preflight that is not established (HOC-06, HOC-07, HOC-11), except a ``scripted`` cell of a case
+   that is not held out, where no model-controlled process exists to reach anything: the refusal is recorded in the
+   release ledger, and nothing is registered.
 3. **Register** the attempt with its ``release`` block (host, snapshot, the preflight's and the bundle's hashes)
    **before the bundle leaves**.
 4. **Release** the bundle; the arm host verifies it against its manifest.
@@ -23,7 +25,10 @@ less what later slices add (the reset is S6's, the supervisor S8's, the classifi
 
 Every step appends to ``releases.jsonl``. Nothing here runs an arm: this module imports no arm runner and calls none
 (a static test checks it). The validity verdicts written here are provisional until S7's frozen classifier: every
-failure after registration is a counted ``invalid_measurement`` with its reason code, never a vanished sample.
+failure after registration is a counted ``invalid_measurement`` with its reason code, never a vanished sample, and a
+released run is never retried (``retry_of`` is refused) until that classifier decides which failures may be. The codes
+say which direction failed: a bare ``TRANSFER_CORRUPT`` only for the evaluator's own release bundle, and
+``RESULT_REFUSED:<code>`` for anything wrong with what the arm host sends back (PR #189 review, F3).
 """
 
 from __future__ import annotations
@@ -50,24 +55,44 @@ class Refused(Invalid):
 
 
 class Failure(Exception):  # noqa: N818 (a step's counted failure, carried to the finalize; never escapes)
-    def __init__(self, reason_code: str, detail: str) -> None:
+    def __init__(self, reason_code: str, detail: str, *, guest: bool = False) -> None:
         super().__init__(f"{reason_code}: {detail}")
         self.reason_code = reason_code
         self.detail = detail
+        self.guest = guest  # the detail is the arm host's own text
+
+
+CHANNEL_FAILURES = frozenset({"TIMEOUT", "HOST_FAILED"})  # the call itself failed, not what came back
 
 
 def _call(transport: Transport, verb: str, run_id: str, **kw: Any) -> Any:
-    """A call whose transport failure or refused reply is a counted failure of this run."""
+    """A call whose transport failure or refused reply is a counted failure of this run, coded by direction: a bare
+    ``TRANSFER_CORRUPT`` only when the agent finds the evaluator's release bundle corrupt; anything wrong with a
+    collect reply is ``RESULT_REFUSED:<code>``; other refusals are ``ARMHOST_REFUSED:<code>``, and a failed call
+    ``TRANSPORT_ERROR:<code>``."""
     try:
         reply = transport.call(verb, run_id=run_id, **kw)
     except TransferError as exc:
-        raise Failure(exc.code if exc.code == "TRANSFER_CORRUPT" else f"TRANSPORT_ERROR:{exc.code}",
+        result_side = verb == "collect" and exc.code not in CHANNEL_FAILURES
+        raise Failure(f"RESULT_REFUSED:{exc.code}" if result_side else f"TRANSPORT_ERROR:{exc.code}",
                       exc.detail) from None
     if not reply.ok:
         error = reply.error or {"code": "UNKNOWN", "message": ""}
         code = error["code"]
-        raise Failure(code if code == "TRANSFER_CORRUPT" else f"ARMHOST_REFUSED:{code}", error["message"])
+        if verb == "release" and code == "TRANSFER_CORRUPT":
+            raise Failure("TRANSFER_CORRUPT", error["message"], guest=True)
+        prefix = "RESULT_REFUSED" if verb == "collect" else "ARMHOST_REFUSED"
+        raise Failure(f"{prefix}:{code}", error["message"], guest=True)
     return reply
+
+
+def _established(found: dict[str, Any]) -> bool:
+    """A preflight is established only when it says so and every one of its checks, of which there is at least one,
+    passed. A claim without them is refused outright (PR #189 review)."""
+    passed = bool(found["checks"]) and all(c["ok"] for c in found["checks"])
+    if found["established"] and not passed:
+        raise Invalid("the arm host's preflight claims corpus isolation without checks that all passed")
+    return bool(found["established"]) and passed
 
 
 def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict[str, Path],
@@ -94,6 +119,9 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
         if arm["kind"] not in RELEASED_KINDS:
             raise Invalid(f"arm {arm['id']} is {arm['kind']!r}: a released cell runs the scripted arm only until "
                           "the run supervisor exists (F19 plan v5, S8 and S9)")
+        if retry_of is not None:
+            raise Invalid("a released run is never retried while its validity verdicts are provisional: S7's frozen "
+                          "classifier decides which failures may be retried (ADR-0018 D8)")
         if entry["case"] not in cases:
             raise Invalid(f"no manifest given for case {entry['case']}")
         case = fixture.load(cases[entry["case"]])
@@ -112,6 +140,8 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
         run_id = f"{experiment}/{run_name}"
         if not RUN_ID.match(run_id):
             raise Invalid(f"run id {run_id!r} must be <experiment>/<name>")
+        collect_root.mkdir(parents=True, exist_ok=True)
+        collect_root = collect_root.resolve(strict=True)  # a linked or short-name root: the export resolves under it
         collected = collect_root / run_name
         if collected.exists():
             raise Invalid(f"{collected} exists: every run's collection goes to a fresh directory")
@@ -135,9 +165,10 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
         found = reply.result
         if found["binding"] != binding:
             raise Invalid("the preflight answered for another binding")
-        if held_out and not found["established"]:
-            raise Invalid(f"case {case.id} is held out and the arm host's preflight did not establish corpus "
-                          "isolation: nothing is released (held-out corpus isolation decision, §3; HOC-11)")
+        if not _established(found) and (held_out or arm["kind"] != "scripted"):
+            raise Invalid(f"the arm host's preflight did not establish corpus isolation, and cell {cell} is "
+                          f"{'held out' if held_out else 'a model arm'}: nothing is released (held-out corpus "
+                          "isolation decision, §3; HOC-06, HOC-07, HOC-11)")
     except Exception as exc:  # noqa: BLE001 (a preflight that fails or refuses releases nothing)
         reason = exc.code if isinstance(exc, TransferError) else "PREFLIGHT_REFUSED"
         releases.append(run_id, "preflight_refused", {"host": host.name, "reason": reason, "detail": str(exc)[-600:]})
@@ -171,7 +202,7 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
     try:
         reply = _call(transport, "release", run_id, args={"bundle_sha256": bundle.sha256}, payload=bundle.tar)
         if reply.result["bundle_sha256"] != bundle.sha256:
-            raise Failure("TRANSFER_CORRUPT", "the arm host received another bundle")
+            raise Failure("TRANSFER_CORRUPT", "the arm host received another bundle", guest=True)
         releases.append(run_id, "released", {"bundle_sha256": bundle.sha256,
                                               "run_manifest_sha256": bundle.run_manifest_sha256})
         ran = _call(transport, "run", run_id, args={"deadline_s": terms.wall_s},
@@ -183,17 +214,23 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
             received = receive(reply.payload, collected, limits=limits,
                                expected_sha256=reply.result["manifest_sha256"])
         except TransferError as exc:
-            raise Failure(exc.code if exc.code == "TRANSFER_CORRUPT" else f"RESULT_REFUSED:{exc.code}",
-                          exc.detail) from None
-        other = {**reply.result["other"]}
+            raise Failure(f"RESULT_REFUSED:{exc.code}", exc.detail) from None
+        stray = sorted(p for p in [*received.files, *received.links] if not p.startswith(TREE))
+        if stray:
+            raise Failure("RESULT_REFUSED:UNEXPECTED_ENTRY", f"the result bundle holds {stray[0]} outside {TREE}")
+        links = {p.removeprefix(TREE): t for p, t in received.links.items()}
+        unread = dict(reply.result["other"])
+        clash = sorted(set(unread) & ({p.removeprefix(TREE) for p in received.files} | set(links)))
+        if clash:
+            raise Failure("RESULT_REFUSED:OTHER_CONFLICT", f"{clash[0]} is both received and listed as unread")
         export = collected / "tree"
         export.mkdir(exist_ok=True)
         final = fixture.files_of(export)
-        now = fixture.WorkTree(final.files, {**{p[len("tree/"):]: f"{fixture.LINK} -> {t}"
-                                                for p, t in received.links.items()}, **other})
-        outcome["changed_paths"] = fixture.changed_paths(start, now)
-        if reply.result["other_omitted"]:
-            outcome["changed_paths_omitted"] = reply.result["other_omitted"]
+        # The evaluator's own fact, from what it received; the paths the arm host did not read are its claim.
+        outcome["changed_paths"] = fixture.changed_paths(
+            start, fixture.WorkTree(final.files, {p: f"{fixture.LINK} -> {t}" for p, t in links.items()}))
+        outcome["unread_paths"] = unread
+        outcome["unread_paths_omitted"] = reply.result["other_omitted"]
         outcome["scoring"] = {"deferred": True, "export": str(export.resolve()),
                               "export_sha256": fixture._digest(fixture._read_tree(export, "export")),  # noqa: SLF001
                               "oracle_commitment": commitment}
@@ -201,10 +238,10 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
         releases.append(run_id, "collected", {"manifest_sha256": received.sha256})
         if ran["error"] is not None:
             validity = {"status": "invalid_measurement", "reason_code": "ARMHOST_ARM_ERROR"}
-            outcome["error"] = ran["error"]
+            outcome["arm_error"] = ran["error"]
     except Failure as exc:
         validity = {"status": "invalid_measurement", "reason_code": exc.reason_code}
-        outcome["error"] = exc.detail[-600:]
+        outcome["arm_error" if exc.guest else "error"] = exc.detail[-600:]
         releases.append(run_id, "failed", {"reason_code": exc.reason_code})
     except Exception as exc:  # noqa: BLE001 (the attempt is counted either way; the reason is recorded)
         validity = {"status": "invalid_measurement", "reason_code": f"EVALUATOR_ERROR:{type(exc).__name__}"}
@@ -238,14 +275,32 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
     return record
 
 
-# Who attests each fact of a released run's record (plan v5 §4). Keys are the record's paths.
+TREE = "tree/"
+
+# Who attests each fact of a released run's record (plan v5 §4). Keys are the record's paths; a fact is attested by
+# its longest labelled path prefix, and every leaf of the record has one (a test checks it). The snapshot UUID is the
+# evaluator's own host record until S6 checks it against the hypervisor.
 ATTESTED_BY: dict[str, str] = {
-    "case": EVALUATOR, "arm": EVALUATOR, "assignment": EVALUATOR, "profile.requested": EVALUATOR,
-    "outcome.release": EVALUATOR, "outcome.release.snapshot_uuid": HYPERVISOR,
-    "outcome.changed_paths": EVALUATOR, "outcome.scoring": EVALUATOR, "validity": EVALUATOR,
+    "schema": EVALUATOR, "experiment": EVALUATOR, "preregistration_sha256": EVALUATOR, "run_id": EVALUATOR,
+    "case": EVALUATOR, "arm": EVALUATOR, "assignment": EVALUATOR, "profile": EVALUATOR, "aew": EVALUATOR,
+    "aew_facts": EVALUATOR, "cost": EVALUATOR, "notes": EVALUATOR, "limits": EVALUATOR, "validity": EVALUATOR,
     "environment": GUEST, "environment.host": EVALUATOR, "harness": GUEST, "started_at": GUEST, "ended_at": GUEST,
     "wall_s": GUEST,
-    "outcome.base_commit": GUEST, "outcome.arm_outcome": GUEST,
+    "outcome.release": EVALUATOR, "outcome.changed_paths": EVALUATOR, "outcome.scoring": EVALUATOR,
+    "outcome.score": EVALUATOR, "outcome.safety": EVALUATOR, "outcome.error": EVALUATOR,
+    "outcome.attested_by": EVALUATOR,
+    "outcome.base_commit": GUEST, "outcome.arm_outcome": GUEST, "outcome.arm_error": GUEST,
+    "outcome.unread_paths": GUEST, "outcome.unread_paths_omitted": GUEST,
     "outcome.scoring.export": MODEL,  # the delivered tree is the model's work; its hash is the evaluator's
 }
+
+
+def attester(path: str) -> str | None:
+    """Who attests the fact at ``path`` (dot-separated): its longest labelled prefix's attester."""
+    parts = path.split(".")
+    for n in range(len(parts), 0, -1):
+        found = ATTESTED_BY.get(".".join(parts[:n]))
+        if found is not None:
+            return found
+    return None
 

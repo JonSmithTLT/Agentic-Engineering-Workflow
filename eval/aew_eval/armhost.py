@@ -1,20 +1,24 @@
-"""The arm-host agent (F19 plan v5 §2.2, §2.3; ADR-0018 D2, D7).
+"""The arm-host agent (F19 plan v5 §2.2, §2.3; ADR-0018 D2, D5, D7).
 
-The evaluator reaches it through one forced command (``python -I -m aew_eval.armhost``): each call is one request
-frame on standard input and one reply frame on standard output (:mod:`aew_eval.transport`). It keeps one directory
-per released run under its root, ``runs/<experiment>/<name>/``, and runs that run's verbs in order, each once:
+The evaluator reaches it through one forced command (``python -I -m aew_eval.armhost --limits <host record>``): each
+call is one request frame on standard input and one reply frame on standard output (:mod:`aew_eval.transport`). Its
+transfer bounds come from its host record (``--limits``; root-owned on an arm host, S17), never from a request. It
+keeps one directory per released run under its root, ``runs/<experiment>/<name>/``:
 
+* ``hello`` and ``preflight`` keep no state; the order of a release (a preflight first) is the evaluator's;
 * ``hello``: the agent's protocol, process and platform;
 * ``preflight``: the arm-host rule and the attestation, bound to the run, the treatment, the base and the snapshot
-  it echoes. **S4 establishes nothing** (``established: false``, no checks): the checks are S5's. The evaluator never
-  releases a held-out case on a preflight that is not established (HOC-11), so until S5 only public and synthetic
-  cases are released;
-* ``release``: hostile receive of the release bundle against the hash the evaluator recorded (``TRANSFER_CORRUPT``);
-* ``run``: the released arm on the released starting files. S4 runs the ``scripted`` arm only and refuses every other
-  kind (``ARM_KIND_REFUSED``); S8's supervisor replaces this verb for the model arms;
-* ``collect``: the final work tree as a bundle, ``.git`` left out, links as data entries, anything else that is not a
-  regular file (a FIFO, a socket, a device) or that has a name another platform cannot hold listed by path in the
-  reply's ``other``, never read.
+  it echoes. **S4 establishes nothing** (``established: false``, no checks): the checks are S5's. The evaluator
+  releases nothing to a model arm or of a held-out case on a preflight that is not established (HOC-06, HOC-07,
+  HOC-11), so until S5 only scripted cells of public and synthetic cases are released;
+* ``release`` (once): hostile receive of the release bundle against the hash the evaluator recorded
+  (``TRANSFER_CORRUPT``);
+* ``run`` (once, after ``release``): the released arm on the released starting files. S4 runs the ``scripted`` arm
+  only and refuses every other kind (``ARM_KIND_REFUSED``); S8's supervisor replaces this verb for the model arms;
+* ``collect`` (after ``run``, and repeatable: a later call returns the first one's bytes): the final work tree as a
+  bundle, ``.git`` left out, links as data entries; anything else that is not a regular file (a FIFO, a socket, a
+  device), a name another platform cannot hold or that is not valid UTF-8, and a directory it cannot list, is listed
+  by path in the reply's ``other`` (bounded by its serialized size), never read.
 
 It holds no corpus, ledger, preregistration or oracle, and imports nothing that reads one (a static test checks its
 import graph). Its facts are the guest agent's (plan §4): the run record labels them so.
@@ -43,7 +47,9 @@ from aew_eval.transport import (
     TransferError,
     check_path,
     encode_frame,
+    load_limits,
     pack,
+    printable,
     read_frame,
     receive,
 )
@@ -51,7 +57,8 @@ from aew_eval.transport import (
 PROTOCOL_VERSION = 1
 DEFAULT_ROOT = Path("/srv/aew-run/arm")
 RUN_ID = re.compile(r"^(?P<experiment>[a-z0-9][a-z0-9-]*)/(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)$")
-OTHER_CAP = 1000  # paths listed in a collect reply's ``other``; the rest are counted (the reply stays under 1 MiB)
+OTHER_BYTES = 256 * 1024  # the serialized size of a collect reply's ``other``; the rest are counted
+OTHER_PATH_CHARS = 1024
 RUN_MANIFEST = "aew/m4h-run-manifest/v1"
 
 
@@ -185,40 +192,88 @@ class Agent:
                 "base_commit": base, "outcome": outcome, "harness": harness, "environment": _facts(), "error": error}
 
     def collect(self, run: Path) -> tuple[dict[str, Any], bytes]:
+        """The final tree as a bundle. Repeatable once the run has ended: the first collect keeps its bundle and
+        reply, and a later one (after a reply lost in transit) returns the same bytes (PR #189 review, F11)."""
         state = self._state(run)
+        cached_tar, cached_reply = run / "collect.tar", run / "collect.json"
+        if state["phase"] == "collected":
+            return json.loads(cached_reply.read_text(encoding="utf-8")), cached_tar.read_bytes()
+        if state["phase"] != "ran":
+            raise AgentError("OUT_OF_ORDER", f"this run is {state['phase']}; the verb needs it ran")
         repo = run / "repo"
-        entries, other = _walk(repo) if repo.is_dir() else ([], {})
         try:
+            entries, other = _walk(repo, self.limits) if repo.is_dir() else ([], {})
             data, digest = pack([Entry(f"tree/{e.path}", e.kind, e.data, e.target) for e in entries],
                                 limits=self.limits)
         except TransferError as exc:
             raise AgentError(exc.code, exc.detail) from None
+        listed, omitted = bound_other(other)
+        reply = {"manifest_sha256": digest, "other": listed, "other_omitted": omitted}
+        _write_new(cached_tar, data)
+        _write_new(cached_reply, json.dumps(reply, sort_keys=True).encode("utf-8"))
         self._advance(run, state, "ran", "collected")
-        listed = dict(sorted(other.items())[:OTHER_CAP])
-        return {"manifest_sha256": digest, "other": listed, "other_omitted": len(other) - len(listed)}, data
+        return reply, data
 
 
-def _walk(repo: Path) -> tuple[list[Entry], dict[str, str]]:
+def _write_new(path: Path, data: bytes) -> None:
+    tmp = path.with_name(path.name + ".partial")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def bound_other(other: dict[str, str]) -> tuple[dict[str, str], int]:
+    """The paths a collect reply lists in ``other``, bounded by their serialized size (:data:`OTHER_BYTES`), so the
+    reply stays well under its 1 MiB JSON bound whatever names the arm made (PR #189 review, F2); a path over
+    :data:`OTHER_PATH_CHARS` characters, and every path past the bound, is counted in ``other_omitted``."""
+    listed: dict[str, str] = {}
+    size = 0
+    for rel, kind in sorted(other.items()):
+        cost = len(json.dumps(rel)) + len(json.dumps(kind)) + 4  # with json.dumps's ", " and ": "
+        if len(rel) > OTHER_PATH_CHARS or size + cost > OTHER_BYTES:
+            continue
+        listed[rel] = kind
+        size += cost
+    return listed, len(other) - len(listed)
+
+
+def _walk(repo: Path, limits: Limits = DEFAULT_LIMITS) -> tuple[list[Entry], dict[str, str]]:
     """The work tree as bundle entries, read without git and never following a link: regular files with their bytes,
-    links with their target text; everything else, and any name another platform could not hold (or that differs
-    from an earlier one only in case), listed in ``other`` and not read. ``.git`` at the root is left out."""
+    links with their target text. Everything else is listed in ``other`` (keyed by :func:`printable` path) and never
+    read: a FIFO, socket or device (``special``); a name another platform could not hold, that is not valid UTF-8, or
+    that differs from an earlier one only in case, and a link whose target is not valid UTF-8 (``unsafe-name``); a
+    directory that cannot be listed (``unreadable``). ``.git`` at the root is left out. A file is sized before it is
+    read, so the agent never holds more than the bounds (PR #189 review, F1, F3, F8)."""
     entries: list[Entry] = []
     other: dict[str, str] = {}
     folded: set[str] = set()
+    total = 0
 
     def admit(rel: str) -> bool:
         try:
             check_path(rel, "a work-tree path")
         except Invalid:
-            other[rel] = "unsafe-name"
+            other[printable(rel)] = "unsafe-name"
             return False
         if rel.casefold() in folded:
-            other[rel] = "unsafe-name"
+            other[printable(rel)] = "unsafe-name"
             return False
         folded.add(rel.casefold())
         return True
 
-    for dirpath, dirnames, filenames in os.walk(repo, followlinks=False):
+    def unreadable(exc: OSError) -> None:
+        where = Path(exc.filename) if exc.filename else repo
+        rel = where.relative_to(repo).as_posix() if where != repo else "."
+        other[printable(rel)] = "unreadable"
+
+    def bounded(rel: str, size: int) -> None:
+        nonlocal total
+        if size > limits.file_bytes:
+            raise TransferError("OVER_BOUNDS", f"{rel} is {size} bytes; the bound is {limits.file_bytes}")
+        total += size
+        if total > limits.total_bytes:
+            raise TransferError("OVER_BOUNDS", f"more than {limits.total_bytes} bytes in total")
+
+    for dirpath, dirnames, filenames in os.walk(repo, followlinks=False, onerror=unreadable):
         here = Path(dirpath)
         if here == repo:
             dirnames[:] = [d for d in dirnames if d != ".git"]
@@ -228,7 +283,7 @@ def _walk(repo: Path) -> tuple[list[Entry], dict[str, str]]:
             if fixture.is_link(p):
                 dirnames.remove(name)
                 if admit(rel):
-                    entries.append(_link_entry(p, rel, other))
+                    _link_entry(p, rel, entries, other)
             elif not admit(rel):
                 dirnames.remove(name)
         for name in sorted(filenames):
@@ -236,34 +291,58 @@ def _walk(repo: Path) -> tuple[list[Entry], dict[str, str]]:
             rel = p.relative_to(repo).as_posix()
             if not admit(rel):
                 continue
-            mode = os.lstat(p).st_mode
+            st = os.lstat(p)
             if fixture.is_link(p):
-                entries.append(_link_entry(p, rel, other))
-            elif stat.S_ISREG(mode):
+                _link_entry(p, rel, entries, other)
+            elif stat.S_ISREG(st.st_mode):
+                bounded(rel, st.st_size)
                 fd = os.open(p, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
                 with os.fdopen(fd, "rb") as fh:
-                    entries.append(Entry(rel, "file", data=fh.read()))
+                    size = os.fstat(fh.fileno()).st_size  # it may have grown since lstat
+                    if size > limits.file_bytes:
+                        raise TransferError("OVER_BOUNDS", f"{rel} is {size} bytes; the bound is "
+                                            f"{limits.file_bytes}")
+                    data = fh.read(limits.file_bytes + 1)
+                if len(data) > limits.file_bytes:
+                    raise TransferError("OVER_BOUNDS", f"{rel} grew past {limits.file_bytes} bytes while read")
+                entries.append(Entry(rel, "file", data=data))
             else:
-                other[rel] = "special"
-    return [e for e in entries if e.path not in other], other
+                other[printable(rel)] = "special"
+            if len(entries) > limits.entries:
+                raise TransferError("OVER_BOUNDS", f"more than {limits.entries} entries")
+    return entries, other
 
 
-def _link_entry(p: Path, rel: str, other: dict[str, str]) -> Entry:
+def _link_entry(p: Path, rel: str, entries: list[Entry], other: dict[str, str]) -> None:
     try:
-        return Entry(rel, "link", target=os.readlink(p))
+        target = os.readlink(p)
     except (OSError, ValueError):  # a reparse point that is not a link
-        other[rel] = "special"
-        return Entry(rel, "link")
+        other[printable(rel)] = "special"
+        return
+    try:
+        target.encode("utf-8")
+    except UnicodeEncodeError:
+        other[printable(rel)] = "unsafe-name"
+        return
+    entries.append(Entry(rel, "link", target=target))
+
+
+def _failure(verb: str, code: str, message: str) -> dict[str, Any]:
+    return {"kind": "reply", "verb": verb, "ok": False, "error": {"code": code, "message": printable(message)[-2000:]},
+            "result": {}}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m aew_eval.armhost")
     ap.add_argument("--root", type=Path, default=DEFAULT_ROOT)
+    ap.add_argument("--limits", type=Path, default=None,
+                    help="the host record of this agent's transfer bounds (root-owned on an arm host; S17)")
     args = ap.parse_args(argv)
-    agent = Agent(args.root.resolve())
     stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
     verb = "hello"
+    body = b""
     try:
+        agent = Agent(args.root.resolve(), load_limits(args.limits) if args.limits else DEFAULT_LIMITS)
         message, payload = read_frame(stdin, what="request", limits=agent.limits,
                                       max_payload=agent.limits.tar_bytes())
         verb = message["verb"]
@@ -272,14 +351,14 @@ def main(argv: list[str] | None = None) -> int:
         result, body = agent.handle(verb, message["run_id"], message["args"], payload)
         reply = {"kind": "reply", "verb": verb, "ok": True, "error": None, "result": result}
     except (AgentError, TransferError) as exc:
-        code = exc.code
-        reply, body = {"kind": "reply", "verb": verb, "ok": False,
-                       "error": {"code": code, "message": str(exc)[-2000:]}, "result": {}}, b""
+        reply, body = _failure(verb, exc.code, str(exc)), b""
     except Exception as exc:  # noqa: BLE001 (any other failure is still one bounded, typed reply)
-        reply, body = {"kind": "reply", "verb": verb, "ok": False,
-                       "error": {"code": "ARMHOST_ERROR", "message": f"{type(exc).__name__}: {exc}"[-2000:]},
-                       "result": {}}, b""
-    stdout.write(encode_frame(reply, body))
+        reply, body = _failure(verb, "ARMHOST_ERROR", f"{type(exc).__name__}: {exc}"), b""
+    try:
+        frame = encode_frame(reply, body)
+    except Exception as exc:  # noqa: BLE001 (a reply that cannot be encoded is still answered, never a crash)
+        frame = encode_frame(_failure(verb, "ARMHOST_ERROR", f"the reply could not be encoded ({type(exc).__name__})"))
+    stdout.write(frame)
     stdout.flush()
     return 0
 

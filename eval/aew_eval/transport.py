@@ -3,27 +3,32 @@
 The evaluator initiates every call, and the arm host runs no listener. A call is one **request frame** and one **reply
 frame**: a single line of JSON (``aew/m4h-armhost/v1``, at most :attr:`Limits.json_bytes`), then exactly
 ``payload_bytes`` of payload: a tar for ``release`` (evaluator to arm host) and ``collect`` (arm host to evaluator),
-nothing otherwise. Every reply is bounded and schema-validated before anything reads it.
+nothing otherwise. Every frame is bounded, strict JSON (no ``NaN`` or ``Infinity``) and schema-validated before
+anything reads it, and nothing may follow its payload.
 
 **Bundles.** A bundle is a tar built by :func:`pack`: regular files, and links carried as data entries (their target
 text, never followed), with ``MANIFEST.json`` (``aew/m4h-bundle-manifest/v1``) naming every entry's hash. The bundle's
 hash is the manifest's. :func:`receive` is the **hostile receive** both sides apply to whatever arrives:
 
-* a stream tar parser that accepts only regular files, directories and link data entries; a hard link, device, FIFO
-  or any other type refuses the whole bundle;
-* relative, normalized paths only (:func:`aew_eval.fixture.safe_relative`, and no two that differ only in case), each
-  file written with ``O_EXCL`` (and ``O_NOFOLLOW`` where the platform has it) under a fresh directory this call
-  creates; a link is recorded, never created, so nothing written can leave the directory;
-* the bounds of :class:`Limits` (per file, in total, in entries) and a deadline;
+* a stream tar parser that accepts only regular files, directories and link data entries; a hard link, device, FIFO,
+  sparse file or any other type refuses the whole bundle;
+* relative, normalized, valid UTF-8 paths only (:func:`check_path`: :func:`aew_eval.fixture.safe_relative`, no
+  component over 255 bytes, and no two that differ only in case), each file written with ``O_EXCL`` (and
+  ``O_NOFOLLOW`` where the platform has it) under a fresh directory this call creates; a link is recorded, never
+  created, so nothing written can leave the directory; a write the host refuses is ``WRITE_REFUSED``;
+* the bounds of :class:`Limits` (per file, in total, in entries, the manifest's own size: ``MANIFEST_TOO_LARGE``) and
+  a deadline;
 * the manifest recomputed from what arrived and compared byte for byte, and with the hash the caller expected
   (``TRANSFER_CORRUPT`` otherwise).
 
-A refusal removes what it wrote and raises :class:`TransferError` with a stable ``code``.
+A refusal removes what it wrote and raises :class:`TransferError` with a stable ``code``. :func:`pack` refuses
+(``OVER_BOUNDS``) whatever :func:`receive` would, the manifest's size and the tar's size on the wire included.
 
 **Transports.** :class:`LocalTransport` runs the arm-host agent (:mod:`aew_eval.armhost`) as a separate process on
 this machine, rooted in its own directory, with an allow-listed environment: the stand-in for the SSH transport (S6)
-in tests and on Windows CI. :class:`RecordingTransport` wraps another and keeps every byte that crosses it, for the
-canary tests. Neither imports the arm host: the evaluator never runs an arm in its own process.
+in tests and on Windows CI; it hands the agent its bounds as a host record (``--limits``) and reads the agent's
+stderr to its end, keeping the tail. :class:`RecordingTransport` wraps another and keeps every byte that crosses it,
+for the canary tests. Neither imports the arm host: the evaluator never runs an arm in its own process.
 """
 
 from __future__ import annotations
@@ -55,6 +60,7 @@ O_BINARY = getattr(os, "O_BINARY", 0)
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 CHUNK = 1 << 20
 MiB = 1 << 20
+COMPONENT_BYTES = 255
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,15 @@ def encode_frame(message: dict[str, Any], payload: bytes = b"") -> bytes:
     return canonical(message) + b"\n" + payload
 
 
+def _no_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+def _loads(raw: bytes) -> Any:
+    """Strict JSON: ``NaN`` and ``Infinity`` are refused (the instrument's canonical encoding has none)."""
+    return json.loads(raw.decode("utf-8"), parse_constant=_no_constant)
+
+
 def decode_frame(data: bytes, *, what: str, limits: Limits, max_payload: int) -> tuple[dict[str, Any], bytes]:
     """A frame's message and payload, refused unless the JSON line is within the bound, parses, validates, and is
     followed by exactly the payload it declares (itself within ``max_payload``)."""
@@ -105,8 +120,8 @@ def decode_frame(data: bytes, *, what: str, limits: Limits, max_payload: int) ->
                                 f"the {what}'s JSON exceeds {limits.json_bytes} bytes without ending")
         raise TransferError(f"{what.upper()}_MALFORMED", f"the {what} has no complete JSON line")
     try:
-        message = json.loads(data[:end].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        message = _loads(data[:end])
+    except (ValueError, RecursionError) as exc:  # json's errors, and UnicodeDecodeError, are ValueErrors
         raise TransferError(f"{what.upper()}_MALFORMED", f"the {what}'s JSON does not parse ({exc})") from None
     try:
         validate(PROTOCOL, message, what=f"the {what}")
@@ -129,11 +144,13 @@ def read_frame(stream: BinaryIO, *, what: str, limits: Limits, max_payload: int)
     payload = b""
     if line.endswith(b"\n"):
         try:
-            declared = json.loads(line.decode("utf-8")).get("payload_bytes", 0)
-        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, RecursionError):
+            declared = _loads(line).get("payload_bytes", 0)
+        except (ValueError, AttributeError, RecursionError):
             declared = 0
         if isinstance(declared, int) and 0 < declared <= max_payload:  # otherwise decode_frame names the refusal
             payload = stream.read(declared)
+        if len(payload) == declared and stream.read(1):  # exactly payload_bytes, then the end (review F9)
+            raise TransferError(f"{what.upper()}_MALFORMED", f"the {what} carries bytes after its payload")
     return decode_frame(line + payload, what=what, limits=limits, max_payload=max_payload)
 
 
@@ -150,13 +167,28 @@ class Entry:
 
 
 def check_path(rel: str, what: str) -> str:
-    """A bundle path: relative, normalized, ``/``-separated, and the same file on every platform."""
+    """A bundle path: relative, normalized, ``/``-separated, the same file on every platform, valid UTF-8 (a name
+    that is not cannot be written to a manifest), at most 4096 characters, and no component over 255 bytes (no file
+    system holds a longer one: PR #189 review, F1 and F7)."""
     if not isinstance(rel, str) or len(rel) > 4096:
         raise TransferError("UNSAFE_PATH", f"{what}: a path is a string of at most 4096 characters")
+    try:
+        encoded = [part.encode("utf-8") for part in rel.split("/")]
+    except UnicodeEncodeError:
+        raise TransferError("UNSAFE_PATH", f"{what}: {printable(rel)} is not valid UTF-8") from None
+    if any(len(part) > COMPONENT_BYTES for part in encoded):
+        raise TransferError("UNSAFE_PATH", f"{what}: a component of {printable(rel)[:200]} is over "
+                            f"{COMPONENT_BYTES} bytes")
     try:
         return fixture.safe_relative(rel, what)
     except Invalid as exc:
         raise TransferError("UNSAFE_PATH", str(exc)) from None
+
+
+def printable(text: str) -> str:
+    """``text`` as something JSON and UTF-8 can always carry: an undecodable byte (a surrogate escape on Linux, a lone
+    surrogate on Windows) becomes a backslash escape."""
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
 
 
 def manifest_of(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -173,7 +205,9 @@ def _tarinfo(name: str, *, size: int = 0, kind: bytes = tarfile.REGTYPE, target:
 
 def pack(entries: Iterable[Entry], *, limits: Limits = DEFAULT_LIMITS) -> tuple[bytes, str]:
     """A bundle: the tar's bytes and its hash (the canonical manifest's SHA-256). Refuses (``OVER_BOUNDS``,
-    ``UNSAFE_PATH``, ``PATH_CONFLICT``) what :func:`receive` would refuse, so a sound packer never sends it."""
+    ``UNSAFE_PATH``, ``PATH_CONFLICT``) what :func:`receive` would refuse, so a sound packer never sends it: the
+    entries, each file and the total, and also the manifest's own size and the tar's size on the wire (PR #189
+    review, F3)."""
     buf = io.BytesIO()
     listed: list[dict[str, Any]] = []
     seen: dict[str, tuple[str, str]] = {}
@@ -197,12 +231,23 @@ def pack(entries: Iterable[Entry], *, limits: Limits = DEFAULT_LIMITS) -> tuple[
                 listed.append({"path": rel, "kind": "file", "sha256": hashlib.sha256(entry.data).hexdigest(),
                                "size": len(entry.data)})
             elif entry.kind == "link":
+                try:
+                    entry.target.encode("utf-8")
+                except UnicodeEncodeError:
+                    raise TransferError("UNSAFE_PATH", f"{rel}: its link target is not valid UTF-8") from None
                 tar.addfile(_tarinfo(rel, kind=tarfile.SYMTYPE, target=entry.target))
                 listed.append({"path": rel, "kind": "link", "target": entry.target})
             else:
                 raise TransferError("ENTRY_TYPE_REFUSED", f"{rel}: a bundle holds files and links only")
+            if buf.tell() > limits.tar_bytes():
+                raise TransferError("OVER_BOUNDS", f"the bundle passes {limits.tar_bytes()} bytes on the wire")
         manifest = canonical(manifest_of(listed))
+        if len(manifest) > limits.file_bytes:
+            raise TransferError("OVER_BOUNDS", f"the manifest is {len(manifest)} bytes; the bound is "
+                                f"{limits.file_bytes}")
         tar.addfile(_tarinfo(MANIFEST_NAME, size=len(manifest)), io.BytesIO(manifest))
+    if buf.tell() > limits.tar_bytes():
+        raise TransferError("OVER_BOUNDS", f"the bundle passes {limits.tar_bytes()} bytes on the wire")
     return buf.getvalue(), hashlib.sha256(manifest).hexdigest()
 
 
@@ -252,6 +297,9 @@ def receive(data: bytes, dest: Path, *, limits: Limits = DEFAULT_LIMITS,
     except (tarfile.TarError, EOFError, ValueError, UnicodeError, RecursionError) as exc:
         shutil.rmtree(dest, ignore_errors=True)
         raise TransferError("TRANSFER_CORRUPT", f"the bundle does not parse ({type(exc).__name__}: {exc})") from None
+    except OSError as exc:  # a path this host cannot hold (too long, say): refused with a stable code (review F7)
+        shutil.rmtree(dest, ignore_errors=True)
+        raise TransferError("WRITE_REFUSED", f"writing the bundle failed ({type(exc).__name__}: {exc})") from None
     except BaseException:
         shutil.rmtree(dest, ignore_errors=True)
         raise
@@ -270,7 +318,7 @@ def _receive(data: bytes, dest: Path, limits: Limits, expected: str | None) -> R
         raise TransferError("TRANSFER_CORRUPT", f"the bundle is not a tar ({exc})") from None
     with tar:
         while True:
-            if time.monotonic() > deadline:
+            if time.monotonic() >= deadline:
                 raise TransferError("RECEIVE_TIMEOUT", f"receiving took over {limits.timeout_s:g} s")
             try:
                 member = tar.next()
@@ -283,11 +331,18 @@ def _receive(data: bytes, dest: Path, limits: Limits, expected: str | None) -> R
                 raise TransferError("TOO_MANY_ENTRIES", f"more than {limits.entries} entries")
             name = member.name.rstrip("/") if member.isdir() else member.name
             if name == MANIFEST_NAME and member.isreg():
-                if manifest_bytes is not None or member.size > limits.file_bytes:
-                    raise TransferError("TRANSFER_CORRUPT", f"{MANIFEST_NAME} arrives twice or over its bound")
+                if manifest_bytes is not None:
+                    raise TransferError("TRANSFER_CORRUPT", f"{MANIFEST_NAME} arrives twice")
+                if member.size > limits.file_bytes:
+                    raise TransferError("MANIFEST_TOO_LARGE", f"{MANIFEST_NAME} is {member.size} bytes; the bound "
+                                        f"is {limits.file_bytes}")
                 manifest_bytes = _read_member(tar, member)
                 continue
             rel = check_path(name, "a received entry")
+            if member.sparse is not None or member.type == tarfile.GNUTYPE_SPARSE or any(
+                    k.startswith("GNU.sparse") for k in member.pax_headers):
+                raise TransferError("ENTRY_TYPE_REFUSED", f"{rel} is a sparse file; a bundle carries its content "
+                                    "as written (review F10)")
             if member.isdir():
                 _claim(seen, rel, "dir")
                 _ensure_dirs(dest, rel.split("/"))
@@ -365,7 +420,7 @@ def _write_member(tar: tarfile.TarFile, member: tarfile.TarInfo, dest: Path, rel
     remaining = member.size
     try:
         while remaining:
-            if time.monotonic() > deadline:
+            if time.monotonic() >= deadline:
                 raise TransferError("RECEIVE_TIMEOUT", f"receiving took over {limits.timeout_s:g} s")
             chunk = src.read(min(CHUNK, remaining))
             if not chunk:
@@ -427,8 +482,9 @@ class Transport:
                             max_reply=self.limits.json_bytes + 1 + max_payload)
         message, body = decode_frame(raw, what="reply", limits=self.limits, max_payload=max_payload)
         if message["kind"] == "reply" and not message["ok"] and message["verb"] != verb and message["error"]:
-            # the agent refused the request before it could read its verb: its error names why
-            raise TransferError(message["error"]["code"], message["error"]["message"])
+            # the agent refused the request before it could read its verb. Its code goes in the text only: a code
+            # the guest chooses never stands for one the evaluator classifies (PR #189 review, N2)
+            raise TransferError("REQUEST_REFUSED", f"{message['error']['code']}: {message['error']['message']}")
         if message["kind"] != "reply" or message["verb"] != verb:
             raise TransferError("REPLY_MALFORMED", f"a {verb} call got a {message['kind']} for {message['verb']}")
         return Reply(message, body)
@@ -439,16 +495,41 @@ BOOT = ("import sys; sys.path.insert(0, sys.argv[1]); from aew_eval.armhost impo
         "sys.exit(main(sys.argv[2:]))")
 
 
+def limits_record(limits: Limits) -> dict[str, Any]:
+    """The agent's limits as its host record holds them (``--limits``): S17 installs that file root-owned, so the
+    sealed bounds reach the agent without the evaluator's request choosing them (PR #189 review, F12)."""
+    return {"file_bytes": limits.file_bytes, "total_bytes": limits.total_bytes, "entries": limits.entries,
+            "json_bytes": limits.json_bytes, "timeout_s": limits.timeout_s}
+
+
+def load_limits(path: Path) -> Limits:
+    record = json.loads(path.read_text(encoding="utf-8"), parse_constant=_no_constant)
+    if not isinstance(record, dict) or set(record) != set(limits_record(DEFAULT_LIMITS)):
+        raise ValueError(f"{path} is not a limits record")
+    limits = Limits(file_bytes=int(record["file_bytes"]), total_bytes=int(record["total_bytes"]),
+                    entries=int(record["entries"]), json_bytes=int(record["json_bytes"]),
+                    timeout_s=float(record["timeout_s"]))
+    if min(limits.file_bytes, limits.total_bytes, limits.entries, limits.json_bytes) <= 0 or limits.timeout_s <= 0:
+        raise ValueError(f"{path}: every limit is positive")
+    return limits
+
+
+STDERR_TAIL = 64 * 1024
+
+
 class LocalTransport(Transport):
     """The arm-host agent as a separate local process, rooted at ``root`` (the stand-in for S6's SSH transport). Its
-    environment is an allow-list: nothing the evaluator holds (the hidden root above all) is inherited."""
+    environment is an allow-list: nothing the evaluator holds (the hidden root above all) is inherited.
+    ``agent_limits`` is the agent's host record of its bounds (by default the evaluator's ``limits``)."""
 
     def __init__(self, root: Path, *, host: Host | None = None, limits: Limits = DEFAULT_LIMITS,
-                 python: str = sys.executable) -> None:
+                 agent_limits: Limits | None = None, python: str = sys.executable) -> None:
         self.root = root.resolve()
         self.host = host or Host("local")
         self.limits = limits
+        self.agent_limits = agent_limits or limits
         self.python = python
+        self.boot = BOOT
         self.package_parent = str(Path(__file__).resolve().parents[1])
 
     def _env(self) -> dict[str, str]:
@@ -464,7 +545,10 @@ class LocalTransport(Transport):
 
     def exchange(self, request: bytes, *, timeout_s: float, max_reply: int) -> bytes:
         self.root.mkdir(parents=True, exist_ok=True)
-        argv = [self.python, "-I", "-B", "-c", BOOT, self.package_parent, "--root", str(self.root)]
+        record = self.root / "limits.json"
+        record.write_text(json.dumps(limits_record(self.agent_limits)), encoding="utf-8")
+        argv = [self.python, "-I", "-B", "-c", self.boot, self.package_parent, "--root", str(self.root),
+                "--limits", str(record)]
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 cwd=str(self.root), env=self._env(), creationflags=NO_WINDOW)
         out = bytearray()
@@ -479,22 +563,31 @@ class LocalTransport(Transport):
             except OSError:
                 pass  # the agent stopped reading; its reply (or exit) says why
 
-        def drain(stream: Any, sink: bytearray, cap: int, flag: threading.Event | None) -> None:
+        def drain(stream: Any, sink: bytearray, cap: int, flag: threading.Event) -> None:
             while True:
                 chunk = stream.read(CHUNK)
                 if not chunk:
                     return
                 if len(sink) + len(chunk) > cap:
                     sink.extend(chunk[:cap - len(sink)])
-                    if flag is not None:
-                        flag.set()
-                        proc.kill()
+                    flag.set()
+                    proc.kill()
                     return
                 sink.extend(chunk)
 
+        def drain_tail(stream: Any, sink: bytearray) -> None:
+            """Read stderr to its end, keeping the last :data:`STDERR_TAIL` bytes: a chatty agent never blocks on a
+            full pipe (PR #189 review, F14)."""
+            while True:
+                chunk = stream.read(CHUNK)
+                if not chunk:
+                    return
+                sink.extend(chunk)
+                del sink[:max(0, len(sink) - STDERR_TAIL)]
+
         threads = [threading.Thread(target=feed, daemon=True),
                    threading.Thread(target=drain, args=(proc.stdout, out, max_reply, over), daemon=True),
-                   threading.Thread(target=drain, args=(proc.stderr, err, 64 * 1024, None), daemon=True)]
+                   threading.Thread(target=drain_tail, args=(proc.stderr, err), daemon=True)]
         for t in threads:
             t.start()
         try:

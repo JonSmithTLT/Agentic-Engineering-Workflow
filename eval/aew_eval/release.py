@@ -16,15 +16,25 @@ bounds (``max_publications``, the envelope duration). S12 seals the values; S4 b
 
 **The release ledger**, ``releases.jsonl`` beside the attempt ledger, gets one event per protocol step, written with
 the attempt ledger's durability (one synced, newline-terminated line under the experiment's release lock, a torn tail
-truncated by the next append). Each line names the SHA-256 of the line before it, so an edited or removed line breaks
-the chain; the run record names the chain's head after its collection, which also catches a removed last line.
+truncated by the next append). Each line names the SHA-256 of the line before it, so an edited, inserted or removed
+line breaks the chain. The trailing lines, which no later line names, are anchored twice (PR #189 review, F5):
+
+* every append then writes the chain's new head to ``releases.head`` (replaced atomically and synced, under the same
+  lock), so removing the last lines, a ``preflight_refused`` refusal or a run's ``finalized`` event among them, no
+  longer matches the anchor;
+* :meth:`ReleaseLedger.verify` cross-checks the attempt ledger: every attempt registered with a release has its
+  ``registered`` event, and every finalized one its ``finalized`` event naming the same result hash.
+
+A crash between an append and its anchor leaves the anchor one line behind; ``verify`` reports it, for the operator to
+inspect, never silently.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Iterator
+import os
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -110,6 +120,7 @@ class ReleaseLedger:
         self.experiment = experiment
         self.path = directory / "releases.jsonl"
         self.lock = directory / "releases.lock"
+        self.anchor = directory / "releases.head"
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -147,12 +158,25 @@ class ReleaseLedger:
             validate(EVENT, line, what="the release event")
             encoded = canonical(line)
             append_line(self.path, encoded + b"\n", f"{self.path.name}'s {event} event for {run_id}")
-            return hashlib.sha256(encoded).hexdigest()
+            head = hashlib.sha256(encoded).hexdigest()
+            self._write_anchor(head)
+            return head
 
-    def verify(self, heads: Iterable[str] = ()) -> list[str]:
+    def _write_anchor(self, head: str) -> None:
+        tmp = self.anchor.with_name(self.anchor.name + ".partial")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o644)
+        try:
+            os.write(fd, head.encode("ascii") + b"\n")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, self.anchor)
+
+    def verify(self, heads: Iterable[str] = (), attempts: Mapping[str, Any] | None = None) -> list[str]:
         """Problems with the chain: a line that does not name its predecessor's hash or breaks the sequence, a line of
-        another experiment, and any of ``heads`` (the chain hashes run records name) no longer in it. Empty when
-        sound."""
+        another experiment, a chain that does not end at its anchor, any of ``heads`` (the chain hashes run records
+        name) no longer in it, and, given ``attempts`` (:meth:`AttemptLedger.attempts`), a released attempt whose
+        ``registered`` or ``finalized`` event is missing or names another result. Empty when sound."""
         problems = []
         prev = GENESIS
         hashes = set()
@@ -170,4 +194,19 @@ class ReleaseLedger:
             prev = hashlib.sha256(chunk).hexdigest()
             hashes.add(prev)
         problems += [f"the chain no longer holds {h}, which a run record names" for h in heads if h not in hashes]
+        anchor = self.anchor.read_text(encoding="ascii").strip() if self.anchor.is_file() else None
+        if (anchor or GENESIS) != prev:
+            problems.append(f"the chain ends at {prev}, but its anchor names {anchor or 'no line'}: its last lines "
+                            "were removed, or an append's anchor was lost in a crash")
+        for rid, attempt in sorted((attempts or {}).items()):
+            if "release" not in attempt.registered:
+                continue
+            events = {ln["event"]: ln for ln in parsed if ln["run_id"] == rid}
+            if "registered" not in events:
+                problems.append(f"{rid} was registered with a release, and its registered event is missing")
+            if attempt.finalized is not None:
+                fin = events.get("finalized")
+                if fin is None or fin["data"].get("result_sha256") != attempt.finalized["result_sha256"]:
+                    problems.append(f"{rid} is finalized, and its finalized event is missing or names another "
+                                    "result")
         return problems

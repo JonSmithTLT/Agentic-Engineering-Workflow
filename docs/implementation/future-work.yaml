@@ -949,8 +949,8 @@ sections:
       the evaluator/arm-host split''s core ([ADR-0018](adr/0018-evaluator-arm-host-split.md), ledger EAS): a cell released
       to an arm host through a transport, registered before its bundle leaves, collected under hostile receive and finalized
       for deferred scoring on the evaluator, with a hash-chained release ledger and the run manifest `aew/m4h-run-manifest/v1`;
-      scripted arm only until the run supervisor (S8), and no held-out case released until S5''s preflight can establish
-      isolation'
+      scripted arm only until the run supervisor (S8), and no model arm or held-out case released until S5''s preflight
+      can establish isolation'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

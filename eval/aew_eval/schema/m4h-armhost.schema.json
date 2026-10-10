@@ -66,7 +66,7 @@
      "then": {"properties": {"result": {
        "required": ["manifest_sha256", "other", "other_omitted"],
        "properties": {"manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-                      "other": {"type": "object", "additionalProperties": {"enum": ["special", "unsafe-name"]}},
+                      "other": {"type": "object", "additionalProperties": {"enum": ["special", "unsafe-name", "unreadable"]}},
                       "other_omitted": {"type": "integer", "minimum": 0}}}}}}
   ]
 }

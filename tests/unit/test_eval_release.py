@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import tarfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 
-from aew_eval import campaign, fixture, hidden, prereg, runner  # noqa: E402
+from aew_eval import armhost, campaign, fixture, hidden, prereg, runner, transport  # noqa: E402
 from aew_eval.armhost import Agent  # noqa: E402
 from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.release import GENESIS, ReleaseLedger, RunTerms, build_bundle, run_manifest, task_bytes  # noqa: E402
@@ -35,10 +36,14 @@ from aew_eval.transport import (  # noqa: E402
     RecordingTransport,
     TransferError,
     Transport,
+    check_path,
     decode_frame,
     encode_frame,
+    limits_record,
+    load_limits,
     manifest_of,
     pack,
+    read_frame,
     receive,
 )
 
@@ -369,7 +374,8 @@ def test_a_bundle_not_matching_its_manifest_is_refused(tmp_path):
             return raw.replace(b"a + b", b"a * b") if b'"verb":"collect"' in raw[:raw.index(b"\n")] else raw
 
     record = release(f, {"C1": case}, tmp_path, Tampering(tmp_path / "armhost2"))
-    assert record["validity"] == {"status": "invalid_measurement", "reason_code": "TRANSFER_CORRUPT"}
+    # collect-side: never a bare TRANSFER_CORRUPT, which plan §2.5 treats as retryable (PR #189 review, F3)
+    assert record["validity"] == {"status": "invalid_measurement", "reason_code": "RESULT_REFUSED:TRANSFER_CORRUPT"}
     assert "scoring" not in record["outcome"]
 
 
@@ -415,7 +421,8 @@ def test_the_run_record_labels_who_attests_each_fact(tmp_path):
         assert labels[fact] == campaign.GUEST, fact
     for fact in ("outcome.release", "outcome.changed_paths", "outcome.scoring", "case", "arm", "validity"):
         assert labels[fact] == campaign.EVALUATOR, fact
-    assert labels["outcome.release.snapshot_uuid"] == campaign.HYPERVISOR
+    # the snapshot is the evaluator's own host record until S6 checks it against the hypervisor (review F13)
+    assert campaign.attester("outcome.release.snapshot_uuid") == campaign.EVALUATOR
     assert labels["outcome.scoring.export"] == campaign.MODEL  # the delivered tree is the model's work
     # The record describes the arm host, not the evaluator, and names its release and the release chain.
     assert record["environment"]["host"] == "local" and record["outcome"]["safety"]["checkout_untouched"] is None
@@ -500,7 +507,9 @@ def test_the_release_ledger_is_append_only_and_verifies(tmp_path):
     ledger.path.write_bytes(good.replace(lines[1] + b"\n", b""))
     assert any("sequence" in p for p in ledger.verify(heads))
     ledger.path.write_bytes(good[:good.rstrip(b"\n").rfind(b"\n") + 1])
-    assert ledger.verify(heads) == [f"the chain no longer holds {heads[-1]}, which a run record names"]
+    problems = ledger.verify(heads)
+    assert f"the chain no longer holds {heads[-1]}, which a run record names" in problems
+    assert any("its anchor names" in p for p in problems)
 
 
 def test_the_attempt_ledger_and_the_runner_are_unchanged_without_a_release(tmp_path):
@@ -535,3 +544,347 @@ def test_the_agent_runs_each_verb_once_and_in_order(tmp_path):
     result, data = agent.handle("collect", "demo/r1", {}, b"")
     got = receive(data, tmp_path / "recv", expected_sha256=result["manifest_sha256"])
     assert set(got.files) == {"tree/calc.py"}
+
+
+# ---------------------------------------------------------------------------------------------- PR #189 review fixes
+
+def rewrite(raw: bytes, change) -> bytes:
+    """A reply frame with its message (and payload) changed by ``change(message, body) -> body``."""
+    message, body = decode_frame(raw, what="reply", limits=Limits(), max_payload=Limits().tar_bytes())
+    body = change(message, body)
+    return encode_frame({k: v for k, v in message.items() if k not in ("schema", "payload_bytes")}, body)
+
+
+class Hooked(LocalTransport):
+    """A local transport with a hook before each call (``before(verb, run_dir)``) and a rewrite of each reply
+    (``after(verb, raw) -> raw``)."""
+
+    def __init__(self, root: Path, *, before=None, after=None, **kw) -> None:
+        super().__init__(root, **kw)
+        self.before, self.after = before, after
+
+    def exchange(self, request: bytes, *, timeout_s: float, max_reply: int) -> bytes:
+        message, _ = decode_frame(request, what="request", limits=self.limits, max_payload=self.limits.tar_bytes())
+        if self.before is not None:
+            self.before(message["verb"], self.root / "runs" / "demo" / "r1")
+        raw = super().exchange(request, timeout_s=timeout_s, max_reply=max_reply)
+        return self.after(message["verb"], raw) if self.after is not None else raw
+
+
+def test_a_name_that_is_not_utf8_is_listed_and_the_rest_of_the_tree_is_still_collected(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def plant(verb: str, run: Path) -> None:
+        if verb != "collect":
+            return
+        repo = run / "repo"
+        if sys.platform == "win32":
+            (repo / "odd\ud800.txt").write_bytes(b"x")  # a lone surrogate: NTFS holds it, UTF-8 cannot
+        else:
+            fd = os.open(os.fsencode(repo) + b"/odd\xff.txt", os.O_WRONLY | os.O_CREAT, 0o644)
+            os.close(fd)
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", before=plant))
+    assert record["validity"]["status"] == "valid", (record["validity"], record["outcome"].get("arm_error"))
+    assert record["outcome"]["changed_paths"] == ["calc.py"] and "scoring" in record["outcome"]
+    unread = record["outcome"]["unread_paths"]
+    assert len(unread) == 1 and next(iter(unread)).startswith("odd\\") and set(unread.values()) == {"unsafe-name"}
+    with pytest.raises(TransferError, match="UNSAFE_PATH"):
+        check_path("tree/odd\udcff.txt", "a path")
+
+
+def test_the_unread_list_is_bounded_by_its_serialized_size_not_its_count():
+    worst = {("aux." + "0" * 1000 + f"{n:06d}"): "unsafe-name" for n in range(5000)}
+    worst |= {f"ctl{n:05d}" + "\x01" * 150: "special" for n in range(5000)}  # each control byte is six in JSON
+    listed, omitted = armhost.bound_other(worst)
+    assert len(json.dumps(listed)) <= armhost.OTHER_BYTES + 2
+    assert omitted == len(worst) - len(listed) and omitted > 0
+    frame = encode_frame({"kind": "reply", "verb": "collect", "ok": True, "error": None,
+                          "result": {"manifest_sha256": "0" * 64, "other": listed, "other_omitted": omitted}})
+    assert frame.index(b"\n") < Limits().json_bytes  # the reply stays under its JSON bound at its worst case
+
+
+def test_a_packer_never_sends_a_bundle_the_receiver_refuses_for_its_manifest_or_wire_size(tmp_path):
+    many = [Entry(f"tree/{'d' * 200}/{n:05d}", "file", data=b"") for n in range(40)]
+    with pytest.raises(TransferError, match="OVER_BOUNDS.*manifest"):
+        pack(many, limits=Limits(file_bytes=4096))
+    deep = "/".join(["p" * 250] * 15)  # about 3,800 characters: several KiB of PAX header per entry
+    long_paths = [Entry(f"tree/{deep}/{n:05d}", "file", data=b"") for n in range(40)]
+    with pytest.raises(TransferError, match="OVER_BOUNDS.*on the wire"):
+        pack(long_paths, limits=Limits(file_bytes=16 * 1024, total_bytes=0, entries=40))
+    data, _ = pack(many)
+    with pytest.raises(TransferError) as refused:  # the receiver names an oversized manifest, never TRANSFER_CORRUPT
+        receive(data, tmp_path / "r", limits=Limits(file_bytes=4096))
+    assert refused.value.code == "MANIFEST_TOO_LARGE"
+
+
+def test_the_agents_bounds_come_from_its_host_record_and_bound_what_it_reads(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    small = Limits(file_bytes=4096)  # the release bundle fits; the file planted below does not
+
+    def plant(verb: str, run: Path) -> None:
+        if verb == "collect":
+            (run / "repo" / "big.bin").write_bytes(b"x" * 10_000)
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", before=plant, agent_limits=small))
+    assert record["validity"] == {"status": "invalid_measurement", "reason_code": "RESULT_REFUSED:OVER_BOUNDS"}
+    assert json.loads((tmp_path / "armhost" / "limits.json").read_text(encoding="utf-8"))["file_bytes"] == 4096
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({**limits_record(Limits()), "file_bytes": 0}), encoding="utf-8")
+    with pytest.raises(ValueError, match="positive"):
+        load_limits(bad)
+    big = tmp_path / "repo"
+    big.mkdir()
+    (big / "big.bin").write_bytes(b"x" * 64)
+    with pytest.raises(TransferError, match="OVER_BOUNDS"):  # sized before it is read
+        armhost._walk(big, Limits(file_bytes=16))
+
+
+def test_a_collect_root_reached_through_a_link_still_finalizes_valid_and_scoreable(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    real = tmp_path / "real-root"
+    real.mkdir()
+    linked = tmp_path / "linked-root"
+    if sys.platform == "win32":
+        import _winapi
+
+        _winapi.CreateJunction(str(real), str(linked))
+    else:
+        os.symlink(real, linked, target_is_directory=True)
+    record = campaign.run_released_cell(f, ledger_dir=tmp_path / "ledger", cell=cell_of(f, "C1"),
+                                        cases={"C1": case}, transport=local(tmp_path), collect_root=linked,
+                                        run_name="r1", terms=TERMS)
+    assert record["validity"]["status"] == "valid", (record["validity"], record["outcome"].get("error"))
+    assert record["outcome"]["scoring"]["export"] == str((real / "r1" / "tree").resolve())
+
+
+def test_removing_the_release_ledgers_last_lines_is_detected(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    release(f, {"C1": case}, tmp_path, local(tmp_path))
+    ledger = ReleaseLedger(tmp_path / "ledger", "demo")
+    attempts = AttemptLedger(tmp_path / "ledger", f).attempts()
+    assert ledger.verify(attempts=attempts) == []
+    good = ledger.path.read_bytes()
+    ledger.path.write_bytes(good[:good.rstrip(b"\n").rfind(b"\n") + 1])  # the run's finalized event
+    assert any("its anchor names" in p for p in ledger.verify(attempts=attempts))
+    ledger.anchor.write_text(ledger.head() + "\n", encoding="ascii")  # and the anchor rewritten to match
+    assert ledger.verify(attempts=attempts) == [
+        "demo/r1 is finalized, and its finalized event is missing or names another result"]
+    # A trailing refusal, which no run record names, is anchored too.
+    ledger.path.write_bytes(good)
+    ledger.anchor.write_text(hashlib.sha256(good.rstrip(b"\n").rsplit(b"\n", 1)[-1]).hexdigest() + "\n",
+                             encoding="ascii")
+    assert ledger.verify(attempts=attempts) == []
+    ledger.append("demo/r2", "preflight_refused", {"reason": "PREFLIGHT_REFUSED"})
+    ledger.path.write_bytes(good)
+    assert any("its anchor names" in p for p in ledger.verify(attempts=attempts))
+
+
+def test_a_collect_entry_outside_the_tree_or_a_clashing_unread_path_is_refused(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    data, digest = pack([Entry("tree/calc.py", "file", data=FIX["content"].encode()),
+                         Entry("planted", "file", data=b"x"), Entry("XXXXXunchanged.py", "link", target="x")])
+
+    def outside(verb: str, raw: bytes) -> bytes:
+        if verb != "collect":
+            return raw
+
+        def change(message, body):
+            message["result"]["manifest_sha256"] = digest
+            return data
+        return rewrite(raw, change)
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=outside))
+    assert record["validity"]["reason_code"] == "RESULT_REFUSED:UNEXPECTED_ENTRY"
+
+    def clash(verb: str, raw: bytes) -> bytes:
+        if verb != "collect":
+            return raw
+
+        def change(message, body):
+            message["result"]["other"] = {"calc.py": "special"}
+            return body
+        return rewrite(raw, change)
+
+    record = release(f, {"C1": case}, tmp_path / "second", Hooked(tmp_path / "armhost2", after=clash))
+    assert record["validity"]["reason_code"] == "RESULT_REFUSED:OTHER_CONFLICT"
+
+
+def test_an_over_long_component_or_an_unwritable_path_is_refused_with_a_stable_code(tmp_path, monkeypatch):
+    with pytest.raises(TransferError, match="UNSAFE_PATH"):
+        check_path("tree/" + "n" * 256, "a path")
+    with pytest.raises(TransferError) as refused:
+        receive(tar_of(member("tree/" + "é" * 128, data=b"x"), manifest=manifest_of([])), tmp_path / "r1")
+    assert refused.value.code == "UNSAFE_PATH"  # 256 bytes as UTF-8, though 128 characters
+
+    real_open = os.open
+
+    def failing_open(path, flags, *args, **kwargs):
+        if flags & os.O_CREAT:  # only the received file's creation: the clean-up's own opens still work
+            raise OSError(36, "File name too long")
+        return real_open(path, flags, *args, **kwargs)
+
+    data, digest = pack([Entry("tree/a", "file", data=b"x")])
+    monkeypatch.setattr(transport.os, "open", failing_open)
+    with pytest.raises(TransferError) as refused:
+        receive(data, tmp_path / "r2", expected_sha256=digest)
+    monkeypatch.undo()
+    assert refused.value.code == "WRITE_REFUSED" and not (tmp_path / "r2").exists()
+
+
+def test_an_unreadable_directory_is_listed_never_silently_dropped(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    (repo / "kept").mkdir(parents=True)
+    (repo / "kept" / "work.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "calc.py").write_text("y = 2\n", encoding="utf-8")
+    real = os.scandir
+
+    def scandir(path):
+        if Path(path).name == "kept":
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    entries, other = armhost._walk(repo)
+    monkeypatch.undo()
+    assert [e.path for e in entries] == ["calc.py"]
+    assert other == {"kept": "unreadable"}
+
+
+def test_a_frame_with_nan_or_bytes_after_its_payload_is_refused():
+    raw = (b'{"error":null,"kind":"reply","ok":true,"payload_bytes":0,"result":{"wall_s":NaN},'
+           b'"schema":"aew/m4h-armhost/v1","verb":"hello"}\n')
+    with pytest.raises(TransferError, match="REPLY_MALFORMED"):
+        decode_frame(raw, what="reply", limits=Limits(), max_payload=0)
+    request = encode_frame({"kind": "request", "verb": "hello", "run_id": None, "args": {}}, b"ab")
+    assert read_frame(io.BytesIO(request), what="request", limits=Limits(), max_payload=16)[1] == b"ab"
+    with pytest.raises(TransferError, match="REQUEST_MALFORMED.*after its payload"):
+        read_frame(io.BytesIO(request + b"!"), what="request", limits=Limits(), max_payload=16)
+
+
+def test_a_sparse_member_is_refused(tmp_path):
+    mapdata = b"1\n0\n0\n" + b"\0" * 506
+    info = tarfile.TarInfo("tree/sparse")
+    info.size = len(mapdata)
+    info.pax_headers = {"GNU.sparse.major": "1", "GNU.sparse.minor": "0", "GNU.sparse.name": "tree/sparse",
+                        "GNU.sparse.realsize": str(1 << 20)}
+    with pytest.raises(TransferError) as refused:
+        receive(tar_of((info, mapdata), manifest=manifest_of([])), tmp_path / "r")
+    assert refused.value.code == "ENTRY_TYPE_REFUSED" and not (tmp_path / "r").exists()
+
+
+def test_a_lost_collect_reply_can_be_collected_again_with_the_same_bytes(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    lost: list[bytes] = []
+
+    def drop_first(verb: str, raw: bytes) -> bytes:
+        if verb == "collect" and not lost:
+            lost.append(raw)
+            raise TransferError("TIMEOUT", "the reply was lost in transit")
+        return raw
+
+    hooked = Hooked(tmp_path / "armhost", after=drop_first)
+    record = release(f, {"C1": case}, tmp_path, hooked)
+    assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:TIMEOUT"  # a lost channel, not a refused result
+    again = hooked.call("collect", run_id="demo/r1")
+    first = decode_frame(lost[0], what="reply", limits=Limits(), max_payload=Limits().tar_bytes())
+    assert again.ok and again.payload == first[1] and again.result == first[0]["result"]
+    with pytest.raises(Exception, match="already released"):  # release and run stay once-only
+        Agent(tmp_path / "armhost").handle("release", "demo/r1", {"bundle_sha256": "0" * 64}, b"")
+
+
+def test_every_fact_of_the_record_has_an_attester(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    record = release(f, {"C1": case}, tmp_path, local(tmp_path))
+
+    def leaves(value, path=""):
+        if isinstance(value, dict) and value and path != "outcome.attested_by":
+            for k, v in value.items():
+                yield from leaves(v, f"{path}.{k}" if path else k)
+        else:
+            yield path
+
+    assert [p for p in leaves(record) if campaign.attester(p) is None] == []
+    assert campaign.attester("outcome.unread_paths") == campaign.GUEST
+    assert campaign.attester("outcome.arm_error") == campaign.GUEST
+    assert campaign.attester("outcome.error") == campaign.EVALUATOR
+
+
+def test_a_chatty_agent_never_blocks_the_transport(tmp_path):
+    chatty = LocalTransport(tmp_path / "armhost")
+    chatty.boot = "import sys; sys.stderr.write('w' * (4 << 20)); sys.stderr.flush(); " + chatty.boot
+    t0 = time.monotonic()
+    reply = chatty.call("hello", run_id=None, timeout_s=60)
+    assert reply.ok and time.monotonic() - t0 < 30
+
+
+def test_receive_and_the_transport_stop_at_their_deadlines(tmp_path):
+    data, _ = pack([Entry("tree/a", "file", data=b"x")])
+    with pytest.raises(TransferError) as refused:
+        receive(data, tmp_path / "r", limits=Limits(timeout_s=0))
+    assert refused.value.code == "RECEIVE_TIMEOUT" and not (tmp_path / "r").exists()
+    slow = LocalTransport(tmp_path / "armhost")
+    slow.boot = "import time; time.sleep(60); " + slow.boot
+    t0 = time.monotonic()
+    with pytest.raises(TransferError) as refused:
+        slow.call("hello", run_id=None, timeout_s=1)
+    assert refused.value.code == "TIMEOUT" and time.monotonic() - t0 < 30
+
+
+@pytest.mark.parametrize("held_out", [False, True])
+def test_no_model_arm_or_held_out_cell_is_released_on_an_unestablished_preflight(tmp_path, monkeypatch, held_out):
+    monkeypatch.setattr(hidden, "scoring_contained", lambda: True)
+    monkeypatch.setattr(campaign, "RELEASED_KINDS", frozenset({"scripted", "raw"}))  # as S8 and S9 will
+    secret = tmp_path / "private"
+    oracle = make_oracle(secret, "C1")
+    case = make_case(tmp_path / "c", "C1", hidden.content_sha256(oracle))
+    f = plan_for([case], kind="raw", held_out=("C1",) if held_out else ())
+    rec = RecordingTransport(local(tmp_path))
+    with pytest.raises(campaign.Refused, match="did not establish corpus isolation"):
+        release(f, {"C1": case}, tmp_path, rec, hidden_root=secret)
+    assert nothing_registered(tmp_path)
+    assert [verb for d, verb, _ in rec.frames if d == "sent"] == ["preflight"]
+
+
+@pytest.mark.parametrize("checks", [[], [{"name": "mounts", "ok": False, "detail": "a shared folder"}]])
+def test_a_preflight_claiming_isolation_without_passing_checks_is_refused(tmp_path, checks):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def claim(verb: str, raw: bytes) -> bytes:
+        if verb != "preflight":
+            return raw
+
+        def change(message, body):
+            message["result"].update(established=True, checks=checks)
+            return body
+        return rewrite(raw, change)
+
+    with pytest.raises(campaign.Refused, match="without checks that all passed"):
+        release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=claim))
+    assert nothing_registered(tmp_path)
+    assert [e["event"] for e in ReleaseLedger(tmp_path / "ledger", "demo").lines()] == ["preflight_refused"]
+
+
+def test_a_released_run_is_never_retried_while_its_verdicts_are_provisional(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    class Dropping(LocalTransport):
+        def exchange(self, request: bytes, *, timeout_s: float, max_reply: int) -> bytes:
+            if b'"verb":"run"' in request[:request.index(b"\n")]:
+                raise TransferError("TIMEOUT", "the arm host did not answer")
+            return super().exchange(request, timeout_s=timeout_s, max_reply=max_reply)
+
+    first = release(f, {"C1": case}, tmp_path, Dropping(tmp_path / "armhost"))
+    assert first["validity"]["status"] == "invalid_measurement"
+    with pytest.raises(campaign.Refused, match="never retried while its validity verdicts are provisional"):
+        release(f, {"C1": case}, tmp_path, local(tmp_path), name="r2", retry_of="demo/r1")
+    assert list(AttemptLedger(tmp_path / "ledger", f).attempts()) == ["demo/r1"]

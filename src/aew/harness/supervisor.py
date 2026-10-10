@@ -41,6 +41,10 @@ STATE_POLL_S = 2.0
 HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
 ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
+# From custody to running: the contract, the sandbox and its self-test, and the adapter's launch (an OpenCode server
+# start, health, catalog and agent checks, the first prompt). A start still unfinished then is abandoned: its heartbeat
+# stops, so the run reads `lost` within STARTING_S + STALE_AFTER_S of custody, and it never becomes `running`.
+STARTING_S = float(os.environ.get("AEW_RUN_START_S", "300"))
 
 
 def log(msg: str) -> None:
@@ -74,6 +78,7 @@ class Supervisor:
         self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
         self._started_mono: float | None = None  # when the harness started: the usage record's wall time (F25 R1)
+        self._start_until: float | None = None  # the start's deadline (monotonic), set at custody
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._lock = threading.Lock()
@@ -113,6 +118,9 @@ class Supervisor:
     # ------------------------------------------------------------------ bridge
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
+        if self._start_overdue():  # the run reads (or is about to read) `lost`: nothing it does counts any more
+            raise errors.HarnessLaunchFailed(f"run {self.run} did not start within {STARTING_S:g}s and is abandoned",
+                                             run=self.run)
         problem = self.authority_problem()
         if problem:
             self.stop_reason = (K.TERMINATED, f"authority ended: {problem}")
@@ -172,11 +180,14 @@ class Supervisor:
             self.adapter = registry.load(profile["harness"])(self.tree, self.run_dir, self.events)
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
+            faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
         except errors.AEWError as exc:
             return self._launch_failed(f"{exc.code}: {exc.message}")
         except Exception as exc:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
+        if self._start_overdue():  # its heartbeat has stopped, and it may already have been read as `lost`
+            return self._launch_failed(f"the start took longer than {STARTING_S:g}s; the run was abandoned")
         self.record["status"] = K.RUNNING
         self.record["started_at"] = utc_now()
         self._started_mono = time.monotonic()
@@ -210,20 +221,27 @@ class Supervisor:
 
     def _starting_beats(self) -> None:
         """Beat while the harness starts (a server start plus health checks can take a while); the watchdog loop
-        takes over once it runs, so a stalled watchdog shows as a stale heartbeat."""
-        self._watching = self._background_beats("aew-starting-heartbeat")
+        takes over once it runs, so a stalled watchdog shows as a stale heartbeat. Bounded by STARTING_S, so a
+        supervisor stuck while starting goes stale too (register E3)."""
+        self._start_until = time.monotonic() + STARTING_S
+        self._watching = self._background_beats("aew-starting-heartbeat", until=self._start_until)
 
-    def _background_beats(self, name: str, *, limit_s: float | None = None) -> threading.Event:
-        """Beat from a thread until the returned event is set (or for at most ``limit_s``), while the supervisor
-        works outside its watch loop."""
+    def _start_overdue(self) -> bool:
+        """The start ran past its deadline: the starting heartbeat has stopped."""
+        return (self._start_until is not None and self.record["status"] == K.STARTING
+                and time.monotonic() >= self._start_until)
+
+    def _background_beats(self, name: str, *, until: float) -> threading.Event:
+        """Beat from a thread until the returned event is set or the monotonic clock reaches ``until``, while the
+        supervisor works outside its watch loop."""
         done = threading.Event()
-        until = time.monotonic() + limit_s if limit_s is not None else None
 
         def beat() -> None:
-            while not done.wait(runlog.HEARTBEAT_S) and (until is None or time.monotonic() < until):
+            while not done.wait(runlog.HEARTBEAT_S) and time.monotonic() < until:
                 runlog.beat(self.run_dir)
 
-        runlog.beat(self.run_dir)
+        if time.monotonic() < until:
+            runlog.beat(self.run_dir)
         threading.Thread(target=beat, name=name, daemon=True).start()
         return done
 
@@ -347,8 +365,10 @@ class Supervisor:
                 self._watching.set()
             # Ending takes time outside the watch loop (the adapter alone may take TERMINATE_S): keep beating, or
             # `harness wait` reports a healthy run `lost` (found by CI). Bounded, so a supervisor stuck here still
-            # goes stale.
-            ending = self._background_beats("aew-ending-heartbeat", limit_s=TERMINATE_S + ENDING_EXTRA_S)
+            # goes stale. An abandoned start does not beat again: once it may have been read as `lost`, it stays so
+            # until its final record.
+            until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
+            ending = self._background_beats("aew-ending-heartbeat", until=until)
             try:
                 faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
                 self._end(status, reason)

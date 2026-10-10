@@ -1153,9 +1153,12 @@ sections:
       wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. `test_a_run_that_takes_long_to_end_is_not_reported_lost`
       failed once under coverage on 16 workers (M4-A, 2026-10-03): its 2 s stale window left 1 s over the 1 s beat; widened
       to 4 s, with the wait at 8 s. A run reported `lost` while it started (Windows, PR #132, 2026-10-09) was a real race
-      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A failed harness test
-      now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such failure names
-      a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
+      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A supervisor wedged
+      while starting kept its heartbeat fresh with no limit, so a single-run wait read `starting` until its own timeout
+      (noted by the independent review of PR #147, not seen in CI). The start now has a deadline (`AEW_RUN_START_S`, 300
+      s), so a wedged start reads `lost` within 310 s of custody and never becomes `running` (ADR-0009 amendment 2026-10-09,
+      a run''s start has a deadline). A failed harness test now reports and keeps its runs'' record and logs (testing strategy
+      §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule
       tail (AEW''s rules in order; anything OpenCode appends after them may only deny), then 2.0.22 on the live lane and

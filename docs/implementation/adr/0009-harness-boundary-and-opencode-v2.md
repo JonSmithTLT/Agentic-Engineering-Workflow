@@ -301,6 +301,42 @@ heartbeat file's creation. In the same gap a relaunch without `--replace` was no
   `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.after_custody_record`.
   It returned `lost` before the fix.
 
+## Amendment 2026-10-09 — a run's start has a deadline (independent review of PR #147)
+
+The independent review of PR #147 noted that the starting heartbeat had no limit, unlike the running and ending phases.
+A supervisor wedged between its custody acknowledgement and `running` kept its heartbeat fresh, and it checks authority
+only once its watch loop runs. A single-run `aew harness wait` on that run read `starting` until the adapter's own
+launch timeouts or the wait's `--timeout` ended it.
+
+- **The deadline.** A start has `STARTING_S` (300 s; `AEW_RUN_START_S` in the operator's launch environment) from its
+  custody record to `running`. That covers the contract, the sandbox and its self-test, and the adapter's launch: for
+  OpenCode a server start, health, the catalog and agent checks, and the first prompt, each with its own timeout.
+- **At the deadline the starting heartbeat stops,** so the run reads `lost` within `STARTING_S` + `STALE_AFTER_S`
+  (310 s) of custody, and a waiter notices within its 2 s re-check. Each phase now has a stated bound:
+  - running: a heartbeat that stops (supervisor killed, watch loop wedged) reads `lost` after `STALE_AFTER_S` (10 s);
+  - ending: the ending heartbeat stops after `TERMINATE_S` + `ENDING_EXTRA_S` (80 s), so `lost` comes within about
+    90 s of the end beginning;
+  - starting: as above.
+- **A run read as `lost` stays ended.** Past the deadline:
+  - the run's bridge refuses every request (`HARNESS_LAUNCH_FAILED`), so nothing the agent does counts;
+  - a start that comes back ends the run `launch_failed` ("the start took longer than …"), kills its tree, and never
+    records `running`;
+  - while it ends it does not beat again, so its observed status goes from `starting` to `lost` to `launch_failed`,
+    and never back to `starting`.
+  A relaunch is not refused as `RUN_LIVE` once the run reads `lost`, as for any lost run, and it rotates the
+  credential.
+- **Residual, as for the ending phase.** A supervisor that never comes back stays a process until teardown
+  (`runlog.end_supervisor`) or the machine's end. It holds a revoked credential once the run is relaunched, and its
+  bridge refuses everything.
+- **Regression.** `test_a_start_that_wedges_after_custody_reads_lost_within_its_bound_and_never_runs` in
+  `tests/regression/test_m3_harness_adversarial.py`, using a new pause point, `harness.supervisor.launched` (after the
+  adapter's launch, before `running`). It holds the start past a 3 s deadline, and also holds the ending
+  (`harness.supervisor.finishing`). Each part of the fix was removed in turn, and each removal fails the test:
+  - an unbounded heartbeat: the wait times out on `starting`;
+  - no deadline check before `running`: the run never ends `launch_failed`;
+  - a bridge that still serves: the agent's `whoami` succeeds;
+  - an ending that beats again: the run reads `starting` again.
+
 ## Amendment 2026-10-09 — the post-run scan reads what the run left defensively, and says when it is incomplete
 
 The post-run scan (above) runs as the operator over a directory the run's own user could write: its `harness/` even
@@ -444,6 +480,7 @@ An environment variable changes only the process that reads it. An agent control
 | `AEW_HARNESS_ADAPTERS` | the launching CLI and the supervisor | extra harness adapters (code it loads) | read from the operator's launch environment; never passed to an agent |
 | `AEW_OPENCODE_BIN`, `AEW_OPENCODE_CATALOG_S`, `AEW_OPENCODE_CATALOG_SETTLE_S` | the supervisor (OpenCode adapter) | which OpenCode binary, catalog timeouts | as above |
 | `AEW_LAUNCH_ACK_S`, `AEW_RUN_STALE_S` | the launching CLI; status readers | launch acknowledgement wait; supervisor staleness | timing only, and only in the reading process |
+| `AEW_RUN_START_S` | the supervisor | the start's deadline (amendment 2026-10-09: a run's start has a deadline) | timing only; read from the operator's launch environment, never passed to an agent |
 | `AEW_FAULT`, `AEW_FAULT_MODE`, `AEW_PAUSE` | any `aew` process | fault injection and pause points (tests) | effective only in the process that reads them; a credential-less process can fail or pause only itself |
 | `AEW_PROFILE` | any `aew` process | write a timing profile to a file | as above |
 

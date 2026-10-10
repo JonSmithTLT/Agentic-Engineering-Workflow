@@ -778,9 +778,11 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
     re-reads state under the lock nor waits: the reference is ``UNKNOWN`` ("read again later"), never ``UNAVAILABLE``,
     and the next read, with the index free, answers.
 
-    The moved history is real, through the real sync (finding E: only a history that moved is "read again later"): a
-    later commit wrote its tail, and the control file the reader sees still holds the earlier root, as it does while
-    that commit is between its tail and its control-file write."""
+    The moved history is real, through the real sync (finding E: only a race is "read again later"): the reader's
+    snapshot holds the earlier root while the tail on disk is a later commit's, as when that commit replaced the
+    control file and applied its tail between the reader's snapshot and its read. The opposite window, the control
+    file replaced and the tail not applied yet, is
+    ``test_a_lock_free_read_in_a_commits_apply_window_is_history_moved``."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
     p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
@@ -926,6 +928,76 @@ def test_a_lock_free_sync_that_meets_a_later_commit_is_history_moved_and_damage_
     engine.archive._synced = None
     with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
         engine.archive.index(now)
+    assert not isinstance(raised.value, HistoryMoved)
+
+
+def _apply_window(p: Project, tmp: Path) -> str:
+    """A commit's apply window, built on disk: the later commit's control file (its commit point, replaced first) with
+    the earlier commit's tail, which the later commit's apply would replace next (``ControlStore._commit``); the
+    derived index removed so the next sync walks the history. The selected architecture evidence is archived."""
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    tail = p.root / ".aew" / HM.TAIL_REL
+    earlier = tail.read_bytes()
+    complete_investigation(p, create_investigation(p, tmp, title="Survey again"))
+    tail.write_bytes(earlier)
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+    return discovery
+
+
+def test_a_lock_free_read_in_a_commits_apply_window_is_history_moved(lab):
+    """Review of #178, finding F: a commit replaces the control file first and applies its tail after. A lock-free
+    reader whose snapshot holds the new root while the tail still ends at the old one, byte for byte the ``before`` of
+    the snapshot's own pending tail write, has met the race: ``HistoryMoved``, and ``/maps`` says "read again later"
+    for the selected evidence, never ``UNAVAILABLE``. The same short tail that is not the pending write's ``before`` is
+    damage."""
+    p, tmp = lab
+    discovery = _apply_window(p, tmp)
+    engine = Engine.discover(p.root)
+    now = engine.store.read_committed()  # lock-free and without recovery: what the dashboard's snapshot holds
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(HistoryMoved):
+        engine.archive.index(now)
+    with served(p) as client:
+        client.server.engine.archive._synced = None
+        arch = client.data("/maps")["architecture"]
+        assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
+        assert "read again later" in arch["freshness"]["reasons"][0]["message"]
+
+    tail = p.root / ".aew" / HM.TAIL_REL
+    tail.write_bytes(tail.read_bytes() + b"# edited\n")  # the earlier entries, not the bytes the commit replaces
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
+        engine.archive.index(now)
+    assert not isinstance(raised.value, HistoryMoved)
+
+
+def test_a_history_tail_the_os_will_not_let_a_lock_free_reader_read_is_busy_not_damage(lab, monkeypatch):
+    """Finding F: on Windows a read of the tail during the writer's replace is a sharing violation (a
+    ``PermissionError``). A lock-free reader reports it as busy (``LockTimeout``, "read again later"), never as damage;
+    a tail that is missing is still damage."""
+    p, tmp = lab
+    complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    engine = Engine.discover(p.root)
+    state = engine.store.read_committed()
+    tail = (p.root / ".aew" / HM.TAIL_REL).resolve()
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+    real = Path.read_bytes
+
+    def sharing_violation(self: Path) -> bytes:
+        if self.resolve() == tail:
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real(self)
+
+    engine.archive._synced = None
+    with monkeypatch.context() as m:
+        m.setattr(Path, "read_bytes", sharing_violation)
+        with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(LockTimeout):
+            engine.archive.index(state)
+    tail.unlink()
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
+        engine.archive.index(state)
     assert not isinstance(raised.value, HistoryMoved)
 
 

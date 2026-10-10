@@ -175,19 +175,45 @@ class History:
         """The tail file's bytes, for a snapshot taken under the control lock (None: no tail file yet)."""
         return self._read(M.TAIL_REL)
 
-    def moved_past(self, root: dict[str, Any]) -> bool:
-        """Whether the tail on disk is a well-formed tail that ends after ``root``: a later commit appended to it or
-        sealed it (it may still be committing). A missing, unreadable or malformed tail, or one that ends at or before
-        the root, is not: a read for ``root`` that fails then has met damage, not a race (review of #178, finding E).
-        A commit writes the tail before the control file, so this holds from the moment the history moves."""
+    def race(self, root: dict[str, Any], pending_tail: dict[str, Any] | None = None) -> str | None:
+        """Why a lock-free read of the history for ``root`` (a snapshot's, read without the control lock) failed, when
+        the failure is a race and not damage (review of #178, findings E and F): ``"moved"``, ``"busy"`` or None.
+
+        A commit replaces the control file first (its commit point) and then applies its staged writes, the tail among
+        them (``ControlStore._commit``), so a reader can meet the tail on either side of the root it holds:
+
+        - ``"moved"``, the tail ends after the root: a later commit appended to it or sealed it. While the tail still
+          holds the root's position it must prove the root's entries (``_tail_through``), so a tail that diverges from
+          the root is damage, not a later history;
+        - ``"moved"``, the tail ends before the root and is byte for byte the ``before`` of the root's own pending tail
+          write (``pending_tail``: the snapshot's ``last_transition.txn.writes`` entry for the tail): the commit's
+          apply has not reached it yet, or the committer died there and no locked reader has recovered it yet;
+        - ``"busy"``, the tail cannot be read for an operating-system reason other than its absence (on Windows, a
+          read during the writer's replace is a sharing violation).
+
+        Anything else (a missing or malformed tail, one that ends at the root or diverges from it) is None: damage."""
         try:
-            raw = self._read(M.TAIL_REL)
-            if raw is None:
-                return False
-            _, end, _ = self._parsed(raw, M.TAIL_REL, sealed=False)
+            raw = (self.root / M.TAIL_REL).read_bytes()
+        except FileNotFoundError:
+            return None
+        except OSError:
+            return "busy"
+        try:
+            doc, end, _ = self._parsed(raw, M.TAIL_REL, sealed=False)
         except (IntegrityError, ValidationFailed):
-            return False
-        return bool(end["count"] > root["count"])
+            return None
+        if end["count"] > root["count"]:
+            if doc["start"]["count"] > root["count"]:  # sealed since: the root's entries are in a sealed segment
+                return "moved"
+            try:
+                self._tail_through(root)
+            except (IntegrityError, ValidationFailed):
+                return None
+            return "moved"
+        pending = pending_tail or {}
+        if end["count"] < root["count"] and pending.get("before") == sha256_bytes(raw) != pending.get("after"):
+            return "moved"
+        return None
 
     def tail(self, root: dict[str, Any], *, tail_raw: Any = _READ) -> dict[str, Any]:
         """The tail for ``root``, checked against it: it follows the root's newest sealed segment and its entries end

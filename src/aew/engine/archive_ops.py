@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
-from aew.errors import HistoryMoved, IntegrityError, ValidationFailed
+from aew.errors import HistoryMoved, IntegrityError, LockTimeout, ValidationFailed
 from aew.history import manifest as M
 from aew.history.index import INDEX_REL, HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
@@ -267,6 +267,28 @@ def integrated_commits(unit: dict[str, Any]) -> dict[str, str]:
         commit = (unit.get("integration") or {}).get("commit")
         return {commit: unit["id"]} if commit and unit.get("mutating") and unit["state"] == "DONE" else {}
     return dict(unit.get("integration_frontier") or {})
+
+
+def _pending_tail(state: dict[str, Any]) -> dict[str, Any] | None:
+    """The history tail's write in ``state``'s own last transition (its ``before`` and ``after`` hashes), or None:
+    what a reader of a committed revision whose staged writes are not applied yet finds pending
+    (``ControlStore._commit``)."""
+    txn = (state.get("last_transition") or {}).get("txn") or {}
+    for w in txn.get("writes") or ():
+        if isinstance(w, dict) and w.get("path") == M.TAIL_REL:
+            return w
+    return None
+
+
+def _os_failure(exc: BaseException) -> bool:
+    """Whether a history read failed because the operating system would not let a file be read just then (on Windows,
+    a sharing violation during a writer's replace), not because the file is missing or holds the wrong bytes."""
+    cause: BaseException | None = exc
+    while cause is not None:
+        if isinstance(cause, OSError) and not isinstance(cause, FileNotFoundError):
+            return True
+        cause = cause.__cause__
+    return False
 
 
 class Archive:
@@ -693,10 +715,15 @@ class Archive:
                 return index
             except IntegrityError as exc:
                 if lockfree is not None:
-                    # A lock-free reader never re-reads state: the race (the history on disk has moved past the
-                    # snapshot's root) is reported as such; anything else the sync met is damage, raised as it is
-                    # (review of #178, finding E: a tampered entry is unavailable, not "read again later").
-                    if self.cold.moved_past(root):
+                    # A lock-free reader never re-reads state: a race (``History.race``: the tail on either side of
+                    # the snapshot's root, or a tail the OS would not let it read) is reported as such; anything else
+                    # the sync met is damage, raised as it is (review of #178, findings E and F).
+                    if _os_failure(exc):
+                        raise LockTimeout(f"the history could not be read just now: {exc}") from exc
+                    race = self.cold.race(root, _pending_tail(state))
+                    if race == "busy":
+                        raise LockTimeout(f"the history could not be read just now: {exc}") from exc
+                    if race == "moved":
                         raise HistoryMoved(str(exc)) from exc
                     raise
                 if self.k.store.held or attempt == 2:

@@ -71,3 +71,59 @@ def test_explain_answers_a_stage_per_step_from_its_guards(ready):
     unmigrated = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
                                                      "arguments": {"verification_evidence": "EV-0001"}})["result"]
     assert unmigrated["availability"] == UNKNOWN and unmigrated["steps"] == []  # E4b migrates it
+
+
+# ---------------------------------------------------------------------------------------------- work.transition
+
+
+def _transition(engine: Engine, p: Any, wid: str, to: str, reason: str | None = None) -> Callable[[int], Any]:
+    return lambda rev: engine.work_transition(token=p.token, expect_rev=rev, work_id=wid, to=to, reason=reason)
+
+
+def test_guard_query_matches_execute_work_transition_and_implementer_active(ready):
+    """`work.transition` (the table, the reason, the unit's kind) and ASSIGNED -> RUNNING's `implementer_active`."""
+    p, wid, engine = ready
+    story = p.lead("work", "create", "story", "--title", "a story", "--class", "1")["id"]
+    for target, to, reason, code in ((wid, "RUNNING", None, "ILLEGAL_TRANSITION"),  # READY -> RUNNING: no such edge
+                                     (wid, "CANCELLED", None, "USAGE"),  # needs a reason
+                                     (wid, "CANCELLED", "  ", "USAGE"),
+                                     (story, "CANCELLED", "no", "ILLEGAL_TRANSITION"),  # a Story's state is derived
+                                     ("T-0099", "RUNNING", None, "NOT_FOUND")):
+        answer = equivalent(engine, "work.transition", target, {"to": to, "reason": reason},
+                            _transition(engine, p, target, to, reason))
+        assert answer["reason_codes"] == [code], (target, to, answer)
+    assigned = p.lead("work", "assign", wid)
+    p.lead("invoke", "cancel", assigned["invocation"], "--reason", "seed: no active implementer")
+    answer = equivalent(engine, "work.transition", wid, {"to": "RUNNING"}, _transition(engine, p, wid, "RUNNING"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "no active implementer" in (
+        answer["blocking_conditions"][0]["message"])
+    p.lead("invoke", "create", wid, "--role", "implementer")
+    equivalent(engine, "work.transition", wid, {"to": "RUNNING"}, _transition(engine, p, wid, "RUNNING"))
+    assert p.ok("work", "show", wid)["control"]["state"] == "RUNNING"
+
+
+def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path):
+    """A non-mutating Ticket replaces `implementer_active` with its own guard, not migrated: its ASSIGNED -> RUNNING
+    is UNKNOWN (never answered by the mutating Ticket's query), and the transition still runs its own guard."""
+    from aewflow import create_investigation
+
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    p.lead("work", "dispatch", wid)
+    engine = Engine.discover(p.root)
+    answer = engine.guard_query("work.transition", wid, {"to": "RUNNING"})
+    assert answer["availability"] == UNKNOWN and answer["not_queryable"] == "implementer_active"
+    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="RUNNING")
+    assert engine.store.read()["work"][wid]["state"] == "RUNNING"
+
+
+def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_produces(ready):
+    """Step 3's guard (`implementer_active`) reads what step 1 produces (the ASSIGNED state and an active
+    implementer): taken as satisfied, so the stage is the assignment's decision, AVAILABLE, never UNKNOWN."""
+    p, wid, engine = ready
+    out = R.run_tool(engine, CTX, "status", {"work_id": wid})
+    [start] = [a for a in out["projection"]["actions"] if a["action"] == "ticket_start"]
+    assert start["availability"] == AVAILABLE and not start["auto_runnable"]  # not built until E5a
+    explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})["result"]
+    assert [s["availability"] for s in explained["steps"]] == [AVAILABLE] * 3
+    assert engine.store.read()["work"][wid]["state"] == "READY"  # asking changed nothing

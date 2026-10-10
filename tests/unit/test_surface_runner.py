@@ -128,10 +128,27 @@ def test_a_ready_tickets_start_is_named_by_its_stage_with_todays_command(lab):
     assert start["cli_fallback"] == ["work", "assign", wid, "--launch", "--expect-rev", str(p.rev())]
 
 
+def _assign_answers(engine, monkeypatch, answer):
+    """The assignment's dispatch decision answers ``answer`` (a dict, or an exception to raise); every other guard
+    is asked for real. The stage's availability is composed from it (M4-E E4)."""
+    from aew.engine.dispatch import Blocker, DispatchDecision
+
+    real = engine._guard_queries._decide
+
+    def decide(state, entrypoint, work_id, **args):
+        if entrypoint != "work.assign":
+            return real(state, entrypoint, work_id, **args)
+        if isinstance(answer, Exception):
+            raise answer
+        return DispatchDecision(entrypoint, work_id, state["revision"], 1, "direct",
+                                blocking=[Blocker(b["code"], b["message"]) for b in answer["blocking_conditions"]])
+
+    monkeypatch.setattr(engine._guard_queries, "_decide", decide)
+
+
 def test_a_dispatch_the_predicate_refuses_is_blocked_with_its_conditions(lab, monkeypatch):
     p, wid, engine = lab
-    monkeypatch.setattr(engine, "dispatch_explain", lambda _w: {
-        "entrypoint": "work.assign", "allowed": False, "reason_codes": ["PROTECTED_PATH_OVERLAP"],
+    _assign_answers(engine, monkeypatch, {
         "blocking_conditions": [{"code": "PROTECTED_PATH_OVERLAP", "message": "scope overlaps vendor/**"}]})
     out = run.run_tool(engine, CTX, "status", {"work_id": wid})
     start = _action(out, "ticket_start")
@@ -144,10 +161,7 @@ def test_a_dispatch_the_predicate_cannot_answer_is_unknown_never_blocked(lab, mo
 
     p, wid, engine = lab
 
-    def undecided(_w):
-        raise DispatchUndecided("no decision")
-
-    monkeypatch.setattr(engine, "dispatch_explain", undecided)
+    _assign_answers(engine, monkeypatch, DispatchUndecided("no decision"))
     start = _action(run.run_tool(engine, CTX, "status", {"work_id": wid}), "ticket_start")
     assert start["availability"] == UNKNOWN and start["reason_codes"] == ["DISPATCH_UNDECIDED"]
     assert not start["auto_runnable"]
@@ -233,11 +247,19 @@ def test_decisions_bind_only_reports_of_their_kind_from_the_current_run_and_carr
         {"id": "EV-0006", "kind": "check_result", "producer": {"run": run_id}},  # a check, not a report
         {"id": "EV-0007", "kind": "review", "producer": {"run": run_id}},
     ], []))
+    asked = []  # the decision's availability is its stage's with that report (M4-E E4), not this test's subject
+
+    def composed(_engine, stage, arguments):
+        asked.append((stage, arguments))
+        return {"availability": BLOCKED}
+
+    monkeypatch.setattr(projection.SA, "stage_availability", composed)
     out = projection.project(engine, CTX, wid)
     [decision] = out["decisions_required"]
     assert decision["decision"] == "ACCEPT_REVIEW_EVIDENCE" and decision["tool"] == "ticket_request_verification"
     assert decision["evidence"] == ["EV-0007"] and decision["default"] == "NONE"
-    assert decision["availability"] == UNKNOWN
+    assert decision["availability"] == BLOCKED
+    assert ("ticket_request_verification", {"work_id": wid, "review_evidence": "EV-0007"}) in asked
     assert decision["arguments"]["review_evidence"] == "EV-0007"
     assert decision["cli_fallback"][:5] == ["review", "ingest", wid, "--evidence", "EV-0007"]
 
@@ -259,17 +281,16 @@ def test_the_whole_result_is_scrubbed_including_the_projections_guidance(tmp_pat
             assert any("aew1.<redacted>" in h for h in out["projection"]["hints"]), out["projection"]["hints"]
 
 
-def test_unqueryable_transitions_are_present_as_unknown(lab, monkeypatch):
-    p, wid, engine = lab
-    real = engine.status
+def test_a_stage_whose_guard_has_no_query_form_is_unknown_never_blocked(tmp_path, monkeypatch):
+    """Frozen decision 3: a stage whose step's guard is not migrated to a query (here: none is) stays present as
+    UNKNOWN, never BLOCKED and never auto-runnable."""
+    from aewflow import assign
 
-    def running(work_id=None):
-        out = real(work_id)
-        if work_id:
-            out["work_unit"]["state"] = "RUNNING"
-        return out
-
-    monkeypatch.setattr(engine, "status", running)
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    assign(p, wid)
+    engine = Engine.discover(p.root)
+    monkeypatch.setattr(engine._units.guards, "query_for", lambda _name, _unit: None)
     out = projection.project(engine, CTX, wid)
     review = next(a for a in out["actions"] if a["action"] == "ticket_request_review")
     assert review["availability"] == UNKNOWN and review["reason_codes"] == [projection.GUARD_NOT_QUERYABLE]

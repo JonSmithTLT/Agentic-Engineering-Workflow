@@ -10,6 +10,7 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
+from aew.engine.guards import NotQueryable, checked, refusal, require
 from aew.engine.seams import GuardRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
@@ -128,17 +129,56 @@ class WorkUnits:
             return
         self.guards.resolve(name, unit)(ctx, work_id, unit, to)
 
+    # ---- `work.transition`'s guard as a query (M4-E E4; aew.engine.guards): the table part, then the rule's guard
+
+    def transition_rule_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """The transition table's part of a Lead transition to ``args["to"]``: the unit (hot, a Ticket), the rule that
+        permits the edge through ``work transition``, and its reason. It records the rule as ``found["rule"]``."""
+        to, reason = args.get("to"), args.get("reason")
+
+        def check() -> None:
+            unit = self.unit(state, work_id)
+            if unit["kind"] != "ticket":
+                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
+                                        "with `aew work close` and cancels one with `aew work cancel`")
+            rule = transitions.check(unit["state"], str(to), "transition")
+            if rule.reason_required and not (reason and reason.strip()):
+                raise UsageError(f"{unit['state']} -> {to} requires --reason")
+            args.setdefault("found", {})["rule"] = rule
+
+        return checked(check)
+
+    def transition_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``work.transition``'s whole guard: the table part, then the rule's named guard for the unit's kind, which is
+        ``NotQueryable`` (UNKNOWN) where that guard has no query form."""
+        found = self.transition_rule_query(state, work_id, args)
+        if found is not None:
+            return found
+        rule = args["found"]["rule"]
+        if not rule.guard:
+            return None
+        query = self.guards.query_for(rule.guard, state["work"][work_id])
+        return NotQueryable(rule.guard) if query is None else query(state, work_id, args)
+
     def guard_registrations(self) -> list[GuardRegistration]:
         """The Lead-transition guards that do not depend on evidence gates, for every unit kind."""
-        return [GuardRegistration("implementer_active", self._guard_implementer_active),
+        return [GuardRegistration("implementer_active", self._guard_implementer_active,
+                                  query=self._query_implementer_active),
                 GuardRegistration("findings_recorded", self._guard_findings_recorded),
                 GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation),
                 GuardRegistration("not_beyond_interrupted_phase", self._guard_not_beyond_interrupted_phase)]
 
-    def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
-        inv = ctx.state["invocations"].get(unit.get("implementer_invocation") or "")
+    @staticmethod
+    def _query_implementer_active(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """ASSIGNED -> RUNNING: the Ticket's implementer invocation is active (M4-E E4: its query form)."""
+        unit = state["work"][work_id]
+        inv = state["invocations"].get(unit.get("implementer_invocation") or "")
         if not inv or inv["status"] != "active":
-            raise GateUnsatisfied(f"{work_id} has no active implementer invocation")
+            return refusal(GateUnsatisfied(f"{work_id} has no active implementer invocation"))
+        return None
+
+    def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
+        require(self._query_implementer_active(ctx.state, work_id, {"to": to}))
 
     def _guard_findings_recorded(self, ctx, work_id, unit, to) -> None:
         # WC §8: REVIEW_FAILED -> RUNNING requires recorded findings (new ones, or earlier ones still open).
@@ -514,14 +554,12 @@ class WorkCommands:
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
                         reason: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
-            unit = self.units.unit(ctx.state, work_id)
-            if unit["kind"] != "ticket":
-                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
-                                        "with `aew work close` and cancels one with `aew work cancel`")
+            # The guard's query, then the rule's guard (its own query first, then its effects): M4-E E4.
+            args: dict[str, Any] = {"to": to, "reason": reason}
+            require(self.units.transition_rule_query(ctx.state, work_id, args))
+            unit = ctx.state["work"][work_id]
             frm = unit["state"]
-            rule = transitions.check(frm, to, "transition")
-            if rule.reason_required and not (reason and reason.strip()):
-                raise UsageError(f"{frm} -> {to} requires --reason")
+            rule = args["found"]["rule"]
             self.units.check_guard(rule.guard, ctx, work_id, unit, to)
             if to == "ESCALATED":
                 unit["escalated_from"] = frm

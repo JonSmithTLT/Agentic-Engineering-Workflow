@@ -14,6 +14,9 @@ relies on no event payload:
    ``truncated`` (unknown).
 2. New messages of each session whose totals moved, that is active, or whose reading is held or behind, from a saved
    ascending cursor. A message counts once, when it becomes terminal; counting stops at the first message that is not.
+   2.0.18 answers a cursor whose anchor message is gone with an empty page, for good, and a revert deletes messages
+   (P1(a), (d)): when the totals moved but the cursor's page is empty and its anchor is gone, the meter reads the
+   session again from the start and skips what it counted already, by the last counted message's creation time.
 3. The figure, per session and per category, recomputed every poll and never accumulated:
    ``max(high-water Session.Info totals, sum of counted messages)``. Any part of the totals on no counted message (a
    title call, a compaction whose message has not completed yet) is priced on the pinned model only when the caller
@@ -128,12 +131,13 @@ def _time(message: Mapping[str, Any], field: str) -> float | None:
 
 def _empty_type() -> dict[str, Any]:
     # cursor: the opaque cursor of the page that holds the next message to count (None: the first ascending page);
-    # last/last_created: the last counted message, skipped when its page is read again (in_page: it is on the page
-    # at `cursor`, rather than the anchor of `cursor` itself); n: messages counted;
+    # anchor: the id of the message that cursor follows (2.0.18 returns an empty page once it is gone);
+    # last/last_created: the last message passed, skipped when its page is read again; floor: after a revert deleted
+    # it, messages created at or before this time were passed already and are skipped; n: messages counted;
     # held: counting stopped at a message still in progress; more: a full page was read, so more may follow;
     # by_model: [[provider, model, effort, {category: tokens}], ...], at most U.MAX_EFFECTIVE; cost: their cost.
-    return {"cursor": None, "last": None, "last_created": None, "in_page": False, "n": 0, "held": False,
-            "more": False, "by_model": [], "cost": 0.0}
+    return {"cursor": None, "anchor": None, "last": None, "last_created": None, "floor": None, "n": 0,
+            "held": False, "more": False, "by_model": [], "cost": 0.0}
 
 
 def _empty_session() -> dict[str, Any]:
@@ -144,6 +148,63 @@ def _empty_session() -> dict[str, Any]:
 def _empty_state() -> dict[str, Any]:
     return {"schema": STATE_SCHEMA, "truncated": False, "integrity": 0, "steps": 0, "compactions": 0, "retries": 0,
             "d_min_ms": None, "max_step": dict.fromkeys(NAMED, 0), "sessions": {}}
+
+
+def _is_count(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v
+
+
+def _is_num(v: Any) -> bool:
+    return _number(v) is not None
+
+
+def _is_opt_str(v: Any, limit: int) -> bool:
+    return v is None or (isinstance(v, str) and len(v) <= limit)
+
+
+def _valid_type(t: Any) -> bool:
+    if not isinstance(t, dict) or set(t) != set(_empty_type()):
+        return False
+    if not (_is_opt_str(t["cursor"], MAX_CURSOR) and _is_opt_str(t["anchor"], MAX_ID)
+            and _is_opt_str(t["last"], MAX_ID) and _is_count(t["n"]) and _is_num(t["cost"])
+            and isinstance(t["held"], bool) and isinstance(t["more"], bool)
+            and all(v is None or _is_num(v) for v in (t["last_created"], t["floor"]))
+            and isinstance(t["by_model"], list) and len(t["by_model"]) <= U.MAX_EFFECTIVE):
+        return False
+    return all(isinstance(e, list) and len(e) == 4 and all(_is_opt_str(x, U.MAX_MODEL) for x in e[:3])
+               and _valid_tokens(e[3]) for e in t["by_model"])
+
+
+def _valid_tokens(tokens: Any) -> bool:
+    return isinstance(tokens, dict) and set(tokens) == set(CATEGORIES) and all(_is_count(v) for v in tokens.values())
+
+
+def _valid_session(s: Any) -> bool:
+    if not isinstance(s, dict) or set(s) != set(_empty_session()):
+        return False
+    model = s["model"]
+    return (_valid_tokens(s["hw"]) and _is_num(s["hw_cost"]) and isinstance(s["full"], bool)
+            and isinstance(s["pending"], bool) and isinstance(s["breached"], bool)
+            and (s["fork_after"] is None or _is_num(s["fork_after"]))
+            and (model is None or (isinstance(model, list) and len(model) == 2
+                                   and all(_is_opt_str(x, U.MAX_MODEL) for x in model)))
+            and isinstance(s["types"], dict) and set(s["types"]) == set(TYPES)
+            and all(_valid_type(s["types"][t]) for t in TYPES))
+
+
+def _valid_state(state: Any) -> bool:
+    """The persisted state's whole shape: a file the meter did not write as it writes it is not trusted (m3)."""
+    if not isinstance(state, dict) or set(state) != set(_empty_state()) or state["schema"] != STATE_SCHEMA:
+        return False
+    sessions = state["sessions"]
+    max_step = state["max_step"]
+    return (isinstance(state["truncated"], bool)
+            and all(_is_count(state[k]) for k in ("integrity", "steps", "compactions", "retries"))
+            and (state["d_min_ms"] is None or _is_num(state["d_min_ms"]))
+            and isinstance(max_step, dict) and set(max_step) == set(NAMED)
+            and all(_is_count(v) for v in max_step.values())
+            and isinstance(sessions, dict) and len(sessions) <= MAX_SESSIONS
+            and all(isinstance(k, str) and len(k) <= MAX_ID and _valid_session(v) for k, v in sessions.items()))
 
 
 class Meter:
@@ -193,8 +254,8 @@ class Meter:
 
     def _load_state(self) -> dict[str, Any]:
         """The persisted high-water state, read with the run directory's guards (no link followed, a regular file,
-        at most 16 MiB). A missing file is a fresh meter; a file that is not this meter's state is not trusted: the
-        source starts `truncated`, so it is unknown rather than counted from zero (m2)."""
+        at most 16 MiB). A missing file is a fresh meter; a file that is not this meter's state, in its whole shape, is
+        not trusted: the source starts `truncated`, so it is unknown rather than counted from zero (m2, PR #186 m3)."""
         try:
             text = runlog._read_text(self.state_path)  # noqa: SLF001 - the run directory's guarded read
         except OSError:
@@ -205,8 +266,7 @@ class Meter:
             loaded = json.loads(text)
         except (ValueError, RecursionError):
             loaded = None
-        if not isinstance(loaded, dict) or loaded.get("schema") != STATE_SCHEMA \
-                or not isinstance(loaded.get("sessions"), dict):
+        if not isinstance(loaded, dict) or not _valid_state(loaded):
             return {**_empty_state(), "truncated": True}
         return loaded
 
@@ -250,64 +310,64 @@ class Meter:
 
     # ------------------------------------------------------------------ the poll
 
-    def poll(self) -> dict[str, Any]:
-        """One sample. A failed request takes no sample: the last one is returned and its ``observed_at`` ages."""
+    def poll(self) -> dict[str, Any] | None:
+        """One sample. A failed request or write takes no sample: the last published one is returned, and its
+        ``observed_at`` ages; before any sample is published that is ``None``, never a sample made up (PR #186 m2).
+        A failed request or write is counted in ``errors``, never raised (a meter never ends the run, L2)."""
         with self._lock:
-            if self._ended:
-                return self._current()
-            if self.client is None:
-                return self._current()
+            if self._ended or self.client is None:
+                return self.sample
             try:
                 state = self._read_server()
             except MeterError as exc:
                 self.errors += 1
                 self.last_error = str(exc)[:300]
-                return self._current()
-            self.state = state
-            self.last_success = self.clock()
-            self.observed_at = _iso_ms()
+                return self.sample
+            observed = _iso_ms()
             try:
-                return self._publish("live")
-            except OSError as exc:  # a meter that cannot write never ends the run (L2); the error is counted
+                sample = self._publish("live", state=state, observed_at=observed)
+            except OSError as exc:
                 self.errors += 1
                 self.last_error = f"write: {exc}"[:300]
-                return self._current()
+                return self.sample
+            self.last_success = self.clock()
+            return sample
 
     def final(self) -> dict[str, Any]:
-        """The final sample: ``final`` after a successful last poll, else ``server_gone`` with the last figures."""
+        """The final sample: ``final`` after a successful last poll, else ``server_gone`` with the last figures.
+        A failed write raises ``OSError`` and ends nothing: ``final()`` can be called again (PR #186 m4)."""
         with self._lock:
             if self._ended and self.sample is not None:
                 return self.sample
-            ok = False
+            state, observed, run_state = self.state, self.observed_at, "server_gone"
             if self.client is not None:
                 try:
-                    self.state = self._read_server()
-                    self.last_success = self.clock()
-                    self.observed_at = _iso_ms()
-                    ok = True
+                    state, observed, run_state = self._read_server(), _iso_ms(), "final"
                 except MeterError as exc:
                     self.errors += 1
                     self.last_error = str(exc)[:300]
             elif self.prompt_state == "unsent":
-                ok = True  # no server was started: nothing could have been spent (never launched)
+                run_state = "final"  # no server was started: nothing could have been spent (never launched)
+            sample = self._publish(run_state, state=state, observed_at=observed)
+            if run_state == "final" and self.client is not None:
+                self.last_success = self.clock()
             self._ended = True
-            return self._publish("final" if ok else "server_gone")
+            return sample
 
     def set_prompt_state(self, prompt_state: str) -> None:
-        """A run's prompt state, written at once with the next ``seq`` (M6, R2-m3). A failed write raises: the
-        launch refuses before its server starts (R3-m3)."""
+        """A run's prompt state, written at once with the next ``seq`` (M6, R2-m3). A failed write raises and leaves
+        the prompt state as it was: the launch refuses before its server starts (R3-m3)."""
         if self.source["kind"] != "run":
             raise ValueError("only a run source has a prompt state")
         if prompt_state not in PROMPT_STATES:
             raise ValueError(f"a prompt state is one of {PROMPT_STATES}, not {prompt_state!r}")
         with self._lock:
-            self.prompt_state = prompt_state
-            self._publish(self.sample["state"] if self.sample is not None else "live")
-
-    def _current(self) -> dict[str, Any]:
-        if self.sample is None:
-            return self._build(self.state, "live", self.seq + 1)
-        return self.sample
+            previous, self.prompt_state = self.prompt_state, prompt_state
+            try:
+                self._publish(self.sample["state"] if self.sample is not None else "live")
+            except BaseException:
+                self.prompt_state = previous  # memory never runs ahead of the file (PR #186 m4)
+                raise
 
     def _read_server(self) -> dict[str, Any]:
         state = copy.deepcopy(self.state)
@@ -333,7 +393,7 @@ class Meter:
             if new or moved or sid in self._active or any(s["types"][t]["held"] or s["types"][t]["more"]
                                                           for t in TYPES):
                 for kind in TYPES:
-                    if not self._read_messages(state, s, sid, kind):
+                    if not self._read_messages(state, s, sid, kind, moved):
                         break  # the session vanished between the list and its messages: it keeps its figure
         return state
 
@@ -367,65 +427,95 @@ class Meter:
             s["fork_after"] = _time(info, "created") or 0.0
         return up
 
-    def _read_messages(self, state: dict[str, Any], s: dict[str, Any], sid: str, kind: str) -> bool:
+    def _read_messages(self, state: dict[str, Any], s: dict[str, Any], sid: str, kind: str, moved: bool) -> bool:
         st = s["types"][kind]
-        for _ in range(MESSAGE_PAGES):
+        pages = MESSAGE_PAGES
+        while pages > 0:
+            pages -= 1
             params = {"type": kind, "limit": str(MESSAGE_PAGE)}
             if st["cursor"]:
                 params["cursor"] = st["cursor"]  # the pinned operation: a cursor is never combined with order
             else:
                 params["order"] = "asc"
-            try:
-                page = _obj(self.client.get(f"/api/session/{sid}/message", params, timeout=self.request_timeout_s))
-            except OpenCodeError as exc:
-                if exc.status == 404:
-                    return False
-                raise MeterError(f"messages of {sid}: {exc}") from None
-            except OpenCodeUnavailable as exc:
-                raise MeterError(f"messages of {sid}: {exc}") from None
-            items = [m for m in _list(page.get("data")) if isinstance(m, dict)]
+            page = self._session_get(sid, "/message", params)
+            if page is None:
+                return False  # the session vanished between the list and its messages: it keeps its figure
+            items = [m for m in _list(_obj(page).get("data")) if isinstance(m, dict)]
+            if not items and st["cursor"] and moved and not self._anchor_exists(sid, st["anchor"]):
+                # 2.0.18 answers a cursor whose anchor is gone with an empty page, for good (SessionStore.messages:
+                # `if(r.cursor&&!c)return[]`), and a revert deletes messages from its boundary on (P1(d)): read the
+                # session again from the start, skipping what was passed already (PR #186 M1).
+                if st["last_created"] is None:
+                    state["truncated"] = True  # nothing to skip by: the source cannot be re-synced
+                    return True
+                st["cursor"] = st["anchor"] = None
+                st["floor"] = st["last_created"]
+                pages += 1  # the re-read replaces the empty page
+                continue
             if not self._count_page(state, s, sid, kind, st, items):
                 st["held"], st["more"] = True, False
                 return True
             st["held"] = False
-            nxt = _obj(page.get("cursor")).get("next")
+            nxt = _obj(_obj(page).get("cursor")).get("next")
             if items and isinstance(nxt, str) and nxt:
-                if len(nxt) > MAX_CURSOR:
+                anchor = U.identifier(items[-1].get("id"), MAX_ID)
+                if len(nxt) > MAX_CURSOR or anchor is None:
                     state["truncated"] = True
                     return True
-                st["cursor"] = nxt  # every message of the page is counted: the next read starts after it
-                st["in_page"] = False
+                st["cursor"], st["anchor"] = nxt, anchor  # every message of the page is passed: read after it
             st["more"] = len(items) >= MESSAGE_PAGE
             if not st["more"]:
                 return True
         return True
 
+    def _session_get(self, sid: str, rest: str, params: dict[str, str] | None = None) -> Any:
+        """A session route; None when it answers 404 (the session or message is gone)."""
+        try:
+            return self.client.get(f"/api/session/{sid}{rest}", params, timeout=self.request_timeout_s)
+        except OpenCodeError as exc:
+            if exc.status == 404:
+                return None
+            raise MeterError(f"{rest} of {sid}: {exc}") from None
+        except OpenCodeUnavailable as exc:
+            raise MeterError(f"{rest} of {sid}: {exc}") from None
+
+    def _anchor_exists(self, sid: str, anchor: str | None) -> bool:
+        """Whether the cursor's anchor message is still there (the pinned ``session.message.get``); an unknown anchor
+        is treated as gone, which only costs a re-read."""
+        return anchor is not None and self._session_get(sid, f"/message/{anchor}") is not None
+
     def _count_page(self, state: dict[str, Any], s: dict[str, Any], sid: str, kind: str, st: dict[str, Any],
                     items: list[dict[str, Any]]) -> bool:
-        """Count the page's terminal messages in order after the last counted one. False when counting stopped at
-        a message still in progress (the cursor and the last counted id stay before it)."""
-        last, last_created = st["last"], st["last_created"]
+        """Count the page's terminal messages in order after the last one passed. False when counting stopped at a
+        message still in progress (the cursor and the last passed id stay before it).
+
+        Messages are skipped as passed already when they come before the last passed id on the page, or, once a
+        revert deleted that message (it should be on the page, being after the cursor's anchor, and is not), when
+        they were created at or before it: 2.0.18 orders a session's messages by position, and a revert keeps only
+        those before its boundary, so every survivor was passed. A message created in the same millisecond as the
+        deleted one and never counted is skipped too; its usage stays in the figure through the totals."""
+        last = st["last"]
         start = 0
         ids = [m.get("id") for m in items]
         if last is not None and last in ids:
             start = ids.index(last) + 1
-        elif last_created is not None and st.get("in_page"):
-            # The last counted message was on this page and is gone (a revert deletes messages from its boundary on,
-            # P1(d)): what was created before it was counted already.
-            while start < len(items) and (_time(items[start], "created") or 0.0) < last_created:
-                start += 1
+        elif last is not None and st["anchor"] != last and st["last_created"] is not None:
+            st["floor"] = st["last_created"]
+        floor = st["floor"]
         for m in items[start:]:
+            created = _time(m, "created")
+            if floor is not None and (created or 0.0) <= float(floor):
+                continue  # passed before a revert deleted the last passed message
             if not self._terminal(kind, m, sid):
                 return False
             mid = U.identifier(m.get("id"), MAX_ID)
             if mid is None:
                 state["truncated"] = True
                 return False
-            created = _time(m, "created")
             copied = s["fork_after"] is not None and (created or 0.0) < float(s["fork_after"])
             if not copied:
                 self._count(state, st, kind, m)
-            st["last"], st["last_created"], st["in_page"] = mid, created, True
+            st["last"], st["last_created"] = mid, created
         return True
 
     def _terminal(self, kind: str, m: Mapping[str, Any], sid: str) -> bool:
@@ -475,13 +565,21 @@ class Meter:
 
     # ------------------------------------------------------------------ the sample
 
-    def _publish(self, run_state: str) -> dict[str, Any]:
-        self._persist(self.state)  # first: a state past its cap marks the source truncated in this very sample
-        sample = self._build(self.state, run_state, self.seq + 1)
+    def _publish(self, run_state: str, *, state: dict[str, Any] | None = None,
+                 observed_at: str | None = None) -> dict[str, Any]:
+        """Persist the state, then write the sample with the next ``seq``. Nothing in memory changes unless both
+        writes succeed, so a failed write is retried from where it was and a ``seq`` is never reused."""
+        state = self.state if state is None else state
+        observed = self.observed_at if observed_at is None else observed_at
+        self._persist(state)  # first: a state past its cap marks the source truncated in this very sample
+        held, self.observed_at = self.observed_at, observed
+        try:
+            sample = self._build(state, run_state, self.seq + 1)
+        finally:
+            self.observed_at = held
         if self.live_path is not None:
             atomic_write(self.live_path, json.dumps(sample, sort_keys=True, separators=(",", ":")))
-        self.seq += 1
-        self.sample = sample
+        self.state, self.observed_at, self.seq, self.sample = state, observed, self.seq + 1, sample
         return sample
 
     def _build(self, state: dict[str, Any], run_state: str, seq: int) -> dict[str, Any]:

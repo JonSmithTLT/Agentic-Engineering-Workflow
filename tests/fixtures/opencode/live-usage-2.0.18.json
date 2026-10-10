@@ -163,7 +163,17 @@
     ],
     "file": "opencode-cli 2.0.18 (bundled JavaScript)",
     "identifier": "return e.handle(\"session.list\",u(function*(l){",
-    "says": "session.list orders and anchors its cursor on time.updated and id, and returns a next cursor whenever a page has items; session.messages refuses a cursor combined with order (\"Cursor cannot be combined with order\"), defaults to order desc, and its cursor carries the order"
+    "says": "session.list orders and anchors its cursor on time.updated and id, and returns a next cursor whenever a page has items; session.messages refuses a cursor combined with order (\"Cursor cannot be combined with order\"), defaults to order desc, and its cursor carries only the anchor's id, the order and the direction (see E22 for a cursor whose anchor is gone)"
+   },
+   {
+    "id": "E22",
+    "items": [
+     "a",
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "if(r.cursor&&!c)return[]",
+    "says": "SessionStore.messages looks the cursor's anchor id up among the session's messages and, when it is gone (a revert deleted it), returns an empty page, with no next cursor, for good; otherwise it pages by position (seq) after the anchor, filtered by type"
    },
    {
     "id": "E17",
@@ -208,7 +218,7 @@
      "a"
     ],
     "file": "opencode-cli 2.0.18 (bundled JavaScript)",
-    "identifier": "e.handle(\"session.active\",u(function*(){let l=yield*a.active;",
+    "identifier": ".handle(\"session.active\",u(function*(){let l=yield*a.active;",
     "says": "session.active lists the sessions with an execution running"
    }
   ]
@@ -269,9 +279,10 @@
     "E13",
     "E15",
     "E18",
-    "E20"
+    "E20",
+    "E22"
    ],
-   "says": "Nothing lowers a session's totals. Compaction adds usage and removes no message. A committed revert deletes messages from its boundary on and keeps the totals. A fork is a new session with zero totals holding copies of the source's finished messages (created before the fork): the meter counts only a fork's messages created at or after the fork, as OpenCode's own statistics do. Deleting a session removes it from the list. C1's CC2 is not merged, so compaction stays on by default everywhere."
+   "says": "Nothing lowers a session's totals. Compaction adds usage and removes no message. A committed revert deletes messages from its boundary on and keeps the totals; a message cursor anchored on a deleted message then returns an empty page for good (E22), so the meter, when the totals moved and the anchor is gone, reads the session again from the start and skips what it passed already. A fork is a new session with zero totals holding copies of the source's finished messages (created before the fork): the meter counts only a fork's messages created at or after the fork, as OpenCode's own statistics do. Deleting a session removes it from the list. C1's CC2 is not merged, so compaction stays on by default everywhere."
   },
   {
    "item": "e",
@@ -1928,6 +1939,239 @@
        "openai/gpt-6.1": {
         "input": 1500,
         "output": 150,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a revert of the cursor's anchor, then more calls, are counted once each",
+   "evidence": [
+    "E11",
+    "E22"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_2",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 3000,
+         "completed": 4000
+        },
+        "content": [],
+        "tokens": {
+         "input": 500,
+         "output": 50,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1500,
+       "output": 150,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "d_min_s": 1.0,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 2001500,
+        "output": 150,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_5",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1-mini",
+         "variant": "low"
+        },
+        "time": {
+         "created": 6000,
+         "completed": 6500
+        },
+        "content": [],
+        "tokens": {
+         "input": 2000000,
+         "output": 0,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 2001500,
+       "output": 150,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 3,
+      "d_min_s": 0.5,
+      "max_step_input": 2000000,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       },
+       "openai/gpt-6.1-mini": {
+        "input": 2000000,
+        "output": 0,
         "reasoning": 0,
         "cache_read": 0,
         "cache_write": 0

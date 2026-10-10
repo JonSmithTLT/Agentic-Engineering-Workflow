@@ -546,9 +546,11 @@ class FakeOpenCode:
         return 200, {"data": page, "cursor": cursor}
 
     def list_messages(self, s: Session, query: dict[str, list[str]]) -> tuple[int, Any]:
-        """``session.message.list`` as 2.0.18 pages it: filtered by ``type`` before paging, in position order, with a
-        cursor on the last item of every non-empty page (an empty page ends the list) that is never combined with
-        ``order``."""
+        """``session.message.list`` as 2.0.18 pages it (``SessionStore.messages``): in position order, filtered by
+        ``type``, with a cursor on the last item of every non-empty page (an empty page ends the list) that carries
+        only the anchor's id and the order and is never combined with ``order``. The anchor is looked up among all
+        the session's messages; **when it is gone (a revert deleted it) the page is empty, for good**
+        (``if(r.cursor&&!c)return[]``)."""
         raw = (query.get("cursor") or [None])[0]
         if raw is not None and "order" in query:
             return 400, {"message": "Cursor cannot be combined with order"}
@@ -556,29 +558,28 @@ class FakeOpenCode:
         kind = (query.get("type") or [None])[0]
         with self.lock:
             self.message_reads += 1
-            msgs = [m for m in s.messages if kind is None or m.get("type") == kind]
+            every = list(s.messages)
+        positions = list(range(len(every)))
         if raw is not None:
             try:
                 cur = decode_cursor(raw)
             except ValueError:
                 return 400, {"message": "Invalid cursor"}
             order = cur["order"]
-            ordered = msgs if order == "asc" else list(reversed(msgs))
-            oids = [m["id"] for m in ordered]
-            if cur["id"] in oids:
-                ordered = ordered[oids.index(cur["id"]) + 1:]
-            else:  # the anchor is gone (a revert): continue after its creation time
-                at = float(cur.get("created") or 0)
-                ordered = [m for m in ordered if (float(m["time"]["created"]) > at if order == "asc"
-                                                  else float(m["time"]["created"]) < at)]
+            ids = [m["id"] for m in every]
+            if cur["id"] not in ids:
+                return 200, {"data": [], "cursor": {}}
+            at = ids.index(cur["id"])
+            positions = [i for i in positions if (i > at if order == "asc" else i < at)]
         else:
             order = (query.get("order") or ["desc"])[0]
-            ordered = msgs if order == "asc" else list(reversed(msgs))
+        if order != "asc":
+            positions.reverse()
+        ordered = [every[i] for i in positions if kind is None or every[i].get("type") == kind]
         page = [json.loads(json.dumps(m)) for m in ordered[:limit]]
         cursor: dict[str, Any] = {}
         if page:
-            cursor["next"] = encode_cursor({"order": order, "id": page[-1]["id"],
-                                            "created": page[-1]["time"]["created"]})
+            cursor["next"] = encode_cursor({"order": order, "id": page[-1]["id"], "direction": "next"})
         return 200, {"data": page, "cursor": cursor}
 
     def add_session(self, *, model: dict[str, Any] | None = None, parent: str | None = None,

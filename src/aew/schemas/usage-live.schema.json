@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/usage-live/v1",
   "title": "One source's live usage sample",
-  "description": "Non-authoritative live telemetry of one OpenCode server (F25 for M4-H, slice L1; plan v4 \u00a73.1): a run's private server (`source.kind: run`, written by its supervisor's meter) or an evaluator-owned one (`session`, its id the root session). R1's fields come from `aew.harness.usage.normalize()` over every session of the server, so they price exactly as a run record does. Closed fields, no text and no paths: with these bounds the serialized sample is at most 4 KiB (aew.harness.usage_live.MAX_SAMPLE_BYTES, checked by tests/unit/test_usage_live.py). Ordered per source by `(epoch, seq)`: `seq` strictly increases within an epoch, and a restarted meter starts a new epoch whose start time (after the colon) is later.",
+  "description": "Non-authoritative live telemetry of one OpenCode server (F25 for M4-H, slice L1; plan v4 \u00a73.1): a run's private server (`source.kind: run`, written by its supervisor's meter) or an evaluator-owned one (`session`, its id the root session; only a run source has, and must have, `prompt_state`). R1's fields come from `aew.harness.usage.normalize()` over every session of the server, so they price exactly as a run record does. Closed fields, no text and no paths: with these bounds the serialized sample is at most 4 KiB (aew.harness.usage_live.MAX_SAMPLE_BYTES, checked by tests/unit/test_usage_live.py). Ordered per source by `(epoch, seq)`: `seq` strictly increases within an epoch, and a restarted meter starts a new epoch whose start time (after the colon) is later.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -42,6 +42,33 @@
       "maximum": 9999999999999
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "run"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "prompt_state"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "prompt_state"
+          ]
+        }
+      }
+    }
+  ],
   "properties": {
     "schema": {
       "const": "aew/usage-live/v1"

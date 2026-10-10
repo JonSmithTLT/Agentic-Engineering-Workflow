@@ -142,7 +142,7 @@ Where each concern is verified. "Fake V2" means `tests/integration/test_opencode
 
 One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and one meter for every OpenCode server: a supervised run's private server and an evaluator-owned one (R, R+, the A arm's headless Lead) alike (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). It measures only; the M4-H evaluator (F19) terminates and charges. Probe P1 pinned the facts it rests on, from the pinned 2.0.18 release's bundled JavaScript and the pinned OpenAPI, with a searchable identifier per citation, in `tests/fixtures/opencode/live-usage-2.0.18.json`; `tests/unit/test_usage_live.py` runs the fixture's cases against the meter and checks the citations' shape.
 
-**Operations relied on, and nothing else:** `server.info` (the version, for `token_semantics` from the adapter's table); `session.list` with no filter, `order=asc`, `limit=50`, then `cursor` (2.0.18 anchors it on `time.updated`, so a session updated while the list is paged moves later and is met again); `session.active`; `session.message.list` with `type=assistant` or `type=compaction`, `limit=200`, `order=asc` on the first page and `cursor` alone after it (the pinned operation refuses a cursor with `order`, and the same `type` is passed on every page). A test checks every query parameter the meter sends against the pinned operation.
+**Operations relied on, and nothing else:** `server.info` (the version, for `token_semantics` from the adapter's table); `session.list` with no filter, `order=asc`, `limit=50`, then `cursor` (2.0.18 anchors it on `time.updated`, so a session updated while the list is paged moves later and is met again); `session.active`; `session.message.list` with `type=assistant` or `type=compaction`, `limit=200`, `order=asc` on the first page and `cursor` alone after it (the pinned operation refuses a cursor with `order`, and the same `type` is passed on every page); `session.message.get`, only to check that a cursor's anchor message still exists. A test checks every query parameter the meter sends against the pinned operation.
 
 **Fields relied on:** `Session.Info`: `id`, `tokens`, `cost`, `model`, `fork`, `time.created`; an assistant message: `id`, `model`, `tokens`, `cost`, `time.created`, `time.completed`, `error`, `finish`, `retry.attempt`; a compaction message: `id`, `status`, `model`, `tokens`, `cost`, `time.created`.
 
@@ -154,6 +154,7 @@ One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and on
 | An interrupted call without the provider's finish ends with `time.completed`, `finish: error` and no tokens; the totals do not move | It never stalls the cursor; what it consumed is billed and unrecorded (the plan's A1 residual) |
 | A session's totals are its own: its steps plus its title and compaction calls (`session.usage.recorded`); never its children's | The figure sums every session once: `max(high-water totals, counted messages)` per session and category, recomputed every poll |
 | Title usage is on no message; a compaction's usage reaches the totals before its message completes | The part of the totals on no counted message is priced on the pinned model only when the caller proved the server pinned to it, and only for a session on that model; otherwise it is a partition with no model, which never prices |
+| A message cursor whose anchor message is gone gets an empty page, for good (`SessionStore.messages`), and a revert deletes messages from its boundary on | When a session's totals moved but its cursor's page is empty and the anchor is gone, the meter reads the session again from the start and skips what it passed already: the messages created at or before the last one it passed, which a revert keeps only before its boundary. A message created in that same millisecond and never counted is skipped too; its usage stays in the figure through the totals |
 | Nothing lowers a session's totals: compaction adds, a revert deletes messages but keeps the totals, a deleted session disappears | A decrease is only `Session.Info.tokens` below its high-water mark: `integrity_pending` once, `integrity` when the next poll still sees it, and the figure never drops; a vanished session keeps its figure |
 | A fork is a new session with zero totals and copies of its source's finished messages (created before the fork) | A fork's messages created before the fork are never counted (OpenCode's own statistics exclude them the same way) |
 | The title call runs on the title agent's model, else the provider's small model; a compaction on the session's model; a subagent on its explicit, own or parent's model. No call site of the summary agent was found (unverified) | AEW's projection pins title, summary and compaction to the run's model; the evaluator's preflight (slice L3) proves every server pinned |
@@ -162,118 +163,8 @@ One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and on
 
 **Bounds:** at most 256 tracked sessions and 6 pages of 50 listed (past either the source is `truncated`, which prices nothing); one page of 200 messages per type per session per poll (the rest on the next); a state of at most 512 KiB that holds cursors, counts and per-model sums, never message ids; a sample of at most 4 KiB.
 
-## 6. Live results with real models (M3 step 8)
+**The interface beyond the plan's signatures, and what it obliges (F19 and slice L2):**
 
-**What ran.** `tests/live/test_opencode_model_live.py`:
-- the production `opencode` adapter (nothing scripted) on OpenCode 2.0.18, with free models, a 40-step limit and a 900 s deadline per run;
-- each role receives its launch contract as its first message and does whatever it does; the Lead's steps are the test's (a scripted Lead);
-- two scenarios:
-  - **lifecycle:** implementer, then a reviewer if it submitted a report, then a verifier if the review passed;
-  - **rejection and rework** (designer request, 2026-09-28): a seeded, plausible but wrong first implementation, then real models for every later role (§6.2);
-- per-role model routing (`AEW_LIVE_ROUTING`) for the asymmetry trials (§6.3).
-
-Raw records: `eval/m3/live/model-trials.jsonl`. Each record names the fixes that were in the code it ran on.
-
-**Asserted on every run, whatever the models do (AEW's side). All held in every run of every trial:**
-- the run ends in a terminal status the supervisor derived from the evidence store, and every process it started exits;
-- no AEW credential in any file (the run's own scan and a scan of everything the test left); the provider secret the server holds is in no file;
-- the effective model and effort are the pinned ones; no other session exists (no subagent);
-- every piece of evidence is attributed to its run, credential and execution profile, and verifies;
-- the unit's state and the invocation are as the Lead left them: only the Lead's steps moved state;
-- a reader's evidence is never accepted from a workspace it changed (M3-B6).
-
-**The clean specimen (designer, priority 1).** The whole live lane (the conformance scenarios, AT-14..AT-17, two lifecycle trials and two rework trials) ran with the checkout otherwise untouched: 25 passed, 1 skipped by design (the forced-model scenario), and the isolation guard was clean. The earlier guard failures were concurrent edits to the checkout (the operator's own documentation work), not the trials.
-
-### 6.1 Lifecycle
-
-Seven trials: five on 2026-09-28 early (three with bash as the agent's shell, two with Windows PowerShell 5.1, `SHELL` unset), and two in the clean specimen. **Every Ticket reached VERIFIED** through a real implementer, reviewer and verifier, the independent hidden test passed, and every change stayed in scope.
-
-| Trial | Agent shell | Implementer | Reviewer | Verifier | Refusals the model recovered from |
-|---|---|---|---|---|---|
-| 1 | bash | 86 s, 9 steps | 105 s, 6 steps | 62 s, 6 steps | none |
-| 2 | bash | 137 s, 11 | 65 s, 4 | 80 s, 7 | none |
-| 3 | bash | 106 s, 16 | 102 s, 7 | 94 s, 11 | verifier: `VALIDATION_FAILED` (cited a check not run through AEW) |
-| 4 | PowerShell | 108 s, 10 | 116 s, 5 | 172 s, 15 | reviewer: `VALIDATION_FAILED` (invalid YAML); verifier: `WORKSPACE_MUTATED` (wrote its report into the workspace) |
-| 5 | PowerShell | 136 s, 11 | 128 s, 10 | 112 s, 8 | reviewer: `VALIDATION_FAILED` ("missing YAML frontmatter": M3-D2); verifier: `VALIDATION_FAILED` (cited a check not run through AEW) |
-| 6 (specimen) | bash | 71 s, 8 | 72 s, 4 | 107 s, 7 | none |
-| 7 (specimen) | bash | 139 s, 10 | 89 s, 6 | 107 s, 7 | none |
-
-- The effective model matched the pin in every run. No run had a permission request, a form or another session. Cost was 0 (free models).
-- Every implementer ran both checks (`guardrails`, `unit`) before submitting. Readers used only `read`, `glob`, `grep` and `shell`; `edit` is denied to them and was never called.
-- A run's first step read 3.5–4.1K input tokens: the contract (6.1–7.3 KB) and system text (about 1.0–1.2 KB), plus OpenCode's own overhead. Whole runs used 8–17K input tokens and 1–6K output tokens.
-- Implementers mostly also exported `subtract` from `calc/__init__.py`, reading the goal's "through the public module" that way; one reviewer recorded it as an observation.
-
-### 6.2 Rejection and rework
-
-**The fixture.** A Ticket asks for `safe_div(a, b)` with goals `safe_div(7, 2) == 3.5` and `safe_div(1, 0) is None`. Its first implementation is seeded, by a scripted implementer: `return a // b`, with a test asserting only `safe_div(6, 3) == 2` and `safe_div(1, 0) is None`. It passes its own test and the unit check; it is wrong against the goals. Every later role is a real model. Whether anyone catches the defect is recorded, not asserted. When someone does, the Lead returns the Ticket to implementation through its normal authority: a fresh implementer (a new invocation and credential), then a fresh reviewer and a verifier.
-
-**Asserted whatever the models do:**
-- a failing review does not advance the Ticket;
-- the rejected implementer's credential is dead (`STALE_AUTHORITY`);
-- the rejected attempt's stale failing review cannot be ingested for the corrected work (`GATE_UNSATISFIED`);
-- the rework implementer is a new invocation, with its own credential and run;
-- at VERIFIED, every gate is bound to evidence evaluated on the corrected snapshot, and none to the rejected attempt's evidence.
-
-**Trials** (reviewer 1 is always a real model; "caught" means its review was `changes_required` with the defect as a required finding):
-
-| # | Code | Routing | Reviewer 1 | Rework | Outcome |
-|---|---|---|---|---|---|
-| 1 | M3-D2, D3 fixed | all roles `longcat-2.5-preview-free` | **caught**, 52 s, 3 steps: F1 blocker (floor division, `safe_div(7, 2)` returns 3), F2 major (the test cannot detect it) | implementer 94 s; fresh reviewer resolved F1 and F2 (117 s) | **VERIFIED**, correct; verifier 100 s |
-| 2 | M3-D2, D3 | implementer `mimo-v2.6-flash-free`; reviewer and verifier `space-bunny-free` at **high** effort | **caught**, 33 s: F1, F2, F3 minor | the implementer fixed the code, but wrote its report into the workspace, submitted it and deleted it: its evidence was stale, and AEW refused to send the work to review | stopped (the scenario did not relaunch yet): **M3-D4 found** |
-| 3 | M3-D2..D4 | as 2 | **caught**, 22 s: F1, F2, F3 | the same stale report; the Lead relaunched the implementer (rotated credential, continuation marking its evidence STALE): it re-ran both checks and resubmitted | **VERIFIED**, correct. Verifier: `BRIDGE_ERROR` (**M3-D5**), then wrote its report into the operator's repository (**M3-D6**) |
-| 4, 5 | M3-D2..D6 (clean specimen) | all `longcat` | **caught** twice, 89 s and 41 s: F1 blocker, F2 minor | implementers 141 s and 97 s; the fresh reviewers passed the fix but named the findings `F1`, `F2` instead of `INV-0002-review-3#F1`, which the Lead's ingest refused | stopped at REVIEW_PENDING, code correct: **M3-D7 found** |
-| 6 | all fixed | all `longcat` | **caught**, 80 s: F1 blocker, F2 major | implementer 172 s; fresh reviewer resolved both by their qualified ids (76 s) | **VERIFIED**, correct; verifier 81 s |
-| 7 | all fixed | as 2 | **caught**, 38 s: F1..F5 | implementer 75 s; fresh reviewer 59 s | **VERIFIED**, correct; verifier 60 s |
-| 8 | all fixed | all `longcat` | **caught**, 66 s: F1 blocker, F2 major | implementer 101 s; the fresh reviewer first named the findings `F1`, `F2`, was refused at submit with the qualified ids (M3-D7's fix), and corrected them in the same run (116 s) | **VERIFIED**, correct; verifier 81 s |
-
-One further trial on the final code (reviewer 1 caught the defect in 66 s; the rework reached REVIEW_PASSED) was cut off during verification by a time limit in the test harness itself: the CLI call around `harness wait` gave up after 180 s (fixed). It is kept in the records and not counted as an outcome.
-
-**What the trials show.**
-- **The independent reviewer caught the seeded defect in every trial (9 of 9, counting the one cut off later)**, from the goals and the code alone, although the implementation passed its own test and the unit check. It named the defect as a blocker every time, and every time also named why the seeded test could not catch it (a major finding in seven trials, minor in two).
-- **Rejection and rework ran through normal authority.** The failing review left the Ticket in REVIEW_FAILED; the Lead returned it to RUNNING; the rejected implementer's credential was dead; the rework was a new invocation with a new credential and run; the old failing review could not be ingested again; the fresh reviewer resolved the recorded findings; and at VERIFIED every gate pointed at evidence from the corrected snapshot.
-- **Model mistakes were caught by engine checks, not harness permissions,** and each refusal message was enough for the model to correct itself in one step: check citations that were not AEW checks, invalid YAML, a report left in the shared workspace (`WORKSPACE_MUTATED`), a reviewer trying to run a check (`PERMISSION_DENIED`).
-- **Human intervention: none.** The Lead's steps were scripted; no step needed an operator.
-
-### 6.3 Model asymmetry (designer, priority 3)
-
-Execution profiles are pinned per invocation, so asymmetry needs no new machinery: the execution policy routes archetypes to profiles, each run's `model_check` confirms the pinned model and effort, and each run records its own usage. The trials above used a fast model for the implementer and a model at high effort for the reviewer and verifier. They were also the first live runs of a pinned effort variant (`space-bunny-free#high`: `model_check` matched it every time).
-
-Observed (three trials of free models; anecdotal, not a controlled comparison):
-- the high-effort reviewer found the defect sooner (22–38 s against 41–89 s) and added lower-severity findings;
-- the flash implementer left its report stale in two of the three (a process mistake AEW caught; the relaunch continuation repaired it once), and did not in the one trial run after the scratch directory existed (one trial shows nothing either way).
-
-**A controlled comparison belongs in the step-9 dogfood,** with paid models: the same rework fixture, at least three trials each of (a) a cheap implementer with a strong reviewer and verifier and (b) a strong implementer with a cheap reviewer and verifier, measuring defect detection, reworks, interventions, tokens, cost and wall time.
-
-### 6.4 Defects found and fixed
-
-Each has a permanent regression, written and seen failing first. All are in `tests/regression/test_m3_live_findings.py` unless named otherwise.
-
-- **M3-D2: text inputs on Windows.**
-  - Found live: a report that Windows PowerShell 5.1 wrote as UTF-8 with a byte-order mark was refused as "missing YAML frontmatter"; the model had to inspect the file's bytes.
-  - Found while fixing it: UTF-16 files (PowerShell 5.1's `>`) raised an unhandled `UnicodeDecodeError`; stdin was decoded with the ANSI code page on the direct path and in the Lead broker's client (inside a harness run the curated environment sets `PYTHONUTF8=1`, so no trial was affected); with an explicit credential, `aew submit --file -` read stdin twice and submitted the empty second read (an M3 regression of the M1 path).
-  - Now every text input (`--file`, `-`, the bridge client, the Lead broker's client) is read once, as bytes, by `aew.util.read_text_input`. A UTF-8 or UTF-16 byte-order mark is honoured and removed; anything else must be UTF-8 or it is a `USAGE` error.
-- **M3-D3: tool names in the run's event log.** V2 names a tool in `session.tool.input.started`; `session.tool.called` carries only the call id and input, so the log recorded `"tool": null`. The adapter now maps call ids to names and logs the name, never the input (`test_tool_calls_are_logged_by_name_never_by_input`).
-- **M3-D4: a relaunch did not say that evidence had gone stale.** An implementer's report was evaluated on a workspace state that no longer existed; AEW rightly refused to send the work to review; but the continuation a relaunched run receives listed the report as "pass". It now marks each of the invocation's evidence that was evaluated on a different workspace state as STALE and says to record it again. Evidence that is still current is shown exactly as before.
-- **M3-D5: a malformed section crashed submit.** A verifier wrote a check citation as `- direct-interpreter-observation: …`, which YAML reads as a mapping: submit raised `TypeError` (`BRIDGE_ERROR` through the bridge). Any malformed but parseable review or verification section did the same. Each section is now validated against its schema, after the engine's own defaults and before anything reads it (`validate_property`).
-- **M3-D6: no named place for files outside the workspace.** The contract said "write report files outside the workspace" and named no place. Models guessed: one left its report in the workspace (`WORKSPACE_MUTATED`), one wrote and deleted it there (stale evidence, M3-D4), and one wrote into the operator's own AEW repository (§6.5). Every run now has a private scratch directory, created for it, named in the contract, the preamble and the system text, and in its environment (`AEW_SCRATCH`); OpenCode's tools may use it.
-- **M3-D7: resolved findings were checked only at the Lead's ingest.** A fresh reviewer named the findings it resolved `F1`, `F2` rather than `INV-0002-review-3#F1` as the pack lists them. The review was accepted at submit and refused at ingest, after the reviewer's run had ended, so the Lead would have had to dispatch another review. It is now also checked at submit, naming the ids to use, so the reviewer corrects it in the same run.
-
-**Telemetry added.** The run record's `bridge.outcomes` counts each bridge operation's results by outcome (`ok` or the error code), never its arguments or output. The refusals above were found from it, without reading a transcript.
-
-### 6.5 The operator's filesystem
-
-In rework trial 3 the verifier, looking for a place outside the workspace to write its report, built a path under the **operator's own AEW repository** (its root taken from the Python interpreter path that pytest prints), created directories there, wrote its report, submitted it through the bridge, and deleted the file. Only empty directories remained (they were removed).
-
-- AEW's properties held: the submission went through the bridge and was validated like any other; no credential was exposed; no AEW state moved.
-- But this is the first live instance of an agent writing outside its workspace into the operator's files. It is within the documented threat model: OpenCode's permissions are not a filesystem boundary, the agent's shell runs as the operator (M3 plan §2.3, M3-B7), and custody, not the harness, protects AEW's authority.
-- M3-D6 removes the cause seen here (no named place to write). It does not stop a model that decides to write elsewhere.
-- **For dogfood on real repositories (step 9) and the operator's TUI session,** use scratch clones away from repositories the operator cares about. OS-level isolation (a separate account, a container or a sandbox) is the operator's decision.
-- **The guarantee is now stated, never implied** (companion review B2; `AEW-INV-ISO-001`). Every run record and `aew harness status` carry `containment: workdir_separation_only`, and `aew doctor` explains it. Real containment is a post-M3 prerequisite for real-repository dogfood and internal alpha (`future-work.md` F2).
-
-### 6.6 Footprint (designer note; `m3-performance.md` §7)
-
-Each lifecycle trial project ended with one open Ticket at VERIFIED: 16.8–17.8 KB of control state, of which 12.2 KB (about 70%) were that open unit's ended invocations and revoked credentials; the live part was 4.6–5.6 KB. A rework trial project (five invocations) held about 21 KB, 11.6 KB of it terminal records.
-
-**Not covered by step 8:**
-- a paid model; tasks where a model loops or needs replanning; the integration verifier and publish (step 9's dogfood corpus);
-- the real TUI (the operator's session).
+- `Meter(..., pinned_model=, main_session=)` and `OpenCodeMeter(..., pinned_model=, request_timeout_s=)`. `pinned_model` is the model preflight proved every model the server can call is pinned to. **Without it (the default), any part of a session's totals on no message, such as a title call (P1(b)), is a partition with no model, so the source never prices: F19 passes preflight's pin to every `OpenCodeMeter`, and L2's adapter passes the run's pinned model.** `main_session` names the session whose usage is not `foreign_tokens` (`OpenCodeMeter` sets it to the root session; L2 sets it to the run's session once it exists).
+- `client` may be `None` and bound later (`meter.client = ...`), so L2 creates the meter and writes its `unsent` sample before the server starts.
+- `poll()` returns the new sample, or the last published one when a request or write fails, or `None` before any sample is published: a failure never makes a sample up or spends a `seq`. `final()` raises `OSError` when its write fails and can then be called again; `set_prompt_state()` raises on a failed write and leaves the prompt state as it was.

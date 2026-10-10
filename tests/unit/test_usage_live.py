@@ -22,6 +22,7 @@ from aew.harness import usage as U
 from aew.harness import usage_live as L
 from aew.harness.opencode.adapter import OpenCodeAdapter, _effective
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
+from aew.harness.opencode.client import OpenCodeError
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
 P1 = json.loads((FIXTURES / "live-usage-2.0.18.json").read_text(encoding="utf-8"))
@@ -408,7 +409,7 @@ def test_the_live_sample_holds_no_text_path_or_credential(lab: Lab):
 def _operation(path: str) -> dict[str, Any]:
     if path in OPENAPI["paths"]:
         return OPENAPI["paths"][path]["get"]
-    for template, item in OPENAPI["paths"].items():
+    for template, item in sorted(OPENAPI["paths"].items(), key=lambda kv: -kv[0].count("/")):
         if re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", template), path):
             return item["get"]
     raise AssertionError(f"{path} is no pinned operation")
@@ -437,7 +438,8 @@ def test_every_query_parameter_the_meter_sends_is_in_the_pinned_operation(lab: L
             assert params["type"] in ("assistant", "compaction")
             assert not ("cursor" in params and "order" in params)
             assert int(params["limit"]) <= 200
-    assert used == {"server.info", "session.list", "session.active", "session.message.list"}
+    assert {"server.info", "session.list", "session.active", "session.message.list"} <= used
+    assert used <= {"server.info", "session.list", "session.active", "session.message.list", "session.message.get"}
     assert any("cursor" in p for _m, path, p in lab.client.requests if path == "/api/session")
     assert any("cursor" in p for _m, path, p in lab.client.requests if path.endswith("/message"))
 
@@ -526,6 +528,100 @@ def test_the_final_sample_equals_the_run_record_for_a_run_without_foreign_sessio
     assert O.derive(as_record(final), PRICES)[0] == O.derive({**record, "truncated": False}, PRICES)[0]
 
 
+def test_a_revert_of_the_cursors_anchor_never_stalls_counting(lab: Lab):
+    sid = lab.app.add_session(model=GPT, created=1)
+    lab.call(sid, tok(1000, 100))
+    second = lab.call(sid, tok(500, 50), duration_ms=700)
+    meter = lab.meter(sid)
+    before = meter.poll()
+    assert before["steps"] == 2 and meter.state["sessions"][sid]["types"]["assistant"]["anchor"] == second
+    lab.app.revert(sid, second)  # deletes the cursor's anchor: 2.0.18 now answers that cursor with an empty page
+    for _ in range(3):
+        lab.call(sid, tok(2_000_000, 0), model=MINI, duration_ms=200)
+    after = valid(meter.poll())
+    # Each later call is counted once, on its own message and model; the survivor before the boundary is not
+    # counted again (PR #186 review, M1).
+    assert after["steps"] == 5 and after["d_min_s"] == 0.2
+    assert after["max_step_tokens"]["input"] == 2_000_000 and not after["truncated"]
+    assert parts(after) == {"openai/gpt-6.1": flat(1500, 150), "openai/gpt-6.1-mini": flat(6_000_000)}
+    again = valid(meter.poll())
+    assert again["steps"] == 5 and again["tokens"] == after["tokens"] == flat(6_001_500, 150)
+
+
+def test_a_failed_first_poll_takes_no_sample(lab: Lab):
+    sid = lab.app.add_session(model=GPT)
+    lab.call(sid, tok(900, 90))
+    meter = lab.meter(sid)
+    lab.client.down = True
+    assert meter.poll() is None and meter.errors == 1  # nothing made up, no seq spent
+    lab.client.down = False
+    first = valid(meter.poll())
+    assert first["seq"] == 0 and first["steps"] == 1
+    assert L.Meter(None, source={"kind": "run", "id": "R-1"}, version="2.0.18", semantics_table={}, s_pot=1,
+                   state_path=lab.root / "run.json").poll() is None
+
+
+@pytest.mark.parametrize("broken", [
+    {"sessions": {"ses_x": {}}},
+    {"sessions": {"ses_x": {"hw": {"input": 1}}}},
+    {"steps": "many"},
+    {"max_step": None},
+    {"sessions": {"ses_x": "x"}},
+    {"extra": 1},
+])
+def test_a_malformed_state_starts_the_source_truncated(lab: Lab, broken: dict[str, Any]):
+    sid = lab.app.add_session(model=GPT)
+    lab.call(sid, tok(10, 1))
+    state = {**L._empty_state(), **broken}
+    (lab.root / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    meter = lab.meter(sid)
+    assert valid(meter.poll())["truncated"]
+    assert valid(meter.final())["truncated"]
+
+
+def test_a_well_formed_state_is_trusted(lab: Lab):
+    sid = lab.app.add_session(model=GPT)
+    lab.call(sid, tok(10, 1))
+    lab.meter(sid).poll()
+    assert L._valid_state(json.loads((lab.root / "state.json").read_text(encoding="utf-8")))
+    assert not lab.meter(sid).poll()["truncated"]
+
+
+def test_a_failed_final_write_can_be_retried_and_a_failed_prompt_write_changes_nothing(tmp_path: Path, monkeypatch):
+    live = tmp_path / "usage.live.json"
+    meter = L.Meter(None, source={"kind": "run", "id": "R-0009"}, version="2.0.18", semantics_table={}, s_pot=1,
+                    state_path=tmp_path / "s.json", live_path=live)
+    meter.set_prompt_state("unsent")
+    real = L.atomic_write
+
+    def refuse(path: Path, data: Any) -> None:
+        raise PermissionError(f"refused: {path.name}")
+
+    monkeypatch.setattr(L, "atomic_write", refuse)
+    with pytest.raises(PermissionError):
+        meter.set_prompt_state("posting")
+    assert meter.prompt_state == "unsent" and meter.seq == 0  # memory never runs ahead of the file
+    with pytest.raises(PermissionError):
+        meter.final()
+    monkeypatch.setattr(L, "atomic_write", real)
+    final = valid(meter.final())  # retried: the final sample is written, with the next seq
+    assert (final["state"], final["seq"], final["prompt_state"]) == ("final", 1, "unsent")
+    assert json.loads(live.read_text(encoding="utf-8")) == final
+
+
+def test_the_schema_ties_prompt_state_to_run_sources(lab: Lab, tmp_path: Path):
+    sid = lab.app.add_session(model=GPT)
+    session_sample = valid(lab.meter(sid).poll())
+    run = L.Meter(None, source={"kind": "run", "id": "R-1"}, version="2.0.18", semantics_table={}, s_pot=1,
+                  state_path=tmp_path / "r.json")
+    run_sample = valid(run.final())
+    bad = [{**session_sample, "prompt_state": "posted"},
+           {k: v for k, v in run_sample.items() if k != "prompt_state"}]
+    for sample in bad:
+        with pytest.raises(Exception, match="does not match schema usage-live"):
+            schemas.validate("usage-live", sample, source="live sample")
+
+
 def test_a_malformed_reply_is_read_as_nothing_never_a_crash(tmp_path: Path):
     class Garbage:
         def get(self, path: str, params: Any = None, **_kw: Any) -> Any:
@@ -550,7 +646,9 @@ def test_the_fake_v2_server_adds_each_model_step_to_its_session_totals(tmp_path:
 
 
 class FixtureClient:
-    """One poll's server state from a P1 case, served on the pinned operations."""
+    """One poll's server state from a P1 case, served on the pinned operations as 2.0.18 serves them: messages in
+    position order after the cursor's anchor, looked up among all the session's messages, and an empty page when the
+    anchor is gone (E22)."""
 
     def __init__(self) -> None:
         self.poll: dict[str, Any] = {}
@@ -563,16 +661,19 @@ class FixtureClient:
             return {"data": self.poll["sessions"], "cursor": {}}
         if path == "/api/session/active":
             return {"data": {sid: {"type": "running"} for sid in self.poll["active"]}}
-        sid = path.split("/")[3]
-        items = [m for m in self.poll["messages"].get(sid, []) if m["type"] == params["type"]]
+        parts = path.split("/")
+        every = self.poll["messages"].get(parts[3], [])
+        ids = [m["id"] for m in every]
+        if len(parts) == 6:  # session.message.get
+            if parts[5] not in ids:
+                raise OpenCodeError("GET", path, 404, {"message": "Message not found"})
+            return {"data": every[ids.index(parts[5])]}
         if "cursor" in params:
-            anchor, created = params["cursor"].split("|")
-            ids = [m["id"] for m in items]
-            items = items[ids.index(anchor) + 1:] if anchor in ids else [
-                m for m in items if m["time"]["created"] > float(created)]
-        page = items[:int(params["limit"])]
-        return {"data": page,
-                "cursor": {"next": f"{page[-1]['id']}|{page[-1]['time']['created']}"} if page else {}}
+            if params["cursor"] not in ids:
+                return {"data": [], "cursor": {}}
+            every = every[ids.index(params["cursor"]) + 1:]
+        page = [m for m in every if m["type"] == params["type"]][:int(params["limit"])]
+        return {"data": page, "cursor": {"next": page[-1]["id"]} if page else {}}
 
 
 def test_live_usage_fixture_is_self_consistent_and_cites_the_pinned_commit():
@@ -607,6 +708,8 @@ def test_each_p1_case_holds_against_the_meter(case: dict[str, Any], tmp_path: Pa
         for field in ("steps", "compactions", "integrity_pending", "integrity", "d_min_s"):
             if field in want:
                 assert sample[field] == want[field], (n, field)
+        if "max_step_input" in want:
+            assert sample["max_step_tokens"]["input"] == want["max_step_input"], n
         if "foreign_tokens" in want:
             assert sample["foreign_tokens"] == {**want["foreign_tokens"], "unknown": 0}
         if "partitions" in want:

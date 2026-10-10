@@ -41,7 +41,7 @@ from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
-from aew.harness.contract import CREDENTIAL_RE, PROVIDER_AUTH_FAILED, LaunchContract
+from aew.harness.contract import CATALOG_TIMEOUT, CREDENTIAL_RE, PROVIDER_AUTH_FAILED, LaunchContract
 from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
@@ -321,7 +321,10 @@ class OpenCodeAdapter(HarnessAdapter):
                 raise HarnessIncompatible(
                     f"model {ref['providerID']}/{ref['id']} is not offered by this OpenCode "
                     f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s); check the "
-                    "execution policy and the provider variables it names", model=ref)
+                    "execution policy and the provider variables it names", model=ref,
+                    # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
+                    # (M4-E E8a; PR #185 review, F1).
+                    launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
 
     def _await_projection(self, config: dict[str, Any]) -> dict[str, Any]:

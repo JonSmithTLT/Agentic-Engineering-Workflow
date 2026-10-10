@@ -200,7 +200,9 @@ class Supervisor:
             self.record["launch"] = info
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
         except errors.AEWError as exc:
-            return self._launch_failed(f"{exc.code}: {exc.message}", exc.code)
+            cause = exc.details.get(K.LAUNCH_CAUSE)
+            return self._launch_failed(f"{exc.code}: {exc.message}", exc.code,
+                                       cause=str(cause) if cause is not None else None)
         except Exception as exc:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
@@ -277,11 +279,9 @@ class Supervisor:
         self._drop_credential()
         return False
 
-    def _launch_failed(self, reason: str, error_code: str | None = None) -> bool:
-        code = K.launch_failure_code(K.START, error_code)
-        if not self.record.get("ended_at"):  # saved with the final record; a run already ended keeps its own
-            self.record["reason_code"] = code
-        self._finish(K.LAUNCH_FAILED, reason)
+    def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None) -> bool:
+        code = K.launch_failure_code(K.START, error_code, cause)
+        self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
         self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
         return False
 
@@ -392,7 +392,7 @@ class Supervisor:
         mine = [e for e in records if e["producer"].get("run") == self.run]
         return [(e["id"], e["kind"]) for e in mine] if kinds else [e["id"] for e in mine]
 
-    def _finish(self, status: str, reason: str) -> None:
+    def _finish(self, status: str, reason: str, *, reason_code: str | None = None) -> None:
         with self._lock:
             if self.record.get("ended_at"):
                 return
@@ -406,11 +406,11 @@ class Supervisor:
             ending = self._background_beats("aew-ending-heartbeat", until=until)
             try:
                 faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
-                self._end(status, reason)
+                self._end(status, reason, reason_code)
             finally:
                 ending.set()
 
-    def _end(self, status: str, reason: str) -> None:
+    def _end(self, status: str, reason: str, reason_code: str | None = None) -> None:
         self._ending.set()
         # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
         # request is still in flight starts nothing, and the private state is retired only once they have returned.
@@ -431,6 +431,12 @@ class Supervisor:
         self._compare_effective()
         self.record["evidence"] = self._evidence()
         self.record.update(status=status, reason=reason, ended_at=utc_now())
+        # The vocabulary follows the status (amendment 1, R2-m2): a launch-failure code is written with `launch_failed`
+        # and never survives onto another ending, such as a `crashed` re-end after this one failed (PR #185, F2).
+        if status == K.LAUNCH_FAILED:
+            self.record["reason_code"] = reason_code or K.UNKNOWN_LAUNCH_FAILURE
+        elif self.record.get("reason_code") in K.LAUNCH_FAILURE_CODES:
+            del self.record["reason_code"]
         if self.bridge is not None:
             self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
                                          outcomes=self.bridge.outcomes)

@@ -63,12 +63,16 @@ def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:
     return [json.loads(line) for line in text[:text.rfind("\n") + 1].splitlines()]
 
 
-def refused_launch(lab: HarnessLab, tmp_path: Path) -> str:
+def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompatible_config") -> str:
+    """A launch OpenCode refuses as HARNESS_INCOMPATIBLE, with the closed launch-failure code its record and the
+    launcher's error carry (M4-E E8a): `incompatible_config`, or `unknown` for a timing-dependent refusal."""
     wid = create_planned_ticket(lab.project, tmp_path)
     res = lab.lead_res("work", "assign", wid, "--launch")
     assert res.error["code"] == "HARNESS_LAUNCH_FAILED" and "HARNESS_INCOMPATIBLE" in res.error["message"], res.error
+    assert (res.error["details"]["reason_code"], res.error["details"]["reason_code_source"]) == (
+        reason_code, "acknowledgement"), res.error
     record = lab.record(RUN)
-    assert record["status"] == "launch_failed"
+    assert record["status"] == "launch_failed" and record["reason_code"] == reason_code, record
     assert lab.ok("invoke", "show", "INV-0001")["status"] == "active" and not evidence_of(lab, wid)
     return res.error["message"]
 
@@ -163,7 +167,8 @@ def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab
 def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, models=[{"id": "cheaper-model", "providerID": "other", "enabled": True, "variants": []}])
-    assert "fakeprov/fake-model is not offered" in refused_launch(lab, tmp_path)
+    # Timing-dependent (the catalog's wait ran out), so never a lasting incompatibility (M4-E E8a; PR #185, F1).
+    assert "fakeprov/fake-model is not offered" in refused_launch(lab, tmp_path, reason_code="unknown")
 
 
 def test_a_missing_effort_variant_fails_closed(lab, tmp_path):

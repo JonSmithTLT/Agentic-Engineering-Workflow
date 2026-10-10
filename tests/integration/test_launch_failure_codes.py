@@ -6,6 +6,7 @@ code here is produced by the launch that reproduces it; everything else is `unkn
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -205,19 +206,24 @@ def test_launch_failure_carries_a_closed_reason_code(lab, tmp_path, monkeypatch,
 
 def test_a_launch_the_launcher_never_saw_end_takes_no_code_from_the_run_record(lab, tmp_path, monkeypatch):
     """R3-n1: custody was acknowledged, but no started message reached the launcher, so it reads the run's record for
-    the reason. The record's code (here `incompatible_config`, and anything a model wrote there) is not passed on:
-    the exception says `unknown`, from `run_record`, and E8b never takes a code from there."""
+    the reason. The run directory is model-writable: a model forges an allow-listed code (`spawn_race`) into the
+    record before the launcher reads it. It is not passed on: the exception says `unknown`, from `run_record`, and
+    E8b never takes a code from there."""
     inv = dispatched(lab, tmp_path)
     incompatible(lab)
     read = harness_ops._read_acks
 
     def started_lost(proc: Any, wait_s: float) -> list[dict[str, Any]]:  # the final word arrives after the wait ends
-        return [ack for ack in read(proc, wait_s) if "started" not in ack]
+        acks = [ack for ack in read(proc, wait_s) if "started" not in ack]
+        forged = record_of(lab)
+        assert forged is not None and forged["reason_code"] == K.INCOMPATIBLE_CONFIG  # the supervisor's own
+        runlog.write_record(runlog.run_dir(lab.aew_root, RUN), {**forged, "reason_code": K.SPAWN_RACE})
+        return acks
 
     monkeypatch.setattr(harness_ops, "_read_acks", started_lost)
     exc = launch_failure(lab, inv)
     record = record_of(lab)
-    assert record is not None and record["reason_code"] == K.INCOMPATIBLE_CONFIG
+    assert record is not None and record["reason_code"] == K.SPAWN_RACE  # what the launcher found there
     assert exc.details["status"] == K.LAUNCH_FAILED and exc.details["reason"] == record["reason"]
     assert (exc.details["reason_code"], exc.details["reason_code_source"]) == (K.UNKNOWN_LAUNCH_FAILURE, "run_record")
     assert_control_invariants(lab.project)
@@ -238,3 +244,39 @@ def test_launch_failure_reason_text_is_unchanged(lab, tmp_path):
     assert (waited["status"], waited["reason"], waited["reason_code"]) == ("launch_failed", reason, "unknown")
     assert "headline" not in waited  # the provider-auth headline is the adapter code's alone
     assert_control_invariants(lab.project)
+
+
+def test_a_launch_failure_code_never_survives_onto_a_later_ending(lab, tmp_path):
+    """R2-m2: the vocabulary follows the status. When ending a launch failure fails part-way, `main` ends the run
+    `crashed`; that record carries no launch-failure code (PR #185 review, F2)."""
+    from aew.harness.supervisor import Supervisor
+
+    inv = dispatched(lab, tmp_path)
+    run_dir = tmp_path / "runs" / RUN
+    run_dir.mkdir(parents=True)
+    synthetic = "aew1.tk_" + "0" * 16 + "." + "x" * 40  # well-formed, matches no issued credential
+    handoff = {"run": RUN, "invocation": inv, "credential": synthetic,
+               "repo_root": str(lab.root), "aew_root": str(lab.aew_root)}
+    sup = Supervisor(run_dir, handoff, io.BytesIO())
+    compare = sup._compare_effective
+    calls: list[int] = []
+
+    def fails_once() -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("an ending step failed")
+        compare()
+
+    sup._compare_effective = fails_once  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        sup._launch_failed("HARNESS_INCOMPATIBLE: a harness that lacks something", "HARNESS_INCOMPATIBLE")
+    assert "reason_code" not in sup.record
+    sup._finish(K.CRASHED, "supervisor error: RuntimeError: an ending step failed")  # what main does next
+    record = runlog.read_record(run_dir)
+    assert record is not None and record["status"] == K.CRASHED and "reason_code" not in record, record
+    # and an ending that completes writes the code with its status
+    (tmp_path / "runs" / "R-INV-0001-9").mkdir()
+    sup2 = Supervisor(tmp_path / "runs" / "R-INV-0001-9", {**handoff, "run": "R-INV-0001-9"}, io.BytesIO())
+    sup2._launch_failed("HARNESS_INCOMPATIBLE: a harness that lacks something", "HARNESS_INCOMPATIBLE")
+    ended = runlog.read_record(sup2.run_dir)
+    assert ended is not None and (ended["status"], ended["reason_code"]) == (K.LAUNCH_FAILED, K.INCOMPATIBLE_CONFIG)

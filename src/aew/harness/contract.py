@@ -51,21 +51,34 @@ LAUNCH_FAILURE_CODES = frozenset({SPAWN_RACE, SERVER_START_TRANSPORT, CONTAINMEN
                                   CONFIG_ERROR, QUOTA_EXHAUSTED, AUTH_FAILED, PROVIDER_OUTAGE, INCOMPATIBLE_CONFIG,
                                   UNKNOWN_LAUNCH_FAILURE})
 # Where a launch fails: (1) the supervisor refuses custody; (2) the harness does not start; (3) the supervisor gets no
-# usable credential handoff; (4) the launcher, when custody is never acknowledged.
+# usable credential handoff; (4) the launcher: no supervisor process, no custody acknowledgement, or no started message.
 CUSTODY, START, HANDOFF, LAUNCHER = "custody", "start", "handoff", "launcher"
-# (site, AEW error code) -> launch-failure code. Only failures a test reproduces at that site
-# (tests/integration/test_launch_failure_codes.py): a cancelled or rotated invocation's credential presented at custody,
-# and a harness that lacks what AEW needs. A new entry comes with the test that produces it.
+# An `AEWError` detail naming a cause its code does not tell apart (`launch_failure_code`'s ``cause``). A failure that
+# carries one is never mapped by its code alone.
+LAUNCH_CAUSE = "launch_cause"
+CATALOG_TIMEOUT = "catalog_timeout"  # the pinned model never appeared in the harness's catalog within its wait
+# (site, AEW error code) -> launch-failure code, keyed by the error code at that site: every failure raised there with
+# that code gets it, unless it names a `launch_cause`. A pair is mapped only where tests reproduce it at that site:
+# a cancelled or rotated invocation's credential presented at custody (tests/integration/test_launch_failure_codes.py),
+# and a harness that lacks what AEW needs at start (that file, the conformance `incompatible` scenario, and OpenCode's
+# refused launches in tests/integration/test_opencode_adapter.py: a missing variant, a V1 server, a doctored or
+# ignored configuration, stored credentials). A model the catalog never offered within its wait is timing-dependent,
+# so it names `catalog_timeout` and stays `unknown` (PR #185 review, F1). A new entry comes with the test that
+# produces it.
 _LAUNCH_FAILURES = {
     (CUSTODY, "STALE_AUTHORITY"): CREDENTIAL_DENIED,
     (START, "HARNESS_INCOMPATIBLE"): INCOMPATIBLE_CONFIG,
 }
 
 
-def launch_failure_code(site: str, error_code: str | None = None) -> str:
+def launch_failure_code(site: str, error_code: str | None = None, cause: str | None = None) -> str:
     """The closed launch-failure code for a failure at ``site`` raised as ``error_code`` (an ``AEWError``'s code, or
-    None for anything else): ``unknown`` unless that pair is mapped."""
+    None for anything else): ``unknown`` unless that pair is mapped, or when the error names a ``cause`` (its
+    `launch_cause` detail), since no cause is mapped yet."""
+    if cause is not None:
+        return UNKNOWN_LAUNCH_FAILURE
     return _LAUNCH_FAILURES.get((site, error_code or ""), UNKNOWN_LAUNCH_FAILURE)
+
 
 # Any AEW credential string. Custody scans look for it in every file a run leaves behind.
 CREDENTIAL_RE = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")

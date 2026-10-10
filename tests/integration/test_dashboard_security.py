@@ -640,6 +640,33 @@ def test_a_refused_request_always_delivers_its_complete_error_body(live, monkeyp
             assert_headers(headers)
 
 
+@pytest.mark.parametrize("refusal", [421, 403, 414])
+def test_a_refused_request_with_a_body_never_has_its_body_read_as_a_second_request(live, refusal):
+    """A body is never read, so a request carrying one ends its connection whichever check refuses it. The refusals
+    checked before the body (a foreign ``Host``, a foreign ``Origin``, an over-long path) used to keep the
+    connection, so the body was parsed as the next request: here a body that is itself an authenticated read gets
+    no answer of its own, only the refusal, with ``Connection: close`` and the end of the connection."""
+    inner = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n\r\n".encode("latin-1")
+    host, extra, path = {
+        421: ("evil.example", "", "/"),
+        403: (live.host, "Origin: http://evil.example\r\n", "/"),
+        414: (live.host, "", "/" + "p" * (SV.MAX_PATH + 1)),
+    }[refusal]
+    outer = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        s.sendall(outer + inner)
+        data = b""
+        while got := s.recv(65536):  # the end of output: the server ended the connection after one answer
+            data += got
+    assert data.count(b"HTTP/1.1 ") == 1, data
+    head, _, body = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
+    assert int(lines[0].split()[1]) == refusal and len(body) == int(headers["content-length"]), lines[0]
+    assert headers.get("connection") == "close"
+    assert_headers(headers)
+
+
 def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):
     """R23 bounds the drain too: with its deadline out of reach, a refused client sending without end is still cut
     off once ``DRAIN_MAX_BYTES`` are read, never read for as long as it cares to send."""
@@ -661,12 +688,16 @@ def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(
 
 def test_a_refused_client_that_neither_sends_nor_closes_is_let_go_at_the_drain_deadline(live):
     """R23's short deadline: a refused client that reads its answer and then holds the connection open, sending
-    nothing, holds its handler (and a connection slot) for ``REFUSAL_DRAIN_S`` at most."""
+    nothing, holds its handler (and a connection slot) for ``REFUSAL_DRAIN_S`` at most, and is not let go before
+    it: the drain's deadline starts after the request was sent, so the slot cannot come back sooner than that."""
     _wait_for_connections(live, SV.MAX_CONNECTIONS)
     with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        sent = time.monotonic()
         s.sendall(b"GET /" + b"w" * 5000 + b" HTTP/1.1\r\n\r\n")
         got, _, body = _read_to_end(s)  # the end of output is the half-close; the connection itself stays open
         assert got == 414 and error_code(body) == "REQUEST_TOO_LARGE"
         started = time.monotonic()
         _wait_for_connections(live, SV.MAX_CONNECTIONS)
-        assert time.monotonic() - started < SV.REFUSAL_DRAIN_S + 2.0
+        released = time.monotonic()
+        assert released - started < SV.REFUSAL_DRAIN_S + 2.0
+        assert released - sent >= SV.REFUSAL_DRAIN_S / 2  # held by the drain, not closed at once (half: timer slack)

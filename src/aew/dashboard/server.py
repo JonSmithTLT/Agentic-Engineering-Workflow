@@ -578,7 +578,11 @@ class DashboardServer:
 
     def _admit(self, h: BaseHTTPRequestHandler, url: Any) -> None:
         """The checks before any routing (R22, R23): an origin-form target, the exact origin, the request's
-        size, no body."""
+        size, no body. A body is never read, so a request carrying one ends its connection whichever check refuses
+        it: otherwise an earlier refusal would leave the body to be parsed as the next request."""
+        has_body = h.headers.get("Content-Length") not in (None, "0") or bool(h.headers.get("Transfer-Encoding"))
+        if has_body:
+            h.close_connection = True  # the body is not read
         if not is_path_target(raw_target(h) or ""):
             h.close_connection = True
             raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "the request target must be a path"))
@@ -589,8 +593,7 @@ class DashboardServer:
             raise Refusal(HTTPStatus.FORBIDDEN, error_body("ORIGIN_NOT_ALLOWED"))
         if len(url.path) > MAX_PATH or len(url.query) > MAX_QUERY:
             raise Refusal(HTTPStatus.REQUEST_URI_TOO_LONG, error_body("REQUEST_TOO_LARGE"))
-        if h.headers.get("Content-Length") not in (None, "0") or h.headers.get("Transfer-Encoding"):
-            h.close_connection = True  # the body is not read
+        if has_body:
             raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "a read carries no body"))
         fetch_site = h.headers.get("Sec-Fetch-Site")
         if url.path.startswith("/api/") and fetch_site is not None and fetch_site not in SAME_SITE_FETCH:

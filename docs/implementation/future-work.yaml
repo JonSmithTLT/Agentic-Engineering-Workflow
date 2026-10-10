@@ -418,8 +418,10 @@ sections:
       arguments digest, effective class, outcome, boundary and error code, revisions before and after, stage intent, duration;
       bounded and rotated, never control state), which M4-H reads for TLS-27 and VGX-21. Stage/primitive equivalence holds
       for both stages on two copies of one project (`test_stage_matches_primitives`), and the seeded false-advance corpus
-      begins (`tests/corpus/false_advance/`, `test_no_false_advance`). The normal advertised surface is 7,996 bytes, 11
-      tools; with every M4-E tool built it stays at 11,805 of 11,900
+      begins (`tests/corpus/false_advance/`, `test_no_false_advance`). A stage whose subject an unfinished stage holds is
+      BLOCKED with `RESOLVE_STAGE` (never auto-runnable), and `work.transition` declares the workspace and harness process
+      a cancellation ends (PR 177 review). The normal advertised surface is 7,996 bytes, 11 tools; with every M4-E tool
+      built it stays at 11,805 of 11,900
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

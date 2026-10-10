@@ -12,10 +12,12 @@ legality itself:
 - **any other unmigrated input** (a guard with no query form) makes the step, and so the stage, ``UNKNOWN`` (frozen
   decision 3), never ``BLOCKED``. A step whose producer found nothing to produce (it is blocked) is ``UNKNOWN`` too.
 
-The stage is ``BLOCKED`` when any step is (it would stop there, rule 3), else ``UNKNOWN`` when any step is, else
-``AVAILABLE``. ``STAGES`` is the migrated stage table: each row's steps and how the call's arguments become each
-step's guard arguments. A stage outside it is ``UNKNOWN``. Availability is legality only: ``auto_runnable`` stays the
-classifier's (a judgment-bearing stage never is, m2).
+The stage is ``BLOCKED`` when any step is (it would stop there, rule 3), or when an unfinished stage holds its subject
+(the unit, or the project for a stage that creates its unit): opening refuses another stage there until the Lead
+resolves that one (``RESOLVE_STAGE``, pointing at ``resolve``; PR #177 review, finding 2). Else it is ``UNKNOWN`` when
+any step is, else ``AVAILABLE``. ``STAGES`` is the migrated stage table: each row's steps and how the call's arguments
+become each step's guard arguments. A stage outside it is ``UNKNOWN``. Availability is legality only:
+``auto_runnable`` stays the classifier's (a judgment-bearing stage never is, m2).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from typing import Any
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN
 from aew.surface import contract
 
+RESOLVE_STAGE = "RESOLVE_STAGE"  # an unfinished stage holds the subject: `resolve` it first (the projection's decision)
 INPUT_NOT_PRODUCED = "INPUT_NOT_PRODUCED"  # an earlier step's guard found nothing for this step to take as produced
 PRODUCED_IMPLEMENTER = "<implementer from step {n}>"  # the placeholder id the overlay gives a produced implementer
 
@@ -158,6 +161,18 @@ def _overlay(engine: Any, state: dict[str, Any], work_id: str | None,
 
 # ---------------------------------------------------------------------------------------------- the composition
 
+def _held(t: contract.Tool, arguments: dict[str, Any], state: dict[str, Any]) -> list[dict[str, Any]]:
+    """The unfinished stage holding this call's subject, as a blocker: the stage's opening refuses another stage on a
+    unit (or on the project, for a stage with no unit yet) until the Lead resolves it (``stage_intents.open``,
+    ``open_intent``). Empty when none does."""
+    subject = arguments.get("work_id") if "work_id" in t.input_schema["properties"] else None
+    return [{"code": RESOLVE_STAGE,
+             "message": f"{subject or 'the project'} has an unfinished stage, {sid} ({si['tool']}): resolve it first "
+                        "(`resolve` with continue or abandon)",
+             "details": {"intent": sid, "reason": "open_intent"}}
+            for sid, si in sorted((state.get("stage_intents") or {}).items()) if si["subject"]["id"] == subject]
+
+
 def migrated(stage: str) -> bool:
     return stage in STAGES
 
@@ -215,7 +230,8 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
                       **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition") if k in answer}})
         done[n] = (primitive, args)
     answers = [s["availability"] for s in steps if s.get("planned", True)]
-    overall = BLOCKED if BLOCKED in answers else UNKNOWN if UNKNOWN in answers else AVAILABLE
-    reasons = sorted({c for s in steps for c in s.get("reason_codes") or []})
-    blockers = [b for s in steps for b in s.get("blocking_conditions") or []]
+    held = _held(t, arguments, current)
+    overall = BLOCKED if BLOCKED in answers or held else UNKNOWN if UNKNOWN in answers else AVAILABLE
+    reasons = sorted({c for s in steps for c in s.get("reason_codes") or []} | ({RESOLVE_STAGE} if held else set()))
+    blockers = [*held, *(b for s in steps for b in s.get("blocking_conditions") or [])]
     return {"stage": stage, "availability": overall, "reason_codes": reasons, "blockers": blockers, "steps": steps}

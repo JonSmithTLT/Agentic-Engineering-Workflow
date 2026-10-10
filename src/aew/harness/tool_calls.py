@@ -7,8 +7,10 @@ intent it opened or resolved, and how long it took. M4-H computes steps per Tick
 mutations from it together with the harness transcripts.
 
 It is telemetry under ``.aew/local/`` (git-ignored, rebuildable, KC §5.3): never control state, never read by a gate,
-and never a reason a call fails. A write that fails is logged and dropped. It is bounded: past ``MAX_BYTES`` the file is
-rotated to ``tool-calls.1.jsonl`` (the older ones shift up) and at most ``KEEP`` rotated files are kept.
+and never a reason a call fails: building or writing a line that fails for any reason is logged and the line dropped
+(:func:`record`; PR #177 review, finding 4). It is bounded: every free-text field is cut to ``MAX_FIELD`` characters, so
+a line stays under ``MAX_LINE`` bytes whatever the call carried; past ``MAX_BYTES`` the file is rotated to
+``tool-calls.1.jsonl`` (the older ones shift up) and at most ``KEEP`` rotated files are kept.
 """
 
 from __future__ import annotations
@@ -25,6 +27,8 @@ from aew.util import sha256_bytes, utc_now
 LOG_REL = "local/lead/tool-calls.jsonl"
 MAX_BYTES = 1 << 20  # one file; a line is a few hundred bytes, so some thousands of calls each
 KEEP = 4  # rotated files kept: tool-calls.1.jsonl (newest) .. tool-calls.4.jsonl
+MAX_FIELD = 128  # characters kept of a field the caller controls (the tool name, ingress, profile) or echoes (a code)
+MAX_LINE = 2048  # what a line can reach with every field at its bound (tested)
 INPUT_ERROR = "input_error"  # the boundary of a call that never reached the runner (an AdapterInputError)
 
 log = logging.getLogger(__name__)
@@ -45,9 +49,14 @@ def arguments_digest(arguments: Any) -> str:
     if isinstance(arguments, str):
         try:
             arguments = json.loads(arguments)
-        except ValueError:
-            return sha256_bytes(arguments.encode("utf-8"))
-    return sha256_bytes(json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"))
+        except ValueError:  # not JSON, maybe not even encodable text (a lone surrogate): digest it as given
+            return sha256_bytes(arguments.encode("utf-8", "surrogatepass"))
+    return sha256_bytes(json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8", "surrogatepass"))
+
+
+def _short(value: Any) -> str | None:
+    return None if value is None else str(value)[:MAX_FIELD]
 
 
 def entry(*, tool: str, arguments: Any, ingress: str, profile: str, result: dict[str, Any] | None,
@@ -55,20 +64,34 @@ def entry(*, tool: str, arguments: Any, ingress: str, profile: str, result: dict
           duration_ms: int) -> dict[str, Any]:
     """One line: from the call's ``StageResult``, or its adapter input error, or the refusal that ended it before
     either (an unknown ingress, a lost bridge)."""
-    out: dict[str, Any] = {"at": utc_now(), "tool": tool, "arguments_sha256": arguments_digest(arguments),
-                           "ingress": ingress, "profile": profile, "effective_class": None, "ok": False,
+    out: dict[str, Any] = {"at": utc_now(), "tool": _short(tool), "arguments_sha256": arguments_digest(arguments),
+                           "ingress": _short(ingress), "profile": _short(profile), "effective_class": None, "ok": False,
                            "boundary": None, "error_code": None, "revision_before": revision_before,
                            "revision_after": None, "stage_intent": None, "duration_ms": duration_ms}
     if result is not None:
         stopped = result.get("stopped") or {}
-        out.update(effective_class=result.get("effective_operation_class"), ok=bool(result.get("ok")),
-                   boundary=stopped.get("boundary"), error_code=(stopped.get("error") or {}).get("code"),
-                   revision_after=result.get("revision"), stage_intent=result.get("stage_intent_id"))
+        out.update(effective_class=_short(result.get("effective_operation_class")), ok=bool(result.get("ok")),
+                   boundary=_short(stopped.get("boundary")),
+                   error_code=_short((stopped.get("error") or {}).get("code")),
+                   revision_after=_int(result.get("revision")), stage_intent=_short(result.get("stage_intent_id")))
     elif input_error is not None:
-        out.update(boundary=INPUT_ERROR, error_code=input_error.get("code"))
+        out.update(boundary=INPUT_ERROR, error_code=_short(input_error.get("code")))
     elif error is not None:
-        out.update(boundary="error", error_code=error.get("code"))
+        out.update(boundary="error", error_code=_short(error.get("code")))
     return out
+
+
+def _int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def record(aew_root: Path, **fields: Any) -> None:
+    """Build and append one line (:func:`entry`, :func:`append`). Never raises: whatever fails is logged, and the call
+    it describes answers as it would have."""
+    try:
+        append(aew_root, entry(**fields))
+    except Exception as exc:  # noqa: BLE001  telemetry: a defect here must never change or fail the call
+        log.warning("the typed-tool call log dropped a line: %s: %s", type(exc).__name__, exc)
 
 
 def append(aew_root: Path, line: dict[str, Any]) -> None:

@@ -15,9 +15,12 @@ authored files under ``.aew/``. It removes, **by path only** (a key of the same 
 What no two runs share is **normalised, never dropped**: a time becomes ``"<time>"`` (a null stays null, so closed or
 revoked versus open still differs), a credential id becomes a stable ordinal in order of first appearance (so the
 token table, its revocations and every reference to a token still compare), a credential verifier becomes
-``"<verifier>"``, the project's location ``"<project>"`` and its workspaces root ``"<workspaces>"``, and what a
-dispatch binds to the revision it was decided at ``"<revision-bound>"`` (E5a: ``REVISION_BOUND``); an authored file's
-hash, wherever it is cited, becomes ``"<sha256 of <path>>"`` (the file itself is compared, normalised).
+``"<verifier>"``, the project's location ``"<project>"`` and its workspaces root ``"<workspaces>"``, and the revision a
+dispatch was decided at ``"<revision-bound>"`` (E5a: ``REVISION_BOUND``). A dispatch's decision digest is recomputed
+over the decision itself with that revision substituted (``recorded_decisions``: the test records the decisions it
+makes), so any other difference in the decision still compares; a digest no recorded decision has stays as it is. An
+authored file's hash, wherever it is cited, becomes ``"<sha256 of <path>>"``, and the file itself is compared,
+normalised: the invocation packs under ``local/packs/`` included (PR #177 review, finding 3).
 
 E5's ``test_stage_matches_primitives[<stage>]`` compares through this view; extend it there for what Ticket stages
 add (workspaces, invocations), by path, never by loosening what it keeps.
@@ -26,7 +29,10 @@ add (workspaces, invocations), by path, never by loosening what it keeps.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,19 +44,20 @@ from aew.engine import stage_intents as SI
 # Control-state paths the comparison removes (module docstring); "*" is any one key.
 DROPPED = frozenset({("revision",), ("last_transition",), ("outbox",), ("stage_intents",),
                      ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents")})
-# What a dispatch binds to the revision it was decided at (M4-E E5a): the stage's intent commit comes first, so its
-# assignment is decided one revision later than the same assignment made directly. Normalised to "<revision-bound>",
-# never dropped: present versus absent, and every other field of the decision, still compare.
-REVISION_BOUND = frozenset({("invocations", "*", "dispatch", "revision"), ("invocations", "*", "dispatch", "decision"),
-                            ("invocations", "*", "runs", "dispatch", "revision"),
-                            ("invocations", "*", "runs", "dispatch", "decision"),
-                            ("invocations", "*", "pack", "sha256")})  # its pack's text names that revision
+# The revision a dispatch was decided at (M4-E E5a): the stage's intent commit comes first, so its assignment is
+# decided one revision later than the same assignment made directly. Normalised to "<revision-bound>", never dropped.
+REVISION_BOUND = frozenset({("invocations", "*", "dispatch", "revision"),
+                            ("invocations", "*", "runs", "dispatch", "revision")})
+# A dispatch decision's digest, recomputed over the recorded decision with its revision substituted (module docstring).
+DECISION_DIGEST = frozenset({("invocations", "*", "dispatch", "decision"),
+                             ("invocations", "*", "runs", "dispatch", "decision")})
 TIME_KEY = re.compile(r"^(at|.+_at)$")
 TOKEN_ID = re.compile(r"tk_[0-9a-f]{8,}")
 SHA256 = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
 # The transition log, its redo records, the control file (compared as data above) and its generated view (which
 # states the revision), and local runtime data.
 SKIPPED = ("state/log/", "state/txn/", "state/control.yaml", "state/CURRENT.md", "local/", SI.RECORDS_DIR + "/")
+COMPARED_LOCAL = ("local/packs/",)  # local data the comparison keeps: what each invocation is handed
 
 
 def _matches(here: tuple[str, ...], paths: frozenset[tuple[str, ...]]) -> bool:
@@ -58,8 +65,10 @@ def _matches(here: tuple[str, ...], paths: frozenset[tuple[str, ...]]) -> bool:
 
 
 class _Normaliser:
-    def __init__(self, root: str, workspaces: str | None = None, files: dict[str, str] | None = None) -> None:
+    def __init__(self, root: str, workspaces: str | None = None, files: dict[str, str] | None = None,
+                 decisions: dict[str, dict[str, Any]] | None = None) -> None:
         self.root = root
+        self.decisions = decisions or {}
         # An authored file's hash, wherever it is cited (a unit's `record_sha256`, a plan's `sha256`), names the file:
         # its bytes carry times, so the hash differs between two runs while the file, compared normalised, does not.
         self.files = files or {}
@@ -88,6 +97,10 @@ class _Normaliser:
                 key = self.text(k) if isinstance(k, str) else k
                 if v is not None and _matches(here, REVISION_BOUND):
                     out[key] = "<revision-bound>"
+                elif _matches(here, DECISION_DIGEST) and v in self.decisions:
+                    body = json.dumps({**self.decisions[v], "revision": "<revision-bound>"}, sort_keys=True,
+                                      separators=(",", ":"), default=str)
+                    out[key] = "<decision sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest() + ">"
                 elif TIME_KEY.match(str(k)) and v is not None:
                     out[key] = "<time>"
                 elif k == "verifier" and v is not None:
@@ -119,15 +132,36 @@ def _workspaces_root(root: Path) -> Path:
     return Engine.discover(root)._k.workspaces_root()
 
 
-def end_state(root: Path) -> dict[str, Any]:
+@contextmanager
+def recorded_decisions() -> Iterator[dict[str, dict[str, Any]]]:
+    """Every dispatch decision admitted while the block runs, by the digest it records (``provenance``), so
+    ``end_state`` can recompute each digest with the revision substituted."""
+    from aew.engine.dispatch import DispatchDecision
+
+    seen: dict[str, dict[str, Any]] = {}
+    real = DispatchDecision.provenance
+
+    def provenance(self: DispatchDecision) -> dict[str, Any]:
+        out = real(self)
+        seen[out["decision"]] = self.to_dict()
+        return out
+
+    DispatchDecision.provenance = provenance  # type: ignore[method-assign]
+    try:
+        yield seen
+    finally:
+        DispatchDecision.provenance = real  # type: ignore[method-assign]
+
+
+def end_state(root: Path, decisions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """The project at ``root`` as a stage/primitive equivalence compares it (module docstring)."""
     aew = root / ".aew"
     authored = {rel: path for path in sorted(aew.rglob("*"))
                 if path.is_file() and not _journal_file(rel := path.relative_to(aew).as_posix())
-                and not rel.startswith(SKIPPED)}
+                and (not rel.startswith(SKIPPED) or rel.startswith(COMPARED_LOCAL))}
     normalise = _Normaliser(str(root), str(_workspaces_root(root)),
                             {hashlib.sha256(path.read_bytes()).hexdigest(): f"<sha256 of {rel}>"
-                             for rel, path in authored.items()})
+                             for rel, path in authored.items()}, decisions)
     control = _clean(load_control(root), str(root), normalise)
     files: dict[str, Any] = {}
     for rel, path in authored.items():

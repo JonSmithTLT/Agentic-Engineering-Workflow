@@ -348,3 +348,22 @@ def test_every_typed_call_through_the_broker_is_one_line_of_the_tool_call_log(he
         {"next": "review", "note": "a private note", "expect_rev": rev})
     assert "a private note" not in tool_calls.path(engine.aew_root).read_text(encoding="utf-8")
     assert _rev(engine) == rev + 1  # the log is never control state
+
+
+def test_the_logged_revision_before_is_the_one_the_call_started_from(held):
+    """PR #177 review, finding 5: a read that waited for the broker's serialization while another caller committed is
+    logged with the revision it ran at (before == after), never as a mutation."""
+    from aew.harness import tool_calls
+
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    done: dict = {}
+    with broker.server.serialized():
+        thread = threading.Thread(target=lambda: done.setdefault("out", call("status", {"work_id": wid})))
+        thread.start()
+        time.sleep(0.5)  # the status call is waiting for the section this test holds
+        engine.checkpoint(token=p.token, expect_rev=rev, note="another caller's commit")
+    thread.join(30)
+    assert done["out"]["ok"]
+    [line] = tool_calls.read(engine.aew_root)
+    assert line["revision_before"] == line["revision_after"] == rev + 1, line

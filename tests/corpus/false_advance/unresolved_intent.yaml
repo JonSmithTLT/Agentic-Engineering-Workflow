@@ -1,0 +1,14 @@
+case: unresolved_intent
+slice: E5a
+description: >-
+  an unfinished stage holds the Ticket (its executor crashed after opening it): another stage on the Ticket is BLOCKED,
+  pointing at resolve, never auto-runnable, and the call opens nothing (PR #177 review, finding 2)
+seed: held_by_intent
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: BLOCKED
+  reason_codes: [RESOLVE_STAGE]
+  boundary: refused
+  steps: []
+  unit_state: READY

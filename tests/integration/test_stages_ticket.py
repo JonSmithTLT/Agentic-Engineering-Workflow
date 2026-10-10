@@ -11,16 +11,17 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from aewflow import create_planned_ticket, sample_project
+from aewflow import create_investigation, create_planned_ticket, dispatch, sample_project
 from conftest import Project
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
-from stage_equivalence import differences, end_state
+from stage_equivalence import differences, end_state, recorded_decisions
 from test_stage_resolve import resolve, unfinished
 from test_stage_runner import call, intent, launching
 
@@ -36,7 +37,8 @@ DRAFT: dict[str, Any] = {
     "goal": ["calc.core.subtract(5, 3) == 2 through the public module"],
     "contract": ["changes stay within calc/ and tests/"],
     "plan": {"body": "1. Add subtract(a, b) to calc/core.py.\n", "affected": ["calc/core.py"], "assurance": "none"}}
-HANG = [{"do": "hang"}]  # the implementer's run stays live, and touches nothing, until the test ends it
+HANG = [{"do": "hang"}]
+LIVE = ("starting", "running")  # the implementer's run stays live, and touches nothing, until the test ends it
 
 
 def control(p: Project) -> dict[str, Any]:
@@ -221,6 +223,8 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
             create_planned_ticket(p, tmp_path)
 
     staged, direct = _twins(tmp_path, prepare)
+    decisions = recorded_decisions()
+    recorded = decisions.__enter__()
     try:
         e = Engine.discover(direct.root)
 
@@ -239,9 +243,10 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
             assert out["ok"], out["stopped"]
             e.launch_dispatched(e.work_assign(token=direct.token, expect_rev=rev(), work_id="T-0001", launch=True))
             e.work_transition(token=direct.token, expect_rev=rev(), work_id="T-0001", to="RUNNING")
-        a, b = end_state(staged.root), end_state(direct.root)
+        a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
         assert differences(a, b) == [], "\n".join(differences(a, b))
     finally:
+        decisions.__exit__(None, None, None)
         for lab in labs:
             lab.cleanup()
             if name == "ticket_start":  # the copy's runs are its own: end them the same way
@@ -253,19 +258,32 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
 
 
 def _observe(p: Project) -> dict[str, Any]:
-    """What each declared effect class covers, as observable now (``PrimitiveSpec.side_effect_class``)."""
+    """What each declared effect class covers, as observable now (``PrimitiveSpec.side_effect_class``). Worktrees are
+    seen wherever they are nested (git's own list, and every worktree's `.git` under the workspaces root), and a run's
+    process by whether it is live, so a process that ends is seen as well as one that starts (PR #177 review, 1)."""
     e = Engine.discover(p.root)
     state = e.store.read()
     ws = e._k.workspaces_root()
     runs = p.root / ".aew" / runlog.RUNS_REL
+    listed = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=p.root, capture_output=True, text=True,
+                            check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     return {"control_state": json.dumps(state, sort_keys=True, default=str),
             "credential": (repr(sorted(state["tokens"].items())),
                            sorted((r["run"], r.get("token_id")) for inv in state["invocations"].values()
                                   for r in inv.get("runs") or [])),
-            "workspace": sorted(x.name for x in ws.iterdir()) if ws.is_dir() else [],
-            "harness_process": sorted(x.name for x in runs.iterdir() if (x / "supervisor.log").exists())
+            "workspace": (sorted(_place(Path(x.removeprefix("worktree ")), p.root, ws) for x in listed.splitlines()
+                                 if x.startswith("worktree ")),
+                          sorted(x.parent.relative_to(ws).as_posix() for x in ws.rglob(".git")) if ws.is_dir() else []),
+            "harness_process": sorted((x.name, runlog.observed_status(x)[0] in LIVE) for x in runs.iterdir())
             if runs.is_dir() else [],
             "authoritative_ref": e.authoritative_commit()}  # the integration branch's head
+
+
+def _place(path: Path, root: Path, ws: Path) -> str:
+    """A worktree's place, the same for two copies of one project: under the workspaces root, or the project itself."""
+    path = path.resolve()
+    return path.relative_to(ws.resolve()).as_posix() if path.is_relative_to(ws.resolve()) else (
+        "<project>" if path == root.resolve() else path.as_posix())
 
 
 def _effects(before: dict[str, Any], after: dict[str, Any]) -> set[str]:
@@ -318,11 +336,46 @@ def test_declared_effects_cover_observed_effects(tmp_path, monkeypatch, primitiv
             e.work_transition(token=tok, expect_rev=rev(), work_id="T-0001", to="RUNNING")
         seen = _effects(before, _observe(p))
         assert "control_state" in seen and seen <= _declared(primitive), seen
-        if primitive == "work.transition":  # a cancellation revokes the attempt's credentials: declared, and observed
-            before = _observe(p)
-            e.work_transition(token=tok, expect_rev=rev(), work_id="T-0001", to="CANCELLED", reason="not needed")
-            seen = _effects(before, _observe(p))
-            assert seen <= _declared(primitive) and "credential" in seen, seen
     finally:
         for lab in labs:
+            lab.cleanup()
+
+
+@pytest.mark.parametrize("held", ["observation", "live_run"])
+def test_a_cancellations_effects_are_declared(tmp_path, monkeypatch, held):
+    """`work.transition` to CANCELLED (PR #177 review, finding 1): the cancellation revokes the attempt's credentials;
+    a Ticket's observation worktree is removed once its invocation ends (archival, after the commit); and a live run's
+    supervisor ends its harness when its credential is revoked. Each is declared, and each is observed."""
+    p = sample_project(tmp_path)
+    e = Engine.discover(p.root)
+    lab = None
+
+    def rev() -> int:
+        return int(e.store.read()["revision"])
+
+    try:
+        if held == "observation":
+            wid = create_investigation(p, tmp_path)
+            _role, out = dispatch(p, wid)
+            path = Path(out["observation"]["path"])
+            assert path.is_dir()
+        else:
+            lab = launching(p, tmp_path, monkeypatch)
+            lab.script("default", HANG)
+            wid = create_planned_ticket(p, tmp_path)
+            assert call(p, "ticket_start", work_id=wid)["ok"]
+            [run] = [r["run"] for inv in e.store.read()["invocations"].values() for r in inv.get("runs") or []]
+            directory = runlog.run_dir(p.root / ".aew", run)
+            lab.until(lambda: runlog.observed_status(directory)[0] == "running", what=f"{run} to run")
+        before = _observe(p)
+        e.work_transition(token=p.token, expect_rev=rev(), work_id=wid, to="CANCELLED", reason="not needed")
+        if held == "observation":
+            assert not path.exists()  # removed with its invocation's archival
+        else:
+            lab.until(lambda: runlog.observed_status(directory)[0] not in LIVE, timeout=60, what=f"{run} to end")
+        seen = _effects(before, _observe(p))
+        assert seen <= _declared("work.transition"), seen
+        assert {"control_state", "credential", "workspace" if held == "observation" else "harness_process"} <= seen
+    finally:
+        if lab is not None:
             lab.cleanup()

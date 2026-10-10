@@ -65,10 +65,12 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("plan.propose", JUDGMENT_BEARING, ("plan_proposal",), ("gates", "roles"), (), "control_state",
                   "expected_revision", "plan.propose"),
     # A Lead transition: legal only by the transition table, the state hooks and the rule's named guard, all read from
-    # durable state. A cancellation also ends the Ticket's attempt and revokes its invocations' credentials, so
-    # `credential` is declared too; its worktree is left on disk (test_declared_effects_cover_observed_effects).
-    PrimitiveSpec("work.transition", MECHANICAL, (), ("gates",), (), "control_state+credential",
-                  "expected_revision", "work.transition"),
+    # durable state. A cancellation ends the Ticket's attempt: it revokes its invocations' credentials (`credential`);
+    # its ended observations' worktrees are removed when they are archived after its commit (`workspace`; the
+    # implementer's worktree is kept); and a live run's supervisor ends its harness once the run's credential is revoked
+    # (`harness_process`). Each is observed (test_a_cancellations_effects_are_declared; PR #177 review, finding 1).
+    PrimitiveSpec("work.transition", MECHANICAL, (), ("gates",), (),
+                  "control_state+workspace+credential+harness_process", "expected_revision", "work.transition"),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),

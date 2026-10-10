@@ -9,9 +9,11 @@ Each case is a file in ``tests/corpus/false_advance/``: ``seed`` names a builder
 real project; ``stage`` and ``arguments`` are the call (``$work_id`` is the seeded Ticket, ``$stale`` a revision
 behind the current one); ``expect`` is the stage's composed availability now, and where the call stops (its boundary,
 the steps that committed, the Ticket's state after it). The projection never offers a case's stage as auto-runnable
-unless it is AVAILABLE. The corpus begins with E5a (`ticket_draft`, `ticket_start`) and grows with each later slice
-(stale evidence, pending disposition, high anomaly, moved head, second move, unusable envelope per clause, stale
-confirmation)."""
+unless it is AVAILABLE. The corpus begins with E5a (`ticket_draft`, `ticket_start`) and grows with each later slice,
+which seeds the cases its stages reach: E5b the unmigrated guard (neither E5a stage has one on a reachable state:
+every step is migrated, and a non-mutating Ticket is BLOCKED at its assignment; E5b's request stages reach a
+non-mutating Ticket's own transition guard), stale evidence and pending disposition, and high anomaly; E6a and E6b the
+moved head, the second move and the unusable envelope per clause; E7 the stale confirmation."""
 
 from __future__ import annotations
 
@@ -85,13 +87,23 @@ def _unlaunchable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Proj
     return p, wid, [lab.cleanup]
 
 
+def _held_by_intent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Project, str | None, list[Any]]:
+    """A READY Ticket an unfinished stage holds: one whose executor died right after opening its intent."""
+    p, wid, done = _ready(tmp_path, monkeypatch)
+    e = Engine.discover(p.root)
+    e.stage_open(token=p.token, expect_rev=int(e.store.read()["revision"]), tool="ticket_start",
+                 contract_digest="0" * 64, arguments={"work_id": wid}, judgment_inputs=[], base_class="POLICY_RESOLVED",
+                 effective_class="POLICY_RESOLVED", plan=[{"primitive": "checkpoint"}], subject=wid, ingress="test")
+    return p, wid, done
+
+
 def _empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Project, str | None, list[Any]]:
     return sample_project(tmp_path), None, []
 
 
 SEEDS: dict[str, Seed] = {"ready": _ready, "proposed_plan": _proposed_plan, "cap_held": _cap_held,
                           "non_mutating_ready": _non_mutating_ready, "unadopted_policy_edit": _unadopted_policy_edit,
-                          "unlaunchable": _unlaunchable, "empty": _empty}
+                          "unlaunchable": _unlaunchable, "held_by_intent": _held_by_intent, "empty": _empty}
 
 
 def test_the_corpus_is_well_formed():
@@ -120,6 +132,7 @@ def test_no_false_advance(tmp_path, monkeypatch, name):
     try:
         engine = Engine.discover(p.root)
         rev = int(engine.store.read()["revision"])
+        held = set(engine.store.read().get("stage_intents") or {})  # a seed's own unfinished stage stays as it was
         arguments = {"expect_rev": rev, **_bind(case["arguments"], wid, rev)}
         explain_args = {k: v for k, v in arguments.items() if k != "expect_rev"}
         explained = R.run_tool(engine, CTX, "explain", {"stage": case["stage"], "arguments": explain_args})
@@ -141,7 +154,7 @@ def test_no_false_advance(tmp_path, monkeypatch, name):
                           if expect["steps"] else None)  # the Ticket a draft created before it stopped
         if subject is not None:
             assert state["work"][subject]["state"] == expect["unit_state"]
-        assert "stage_intents" not in state  # every stop it could record ended its intent
+        assert set(state.get("stage_intents") or {}) == held  # every stop it could record ended its intent
         assert_control_invariants(p)
     finally:
         for cleanup in cleanups:

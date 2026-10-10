@@ -320,6 +320,19 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
                     covered == n - 1 >= 1 and si["steps"][n - 2]["primitive"] in (coverers or ())
                     and si["steps"][n - 2]["revision"] == done["revision"])):
                 problems.append(f"{where}: step {n} ({done['primitive']}) is not a launch its dispatch's commit covers")
+            elif covered is not None:
+                # ...of the dispatch planned with launch, and each of its runs is run 1 of an invocation that dispatch
+                # created (PR #177 review, finding 7: what `_covered_step` enforces, checked independently).
+                coverer = si["steps"][n - 2]
+                if not (si["plan"][n - 2].get("args") or {}).get("launch"):
+                    problems.append(f"{where}: step {n} covers a dispatch that was not planned with launch")
+                invocations = full.get("invocations") or {}
+                known = [invocations[i] for i in coverer["outputs"]["invocations"] if i in invocations]
+                first = {(inv.get("runs") or [{}])[0].get("run") for inv in known}
+                if not done["outputs"]["runs"] or (len(known) == len(coverer["outputs"]["invocations"])
+                                                   and not set(done["outputs"]["runs"]) <= first):
+                    problems.append(f"{where}: step {n}'s runs {done['outputs']['runs']} are not run 1 of the "
+                                    f"invocations step {n - 1} created ({sorted(map(str, first))})")
         revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"] if s.get("covered_by") is None)]
         if revs != sorted(set(revs)):
             problems.append(f"{where}: step revisions do not increase from its opening: {revs}")

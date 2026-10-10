@@ -54,3 +54,32 @@ def test_a_log_that_cannot_be_written_never_fails_the_call(tmp_path, caplog):
     with caplog.at_level("WARNING", logger="aew.harness.tool_calls"):
         T.append(tmp_path, {"tool": "status"})  # no exception
     assert "could not be written" in caplog.text
+
+
+def test_a_line_that_cannot_be_built_never_changes_the_call(tmp_path, caplog, monkeypatch):
+    """PR #177 review, finding 4: arguments that are not JSON and not even encodable text (a lone surrogate) are
+    digested as given, and anything else that fails while a line is built or written is logged and dropped."""
+    line = T.entry(tool="nope", arguments='{"x": "\ud800', ingress="mcp", profile="normal", result=None,
+                   input_error={"code": "INVALID_ARGUMENTS"}, error=None, revision_before=1, duration_ms=0)
+    assert len(line["arguments_sha256"]) == 64
+    T.record(tmp_path, tool="nope", arguments='{"x": "\ud800', ingress="mcp", profile="normal", result=None,
+             input_error={"code": "INVALID_ARGUMENTS"}, error=None, revision_before=1, duration_ms=0)
+    assert T.read(tmp_path)[0]["error_code"] == "INVALID_ARGUMENTS"
+
+    def broken(**_):
+        raise RuntimeError("a defect in the log")
+
+    monkeypatch.setattr(T, "entry", broken)
+    with caplog.at_level("WARNING", logger="aew.harness.tool_calls"):
+        T.record(tmp_path, tool="status")  # no exception
+    assert "dropped a line" in caplog.text
+
+
+def test_a_line_is_bounded_whatever_the_call_carried(tmp_path):
+    huge = "t" * (4 << 20)
+    result = {**_result(), "effective_operation_class": huge, "stage_intent_id": huge,
+              "stopped": {"boundary": huge, "error": {"code": huge}}}
+    T.record(tmp_path, tool=huge, arguments=huge, ingress=huge, profile=huge, result=result, input_error=None,
+             error=None, revision_before=1, duration_ms=1)
+    text = T.path(tmp_path).read_text(encoding="utf-8")
+    assert len(text.encode("utf-8")) <= T.MAX_LINE and T.read(tmp_path)[0]["tool"] == "t" * T.MAX_FIELD

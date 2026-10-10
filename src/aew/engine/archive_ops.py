@@ -24,6 +24,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
 from aew.errors import IntegrityError, ValidationFailed
 from aew.history import manifest as M
@@ -32,6 +33,7 @@ from aew.history.store import History, annotation_rel, bundle_rel
 from aew.history.store import prewrite as prewrite_record
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
+from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git, worktrees
 
@@ -96,6 +98,7 @@ def pinned_records(entry: dict[str, Any], raw: bytes,
     if unit.get("completion_record") and unit.get("completion_sha256"):
         pins.append((unit["completion_record"], unit["completion_sha256"]))
     pins += [(s["path"], s["sha256"]) for s in unit.get("stage_intents") or []]  # its ended stages (M4-E E3)
+    pins += [(p["seal"], p["sha256"]) for p in unit.get(coordination.UNIT_KEY) or []]  # its sealed threads (F9-A)
     return sorted(set(pins))
 
 
@@ -107,9 +110,17 @@ def _yaml(entry: dict[str, Any], raw: bytes) -> dict[str, Any]:
 
 
 def evidence_pins(rel: str, raw: bytes) -> list[tuple[str, str]]:
-    """What an evidence record itself pins by path and hash (its frontmatter ``evidence``: a check's log, a report's
-    attachments), once its seal is checked: the record must still be the one the engine sealed. Other records pin
-    nothing further."""
+    """What a pinned record itself pins by path and hash: an evidence record its frontmatter ``evidence`` (a check's
+    log, a report's attachments), once its seal is checked, so the record must still be the one the engine sealed; and
+    a coordination seal record its thread, once its schema validates (F9-A plan D-16, N4), so a full verification
+    covers the thread's bytes. Other records pin nothing further."""
+    if coordination.SEAL_RE.match(rel):
+        try:
+            seal = load_yaml(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise IntegrityError(f"{rel} is not UTF-8 text") from exc
+        validate("coordination-seal", seal, source=rel)
+        return [(seal["thread"]["path"], seal["thread"]["sha256"])]
     if not (rel.startswith("evidence/") and rel.endswith(".md")):
         return []
     try:

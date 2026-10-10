@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -325,9 +326,17 @@ def test_a_blobless_clone_missing_a_descriptor_is_refused_and_never_fetches(tmp_
     before = g("count-objects", "-v", cwd=clone)
     with pytest.raises(MapCurrentnessUnproven) as exc:
         service.build(clone, "HEAD")
-    assert exc.value.details["reason"] == "missing_object"  # every missing input named at once (review F3)
-    assert exc.value.details["paths"] == [".gitattributes", "big/package.json", "deep/Cargo.toml", "pyproject.toml",
-                                          "ui/.gitattributes", "ui/package.json"]
+    # The host's git version, parsed independently of the code under test, which must agree with it (review F1).
+    found = re.search(r"(\d+)\.(\d+)\.(\d+)", g("version", cwd=tmp_path))
+    assert found, "git version printed no x.y.z"
+    real = tuple(int(n) for n in found.groups())
+    assert aew_git.version(clone) == real
+    if real >= aew_git.NO_LAZY_FETCH_FROM:
+        assert exc.value.details["reason"] == "missing_object"  # every missing input named at once (review F3)
+        assert exc.value.details["paths"] == [".gitattributes", "big/package.json", "deep/Cargo.toml",
+                                              "pyproject.toml", "ui/.gitattributes", "ui/package.json"]
+    else:  # this host's git cannot be told not to fetch, so the partial clone is refused first (EL8: git 2.43)
+        assert exc.value.details["reason"] == "partial_clone"
     assert g("count-objects", "-v", cwd=clone) == before  # nothing was fetched lazily
     monkeypatch.setattr(aew_git, "version", lambda _cwd: (2, 43, 0))  # a git that cannot be told not to fetch
     with pytest.raises(MapCurrentnessUnproven) as exc:

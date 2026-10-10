@@ -31,7 +31,7 @@ from aew.util import render_frontmatter, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, QueuePort
+    from aew.engine.ports import ArchivePort, CoordinationPort, QueuePort
 
 ACTIVE_INVOCATION_STATES = {"active"}
 # The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
@@ -50,10 +50,11 @@ PHASE_DRIVERS = {
 class Lead:
     """Lead authority lifecycle: acquire, handoff, takeover, release, handoff records."""
 
-    def __init__(self, k: Kernel, *, archive: ArchivePort, queue: QueuePort) -> None:
+    def __init__(self, k: Kernel, *, archive: ArchivePort, queue: QueuePort, coordination: CoordinationPort) -> None:
         self.k = k
         self.archive = archive
         self.queue = queue
+        self.coordination = coordination
 
     def _seat_held(self, state: dict[str, Any]) -> PermissionDenied:
         """Why ``lead acquire`` is refused, and the way on (register V2). The common case is a Lead wrapper that exited
@@ -189,10 +190,15 @@ class Lead:
             token = self._new_lead(s.state, session_label)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
-            self.queue.sync(s.state)
+            self.queue.sync(s.state)  # can end a dead custodian's children (G2)
+            refs: list[str] = []
+            # A direct commit runs no finalizer: it seals what it ends itself, after the queue sync and before the
+            # credentials are archived (F9-A plan D-16); Session.commit checks it.
+            self.coordination.seal_ending(s, refs)
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.acquire", actor=actor,
-                                      summary=f"Lead authority acquired (generation {s.state['lead']['generation']})"),
+                                      summary=f"Lead authority acquired (generation {s.state['lead']['generation']})",
+                                      refs=refs),
                            expect_rev=expect_rev, state=projected)
         return {"ok": True, "token": token, "generation": s.state["lead"]["generation"], "revision": rev}
 
@@ -261,6 +267,7 @@ class Lead:
                 evidence_refs=[handoff["record"]],
             )
             self.queue.sync(s.state)  # a custodian the handoff did not carry is dead: its lease awaits reconcile
+            self.coordination.seal_ending(s, ctx.refs)  # the invocations not carried end here (F9-A plan D-16)
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.handoff.accept", actor=actor,
                                       summary=f"Lead authority transferred by handoff ({decision})",
@@ -310,6 +317,7 @@ class Lead:
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
             self.queue.sync(s.state)  # the takeover ended every custodian: their leases await reconcile
+            self.coordination.seal_ending(s, ctx.refs)  # every invocation ends here (F9-A plan D-16)
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.takeover", actor=actor, reason=reason,
                                       summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs,

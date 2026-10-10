@@ -121,7 +121,14 @@ sections:
       **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization
       and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every
       slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50).
-      No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals)'
+      No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals). **F9-A couplings
+      ([ADR-0017](adr/0017-coordination-messages.md), MS2 built 2026-10-10):** S2a''s format raise sits in `Session.commit`
+      beside F9''s seal check (disjoint data; S2a''s one full `AEW_RL8` run rule applied to MS2 too), each slice adds its
+      own top-level control-state key with its own downgrade test, and whichever of S2a and the slice creating the shared
+      diff helper is second adds F9''s named exclusion (the unit''s `coordination`, `coordination_unseen`, the seal records).
+      A step that ends invocations in a Lead transaction (S4b''s generation change, a cancellation aborting an attempt)
+      is a finalizer placed before the seal finalizer; on takeover and handoff acceptance, which run no finalizer, S4b''s
+      step runs before `seal_ending`'
 
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
@@ -194,10 +201,18 @@ sections:
       and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits
       for M4-E''s E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies,
       bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing
-      is written. **MS0 done (2026-10-10):** the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport,
-      `steer` (queue waits for the end of the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`),
-      and the probe is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each
-      delivered input) and E55 (`harness send` to `steer`)'
+      is written. **MS2 built (2026-10-10):** every commit that ends a messaged invocation seals its thread (a finalizer
+      before archival, explicit calls on acquire, handoff acceptance and takeover, a fail-closed check in `Session.commit`
+      that seals a missed ending by fallback and records `coordination.seal_fallback`); archival pins the seal and the seal
+      its thread; worker replies no Lead saw are held in the capped `coordination_unseen`; the adoption that enables messaging
+      registers the project (`coordination_store`), which an older engine refuses and recording now needs; evidence records
+      the Lead messages its invocation had (`coordination_inputs`); `work show`, `history show` and the operator''s `aew
+      message thread|list|unseen` read threads, only while messaging is on or a thread exists; oracle rules 52 to 58. The
+      shared diff helper''s exclusion waits for the slice that creates the helper (E5a, E7 or F4 S2a). **MS0 done (2026-10-10):**
+      the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
+      the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
+      is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
+      input) and E55 (`harness send` to `steer`)'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -369,7 +384,11 @@ sections:
       of pull request 142. A launching step whose supervisor never started or has ended stops the intent as `launch_failed`,
       never completing the stage over a run that did not start, and the continue never relaunches (a relaunch is `harness.launch`,
       which rotates the credential). The other remains. E5a reconciles the `dispatch.launch` step catalogued for `ticket_start`
-      with the launch inside the assignment step; until then it fails closed, since the primitive is undeclared
+      with the launch inside the assignment step; until then it fails closed, since the primitive is undeclared. **F9-A
+      (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):** the coordination seal is a Lead-transaction finalizer
+      placed immediately before archival, so a finalizer an E-slice adds that can end an invocation goes before it; a new
+      commit path that ends invocations is added to the seal walk (`test_no_known_ending_path_needs_the_seal_fallback`),
+      where a missed `seal_ending` call shows as a `coordination.seal_fallback` event
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
@@ -1788,7 +1807,7 @@ sections:
       and interrupt at `max_steps`) under its own plan'
     Source: F9-A MS0 probe, 2026-10-10 (`p2-steps-none` against `p2-steps-steer`; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
       [ADR-0010](adr/0010-execution-profiles.md); [harness conformance](harness-conformance.md) §5; [ADR-0017](adr/0017-coordination-messages.md)
-      D8, the step-limit residual (ledger CMG-27)
+      D8, the step-limit residual (ledger CMG-31)
     When: '**Unscheduled**: the operator''s decision first (decisions-due), "accept for now" recommended'
     Notes: 'Not an F9 question: F9-A adds no new capability (`harness send` has restarted the counter since M3), only volume,
       which its caps bound weakly; U1 is observation-only, so it cannot host enforcement. AEW already treats a changed step
@@ -1800,7 +1819,7 @@ sections:
       turn, which defeats its purpose. Its own plan handles the ordering change (steer and queue are not ordered with respect
       to each other) and D-30''s text'
     Source: F9-A MS0 probe, 2026-10-10 (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
-      [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-24, CMG-29)
+      [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-28, CMG-33)
     When: '**Unscheduled**'
     Notes: 'Outside F9-A. The row also owns the `harness send` help text ("deliver a message to a running agent after its
       current step", `cli/work_commands.py`): moved to `steer`, the help becomes true as written; declined, it is corrected

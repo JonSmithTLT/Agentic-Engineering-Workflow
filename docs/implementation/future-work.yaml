@@ -1110,6 +1110,42 @@ sections:
       reach every request). Next is a bounded qualification spike: direct typed tools (`DynamicToolSpec` or a later pin)
       and a supported way to suppress collaboration tools and system skills'
 
+  - '#': F24.1
+    Work: 'Codex runtime-semantics probe, the first slice of any Codex adapter work: the pinned Codex app-server against
+      a scripted loopback model, on Windows and AEW_RL8 under AEW''s own containment, with no real provider or credential.
+      It measures what the schema alone cannot show: when a `turn/steer` input reaches the model and which turns refuse
+      it (`activeTurnNotSteerable`); when a queued input (`thread/queue/changed`) is admitted, whether it reopens the turn,
+      and whether its pending state is observable when the worker submits (`PENDING_TURN_END_MESSAGE`); staging an input
+      without waking an idle or interrupted thread (the held case); duplicate and conflict handling of a re-posted input,
+      a read that confirms admission, and thread loss told apart from "not yet admitted"; whether a delivered input resets
+      any step or turn budget; `turn/interrupt` effects on running tools and MCP calls (cancellation sent or not); tool-call
+      start and end events and their ids, and step or turn boundary events (`message.wait` binding, `WAIT_OUTSIDE_A_STEP`,
+      D-29''s failed-turn selection); U1''s stall signals (a call started with no progress); compaction (whether automatic
+      compaction can be disabled, `thread/compact/start`, what survives of the launch contract) and how a thread is resumed;
+      shell timeouts and over-long commands; child-process survival when a shell is killed; context-limit and authentication
+      failure shapes'
+    Source (governing): operator request, 2026-10-10; method as the F9-A MS0 and U1 S0 probes of OpenCode 2.0.18 (evidence
+      in `docs/implementation/adr/evidence/f9a-delivery-probe-2026-10-10/`)
+    Belongs to or gated by: '**Unscheduled**: a prerequisite of F24 (Codex), which may run before M5 to prepare it. It precedes
+      F24''s bounded qualification spike and informs it; it is research, so F18.12''s "not before M4-H" (production qualification)
+      does not bind it'
+    Notes: 'The architecture review''s T9 probe of Codex 0.160.0 covered transport and tool exposure only (F24 notes). This
+      row covers the runtime semantics that AEW contracts now depend on: F9-A''s `--when next-step|turn-end` delivery and
+      `PENDING_TURN_END_MESSAGE`, C1''s controlled relaunch and compaction policy, and U1''s tool events and stall signals.
+      Each maps onto a Codex mechanism, or is declared unsupported by the adapter and refused, never silently weakened (the
+      `reports_steps` and `WAIT_UNSUPPORTED` pattern). Pin the then-current Codex release, not 0.160.0. The probe''s harness
+      reuses the MS0/U1 recorder and fake model. The app-server method names here (`turn/steer`, `activeTurnNotSteerable`,
+      `thread/queue/changed`, `thread/compact/start`) come from the protocol schema Codex 0.160.0 generates (`codex app-server
+      generate-json-schema`), not from T9''s write-up; the probe confirms them on its pin'
+
+  - '#': F24.2
+    Work: 'Claude Code headless as a further harness adapter, a stretch goal after the Codex adapter: the same F24.1-style
+      runtime probe first, then the conformance suite and the live lane'
+    Source (governing): 'operator request, 2026-10-10 (a stretch goal: support for every harness the operator uses)'
+    Belongs to or gated by: '**Unscheduled**: a stretch goal, after F24 (Codex) and the milestones it follows'
+    Notes: F24 already names Claude Code headless as an alternative second adapter. This row records the operator's intent
+      to support both, Codex first
+
   - '#': F25
     Work: 'An engine-owned cost and usage ledger: per run (model/profile, token categories, wall time, provider-reported
       and price-table cost), rolled up per invocation, Ticket and parent'
@@ -1816,25 +1852,27 @@ sections:
     Source: F9-A MS0 probe, 2026-10-10 (`p2-steps-none` against `p2-steps-steer`; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
       [ADR-0010](adr/0010-execution-profiles.md); [harness conformance](harness-conformance.md) §5; [ADR-0017](adr/0017-coordination-messages.md)
       D8, the step-limit residual (ledger CMG-31)
-    When: '**Unscheduled**: the operator''s decision first (decisions-due), "accept for now" recommended'
+    When: '**On measured need**: the operator decided 2026-10-10 to accept the behaviour for now, with no cumulative hard
+      step cap yet; revisit under ADR-0010'
     Notes: 'Not an F9 question: F9-A adds no new capability (`harness send` has restarted the counter since M3), only volume,
       which its caps bound weakly; U1 is observation-only, so it cannot host enforcement. AEW already treats a changed step
       limit as access-widening (the adapter''s projection check refuses one), so the gap belongs to ADR-0010 and the harness.
-      F9-A does not wait for the answer'
+      F9-A did not wait for the answer'
 
   - '#': E55
-    Work: 'Move `harness send` from OpenCode''s `queue` delivery to `steer`: today a nudge waits for the end of the worker''s
-      turn, which defeats its purpose. Its own plan handles the ordering change (steer and queue are not ordered with respect
-      to each other) and D-30''s text'
-    Source: F9-A MS0 probe, 2026-10-10 (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
+    Work: '`--when next-step|turn-end` on `aew harness send`, as on `aew message send`: `next-step` (the default) is OpenCode''s
+      `steer`, delivered at the next step boundary; `turn-end` is `queue`, delivered when the worker''s turn would end.
+      While a `turn-end` input is pending, the run''s final result ingest is refused (`PENDING_TURN_END_MESSAGE`) until
+      the worker submits again. The ingest check and the pending state are atomic (CAS-bound), so a report''s acceptance
+      never races a turn-end input''s admission. `harness send` today only files a supervisor request and records nothing
+      a CAS can read, so a `turn-end` send must first record its pending state where the ingest reads it'
+    Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34), on the F9-A MS0 probe (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
       [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-28, CMG-33)
-    When: '**Unscheduled**'
-    Notes: 'Outside F9-A. The row also owns the `harness send` help text ("deliver a message to a running agent after its
-      current step", `cli/work_commands.py`): moved to `steer`, the help becomes true as written; declined, it is corrected
-      to "after its current turn" in this row''s place. (`harness_send`''s docstring is not help bytes: F9-A''s MS5 corrects
-      it beside the adapter''s `send` comment.) Either way it changes `aew --help` bytes with messaging off, which no F9
-      slice may do, and it is text a Lead reads, so its change observes Q7 v0.3.1 §7''s freeze rule. Until then ADR-0017
-      D8 and the harness-conformance §5 row state the true behaviour'
+    When: '**Unscheduled**: with F9-A, whose amendment 2 assigns the slice'
+    Notes: Replaces this row's earlier proposal to move `harness send` wholesale to `steer`, which would have removed the
+      only "after you finish" delivery. The default changes `harness send` from `queue` to `steer`, a change a Lead sees,
+      so it observes Q7 v0.3.1 §7's freeze rule. The row still owns the `harness send` help text (`cli/work_commands.py`).
+      Until it lands, ADR-0017 D8 and the harness-conformance §5 row state the true behaviour
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

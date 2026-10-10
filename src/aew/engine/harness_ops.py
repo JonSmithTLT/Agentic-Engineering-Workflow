@@ -582,10 +582,15 @@ class Harness:
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
-                    policy, _ = self.k.execution_policy()
-                    provider_env = [str(n) for n in (policy or {}).get("provider_env") or []]
+                    try:
+                        policy, _ = self.k.execution_policy()
+                        provider_env = [str(n) for n in (policy or {}).get("provider_env") or []]
+                    except AEWError:  # a drifted or invalid policy (editing it is a natural fix) never breaks a read
+                        provider_env = []
+                names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
+                    "provider_env"))]  # else the names this run was launched with
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
-                          f"{', '.join(provider_env) or 'the variables'} (the execution policy's provider_env), then "
+                          f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
                           f"relaunch with `aew harness launch {inv_id} --expect-rev N`, or cancel it with "
                           f"`aew invoke cancel {inv_id}`. A relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
@@ -700,8 +705,8 @@ def _reason_code(record: dict[str, Any] | None) -> str | None:
 def _headline(run: str, status: str, record: dict[str, Any] | None) -> str | None:
     """One line for a run that ended without its expected output in a way a caller could miss (register U8; V1)."""
     if _reason_code(record) == K.PROVIDER_AUTH_FAILED and status != K.ENDED_WITH_EVIDENCE:
-        return (f"{run} FAILED: the model provider rejected the credential ({K.PROVIDER_AUTH_FAILED}); nothing was "
-                "recorded. See next_action")
+        return (f"{run} FAILED: the model provider rejected the credential ({K.PROVIDER_AUTH_FAILED}); its "
+                "expected output was not recorded. See next_action")
     if status != K.ENDED_WITHOUT_EVIDENCE:
         return None
     kinds = [str(k) for k in _list(_field(record, "contract").get("expected_kinds"))]

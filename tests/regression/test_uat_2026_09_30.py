@@ -229,7 +229,6 @@ def test_a_role_is_told_only_the_aew_commands_it_may_use():
     assert "`aew check run <check>`" in verifier, verifier
 
 
-
 def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab, tmp_path):
     from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT
     from aew.engine.api import Engine

@@ -1194,6 +1194,16 @@ AEW ran the independent review's own prompt as AEW work, with the same model (GP
 
 **Notes:** Inconclusive was the honest result. Running long checks through `aew check run` with the policy's timeout would avoid it.
 
+### V5
+
+**Work:** A rotated provider key without restarting `aew opencode`: the Lead broker picks up a new value of the variables `provider_env` names when it launches a run
+
+**Source:** the 2026-10-10 incident (a daily key expired; relaunches from the Lead session kept failing until `aew opencode` restarted); PR #165, which closed V1 by reporting the failure
+
+**When:** **Unscheduled** (the operator's to schedule)
+
+**Notes:** A run launched from a Lead session is launched by the session's broker, inside the `aew opencode` process, whose environment is fixed when it starts; a relaunch from an operator shell already reads the key as it is then. Today the next action says to restart `aew opencode` with the new key. Any re-read must keep the key out of the Lead's model-visible environment and out of AEW's records.
+
 ## 9. Closed
 
 Entries leave the tables above when their work is accepted or another entry absorbs them. Their full text stays in the history (for those closed at M3's acceptance: the tag `aew-m3-accepted-2026-10-01`).
@@ -1590,7 +1600,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-10-10
 
-**By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value, and the provider's message, which can quote part of the key, is not recorded. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first (PR #165). `tests/integration/test_opencode_adapter.py`
+**By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value. AEW's own records (the run record, the event log, the snapshot, and the status, wait and next-action output) drop a provider message that may concern a credential (an auth-like type, or 401, 403 or 407), which can quote part of the key, and redact key-shaped text from any other; the harness's private state under the run's `harness/` directory keeps what the harness itself stores. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first, and V5 tracks picking the key up without the restart (PR #165). `tests/integration/test_opencode_adapter.py`
 
 ### V2
 

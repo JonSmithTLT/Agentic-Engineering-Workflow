@@ -179,9 +179,10 @@ class FakeOpenCode:
         return len(items)
 
     def provider_rejects(self, s: Session) -> str | None:
-        """The ``provider_auth`` knob: a rejected key fails the first model call as 2.0.18 does (OpenCode compaction
-        probe, ctl-http401): the step's assistant message ends ``error`` with ``{type: provider.auth, status: 401}``,
-        then ``session.step.failed`` and the failed execution. The message quotes part of the key, as OpenAI's does."""
+        """The ``provider_auth`` knob: a rejected key fails the first model call as pinned 2.0.18 was observed to do
+        (2026-10-09, a local provider answering HTTP 401; no retry): the step's assistant message ends ``error`` with
+        ``{type: provider.auth, message, status: 401}``, then ``session.step.failed`` and ``session.execution.failed``
+        carry the same error. The message quotes part of the key, as OpenAI's does."""
         knob = self.knobs.get("provider_auth")
         if not knob:
             return None

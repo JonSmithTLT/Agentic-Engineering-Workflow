@@ -94,7 +94,9 @@ checks the index, and that every citation names a real section of the frozen ver
    - [`aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md`](design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md): the F15 direction, adopted 2026-10-01; where it overlaps the typed Lead surface above, the design governs; it still governs what the design defers to it (§16, §17, the F17 and anomaly obligations)
 3. **The ADRs** ([`implementation/adr/`](implementation/adr/)), with their amendments: how the implementation meets the contracts.
 4. **The current milestone's plan**: [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md), operator-approved,
-   and for M4-E [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) (approved by the operator 2026-10-07, review CLEAR).
+   for M4-E [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) (approved by the operator 2026-10-07, review CLEAR),
+   and for Ticket revisions (register F4) [`f4-ticket-revisions-plan.md`](implementation/f4-ticket-revisions-plan.md)
+   (v8, review CLEAR; slices S1 to S12).
 5. **Cross-document indexes** (they point, they do not decide): [`spec-amendments.yaml`](spec-amendments.yaml): every adopted amendment to the frozen WC and KC, the sections it replaces or extends, the effective section, and the pending consolidation debt (register E19); [`failure-class-registry.md`](design/failure-class-registry.md), [`invariant-index.md`](design/invariant-index.md), and [`requirements-ledger.yaml`](design/requirements-ledger.yaml): every requirement of every ingested design, research or review document, each tracked by register rows (a test-enforced gate).
 
 Everything in [`design/proposals/`](design/proposals/) and [`research/`](research/) is input, not governing. Everything
@@ -120,6 +122,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`decisions-due.md`](implementation/decisions-due.md) | **What the operator and designer owe, soonest first**, and the work blocked until then; rendered from [`decisions-due.yaml`](implementation/decisions-due.yaml) by `tools/register.py`, which fails CI when an item goes stale |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
 | [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) | The M4-E plan: governed stages on the typed Lead surface, its cross-cutting designs, the operator's decisions of 2026-10-07 and slices E1 to E9 |
+| [`f4-ticket-revisions-plan.md`](implementation/f4-ticket-revisions-plan.md) | The F4 plan: Ticket revisions (E19-B v0.4), its cross-cutting designs (the field-group registry, admissibility, the lifecycle, confirmation, hierarchy changes), its decisions and readings, and slices S1 to S12 |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 

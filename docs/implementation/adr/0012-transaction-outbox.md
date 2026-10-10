@@ -1,6 +1,6 @@
 # ADR-0012 — The transaction outbox: the transition log, typed, complete and consumed
 
-- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). **Partly built.** M4-D slice D1 (PR #53) built the typed events derived in the store (D2), the hot bound with the staged overflow sidecar, `aew history log` and its lockless reader (D3), the advisory wake file (D4), the hash chain (D7), the `log.overflow_unpublished` fault point (D9) and the downgrade marker (D10), with oracle rules 24 to 26. Slice D2 added sealing and compaction (D6: `aew history compact`, 256-transition segments behind the 4,096-revision window, doctor's window check), the reader's resolution of sealed segments (D3), the `log.seal.*` fault points (D9) and oracle rules 27 and 28, and fixed the independent review of D1. Slice D6 built the first D8 consumer, wait-any (`aew harness wait --any`: the wake file, both lanes of D5, no control-state parse between commits; `tools/perf/wake_latency.py`). Still to build: the other consumers of D8 (the dashboard endpoint, capture, the scheduler) and the `queue.*` kinds (M4-D). Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates architecture-review, developer, and design-authority corrections for overflow completeness, sealing/read races, hash coverage, command naming, and consumer semantics.
+- **Status:** **Accepted** (operator, 2026-10-04; adopted by the merge of its ingestion, PR #49). **Partly built.** Noted 2026-10-10 (F9-A, [ADR-0017](0017-coordination-messages.md)): coordination messages are appended outside the outbox and only touch the wake signal (the dated note before "Checks before relying on this ADR"). M4-D slice D1 (PR #53) built the typed events derived in the store (D2), the hot bound with the staged overflow sidecar, `aew history log` and its lockless reader (D3), the advisory wake file (D4), the hash chain (D7), the `log.overflow_unpublished` fault point (D9) and the downgrade marker (D10), with oracle rules 24 to 26. Slice D2 added sealing and compaction (D6: `aew history compact`, 256-transition segments behind the 4,096-revision window, doctor's window check), the reader's resolution of sealed segments (D3), the `log.seal.*` fault points (D9) and oracle rules 27 and 28, and fixed the independent review of D1. Slice D6 built the first D8 consumer, wait-any (`aew harness wait --any`: the wake file, both lanes of D5, no control-state parse between commits; `tools/perf/wake_latency.py`). Still to build: the other consumers of D8 (the dashboard endpoint, capture, the scheduler) and the `queue.*` kinds (M4-D). Earlier: design frozen, proposed for operator adoption, 2026-10-04. This version incorporates architecture-review, developer, and design-authority corrections for overflow completeness, sealing/read races, hash coverage, command naming, and consumer semantics.
 - **Spec basis:**
   - WC §5, the crash-safe control-authority rule (v0.7 line 246, inside §5.1, as ADR-0001 cites it), and WC §8.2, checkpoint and crash semantics: a transition "either leaves the previous valid state intact or publishes the complete new valid state".
   - WC §15.6: "CLI and MCP must never implement separate state authorities"; a consumer of events is a reader, never a second authority.
@@ -269,6 +269,16 @@ The designer resolves the former open questions as follows:
 6. **Knowledge capture cursor storage:** the cursor must be durable, project-bound knowledge-domain state and must not live in `local/` or hot control state. Its exact physical placement is intentionally delegated to T4 / the Knowledge Storage ADR. That dependency does not block this ADR's event semantics.
 
 There are no remaining designer-level choices required to implement ADR-0012. The operator adopted the ADR on 2026-10-04.
+
+## Note of 2026-10-10: coordination messages are outside the outbox (F9-A)
+
+A Lead-worker coordination message ([ADR-0017](0017-coordination-messages.md), F9-A's first slice) is appended to its
+invocation's thread under the control lock and **commits nothing**: no transition record, no typed event, no revision.
+The outbox stays complete in D1's sense, because a message changes no control state for a transition to record; the
+thread is its own hash-chained record. The writer touches `local/wake` after each append (D4: advisory), so a waiter on
+the wake file re-checks without a parse of `control.yaml`. F9-A's sealing slice (MS2) adds control-state keys (the unit's
+seal pointer, `coordination_unseen`, `coordination_store`) that derive no event, and one event type,
+`coordination.seal_fallback`; it extends this note when it lands.
 
 ## Checks before relying on this ADR
 

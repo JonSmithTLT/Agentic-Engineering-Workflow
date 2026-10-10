@@ -176,8 +176,9 @@ def write_results(path: Path, run: dict) -> Path:
 def lane(qualify, tmp_path, monkeypatch):
     """``cmd_floor`` with the frozen record, the profile and the live trial faked: ``runs`` lists the implementer
     run each successive trial records (a placeholder key; no provider is called)."""
-    frozen = {"experiment": "lbq-v1-deepseek-v4-flash",
+    frozen = {"experiment": "lbq-v1-deepseek-v4-flash", "canonical_sha256": "a" * 64,
               "thresholds": {"budget": {"floor_cap_usd": 1.0}, "floor": {"trials": 2}}}
+    monkeypatch.setattr(qualify, "EXPLICIT", True)
     monkeypatch.setattr(qualify, "frozen_record", lambda: frozen)
     monkeypatch.setattr(qualify, "worker_profile", lambda f: {"id": "lb-fake", "ref": "opencode/fake",
                                                               "credential_env": ["OPENCODE_API_KEY"]})
@@ -313,7 +314,7 @@ def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypa
     (out / "floor").mkdir(parents=True)
     (out / "floor" / "floor.json").write_text(json.dumps({"trials": [{"trial": 1, "verdict": "passed"}],
                                                           "charged_usd": 0.1}), encoding="utf-8")
-    frozen = {"experiment": "lbq-v1-deepseek-v4-flash", "profiles": {"budget_usd": 5.0},
+    frozen = {"experiment": "lbq-v1-deepseek-v4-flash", "canonical_sha256": "a" * 64, "profiles": {"budget_usd": 5.0},
               "thresholds": {"budget": {"overshoot_margin_usd": 0.05}},
               "arms": [{"id": "raw", "config": {"cap_usd": 0.75, "provider_env": ["OPENCODE_API_KEY"]}}],
               "validity_rules": {"retry_policy": {"max_retries": 2, "allowed_for": ["invalid_measurement"]}},
@@ -408,28 +409,45 @@ def test_each_experiment_has_its_own_preregistration_frozen_record_and_lane(qual
 @pytest.mark.parametrize("experiment", [V41, NANO])
 def test_a_new_experiment_pins_its_profile_and_changes_nothing_else(qualify, experiment):
     """Same cases, oracles, rubric, schedule seed, limits and budget as the first experiment: only the experiment id,
-    its question, its amendment record and the profile pins differ."""
+    its question, its amendment record and the profile pins differ (and V4.1's overshoot margin and expected outcome,
+    for its step cost: review F1, F2)."""
     model, pid = PINS[experiment]
     plan, first = plan_of(qualify, experiment), plan_of(qualify, V4)
     config = plan["arms"][0]["config"]
     assert (config["model"], config["profile"]["id"], plan["profiles"]["roles"]["worker"]) == (model, pid, model)
+    if experiment == V41:
+        assert "expected to end ceiling runs before the 80-step limit" in plan["thresholds"]["expected_outcome"]
+        assert "the operator's choice, for cost reasons" in plan["thresholds"]["expected_outcome"]
+        assert "unobserved" in plan["amendment_policy"] and "cost reasons" in plan["amendment_policy"]
     for p in (plan, first):
         for key in ("experiment", "question", "amendment_policy"):
             p.pop(key)
         p["arms"][0]["config"]["model"] = p["arms"][0]["config"]["profile"]["id"] = None
         p["profiles"]["roles"]["worker"] = None
+        if experiment == V41:
+            p["thresholds"]["budget"].pop("overshoot_margin_usd")
+            p["thresholds"].pop("expected_outcome")
     assert plan == first
 
 
-@pytest.mark.parametrize("experiment", [V4, V41, NANO])
-def test_every_experiment_keeps_the_lanes_budget(qualify, experiment):
+@pytest.mark.parametrize("experiment, margin", [(V4, 0.05), (V41, 0.10), (NANO, 0.05)])
+def test_every_experiment_keeps_the_lanes_budget(qualify, experiment, margin):
     plan = plan_of(qualify, experiment)
     budget = plan["thresholds"]["budget"]
     assert plan["profiles"]["budget_usd"] == budget["total_usd"] == 5.0
     assert budget["floor_cap_usd"] == 1.0
     assert budget["per_run_cap_usd"] == plan["arms"][0]["config"]["cap_usd"] == 0.75
-    assert budget["overshoot_margin_usd"] == 0.05
+    assert budget["overshoot_margin_usd"] == margin  # V4.1: a 15 s poll covers 2-3 steps at $0.02-0.03 (review F2)
     assert plan["thresholds"]["floor"]["trials"] == 2
+
+
+def test_the_effort_rule_is_stated_as_the_pins_follow_it(qualify):
+    """The highest tier, excluding an extended max tier (review F3): DeepSeek low/high/max -> high, Nano's
+    minimal..high -> high; the sealed text says so, with its trade-off."""
+    text = plan_of(qualify, NANO)["amendment_policy"]
+    assert "excluding an extended max tier" in text and "below its provider's maximum tier" not in text
+    assert "trade-off" in text
+    assert "excluding an extended max tier" in profile_of("lb-gpt-5-nano")["availability"]["note"]
 
 
 @pytest.mark.parametrize("experiment", [V4, V41, NANO])
@@ -458,16 +476,103 @@ def test_the_replacement_primary_has_a_stable_identity(qualify):
 
 def test_a_lane_directory_holds_one_experiment(qualify, tmp_path):
     fresh = tmp_path / "lbq-v1-deepseek-v4-1-flash" / "out"
-    qualify.claim_lane(fresh, V41)
-    qualify.claim_lane(fresh, V41)  # its own again: fine
+    qualify.claim_lane(fresh, V41, explicit=True)
+    qualify.claim_lane(fresh, V41, explicit=False)  # its own again, marked: the flag is not needed
     assert (fresh / qualify.LANE_MARK).read_text(encoding="utf-8").strip() == V41
     with pytest.raises(SystemExit, match="holds the runs of lbq-v1-deepseek-v4-1-flash"):
-        qualify.claim_lane(fresh, NANO)
-    first = tmp_path / "lbq-v1" / "out"  # the first experiment's lane, from before the mark existed
+        qualify.claim_lane(fresh, NANO, explicit=True)
+    first = tmp_path / "lbq-v1" / "out"  # the first experiment's legacy lane, from before the mark existed
     (first / "floor").mkdir(parents=True)
+    (first / "floor" / "floor.json").write_text(json.dumps({"trials": [], "charged_usd": 0.0}), encoding="utf-8")
     with pytest.raises(SystemExit, match="holds the runs of lbq-v1-deepseek-v4-flash"):
-        qualify.claim_lane(first, V41)
-    qualify.claim_lane(first, V4)
+        qualify.claim_lane(first, V41, explicit=True)
+    qualify.claim_lane(first, V4, explicit=False)
+
+
+def test_an_unmarked_lane_is_claimed_only_by_name_or_as_the_legacy_shape(qualify, tmp_path):
+    """Review F4 and N4: a forgotten --experiment never marks a fresh lane, and a lane whose mark is gone is never
+    read as the first experiment's unless it has the legacy shape (an unstamped floor record and no ledger)."""
+    fresh = tmp_path / "fresh" / "out"
+    with pytest.raises(SystemExit, match="name the experiment"):
+        qualify.claim_lane(fresh, V4, explicit=False)
+    assert not (fresh / qualify.LANE_MARK).exists()
+    lost = tmp_path / "lost" / "out"  # a V4.1 lane whose mark was deleted: its floor record is stamped
+    (lost / "floor").mkdir(parents=True)
+    (lost / "floor" / "floor.json").write_text(json.dumps({"trials": [], "charged_usd": 0.0, "experiment": V41,
+                                                           "preregistration_sha256": "b" * 64}), encoding="utf-8")
+    for experiment, explicit in ((V4, False), (V4, True), (V41, True)):
+        with pytest.raises(SystemExit, match="holds runs but no experiment.txt"):
+            qualify.claim_lane(lost, experiment, explicit=explicit)
+    ledgered = tmp_path / "ledgered" / "out"  # unstamped floor, but a ledger: not the legacy shape
+    (ledgered / "floor").mkdir(parents=True)
+    (ledgered / "ledger").mkdir()
+    (ledgered / "floor" / "floor.json").write_text(json.dumps({"trials": []}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="holds runs but no experiment.txt"):
+        qualify.claim_lane(ledgered, V4, explicit=False)
+
+
+def test_a_floor_record_of_another_experiment_is_refused(qualify, tmp_path):
+    out = tmp_path / "out"
+    (out / "floor").mkdir(parents=True)
+    path = out / "floor" / "floor.json"
+    mine = {"experiment": V41, "canonical_sha256": "b" * 64}
+    path.write_text(json.dumps({"trials": [], "charged_usd": 0.0, "experiment": V41,
+                                "preregistration_sha256": "b" * 64}), encoding="utf-8")
+    assert qualify.floor_state(out, mine)["experiment"] == V41
+    with pytest.raises(SystemExit, match="is the floor record of lbq-v1-deepseek-v4-1-flash"):
+        qualify.floor_state(out, {"experiment": NANO, "canonical_sha256": "c" * 64})
+    with pytest.raises(SystemExit, match="is the floor record of"):  # same experiment, another seal
+        qualify.floor_state(out, {"experiment": V41, "canonical_sha256": "d" * 64})
+    path.write_text(json.dumps({"trials": [], "charged_usd": 0.0}), encoding="utf-8")  # unstamped: legacy V4 only
+    assert qualify.floor_state(out, {"experiment": V4, "canonical_sha256": "a" * 64})["trials"] == []
+    with pytest.raises(SystemExit, match="unstamped"):
+        qualify.floor_state(out, mine)
+
+
+def test_every_floor_save_is_stamped_with_its_experiment(qualify, lane):
+    lane.runs.append(FAILING_RUN)
+    lane.runs.append(FAILING_RUN)
+    assert lane.floor() == 3
+    state = lane.state()
+    assert (state["experiment"], state["preregistration_sha256"]) == (V4, "a" * 64)
+
+
+def test_purge_works_only_on_its_own_experiments_lane(qualify, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    qualify.claim_lane(out, V41, explicit=True)
+    monkeypatch.setattr(qualify, "frozen_record", lambda: {"experiment": NANO})
+    monkeypatch.setattr(qualify.retention, "purge", lambda *a, **k: pytest.fail("purged another experiment's lane"))
+    with pytest.raises(SystemExit, match="holds the runs of lbq-v1-deepseek-v4-1-flash"):
+        qualify.cmd_purge(SimpleNamespace(), out)
+
+
+def test_another_lanes_oracle_copy_stops_every_model_step(qualify, tmp_path):
+    out = tmp_path / "lanes" / "lbq-v1-gpt-5-nano" / "out"
+    out.mkdir(parents=True)
+    other = tmp_path / "lanes" / "lbq-v1-deepseek-v4-1-flash"
+    (other / "out").mkdir(parents=True)
+    qualify.arm_host_clean(out, None)
+    (other / "hidden").mkdir()
+    with pytest.raises(SystemExit, match="another lane's oracle copy"):
+        qualify.arm_host_clean(out, None)
+
+
+def test_a_run_the_cost_cap_ended_leaves_behaviours_4_and_5_unobserved(qualify, rules):
+    """Review F1: a truncated run records behaviours 4 and 5 as None (unobserved), never False; with no finished run
+    of their case they are reported unobserved; a cost-capped run records the step at which the cap ended it."""
+    capped = record("LBQ-2", ["markdown/extensions/linkpolicy/__init__.py"], ended="cost_cap", truncated=True)
+    capped["outcome"].update(truncated_why=["turn:cost_cap"], steps=31)
+    got = qualify.tree_behaviours(capped, rules, {})
+    assert got["incomplete_cross_file_changes"] is None
+    lbq3 = qualify.tree_behaviours(record("LBQ-3", [], truncated=True), rules, CRITERIA)
+    assert lbq3["requirement_loss_on_longer_tasks"] is None
+    assert qualify.cost_cap_step(capped) == 31
+    assert qualify.cost_cap_step(record("LBQ-1", [])) is None
+    runs = [{"behaviours": got}, {"behaviours": lbq3}, {"behaviours": None}]
+    assert qualify.unobserved(runs) == ["incomplete_cross_file_changes", "requirement_loss_on_longer_tasks"]
+    done = qualify.tree_behaviours(record("LBQ-2", ["markdown/extensions/linkpolicy/__init__.py"]), rules, {})
+    assert done["incomplete_cross_file_changes"] is True
+    assert qualify.unobserved([*runs, {"behaviours": done}]) == ["requirement_loss_on_longer_tasks"]
 
 
 def test_a_frozen_record_of_another_experiment_is_refused(qualify, selected, monkeypatch, tmp_path):

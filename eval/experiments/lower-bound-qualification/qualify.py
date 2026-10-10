@@ -99,12 +99,40 @@ def select(experiment: str) -> str:
     return stated
 
 
-def claim_lane(out: Path, experiment: str) -> None:
+EXPLICIT = False  # whether --experiment was given (main): a lane without a mark is claimed only explicitly
+
+
+def legacy_lane(out: Path) -> bool:
+    """The one directory shape that predates the mark: the first experiment's floor record, unstamped (no
+    ``experiment``), and no ledger. Its runs are that experiment's."""
+    floor = out / "floor" / "floor.json"
+    if (out / LANE_MARK).exists() or (out / "ledger").exists() or not floor.exists():
+        return False
+    try:
+        return "experiment" not in json.loads(floor.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+
+
+def claim_lane(out: Path, experiment: str, *, explicit: bool | None = None) -> None:
     """A lane directory holds one experiment's runs: its floor, ledger and kept databases are never mixed with
-    another's. A directory with runs but no mark predates the mark, and holds the lane's first experiment."""
+    another's (review F4). A marked directory is its mark's. Without a mark, only the legacy shape (``legacy_lane``)
+    is read as the first experiment's; any other directory with runs is refused, and a directory without runs is
+    claimed only when ``--experiment`` names the experiment (review N4: a forgotten flag never marks a lane)."""
+    explicit = EXPLICIT if explicit is None else explicit
     mark = out / LANE_MARK
-    held = mark.read_text(encoding="utf-8").strip() if mark.exists() else \
-        (DEFAULT_EXPERIMENT if any((out / d).exists() for d in ("floor", "ledger")) else None)
+    if mark.exists():
+        held = mark.read_text(encoding="utf-8").strip()
+    elif legacy_lane(out):
+        held = DEFAULT_EXPERIMENT
+    elif any((out / d).exists() for d in ("floor", "ledger")):
+        raise SystemExit(f"refused: {out} holds runs but no {LANE_MARK}, and is not the first experiment's legacy "
+                         "lane: which experiment they belong to is unknown. Use a fresh --out directory")
+    elif not explicit:
+        raise SystemExit(f"refused: {out} is not yet any experiment's lane: name the experiment (--experiment) "
+                         "on its first step")
+    else:
+        held = None
     if held is not None and held != experiment:
         raise SystemExit(f"refused: {out} holds the runs of {held}, not {experiment}: give each experiment its own "
                          "--out lane directory")
@@ -216,6 +244,17 @@ def arm_host_clean(out: Path, hidden_root: Path | None) -> None:
     copy = out.parent / "hidden"
     if copy.exists():
         raise SystemExit(f"refused: {copy} exists: the oracles are on this host. Remove it before any model runs")
+    # Another experiment's lane beside this one (<lanes>/<lane>/out next to <lanes>/<other>/hidden): its oracle copy
+    # is on this host too (review N1).
+    lanes = out.parent.parent
+    try:
+        others = [p for p in sorted(lanes.iterdir()) if p != out.parent and (p / "hidden").exists()
+                  and (p / "out").is_dir()] if lanes.is_dir() else []
+    except OSError:  # a parent this user cannot list holds no lane of theirs
+        others = []
+    if others:
+        raise SystemExit(f"refused: {others[0] / 'hidden'} exists: another lane's oracle copy is on this host. "
+                         "Remove it before any model runs")
 
 
 def frozen_record() -> dict[str, Any]:
@@ -692,13 +731,27 @@ def end_trial(tree: Any, basetemp: Path) -> list[int]:
     return killed
 
 
-def floor_state(out: Path) -> dict[str, Any]:
+def floor_state(out: Path, frozen: dict[str, Any] | None = None) -> dict[str, Any]:
     """The floor's record. A trial an earlier version recorded ``failed`` (it carries no ``judged_by``) whose stored
     results show the provider failing before the model produced anything is read as the lane error it was
     (``reclassified_from``), so a lane directory whose trials a rejected key used up runs the floor again once the key
-    is fixed. A trial this version judged is never reread."""
+    is fixed. A trial this version judged is never reread.
+
+    With ``frozen``, the record must be that experiment's (review F4): every save stamps it with the experiment and
+    its preregistration hash, and a record stamped for another, or an unstamped one outside the first experiment's
+    legacy lane, is refused."""
     path = out / "floor" / "floor.json"
     state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"trials": [], "charged_usd": 0.0}
+    if frozen is not None and path.exists():
+        stamp = (state.get("experiment"), state.get("preregistration_sha256"))
+        if stamp == (None, None):
+            if frozen["experiment"] != DEFAULT_EXPERIMENT:
+                raise SystemExit(f"refused: {path} is unstamped, so it is the first experiment's legacy floor "
+                                 f"record, not {frozen['experiment']}'s")
+        elif stamp != (frozen["experiment"], frozen["canonical_sha256"]):
+            raise SystemExit(f"refused: {path} is the floor record of {stamp[0]} (preregistration "
+                             f"{str(stamp[1])[:12]}), not of {frozen['experiment']} "
+                             f"({frozen['canonical_sha256'][:12]})")
     for t in state["trials"]:
         if t.get("verdict") == "failed" and t.get("results") and not t.get("judged_by"):
             got = floor_verdict(read_results(Path(t["results"])))
@@ -774,7 +827,7 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
     missing = [n for n in names if not os.environ.get(n)]
     if missing:
         raise SystemExit(f"refused: {', '.join(missing)} is not set (profile {record['id']} needs it)")
-    state = floor_state(out)
+    state = floor_state(out, frozen)
     if any(t.get("verdict") == "passed" for t in state["trials"]):
         say(floor="passed earlier", trials=state["trials"], charged_usd=state["charged_usd"])
         return 0
@@ -802,6 +855,7 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
             trial.update(reason_code=judged["reason_code"], provider_error=judged["provider_error"])
         state["trials"].append(trial)
         state["charged_usd"] = round(state["charged_usd"] + cost, 6)
+        state.update(experiment=frozen["experiment"], preregistration_sha256=frozen["canonical_sha256"])
         (out / "floor" / "floor.json").write_text(json.dumps(state, indent=1), encoding="utf-8")
         if verdict == LANE_ERROR:  # no retry: the provider ended it, not the model
             say(floor=LANE_ERROR, profile=record["id"], **state)
@@ -853,7 +907,7 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
     arm_host_clean(out, hidden_root)
     frozen = frozen_record()
     claim_lane(out, frozen["experiment"])
-    if not any(t.get("verdict") == "passed" for t in floor_state(out)["trials"]):
+    if not any(t.get("verdict") == "passed" for t in floor_state(out, frozen)["trials"]):
         raise SystemExit("refused: the profile has not passed the floor (rubric.md §2): run `qualify.py floor`")
     ledger_dir, work = out / "ledger", out / "work"
     ledger = AttemptLedger(ledger_dir, frozen)
@@ -924,13 +978,35 @@ def tree_behaviours(record: dict[str, Any], rules: dict[str, Any], checks: dict[
              "difficulty_recovering_after_distraction":
                  any(matches(p, rules["distractor_paths"]) for p in changed)
                  or checks.get("structure: the link policy runs after the inline processor") is False}
+    # Behaviours 4 and 5 are read only from a finished run; a run cut short cannot show them, so it records None
+    # (unobserved), never False (the frozen missing_result_policy: it neither shows nor rules out a behaviour).
     if case in rules["required_sites"]:
         hit = [any(fnmatch.fnmatchcase(p, site) for p in changed) for site in rules["required_sites"][case]]
-        shown["incomplete_cross_file_changes"] = finished(record) and any(hit) and not all(hit)
+        shown["incomplete_cross_file_changes"] = (any(hit) and not all(hit)) if finished(record) else None
     if case == "LBQ-3":
         criteria = [ok for name, ok in checks.items() if name.startswith("criterion ")]
-        shown["requirement_loss_on_longer_tasks"] = finished(record) and any(criteria) and not all(criteria)
+        shown["requirement_loss_on_longer_tasks"] = (any(criteria) and not all(criteria)) if finished(record) \
+            else None
     return shown
+
+
+FINISHED_ONLY = ("incomplete_cross_file_changes", "requirement_loss_on_longer_tasks")  # behaviours 4 and 5
+
+
+def unobserved(runs: list[dict[str, Any]]) -> list[str]:
+    """The behaviours 4 and 5 that no scored run could observe (no finished run of their case): reported as
+    unobserved, not as not shown (the frozen missing_result_policy)."""
+    return sorted(b for b in FINISHED_ONLY if not any((r["behaviours"] or {}).get(b) is not None for r in runs))
+
+
+def cost_cap_step(record: dict[str, Any]) -> int | None:
+    """The step at which the cost cap ended a run (its steps when the cap's watcher, polling every 15 s, stopped
+    it), or None when the cap did not end it."""
+    out = record["outcome"]
+    if "turn:cost_cap" not in (out.get("truncated_why") or []):
+        return None
+    steps = out.get("steps") if out.get("steps") is not None else out.get("assistant_messages")
+    return int(steps) if isinstance(steps, (int, float)) else None
 
 
 def harness_processes(binary: Path) -> list[int]:
@@ -980,6 +1056,7 @@ def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
                      "task_correct": bool((score or {}).get("passed")) and in_scope if score else None,
                      "in_scope": in_scope, "finished": finished(record),
                      "truncated_why": record["outcome"].get("truncated_why"),
+                     "cost_cap_ended_at_step": cost_cap_step(record),
                      "behaviours": tree_behaviours(record, rules, checks) if score else None,
                      "session_db": record["outcome"].get("session_db"),
                      "charged_usd": record["cost"].get("charged_usd")})
@@ -987,6 +1064,7 @@ def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
     pending = [r["run"] for r in runs if not r["scored"]]
     summary = {"experiment": frozen["experiment"], "valid_runs": len(runs), "newly_scored": newly_scored,
                "unscored": pending, "retention_purged": purged, "tree_behaviours_shown": shown,
+               "tree_behaviours_unobserved": unobserved(runs),
                "session_behaviours": "scored later by the F19 session-database reader (delta D2) from the kept "
                                      "databases, under the definitions frozen in the preregistration",
                "ceiling_state": "behaviours_shown" if shown else
@@ -998,7 +1076,9 @@ def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
 
 
 def cmd_purge(args: argparse.Namespace, out: Path) -> int:
-    say(purged=retention.purge(out / "ledger", frozen_record(), work=out / "work"))
+    frozen = frozen_record()
+    claim_lane(out, frozen["experiment"])
+    say(purged=retention.purge(out / "ledger", frozen, work=out / "work"))
     return 0
 
 
@@ -1033,8 +1113,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     ap = argparse.ArgumentParser(prog="python qualify.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, help="run state, outside every repository (default: per-user data dir)")
-    ap.add_argument("--experiment", choices=sorted(EXPERIMENTS), default=DEFAULT_EXPERIMENT,
-                    help=f"which preregistration every step works on (default: {DEFAULT_EXPERIMENT})")
+    ap.add_argument("--experiment", choices=sorted(EXPERIMENTS), default=None,
+                    help=f"which preregistration every step works on (default: {DEFAULT_EXPERIMENT}; a lane "
+                         "directory without a mark needs it named)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="the dry run: no provider call")
     c.add_argument("--no-launch", action="store_true", help="skip starting the pinned OpenCode and containment")
@@ -1053,8 +1134,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-launch", action="store_true")
     r.add_argument("--again", action="store_true")
     args = ap.parse_args(argv)
+    global EXPLICIT
+    EXPLICIT = args.experiment is not None
     try:
-        experiment = select(args.experiment)
+        experiment = select(args.experiment or DEFAULT_EXPERIMENT)
     except Invalid as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1

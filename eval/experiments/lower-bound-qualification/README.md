@@ -73,8 +73,10 @@ counted as trials).
 - **`opencode/gpt-5-nano` stays the next-cheaper profile**, as defined above. V4.1 costs more than V4, so it is not a
   next-cheaper profile. The operator chose to run Nano too, after V4.1 ("Experiments").
 - **Nano's effort is high**, by the rule that pinned the DeepSeek profiles: the floor is a hard prerequisite, so a
-  lower-bound worker runs at the highest effort below its provider's maximum tier. Nano's variants are minimal, low,
-  medium and high: it has no tier above high. At high it is still the smallest, oldest model the lane considers.
+  lower-bound worker runs at the highest effort tier its provider offers, excluding an extended `max` tier where one
+  exists (DeepSeek: low, high, max, so high). Nano offers minimal, low, medium and high, with no extended tier, so
+  high. The trade-off: higher effort gives the model its best chance at the floor, but can suppress the weak-worker
+  behaviours, which leans the result toward `not_a_lower_bound`, the conservative direction for a stress specimen.
 - **Protocols.** The pinned OpenCode drives V4.1 through its openai-compatible package (chat completions), and Nano
   through its own OpenAI package (`@opencode/ai/providers/openai`, the Responses API), as its served catalog states.
   Zen refuses Nano on chat completions (`ModelProtocolUnsupported`) and answers it on Responses.
@@ -101,22 +103,30 @@ effective profile and its state at preregistration, and the harness.
 Each profile the lane qualifies is its own experiment (the preregistration's `amendment_policy`: a new experiment id
 per profile). Each has its own preregistration, sealed by `freeze` into its own frozen record, and its own lane
 directory (`--out`), and is selected with `qualify.py --experiment <id>`. The cases, oracles, rubric, schedule seed,
-limits and budget rules are the same in all three; only the experiment id, its question, its amendment record and the
-profile pins differ.
+limits and budget rules are the same in all three. Only the experiment id, its question, its amendment record and the
+profile pins differ, plus V4.1's overshoot margin and its expected outcome (see "Cost").
 
 | Experiment | Preregistration | Frozen record (written by `freeze`) | Profile | Lane directory on the VM |
 |---|---|---|---|---|
 | `lbq-v1-deepseek-v4-flash` (the default) | `prereg.yaml` | `prereg.frozen.yaml` | `lb-deepseek-v4-flash` | `~/aew-eval/lbq-v1` |
-| `lbq-v1-deepseek-v4-1-flash` | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
+| `lbq-v1-deepseek-v4-1-flash` (the cost cap binds before the step limit: behaviours 4 and 5 unobserved for a case with no finished run, by the operator's choice for cost) | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
 | `lbq-v1-gpt-5-nano` | `prereg-gpt-5-nano.yaml` | `prereg-gpt-5-nano.frozen.yaml` | `lb-gpt-5-nano` | `~/aew-eval/lbq-v1-gpt-5-nano` |
 
 - **An experiment id has no dots** (`aew/eval-prereg/v1`), so V4.1's id spells it `4-1`. Its profile keeps the model's
   own name.
 - **The first experiment is unchanged.** `prereg.yaml` is byte for byte the one its lane froze; the default
   `--experiment` is still that experiment.
-- **A lane directory holds one experiment.** The lane marks it (`experiment.txt`) on its first model step and refuses
-  another experiment's steps there. A directory with runs but no mark is the first experiment's. A frozen record that
-  seals another experiment than the selected preregistration is refused.
+- **A lane directory holds one experiment.**
+  - The lane marks it (`experiment.txt`) on its first floor, ceiling, score or purge step, and refuses another
+    experiment's steps there.
+  - The first step in an unmarked directory needs `--experiment` named.
+  - The floor record (`floor.json`) is stamped with its experiment and preregistration hash on every save, and a
+    record of another experiment is refused.
+  - Without a mark, only the first experiment's legacy lane (an unstamped `floor.json` and no ledger) is accepted, as
+    that experiment's. Any other unmarked directory with runs is refused.
+  - A frozen record that seals another experiment than the selected preregistration is refused.
+- **No oracle copy beside any lane.** A model step refuses while its own lane's `hidden` copy exists, and while any
+  sibling lane (`<lanes>/<other>/hidden` next to `<lanes>/<other>/out`) holds one.
 
 **Why both V4.1 and Nano run** (the operator, 2026-10-10). V4.1 runs first, as the replacement primary. Nano runs
 after it, whatever V4.1's outcome. It covers the case where V4.1 is `not_a_lower_bound`, which the rubric answers with
@@ -242,19 +252,30 @@ is enforced, not only recorded: a database past its 180 days is refused, then pu
 | **The lane** | **≈ 1–2.5** | **`budget_usd` 5.00** |
 
 **The other experiments** have the same bounds (each its own `budget_usd` 5.00, `floor_cap_usd` 1.00 and `cap_usd`
-0.75), and their own expected cost:
+0.75; V4.1's overshoot margin is $0.10), and their own expected cost:
 - **`lbq-v1-deepseek-v4-1-flash`: ≈ $2–4.** V4.1 costs about 2× V4 per input token and 4.3× per output token, so a
-  step costs about $0.02–0.03. A long ceiling run can reach its $0.75 cap; it is then cut short (truncated, and left
-  out of behaviours 4 and 5), as the preregistration counts it.
+  step costs about $0.02–0.03.
+  - **Its $0.75 cap is expected to end ceiling runs at about 25–37 steps, before the 80-step limit.** The operator
+    chose on 2026-10-10, for cost reasons, to keep the $0.75 cap and the $5.00 budget, and the preregistration says
+    so.
+  - A run the cap ends is truncated, not finished, so it cannot show behaviours 4 (LBQ-2) and 5 (LBQ-3). For a case
+    with no finished run, `score` reports them as unobserved (`tree_behaviours_unobserved`), not as not shown, and a
+    V4.1 result that shows neither is inconclusive for them.
+  - Each run's `cost_cap_ended_at_step` in `score.json` shows where the cap ended it.
+  - With most runs at the cap, the floor plus six capped runs nearly use the $5.00, so the start gate may leave a late
+    cell or retry unrun (unobserved).
 - **`lbq-v1-gpt-5-nano`: ≈ $1–2.5.** Nano's input costs about a third of V4's and its output 1.4×, with reasoning
   tokens at high effort.
 
 **How the bound holds.**
 - Every attempt is charged its reported cost, or its cap when the cost is unknown or the run was lost.
-- An attempt starts only if `spent + its cap + 0.05 ≤ 5.00`. So the total stays within $5.00 provided each enforcement
-  poll overshoots by under $0.05. At V4's about $0.007 per step a poll covers a few steps; at V4.1's price, a poll
-  that ends on a burst of steps could overshoot by a few cents more. The provider balance is the hard stop: keep it
-  at $5 per experiment.
+- An attempt starts only if `spent + its cap + margin ≤ 5.00`. So the total stays within $5.00 provided each
+  enforcement poll (the raw arm's watcher polls every 15 s) overshoots by under the margin.
+  - At V4's (and Nano's) cost of about $0.007 per step, a poll covers a few steps, within the $0.05 margin.
+  - At V4.1's $0.02–0.03 per step, one poll can cover two or three steps, up to about $0.09. So V4.1's margin is
+    $0.10. The poll belongs to the shared harness driver that every experiment uses, so the margin is what changes.
+- **Keep about $5.50 on the provider balance for each $5.00 budget** (10% headroom, scaling with the budget). The lane's
+  own gate, which is recorded and auditable, then ends the spend, not an empty balance mid-turn.
 - The middle profile's floor (`gpt-6-luna#medium`, `OPENAI_API_KEY`) is a separate opt-in, ≈ $0.6 at most.
 
 ## Operator steps (the Rocky 8 VM)

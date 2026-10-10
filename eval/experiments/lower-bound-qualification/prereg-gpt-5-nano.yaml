@@ -240,6 +240,9 @@ amendment_policy: >-
   2026-10-10 to run it after lbq-v1-deepseek-v4-1-flash, not only if that one is not a lower bound: it covers that
   case, and it gives a second lower-bound data point from another model family for M4-H's choice. Its effort is high
   by the rule that pinned the DeepSeek profiles: the floor (AEW's bridge protocol) is a hard prerequisite, so a
-  lower-bound worker runs at the highest effort below its provider's maximum tier, and gpt-5-nano's variants
-  (minimal, low, medium, high) have no maximum tier above high. Nothing else changes: the cases, oracles, rubric,
-  schedule seed, limits and budget are lbq-v1-deepseek-v4-flash's.
+  lower-bound worker runs at the highest effort tier its provider offers, excluding an extended max tier where one
+  exists (DeepSeek offers low, high and max, so high); gpt-5-nano offers minimal, low, medium and high and has no
+  extended tier, so high. The trade-off: a higher effort gives the model its best chance at the floor, but can
+  suppress the weak-worker behaviours, which leans the result toward not_a_lower_bound, the conservative direction
+  for qualifying a stress specimen. Nothing else changes: the cases, oracles, rubric, schedule seed, limits and
+  budget are lbq-v1-deepseek-v4-flash's.

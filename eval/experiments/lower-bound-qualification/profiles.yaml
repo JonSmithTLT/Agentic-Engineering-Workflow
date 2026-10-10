@@ -160,8 +160,10 @@
       Variants offered: minimal, low, medium, high. Released 2025-08-07, a stable versioned id. Driven through
       OpenCode's own OpenAI provider package (@opencode/ai/providers/openai), so the Responses API, not chat
       completions (on which Zen refuses it as ModelProtocolUnsupported). Pinned to high by the rule that pinned the
-      DeepSeek profiles: the floor is a hard prerequisite, so a lower-bound worker runs at the highest effort below its
-      provider's maximum tier, and gpt-5-nano has no tier above high.
+      DeepSeek profiles: the floor is a hard prerequisite, so a lower-bound worker runs at the highest effort tier its
+      provider offers, excluding an extended max tier where one exists; gpt-5-nano has none, so high. The trade-off:
+      higher effort can suppress the weak-worker behaviours, leaning the result toward not_a_lower_bound (the
+      conservative direction).
   floor: {state: not_run}
   ceiling: {state: not_run}
   qualification_state: unqualified

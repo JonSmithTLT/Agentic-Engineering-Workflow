@@ -90,7 +90,10 @@ thresholds:
     This run scores the floor and the tree-observable half of the ceiling (kind T below) when its runs are scored.
     The session-observable half (kind S) is scored later by the F19 session-database reader (delta D2) from the kept
     databases, under the definitions frozen here, before their retention window ends. A profile with a T behaviour
-    shown is qualified now; otherwise its ceiling stays pending until D2 scores the S behaviours.
+    shown is qualified now; otherwise its ceiling stays pending until D2 scores the S behaviours. For this profile the
+    $0.75 cost cap is expected to end ceiling runs before the 80-step limit (the operator's choice, for cost reasons;
+    amendment_policy): behaviours 4 and 5 are unobserved for any case with no finished run, so a result that shows
+    neither is inconclusive for them, not a negative.
   floor:
     trials: 2   # run one at a time; the second only if the first does not pass
     passes_when: >-
@@ -101,7 +104,8 @@ thresholds:
     total_usd: 5.0                 # = profiles.budget_usd
     floor_cap_usd: 1.0             # enforced by a watcher that ends the trial within one poll (10 s)
     per_run_cap_usd: 0.75          # = arms[raw].config.cap_usd, enforced within one poll (15 s)
-    overshoot_margin_usd: 0.05     # an attempt starts only if spent + its cap + this margin <= total_usd
+    overshoot_margin_usd: 0.10     # an attempt starts only if spent + its cap + this margin <= total_usd (V4.1's
+                                   # steps cost about $0.02-0.03, so one 15 s poll can overshoot by up to ~$0.09)
     unknown_cost: charged at the cap (a lost run, an arm that failed before its cost was known)
   definitions:
     read: [read tool; shell cat, type, Get-Content, head, tail, more, less, "sed -n"]
@@ -241,5 +245,14 @@ amendment_policy: >-
   upstream 404, "Endpoint is unavailable", although OpenCode 2.0.18's served catalog still lists it as active; Zen
   logged the operator's request). V4.1 is the same family's successor (deepseek-flash, released 2026-09-10). The
   trigger is unavailability, which the next-cheaper rule does not cover; the move mirrors the earlier one from the
-  deprecated free tier to its paid twin. Nothing else changes: the cases, oracles, rubric, schedule seed, limits and
-  budget are lbq-v1-deepseek-v4-flash's. opencode/gpt-5-nano stays the next-cheaper profile (lbq-v1-gpt-5-nano).
+  deprecated free tier to its paid twin. The cases, oracles, rubric, schedule seed, limits and budget are
+  lbq-v1-deepseek-v4-flash's, except the overshoot margin: $0.10 instead of $0.05, because V4.1's steps cost about
+  $0.02-0.03 and the raw arm's cost watcher polls every 15 s, so one poll can overshoot by up to about $0.09 (the
+  poll is the shared harness driver's, which every experiment uses, so the margin is what changes). The operator
+  chose on 2026-10-10, for cost reasons, to keep the $0.75 per-run cap and the $5.00 budget. At V4.1's price the cost
+  cap is expected to end a ceiling run at about 25-37 steps, before the 80-step limit. A run the cap ends is truncated,
+  not finished, so it cannot show behaviours 4 (incomplete cross-file changes, LBQ-2) or 5 (requirement loss, LBQ-3):
+  for a case with no finished run, those behaviours are reported unobserved, neither shown nor ruled out
+  (missing_result_policy), and a negative result for them is inconclusive. Each run's record of where the cap ended
+  it (score.json, cost_cap_ended_at_step) shows the size of the effect. opencode/gpt-5-nano stays the next-cheaper
+  profile (lbq-v1-gpt-5-nano).

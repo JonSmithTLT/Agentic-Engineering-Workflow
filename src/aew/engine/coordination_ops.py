@@ -635,9 +635,11 @@ class Coordination:
 
         A thread's first complete line makes every directory entry it depends on durable, whoever created them: a
         writer retrying after a crashed first attempt finds the directory, an empty file or the marker already there,
-        and must still sync them (F13c, D-31; PR #160 review, m2). ``.aew/coordination/`` and ``.aew/`` are synced
-        before the append, so the marker is durable before the thread is; the thread's directory and its unit's
-        directory after it, before the message is reported recorded."""
+        and must still sync them (F13c, D-31; PR #160 review, m2). All of it happens before the first line is appended
+        (re-review R1): ``.aew/coordination/`` and ``.aew/`` first, so the marker is durable before the thread is; then
+        the thread file is created empty and its directory and its unit's directory are synced. So a complete line
+        always implies durable entries: a crash after the append leaves nothing to sync, and a retry answered as a
+        duplicate (``_existing``, which never reaches this method) needs no sync of its own."""
         validate("coordination-message", record, source=thread.rel)
         envelope = {"type": L.MESSAGE_LINE, "message": record}
         line = canonical_json({**envelope, "h": chained(thread.head, canonical_json(envelope))}) + b"\n"
@@ -649,14 +651,15 @@ class Coordination:
         if first and not published:  # a marker this writer just published is synced already
             util.fsync_dir(root / L.COORDINATION_DIR)
             util.fsync_dir(root)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if first:  # the file's entries are durable before its first line exists (PR #160 re-review, R1)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            open(path, "ab").close()  # create the file if absent; nothing is written
+            util.fsync_dir(path.parent)
+            util.fsync_dir(path.parent.parent)
         self.k.store.require_lock_intact()  # immediately before the repair and the append, the thread's two writes
         if thread.torn:
             _truncate(path, thread.complete)
         _append_line(path, line)
-        if first:
-            util.fsync_dir(path.parent)
-            util.fsync_dir(path.parent.parent)
         thread.messages.append(record)
         thread.lines += 1
         outbox.bump_wake(root)

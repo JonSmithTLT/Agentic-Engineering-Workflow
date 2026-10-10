@@ -389,29 +389,59 @@ def test_creating_a_thread_fsyncs_its_directory(w, monkeypatch):
     assert synced == []
 
 
-@pytest.mark.parametrize("leftover", ["directory", "empty_file", "torn_line"])
+@pytest.mark.parametrize("leftover", ["directory", "empty_file", "torn_line", "first_line_then_crash"])
 def test_a_retry_after_a_crashed_first_attempt_still_syncs_every_directory_entry(tmp_path, monkeypatch, leftover):
-    """F13c, D-31 (PR #160 review, m2): a first attempt that died after publishing the marker and making the
-    thread's directory (or its empty file, or a torn first line) left those entries on disk but not durable. The
-    retry's first complete line syncs them all: `.aew/coordination/` and `.aew/` before the append (the marker is
-    durable before the thread), the thread's directory and its unit's directory after it."""
+    """F13c, D-31 (PR #160 review, m2; re-review R1): whatever a crashed first attempt left behind, every directory
+    entry the thread depends on is synced before its first complete line exists: `.aew/coordination/` and `.aew/`
+    (the marker is durable before the thread), then the thread's directory and its unit's directory. The leftovers:
+    the marker and the thread's directory; also an empty file; also a torn first line; or the first line itself,
+    appended and synced, with the process dying right after. In the last case the syncs ran in the crashed attempt,
+    before its append, and the retry is answered as a duplicate with nothing left to sync."""
     w = world(tmp_path)
     aew = w.root / ".aew"
-    util.create_exclusive(aew / L.MARKER_REL, util.dump_yaml({"schema": L.MARKER_SCHEMA, "created_at": "then",
-                                                              "first_thread": w.inv}))
-    w.thread_path().parent.mkdir(parents=True)
-    if leftover != "directory":
-        w.thread_path().write_bytes(b"" if leftover == "empty_file" else b'{"h":"00","mess')
-    calls: list[str] = []
-    real = util.fsync_dir
+    events: list[tuple[str, bool]] = []  # (a directory synced, or "append"), and whether a complete line existed
+
+    def complete() -> bool:
+        return w.thread_path().is_file() and b"\n" in w.thread_path().read_bytes()
+
+    real_sync, real_append = util.fsync_dir, C._append_line
     monkeypatch.setattr(util, "fsync_dir", lambda p: (
-        calls.append(Path(p).resolve().relative_to(aew.resolve()).as_posix() or "."), real(p)))
-    w.send("after a crashed first attempt")
-    assert calls == [L.COORDINATION_DIR, ".", f"work/{w.wid}/coordination", f"work/{w.wid}"]
+        events.append((Path(p).resolve().relative_to(aew.resolve()).as_posix() or ".", complete())), real_sync(p)))
+    monkeypatch.setattr(C, "_append_line", lambda path, line: (events.append(("append", complete())),
+                                                               real_append(path, line)))
+    syncs = [L.COORDINATION_DIR, ".", f"work/{w.wid}/coordination", f"work/{w.wid}"]
+    body = "the instruction"
+    if leftover == "first_line_then_crash":
+        class Crash(BaseException):
+            """The process dies between the line's fsync and anything after it."""
+
+        def append_then_die(path, line):
+            events.append(("append", complete()))
+            real_append(path, line)
+            raise Crash
+
+        monkeypatch.setattr(C, "_append_line", append_then_die)
+        with pytest.raises(Crash):
+            w.send(body)
+        assert events == [(d, False) for d in syncs] + [("append", False)]  # synced before the first line existed
+        monkeypatch.setattr(C, "_append_line", lambda path, line: (events.append(("append", complete())),
+                                                                   real_append(path, line)))
+        events.clear()
+        assert w.send(body)["duplicate"]  # the retry is answered from the thread
+        assert events == []
+    else:
+        util.create_exclusive(aew / L.MARKER_REL, util.dump_yaml({"schema": L.MARKER_SCHEMA, "created_at": "then",
+                                                                  "first_thread": w.inv}))
+        w.thread_path().parent.mkdir(parents=True)
+        if leftover != "directory":
+            w.thread_path().write_bytes(b"" if leftover == "empty_file" else b'{"h":"00","mess')
+        events.clear()
+        assert not w.send(body)["duplicate"]
+        assert events == [(d, False) for d in syncs] + [("append", False)]
     assert [m["id"] for m in w.e.message_thread(w.inv)["messages"]] == [f"MSG-{w.inv}-1"]
-    calls.clear()
+    events.clear()
     w.send("a later message")
-    assert calls == []
+    assert events == [("append", True)]  # later appends sync no directory
 
 
 def test_a_writer_whose_control_lock_is_not_intact_writes_nothing(w, monkeypatch):

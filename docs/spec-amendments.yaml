@@ -222,6 +222,11 @@ considered:
     reason: >-
       adopted amendment (F9, 2026-10-09) of the live coordination design, itself a proposal outside the frozen set:
       Lead-worker messaging and adaptive supervision, preserving F9 v0.1's invariants; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-10-m6a-conflicts-and-codex.md
+    reason: >-
+      decision record (F38, F40, F21, F9, F24, 2026-10-10); the designer's D1 to D5: how the M6a authorization model's
+      conflicts with ADR-0009/ADR-0006, the knowledge adoption and ADR-0017 resolve when it is adopted (the ADR
+      amendments due with M6), and the Codex adapter's stance on compaction and steer; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

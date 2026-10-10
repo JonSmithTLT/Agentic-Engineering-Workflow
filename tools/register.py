@@ -33,21 +33,24 @@ conflicted in the markdown even when the YAML merged cleanly (PR #142 against ma
 and the blank lines around it separate it from its neighbours on the page, and in both YAML files a blank line follows
 every row and every item (``dump``), so changes to different rows merge in all four files, including a row added
 next to a row that another change edits, and GitHub's merge button (which runs no local merge driver) sees no conflict
-(``tests/unit/test_docs_merge.py`` proves it with real merges). The files also keep nothing that every change edits:
-the preamble carries no per-change log (the history is ``git log`` on the YAML; each row carries its own dates), and
-§Closed is kept in id order rather than closing order, so two changes that close different entries insert at
-different places; ``decisions-due.yaml`` is kept the same way, in (due, row) order, and two branches that add an item
-for the same row merge into a duplicate that ``check`` refuses. Two changes that each append a new row at the same
-place still conflict: both took the next free id, and the conflict is where they settle which keeps it. After every
-sync with main run ``render``, conflict or not: a clean merge can still leave §Closed or the items unsorted and the
-markdown stale, which only ``check`` (CI) catches. When a merge does conflict, run ``resolve``: it merges the YAML
-again from its three sides in the canonical layout and renders, so a conflict that only layout or order made goes
-away and a real one is left marked in the YAML. The markdown is derived and is never merged by hand.
+(``tests/unit/test_docs_merge.py`` proves it with real merges). The exception is two insertions at one place, which
+git conflicts on whatever the layout: two rows closed into the same gap of §Closed's id order (nothing closed sorts
+between F15.2 and F15.3, say), two new rows appended at one place (both took the next free id, which they must settle
+anyway), two new decisions-due items in one (due, row) gap. ``resolve`` settles all of these with one command. The
+files also keep nothing that every change edits: the preamble carries no per-change log (the history is ``git log`` on
+the YAML; each row carries its own dates), and §Closed is kept in id order rather than closing order, so closings in
+different gaps insert at different places; ``decisions-due.yaml`` is kept the same way, in (due, row) order, and two
+branches that add an item for the same row at different due points merge into a duplicate that ``check`` refuses.
+After every sync with main run ``render``, conflict or not: a clean merge can still leave §Closed or the items
+unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict, run ``resolve``: it
+merges the YAML again from its three sides row by row and cell by cell (not line by line), and renders, so only the
+same cell changed on both sides is left, marked in the YAML. The markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import re
 import subprocess
 import sys
@@ -246,9 +249,17 @@ def closed_order(section: dict[str, Any]) -> list[dict[str, Any]]:
     return gates + others
 
 
+def _settled(value: Any) -> Any:
+    """A cell or field without trailing newlines. A YAML literal block (``Notes: |``) ends in one, which the page
+    cannot carry (its paragraph ends there), and two or more make ``dump`` write a keep-chomping scalar that grows by
+    one newline on every ``render`` (review of PR #151, 4)."""
+    return value.rstrip("\n") if isinstance(value, str) else value
+
+
 def normalize(data: dict[str, Any]) -> dict[str, Any]:
-    """The data as ``render`` writes it: every Closed section in ``closed_order``."""
+    """The data as ``render`` writes it: no cell ends in a newline, and every Closed section is in ``closed_order``."""
     for section in data["sections"]:
+        section["rows"] = [{column: _settled(cell) for column, cell in row.items()} for row in section["rows"]]
         if section["title"].startswith("Closed"):
             section["rows"] = closed_order(section)
     return data
@@ -322,7 +333,8 @@ def due_key(item: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def normalize_due(due: dict[str, Any]) -> dict[str, Any]:
-    due["items"] = sorted(due.get("items") or [], key=due_key)
+    """The items as ``render`` writes them: in (due, row) order, no field ending in a newline."""
+    due["items"] = sorted(({k: _settled(v) for k, v in item.items()} for item in due.get("items") or []), key=due_key)
     return due
 
 
@@ -431,11 +443,96 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
+_ABSENT: Any = object()  # a key or row one side does not have
+# The lists merged entry by entry, and what identifies an entry: a section by its number, a row by its first cell (its
+# id), a decisions-due item by its row. Every other list (columns, blocks) is one value.
+_KEYED: dict[str, Any] = {"sections": lambda s: s.get("number"), "rows": lambda r: next(iter(r.values()), None),
+                          "items": lambda i: i.get("row")}
+_MARKER_RE = re.compile(r"^(<{7}|>{7})( |$)|^={7}$", re.M)
+
+
+def _keys(entries: list[Any], key: Any) -> list[tuple[Any, int]]:
+    """Each entry's key with its occurrence, so the repeated first cells (``Gate``, a gate's name) stay apart."""
+    seen: Counter[Any] = Counter()
+    out = []
+    for entry in entries:
+        k = key(entry) if isinstance(entry, dict) else repr(entry)
+        out.append((k, seen[k]))
+        seen[k] += 1
+    return out
+
+
+def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str], field: str = "") -> tuple[Any, ...]:
+    """A three-way merge of the register's data, by key rather than by line: the merged value as each side should see
+    it, ``(ours, base, theirs)``. The three agree wherever the merge is clean; where both sides changed the same value
+    differently they keep their own, and ``where`` is recorded in ``conflicts``. Mappings merge key by key (a row cell
+    by cell), the keyed lists entry by entry, so two rows closed into the same gap of §Closed, or added to the same
+    place, are two independent entries; normalizing afterwards puts them in order."""
+    if ours == theirs:
+        return ours, ours, ours
+    if ours == base:
+        return theirs, theirs, theirs
+    if theirs == base:
+        return ours, ours, ours
+    if isinstance(ours, dict) and isinstance(theirs, dict) and (base is _ABSENT or isinstance(base, dict)):
+        b = {} if base is _ABSENT else base
+        views: tuple[dict[str, Any], ...] = ({}, {}, {})
+        for k in [*ours, *(k for k in theirs if k not in ours), *(k for k in b if k not in ours and k not in theirs)]:
+            merged = _merge3(b.get(k, _ABSENT), ours.get(k, _ABSENT), theirs.get(k, _ABSENT), f"{where} {k}".strip(),
+                             conflicts, k)
+            for view, value in zip(views, merged, strict=True):
+                if value is not _ABSENT:
+                    view[k] = value
+        return views
+    if field in _KEYED and all(isinstance(v, list) for v in (base, ours, theirs)):
+        key = _KEYED[field]
+        b, o, t = ({k: e for k, e in zip(_keys(side, key), side, strict=True)} for side in (base, ours, theirs))
+        order = list(o)
+        for i, k in enumerate(t):  # an entry only theirs has goes after its predecessor there
+            if k not in order:
+                before = next((p for p in reversed(list(t)[:i]) if p in order), None)
+                order.insert(order.index(before) + 1 if before is not None else 0, k)
+        order += [k for k in b if k not in order]
+        views_l: tuple[list[Any], ...] = ([], [], [])
+        for k in order:
+            name = k[0] if not k[1] else f"{k[0]} ({k[1] + 1})"
+            merged = _merge3(b.get(k, _ABSENT), o.get(k, _ABSENT), t.get(k, _ABSENT), f"{where} {name}", conflicts)
+            for view, value in zip(views_l, merged, strict=True):
+                if value is not _ABSENT:
+                    view.append(value)
+        return views_l
+    conflicts.append(where or "the whole file")
+    return ours, base, theirs
+
+
+def merge_data(base: Any, ours: Any, theirs: Any, canonical: Any) -> tuple[str | None, list[str], tuple[str, ...]]:
+    """The merged YAML text when the sides merge cleanly by key, else None with the conflicts, and the three views'
+    canonical texts (each side's own value only where it conflicts) for a text merge that marks just those."""
+    conflicts: list[str] = []
+    views = _merge3(base if base is not None else _ABSENT, ours, theirs, "", conflicts)
+    texts = tuple(canonical(copy.deepcopy(v)) for v in views)
+    return (None if conflicts else texts[0]), conflicts, texts
+
+
+def _in_progress(root: Path) -> bool:
+    return any(_git(root, "rev-parse", "-q", "--verify", ref).returncode == 0
+               for ref in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD"))
+
+
 def resolve(root: Path = ROOT) -> int:
-    """Finish a merge that stopped on the register: merge each conflicted YAML file again from its three sides (the
-    merge base, ours and theirs), each first written as ``render`` writes it, then render. A conflict made only by
-    layout or order (a side from before a layout change, or §Closed sorted on one side only) goes away; a real one
-    stays in the YAML, marked, to resolve by hand before ``render``. The pages are never merged: they are rendered."""
+    """Finish a merge that stopped on the register. Each YAML file still in conflict is merged again from its three
+    sides (the merge base, ours and theirs) by key (``_merge3``): rows and items added, changed or closed on one side
+    apply, cell by cell, wherever they land, so the conflicts git reports for two insertions at one place (two rows
+    closed into the same gap of §Closed, say) and for layout or order go away. Then both pages are rendered. Only a
+    real conflict, the same cell or field changed differently on both sides, stays: marked in the YAML, with nothing
+    else marked, to fix by hand before ``render``. The pages are never merged: they are rendered.
+
+    It refuses outside a merge (or a cherry-pick, revert or rebase), and it never overwrites a resolution: a conflicted
+    YAML file with no conflict markers left was resolved by hand, and is kept."""
+    if not _in_progress(root):
+        print("no merge in progress: `resolve` finishes a merge that stopped on the register; outside one, use "
+              "`python tools/register.py render`", file=sys.stderr)
+        return 2
     yaml_path, _, due_yaml, _ = _paths(root)
     left = 0
     for path, canonical in ((yaml_path, lambda d: dump(normalize(d))), (due_yaml, lambda d: dump(normalize_due(d)))):
@@ -443,21 +540,36 @@ def resolve(root: Path = ROOT) -> int:
         ours, base, theirs = (_git(root, "show", f":{stage}:{rel}") for stage in (2, 1, 3))
         if ours.returncode or theirs.returncode:
             continue  # not in conflict
-        with tempfile.TemporaryDirectory() as tmp:
-            sides = []
-            for name, side in (("ours", ours), ("base", base), ("theirs", theirs)):
-                sides.append(Path(tmp) / name)  # an empty base when both sides added the file
-                sides[-1].write_text(canonical(yaml.safe_load(side.stdout)) if side.returncode == 0 else "",
-                                     encoding="utf-8", newline="\n")
-            merged = _git(root, "merge-file", "-p", "-L", "ours", "-L", "base", "-L", "theirs", *map(str, sides))
-        if merged.returncode < 0:
-            print(f"{rel}: git merge-file failed: {merged.stderr.strip()}", file=sys.stderr)
+        if path.exists() and not _MARKER_RE.search(path.read_text(encoding="utf-8")):
+            print(f"{rel}: already resolved (no conflict markers), kept: `git add` it once it is right")
+            continue
+        try:
+            sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
+        except yaml.YAMLError as e:
+            print(f"{rel}: a side is not valid YAML, nothing written: {e}", file=sys.stderr)
             return 2
-        path.write_text(merged.stdout, encoding="utf-8", newline="\n")
-        print(f"{rel}: " + (f"{merged.returncode} conflict(s) left, marked" if merged.returncode else "merged"))
-        left += merged.returncode
+        text, conflicts, views = merge_data(*sides, canonical=canonical)
+        if text is None:
+            with tempfile.TemporaryDirectory() as tmp:
+                files = [Path(tmp) / name for name in ("ours", "base", "theirs")]
+                for f, view in zip(files, views, strict=True):
+                    f.write_text(view, encoding="utf-8", newline="\n")
+                merged = _git(root, "merge-file", "-p", "-L", "ours", "-L", "base", "-L", "theirs", *map(str, files))
+            if merged.returncode < 0 or merged.returncode > 127 or not merged.stdout:  # 255: git failed, wrote nothing
+                print(f"{rel}: git merge-file failed (exit {merged.returncode}), nothing written: "
+                      f"{merged.stderr.strip()}", file=sys.stderr)
+                return 2
+            text = merged.stdout
+            if merged.returncode:
+                left += len(conflicts)
+                print(f"{rel}: {len(conflicts)} conflict(s) left, marked: " + "; ".join(conflicts))
+            else:  # the conflicting values differ on different lines of their text, which git merges line by line
+                print(f"{rel}: merged (line by line within " + "; ".join(conflicts) + ")")
+        else:
+            print(f"{rel}: merged")
+        path.write_text(text, encoding="utf-8", newline="\n")
     if left:
-        print("resolve the marked conflicts in the YAML, then run `python tools/register.py render`")
+        print("fix the marked conflicts in the YAML, then run `python tools/register.py render`")
         return 1
     render(root)
     print("resolved: `git add` the register's YAML and pages, then commit the merge")

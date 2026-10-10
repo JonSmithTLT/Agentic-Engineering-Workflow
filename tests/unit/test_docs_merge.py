@@ -1,4 +1,5 @@
-"""Changes to different rows of the shared status documents merge without conflict (operator, 2026-10-09).
+"""Changes to different rows of the shared status documents merge without conflict (operator, 2026-10-09), but
+for two insertions at one place (below).
 
 The register (`future-work.yaml`, rendered to `future-work.md` and `decisions-due.md` by `tools/register.py`) and
 `implementation-status.md` are edited by most pull requests. Git's three-way merge conflicts where both sides change
@@ -11,6 +12,10 @@ These tests merge real files with real git (`git merge-tree`, the merge GitHub r
 to neighbouring rows merge, and the merge is what rendering the merged YAML gives; the same cell changed on both sides
 still conflicts, and the table layout conflicted on the same changes, so the tests are not vacuous; and the register
 conflict of 2026-10-09 is replayed from this repository's history and no longer occurs.
+
+The exception, pinned here too: two insertions at one place (two rows closed into the same gap of §Closed's id order,
+two new rows appended at one place) conflict in git whatever the layout. For the register `register.py resolve`
+settles them, merging the YAML row by row and leaving only the same cell changed on both sides.
 """
 
 from __future__ import annotations
@@ -296,6 +301,104 @@ def test_resolve_finishes_merging_main_into_a_branch_from_before_the_block_layou
     assert register.resolve(repo.path) == 0, capsys.readouterr().out
     for rel, text in register_files(changed(main_data, first, columns[-1], " The branch's change.")).items():
         assert (repo.path / rel).read_text(encoding="utf-8") == text, rel
+
+
+def stopped_merge(repo: Repo, base: dict[str, str], ours: dict[str, str], theirs: dict[str, str]) -> None:
+    """A real `git merge` of ``theirs`` into ``ours`` in the scratch work tree, which must stop on a conflict."""
+    start = repo.commit(base)
+    branch, other = repo.commit(ours, start), repo.commit(theirs, start)
+    repo.git("checkout", "-q", "-f", "-B", "branch", branch)
+    assert repo.git("merge", "-q", "--no-edit", other, check=False).returncode != 0, "the merge stops"
+
+
+def closed_into(data: dict[str, Any], *ids: str) -> dict[str, Any]:
+    """The register with these open rows moved to §Closed."""
+    data = copy.deepcopy(data)
+    closed = section(data, 9)
+    for rid in ids:
+        for s in data["sections"]:
+            s["rows"] = [r for r in s["rows"] if next(iter(r.values())) != rid]
+        closed["rows"].append(dict(zip(closed["columns"], [rid, "Closed by this test", "2026-10-10", "Test"],
+                                       strict=True)))
+    return register.normalize(data)
+
+
+def same_gap(data: dict[str, Any]) -> tuple[str, str]:
+    """Two open rows of §2 that §Closed's id order puts into the same gap: no closed id sorts between them."""
+    closed = [register.id_key(next(iter(r.values()))) for r in section(data, 9)["rows"]]
+    ids = [next(iter(r.values())) for r in section(data, 2)["rows"]]
+    return next((a, b) for a, b in zip(ids, ids[1:], strict=False)
+                if not any(register.id_key(a) < c < register.id_key(b) for c in closed))
+
+
+def test_rows_closed_into_the_same_gap_conflict_in_git_and_resolve_merges_them(repo, capsys):
+    """The exception to "different rows merge" (review of PR #151, 1): two rows closed into the same gap of §Closed's id
+    order are two insertions at one place, which git always conflicts on, on GitHub's merge button too (as do two new
+    rows appended at one place, or two new decisions-due items in one gap). `resolve` merges the YAML row by row
+    instead, so one command settles it: both rows closed, nothing marked."""
+    a, b = same_gap(DATA)
+    ours, theirs = closed_into(DATA, a), closed_into(DATA, b)
+    base = repo.commit(register_files())
+    conflicts, _ = repo.merge(repo.commit(register_files(ours), base), repo.commit(register_files(theirs), base))
+    assert REG_YAML in conflicts and REG_MD in conflicts, "git conflicts on two insertions at one place"
+    stopped_merge(repo, register_files(), register_files(ours), register_files(theirs))
+    assert register.resolve(repo.path) == 0, capsys.readouterr().out
+    for rel, text in register_files(closed_into(DATA, a, b)).items():
+        assert (repo.path / rel).read_text(encoding="utf-8") == text, rel
+
+
+def test_resolve_marks_only_a_real_conflict_and_never_overwrites_a_resolution(repo, capsys):
+    """The same cell changed on both sides is the one thing `resolve` leaves: marked in the YAML, and only there (a
+    neighbouring change and a closing into the same gap merge). Run again after the YAML was fixed by hand, `resolve`
+    keeps the fix (review of PR #151, 2)."""
+    first, second = neighbours(DATA, 6)  # §6, so that neither row is one the closings move
+    columns = section(DATA, 6)["columns"]
+    a, b = same_gap(DATA)
+    ours = closed_into(changed(DATA, first, columns[-1], " Ours."), a)
+    theirs = closed_into(changed(changed(DATA, first, columns[-1], " Theirs."), second, columns[1], " Theirs too."), b)
+    stopped_merge(repo, register_files(), register_files(ours), register_files(theirs))
+    assert register.resolve(repo.path) == 1
+    out = capsys.readouterr().out
+    assert f"1 conflict(s) left, marked: sections 6 rows {first} {columns[-1]}" in out, out
+    marked = (repo.path / REG_YAML).read_text(encoding="utf-8")
+    assert marked.count("<<<<<<< ours") == 1 and " Theirs too." in marked
+    fixed = changed(changed(DATA, first, columns[-1], " Ours."), second, columns[1], " Theirs too.")
+    fixed = closed_into(fixed, a, b)
+    (repo.path / REG_YAML).write_text(register.dump(fixed), encoding="utf-8", newline="\n")
+    assert register.resolve(repo.path) == 0
+    assert "already resolved" in capsys.readouterr().out
+    for rel, text in register_files(fixed).items():
+        assert (repo.path / rel).read_text(encoding="utf-8") == text, rel
+
+
+def test_resolve_refuses_outside_a_merge(repo, capsys):
+    repo.commit(register_files())
+    page = (repo.path / REG_MD).read_text(encoding="utf-8")
+    (repo.path / REG_MD).write_text("edited by hand\n", encoding="utf-8")
+    assert register.resolve(repo.path) == 2
+    assert "no merge in progress" in capsys.readouterr().err
+    assert (repo.path / REG_MD).read_text(encoding="utf-8") == "edited by hand\n" != page
+
+
+def test_a_failed_git_merge_file_writes_nothing(repo, capsys, monkeypatch):
+    """`git merge-file` reports an error as exit 255 with nothing on stdout; `resolve` must not write that over the
+    YAML (review of PR #151, 3)."""
+    first, _ = neighbours(DATA, 2)
+    last = section(DATA, 2)["columns"][-1]
+    stopped_merge(repo, register_files(), register_files(changed(DATA, first, last, " Ours.")),
+                  register_files(changed(DATA, first, last, " Theirs.")))
+    before = (repo.path / REG_YAML).read_text(encoding="utf-8")
+    git = register._git
+
+    def failing(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        if args[0] == "merge-file":
+            return subprocess.CompletedProcess(["git", *args], 255, "", "error: could not read")
+        return git(root, *args)
+
+    monkeypatch.setattr(register, "_git", failing)
+    assert register.resolve(repo.path) == 2
+    assert "nothing written" in capsys.readouterr().err
+    assert (repo.path / REG_YAML).read_text(encoding="utf-8") == before
 
 
 # ------------------------------------------------------------------------------------------------ implementation status

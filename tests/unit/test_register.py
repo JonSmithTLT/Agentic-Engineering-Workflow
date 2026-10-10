@@ -50,6 +50,24 @@ def test_a_cell_written_over_several_lines_round_trips_and_one_that_would_split_
     assert any("one non-empty line" in p for p in register.problems(data))
 
 
+def test_a_cell_or_item_field_ending_in_newlines_is_settled_by_render():
+    """A YAML literal block (`Notes: |`) ends in a newline, which the page cannot carry; two or more made `dump` write a
+    keep-chomping scalar that grew on every render. `render` strips them, so the page parses back exactly and a second
+    render changes nothing (review of PR #151, 4)."""
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["Notes"] = yaml.safe_load("v: |\n  first line\n  second line\n")["v"]
+    data["sections"][1]["rows"][1]["Work"] += "\n\n\n"
+    settled = register.normalize(data)
+    assert settled["sections"][1]["rows"][0]["Notes"] == "first line\nsecond line"
+    assert register.parse_markdown(register.render_markdown(settled)) == settled
+    assert register.dump(register.normalize(yaml.safe_load(register.dump(settled)))) == register.dump(settled)
+    due = copy.deepcopy(DUE)
+    due["items"][-1]["what"] = "x\n\n"
+    text = register.dump(register.normalize_due(due))
+    assert yaml.safe_load(text)["items"][-1]["what"] == "x"
+    assert register.dump(register.normalize_due(yaml.safe_load(text))) == text
+
+
 def test_ids_are_unique_and_open_rows_carry_a_target():
     assert register.problems(DATA) == []
 

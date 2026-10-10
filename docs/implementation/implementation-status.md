@@ -16,7 +16,7 @@ This is operational metadata (WC Appendix C). It does not replace the workflow s
 
 ## Capabilities
 
-Each capability is a section of its own: a **Status** paragraph and an **Acceptance evidence / next action** paragraph, each on one line, with blank lines between, so that changes to different capabilities never touch neighbouring lines and merge without conflict (`tests/unit/test_docs_merge.py`). Add a capability as a new section where it belongs. No line records the last update: the history is `git log -- docs/implementation/implementation-status.md`.
+This is the status table of WC Appendix C, one section per capability: a **Status** paragraph and an **Acceptance evidence / next action** paragraph, each on one line, with blank lines between, so that changes to different capabilities never touch neighbouring lines and merge without conflict (`tests/unit/test_docs_merge.py`). Add a capability as a new section where it belongs: two added at the same place are the one case git still conflicts on. No line records the last update: the history is `git log -- docs/implementation/implementation-status.md`.
 
 ### AEW v0.7 design + KC v0.4
 

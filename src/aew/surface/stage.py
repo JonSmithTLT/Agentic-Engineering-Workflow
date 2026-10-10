@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew import errors
 from aew.engine import stage_intents as SI
+from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import JUDGMENT_BEARING, spec_for
 from aew.harness.contract import redact
 from aew.surface import contract
@@ -188,9 +189,20 @@ def availability(c: Call, primitive: str, args: dict[str, Any]) -> str:
 
 
 def guard_status(engine: Any, primitive: str, args: dict[str, Any]) -> tuple[str, list[str]]:
-    """:func:`availability`, with the reason codes of a guard that refuses (M4-E E4: ``Engine.guard_query``)."""
+    """:func:`availability`, with the reason codes of a guard that refuses, or of one that could not answer (M4-E E4:
+    ``Engine.guard_query``; ``GUARD_NOT_QUERYABLE``, ``GUARD_QUERY_DEFECT``, ``INTEGRITY_ERROR``, ...)."""
     answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
-    return answer["availability"], list(answer["reason_codes"]) if answer["availability"] == BLOCKED else []
+    return answer["availability"], [] if answer["availability"] == AVAILABLE else list(answer["reason_codes"])
+
+
+def _unknown_guard(reasons: list[str]) -> dict[str, Any]:
+    """The ``guard`` recheck when the guard could not answer: why, by its code (PR #170 re-review, finding 1)."""
+    if reasons == [GUARD_NOT_QUERYABLE]:
+        message = "its guard has no query form: its own commit decides"
+    else:
+        message = (f"its guard could not be asked now ({', '.join(reasons) or 'no reason given'}): its own commit "
+                   "decides")
+    return {"status": UNKNOWN_STATUS, "reason_codes": reasons, "message": message}
 
 
 def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
@@ -319,8 +331,7 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
         else:
             found, reasons = guard_status(engine, nxt["primitive"], args)
             checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
-                               UNKNOWN: {"status": UNKNOWN_STATUS, "message": "its guard has no query form: its "
-                                                                               "own commit decides"},
+                               UNKNOWN: _unknown_guard(reasons),
                                BLOCKED: {"status": "blocked", "reason_codes": reasons,
                                          "message": "its guard refuses it now"}}[found]
             checks["guard"]["availability"] = found

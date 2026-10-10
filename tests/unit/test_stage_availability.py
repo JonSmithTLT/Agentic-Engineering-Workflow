@@ -252,3 +252,21 @@ def test_the_agreement_check_binds_a_planner_that_differs():
 
     found = disagreements({"ticket_start": start})
     assert any("step 1 launch" in d for d in found) and any("step 3 to" in d for d in found)
+
+
+@pytest.mark.parametrize(("codes", "says"), [
+    (["GUARD_NOT_QUERYABLE"], "has no query form"),
+    (["GUARD_QUERY_DEFECT"], "could not be asked now (GUARD_QUERY_DEFECT)"),
+    (["INTEGRITY_ERROR"], "could not be asked now (INTEGRITY_ERROR)"),
+])
+def test_resume_says_why_a_guard_is_unknown_by_its_code(codes, says):
+    """PR #170 re-review, finding 1: an UNKNOWN guard recheck carries its reason codes, and its message says which
+    kind of UNKNOWN it is (no query form, a defect, a policy edit awaiting adoption), never only the first."""
+    from aew.surface import stage
+
+    engine = SimpleNamespace(guard_query=lambda primitive, work_id, args: {
+        "availability": UNKNOWN, "reason_codes": codes, "blocking_conditions": []})
+    found, reasons = stage.guard_status(engine, "work.transition", {"work_id": "T-0001"})
+    assert (found, reasons) == (UNKNOWN, codes)
+    check = stage._unknown_guard(reasons)
+    assert check["status"] == stage.UNKNOWN_STATUS and check["reason_codes"] == codes and says in check["message"]

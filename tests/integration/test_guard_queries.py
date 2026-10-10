@@ -360,7 +360,7 @@ def test_the_stage_rechecks_ask_the_migrated_guards(ready):
         BLOCKED, ["ILLEGAL_TRANSITION"])
     assert stage.guard_status(engine, "plan.propose", {"work_id": wid, "body": "b", "no_assurance": True,
                                                        "reason": "r"}) == (AVAILABLE, [])
-    assert stage.guard_status(engine, "verify.classify", {"work_id": wid})[0] == UNKNOWN
+    assert stage.guard_status(engine, "verify.classify", {"work_id": wid}) == (UNKNOWN, ["GUARD_NOT_QUERYABLE"])
     p.lead("work", "assign", wid)
     assert stage.guard_status(engine, "work.transition", {"work_id": wid, "to": "RUNNING"}) == (AVAILABLE, [])
 

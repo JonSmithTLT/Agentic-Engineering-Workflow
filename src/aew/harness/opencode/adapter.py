@@ -103,6 +103,7 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
         value = base.get(name)
         if value and not name.upper().startswith("AEW_") and not CREDENTIAL_RE.search(value):
             env[name] = value
+    agentenv.bypass_proxy_for_loopback(env)
     for kind in ("config", "data", "state", "cache"):
         directory = state_dir / f"xdg-{kind}"
         directory.mkdir(parents=True, exist_ok=True)

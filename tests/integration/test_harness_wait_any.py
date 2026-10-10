@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from aewflow import create_planned_ticket, sample_project
@@ -111,12 +112,22 @@ def test_several_runs_need_any_and_each_run_once(lab, tmp_path):
 
 def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeypatch):
     """OBX-38: wakes without a commit (a run-record write, a spurious bump) cost a stat, never a parse of
-    control.yaml; a commit costs exactly one."""
+    control.yaml; a commit costs exactly one, and commits that land between two checks cost one between them.
+
+    The second half has no time window: the commits land after the waiter's initial read, the test waits until the
+    waiter has parsed the last of them, then ends the wait through a run's own record, which costs no parse (register
+    E3, 2026-10-09: a fixed 4 s window closed before the commits on a loaded host)."""
     release = held(lab, tmp_path, RA, RB)
     engine = Engine.discover(lab.root)
-    reads = []
+    reads: list[int] = []  # the revision of each control state the waiter parsed
     real = engine.store.read
-    monkeypatch.setattr(engine.store, "read", lambda *a, **k: reads.append(1) or real(*a, **k))
+
+    def read(*a, **k):
+        snapshot = real(*a, **k)
+        reads.append(snapshot["revision"])
+        return snapshot
+
+    monkeypatch.setattr(engine.store, "read", read)
     stop = threading.Event()
 
     def bump() -> None:
@@ -131,18 +142,51 @@ def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeyp
     finally:
         stop.set()
         noise.join()
-    assert out["timed_out"] and len(reads) == 1, len(reads)  # the initial read only
+    assert out["timed_out"] and len(reads) == 1, reads  # the initial read only
     reads.clear()
-    committer = threading.Thread(target=lambda: (time.sleep(0.5), create_planned_ticket(lab.project, tmp_path,
-                                                                                       title="A commit")))
-    committer.start()
-    out = engine.harness_wait([RA, RB], any_=True, timeout=4.0)
-    committer.join()
-    assert out["timed_out"] and 2 <= len(reads) <= 1 + 6, len(reads)  # the initial read, then one per commit
+    over = threading.Event()
+    _record_ends_once(monkeypatch, over, RA)
+    result: dict[str, Any] = {}
+
+    def wait() -> None:
+        try:
+            result["out"] = engine.harness_wait([RA, RB], any_=True, timeout=300)  # a hang guard: `over` ends it
+        except BaseException as exc:  # noqa: BLE001 -- reported by the assertion below, not lost with the thread
+            result["error"] = exc
+
+    waiter = threading.Thread(target=wait, daemon=True)
+    waiter.start()
+    try:
+        lab.until(lambda: reads, what="the waiter's initial read")
+        create_planned_ticket(lab.project, tmp_path, title="A commit")  # several commits, all after that read
+        last = engine.store.read_committed()["revision"]
+        lab.until(lambda: reads[-1] >= last, what="the waiter to parse the last commit")
+    finally:
+        over.set()
+        outbox.bump_wake(lab.aew_root)
+        waiter.join(timeout=60)
+    assert not waiter.is_alive() and "out" in result, result
+    out = result["out"]
+    assert out["run"] == RA and not out["timed_out"] and "ended_by" not in out, out  # no commit ended the wait
+    commits = engine.store.read_committed()["revision"] - reads[0]
+    parses = reads[1:-1]  # between the initial read and the one taken once the wait is over
+    assert commits >= 2 and reads[-1] == reads[0] + commits, (commits, reads)
+    assert 1 <= len(parses) <= commits and parses == sorted(parses) and parses[-1] == reads[-1], (commits, reads)
+    monkeypatch.undo()
     for f in release.values():
         f.write_text("go", encoding="utf-8")
     lab.wait(RA)
     lab.wait(RB)
+
+
+def _record_ends_once(monkeypatch, over: threading.Event, run: str) -> None:
+    """The named run's own record reads ended once ``over`` is set: a test ends a wait without a commit."""
+    from aew.harness import runlog
+
+    real = runlog.observed_status
+    monkeypatch.setattr(runlog, "observed_status",
+                        lambda d, *a, **k: ("ended_without_evidence", None) if over.is_set() and Path(d).name == run
+                        else real(d, *a, **k))
 
 
 def _records_say_running(monkeypatch, *runs: str) -> None:

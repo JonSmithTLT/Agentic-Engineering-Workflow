@@ -6,7 +6,7 @@
   "repository": "sst/opencode",
   "tag": "v2.0.18",
   "commit": "cd9a14a6b688d4021bee381dfd39d2cef9c0f862",
-  "read_from": "the bundled JavaScript of the pinned 2.0.18 release CLI (OpenCode Desktop's version-specific copy, which reports version 2.0.18 from /api/info), and the pinned OpenAPI fixture. For items (a) to (f) the source tree was not fetched: the bundle is minified, so each of those citations is a searchable identifier, not a line, and the release's tie to the tag's commit is the tag, not a byte comparison. Afterwards, with the operator's approval, the summary agent's use and the model calls that record no usage (item b) were read in the tag's own source, cited as sst/opencode tag v2.0.18 with file and line (E23 to E33).",
+  "read_from": "the bundled JavaScript of the pinned 2.0.18 release CLI (OpenCode Desktop's version-specific copy, which reports version 2.0.18 from /api/info), and the pinned OpenAPI fixture. For items (a) to (f) the source tree was not fetched: the bundle is minified, so each of those citations is a searchable identifier, not a line, and the release's tie to the tag's commit is the tag, not a byte comparison. Afterwards, with the operator's approval, the summary agent's use and the model calls that record no usage (item b) were read in the tag's own source, cited as sst/opencode tag v2.0.18 with file and line (E23 to E35).",
   "binary_sha256": "78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668",
   "evidence": [
    {
@@ -289,7 +289,7 @@
     "file": "sst/opencode tag v2.0.18: packages/protocol/src/groups/session.ts",
     "lines": "706-717",
     "identifier": "HttpApiEndpoint.post(\"session.generate\", \"/api/session/:sessionID/generate\", {",
-    "says": "session generation is served as POST /api/session/:sessionID/generate (handler: packages/server/src/handlers/session.ts:587-590), and to plugins as ctx.session.generate (packages/core/src/session.ts:405-411)"
+    "says": "session generation is served as POST /api/session/:sessionID/generate (handler: packages/server/src/handlers/session.ts:587-590); its callers are listed in E34 and E35"
    },
    {
     "id": "E30",
@@ -299,7 +299,7 @@
     "file": "sst/opencode tag v2.0.18: packages/core/src/generate.ts",
     "lines": "38-73",
     "identifier": "const response = yield* llm.generate(LLM.request({ model: resolved.model, prompt: input.prompt })).pipe(",
-    "says": "a stateless generation on the requested or the default model, outside any session, served as POST /api/experimental/generate (packages/protocol/src/groups/generate.ts:8; handler packages/server/src/handlers/generate.ts:17-18); it records no usage anywhere"
+    "says": "a stateless generation on the requested or the default model, outside any session, served as POST /api/experimental/generate (packages/protocol/src/groups/generate.ts:8; handler packages/server/src/handlers/generate.ts:17-19) and to plugins (E35); it records no usage anywhere"
    },
    {
     "id": "E31",
@@ -309,7 +309,7 @@
     "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/warming.ts",
     "lines": "15-55",
     "identifier": "const warming = Config.latest(yield* config.entries(), \"warming\")",
-    "says": "the internal plugin opencode.warming (registered at packages/core/src/plugin/internal.ts:249) calls session generation (:49-50) every 4 minutes for 30 minutes after a session's turn, only when the configuration sets `warming` (off by default, :20-21); those calls record no usage (E28)"
+    "says": "the internal plugin opencode.warming (registered at packages/core/src/plugin/internal.ts:249) calls session generation (:49-50) only when the configuration sets `warming` (off by default, :20-21), and only for root sessions (a session with a parentID is skipped, :61); by default every 4 minutes for 30 minutes after a turn, both configurable (`interval`, `duration`, :9-13, :22); those calls record no usage (E28)"
    },
    {
     "id": "E32",
@@ -330,6 +330,26 @@
     "lines": "280-300, 401-429",
     "identifier": "evt.result = yield* utilityTitle(",
     "says": "for the github-copilot provider, when the title agent has no model, the title is made by the plugin's own /chat/completions call, and the title path returns that result before recording usage (packages/core/src/session/title.ts:73); title and compaction usage is recorded only when the provider reported it (title.ts:57-64; packages/core/src/session/compaction.ts:435-443, 556-563, 610-618)"
+   },
+   {
+    "id": "E34",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/tui/src/feature-plugins/prompt/btw.tsx",
+    "lines": "57, 69",
+    "identifier": ".generate({ sessionID: route.sessionID, prompt: [instructions, question].join(\"\\n\\n\") })",
+    "says": "the first-party `/btw` side question calls session generation over HTTP: in the TUI, a built-in plugin (packages/tui/src/plugin/builtins.ts:2) with the slash command `btw`, and in the app (packages/app/src/session/btw/model.ts:67); it is on by default and user-initiated"
+   },
+   {
+    "id": "E35",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/host.ts",
+    "lines": "272, 535",
+    "identifier": "generate: (input) => sessions.generate(input).pipe(Effect.map((text) => ({ text }))),",
+    "says": "the plugin host gives every plugin session generation (:535) and the stateless generation (:272), also through the promise adapter (packages/plugin/src/promise/adapter.ts:340, :586); with the server handlers (E29, E30), the warming plugin (E31) and `/btw` (E34), these are all the callers of both entry points in the tag"
    }
   ]
  },
@@ -384,9 +404,11 @@
     "E30",
     "E31",
     "E33",
+    "E34",
+    "E35",
     "E10"
    ],
-   "says": "Some model calls record no usage in 2.0.18, so no message and no total carries them and the meter cannot see them: session generation (POST /api/session/:sessionID/generate, and the `warming` plugin, which calls it when the configuration sets `warming`, off by default); the stateless POST /api/experimental/generate; the github-copilot utility title (only when the title agent has no model); title and compaction calls whose provider reported no usage; and an interrupted step before the provider's finish (E10). Their usage is outside every live figure; the provider reconciliation (Q7 v0.3.1 \u00a79.1) is the backstop."
+   "says": "Some model calls record no usage in 2.0.18, so no message and no total carries them and the meter cannot see them: session generation, whose callers are POST /api/session/:sessionID/generate, the first-party `/btw` side question in the TUI and the app (on by default, user-initiated), the plugin host's session.generate, and the `warming` plugin (when the configuration sets `warming`, off by default, root sessions only); the stateless generation, whose callers are POST /api/experimental/generate and the plugin host's generate.text; the github-copilot utility title (only when the title agent has no model); title and compaction calls whose provider reported no usage; and an interrupted step before the provider's finish (E10). Their usage is outside every live figure; the provider reconciliation (Q7 v0.3.1 \u00a79.1) is the backstop."
   },
   {
    "item": "c",

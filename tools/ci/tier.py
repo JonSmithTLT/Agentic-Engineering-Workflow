@@ -30,6 +30,7 @@ import ast
 import json
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
@@ -76,6 +77,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 FORCED_MESSAGE = ("`full-ci` is set but this run took a reduced tier: Re-run all jobs (or push a `CI-Full: yes` "
                   "commit).")
+# The forced flag could not be read in the recompute (a `gh api` or git failure): not the author's label (PR #163
+# review, V7-1).
+UNREADABLE_MESSAGE = ("the forced flag could not be read (the `gh api` label call or git failed), so the recompute is "
+                      "full and this run took a reduced tier: Re-run all jobs.")
 
 
 def classify_path(path: str) -> str:
@@ -288,16 +293,17 @@ def covers(ran: str, recomputed: str) -> bool:
     return ran in TIERS and (ran == recomputed or ran == "full")
 
 
-def job_problems(tier: str, results: dict[str, str]) -> list[str]:
+def job_problems(tier: str, results: dict[str, str], modules_changed: bool = True) -> list[str]:
     """Why the jobs ``assurance`` needs do not satisfy ``tier``: every one succeeded, except ``lanes``, which is
-    skipped exactly when the tier is known and reduced, and ``fastbase``, which must succeed in the ``fast`` tier and
-    may have any result in every other (V6-1). An unknown tier requires everything else. Python, not a shell ``&&``
-    chain, whose middle failures ``bash -e`` ignores (review of PR #99, finding 1)."""
+    skipped exactly when the tier is known and reduced, and ``fastbase``, which must succeed in the ``fast`` tier when
+    a fast-lane test module changed (the premise needs it; with only docs and durations it does not run: PR #163
+    review, V7-2) and may have any result otherwise (V6-1). An unknown tier requires everything else. Python, not a
+    shell ``&&`` chain, whose middle failures ``bash -e`` ignores (review of PR #99, finding 1)."""
     problems = []
     for job in JOBS:
         got = results.get(job, "missing")
         if job == "fastbase":
-            if tier == "fast" and got != "success":
+            if tier == "fast" and modules_changed and got != "success":
                 problems.append(f"base footprint unknown (`fastbase`: {got}): add `full-ci`, then Re-run all jobs.")
             continue
         want = "skipped" if job == "lanes" and tier in REDUCED else "success"
@@ -389,15 +395,20 @@ def forced_by_trailer(merge_ref: str) -> bool | None:
 
 
 def live_labels(repo: str, pr: str) -> list[str] | None:
-    """The pull request's labels now (not the event's copy), or ``None`` if they cannot be read."""
+    """The pull request's labels now (not the event's copy), or ``None`` if they cannot be read. One retry: a
+    transient API failure would otherwise make the run full (PR #163 review, V7-1). Up to 100 labels (V7-5)."""
     if not repo or not pr:
         return None
-    try:
-        out = _run(["gh", "api", f"repos/{repo}/issues/{pr}/labels", "--jq", ".[].name"]).stdout
-    except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"tier: cannot read the labels of {repo}#{pr}: {exc}", file=sys.stderr)
-        return None
-    return [line.strip() for line in out.splitlines() if line.strip()]
+    for attempt in (1, 2):
+        try:
+            out = _run(["gh", "api", f"repos/{repo}/issues/{pr}/labels?per_page=100", "--jq", ".[].name"]).stdout
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"tier: cannot read the labels of {repo}#{pr} (attempt {attempt}): {exc}", file=sys.stderr)
+            if attempt == 1:
+                time.sleep(3)
+            continue
+        return [line.strip() for line in out.splitlines() if line.strip()]
+    return None
 
 
 # ------------------------------------------------------------------ the command line
@@ -424,7 +435,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.jobs_for is not None:
         results = dict(pair.split("=", 1) for pair in args.jobs.split(",") if "=" in pair)
         checks = dict(pair.split("=", 1) for pair in args.checks.split(",") if "=" in pair)
-        problems = job_problems(args.jobs_for, results)
+        # fastbase is excused only by an explicit "false": unknown means a module may have changed (fail closed)
+        problems = job_problems(args.jobs_for, results, args.modules_changed != "false")
         problems += check_problems(args.jobs_for, args.modules_changed == "true", checks)
         print(f"jobs: {args.jobs or '-'} (tier {args.jobs_for or 'unknown'})")
         for p in problems:
@@ -444,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
             module_lanes, why = merge_module_lanes(args.merge_ref, paths)
             reasons += [f"{p}: {w}" for p, w in sorted(why.items())]
     forced = False
+    unreadable = False
     reduced = decide(args.event, paths, args.base_ref, module_lanes) != "full"
     if reduced:  # the forced flag only matters when the paths alone would reduce the run
         trailer = forced_by_trailer(args.merge_ref) if args.merge_ref else False
@@ -452,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             labels = live_labels(args.repo, args.pr)
         if trailer is None or labels is None:
-            forced = True
+            forced = unreadable = True
             reasons.append("the forced flag cannot be read (label or trailer): full")
         elif trailer or FORCE_LABEL in labels:
             forced = True
@@ -486,9 +499,13 @@ def main(argv: list[str] | None = None) -> int:
                                                else fast_kind(p) for p in paths or [] if fast_kind(p)}}
         args.record.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
     if args.ran is not None and not covers(args.ran, tier):
-        print(FORCED_MESSAGE if forced and args.ran in REDUCED else
-              f"tier: the jobs ran under {args.ran or 'an unknown tier'}, narrower than the recomputed {tier}",
-              file=sys.stderr)
+        if unreadable and args.ran in REDUCED:
+            print(UNREADABLE_MESSAGE, file=sys.stderr)
+        elif forced and args.ran in REDUCED:
+            print(FORCED_MESSAGE, file=sys.stderr)
+        else:
+            print(f"tier: the jobs ran under {args.ran or 'an unknown tier'}, narrower than the recomputed {tier}",
+                  file=sys.stderr)
         return 1
     return 0
 

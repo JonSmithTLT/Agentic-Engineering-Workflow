@@ -122,4 +122,8 @@ jobs:
         run: |
           echo "parallel: $PARALLEL, serial: $SERIAL"
           python tools/ci/unit_isolation_audit.py --check audit
+          # A shard that stopped at collection or crashed still writes a clean report: every audited job must have
+          # succeeded, so a clean audit means every heavy test ran under the hook (PR #163 review, V7-4).
+          test "$PARALLEL" = success
+          test "$SERIAL" = success
           test "$(ls audit | wc -l)" = 22

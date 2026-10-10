@@ -384,7 +384,7 @@ FAST = {**REDUCED, "fastbase": "success"}
     ("full", {k: v for k, v in GREEN.items() if k != "static"}, False),  # a needed job missing
     ("fast", FAST, True),
     ("fast", {**FAST, "fastbase": "failure"}, False),  # the base footprint is unknown
-    ("fast", {**FAST, "fastbase": "skipped"}, False),
+    ("fast", {**FAST, "fastbase": "skipped"}, False),  # (a module changed: --jobs-for's default)
     ("fast", {**FAST, "lanes": "success"}, False),
     ("fast", {**FAST, "web": "failure"}, False),
     ("full", {**GREEN, "fastbase": "failure"}, True),  # a shadow run: fastbase ran on the decision, the run is full
@@ -452,42 +452,61 @@ def _inner_paths(tree: ast.AST) -> set[int]:
     return inner
 
 
-def path_references(source: str) -> list[tuple[str, str, bool]]:
-    """The repository references a module makes (plan v7 §3.3), as (text, kind, relative to the file):
+FILE_HEAD = re.compile(r"^(?:Path|pathlib\.Path)\(__file__\)(?:\.resolve\(\)|\.absolute\(\))?"
+                       r"(?P<up>(?:\.parent)*)(?:\.parents\[(?P<n>\d+)\])?$")
+
+
+def _anchor(head: ast.AST | None) -> str:
+    """Where a path expression's literal parts resolve: ``root`` (the repository, also for ``ROOT``-like names and
+    plain literals), ``file:N`` (N directories up from the file: ``Path(__file__).parent`` is 1, ``.parents[1]`` 2),
+    or ``file`` (relative to the file in a way not computed here: every directory from the file's up to the root)."""
+    if head is None:
+        return "root"
+    text = ast.unparse(head)
+    if "__file__" not in text:
+        return "root"
+    m = FILE_HEAD.match(text)
+    if not m:
+        return "file"
+    return f"file:{m.group('up').count('.parent') + (int(m.group('n')) + 1 if m.group('n') else 0)}"
+
+
+def path_references(source: str, allowed: frozenset[str] = frozenset()) -> list[tuple[str, str, str]]:
+    """The repository references a module makes (plan v7 §3.3), as (text, kind, anchor):
 
     - a string constant with at least one ``/`` (``"eval/m3/dogfood"``; docstrings excluded);
-    - a path expression of two or more literal parts, or of one or more rooted at a repository-root expression
-      (``ROOT``, ``parents[n]``, ``Path(__file__)...``);
-    - a glob: ``.glob``/``.rglob`` with a literal pattern on such an expression or on a repository root, and
-      ``glob.glob``/``glob.iglob`` with a literal pattern.
+    - a path expression of two or more literal parts, or rooted at a repository-root expression (``ROOT``,
+      ``parents[n]``, ``Path(__file__)...``), its first part literal or not;
+    - a glob: ``.glob``/``.rglob`` on such an expression or on a repository root, and ``glob.glob``/``glob.iglob``,
+      the pattern literal or not.
 
-    ``exact`` names a file or a directory and covers everything below it; ``prefix`` (a non-literal tail) covers
-    everything below its literal prefix; a glob covers what its pattern matches (``**`` or ``rglob``: everything below
-    its literal prefix). A bare one-word string (``"docs"``) is not a reference, and neither is a wildcard string
-    that no glob reads: ``"docs/**"`` passed as a fixture project's scope, ``"**/"`` in a glob translator."""
+    ``exact`` names a file or a directory and covers everything below it; ``prefix`` (a non-literal tail, a
+    non-literal glob pattern) covers everything below its literal base; a literal glob covers what its pattern
+    matches (``**`` or ``rglob``: everything below its literal prefix). A bare one-word string (``"docs"``) is not a
+    reference, and neither is a wildcard string that no glob reads: ``"docs/**"`` passed as a fixture project's
+    scope, ``"**/"`` in a glob translator. The anchor is where the reference resolves (``_anchor``). A rooted
+    expression with no literal base that is known not to read the repository widely is listed in ``allowed``
+    (``NONLITERAL_ALLOWED``), by its source text."""
     tree = ast.parse(source)
     docs, inner = _docstrings(tree), _inner_paths(tree)
-    refs: list[tuple[str, str, bool]] = []
+    refs: list[tuple[str, str, str]] = []
 
-    def literal(text: str, open_tail: bool) -> tuple[str, str]:
-        return text.replace("\\", "/").removeprefix("./").rstrip("/"), "prefix" if open_tail else "exact"
-
-    def glob(base: str, pattern: str, recursive: bool, from_file: bool) -> None:
+    def glob(base: str, pattern: str, recursive: bool, anchor: str) -> None:
         pattern = pattern.replace("\\", "/").removeprefix("./")
         full = f"{base}/{pattern}" if base else pattern
         if recursive or "**" in full:
             head = full.split("**", 1)[0]
             name = full.rsplit("/", 1)[-1]  # any depth below the literal prefix, by the pattern's last part
-            refs.append((f"{head.rstrip('/')}/**/{name}" if head.rstrip("/") else f"**/{name}", "rglob", from_file))
+            refs.append((f"{head.rstrip('/')}/**/{name}" if head.rstrip("/") else f"**/{name}", "rglob", anchor))
         else:
-            refs.append((full, "glob", from_file))
+            refs.append((full, "glob", anchor))
 
-    def chain(node: ast.AST) -> tuple[list[str], bool, bool, bool] | None:
-        """(literal parts, rooted, relative to the file, open tail) of a path expression."""
+    def chain(node: ast.AST) -> tuple[list[str], bool, str, bool] | None:
+        """(literal parts, rooted, anchor, open tail) of a path expression, or of a bare repository root."""
         parts = _path_parts(node)
         if parts is None:
             if ROOT_HEAD.search(ast.unparse(node)):
-                return [], True, "__file__" in ast.unparse(node), False
+                return [], True, _anchor(node), False
             return None
         head = None if _is_str(parts[0]) else parts.pop(0)
         lits: list[str] = []
@@ -498,35 +517,45 @@ def path_references(source: str) -> list[tuple[str, str, bool]]:
                 break
             lits.append(part.value)  # type: ignore[attr-defined]
         rooted = head is not None and bool(ROOT_HEAD.search(ast.unparse(head)))
-        return lits, rooted, head is not None and "__file__" in ast.unparse(head), open_tail
+        return lits, rooted, _anchor(head), open_tail
+
+    def joined(lits: list[str]) -> str:
+        return "/".join(p.strip("/") for p in lits).replace("\\", "/").removeprefix("./")
 
     for node in ast.walk(tree):
         if _is_str(node) and id(node) not in docs:
             text = node.value.strip()  # type: ignore[attr-defined]
             if ("/" in text and not any(c.isspace() for c in text) and "://" not in text and not text.startswith("/")
                     and not any(c in text for c in "*?[")):
-                refs.append((*literal(text, False), False))
+                refs.append((text.replace("\\", "/").removeprefix("./").rstrip("/"), "exact", "root"))
         if id(node) not in inner and _path_parts(node) is not None:
             found = chain(node)
-            if found and found[0]:
-                lits, rooted, from_file, open_tail = found
-                joined = "/".join(p.strip("/") for p in lits)
-                if len(lits) >= 2 or "/" in joined or rooted:
-                    refs.append((*literal(joined, open_tail), from_file))
-        if not (isinstance(node, ast.Call) and node.args and _is_str(node.args[0])):
+            if found:
+                lits, rooted, anchor, open_tail = found
+                base = joined(lits)
+                if lits and (len(lits) >= 2 or "/" in base or rooted):
+                    refs.append((base, "prefix" if open_tail else "exact", anchor))
+                elif rooted and open_tail and ast.unparse(node) not in allowed:
+                    refs.append(("", "prefix", anchor))  # ROOT / name: everything below the root (PR #163, V7-3)
+        if not isinstance(node, ast.Call):
             continue
-        pattern = node.args[0].value  # type: ignore[attr-defined]
-        if ast.unparse(node.func) in ("glob.glob", "glob.iglob"):
-            glob("", pattern, any(k.arg == "recursive" for k in node.keywords), False)
-        elif isinstance(node.func, ast.Attribute) and node.func.attr in ("glob", "rglob"):
+        literal_pattern = bool(node.args) and _is_str(node.args[0])
+        pattern = node.args[0].value if literal_pattern else None  # type: ignore[attr-defined]
+        if ast.unparse(node.func) in ("glob.glob", "glob.iglob") and node.args:
+            if pattern is not None:
+                glob("", pattern, any(k.arg == "recursive" for k in node.keywords), "root")
+            elif ast.unparse(node) not in allowed:  # an unknown pattern may name anything below the root
+                refs.append(("", "prefix", "root"))
+        elif isinstance(node.func, ast.Attribute) and node.func.attr in ("glob", "rglob") and node.args:
             found = chain(node.func.value)
             if found and (found[1] or len(found[0]) >= 2):
-                lits, _, from_file, open_tail = found
-                base = "/".join(p.strip("/") for p in lits)
-                if open_tail:
-                    refs.append((base, "prefix", from_file))
+                lits, _, anchor, open_tail = found
+                base = joined(lits)
+                if open_tail or pattern is None:  # everything below the receiver's literal base (V7-3)
+                    if base or ast.unparse(node) not in allowed:
+                        refs.append((base, "prefix" if not base else "exact", anchor))
                 else:
-                    glob(base, pattern, node.func.attr == "rglob", from_file)
+                    glob(base, pattern, node.func.attr == "rglob", anchor)
     return refs
 
 
@@ -538,9 +567,9 @@ def _tracked() -> list[str]:
     return [p for p in out.split("\0") if p]
 
 
-def covered(refs: list[tuple[str, str, bool]], source: Path, tracked: list[str]) -> set[str]:
-    """The tracked files the references cover. A reference resolves against the repository root and, when it is
-    relative to ``__file__``, against every directory from the file's up to the root."""
+def covered(refs: list[tuple[str, str, str]], source: Path, tracked: list[str]) -> set[str]:
+    """The tracked files the references cover. ``root`` resolves against the repository root, ``file:N`` against
+    the directory N levels above the file, ``file`` against every directory from the file's up to the root."""
     import fnmatch
     import posixpath
 
@@ -549,8 +578,18 @@ def covered(refs: list[tuple[str, str, bool]], source: Path, tracked: list[str])
     while ancestors[-1]:
         ancestors.append(posixpath.dirname(ancestors[-1]))
     out: set[str] = set()
-    for text, kind, from_file in refs:
-        for base in (ancestors if from_file else [""]):
+    for text, kind, anchor in refs:
+        if anchor == "root":
+            bases = [""]
+        elif anchor == "file":
+            bases = ancestors
+        else:
+            up = int(anchor.split(":")[1])
+            base = rel
+            for _ in range(up):
+                base = posixpath.dirname(base) if base else ".."
+            bases = [base]
+        for base in bases:
             full = posixpath.normpath(posixpath.join(base, text)) if text or base else ""
             full = "" if full == "." else full + ("/" if text.endswith("/") else "")
             if full.startswith(".."):
@@ -571,6 +610,16 @@ def covered(refs: list[tuple[str, str, bool]], source: Path, tracked: list[str])
 # and the frontend importer by tests/unit/test_dashboard_static.py (both fast lane); eval/reviews holds archived
 # review probes kept as they ran, which nothing executes.
 CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py")
+# Rooted expressions without a literal base that do not read the repository widely (PR #163 review, V7-3), by file
+# and source text. Each needs its reason; anything new of this shape fails the guard until it is listed or rewritten.
+_CONTRACT = "ROOT / CT.CONTRACT_REL"  # the dashboard contract: its literal path is in src/aew/dashboard/contract.py,
+# which the guard reads (it is `full` through tier.SHARED)
+NONLITERAL_ALLOWED: dict[str, frozenset[str]] = {
+    **{f"tests/integration/test_dashboard_{name}.py": frozenset({_CONTRACT})
+       for name in ("acceptance", "api", "conditional", "security", "session")},
+    # DEBRIEF_ROOT is a directory under the system temp directory, not the repository
+    "eval/m3/dogfood/dogfood.py": frozenset({"DEBRIEF_ROOT / name / 'lead-1'"}),
+}
 
 
 def non_core_sources() -> list[Path]:
@@ -590,11 +639,11 @@ def reduced_readers(sources: list[Path]) -> tuple[set[str], list[str]]:
     problems = []
     for f in sources:
         try:
-            refs = path_references(f.read_text(encoding="utf-8"))
+            label = f.relative_to(ROOT).as_posix()
+            refs = path_references(f.read_text(encoding="utf-8"), NONLITERAL_ALLOWED.get(label, frozenset()))
         except SyntaxError as exc:
             problems.append(f"{f.relative_to(ROOT).as_posix()}: cannot be parsed ({exc})")
             continue
-        label = f.relative_to(ROOT).as_posix()
         for path in covered(refs, f, tracked):
             named.add(path)
             if tier.classify_path(path) != "full":
@@ -638,7 +687,7 @@ def test_the_hardened_docs_guard_names_the_two_cases_that_tripped_its_first_word
     ('P = ROOT / "docs" / "README.md"\n', "docs/README.md"),
     ('P = ROOT / "docs"\n', "docs/README.md"),  # rooted: one part names a directory
     ('P = ROOT / "README.md"\n', "README.md"),  # root-level Markdown
-    ('P = Path(__file__).resolve().parents[3] / "docs"\n', "docs/README.md"),
+    ('P = Path(__file__).resolve().parents[2] / "docs"\n', "docs/README.md"),  # tests/integration -> the root
     ('P = ROOT.joinpath("docs", "README.md")\n', "docs/README.md"),
     ('P = ROOT / "docs" / name\n', "docs/README.md"),  # a non-literal tail covers everything below
     ('P = glob.glob("docs/*.md")\n', "docs/README.md"),
@@ -646,10 +695,27 @@ def test_the_hardened_docs_guard_names_the_two_cases_that_tripped_its_first_word
     ('P = ROOT.glob("*.md")\n', "README.md"),
     ('P = (ROOT / "docs").rglob("*.md")\n', "docs/README.md"),
     ('P = tmp / "docs" / "README.md"\n', "docs/README.md"),  # two literal parts: resolved against the root
+    # PR #163 review, V7-3: what is read is not known here, so everything below the literal base is
+    ('PATTERN = "docs/**/*.md"\nP = sorted(ROOT.glob(PATTERN))\n', "docs/README.md"),
+    ('P = (ROOT / "docs").rglob(pattern)\n', "docs/README.md"),
+    ('P = glob.glob(pattern)\n', "docs/README.md"),
+    ('P = ROOT / name\n', "README.md"),
+    ('P = Path(__file__).resolve().parents[2] / name\n', "docs/README.md"),  # tests/integration -> the root
 ])
 def test_the_hardened_docs_guard_sees_every_spelling_of_a_reference(source, reads):
     here = ROOT / "tests" / "integration" / "test_sample.py"
     assert reads in covered(path_references(source), here, _tracked())
+
+
+def test_a_listed_rooted_expression_is_exempt_and_nothing_else_is():
+    here = ROOT / "tests" / "integration" / "test_sample.py"
+    source = "P = ROOT / CT.CONTRACT_REL\nQ = ROOT / other\n"
+    allowed = path_references(source, frozenset({"ROOT / CT.CONTRACT_REL"}))
+    assert len(allowed) == 1 and "README.md" in covered(allowed, here, _tracked())  # Q is still seen
+    assert len(path_references(source)) == 2
+    assert path_references("P = Path(__file__).parent / name\n") == [("", "prefix", "file:1")]
+    assert "tests/integration/test_sample.py" not in covered(  # the file's own directory, not the root
+        [("", "prefix", "file:1")], ROOT / "tests" / "regression" / "test_x.py", ["tests/integration/test_sample.py"])
 
 
 @pytest.mark.parametrize("source", ['P = "docs"\n', 'P = tmp / "README.md"\n', 'def f():\n    """docs/README.md"""\n',
@@ -1253,6 +1319,56 @@ def test_the_labels_unread_is_full(tmp_path, monkeypatch):
     assert "decision=full\n" in out.read_text(encoding="utf-8")
 
 
+def test_fastbase_is_required_only_when_a_fast_lane_test_module_changed():
+    """PR #163 review, V7-2: a fast decision with only docs and tests/durations.json has no premise, so fastbase does
+    not run and is not required; with a changed module it must succeed."""
+    skipped = {**FAST, "fastbase": "skipped"}
+    assert tier.job_problems("fast", skipped, modules_changed=False) == []
+    assert tier.job_problems("fast", skipped, modules_changed=True) != []
+    jobs = ",".join(f"{k}={v}" for k, v in skipped.items())
+    assert tier.main(["--jobs-for", "fast", "--jobs", jobs, "--modules-changed", "false"]) == 0
+    assert tier.main(["--jobs-for", "fast", "--jobs", jobs, "--modules-changed", "true", "--checks",
+                      "lanecheck=success,premise=success"]) == 1
+
+
+def test_an_unreadable_label_in_the_recompute_says_so_and_is_retried_once(tmp_path, monkeypatch, capsys):
+    """PR #163 review, V7-1 and V7-5: a gh api failure is not a `full-ci` label. The call is retried once, reads up to
+    100 labels, and when it still fails the recompute says the flag could not be read."""
+    import subprocess
+
+    calls: list[list[str]] = []
+
+    def failing(cmd: list[str]):
+        calls.append(cmd)
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(tier, "_run", failing)
+    monkeypatch.setattr(tier.time, "sleep", lambda s: None)
+    assert tier.live_labels("o/r", "7") is None
+    assert len(calls) == 2 and calls[0][2] == "repos/o/r/issues/7/labels?per_page=100"
+
+    def flaky(cmd: list[str]):
+        calls.append(cmd)
+        if len(calls) == 3:
+            raise subprocess.CalledProcessError(1, cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="full-ci\nbug\n")
+
+    monkeypatch.setattr(tier, "_run", flaky)
+    assert tier.live_labels("o/r", "7") == ["full-ci", "bug"]  # the retry succeeded
+
+    changed = tmp_path / "changed.txt"
+    changed.write_text("docs/README.md\n", encoding="utf-8")
+    base = ["--event", "pull_request", "--base-ref", "main", "--paths-file", str(changed), "--ran", "docs"]
+    monkeypatch.setattr(tier, "live_labels", lambda repo, pr: None)
+    capsys.readouterr()
+    assert tier.main([*base, "--repo", "o/r", "--pr", "7"]) == 1
+    err = capsys.readouterr().err
+    assert tier.UNREADABLE_MESSAGE in err and tier.FORCED_MESSAGE not in err
+    assert tier.main([*base, "--labels", "full-ci"]) == 1
+    err = capsys.readouterr().err
+    assert tier.FORCED_MESSAGE in err and tier.UNREADABLE_MESSAGE not in err
+
+
 def test_the_recompute_refuses_a_run_narrower_than_itself(tmp_path, capsys):
     """Plan v7 §4: the recompute reads the forced flag live, and the tier the jobs ran under must not be narrower."""
     changed = tmp_path / "changed.txt"
@@ -1427,7 +1543,10 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert outputs["decision"] == "${{ steps.tier.outputs.decision }}"
     assert outputs["tier"] == "${{ steps.tier.outputs.tier }}"
     base = jobs["fastbase"]
-    assert base["needs"] == "changes" and base["if"] == "needs.changes.outputs.decision == 'fast'"
+    assert base["needs"] == "changes"
+    # only with a changed fast-lane test module: docs plus durations has no premise to check (PR #163 review, V7-2)
+    assert base["if"] == "needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'"
+    assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
     assert base["runs-on"] == "ubuntu-latest"
     step, setup = strategy_fast_lane_minutes()
     assert base["timeout-minutes"] == 15 and base["timeout-minutes"] >= 2 * step + setup
@@ -1508,6 +1627,10 @@ def test_the_audit_workflow_collects_only_the_heavy_directories_under_the_plugin
     assert {e["os"] for e in jobs["serial"]["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
     result = "\n".join(str(s.get("run", "")) for s in jobs["result"]["steps"])
     assert "unit_isolation_audit.py --check audit" in result and jobs["result"]["if"] == "always()"
+    # a shard that stopped at collection still writes a clean report: both audited jobs must succeed (V7-4)
+    assert 'test "$PARALLEL" = success' in result and 'test "$SERIAL" = success' in result
+    assert jobs["result"]["steps"][-1]["env"] == {"PARALLEL": "${{ needs.parallel.result }}",
+                                                  "SERIAL": "${{ needs.serial.result }}"}
 
 
 def test_the_audit_plugin_catches_a_heavy_module_importing_a_unit_module(tmp_path):

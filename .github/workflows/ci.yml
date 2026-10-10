@@ -48,6 +48,7 @@ jobs:
     outputs:
       decision: ${{ steps.tier.outputs.decision }}
       tier: ${{ steps.tier.outputs.tier }}
+      modules: ${{ steps.tier.outputs.modules }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -198,10 +199,12 @@ jobs:
     # The coverage premise's base (CI plan v7 §5, V5-1): the whole fast lane at the base tip (GITHUB_SHA^1), under
     # coverage, in the same run, with exactly the fast step's flags, so `assurance` can prove that a fast-tier change
     # did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow run (which stays
-    # full) runs it too (V6-1). Not a required check: `assurance` is, and requires its success in the fast tier only.
+    # full) runs it too (V6-1), and only when a fast-lane test module changed: with only docs and durations there is
+    # no premise to check (PR #163 review, V7-2). Not a required check: `assurance` is, and requires its success only
+    # in the fast tier with a changed module. During shadow a red fastbase is evidence for PR 1b, never a merge blocker.
     name: fastbase
     needs: changes
-    if: needs.changes.outputs.decision == 'fast'
+    if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
     runs-on: ubuntu-latest
     # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes); core's own
     # 20-minute timeout is unchanged.

@@ -74,10 +74,11 @@ def _call(transport: Transport, verb: str, run_id: str, **kw: Any) -> Any:
         reply = transport.call(verb, run_id=run_id, **kw)
     except TransferError as exc:
         result_side = verb == "collect" and exc.code not in CHANNEL_FAILURES
-        # A refusal the agent sent for another verb, and anything wrong with a collect reply, quotes the guest:
-        # its text is the guest's, filed under arm_error (PR #189 re-review, M3).
+        # Anything but a failed channel is about what the guest sent (a refusal for another verb, a reply that
+        # breaks the protocol, a refused collect), and its text may quote the guest: it is filed under arm_error,
+        # whatever the verb (PR #189 re-reviews, M3 and M4).
         raise Failure(f"RESULT_REFUSED:{exc.code}" if result_side else f"TRANSPORT_ERROR:{exc.code}",
-                      exc.detail, guest=result_side or exc.code == "REQUEST_REFUSED") from None
+                      exc.detail, guest=exc.code not in CHANNEL_FAILURES) from None
     if not reply.ok:
         error = reply.error or {"code": "UNKNOWN", "message": ""}
         code = error["code"]

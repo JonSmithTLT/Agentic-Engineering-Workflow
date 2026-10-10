@@ -991,3 +991,20 @@ def test_a_guest_refusal_is_filed_as_the_guests_words_never_as_an_evaluator_fact
     assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:REQUEST_REFUSED"
     assert "guest says: corrupt" in record["outcome"]["arm_error"] and "error" not in record["outcome"]
     assert campaign.attester("outcome.arm_error") == campaign.GUEST
+
+
+def test_a_run_reply_that_breaks_the_protocol_files_its_quoted_text_as_the_guests(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def malformed_run(verb: str, raw: bytes) -> bytes:
+        if verb != "run":
+            return raw
+        message, _ = decode_frame(raw, what="reply", limits=Limits(), max_payload=Limits().tar_bytes())
+        message["result"]["wall_s"] = "GUEST-CHOSEN-TEXT"  # breaks the schema; its error message quotes the value
+        return json.dumps(message, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=malformed_run))
+    assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:REPLY_MALFORMED"
+    assert "GUEST-CHOSEN-TEXT" in record["outcome"]["arm_error"] and "error" not in record["outcome"]
+    assert campaign.attester("outcome.arm_error") == campaign.GUEST

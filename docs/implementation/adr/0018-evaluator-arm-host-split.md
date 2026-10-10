@@ -159,7 +159,8 @@ append repairs it.
   and the task's hashes and the chain head.
 - **The arm host's own words are kept under their own keys.** Nothing the agent reports can stand in for a fact the
   evaluator records: its outcome is `outcome.arm_outcome` (a forged `scoring` block or host name stays the guest's
-  claim), its error text and any refusal that quotes it (a `REQUEST_REFUSED`, a refused collect reply)
+  claim), its error text and every failure about what it sent (anything but a failed channel, `TIMEOUT` or
+  `HOST_FAILED`: a `REQUEST_REFUSED`, a reply that breaks the protocol, a refused collect), whose text may quote it,
   `outcome.arm_error`, and the paths it did not read `outcome.unread_paths` (with `unread_paths_omitted`). `outcome.changed_paths` is the evaluator's, computed from the files and links it received;
   `outcome.error` is the evaluator's own text.
 - **`outcome.attested_by`** labels each fact with who attests it (plan v5 §4). A fact's attester is that of its

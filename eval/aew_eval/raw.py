@@ -294,7 +294,10 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, str(binary.parent))
                        if p and os.path.isdir(p)})
     dirs = outermost({*hide_dirs, *secret_dirs})
-    files = [f for f in sorted({*hide_files, *secret_files}) if not any(_under(f, d) for d in dirs)]
+    # the run's own mask file is never itself masked: binding it over itself would leave an entry in the hidden runs
+    # directory (a mask left by an earlier layout of the same run name is found by the home scan)
+    files = [f for f in sorted({*hide_files, *secret_files})
+             if not any(_under(f, d) for d in dirs) and f != os.path.realpath(mask)]
     return L.Layout(role="eval-raw", access="write", bwrap=bwrap,
                     writable=(os.path.realpath(repo), os.path.realpath(state)), readonly=tuple(readonly),
                     hide_runs=(os.path.realpath(scratch.parent),), hide_dirs=tuple(dirs), hide_files=tuple(files),

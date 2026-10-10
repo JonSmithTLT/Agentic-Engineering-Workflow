@@ -186,6 +186,7 @@ def test_on_linux_a_contained_raw_run_sees_only_its_own_state(tmp_path, fake_ser
     (tmp_path / "home" / "private" / "oracle.txt").write_text("hidden material\n", encoding="utf-8")
     (tmp_path / "work" / "other-run").mkdir(parents=True)
     (tmp_path / "work" / "other-run" / "transcript.txt").write_text("another run\n", encoding="utf-8")
+    (tmp_path / "work" / ".r1.aew-mask").write_bytes(b"")  # left by an earlier layout of the same run name
     script(scripts, [{"do": "write", "files": {"calc.py": FIXED}}])
     record = run_raw(tmp_path, {**config, "contain": True})
     assert record["validity"]["status"] == "valid", record["outcome"]

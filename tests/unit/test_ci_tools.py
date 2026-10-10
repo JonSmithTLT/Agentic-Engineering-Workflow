@@ -151,6 +151,70 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     assert "reference-assurance" in jobs["report"]["needs"]
 
 
+SERIAL_ID = ALL[2]  # stands for a `serial`-marked test in the nightly's extra-interpreter run
+
+
+def sharded_extra_run(shards: int = 2) -> list[dict]:
+    """The nightly extra-interpreter run: ``-m "not serial"`` in ``shards`` shards, then the serial lane once."""
+    runs = []
+    for platform in ("linux", "win32"):
+        skip = "skipped" if platform == "win32" else "passed"
+        rest = [n for n in ALL if n != SERIAL_ID]
+        for k in range(1, shards + 1):
+            mine = {n: ("passed" if n != SKIP_ID else skip) for i, n in enumerate(rest) if i % shards == k - 1}
+            runs.append(report(platform, None, mine, shard=f"{k}/{shards}"))
+        runs.append(report(platform, "serial", {SERIAL_ID: "passed"}))
+    return runs
+
+
+def test_a_sharded_extra_run_with_its_serial_lane_passes():
+    assert problems(sharded_extra_run()) == []
+
+
+def test_an_extra_run_whose_serial_lane_did_not_report_fails():
+    """The serial tests are deselected from every shard: without the serial lane's report they never ran."""
+    runs = [r for r in sharded_extra_run() if not (r["platform"] == "win32" and r["lane"] == "serial")]
+    assert f"win32: never ran: {SERIAL_ID}" in problems(runs)
+
+
+def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
+    """Structure of nightly.yml's `matrix-extra`: per OS, shards 1..N of one N over everything but the serial tests,
+    under xdist and a 60 minute timeout; the serial lane once per OS without xdist; every report uploaded; and an
+    aggregate that `report` waits for, requiring both platforms."""
+    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
+    extra = jobs["matrix-extra"]
+    assert extra["timeout-minutes"] <= 60, "split the job further instead of raising the timeout"
+    per_os: dict[str, list[tuple[int, int]]] = {}
+    pythons: dict[str, set[str]] = {}
+    for entry in extra["strategy"]["matrix"]["include"]:
+        per_os.setdefault(entry["os"], []).append((entry["shard"], entry["of"]))
+        pythons.setdefault(entry["os"], set()).add(entry["python"])
+    # The interpreter each OS does not use on pull requests (strategy §4, "Nightly extra").
+    assert pythons == {"ubuntu-latest": {"3.13"}, "windows-latest": {"3.11"}}
+    for os_name, shards in per_os.items():
+        counts = {n for _, n in shards}
+        assert len(counts) == 1, f"{os_name}: shards disagree on the shard count"
+        assert sorted(k for k, _ in shards) == list(range(1, counts.pop() + 1)), f"{os_name}: a shard is missing"
+    runs = [step for step in extra["steps"] if "run" in step and "pytest" in step["run"]]
+    sharded = [s["run"] for s in runs if "--shard" in s["run"]]
+    serial = [s for s in runs if "--lane serial" in s["run"]]
+    assert len(sharded) == 1 and len(serial) == 1
+    assert "--shard ${{ matrix.shard }}/${{ matrix.of }}" in sharded[0] and '-m "not serial"' in sharded[0]
+    assert "-n auto" in sharded[0] and "matrix.shard" in sharded[0].split("--lane-report")[1]
+    assert "-p no:xdist" in serial[0]["run"] and "--lane-report" in serial[0]["run"]
+    assert serial[0]["if"].startswith("matrix.shard == 1 && "), "the serial lane runs exactly once per OS"
+    uploads = [step for step in extra["steps"] if "upload-artifact" in step.get("uses", "")]
+    assert len(uploads) == 1 and "matrix.shard" in uploads[0]["with"]["name"] and uploads[0]["if"] == "always()"
+    aggregate = jobs["matrix-extra-assurance"]
+    assert aggregate["needs"] == ["matrix-extra"] and aggregate["if"] == "always()"
+    pattern = next(s["with"]["pattern"] for s in aggregate["steps"] if "download-artifact" in s.get("uses", ""))
+    assert pattern == "nightly-extra-*" and not pattern.startswith("nightly-reference")
+    checks = "\n".join(str(step.get("run", "")) for step in aggregate["steps"])
+    assert "check_assurance.py extra-reports" in checks and "--require linux,win32" in checks
+    assert "needs.matrix-extra.result" in checks
+    assert "matrix-extra-assurance" in jobs["report"]["needs"]
+
+
 def test_a_pinned_skip_for_a_vanished_test_is_stale():
     expect = copy.deepcopy(EXPECT)
     expect["skipped"]["win32"]["tests/unit/test_gone.py::x"] = "old"

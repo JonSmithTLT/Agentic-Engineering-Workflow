@@ -285,6 +285,7 @@ def docs_tier_run(with_lanes: bool = True) -> list[dict]:
     (["web/package-lock.json"], "web"),
     (["docs/design/dashboard-api-v1-provisional.yaml"], "full"),  # the contract code reads
     (["web/docs/c0-approval.json"], "full"),  # its approval, read by the dashboard server
+    (["docs/design/proposals/dashboard-maps-and-history-search-v0.1.md"], "full"),  # its change note (F20.8)
     (["src/aew/README.md"], "full"),  # Markdown under a code root is not documentation
     (["tests/fixtures/notes.md"], "full"),
     (["tools/ci/tier.py"], "full"),
@@ -947,6 +948,97 @@ def test_a_rerun_attempt_counts_only_its_own_jobs():
     assert run["runner_minutes"] == {"ubuntu-latest": 1.0} and run["queue_s"]["total"] == 30.0
     assert run["assurance_s"] == 90.0 and run["wall_clock_s"] == 90.0 and rec["health"] == []
     assert "Carried over from an earlier attempt, not counted: integration 1/5" in cost_record.summary(rec)
+
+
+# The names that denote this checkout in test code: ROOT and any *_ROOT constant, a ``root`` variable, and a path
+# derived from the test file itself. Either quote style; git's ``-C`` and ``--git-dir``, a ``cwd=``, or a git wrapper
+# called with the checkout first (review of PR #161, m2).
+_CHECKOUT = (r"""(?:\b(?:[A-Z][A-Z0-9_]*_)?ROOT\b|\broot\b"""
+             r"""|Path\(__file__\)(?:\.\w+\(\))*(?:\.parents\[\d+\]|\.parent\b))""")
+_ARG = rf"""(?:str\(\s*)?{_CHECKOUT}"""
+HISTORY_READ = re.compile(
+    rf"""["']git["']\s*,\s*["'](?:-C|--git-dir)["']\s*,\s*{_ARG}"""  # ["git", "-C", str(ROOT), ...]
+    rf"""|["']--git-dir=\{{?{_ARG}"""  # f"--git-dir={ROOT}/.git"
+    rf"""|\bcwd\s*=\s*{_ARG}"""  # subprocess.run(["git", ...], cwd=ROOT)
+    rf"""|\bgit\w*\(\s*{_ARG}\s*,""")  # git_in(ROOT, "show", ref)
+# Matches that are not history reads, by file and exact source line, each with its reason.
+HISTORY_READ_ALLOWED = {
+    ("tests/helpers/lanes.py", 'status = subprocess.run(["git", "status", "--porcelain=v1", "-z", '
+                               '"--untracked-files=all"], cwd=root,'):
+        "the working tree's status, which a depth-1 checkout has: the guard that no test changes the checkout",
+    **{("tests/helpers/invariants.py", line): "``root`` is the test's own temporary project repository, never this "
+       "checkout: the integration invariants' ancestry checks on the commits the test itself made" for line in (
+        'm == commit or _git("merge-base", "--is-ancestor", commit, m, cwd=root).returncode == 0',
+        'if not commit or _git("merge-base", "--is-ancestor", commit, ref, cwd=root).returncode != 0:',
+        'return bool(commit and base) and _git("merge-base", "--is-ancestor", commit, base, cwd=root).returncode == 0',
+    )},
+}
+
+
+def history_reads(text: str) -> list[str]:
+    """The source lines of ``text`` that point git at this checkout, stripped."""
+    lines = text.splitlines()
+    found = []
+    for m in HISTORY_READ.finditer(text):
+        line = text.count("\n", 0, m.start())
+        found.append(lines[line].strip())
+    return found
+
+
+@pytest.mark.parametrize(("source", "fires"), [
+    ('subprocess.run(["git", "-C", str(root), "show", f"{commit}:{rel}"])', True),  # the helper B1 removed
+    ('subprocess.run(["git", "show", ref], cwd=root)', True),
+    ('subprocess.run(["git", "show", ref], cwd=str(root))', True),
+    ('subprocess.run(["git", "show", ref], cwd=ROOT)', True),
+    ('["git", "-C", str(REPO_ROOT), "show", ref]', True),
+    ('["git", "-C", str(Path(__file__).resolve().parents[2]), "show", ref]', True),
+    ('["git", "-C", Path(__file__).parent, "log"]', True),
+    ("['git', '-C', str(ROOT), 'show', ref]", True),
+    ('["git", "--git-dir", str(ROOT / ".git"), "show", ref]', True),
+    ('["git", f"--git-dir={ROOT}/.git", "show", ref]', True),
+    ('git_in(ROOT, "show", ref)', True),
+    ('git(root, "cat-file", "-e", ref)', True),
+    ('subprocess.run(["git", *args], cwd=cwd, capture_output=True)', False),  # invariants.py: temporary repositories
+    ('subprocess.run(["git", "init"], cwd=repo, check=True)', False),
+    ('git("show", f"{head}:pyproject.toml", cwd=repo)', False),
+    ('[sys.executable, "-m", "aew", "-C", str(root), "lead"]', False),  # aew's -C, not git's
+    ('subprocess.run(["git", *args], cwd=self.root)', False),
+    ('subprocess.run(["git", "worktree", "prune"], cwd=p.root)', False),
+])
+def test_the_history_guard_fires_on_every_spelling_of_this_checkout(source, fires):
+    assert bool(history_reads(source)) is fires, source
+
+
+def test_only_the_core_lanes_read_the_repositorys_git_history():
+    """CI's ``lanes`` job checks out at depth 1; only ``core`` (the fast and serial lanes) has the full history. A
+    test or helper outside them that reads a historical commit of this repository fails at collection in every
+    integration shard (review of PR #161, B1). This is a lint for the usual spellings (``HISTORY_READ``, self-tested
+    above): non-core test code may not point git at this checkout, by ``-C``, ``--git-dir``, ``cwd=`` or a git wrapper
+    called with ``ROOT``, a ``*_ROOT`` constant, ``root`` or a path derived from ``__file__``, unless the line is in
+    ``HISTORY_READ_ALLOWED`` with its reason. A fast-lane module that does so carries no marker moving it to a
+    depth-1 lane. A spelling the lint misses is still caught, loudly, by the integration shards failing at collection.
+    """
+    import re
+
+    non_core = [ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py"),
+                *(ROOT / "tests" / "integration").rglob("*.py"), *(ROOT / "tests" / "regression").rglob("*.py"),
+                *(ROOT / "tests" / "acceptance").rglob("*.py")]
+    offenders = []
+    used = set()
+    for f in non_core:
+        rel = f.relative_to(ROOT).as_posix()
+        for line in history_reads(f.read_text(encoding="utf-8")):
+            if (rel, line) in HISTORY_READ_ALLOWED:
+                used.add((rel, line))
+            else:
+                offenders.append(f"{rel}: {line}")
+    assert offenders == [], f"non-core test code points git at this checkout: {offenders}"
+    assert used == set(HISTORY_READ_ALLOWED), f"stale allowlist entries: {set(HISTORY_READ_ALLOWED) - used}"
+    moved = re.compile(r"pytest\.mark\.(acceptance|exploratory)\b")
+    for f in (ROOT / "tests" / "unit").rglob("*.py"):
+        text = f.read_text(encoding="utf-8")
+        if history_reads(text) and f.name != Path(__file__).name:
+            assert not moved.search(text), f"{f.name} reads git history but is marked into a depth-1 lane"
 
 
 # -------------------------------------------------------------- nothing outside tests/unit reaches it (plan v7 §3.2)

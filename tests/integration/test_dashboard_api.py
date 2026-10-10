@@ -29,17 +29,24 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
+from dashboard_contract import base_contract, note_text, proposed  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
 
 from aew.dashboard import contract as CT  # noqa: E402
+from aew.dashboard import projections as P  # noqa: E402
 from aew.dashboard.reasons import REASONS, codes_in  # noqa: E402
-from aew.dashboard.server import DashboardServer  # noqa: E402
+from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES, DashboardServer, match_route, pending_routes  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
 from aew.engine.store import LOCK_REL  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = CT.Contract(ROOT / CT.CONTRACT_REL)
+# The sweeps cover the routes this server serves; whatever else the accepted contract holds is pending, derived and
+# never listed (register F20.8, the change note's §3.3), and so are the routes the change note proposes, so the
+# pending answers are tested before the web developer adopts them and after.
+SERVED = sorted(r for r in CONTRACT.paths if r in ROUTES or r in CONDITIONAL_ROUTES)
+PENDING = sorted(pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"])))
 
 
 class OpenAccess:
@@ -135,7 +142,7 @@ def first_evidence(world: World) -> str:
 
 # ---------------------------------------------------------------------------------------------- conformance
 
-@pytest.mark.parametrize("route", sorted(CONTRACT.paths))
+@pytest.mark.parametrize("route", SERVED)
 def test_every_route_answers_get_and_head_as_the_contract_says(world, route):
     path = concrete(world, route)
     status, headers, body = world.get(path)
@@ -146,13 +153,43 @@ def test_every_route_answers_get_and_head_as_the_contract_says(world, route):
         assert status == 200, (path, body)
         assert CONTRACT.violations(CONTRACT.response_schema(route), body) == [], (
             path, CONTRACT.violations(CONTRACT.response_schema(route), body)[:5])
-        assert body["schema_version"] == "0.1.2" and body["project_id"] == "calc"
+        assert body["schema_version"] == P.ENVELOPE_VERSION[route] and body["project_id"] == "calc"
         assert body["control_revision"].isdigit() and body["generated_at"].endswith("Z")
     head_status, head_headers, head_body = world.get(path, head=True)
     assert head_status == status and head_body == b""
     assert head_headers["content-length"] == headers["content-length"]
     assert head_headers["content-type"] == headers["content-type"]
     assert "server" not in headers and "date" not in headers
+
+
+def pending_path(route: str) -> str:
+    """A request path for a pending route: a well-formed root (64 hex digits) for each placeholder."""
+    return route.replace("{root}", "0" * 64).replace("{id}", "0" * 64)
+
+
+@pytest.mark.parametrize("route", PENDING)
+def test_a_pending_route_answers_exactly_as_this_server_answers_without_it(world, route):
+    """A route the accepted contract (or the change note) adds and this server does not serve yet is no route: no
+    template matches it, so it is ``404`` "no such route"; or it matches a template, and the template answers it as
+    it answers any other id it does not know (``/history/search`` is ``/history/{id}`` with the id ``search``)."""
+    path = pending_path(route)
+    found = match_route(path)
+    for head in (False, True):
+        status, headers, body = world.get(path, head=head, raw=True)
+        if found is None:
+            assert status == 404, (route, status)
+            if not head:
+                parsed = json.loads(body)
+                assert parsed["code"] == "NOT_FOUND" and parsed["message"] == "no such route", parsed
+        else:
+            template, matched = found
+            twin = path.rsplit("/", 1)[0] + "/no-such-entry-" + "x" * len(matched["id"])
+            assert match_route(twin) == (template, {"id": twin.rsplit("/", 1)[1]})
+            twin_status, _, twin_body = world.get(twin, head=head, raw=True)
+            assert status == twin_status and status in (400, 403, 404), (route, status)
+            if not head:
+                assert json.loads(body)["code"] == json.loads(twin_body)["code"]
+        assert "etag" not in headers
 
 
 def test_capabilities_are_the_designers_decisions(world):
@@ -173,7 +210,7 @@ def test_no_response_discloses_a_path_a_verifier_or_a_credential(world):
     assert verifiers, "the world holds credentials to not disclose"
     forbidden = ["aew1.", '"verifier":', ".aew/", ".aew\\", "run_dir", "workspace_id", str(world.tmp), "C:\\",
                  "/tmp/", "control.yaml", "archive.yaml", "history/tail", *verifiers]
-    for route in CONTRACT.paths:
+    for route in SERVED:
         status, _, raw = world.get(concrete(world, route), raw=True)
         text = raw.decode("utf-8")
         for needle in forbidden:
@@ -182,7 +219,7 @@ def test_no_response_discloses_a_path_a_verifier_or_a_credential(world):
 
 
 def test_every_reason_code_in_every_response_is_registered(world):
-    for route in CONTRACT.paths:
+    for route in SERVED:
         _, _, body = world.get(concrete(world, route))
         unknown = codes_in(body) - set(REASONS)
         assert unknown == set(), (route, unknown)
@@ -468,7 +505,7 @@ def test_no_request_takes_the_control_lock(world):
     """ADR-0012 D3, invariant 4: a reader is never behind a writer. The test holds the control lock, as a committing
     writer would, and every route still answers."""
     with FileLock(world.p.root / ".aew" / LOCK_REL, timeout=5):
-        for route in CONTRACT.paths:
+        for route in SERVED:
             status, _, _ = world.get(concrete(world, route))
             assert status in (200, 403), route
 

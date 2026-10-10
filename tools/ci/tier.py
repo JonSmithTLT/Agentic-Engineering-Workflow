@@ -62,6 +62,9 @@ FORCE_TRAILER = "CI-Full"
 SHARED = (
     "docs/design/dashboard-api-v1-provisional.yaml",  # the dashboard contract: the Python server and web/ both bind it
     "web/docs/c0-approval.json",  # the contract's approval digest, read by src/aew/dashboard/contract.py
+    # The contract 0.1.3 change note (register F20.8): its appendix's routes are probed by the dashboard's integration
+    # tests (tests/helpers/dashboard_contract.py), and its status line sets how the contract is checked.
+    "docs/design/proposals/dashboard-maps-and-history-search-v0.1.md",
 )
 # A Markdown file under one of these is not documentation. `eval/` joined in plan v7 (§3.3, V3-4): the dogfood
 # regression reads eval/m3/dogfood, Markdown included.

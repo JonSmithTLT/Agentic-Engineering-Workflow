@@ -1,4 +1,4 @@
-"""The dashboard HTTP server: contract 0.1.2's routes on stdlib ``http.server`` (design note §4.10, §5.1).
+"""The dashboard HTTP server: the dashboard contract's routes on stdlib ``http.server`` (design note §4.10, §5.1).
 
 GET and HEAD only, bound to ``127.0.0.1``: the API under ``/api/v1/``, the one-time URL exchange under ``/session/``,
 and the frontend's production build everywhere else (:mod:`aew.dashboard.frontend`, with the SPA fallback for deep
@@ -32,7 +32,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -240,6 +240,19 @@ QUERY_PARAMETERS: dict[str, frozenset[str]] = {
     "/attention": frozenset({"limit", "cursor"}),
     "/activity": frozenset({"limit", "cursor"}),
 }
+
+# Routes served only in some states of a project (register F20.8): present in the contract, answered only while the
+# project's adopted policy switches them on, and otherwise exactly as if they did not exist. None yet; S2 adds the
+# history search here.
+CONDITIONAL_ROUTES: frozenset[str] = frozenset()
+
+
+def pending_routes(contract_paths: Iterable[str]) -> set[str]:
+    """The accepted contract's routes this server does not serve yet: derived, never listed, so a route the web
+    developer adds or renames in a new contract version is pending at once, with no main-line edit (change note,
+    "Readiness"). A pending route answers exactly as this server answers without it: ``404`` before authentication
+    when no template matches, or the matching template's own answer."""
+    return set(contract_paths) - set(ROUTES) - CONDITIONAL_ROUTES
 
 
 LIMIT_PARAMETERS = frozenset({"limit", "annotations_limit"})
@@ -637,7 +650,7 @@ class DashboardServer:
         query = self._query(url.query, route)
         with self._serial:
             snapshot = self.reader.snapshot()
-            projector = P.Projector(snapshot)
+            projector = P.Projector(snapshot, route=route)
             try:
                 body = ROUTES[route](projector, query, matched)
             except CursorError as exc:

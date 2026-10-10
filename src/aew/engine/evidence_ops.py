@@ -19,6 +19,8 @@ from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.guards import checked as guard_checked
+from aew.engine.guards import require
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
     GATE_CONTEXT,
@@ -279,7 +281,8 @@ class Gates:
 
     def guard_registrations(self) -> list[GuardRegistration]:
         """The gate-based Lead guards (mutating Tickets' M1 guards; non-mutating Tickets replace them)."""
-        return [GuardRegistration("ready_for_review", self._guard_ready_for_review),
+        return [GuardRegistration("ready_for_review", self._guard_ready_for_review,
+                                  query=self._query_ready_for_review),
                 GuardRegistration("ready_for_verification_without_review",
                                   self._guard_ready_for_verification_without_review),
                 GuardRegistration("commit_ready_without_review_or_verification",
@@ -288,12 +291,22 @@ class Gates:
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification),
                 GuardRegistration("all_gates_current", self._guard_all_gates_current)]
 
+    def _query_ready_for_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """RUNNING -> REVIEW_PENDING (M4-E E4: its query form): a review gate applies, and the pre-review gates are
+        current for the workspace's snapshot. It records the gate context it evaluated (``found["gate_context"]``)."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            if not self.review_gates(gc):
+                raise GateUnsatisfied("no review gate applies to this Ticket; advance to verification or commit-ready")
+            self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
+            args.setdefault("found", {})["gate_context"] = gc
+
+        return guard_checked(check)
+
     def _guard_ready_for_review(self, ctx, work_id, unit, to) -> None:
-        gc = self.gate_context(ctx.state, work_id)
-        if not self.review_gates(gc):
-            raise GateUnsatisfied("no review gate applies to this Ticket; advance to verification or commit-ready")
-        self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
-        self._ingest_implementation(ctx, work_id, unit, gc)
+        args: dict[str, Any] = {"to": to}
+        require(self._query_ready_for_review(ctx.state, work_id, args))
+        self._ingest_implementation(ctx, work_id, unit, args["found"]["gate_context"])
 
     def _guard_ready_for_verification_without_review(self, ctx, work_id, unit, to) -> None:
         gc = self.gate_context(ctx.state, work_id)

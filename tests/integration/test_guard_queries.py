@@ -127,3 +127,24 @@ def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_prod
     explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})["result"]
     assert [s["availability"] for s in explained["steps"]] == [AVAILABLE] * 3
     assert engine.store.read()["work"][wid]["state"] == "READY"  # asking changed nothing
+
+
+def test_guard_query_matches_execute_ready_for_review(ready):
+    """RUNNING -> REVIEW_PENDING (`ready_for_review`): refused while the implementation is unreported, then allowed
+    and committed with its effect (the relied-on evidence pinned, the implementer completed)."""
+    from aewflow import assign, implement
+
+    p, wid, engine = ready
+    impl = assign(p, wid)
+    answer = equivalent(engine, "work.transition", wid, {"to": "REVIEW_PENDING"},
+                        _transition(engine, p, wid, "REVIEW_PENDING"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "unmet" in answer["blocking_conditions"][0]["details"]
+    review = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]["actions"][0]
+    assert review["action"] == "ticket_request_review" and review["availability"] == BLOCKED
+    implement(impl)
+    projection.clear_cache()
+    review = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]["actions"][0]
+    assert review["availability"] == AVAILABLE and not review["auto_runnable"]  # not built until E5b
+    equivalent(engine, "work.transition", wid, {"to": "REVIEW_PENDING"}, _transition(engine, p, wid, "REVIEW_PENDING"))
+    control = p.ok("work", "show", wid)["control"]
+    assert control["state"] == "REVIEW_PENDING" and control["evidence"]  # the effect ran after the query passed

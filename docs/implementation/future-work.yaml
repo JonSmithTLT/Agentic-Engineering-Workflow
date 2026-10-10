@@ -116,7 +116,12 @@ sections:
       draft Ticket may correct its parent before its identity becomes governing. KC §9.4 promotion is a distinct hierarchy-expansion
       operation: allowed after work starts, it preserves the original Ticket identity, evidence and history, the effective
       risk or class floor and the inherited non-waivable gates and guardrails. Until the implementation text is updated,
-      ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19''s re-freeze'
+      ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19''s re-freeze. **Plan:** [the
+      F4 plan v8](f4-ticket-revisions-plan.md) (review CLEAR), slices S1 to S12, recorded in [ADR-0016](adr/0016-ticket-revisions.md).
+      **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization
+      and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every
+      slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50).
+      No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals)'
 
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline

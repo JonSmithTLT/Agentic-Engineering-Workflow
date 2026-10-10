@@ -343,3 +343,6 @@ considered:
   - path: docs/implementation/adr/0015-project-map-storage-and-registry.md
     reason: ADR (accepted 2026-10-07); storage, identity and the registry of derived project maps under project maps v0.5
       (F22.1); places derived data under KC §5.3's rebuildable local/; no WC/KC text replaced
+  - path: docs/implementation/adr/0016-ticket-revisions.md
+    reason: ADR (accepted 2026-10-09); how the engine implements the Ticket-revision amendment (overlay
+      ticket-revisions-2026-10-06, E19-B v0.4), written slice by slice; no WC/KC text replaced beyond that overlay

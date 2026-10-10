@@ -91,6 +91,7 @@ MAP_INPUTS_DEFAULT, MAP_INPUTS_MAX = 100, 250
 SCAN_MAPS, SCAN_BYTES = 256, 64 << 20  # one request examines at most this many stored maps and reads at most this
 MAPS_GIT_TIMEOUT_S = 10.0  # each git process of a maps read: projections are serialized, so never the CLI's 300 s
 EVIDENCE_ID_MAX = 64  # the registry's own bound on an architecture evidence id
+ARCHIVE_WAIT_S = 2.0  # how long /maps waits on a busy history index for archived architecture evidence
 
 
 def _custody(inv: dict[str, Any]) -> bool:
@@ -637,9 +638,11 @@ class Projector:
         return self.envelope(self.evidence_item(meta, body, unit))
 
     def locate_evidence(self, evidence_id: str) -> tuple[dict[str, Any], str, dict[str, Any] | None]:
-        """An evidence record by id, without the control lock: ``(meta, body, its unit)``, or ``NotFound``. The
-        producing invocation names the unit (hot, or archived through the snapshot's history); a record of another
-        shape is looked for in the hot units' directories. ``evidence_id`` must already be a checked opaque id."""
+        """An evidence record by id: ``(meta, body, its unit)``, or ``NotFound``. The producing invocation names the
+        unit (hot, or archived through the snapshot's history); a record of another shape is looked for in the hot
+        units' directories. ``evidence_id`` must already be a checked opaque id. An archived lookup syncs the derived
+        history index, and on a race re-reads state under the control lock as any reader does, unless the caller
+        wraps it in ``archive.lockfree_reads`` (``/maps`` does; ``/evidence/{id}`` keeps the reader's path)."""
         match = EVIDENCE_PRODUCER.match(evidence_id)
         inv_id = match.group(1) if match else None
         inv = self.state["invocations"].get(inv_id) if inv_id else None
@@ -961,7 +964,13 @@ class Projector:
         if not (isinstance(evidence_id, str) and _architecture_id(evidence_id)):
             raise ValidationFailed("the selected architecture evidence id is not a valid opaque id",
                                    reason="malformed_id")
-        meta, _, _ = self.locate_evidence(evidence_id)
+        # Archived evidence goes through the derived history index: never the control lock, never a long wait
+        # (review of #178, finding 1). A busy index or a commit that moved history meanwhile is "read again later".
+        try:
+            with self.archive.lockfree_reads(ARCHIVE_WAIT_S):
+                meta, _, _ = self.locate_evidence(evidence_id)
+        except (IntegrityError, LockTimeout) as exc:
+            raise _HistoryBusy from exc
         return meta
 
     def _architecture_freshness(self, record: dict[str, Any], head: str | None) -> dict[str, Any]:
@@ -970,7 +979,7 @@ class Projector:
         observed = (record.get("evaluated_snapshot") or {}).get("base_revision")
         key = (str(record.get("id")), observed if isinstance(observed, str) else None, head)
         cache = self._maps().architecture
-        known = cache.get(key)
+        known = cache.get(key) if head is not None else None
         if known is not None:
             return known
         repo = self.s.engine.repo_root
@@ -984,7 +993,8 @@ class Projector:
             LOG.warning("architecture freshness: %s", exc.message)
             return {"status": "UNKNOWN", "detail": "git did not answer within the dashboard's bound; read again later"
                     if (exc.details or {}).get("reason") == "timeout" else "git could not compare the commits"}
-        cache.put(key, fresh)
+        if head is not None:  # an unresolved head is never cached: the next read resolves it again
+            cache.put(key, fresh)
         return fresh
 
     def maps_overview(self, *, against: str | None) -> dict[str, Any]:
@@ -1029,8 +1039,14 @@ class Projector:
             if head is None:
                 head = self._head_commit()
             resolved = head
-            ref = MSV.architecture(self.s.engine, registry.data, evidence=self._architecture_evidence,
-                                   head=lambda: resolved, freshness=self._architecture_freshness)
+            try:
+                ref = MSV.architecture(self.s.engine, registry.data, evidence=self._architecture_evidence,
+                                       head=lambda: resolved, freshness=self._architecture_freshness)
+            except _HistoryBusy:
+                selected = registry.selected("architecture") or {}
+                ref = {"evidence_id": selected.get("evidence_id"),
+                       "freshness": {"status": "UNKNOWN", "detail": "the history index is busy or history moved "
+                                                                   "during the read; read again later"}}
             architecture = MV.architecture(ref, valid_id=_architecture_id, tally=tally)
         return self.envelope({
             "map_revision": registry.revision, "registry": {"state": registry.state, "reasons": registry_reasons},
@@ -1130,6 +1146,11 @@ class Projector:
 
 class _OverBudget(Exception):
     """A stored map the scan's byte budget cannot read in this request."""
+
+
+class _HistoryBusy(Exception):
+    """The architecture evidence's archived lookup met a busy index or a moved history: ``UNKNOWN``, not gone.
+    Not an ``AEWError``, so ``maps.service.architecture`` does not report it ``UNAVAILABLE``."""
 
 
 def _architecture_id(value: str) -> bool:

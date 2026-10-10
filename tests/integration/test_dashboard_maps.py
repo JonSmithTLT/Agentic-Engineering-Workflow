@@ -43,8 +43,11 @@ from aew.dashboard.server import DashboardServer, error_body, pending_routes  # 
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
 from aew.engine.store import LOCK_REL  # noqa: E402
+from aew.errors import IntegrityError, LockTimeout  # noqa: E402
 from aew.harness.contract import CREDENTIAL_RE  # noqa: E402
+from aew.history import index as HI  # noqa: E402
 from aew.maps import freshness as MF  # noqa: E402
+from aew.maps import rules as MR  # noqa: E402
 from aew.maps import store as MS  # noqa: E402
 from aew.maps.canonical import seal  # noqa: E402
 from aew.workspace import git as aew_git  # noqa: E402
@@ -740,6 +743,69 @@ def test_the_architecture_reference_stale_unavailable_none_and_a_hanging_git(lab
         assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNAVAILABLE"
 
 
+@pytest.mark.parametrize("failure", [IntegrityError("simulated: a later commit replaced the tail"),
+                                     LockTimeout("simulated: the history index is busy")],
+                         ids=["history_moved", "index_busy"])
+def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on_the_index(lab, monkeypatch,
+                                                                                           failure):
+    """Review of #178, finding 1: the evidence is archived (a finished investigation), nothing syncs the history index
+    first, the control lock is held, and the index sync meets a moved history or a busy index. ``/maps`` neither
+    re-reads state under the lock nor waits: the reference is ``UNKNOWN`` ("read again later"), never ``UNAVAILABLE``,
+    and the next read, with the index free, answers."""
+    p, tmp = lab
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    with served(p) as client:
+        engine = client.server.engine
+        engine.store.lock_timeout = 30.0  # a lookup that took the lock would wait this long, then fail
+        engine.archive._synced = None  # nothing synced: the lookup must sync the index itself
+        real_sync, real_read = HI.HistoryIndex.sync, engine.store.read
+        calls = {"sync": 0, "read": 0}
+
+        def failing_once(self: Any, root: Any, **kwargs: Any) -> Any:
+            calls["sync"] += 1
+            if calls["sync"] == 1:
+                raise failure
+            return real_sync(self, root, **kwargs)
+
+        def counted_read(*args: Any, **kwargs: Any) -> Any:
+            calls["read"] += 1
+            return real_read(*args, **kwargs)
+
+        monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
+        monkeypatch.setattr(engine.store, "read", counted_read)
+        with FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
+            started = time.monotonic()
+            status, _, raw = client.get("/maps", timeout=120)
+            took = time.monotonic() - started
+            assert status == 200, raw[:300]
+            arch = json.loads(raw)["data"]["architecture"]
+            assert took < 10, took  # neither the 30 s control lock nor the 30 s index wait
+            assert calls["read"] == 0  # no state re-read: it would take the control lock
+            assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
+            assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNKNOWN"
+            assert "read again later" in arch["freshness"]["reasons"][0]["message"]
+            again = client.data("/maps")["architecture"]["freshness"]  # the lock still held, the index free
+            assert again["status"] == "CURRENT" and calls["read"] == 0
+
+
+def test_a_lock_free_reader_bounds_the_index_wait_and_leaves_the_cli_readers_alone(lab):
+    """The lock-free mode is per thread and per block: inside it a sync uses the short bound and is not kept for
+    other readers; outside it the archive reads exactly as before (the 30 s default)."""
+    p, tmp = lab
+    complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    engine = Engine.discover(p.root)
+    state = engine.store.read()
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S):
+        bounded = engine.archive.index(state)
+    assert bounded.timeout == P.ARCHIVE_WAIT_S and engine.archive._synced is None
+    plain = engine.archive.index(state)
+    assert plain.timeout == 30.0 and engine.archive._synced is not None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S):
+        reused = engine.archive.index(state)
+    assert reused.timeout == P.ARCHIVE_WAIT_S and engine.archive.index(state).timeout == 30.0
+
+
 def test_a_planted_evidence_id_that_names_a_path_is_unavailable_and_opens_nothing_outside(lab, monkeypatch):
     """m4: the registry allows any 1 to 64 characters; ``../../x`` is refused before any path is built."""
     p, _ = lab
@@ -1011,6 +1077,89 @@ def assert_bounded(body: dict[str, Any]) -> None:
 
 CEILINGS = {"/maps/structural/{root}": 2 << 20, "/maps/diff": 4 << 20, "/maps/structural/{root}/inputs": 256 << 10,
             "/maps/structural": 64 << 10, "/maps": 64 << 10}
+
+
+def valid_maximal(record: dict[str, Any], tag: str) -> dict[str, Any]:
+    """Review of #178, finding 2: every allowlisted field of every item at its maximum and valid, so nothing is dropped:
+    every list at the API's cap, every row with the 20 longest language names, a count for every known language (at
+    most 100), the longest vocabulary values, every repository string past the cut (backslashes: two serialized bytes
+    each) and every number at ``2**53 - 1``. ``tag`` makes two such maps disjoint, item for item."""
+    vocab = MV.vocabulary(MR.load())
+
+    def longest(name: str, n: int = 1) -> list[str]:
+        return sorted(vocab[name], key=lambda v: (-len(v.encode("utf-8")), v))[:n]
+
+    def text(i: int) -> str:
+        return f"{tag}{i}" + "\\" * 300
+
+    big = 2**53 - 1
+    langs = longest("language", 20)
+    out = copy.deepcopy(record)
+    s = out["sections"]
+    s["directories"] = {"max_depth": big, "rows_total": big, "rows_omitted": big, "submodules_omitted": big,
+                        "rows": [{"path": text(i), "depth": big, "files": big, "languages": langs,
+                                  "label": longest("directory_label")[0]} for i in range(200)],
+                        "submodules": [{"path": text(i), "object": "a" * 64} for i in range(200)]}
+    s["languages"] = {"counts": dict.fromkeys(longest("language", 100), big), "unknown_files": big,
+                      "unknown_extensions": [{"extension": text(i), "files": big} for i in range(20)],
+                      "unknown_extensions_omitted": big}
+    s["build_descriptors"] = {"items": [{"path": text(i), "kind": longest("build_kind")[0],
+                                         "status": longest("build_status")[0]} for i in range(200)], "omitted": big}
+    s["entry_point_candidates"] = {"items": [{"label": longest("entry_label")[0], "path": text(i), "name": text(i),
+                                              "target": text(i), "rule": longest("entry_rule")[0]}
+                                             for i in range(100)], "omitted": big}
+    s["test_candidates"] = {"items": [{"kind": longest("test_kind")[0], "path": text(i), "pattern": text(i),
+                                       "files": big, "runner": longest("test_runner")[0],
+                                       "source": longest("test_source")[0]} for i in range(100)], "omitted": big}
+    s["generated_and_vendor"] = {"items": [{"kind": longest("gv_kind")[0], "source": longest("gv_source")[0],
+                                            "pattern": text(i), "files": big, "attributes_file": text(i)}
+                                           for i in range(200)], "omitted": big}
+    s["semantic_prerequisites"] = {"items": [{"path": text(i), "kind": longest("semantic_kind")[0],
+                                              "source": longest("semantic_source")[0]} for i in range(100)],
+                                   "omitted": big}
+    s["limits_and_omissions"] = {
+        "caps_hit": [{"section": longest("cap_section")[0], "field": longest("cap_field")[0], "limit": big,
+                      "omitted": big} for _ in range(20)],
+        "parse_failures": [{"path": text(i), "code": longest("parse_code")[0]} for i in range(100)],
+        "parse_failures_omitted": big,
+        "unsupported": [{"path": text(i), "reason": longest("unsupported_reason")[0]} for i in range(100)],
+        "unsupported_omitted": big, "lfs_pointers": [text(i) for i in range(100)], "lfs_pointers_omitted": big,
+        "metadata_unread": big, "non_utf8_names": big, "symlinks": big, "submodules": big,
+        "unknown_extension_files": big}
+    out["limits"] = {"tracked_paths": {"seen": big, "capped": True},
+                     "metadata_bytes": {"read": big, "limit": big, "capped": True},
+                     "metadata_blob_bytes": {"limit": big, "skipped": big}}
+    return out
+
+
+def test_the_ceilings_hold_on_a_valid_maximal_map_and_on_the_diff_of_two_disjoint_ones(tmp_path):
+    """Review of #178, finding 2: the detail of a valid maximal map within 2 MiB, and the diff of two disjoint maximal
+    maps (every list item added or removed, every counter changed) within 4 MiB, with nothing dropped, so the bound
+    tested is the real worst case's."""
+    p = sample_project(tmp_path)
+    record = record_of(p, generate(p))
+    a, b = plant(p, valid_maximal(record, "a")), plant(p, valid_maximal(record, "b"))
+    with served(p) as client:
+        status, _, raw = client.get(f"/maps/structural/{a}")
+        assert status == 200, raw[:300]
+        assert len(raw) <= CEILINGS["/maps/structural/{root}"], len(raw)
+        print(f"valid maximal detail: {len(raw)} bytes")
+        detail = json.loads(raw)
+        assert_bounded(detail)
+        sections = detail["data"]["sections"]
+        assert all(s["dropped_items"] == 0 and s["dropped_fields"] == 0 for s in sections.values())
+        assert detail["data"]["dropped_fields"] == 0
+        every_language = min(MV.COUNTS_MAX, len(MV.vocabulary(MR.load())["language"]))  # the vocabulary has fewer
+        assert len(sections["directories"]["rows"]) == 200 and len(sections["languages"]["counts"]) == every_language
+        assert all(len(r["languages"]) == 20 for r in sections["directories"]["rows"])
+        status, _, raw = client.get(f"/maps/diff?a={a}&b={b}")
+        assert status == 200, raw[:300]
+        assert len(raw) <= CEILINGS["/maps/diff"], len(raw)
+        print(f"disjoint maximal diff: {len(raw)} bytes")
+        diff = json.loads(raw)
+        assert_bounded(diff)
+        rows = diff["data"]["sections"]["directories"]["rows"]
+        assert len(rows["added"]) == 200 and len(rows["removed"]) == 200  # disjoint: every kept item on both sides
 
 
 def test_every_response_stays_within_its_ceiling_on_a_generated_and_a_planted_worst_case(tmp_path):

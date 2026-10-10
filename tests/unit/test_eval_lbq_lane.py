@@ -555,8 +555,12 @@ def test_v4_1s_second_experiment_is_its_first_with_a_new_id_and_why(qualify):
     v2, v1 = plan_of(qualify, V41V2), plan_of(qualify, V41)
     amendment = v2["amendment_policy"]
     assert amendment.startswith(v1["amendment_policy"])  # everything v1 recorded, carried over
-    for fact in ("aba5846", "CONTAINMENT_FAILED", "out/work", "about $0.07", "kept untouched", "new experiment id"):
+    for fact in ("aba5846 and a6e91d5", "CONTAINMENT_FAILED", "out/work", "no ceiling attempt reached a model",
+                 "floor.json records $0.025", "the account's total Zen spend for 2026-10-10 on the Zen dashboard",
+                 "kept untouched", "new experiment id"):
         assert fact in amendment, fact
+    for wrong in ("Zen billed", "fixed in aba5846 (", "fixed in aba5846."):  # review F1 of a6e91d5
+        assert wrong not in amendment, wrong
     assert v2["thresholds"]["expected_outcome"] == v1["thresholds"]["expected_outcome"]
     for p in (v2, v1):
         p.pop("experiment")

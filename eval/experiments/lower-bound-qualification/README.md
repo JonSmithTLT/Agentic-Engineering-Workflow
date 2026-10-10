@@ -119,9 +119,11 @@ profile pins differ, plus V4.1's overshoot margin and its expected outcome (see 
   own name.
 - **Why V4.1 has a second experiment** (the operator, 2026-10-10).
   - What happened: `lbq-v1-deepseek-v4-1-flash`'s floor passed, but every ceiling attempt was refused before any model
-    ran, by a defect in the raw arm's containment layout (the runs and mask files beside a run in `out/work`, fixed in
-    aba5846). Those attempts were recorded at their caps and counted against the retry policy, though Zen billed about
-    $0.07 in all.
+    ran, by a defect in the raw arm's containment layout (the runs and mask files beside a run in `out/work`). It was
+    fixed in aba5846 and a6e91d5: a6e91d5 makes a refused run count as one of its cell's attempts, as the ledger
+    counts it. Those attempts were recorded at their caps and counted against the retry policy, though no ceiling
+    attempt reached a model. The lane's `floor.json` records $0.025, all on the floor. The operator read about $0.07
+    as the account's total Zen spend for 2026-10-10 on the Zen dashboard.
   - The amendment policy makes a change after the first run is registered a new experiment id. Recovering v1's
     budget would have meant recounting attempts already registered, so the operator chose a new experiment over
     reclassifying them.

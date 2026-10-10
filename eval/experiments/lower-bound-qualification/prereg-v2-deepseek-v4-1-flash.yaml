@@ -261,10 +261,12 @@ amendment_policy: >-
   refused before any model ran (CONTAINMENT_FAILED, harness not started) by a defect in the raw arm's containment
   layout: with the lane under the home directory, the other runs and mask files beside a run in out/work were masked
   inside the runs directory's own tmpfs, creating entries there that the confidentiality probe refused. The defect
-  was fixed in aba5846 (nothing in out/work is masked on its own; a run refused before launch is charged nothing and
-  stops the ceiling at once, counting as one of its cell's attempts as the retry policy counts every registered
-  attempt). Those attempts were recorded at their caps and counted against the retry policy, though Zen billed
-  about $0.07 in all. The operator chose on 2026-10-10 to start this new experiment rather than reclassify them, since
+  was fixed in aba5846 and a6e91d5: in aba5846, nothing in out/work is masked on its own, and a run refused before
+  launch is charged nothing and stops the ceiling at once; in a6e91d5, such a run counts as one of its cell's attempts,
+  as the ledger's retry policy counts every registered attempt. Those attempts were recorded at their caps and
+  counted against the retry policy, though no ceiling attempt reached a model: the lane's floor.json records $0.025,
+  all on the floor, and the operator read about $0.07 as the account's total Zen spend for 2026-10-10 on the Zen
+  dashboard. The operator chose on 2026-10-10 to start this new experiment rather than reclassify them, since
   the arm's code and the way registered attempts would count changed after they were registered.
   lbq-v1-deepseek-v4-1-flash's lane is kept untouched as the record of that failure; it carries no model data beyond
   its floor.

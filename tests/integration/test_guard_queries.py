@@ -35,7 +35,7 @@ def _fresh_cache():
 def equivalent(engine: Engine, primitive: str, work_id: str | None, args: dict[str, Any],
                execute: Callable[[int], Any]) -> dict[str, Any]:
     """Ask ``primitive``'s guard on the committed state, then execute it there: the same answer (§13)."""
-    answer = engine.guard_query(primitive, work_id, dict(args))
+    answer = engine.guard_query(primitive, work_id, args)  # keeps what the query found
     rev = engine.store.read()["revision"]
     try:
         execute(rev)
@@ -104,7 +104,8 @@ def test_guard_query_matches_execute_work_transition_and_implementer_active(read
 
 def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path):
     """A non-mutating Ticket replaces `implementer_active` with its own guard, not migrated: its ASSIGNED -> RUNNING
-    is UNKNOWN (never answered by the mutating Ticket's query), and the transition still runs its own guard."""
+    is UNKNOWN (never answered by the mutating Ticket's query), and the transition still runs its own guard. Its
+    review ingest is its own kind's, not migrated either."""
     from aewflow import create_investigation
 
     p = sample_project(tmp_path)
@@ -115,6 +116,9 @@ def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path)
     assert answer["availability"] == UNKNOWN and answer["not_queryable"] == "implementer_active"
     engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="RUNNING")
     assert engine.store.read()["work"][wid]["state"] == "RUNNING"
+    # Its ingest is another kind's too (the KindRegistry selects it): not migrated, UNKNOWN.
+    ingest = engine.guard_query("review.ingest", wid, {"evidence": "EV-0001"})
+    assert ingest["availability"] == UNKNOWN and ingest["not_queryable"] == "review.ingest"
 
 
 def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_produces(ready):
@@ -148,3 +152,50 @@ def test_guard_query_matches_execute_ready_for_review(ready):
     equivalent(engine, "work.transition", wid, {"to": "REVIEW_PENDING"}, _transition(engine, p, wid, "REVIEW_PENDING"))
     control = p.ok("work", "show", wid)["control"]
     assert control["state"] == "REVIEW_PENDING" and control["evidence"]  # the effect ran after the query passed
+
+
+# ---------------------------------------------------------------------------------------------- review.ingest
+
+
+def _ingest(engine: Engine, p: Any, wid: str, evidence: str) -> Callable[[int], Any]:
+    return lambda rev: engine.review_ingest(token=p.token, expect_rev=rev, work_id=wid, evidence_id=evidence)
+
+
+@pytest.fixture
+def implemented(ready):
+    """A RUNNING Ticket whose implementation is reported, ready to go to review."""
+    from aewflow import assign, implement
+
+    p, wid, engine = ready
+    impl = assign(p, wid)
+    implement(impl)
+    return p, wid, engine, impl
+
+
+def test_guard_query_matches_execute_review_ingest(implemented):
+    """`review.ingest`: the Ticket is REVIEW_PENDING and the report is a known review of it (a finding it resolves that
+    is unknown is refused at submission already); then the report is accepted, and the state its outcome implies and
+    the reference it pins are what the query predicted."""
+    from aewflow import review
+
+    p, wid, engine, _impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    assert equivalent(engine, "review.ingest", wid, {"evidence": "EV-9999"},
+                      _ingest(engine, p, wid, "EV-9999"))["reason_codes"] == ["NOT_FOUND"]
+    first, second = review(p, wid), review(p, wid)
+    args: dict[str, Any] = {"evidence": first}
+    equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, first))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "REVIEW_PASSED"
+    assert args["found"]["ref"] in engine.store.read()["work"][wid]["evidence"]  # what the ingest pinned
+    answer = equivalent(engine, "review.ingest", wid, {"evidence": second}, _ingest(engine, p, wid, second))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "not REVIEW_PENDING" in (
+        answer["blocking_conditions"][0]["message"])
+
+
+def test_a_review_that_is_not_one_is_refused_alike(implemented):
+    p, wid, engine, impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    report = p.ok("work", "show", wid)["control"]["evidence"][-1]["id"]  # the implementation report it relied on
+    answer = equivalent(engine, "review.ingest", wid, {"evidence": report}, _ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "is not a review" in (
+        answer["blocking_conditions"][0]["message"])

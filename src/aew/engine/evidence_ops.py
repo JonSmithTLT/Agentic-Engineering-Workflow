@@ -19,8 +19,8 @@ from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.guards import NotQueryable, require
 from aew.engine.guards import checked as guard_checked
-from aew.engine.guards import require
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
     GATE_CONTEXT,
@@ -237,10 +237,14 @@ class Gates:
     def ingest_ref(self, unit: dict[str, Any], ev: dict[str, Any]) -> None:
         refs = unit.setdefault("evidence", [])
         if not any(r["id"] == ev["id"] for r in refs):
-            refs.append({"id": ev["id"], "kind": ev["kind"], "path": ev["_path"], "sha256": ev["_sha256"],
-                         "result": ev["result"],
-                         "fingerprint": ev["evaluated_snapshot"]["relevant_inputs_fingerprint"],
-                         "findings": [f["id"] for f in (ev.get("review") or {}).get("findings", [])]})
+            refs.append(self.evidence_ref(ev))
+
+    @staticmethod
+    def evidence_ref(ev: dict[str, Any]) -> dict[str, Any]:
+        """The reference an ingest pins on the unit for a sealed report (its id and hash: what the gates count)."""
+        return {"id": ev["id"], "kind": ev["kind"], "path": ev["_path"], "sha256": ev["_sha256"],
+                "result": ev["result"], "fingerprint": ev["evaluated_snapshot"]["relevant_inputs_fingerprint"],
+                "findings": [f["id"] for f in (ev.get("review") or {}).get("findings", [])]}
 
     PRE_REVIEW = ["accepted_plan", "local_checks", G.ACCEPTANCE_CHECKS, "self_review"]
 
@@ -817,12 +821,28 @@ class EvidenceCommands:
         ingest = self._ingest_ticket_review if kind == "review" else self._ingest_ticket_verification
         return ingest(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id)
 
-    def _ingest_ticket_review(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "review.ingest") as ctx:
-            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "review",
-                               "ids": [evidence_id]})
-            state = ctx.state
-            unit = self.units.unit(state, work_id)
+    # ---- `review.ingest`'s guard as a query (M4-E E4; aew.engine.guards)
+
+    def review_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``review.ingest`` of report ``args["evidence"]``: the guard of the ingest the ``KindRegistry`` selects for
+        the unit, where it has a query form (a mutating Ticket's); another kind's is ``NotQueryable``."""
+        found = guard_checked(lambda: self.units.unit(state, work_id))
+        if found is not None:
+            return found
+        if self.kinds.resolve(INGEST, state["work"][work_id]) != self._ingest_ticket_report:
+            return NotQueryable("review.ingest")
+        return self._query_ticket_review(state, work_id, args)
+
+    def _query_ticket_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """Accepting a review report for a mutating Ticket: it is REVIEW_PENDING; the report is a sealed review of it by
+        a reviewer independent of the implementer, of the workspace's current snapshot, bound to the current plan and
+        attempt; every finding it resolves is known. It records the report, the reference the ingest pins, and the
+        state the report's outcome implies (REVIEW_FAILED, else REVIEW_PASSED; a review still pending elsewhere is the
+        next step's guard's to see)."""
+        evidence_id = str(args.get("evidence"))
+
+        def check() -> None:
+            unit = state["work"][work_id]
             if unit["state"] != "REVIEW_PENDING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}, not REVIEW_PENDING. "
                                         f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
@@ -838,12 +858,32 @@ class EvidenceCommands:
                 raise GateUnsatisfied("review evaluated a snapshot that is no longer current (stale)",
                                       reviewed=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
             self.gates.require_bound_report(state, unit, ev, scope="ticket")
+            findings = unit.get("findings") or []
+            resolved = list(ev["review"].get("resolved_findings", []))
+            for rid in resolved:
+                if not any(f["id"] == rid for f in findings):
+                    raise ValidationFailed(f"review resolves unknown finding {rid}")
+            still_open = [f for f in G.open_required_findings(unit) if f["id"] not in resolved]
+            failed = (ev["review"]["disposition"] != "pass" or bool(still_open)
+                      or any(f["required"] for f in ev["review"]["findings"]))
+            args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev),
+                                                to="REVIEW_FAILED" if failed else "REVIEW_PASSED")
+
+        return guard_checked(check)
+
+    def _ingest_ticket_review(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, expect_rev, "review.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "review",
+                               "ids": [evidence_id]})
+            state = ctx.state
+            args: dict[str, Any] = {"evidence": evidence_id}
+            require(self.review_ingest_query(state, work_id, args))  # the guard, as `explain` and a stage ask it
+            unit = state["work"][work_id]
+            ev = args["found"]["evidence"]
             findings = unit.setdefault("findings", [])
             known = {f["id"] for f in findings}
             for rid in ev["review"].get("resolved_findings", []):
-                target = next((f for f in findings if f["id"] == rid), None)
-                if target is None:
-                    raise ValidationFailed(f"review resolves unknown finding {rid}")
+                target = next(f for f in findings if f["id"] == rid)  # known: the query checked every one
                 target.update(status="resolved", resolved_by=evidence_id)
             for f in ev["review"]["findings"]:
                 fid = f"{evidence_id}#{f['id']}"

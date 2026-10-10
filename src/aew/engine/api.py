@@ -420,6 +420,7 @@ class Engine:
         # M4-E E4: the migrated transition and ingest guards, each the query its own execute path calls first.
         self._guard_queries = queries = GuardQueries(dispatch.decide)
         queries.register("work.transition", units.transition_query)
+        queries.register("review.ingest", evidence.review_ingest_query)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy

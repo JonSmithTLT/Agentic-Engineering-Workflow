@@ -142,25 +142,26 @@ class ContextPacks:
         return [{"name": f"history:{r['id']}", "path": None, "sha256": r["sha256"], "trust": r["source"],
                  "reference": True} for r in refs]
 
-    def _map_source(self, inv: dict[str, Any], role_def: dict[str, Any], base: str | None,
-                    fresh: bool) -> dict[str, Any] | None:
-        """The structural map this pack carries (register F22.1 plan §5.4): when the pack is built (``fresh``), the
-        selected map now, if the switch is on and the role's context names codebase_map; when it is regenerated, the
-        entry the built pack pinned in its sources, whatever the switch says now. Never raises."""
+    def _map_slice(self, inv: dict[str, Any], role_def: dict[str, Any], base: str | None,
+                   record_meta: dict[str, Any], fresh: bool) -> tuple[dict[str, Any] | None, list[str] | None]:
+        """The structural map this pack carries (register F22.1 plan §5.4), as ``(the sources entry, the section's
+        lines)``: when the pack is built (``fresh``), the selected map now, if the switch is on and the role's context
+        names codebase_map; when it is regenerated, the entry the built pack pinned in its sources, whatever the switch
+        or ``local/maps/`` say now, so a regenerated pack (and the ``launch.pack`` guard) never differs because of a
+        map (PR #143 review, M1). Never raises."""
+        scope_paths = list((record_meta.get("scope") or {}).get("paths") or [])
         if not fresh:
-            return slices.pinned((inv.get("pack") or {}).get("sources"))
+            entry = slices.pinned((inv.get("pack") or {}).get("sources"))
+            if entry is None:
+                return None, None
+            return entry, slices.lines(self.k.aew_root, self.k.repo_root, entry, scope_paths)
         try:
             policy, _ = self.k.execution_policy()
         except Exception:  # an unreadable policy turns nothing on: a map never changes a pack by default
-            return None
+            return None, None
         if not slices.wanted(role_def, policy):
-            return None
-        return slices.source_entry(self.k.aew_root, self.k.repo_root, base)
-
-    def _map_lines(self, entry: dict[str, Any] | None, record_meta: dict[str, Any]) -> list[str] | None:
-        if entry is None:
-            return None
-        return slices.lines(self.k.aew_root, entry, list((record_meta.get("scope") or {}).get("paths") or []))
+            return None, None
+        return slices.pin(self.k.aew_root, self.k.repo_root, base, scope_paths)
 
     def pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         """The pack's inputs and its sources, as regenerated: a structural map comes from what the built pack pinned."""
@@ -203,7 +204,7 @@ class ContextPacks:
                 failure = {"id": fe["id"], "result": fe["result"],
                            "claims": fe["verification"]["claims"],
                            "suspected_cause": fe["verification"].get("suspected_cause")}
-        map_source = self._map_source(inv, role_def, base, fresh_map)
+        map_source, map_lines = self._map_slice(inv, role_def, base, record.meta, fresh_map)
         diff = diffstat = ""
         if base and role == "reviewer":
             diff = git.git("diff", "--no-color", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
@@ -224,7 +225,7 @@ class ContextPacks:
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             failure_evidence=failure,
             card=(card or {}).get("content"),
-            history=history, codebase_map=self._map_lines(map_source, record.meta),
+            history=history, codebase_map=map_lines,
             **{k: v for k, v in self._m2_pack_extras(state, inv, unit).items() if k in {"hierarchy", "inherited",
                                                                                         "inputs"}},
         )
@@ -261,7 +262,8 @@ class ContextPacks:
         extras = self._m2_pack_extras(state, inv, unit)
         history = self._history_refs(state, inv)
         role_def = roles.archetype(role)
-        map_source = self._map_source(inv, role_def, (inv.get("observation") or {}).get("commit"), fresh_map)
+        map_source, map_lines = self._map_slice(inv, role_def, (inv.get("observation") or {}).get("commit"),
+                                                record.meta, fresh_map)
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope"), specialty=inv.get("specialty"), workspace=inv["workspace"],
@@ -270,7 +272,7 @@ class ContextPacks:
             authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             card=(card or {}).get("content"), history=history,
-            codebase_map=self._map_lines(map_source, record.meta), **extras)
+            codebase_map=map_lines, **extras)
         sources = [
             {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),

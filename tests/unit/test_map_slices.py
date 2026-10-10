@@ -157,15 +157,80 @@ def test_without_the_slice_the_pack_is_unchanged():
 
 
 def test_the_pinned_readers_never_raise(tmp_path: Path):
-    unavailable = slices.lines(tmp_path, {"name": "codebase_map", "unavailable": "corrupt"}, [])
+    unavailable = slices.lines(tmp_path, tmp_path, {"name": "codebase_map", "unavailable": "corrupt"}, [])
     assert unavailable[-1].startswith("- UNAVAILABLE (corrupt)")
-    gone = slices.lines(tmp_path, {"name": "codebase_map", "sha256": "f" * 64, "freshness": CURRENT}, [])
-    assert "no longer readable" in gone[-1]
+    gone = slices.lines(tmp_path, tmp_path, {"name": "codebase_map", "sha256": "f" * 64, "freshness": CURRENT,
+                                             "source_revision": "a" * 40}, [])
+    assert "no longer readable" in gone[-1] and f"aew map generate --commit {'a' * 40}" in gone[-1]
     record = structural.generate(tree_of(SAMPLE), rules.load())
     sha, _ = store.write_artifact(tmp_path, record)
-    ok = slices.lines(tmp_path, {"name": "codebase_map", "sha256": sha, "freshness": CURRENT}, ["src/**"])
+    ok = slices.lines(tmp_path, tmp_path, {"name": "codebase_map", "sha256": sha, "freshness": CURRENT}, ["src/**"])
     assert ok[0] == slices.HEADING and any("freshness against" in line for line in ok)
     assert slices.source_entry(tmp_path / "nowhere", tmp_path, "HEAD") == {
         "name": "codebase_map", "path": None, "sha256": None, "unavailable": "none"}
     assert slices.pinned([{"name": "guardrails"}, {"name": "codebase_map", "x": 1}]) == {"name": "codebase_map", "x": 1}
     assert slices.pinned(None) is None
+
+
+def pinned_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                 scope: list[str]) -> tuple[dict[str, Any], list[str], Path]:
+    """A selected SAMPLE map pinned as a built pack pins it; Git reads come from the in-memory SAMPLE commit."""
+    from contextlib import contextmanager
+
+    record = structural.generate(tree_of(SAMPLE), rules.load())
+    sha, rel = store.write_artifact(tmp_path, record)
+    store.select_structural(tmp_path, expect=store.NO_REGISTRY, actor={"kind": "lead"}, entry={
+        "root": rel, "sha256": sha, "source_revision": record["source_revision"], "source_tree": record["source_tree"],
+        "object_format": record["object_format"], "generator_version": record["generator"]["version"],
+        "ruleset_sha256": record["generator"]["ruleset_sha256"]})
+
+    @contextmanager
+    def open_tree(_repo, rev):
+        if rev != record["source_revision"]:
+            raise RuntimeError("unknown commit")
+        yield tree_of(SAMPLE)
+
+    monkeypatch.setattr(slices.gitobjects, "open_tree", open_tree)
+    entry, built = slices.pin(tmp_path, tmp_path, None, scope)
+    return entry, built, tmp_path / store.artifact_rel(sha)
+
+
+def test_a_built_pack_pins_the_slice_it_rendered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    entry, built, _ = pinned_entry(tmp_path, monkeypatch, ["src/**"])
+    assert entry["slice"] == slices.body(store.read_artifact(tmp_path, entry["sha256"]), entry["freshness"],
+                                         ["src/**"])
+    assert built == slices.frame(entry["slice"]) == slices.lines(tmp_path, tmp_path, entry, ["src/**"])
+    assert len(entry["slice"]) <= slices.ROWS + slices.HINTS + 5  # bounded: what control state keeps is small
+
+
+@pytest.mark.parametrize("damage", ["removed", "corrupt", "maps_deleted"])
+def test_a_pinned_slice_regenerates_identically_whatever_happened_to_the_map(tmp_path: Path,
+                                                                             monkeypatch: pytest.MonkeyPatch,
+                                                                             damage: str):
+    """PR #143 review, M1: regenerating a pack is the launch guard, so the pinned slice must come back unchanged. A
+    gone or damaged artifact is rebuilt in memory from the pinned commit (and accepted only if it seals to the pinned
+    sha); when that cannot be done, the slice the entry pinned is used."""
+    import shutil
+
+    entry, built, artifact = pinned_entry(tmp_path, monkeypatch, ["src/**"])
+    if damage == "removed":
+        artifact.unlink()
+    elif damage == "corrupt":
+        artifact.write_bytes(b"{}")
+    else:
+        shutil.rmtree(tmp_path / store.MAPS_REL)
+    damaged = sorted((p.relative_to(tmp_path).as_posix(), p.read_bytes()) for p in tmp_path.rglob("*") if p.is_file())
+    rebuilt: list[str] = []
+    real = slices.structural.generate
+    monkeypatch.setattr(slices.structural, "generate", lambda tree, r: rebuilt.append("x") or real(tree, r))
+    assert slices.lines(tmp_path, tmp_path, entry, ["src/**"]) == built and rebuilt  # rebuilt from the commit
+    assert damaged == sorted((p.relative_to(tmp_path).as_posix(), p.read_bytes()) for p in tmp_path.rglob("*")
+                             if p.is_file())  # regeneration only reads: nothing is written back
+    # The commit's objects are gone: the pinned slice.
+    assert slices.lines(tmp_path, tmp_path, {**entry, "source_revision": "0" * 40}, ["src/**"]) == built
+    # Another generator rebuilds other bytes: never accepted as the pinned map; the pinned slice again.
+    monkeypatch.setattr(slices.structural, "generate", lambda tree, r: {**real(tree, r), "extra": 1})
+    assert slices.lines(tmp_path, tmp_path, entry, ["src/**"]) == built
+    # Damaged pinned slice and no map: one labelled line that names the recovery, never a raise.
+    gone = slices.lines(tmp_path, tmp_path, {**entry, "source_revision": "0" * 40, "slice": [1, 2]}, ["src/**"])
+    assert "no longer readable" in gone[-1] and "aew map generate --commit" in gone[-1]

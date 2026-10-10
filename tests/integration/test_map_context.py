@@ -4,18 +4,20 @@ design v0.5 §10, §11; T5-INV-01, 07, 10).
 With the switch off (the default) packs and the resume view are byte-identical to a project without maps, map or no
 map. With it on, only a role whose context names codebase_map (today the investigator) gets the bounded slice, its
 pack pins the map it used, and regeneration shows the pinned map and freshness. Architecture selection records an
-existing discovery record. And no state of ``.aew/local/maps/`` changes what dispatch, gates, transitions or resume
-do: the no-authority walk."""
+existing discovery record. And no state of ``.aew/local/maps/``, before dispatch or after it, changes what dispatch,
+launch, gates, transitions or resume do: the no-authority walk."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from aewflow import (
+    DISCOVERY,
     assign,
     complete_investigation,
     create_investigation,
@@ -26,7 +28,10 @@ from aewflow import (
     to_commit_ready,
 )
 from conftest import Project, git
+from fake_harness import POLICY, HarnessLab
+from invariants import assert_control_invariants
 
+from aew.harness import runlog
 from aew.maps import slices, store
 
 MAPS = Path(".aew") / store.MAPS_REL
@@ -133,10 +138,11 @@ def test_with_the_switch_on_only_the_investigator_gets_the_slice_and_its_pack_pi
     assert second["root"] != first["root"]
     again = regenerate(p, inv)
     assert again["matches_recorded"] and f"map {first['root'][:12]}" in pack_text(p, inv)
-    # A pinned artifact that is gone is a missing source: regeneration reports the mismatch.
+    # A pinned artifact that is gone is rebuilt from its commit (PR #143 review, M1): the same pack, not a mismatch.
+    text = pack_text(p, inv)
     (p.root / ".aew" / store.artifact_rel(first["root"])).unlink()
-    gone = regenerate(p, inv)
-    assert not gone["matches_recorded"] and "no longer readable" in pack_text(p, inv)
+    assert regenerate(p, inv)["matches_recorded"] and pack_text(p, inv) == text
+    assert not (p.root / ".aew" / store.artifact_rel(first["root"])).exists()  # regeneration only reads
 
 
 def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_with_the_switch_on(tmp_path):
@@ -153,6 +159,83 @@ def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_wi
     (p.root / ".aew" / store.artifact_rel(row["artifact_sha256"])).write_bytes(b"{}")
     row = {r["name"]: r for r in derived(p)}["codebase_map"]
     assert row == {"name": "codebase_map", "path": None, "freshness": "UNAVAILABLE", "detail": "corrupt"}
+
+
+# ------------------------------------------------------------------------------------------- after dispatch (M1)
+
+
+def test_damaging_the_map_after_dispatch_never_changes_the_pack_a_launch_relaunch_or_rotation_gets(tmp_path):
+    """PR #143 review, M1: regenerating the pack is the ``launch.pack`` guard and the supervisor's launch contract, so
+    with the switch on, deleting ``.aew/local/maps/`` after dispatch (ADR-0015 D1: always safe), damaging the pinned
+    artifact or the registry must refuse nothing: the launch (whose supervisor starts after the deletion), a relaunch
+    and a ``--replace`` rotation all run with the pack pinned at dispatch, byte for byte."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path,
+                            policy={**POLICY, "maps": {"pack_slices": "structural"}})
+    try:
+        p, sync = lab.project, tmp_path / "sync"
+        selected = select_map(p)
+        wid = create_investigation(p, tmp_path, title="Survey")
+        inv = lab.lead("work", "dispatch", wid)["invocation"]
+        pinned, text = invocations(p)[inv]["pack"]["sha256"], pack_text(p, inv)
+        assert slices.HEADING in text and f"map {selected['root'][:12]}" in text and "UNAVAILABLE" not in text
+        p.lead("work", "transition", wid, "--to", "RUNNING")
+
+        shutil.rmtree(p.root / MAPS)  # removed: the launch, and its supervisor, start after this
+        lab.script(f"R-{inv}-1", [{"do": "exit", "code": 0}])
+        first = lab.lead("harness", "launch", inv)["run"]
+        assert lab.wait(first)["status"] == "ended_without_evidence"
+
+        artifact = p.root / ".aew" / store.artifact_rel(selected["root"])  # corrupt: the relaunch
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b"{}")
+        lab.script(f"R-{inv}-2", [{"do": "touch", "path": str(sync / "ready")},
+                                  {"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
+        second = lab.lead("harness", "launch", inv)["run"]
+        lab.until(lambda: (sync / "ready").exists(), what="the relaunched run")
+
+        (p.root / MAPS / "registry.json").write_text("{not json", encoding="utf-8")  # and a malformed registry
+        lab.script(f"R-{inv}-3", [{"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
+        third = lab.lead("harness", "launch", inv, "--replace")
+        assert third["superseded"] == second
+        assert lab.wait(second)["status"] == "terminated"
+        done = lab.wait(third["run"])
+        assert done["status"] == "ended_with_evidence"
+
+        for run in (first, second, third["run"]):
+            prompt = (runlog.run_dir(lab.aew_root, run) / "harness" / "prompt.md").read_text(encoding="utf-8")
+            assert text in prompt, run  # the pack pinned at dispatch, as the supervisor built it after the damage
+        assert regenerate(p, inv)["matches_recorded"] and pack_text(p, inv) == text
+        assert invocations(p)[inv]["pack"]["sha256"] == pinned
+        p.lead("evidence", "ingest", wid, "--evidence", done["evidence"][0])
+        p.lead("work", "accept", wid)
+        assert p.ok("work", "show", wid)["control"]["state"] == "DONE"
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tmp_path):
+    """PR #143 review, M1, the last resort: with the artifact deleted and its commit's objects pruned, the map cannot
+    be rebuilt, and the slice the pack pinned keeps the regenerated pack, and so a launch contract, identical."""
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    switch_on(p)
+    side = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a commit no ref holds", cwd=p.root)
+    p.ok("map", "generate", "--token", p.token, "--commit", side, "--select", "--expect-map-rev", map_rev(p), "--json")
+    wid = create_investigation(p, tmp_path, title="Survey")
+    inv = p.lead("work", "dispatch", wid)["invocation"]
+    entry, text = slices.pinned(invocations(p)[inv]["pack"]["sources"]), pack_text(p, inv)
+    assert entry["source_revision"] == side and entry["slice"] and f"of commit {side[:12]}" in text
+    shutil.rmtree(p.root / MAPS)
+    git("gc", "-q", "--prune=now", cwd=p.root)
+    gone = subprocess.run(["git", "cat-file", "-e", f"{side}^{{commit}}"], cwd=p.root, capture_output=True,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert gone.returncode != 0  # the map cannot be regenerated from its commit any more
+    assert regenerate(p, inv)["matches_recorded"] and pack_text(p, inv) == text
+    engine = Engine.discover(p.root)
+    contract = engine.harness_contract(engine.store.read(), inv, f"R-{inv}-1")  # what a supervisor starting now builds
+    assert contract.pack_text == text and contract.pack_sha256 == invocations(p)[inv]["pack"]["sha256"]
 
 
 # ------------------------------------------------------------------------------------------- architecture selection

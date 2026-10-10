@@ -7,9 +7,12 @@ tables and source excerpts are committed. Two guards keep it so, over the eviden
 source (``tests/live/f9a_delivery_probe/``, including its shell scripts):
 
 - no absolute Windows or POSIX path, and no JSON key that carries one (``location``, ``directory``, ``binary``), in
-  the fast tier on every platform;
-- no word of the local account's name, run locally before committing and skipped in CI, where the account is the
-  runner's and means nothing. It names no account itself: it asks the operating system.
+  the fast tier on every platform. "Absolute path" means what ``HOST_PATHS`` lists: a drive path, a UNC prefix, a
+  home or user directory (``/home/``, ``/Users/``, ``/root/``, ``~/``, ``%APPDATA%``, ``%USERPROFILE%``) and a path
+  under a POSIX system root (``/tmp/``, ``/var/``, ``/opt/``, ``/srv/``, ``/mnt/``, ``/run/``, ``/etc/``);
+- no word of an account's name, run locally before committing and skipped in CI, where the account is the runner's
+  and means nothing. It names no account itself: it asks the operating system for the local account, and reads any
+  other account the probe ran under (the VM's) from ``AEW_EVIDENCE_PRIVATE_WORDS`` in the author's environment.
 """
 
 from __future__ import annotations
@@ -47,7 +50,12 @@ HOST_PATHS = {
     "%APPDATA%": re.compile(r"%APPDATA%"),
     "%USERPROFILE%": re.compile(r"%USERPROFILE%"),
     "home-relative path": re.compile(r"~/"),
+    # A path under a POSIX system root. ``/usr/`` is left out: ``probe.py`` names ``/usr/bin:/bin`` as the fallback
+    # PATH, which is no host's path. The lookbehind keeps URL paths (``/api/…``) and relative ones out.
+    "POSIX system root": re.compile(r"(?<![\w.~-])/(?:tmp|var|opt|srv|mnt|run|etc)/"),
 }
+# Other accounts the probe ran under (the VM's), named only in the author's environment: whitespace-separated words.
+PRIVATE_WORDS_ENV = "AEW_EVIDENCE_PRIVATE_WORDS"
 PATH_KEYS = frozenset({"location", "directory", "binary"})
 
 
@@ -74,6 +82,8 @@ def test_both_directories_hold_what_the_guards_scan():
     for directory, names in EXPECTED.items():
         present = {p.name for p in directory.iterdir() if p.is_file()}
         assert names <= present, f"{directory.relative_to(ROOT).as_posix()} lacks {sorted(names - present)}"
+        empty = sorted(n for n in names if (directory / n).stat().st_size == 0)
+        assert empty == [], f"{directory.relative_to(ROOT).as_posix()} has empty files: {empty}"
 
 
 def test_the_f9a_probe_evidence_holds_no_host_path_or_location_key():
@@ -90,13 +100,14 @@ def test_the_f9a_probe_evidence_holds_no_host_path_or_location_key():
 
 def local_account_words() -> set[str]:
     """The local account as the operating system names it: the login name and the home directory's last component,
-    each whole and each space-separated part of it."""
+    each whole and each space-separated part of it; and any other account named in ``AEW_EVIDENCE_PRIVATE_WORDS``."""
     whole = set()
     try:
         whole.add(getpass.getuser())
     except (KeyError, OSError):  # no login name in this environment
         pass
     whole.add(Path.home().name)
+    whole.update(os.environ.get(PRIVATE_WORDS_ENV, "").split())
     return {w for name in whole for w in (name, *name.split()) if w.strip()}
 
 
@@ -112,4 +123,4 @@ def test_the_f9a_probe_evidence_names_no_local_account():
         rel = path.relative_to(ROOT).as_posix()
         # Report where, never what: the failure message must not repeat the name.
         found += [f"{rel}:{line_of(text, m.start())}" for p in patterns for m in p.finditer(text)]
-    assert found == [], "the local account's name appears at these places"
+    assert found == [], "an account's name appears at these places"

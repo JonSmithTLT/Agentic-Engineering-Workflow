@@ -25,5 +25,9 @@ event's location, the run directories, the binary's path), so only the summaries
 committed. A fuller copy of the raw data, with at least every run's posts and event stream, is kept privately.
 
 **Sanitized.** These files hold no host path and no user name. `tests/unit/test_f9a_probe_evidence.py` checks them
-and the probe's source: no absolute Windows or POSIX path and no `location`, `directory` or `binary` key, in CI's fast
-tier; and, locally before committing, no word of the local account's name.
+and the probe's source, in CI's fast tier: no drive path, no UNC prefix, no home or user directory (POSIX `home`,
+macOS `Users`, `root`, a home-relative path, or the Windows `APPDATA` and `USERPROFILE` variables), no path under a
+POSIX system root (`tmp`, `var`, `opt`, `srv`, `mnt`, `run`, `etc`), and no `location`, `directory` or `binary` key.
+The test's `HOST_PATHS` lists the exact patterns. Locally before committing, it also checks
+for no word of the local account's name, nor of any other account the probe ran under that the author names in
+`AEW_EVIDENCE_PRIVATE_WORDS`.

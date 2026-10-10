@@ -94,9 +94,10 @@ Order is kept within one delivery mode, never across modes.
 
 ## P5: the same id posted twice, and 409s
 
-- **A re-post is idempotent per session.** The same id to the same session never gets a 409: it gets **200 with the
-  first post's inbox item** (same id, `time.created`, text and delivery), and any changed text or delivery is ignored.
-  This holds while the item is still queued and after it was admitted.
+- **A re-post is idempotent per session.** The same id to the same session never gets a 409, and any changed text or
+  delivery is ignored. While the item is still queued, the answer is **200 with the first post's inbox item** (same
+  id, `time.created`, text and delivery). After admission, OpenCode returns the delivered message instead: the same
+  id, text and delivery, with its admission time as `time.created`.
 - After admission, a re-post with the default `resume` returns the delivered message as the item and **wakes the idle
   session into an empty execution** (`execution.started`, then `succeeded`, then a new `idle` message), with no model
   request and no second message.

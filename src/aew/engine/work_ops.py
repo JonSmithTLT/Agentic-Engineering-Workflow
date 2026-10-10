@@ -144,9 +144,14 @@ class WorkUnits:
             rule = transitions.check(unit["state"], str(to), "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{unit['state']} -> {to} requires --reason")
+            require(self.state_change_query(unit, {"from": unit["state"], "to": str(to)}))  # the state hooks' refusal
             args.setdefault("found", {})["rule"] = rule
 
         return checked(check)
+
+    def state_change_query(self, unit: dict[str, Any], change: dict[str, str]) -> Any:
+        """Whether ``set_state`` would refuse ``change`` to ``unit`` (a ``before`` hook's blocker), or None."""
+        return self.hooks.query_before(unit, change)
 
     def transition_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """``work.transition``'s whole guard: the table part, then the rule's named guard for the unit's kind, which is

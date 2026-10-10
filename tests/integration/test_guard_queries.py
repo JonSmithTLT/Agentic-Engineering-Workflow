@@ -362,3 +362,22 @@ def test_the_stage_rechecks_ask_the_migrated_guards(ready):
     assert stage.guard_status(engine, "verify.classify", {"work_id": wid})[0] == UNKNOWN
     p.lead("work", "assign", wid)
     assert stage.guard_status(engine, "work.transition", {"work_id": wid, "to": "RUNNING"}) == (AVAILABLE, [])
+
+
+@pytest.mark.parametrize("to", ["RUNNING", "CANCELLED", "ESCALATED"])
+def test_guard_query_matches_execute_a_state_hooks_refusal(tmp_path, to):
+    """PR #170 review, finding 1: a Ticket left `publishing` by a crash refuses every state change but DONE in its
+    `before` state hook; `work.transition`'s query asks the same hook, so it answers BLOCKED where execution refuses."""
+    from aewflow import prepare_and_validate, to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    crashed = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()),
+                    env={"AEW_FAULT": "integrate.after_publishing_record"})
+    assert crashed.returncode == 86
+    engine = Engine.discover(p.root)
+    assert engine.store.read()["work"][wid]["integration"]["status"] == "publishing"
+    answer = equivalent(engine, "work.transition", wid, {"to": to, "reason": "r"},
+                        _transition(engine, p, wid, to, "r"))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "publish" in answer["blocking_conditions"][0]["message"]

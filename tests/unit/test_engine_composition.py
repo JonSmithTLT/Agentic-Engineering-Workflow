@@ -108,6 +108,23 @@ def test_state_hooks_run_in_their_documented_order(engine):
     assert [named(h) for h in hooks.after] == ["Invocations.on_state_change", "Integration.on_state_change"]
 
 
+def test_every_before_hook_is_a_query_the_guard_queries_ask(engine):
+    """PR #170 review, finding 1: a `before` hook is a pure refusal that answers (a blocker or None) and never raises,
+    so the guard queries can ask it (`WorkUnits.state_change_query`) and a new hook cannot bypass them."""
+    from aew.engine.dispatch import Blocker
+
+    units = [{"kind": "ticket", "mutating": True, "state": s, "integration": i}
+             for s in ("RUNNING", "COMMIT_READY") for i in (None, {"status": "prepared"}, {"status": "publishing"})]
+    for hook in engine._units.hooks.before:
+        for unit in units:
+            for to in ("RUNNING", "CANCELLED", "DONE"):
+                found = hook(dict(unit), {"from": unit["state"], "to": to})
+                assert found is None or (isinstance(found, Blocker) and found.error is not None), named(hook)
+    publishing = {"kind": "ticket", "mutating": True, "state": "COMMIT_READY", "integration": {"status": "publishing"}}
+    found = engine._units.state_change_query(publishing, {"from": "COMMIT_READY", "to": "RUNNING"})
+    assert found is not None and found.code == "ILLEGAL_TRANSITION"
+
+
 GENERAL = {"implementer_active": "WorkUnits", "findings_recorded": "WorkUnits",
            "returning_from_escalation": "WorkUnits", "not_beyond_interrupted_phase": "WorkUnits",
            "ready_for_review": "Gates", "ready_for_verification_without_review": "Gates",

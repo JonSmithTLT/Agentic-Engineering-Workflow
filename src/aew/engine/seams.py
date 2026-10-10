@@ -33,7 +33,10 @@ def kind_of(unit: dict[str, Any]) -> str:
     return MUTATING if unit.get("mutating") else NON_MUTATING
 
 
-BeforeHook = Callable[[dict[str, Any], dict[str, str]], None]
+# A `before` hook is a pure refusal in query form (PR #170 review, finding 1): (unit, change) -> a blocker or None. The
+# guard queries ask it for every state change they answer, and ``set_state`` raises its blocker, so no refusal a hook
+# makes can be missed by a query.
+BeforeHook = Callable[[dict[str, Any], dict[str, str]], Any]
 AfterHook = Callable[[dict[str, Any], dict[str, Any], dict[str, str], "str | None"], None]
 Guard = Callable[["TxnContext", str, dict[str, Any], str], None]
 # A migrated guard's pure form (M4-E E4): (state, work_id, args) -> a blocker or None; ``args`` carries ``to``.
@@ -41,15 +44,25 @@ GuardQuery = Callable[[dict[str, Any], str, dict[str, Any]], Any]
 
 
 class StateHooks:
-    """Effects of a state change, in registration order: ``before`` may refuse it, ``after`` applies its effects."""
+    """Effects of a state change, in registration order: ``before`` may refuse it (a pure query, answering a blocker or
+    None), ``after`` applies its effects."""
 
     def __init__(self) -> None:
         self.before: list[BeforeHook] = []
         self.after: list[AfterHook] = []
 
-    def run_before(self, unit: dict[str, Any], change: dict[str, str]) -> None:
+    def query_before(self, unit: dict[str, Any], change: dict[str, str]) -> Any:
+        """The first ``before`` hook's refusal of ``change`` to ``unit``, or None: what ``run_before`` would raise."""
         for hook in self.before:
-            hook(unit, change)
+            found = hook(unit, change)
+            if found is not None:
+                return found
+        return None
+
+    def run_before(self, unit: dict[str, Any], change: dict[str, str]) -> None:
+        found = self.query_before(unit, change)
+        if found is not None:
+            raise found.error
 
     def run_after(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
                   reason: str | None) -> None:

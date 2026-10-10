@@ -162,7 +162,9 @@ class MigrationRequired(IllegalTransition):
 class MessagingDisabled(IllegalTransition):
     """A coordination message on a project whose adopted execution policy does not set ``coordination.messaging:
     enabled`` (F9-A, ADR-0017): nothing is recorded. ``details.reason``: ``switched_off`` (absent or ``disabled``) or
-    ``not_adopted`` (the policy differs from what the operator adopted, so the switch reads off)."""
+    ``not_adopted`` (the policy differs from what the operator adopted, so the switch reads off), ``unreadable``, or
+    ``not_registered`` (the switch is on but the project has no ``coordination_store`` key: the adoption ran under an
+    engine before the sealing slice; plan D-39)."""
 
     code = "MESSAGING_DISABLED"
 
@@ -243,6 +245,14 @@ class DispatchUndecided(IntegrityError):
     """An engine defect: a transaction created an invocation or a harness run without a dispatch decision (M4-A)."""
 
     code = "DISPATCH_UNDECIDED"
+
+
+class ThreadUnsealed(IntegrityError):
+    """An engine defect: a commit ends an invocation whose coordination thread it did not seal, and the commit check
+    cannot seal it now, because the unit leaves the hot state in the same commit (its bundle is already written) or the
+    store has no sealing function (F9-A plan D-16, R3). Nothing is committed."""
+
+    code = "THREAD_UNSEALED"
 
 
 class MapArtifactCorrupt(IntegrityError):

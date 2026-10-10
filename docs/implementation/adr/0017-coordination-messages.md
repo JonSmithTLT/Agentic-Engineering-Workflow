@@ -3,8 +3,10 @@
 - **Status:** **Accepted** (lead developer, 2026-10-10), with the F9-A plan v4 that it records, after four independent
   plan reviews (v4 CLEAR, 2026-10-09). Built in slices MS0 to MS7. **MS1 built** (the coordination store): D1 to D4;
   D5's derived facts (`RECORDED`, `ACKNOWLEDGED`, `REPLIED_TO`) and the reader of fact lines, but no fact writer; and
-  D6's switch read from adopted bytes, its off state, the marker and the defaults, but not its snapshots. Everything
-  else is stated here as decided and lands with the slice the build-status table names. The transport section (D8)
+  D6's switch read from adopted bytes, its off state, the marker and the defaults, but not its snapshots. **MS2 built**
+  (2026-10-10, the sealing slice): D7, D11's engine side, D12, D9's evidence inputs and the operator reads, as the
+  amendment of 2026-10-10 records. Everything else is stated here as decided and lands with the slice the build-status
+  table names. The transport section (D8)
   waits for MS0's live-delivery probe; each later slice adds a dated amendment section when it lands. Number: the next
   free one at MS1 (ADR-0016 is held by F4).
 - **Resolves:** the implementation choices F9-A1 leaves open for F9-A: where messages live and how they are identified,
@@ -212,13 +214,63 @@ Built with MS3.
 - A seal record written before a commit that never lands is an unreferenced, benign file; the invocation stays active
   and its thread writable, and a retry seals again.
 
+## Amendment of 2026-10-10: the sealing slice (MS2) as built
+
+D7, D11's engine side, D12, D9's evidence inputs and the operator reads are built as decided above. The choices the plan
+left to the implementation, and what this slice adds beside them:
+
+- **Where the seal runs.** `Coordination.seal_ending(session, refs)` is the one function: the Lead-transaction finalizer
+  `Coordination.finalize`, placed after every finalizer that can end an invocation and immediately before archival
+  (`tests/unit/test_engine_composition.py` pins the order), and explicit calls in `lead acquire`, `lead handoff accept`
+  and `lead takeover` after their queue sync and before their credentials are archived. `Session.commit`'s check
+  (`_require_sealed`) seals a missed ending through the same function, which the composition root sets on the store
+  (`ControlStore.seal`) once the collaborator exists; a store without it (the perf tool) refuses instead. Every sealing
+  commit names its seal records in the transition's `refs`.
+- **A reply is evidence of receipt.** A Lead message the worker replied to is not sealed as undeliverable, and is
+  recorded on the worker's evidence with `via: replied`; a worker message the Lead replied to is not listed as unseen.
+  Otherwise a Lead message is undeliverable unless a `POSTED` or `DELIVERED` fact names it, and a worker message is
+  unseen unless a `DELIVERED via: lead_result` fact names it. The reason is `sender_superseded` when its generation is
+  not the current one at the seal, else `invocation_ended`.
+- **What the seal records** (`aew/coordination-seal/v1`): the thread's path, sha256 and size as sealed; the chain head,
+  verified line and message counts; `damaged` (any bytes after the verified prefix, a torn tail included) with
+  `verified_bytes`; the undeliverable messages with their reasons; `unseen_by_lead`; the invocation, unit and
+  `closed_rev`. The pointer on the unit is `{invocation, seal, sha256, messages, closed_rev}`, classified `bookkeeping`
+  in F4's field registry.
+- **The hot list.** `coordination_unseen` holds at most 20 entries `{message, invocation, work_unit, seal}`, with
+  `omitted` and `omitted_revs`; it leaves control state when emptied. `message_mark_shown` records that a
+  Lead-credentialed result carried worker messages: `DELIVERED via: lead_result` on a live thread, a line in
+  `.aew/coordination/lead-seen.jsonl` for a sealed one, and only for a message its seal lists as unseen (one shown or
+  answered before the seal is already seen); MS6's broker and own-shell runner call it. Each commit's seal step first
+  prunes what the seen log records, and resets the omitted count once a `recovered` line covers its range, and only then
+  adds the omissions of the invocations it ends, so a recovery is honoured by a commit that omits more. The recovery read
+  reads a seal the transition log names only through the unit pointer that pins its full sha256.
+- **The reads.** `work show` and `history show` gain `coordination` (per invocation of the unit with a thread: its
+  state, counts and last 10 messages), and the operator reads are `aew message thread`, `aew message list --work` and
+  `aew message unseen`. Each exists only while the reads are on: the project marker exists, or the project is registered
+  and its adopted switch is on (the H3 refinement of D6: no file is read beyond the marker's stat unless the state
+  already holds the key). `aew message` is registered only for a `message` command, never inside a worker's run, and
+  `message unseen` is Lead-reachable (with the Lead's credential it records what it listed). A sealed thread is shown
+  only once its seal matches the pointer's hash and the thread its seal's; a worker's text is labelled
+  `untrusted_text` with its author (MS6 adds the rendering). `doctor` adds a `coordination` line only where messaging
+  was ever enabled or a thread exists: the registration it lacks, and every ended invocation whose thread no seal pins.
+- **Evidence inputs.** `coordination_inputs` is an engine-owned evidence field, refused in a submission, and recorded on
+  every evidence kind an invocation produces: its submissions and its check results (`check run`).
+- **Rollback.** The downgrade test vendors main's control and transition schemas from before this slice. That schema
+  leaves a unit's keys open, so the unit's seal pointer alone would pass it; the registration key, which every state
+  holding a thread or a pointer holds (oracle rule 57), is what an older engine refuses. A v1 project cannot hold the
+  v2-only key, so its adoption of `enabled` registers nothing; `aew migrate` registers it in the v1-to-v2 commit
+  (`{since_rev, decision: null, via: migrate}`).
+- **Not here.** The shared diff helper does not exist yet (E5a, E7 and F4 S2a have not merged), so its named exclusion
+  and the stage-step equivalence test land with whichever creates it (the plan's coupling table). The oracle rules are
+  52 to 58 (C1 to C7, `tests/helpers/invariants.py`; 51 is E3c's).
+
 ## Build status
 
 | Slice | What | Status |
 |---|---|---|
 | MS0 | The OpenCode 2.0.18 live-delivery probe; D8's transport | Not built |
 | MS1 | The coordination store: D1 to D4; D5's derived facts and the fact reader (no fact writer); D6's switch read from adopted bytes, off state, marker and defaults (no snapshots); the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
-| MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | Not built |
+| MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | **Built (2026-10-10)**: the amendment of 2026-10-10 |
 | MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | Not built (after M4-E's E4 and MS2) |
 | MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | Not built (after MS0) |
 | MS5 | Live delivery and the continuation | Not built |

@@ -21,6 +21,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** -
 
+### F15.2
+
+**Due by:** M4-H · **Owner:** designer · **Needs:** design
+
+**What:** Before any project or M4-H's sealed manifest lists a verification result in `gates.requires_disposition`: the claim model the designer's D4 of 2026-10-10 needs (decision record `decisions-2026-10-10-m4h-instrument-and-claude-code.md`, MIC-07, MIC-08, MIC-16), which neither the code nor the documents have: (a) a way to mark a claim unrequired, and what makes it so (a card's claim list, policy or the verifier); (b) a `not_run` claim result; (c) report-outcome and gate rules that do not fail on such a claim, for unrequired claims only; (d) the key's `unrequired_verification_results` enum changed to `inconclusive` and `not_run`; (e) whether such a claim gates when the key does not list its result, as with the default, empty key. Until then the verification half marks nothing (M4-E E5b, pull request 182)
+
+**Blocks:** -
+
 ### E19
 
 **Due by:** Gate: before internal alpha · **Owner:** operator and designer · **Needs:** design

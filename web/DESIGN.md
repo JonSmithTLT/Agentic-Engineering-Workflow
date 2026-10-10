@@ -49,6 +49,8 @@ Inherit shared buttons/selects/panels. Native selects own their popup geometry; 
 
 `InvestigationWorkspace` owns selection layout/mobile switching/close. `RelationsExplorer` owns explicit bounded exploration. `SourceStrip` owns source versus browser metadata. `SafeContent` owns hostile Markdown rendering. `Pager` owns cursor navigation. Canonical behavior is in `UX-CONTRACT.md`.
 
+Raw-history search uses one naturally scrolling form and a bounded result list. Its signature is a visibly framed historical snippet with supplied trust labels and fences, rather than an inferred answer or Knowledge card. Literal terms use labeled native input rows; kind checkboxes and the result-limit select use native ownership. UTC dates remain explicit text inputs. Existing tokens, system typography and panel spacing apply; pending Search retains its width, Clear remains reachable, and long snippets wrap within phone bounds. Search is loaded on route demand, keeping additive schemas outside initial page startup.
+
 ## Do's and Don'ts
 
 Preserve provenance authority, visible unknowns and source roles. Avoid repeated metadata or additional controls for unavailable backend capabilities. Journal fixture/provisional modules must never enter production.

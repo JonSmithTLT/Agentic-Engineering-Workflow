@@ -1,5 +1,6 @@
 /** Demo server only. Cursor state and filtering never enter the production client. */
 import type { World } from './types';
+import { searchEcho } from '../search-echo';
 type Item = Record<string, unknown>;
 type Envelope = {
   control_revision: string;
@@ -45,6 +46,28 @@ export class DemoProjector {
     const capabilities = this.world.responses['/capabilities'] as {
       data: Record<string, { state: string }>;
     };
+    if (path === '/history/search' && capabilities.data.history_search) {
+      if (capabilities.data.history_search.state !== 'AVAILABLE') return { status: 403 };
+      const template = this.world.responses[path] as {
+        data: { hits: Item[]; query: unknown; [key: string]: unknown }; [key: string]: unknown;
+      } | undefined;
+      if (!template) return { status: 404 };
+      const terms = url.searchParams.getAll('term');
+      const kinds = [...new Set(url.searchParams.getAll('kind'))].sort();
+      const since = url.searchParams.get('since');
+      const until = url.searchParams.get('until');
+      const limit = Number(url.searchParams.get('limit') ?? 10);
+      if (!terms.length || terms.length > 16 || !Number.isInteger(limit) || limit < 1 || limit > 50) return { status: 400 };
+      let query;
+      try { query = searchEcho({ terms, kinds, since: since ?? undefined, until: until ?? undefined, limit }); }
+      catch { return { status: 400 }; }
+      const hits = template.data.hits.filter(hit => terms.every(term =>
+        String(hit.snippet).toLocaleLowerCase('en').includes(term.toLocaleLowerCase('en')))
+        && (!kinds.length || kinds.includes(String(hit.kind)))
+        && (!query.since || String(hit.at) >= query.since) && (!query.until || String(hit.at) <= query.until)).slice(0, limit);
+      return { status: 200, body: { ...template, data: { ...template.data, hits,
+        query } } };
+    }
     if (
       !['project', 'capabilities'].includes(projection) &&
       (projection in capabilities.data || projection === 'history') &&

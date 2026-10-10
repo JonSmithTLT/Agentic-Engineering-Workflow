@@ -16,3 +16,8 @@ export function readOnlyCommand(kind: string, id: string): string | undefined {
     ? `aew ${commands[kind]} ${id}`
     : undefined;
 }
+/** Supplied search argv is accepted only as the documented history-show template. */
+export function readOnlyHistoryArgv(argv: readonly string[]): string | undefined {
+  if (argv.length !== 4 || argv[0] !== 'aew' || argv[1] !== 'history' || argv[2] !== 'show') return;
+  return readOnlyCommand('history', argv[3]);
+}

@@ -6,12 +6,9 @@ import path from 'node:path';
 import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import { loadProjector } from './load-projector.mjs';
 
-const compiled = ts.transpileModule(fs.readFileSync('src/api/mock/projector.ts', 'utf8'), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
-}).outputText;
-const { DemoProjector } = await import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'));
+const { DemoProjector } = await loadProjector('src/api/mock/projector.ts');
 const world = JSON.parse(fs.readFileSync('src/api/mock/fixtures/F1.json', 'utf8'));
 world.responses['/capabilities'].data.action_projection = { state: 'UNSUPPORTED', reasons: [] };
 world.responses['/capabilities'].data.queue = { state: 'UNSUPPORTED', reasons: [] };

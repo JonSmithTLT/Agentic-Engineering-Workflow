@@ -1,6 +1,7 @@
 import { RecordInspection } from '../components/Investigation';
-import { createContext, useContext, type ReactNode } from 'react';
-import { useProjection } from './queries';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { useProjection, useReadSession } from './queries';
+import { historySearchSession } from './history-search';
 import { responseSchemas } from '../api/schema';
 import { capabilityView } from '../api/capabilities';
 import type { Projection } from '../api/transport';
@@ -38,6 +39,10 @@ const DashboardContext = createContext<ReturnType<
 > | null>(null);
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const state = useDashboardState();
+  const context = useReadSession();
+  useEffect(() => {
+    historySearchSession.bind(!!state.project.data && state.caps?.history_search?.state === 'AVAILABLE');
+  }, [context, state.project.data, state.caps?.history_search?.state]);
   return (
     <DashboardContext.Provider value={state}>
       {children}

@@ -209,18 +209,21 @@ def has_body(headers: Any) -> bool:
     return headers.get_all("Transfer-Encoding") is not None or any(v.strip() != "0" for v in lengths)
 
 
+# RFC 9112 §5 field line: a token name, the colon, then a value of visible bytes, SP and HTAB only (no CR, LF, NUL
+# or other control byte). An allow-list: any line outside it is refused, whatever its form.
+FIELD_LINE = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+:[\t\x20-\x7e\x80-\xff]*")
+
+
 def bad_field_syntax(block: bytes) -> bool:
-    """Whether a header block breaks the field syntax RFC 9112 makes a server refuse with ``400``: a line folded
-    onto the one before it (obs-fold, §5.2), or whitespace in a field name, before its colon (§5.1). The parsed
-    headers are trusted only for a block in strict syntax."""
+    """Whether a header block has a line outside RFC 9112's field grammar (§5, §5.1, §5.2; a bare CR, §2.2), which
+    the server refuses with ``400``. Lines end at LF, less one trailing CR; a CR anywhere else is outside the
+    grammar. The parsed headers are trusted only for a block in which every line is in it."""
     for line in block.split(b"\n"):
-        line = line.rstrip(b"\r")
+        if line.endswith(b"\r"):
+            line = line[:-1]
         if not line:  # the blank line that ends the block
             continue
-        if line[:1] in (b" ", b"\t"):
-            return True
-        name, colon, _ = line.partition(b":")
-        if colon and re.search(rb"\s", name):
+        if b"\r" in line or FIELD_LINE.fullmatch(line) is None:
             return True
     return False
 

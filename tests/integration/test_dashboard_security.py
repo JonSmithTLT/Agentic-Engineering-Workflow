@@ -13,6 +13,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import re
 import socket
 import sys
 import threading
@@ -701,20 +702,56 @@ def test_a_body_announced_by_any_framing_header_is_never_read_as_a_second_reques
         assert error_code(raw) == "INVALID_REQUEST"
 
 
-@pytest.mark.parametrize("form", ["space-before-colon", "tab-before-colon", "folded-line"])
+@pytest.mark.parametrize("form", ["space-before-colon", "tab-before-colon", "folded-line", "bare-cr-in-line",
+                                  "nul-in-name", "line-without-colon", "non-ascii-in-name"])
 def test_a_header_block_outside_strict_field_syntax_is_refused_and_ends_its_connection(live, form):
-    """RFC 9112 §5.1 and §5.2: whitespace between a field name and its colon, or a line folded onto the one before
-    it, is refused with ``400`` before any header is acted on, with one answer, ``Connection: close`` and the end
-    of the connection."""
+    """RFC 9112 §5 (and §2.2 for a bare CR): every header line is a token name, a colon and a value without control
+    bytes. A line outside that grammar is refused with ``400`` before any header is acted on, with one answer,
+    ``Connection: close`` and the end of the connection."""
     inner = _inner_read(live)
+    n = str(len(inner)).encode()
     field = {
-        "space-before-colon": f"Content-Length : {len(inner)}\r\n",
-        "tab-before-colon": f"Content-Length\t: {len(inner)}\r\n",
-        "folded-line": f"X-A: a\r\n Content-Length: {len(inner)}\r\n",
+        "space-before-colon": b"Content-Length : " + n + b"\r\n",
+        "tab-before-colon": b"Content-Length\t: " + n + b"\r\n",
+        "folded-line": b"X-A: a\r\n Content-Length: " + n + b"\r\n",
+        "bare-cr-in-line": b"X-A: a\r Content-Length: " + n + b"\r\n",
+        "nul-in-name": b"Content-Length\x00: " + n + b"\r\n",
+        "line-without-colon": b"Garbage\r\nContent-Length: " + n + b"\r\n",
+        "non-ascii-in-name": b"Content-Length\xa0: " + n + b"\r\n",
     }[form]
-    outer = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n{field}\r\n"
-    status, _, raw = _one_answer_then_the_end(live, outer.encode("latin-1") + inner)
+    outer = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n".encode("latin-1")
+    status, _, raw = _one_answer_then_the_end(live, outer + field + b"\r\n" + inner)
     assert status == 400 and error_code(raw) == "INVALID_REQUEST", (form, status)
+
+
+def test_header_lines_in_the_field_grammar_are_served_on_a_kept_alive_connection(live):
+    """The field grammar refuses nothing a client may send: browser-like headers, an empty value, a tab-led value,
+    a value with colons and runs of spaces, and LF-only line endings are all served, twice on one connection,
+    without ``Connection: close``."""
+    base = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n"
+    browser = ("User-Agent: Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/130.0\r\n"
+               "Accept: application/json, text/plain, */*\r\nAccept-Language: en-US,en;q=0.5\r\n"
+               "Accept-Encoding: gzip, deflate, br\r\nSec-Fetch-Site: same-origin\r\nSec-Fetch-Mode: cors\r\n"
+               "Sec-Fetch-Dest: empty\r\nConnection: keep-alive\r\nX-Empty:\r\nX-Tab:\tv\r\nX-Note: a: b  c \r\n")
+    for request in ((base + browser + "\r\n").encode("latin-1"), (base + "\r\n").replace("\r\n", "\n").encode()):
+        with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+            s.sendall(request + request)
+            data, heads = b"", []
+            while len(heads) < 2:  # two complete responses, each framed by its Content-Length
+                while b"\r\n\r\n" not in data:
+                    got = s.recv(65536)
+                    assert got, (heads, data)  # the server ended the connection: it refused, or closed
+                    data += got
+                head, _, data = data.partition(b"\r\n\r\n")
+                length = int(re.search(rb"(?im)^content-length:\s*(\d+)", head).group(1))  # type: ignore[union-attr]
+                while len(data) < length:
+                    got = s.recv(65536)
+                    assert got, head
+                    data += got
+                data = data[length:]
+                heads.append(head)
+        for head in heads:
+            assert head.startswith(b"HTTP/1.1 200 ") and b"connection: close" not in head.lower(), head
 
 
 def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second_request(live):

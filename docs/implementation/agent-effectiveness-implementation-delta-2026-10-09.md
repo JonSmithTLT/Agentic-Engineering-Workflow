@@ -19,12 +19,25 @@
    treatment bundle are frozen at preregistration (its §14.1, item 2), and a change to a treatment-defining artifact
    after calibration has begun forces a re-freeze (its §7). Once the bundle is frozen, later merges are not in it;
    before then, an item that lands is in the commit, so it must not be in the behaviour. Every item below that changes
-   what a model sees therefore ships **off and absent by default**, with a test that output is byte-identical while
-   off, as #143 (`maps.pack_slices`) and #148 (`recall.raw_history_search`) already do.
+   what a model sees or can run therefore ships **off and absent by default**, with a test that output is
+   byte-identical while off, as #143 (`maps.pack_slices`) and #148 (`recall.raw_history_search`, whose command is
+   unregistered while off) already do. That covers a pack, a card, a tool, a field of `harness_status`, `resume` or
+   `harness wait` that the Lead reads, and an `aew` subcommand the Lead could list or run.
    This plan proposes **none** of them for M4-H's treatment, so no preregistration amendment is needed. If one is
    proposed later, it follows Revision B: name the treatment change, amend the preregistration, re-freeze, before
    running. The operator's M4-H decision of 2026-10-07 (role packs are not broadened; `codebase_map` stays on the
    investigator; wider map serving earns itself through later evaluation) stands.
+
+   **How this plan reads Revision B's last sentence.** Revision B says: "If any structural/context change is considered
+   necessary for M4-H representativeness: [identify, amend, re-freeze]. Otherwise, land/evaluate it after the existing
+   M4-H gate." The plan reads "land" as *land in the treatment*, that is, become active behaviour of the AEW arm, not
+   *merge code*. Three things support that reading: the record itself pulls work forward before the gate (§9's
+   pre-M4-H lower-bound lane, §10.1's read half, §11's "raise / pull forward"); Q7 v0.3.1 fixes the treatment as one
+   frozen commit and bundle (§2.2, §14.1), so what matters is what that commit *does*; and #143 already merged map
+   machinery before the gate with its switch off under the operator's M4-H decision. So code may merge before M4-H
+   only while it is inert in the treatment (off and absent); every item is *activated* and *evaluated* after the gate.
+   The synthesis's own reason for landing steps 1 and 2 early, that they "make the M4-H AEW arm representative", is
+   exactly what Revision B revised: it is not acted on, because nothing is proposed for the treatment.
 3. **The main lane keeps its priority.** M4-E, F25's telemetry, F19's evaluator/arm-host split and F15.5/F15.6 are
    M4-H's prerequisites (Q7 v0.3.1 §16). The items here are parallel lanes on spare capacity; none is a prerequisite
    of M4-H and none is waited for.
@@ -75,7 +88,7 @@ The six classes are the record's §16. "Delta" names the item in §3 that does t
 | The `changes` catalog addition (synthesis §7) | implementation-local refinement; the record's §8 is the designer and operator's direction to add it | F15.9 | D9 |
 | H1: `repetition` and `observed_through` (synthesis §7) | implementation-local refinement | U1 | D10 |
 | The E19 re-freeze lines (synthesis §7) | editorial contract clarification | E19 | D16 |
-| Synthesis §8 steps 1 to 7 | the order of §3 below | — | D1 to D14 |
+| Synthesis §8 steps 1 to 7 (the sequencing; its "land before M4-H" read through Revision B, §1 rule 2) | existing item — priority/sequence change (the order of §3 below) | F22.1, F22.3, F35, F36, F15.8, F15.9, F30, F19, U1, F9, F21 | D1 to D14 |
 
 ## 3. The ordered delta
 
@@ -104,14 +117,18 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
   harness session database read-only, extracts only the fields its experiment's preregistration names, and feeds named,
   versioned metric functions in a new `eval/aew_eval/metrics.py` (orientation cost, repeated reads and tool n-grams,
   repository-wide searches, missed related surfaces, Lead reads); the run record names the metric versions and the
-  database's retention expiry. The corpus probes behind the synthesis are outside the repository: they are drafts, and
-  each function is re-derived here with its own tests.
+  database's retention expiry. **Retention is enforced, not only recorded:** past the expiry the reader refuses to
+  open the database, and the evaluator's retention step purges it (deletes the retained database file from the kept
+  run directory and records the purge in the run record); an F19 command runs that step for every experiment, and the
+  scorer runs it before each read. The corpus probes behind the synthesis are outside the repository: they are drafts,
+  and each function is re-derived here with its own tests.
 - **Sequencing change:** raised; it is the instrumentation every probe needs, and the lower-bound lane (D3) starts on
   it.
 - **Done when:** tests prove that the reader opens read-only and never writes; that it refuses a preregistration that
   names no fields or no retention window; that fields outside the allow-list are never read; that nothing under
-  `src/aew` imports it (AEW's runtime never consumes the database); and that each metric function is pinned by name and
-  version on fixtures.
+  `src/aew` imports it (AEW's runtime never consumes the database); that a database past its expiry is refused and
+  purged, the purge recorded, while one inside its window is kept and readable; and that each metric function is pinned
+  by name and version on fixtures.
 - **Probe:** it is the substrate of D3 and D14.
 - **Before M4-H:** yes. Evaluation only; it changes no treatment.
 - **Operator or designer action:** none beyond the approval given; the retention window is set per experiment at
@@ -142,13 +159,15 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Owner:** F22.3. **Class:** existing item — priority/sequence change.
 - **Depends on:** F22.1's structural core (PR A, built). It does not need #143.
 - **New work:** as the row and project maps v0.5 §9 and §16 T5-D define it: the bounded test relationship index (its
-  structural half without semantic facts, saying so), the constraint locator index, the public-surface projection and
-  the untrusted-string projection tests; each index with its own freshness. Plus the typed answers D7 serves
+  structural half without semantic facts, saying so), the constraint locator index and the untrusted-string projection
+  tests; each index with its own freshness. Not the semantic public-surface projection: project maps v0.5 §9.3 derives
+  it from semantic facts, which need F22.2's T5-B (not built), so it waits for F22.2. Plus the typed answers D7 serves
   (`map.tests_for`, `map.constraints`) under the maps' answer contract (terminal state, coverage, freshness, evidence
   locators).
 - **Sequencing change:** **Unscheduled** becomes **M4 candidate**, a parallel lane like F22.1.
-- **Done when:** T5-D's slice is built with those tests; no index makes a test required or changes a pack; F22.3
-  closes.
+- **Done when:** the test relationship and constraint locator indexes are built with those tests; no index makes a
+  test required or changes a pack. F22.3 stays open for the public-surface projection and closes only when that is
+  built after F22.2's T5-B.
 - **Probe:** R8's arm C, R9's test and constraint questions, E1 (D14).
 - **Before M4-H:** yes. Building an index changes no model's context.
 - **Operator or designer action:** none.
@@ -197,15 +216,21 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 
 ### D7. F15.8: the `aew-run` read half
 
-- **Owner:** F15.8, split from F15.3. **Class:** existing item — priority/sequence change (operator approval, record
-  §10.1).
+- **Owner:** F15.8, split from F15.3, for the transport (the server and the bridge rows). The typed `map.*` query
+  semantics stay **F22.2**'s (T5-B: configuration-partitioned answers, terminal states, candidates-only search; not
+  built): F15.8 builds no second map query engine. **Class:** existing item — priority/sequence change (operator
+  approval, record §10.1).
 - **Depends on:** the run bridge (built, `bridge.OPERATIONS`); F22.1's structural core (built); D4 for
   `map.tests_for` and `map.constraints`; E12 (`aew evidence show`, decided 2026-10-06, not built) for `evidence.show`.
 - **New work:** the role-side server inside the sandbox over the existing bridge, the credential staying with the
   supervisor; `whoami` and `check.run` as tools; read rows for map search (exact resolution first, then a
   workspace-rooted lexical fallback), `map.symbol`, `map.callers` and `map.callees` (`NOT_SUPPORTED` until a semantic
   extension covers the language), `map.tests_for`, `map.constraints`, `map.changed`, `evidence.show` and
-  `check.suggest`; one result envelope across them; the profile's `tools.presentation`; raw tools untouched.
+  `check.suggest`; one result envelope across them; the profile's `tools.presentation`; raw tools untouched. The `map.*`
+  rows answer from the structural record only, under project maps v0.5 §7.2's answer contract and terminal states, and
+  call through one map query module that F22.2's T5-B owns and later extends with semantic facts; until then they
+  return `NOT_SUPPORTED` for what only semantic facts can answer. `map.tests_for` and `map.constraints` are D4's
+  indexes' answers; `map.changed` is the worktree diff.
 - **Sequencing change:** pulled ahead of M6a (it was M6); **M4 candidate**, a parallel lane. F15.3 keeps typed `submit`
   and the `aew-knowledge` namespace rules.
 - **Done when:** no request can name an invocation, run or credential, and the credential is never inside the sandbox
@@ -222,17 +247,21 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Owner:** F30, fed by F22.3. **Class:** existing item — priority/sequence change.
 - **Depends on:** F22.1 (built) for the generated, vendored and co-change relations; D4 for tests and constraint
   locators; M4-E E5b (`ticket_request_review`) for the pre-review hook.
-- **New work:** `aew impact --changed` on demand: at most eight high-confidence related-but-untouched surfaces with the
+- **New work:** `aew impact --changed` on demand, **absent while its switch is off**: the subcommand is registered only
+  when the execution policy turns it on, as #148 registers `history search`, so `aew --help`, usage and an attempt to
+  run it are what they were before; then at most eight high-confidence related-but-untouched surfaces with the
   omitted count, uncertainty and coverage first, each relation kept only while its effective false-positive rate stays
   under 10%; the worker's dispositions in `self_review.related_surfaces` (addressed, unaffected or unsure) and
   `surface_sha256`; the reviewer's pack renders the same surface by hash; then the hook before `request_review`, behind
   a switch.
 - **Sequencing change:** F30's first slice is defined and brought ahead of the full impact evaluation.
 - **Done when:** the command and the report field are tested on seeded changes; no gate, transition or dispatch reads a
-  disposition (advisory, never a gate because something is related); off by default, cards and packs are unchanged.
+  disposition (advisory, never a gate because something is related); with the switch off, a test shows the subcommand
+  is unregistered (help, usage and the invalid-choice error unchanged) and cards and packs are byte-identical.
 - **Probe:** `e1-completeness-nudge`, after M4-H: false positives per relation and the dismissal rate decide whether it
   stays on demand.
-- **Before M4-H:** the command, yes; the hook only after E5b, off by default.
+- **Before M4-H:** the command may merge, off and absent; the hook only after E5b, off by default. Neither is
+  activated before the gate.
 - **Operator or designer action:** none.
 
 ### D9. F15.9: the Lead's `changes` query (E2)
@@ -256,11 +285,16 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Owner:** U1 (the health projection, **M4 candidate**). **Class:** implementation-local refinement.
 - **Depends on:** U1 itself (not built; out of M4-E, plan v3 §0).
 - **New work:** when U1 is built: a `repetition` field (drift read from trajectory shape, which today's telemetry
-  supports) and the telemetry watermark returned as `observed_through`.
-- **Sequencing change:** none to U1.
-- **Done when:** U1's own tests cover both fields.
+  supports) and the telemetry watermark returned as `observed_through`, both **off and absent by default** behind one
+  execution-policy switch. U1 itself is planned for M4-G, before the Q7 hard dogfood, and health is a field of
+  `harness_status`, `resume` and `harness wait`, which the Lead reads; so while the switch is off neither field appears
+  in any of them, and U1's health object is byte-identical to U1 without these additions.
+- **Sequencing change:** none to U1; the two fields are activated only after M4-H.
+- **Done when:** U1's tests cover both fields when on, and a byte-identity test shows `harness_status`, `resume` and
+  `harness wait` output unchanged with the switch off.
 - **Probe:** `r2b-coherence` reads `repetition`; `e2-delta-first` uses the watermark.
-- **Before M4-H:** as U1 is scheduled; health is not part of M4-H's treatment unless U1 is.
+- **Before M4-H:** buildable with U1, off and absent; neither field is in M4-H's treatment. U1's own health
+  projection is outside this plan and keeps whatever place M4's plan gives it.
 - **Operator or designer action:** none.
 
 ### D11. F36, part 2: the recitation
@@ -298,6 +332,9 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Depends on:** the decisions-due adoption of F9-A1 (already ingested, PR #145).
 - **New work:** none now. On adoption: the recitation becomes an F9-A instruction; the worker-published `working_note`
   is F9-B's; F9-C's supervision candidates ride `changes`; `e2-delta-first` runs inside F9-D.
+- **Sequencing change:** none; F9 stays **On measured need** until F9-A1 is adopted.
+- **Done when:** not applicable until adoption; then F9-A1's own staging (F9-A to F9-D) and acceptance (LWM-32) decide.
+- **Probe:** `e2-delta-first` and `r2b-coherence`'s fourth arm need F9-A and F9-D (D14).
 - **Before M4-H:** not scheduled.
 - **Operator or designer action:** the existing F9-A1 adoption item, unchanged.
 
@@ -309,8 +346,10 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
   `e2-delta-first`, one factor each, with the capability class as a blocking variable; report raw against assisted per
   class and the cost per correctly accepted outcome across classes; the primary measure is the independently verified,
   correctly accepted outcome.
+- **Sequencing change:** none; they were always post-gate (record §12; synthesis §8 step 7).
 - **Done when:** each probe reports; only then may an aggressive mode (typed-first, explicit orientation, the nudge
   before review, delta-first) become a default, by its own register change.
+- **Probe:** these are the probes.
 - **Before M4-H:** no.
 - **Operator or designer action:** none new; budgets are preregistration values.
 
@@ -323,16 +362,24 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
   governs; KC §9.4 promotion stays a separate operation that keeps the Ticket's identity, evidence, class floor and
   inherited gates; ambiguous re-parenting fails closed until the implementation text is updated. It is consistent with
   the adopted amendment, which already requires a new Ticket when the parent changes (TRA-07).
+- **Sequencing change:** none; F4 keeps its **Hierarchy revision** target.
 - **Done when:** F4's plan cites it and its tests cover the refusal and the draft correction.
+- **Probe:** none; TRA-31's oracle cases are F4's acceptance.
 - **Before M4-H:** independent of it.
 - **Operator or designer action:** none; the ruling is the designer's, recorded.
 
 ### D16. E19: the re-freeze lines
 
 - **Owner:** E19 (the WC/KC re-freeze). **Class:** editorial contract clarification.
+- **Depends on:** the re-freeze itself (after M4-E; the E19 decisions-due item, owed by the operator and the designer).
 - **New work:** the lines synthesis §7 lists (locations as labelled locators in the implementer pack, independent
   review excluding implementer working state, the handoff note as a bounded claim for a successor) and record §15,
   folded into the re-freeze; the decisions-due E19 item now names them.
+- **Sequencing change:** none; the re-freeze stays after M4-E and before internal alpha (E19's row and its
+  decisions-due item).
+- **Done when:** the re-frozen WC/KC carry the four lines, and E19 closes with the re-freeze.
+- **Probe:** none.
+- **Before M4-H:** not needed; it is text, not behaviour.
 - **Operator or designer action:** the existing E19 item, extended.
 
 ## 4. Implementation-local choices
@@ -346,10 +393,19 @@ pull request that builds it.
    names for T5-D's indexes and the worktree diff.
 2. **One switch per item, off and absent by default**, with a byte-identity test while off, the pattern of #143 and
    #148.
-3. **A3 classes.** A field that changes what a dispatched role receives (`context.*`, `tools.presentation`, the read
-   half's switch, the handoff note's delivery) is `legality_affecting`, as #143 classes `maps.pack_slices`, so a
-   change fails closed; the recitation's timing thresholds are `operational`. The synthesis proposed all of them
-   operational; this is the more conservative reading of A3, reversible by an ADR-0010 amendment if it causes churn.
+3. **A3 classes: a disclosed departure from the record's word "operational".** The governing record itself calls
+   these fields operational: §4 says "execution-profile operational knobs may include `context.budget_chars`, …" and
+   §5 "profile-level operational knobs such as `tools.presentation`" (ledger AEA-15, AEA-21), and the synthesis §7
+   classes them all `operational` under F15.4. This plan reads the record's "operational" as *a non-semantic tuning
+   knob, never workflow semantics or a model-name rule*, not as the A3 class, and classes a field that changes what a
+   dispatched role receives (`context.*`, `tools.presentation`, the read half's switch, the handoff note's delivery)
+   `legality_affecting`. The reason is mechanical: a role's pack is regenerated at launch under the `launch.pack`
+   dispatch guard and compared with the pack pinned at dispatch, so a context field classed operational and changed
+   between dispatch and launch would refuse the launch, against A3's promise that an operational change never
+   invalidates in-flight legal work; classed `legality_affecting`, the change re-decides the pending dispatch instead,
+   which is how A3 means such a change to be handled. A3 also fails closed on classification: a field "never silently
+   defaults to operational" (PBD-09); and #143 classes `maps.pack_slices` the same way for the same reason. The recitation's timing thresholds
+   change no pack and stay `operational`. Reversible by an ADR-0010 amendment if measurement shows churn.
 4. **The handoff note** is bounded by the schema and refused when over size, as other schema violations are; no
    capture template admits it.
 5. **The session-database reader** lives on the evaluator side only; its retention window has no default, so an
@@ -368,7 +424,8 @@ pull request that builds it.
 - **The reviewer's layout row against the operator's M4-H decision of 2026-10-07.** It ships off; wider serving earns
   itself through evaluation, as that decision requires.
 - **Synthesis §8's "worth landing before M4-H" against Revision B.** Revision B governs: building may land, the
-  treatment does not move, and nothing is proposed for it.
+  treatment does not move, and nothing is proposed for it. Revision B's own "Otherwise, land/evaluate it after the
+  existing M4-H gate" is read as *activate and evaluate* after the gate (§1 rule 2 gives the reading and its support).
 - **The R2 note has no source in this repository.** The record's §6 now states its properties.
 - **The handoff note against knowledge capture triggers.** No capture template admits the field, so it never becomes
   Knowledge automatically.
@@ -387,7 +444,7 @@ pull request that builds it.
 ## 7. What changed in the register and the ledger
 
 - **New rows:** F15.8 (the read half), F15.9 (`changes`), F35 (pack serving), F36 (weak-worker continuity).
-- **Raised:** F22.3 to **M4 candidate**. **Notes added:** F4, F9, F11, F13, F15.3, F18.13, F19, F20.7, F21, F22.3,
+- **Raised:** F22.3 to **M4 candidate**. **Notes added:** F4, F9, F11, F13, F15.3, F18.13, F19, F20.7, F21, F22.2, F22.3,
   F30, F32, F34, E19, U1. The decisions-due E19 item names the re-freeze lines.
 - **Ledger:** the adoption record is source AEA (AEA-01 to AEA-45; AEA-32, AEA-35 and AEA-44 done) and the synthesis
   source AES (AES-01 to AES-25, with what the record adopted carried by AEA ids).

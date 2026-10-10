@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -369,6 +370,69 @@ def test_resolve_marks_only_a_real_conflict_and_never_overwrites_a_resolution(re
     assert "already resolved" in capsys.readouterr().out
     for rel, text in register_files(fixed).items():
         assert (repo.path / rel).read_text(encoding="utf-8") == text, rel
+
+
+def moved_to_end(data: dict[str, Any], number: int, rid: str) -> dict[str, Any]:
+    data = copy.deepcopy(data)
+    rows = section(data, number)["rows"]
+    rows.append(rows.pop(next(i for i, r in enumerate(rows) if next(iter(r.values())) == rid)))
+    return data
+
+
+def test_resolve_keeps_a_row_moved_on_either_side_and_marks_two_different_moves(repo, capsys):
+    """The open sections are ordered by hand, and a merge keeps a move made on one side, as git does (review of PR #151
+    at 1546799, 1). With a same-gap closing on each side, so that `resolve` has to run: a row moved to the end of §6 on
+    their side stays moved while ours edits another row; two different moves of the same section conflict."""
+    rows = [next(iter(r.values())) for r in section(DATA, 6)["rows"]]
+    mover, edited, other = rows[0], rows[2], rows[1]
+    column = section(DATA, 6)["columns"][1]
+    a, b = same_gap(DATA)
+    ours = closed_into(changed(DATA, edited, column, " Edited."), a)
+    theirs = closed_into(moved_to_end(DATA, 6, mover), b)
+    stopped_merge(repo, register_files(), register_files(ours), register_files(theirs))
+    assert register.resolve(repo.path) == 0, capsys.readouterr().out
+    expected = closed_into(moved_to_end(changed(DATA, edited, column, " Edited."), 6, mover), a, b)
+    assert load((repo.path / REG_YAML).read_text(encoding="utf-8")) == expected
+
+    other_repo = Repo(repo.path.parent / "other")
+    stopped_merge(other_repo, register_files(), register_files(closed_into(moved_to_end(DATA, 6, mover), a)),
+                  register_files(closed_into(moved_to_end(DATA, 6, other), b)))
+    assert register.resolve(other_repo.path) == 1
+    assert "marked: sections 6 rows order" in capsys.readouterr().out
+
+
+def gate_closed(data: dict[str, Any], name: str, nth: int) -> dict[str, Any]:
+    """The register with the ``nth`` §1 gate called ``name`` moved to §9 as a closed ``Gate`` row."""
+    data = copy.deepcopy(data)
+    gates = section(data, 1)["rows"]
+    gate = gates.pop([i for i, r in enumerate(gates) if r["Gate"] == name][nth])
+    closed = section(data, 9)
+    closed["rows"].append(dict(zip(closed["columns"], ["Gate", f"{gate['Gate']}: {gate['Condition'][:40]}",
+                                                       "2026-10-10", "This test"], strict=True)))
+    return register.normalize(data)
+
+
+def test_like_named_gates_are_matched_by_content_so_nothing_is_lost(repo, capsys):
+    """§1 has two gates named alike and §9 several rows whose first cell is `Gate`: `resolve` matches such rows by
+    content, not position (review of PR #151 at 1546799, 2). Closing one like-named gate while the other is edited
+    merges, and two gates closed on different sides are both closed, with both §9 records kept: nothing is deleted."""
+    name = Counter(r["Gate"] for r in section(DATA, 1)["rows"]).most_common(1)[0][0]
+    a, b = same_gap(DATA)
+    edited = copy.deepcopy(DATA)
+    [r for r in section(edited, 1)["rows"] if r["Gate"] == name][1]["Condition"] += " Edited."
+    stopped_merge(repo, register_files(), register_files(closed_into(gate_closed(DATA, name, 0), a)),
+                  register_files(closed_into(edited, b)))
+    assert register.resolve(repo.path) == 0, capsys.readouterr().out
+    assert load((repo.path / REG_YAML).read_text(encoding="utf-8")) == closed_into(gate_closed(edited, name, 0), a, b)
+
+    other_repo = Repo(repo.path.parent / "other")
+    first, second = section(DATA, 1)["rows"][0]["Gate"], section(DATA, 1)["rows"][1]["Gate"]
+    stopped_merge(other_repo, register_files(), register_files(gate_closed(DATA, first, 0)),
+                  register_files(gate_closed(DATA, second, 0)))
+    assert register.resolve(other_repo.path) == 0, capsys.readouterr().out
+    merged = load((other_repo.path / REG_YAML).read_text(encoding="utf-8"))
+    assert merged == gate_closed(gate_closed(DATA, first, 0), second, 0)
+    assert len(section(merged, 9)["rows"]) == len(section(DATA, 9)["rows"]) + 2
 
 
 def test_resolve_refuses_outside_a_merge(repo, capsys):

@@ -43,8 +43,9 @@ different gaps insert at different places; ``decisions-due.yaml`` is kept the sa
 branches that add an item for the same row at different due points merge into a duplicate that ``check`` refuses.
 After every sync with main run ``render``, conflict or not: a clean merge can still leave §Closed or the items
 unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict, run ``resolve``: it
-merges the YAML again from its three sides row by row and cell by cell (not line by line), and renders, so only the
-same cell changed on both sides is left, marked in the YAML. The markdown is derived and is never merged by hand.
+merges the YAML again from its three sides row by row and cell by cell (not line by line), and renders, so only a
+real conflict is left, marked in the YAML: the same cell changed on both sides, a row changed on one side and closed
+on the other, or a section reordered differently on both. The markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
@@ -451,15 +452,82 @@ _KEYED: dict[str, Any] = {"sections": lambda s: s.get("number"), "rows": lambda 
 _MARKER_RE = re.compile(r"^(<{7}|>{7})( |$)|^={7}$", re.M)
 
 
-def _keys(entries: list[Any], key: Any) -> list[tuple[Any, int]]:
-    """Each entry's key with its occurrence, so the repeated first cells (``Gate``, a gate's name) stay apart."""
-    seen: Counter[Any] = Counter()
-    out = []
-    for entry in entries:
-        k = key(entry) if isinstance(entry, dict) else repr(entry)
-        out.append((k, seen[k]))
-        seen[k] += 1
-    return out
+def _likeness(a: Any, b: Any) -> float:
+    """How much of an entry survived on one side: the share of its other fields (all but the first) left unchanged."""
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return 0.0
+    others = [k for k in list(a)[1:] if k in b]
+    return sum(a[k] == b[k] for k in others) / len(others) if others else 0.0
+
+
+def _paired(sides: tuple[list[Any], ...], key: Any) -> tuple[list[Any], ...]:
+    """A key for every entry of the base, ours and theirs, the same on each side for the same entry. An entry whose
+    first cell is unique on every side is keyed by that cell (its id). Entries that share a first cell (the §1 gates
+    named alike, the §9 ``Gate`` rows) are matched by content instead of position (review of PR #151 at 1546799, 2):
+    each side's entry to the base entry it equals, else to the one it most resembles (at least half its other fields
+    unchanged); what is left on a side was added there, and an entry both sides added is one entry only when they
+    added it identically. So closing one of two like-named gates and editing the other merges, as git would."""
+    groups: dict[Any, tuple[list[int], ...]] = {}
+    for i, side in enumerate(sides):
+        for pos, entry in enumerate(side):
+            groups.setdefault(key(entry) if isinstance(entry, dict) else repr(entry), ([], [], []))[i].append(pos)
+    keyed: tuple[list[Any], ...] = tuple([None] * len(side) for side in sides)
+    base = sides[0]
+    for k, positions in groups.items():
+        if all(len(p) <= 1 for p in positions):
+            for i, p in enumerate(positions):
+                for pos in p:
+                    keyed[i][pos] = (k,)
+            continue
+        in_base = positions[0]
+        for n, pos in enumerate(in_base):
+            keyed[0][pos] = (k, n)
+        added: list[list[int]] = [[], [], []]
+        for i in (1, 2):
+            free = list(range(len(in_base)))
+            rest = []
+            for pos in positions[i]:  # the entries this side left as they were
+                n = next((n for n in free if base[in_base[n]] == sides[i][pos]), None)
+                if n is None:
+                    rest.append(pos)
+                else:
+                    keyed[i][pos] = (k, n)
+                    free.remove(n)
+            for pos in rest:  # the entries it changed: the base entry each most resembles
+                score, n = max(((_likeness(base[in_base[n]], sides[i][pos]), n) for n in free), default=(0.0, None))
+                if n is not None and score >= 0.5:
+                    keyed[i][pos] = (k, n)
+                    free.remove(n)
+                else:
+                    added[i].append(pos)
+        new = 0
+        for pos in added[1]:
+            twin = next((q for q in added[2] if sides[2][q] == sides[1][pos]), None)
+            keyed[1][pos] = (k, "added", new)
+            if twin is not None:
+                keyed[2][twin] = (k, "added", new)
+                added[2].remove(twin)
+            new += 1
+        for pos in added[2]:
+            keyed[2][pos] = (k, "added", new)
+            new += 1
+    return keyed
+
+
+def _order(shared: list[Any], *sides: list[Any]) -> list[Any]:
+    """``shared`` with each side's other entries after their predecessor on that side (and after what an earlier side
+    put there, so ours come before theirs)."""
+    order = list(shared)
+    for side in sides:
+        mine = set(side)
+        for i, k in enumerate(side):
+            if k not in order:
+                before = next((p for p in reversed(side[:i]) if p in order), None)
+                at = order.index(before) + 1 if before is not None else 0
+                while at < len(order) and order[at] not in mine:
+                    at += 1
+                order.insert(at, k)
+    return order
 
 
 def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str], field: str = "") -> tuple[Any, ...]:
@@ -467,7 +535,8 @@ def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str],
     it, ``(ours, base, theirs)``. The three agree wherever the merge is clean; where both sides changed the same value
     differently they keep their own, and ``where`` is recorded in ``conflicts``. Mappings merge key by key (a row cell
     by cell), the keyed lists entry by entry, so two rows closed into the same gap of §Closed, or added to the same
-    place, are two independent entries; normalizing afterwards puts them in order."""
+    place, are two independent entries; normalizing afterwards puts them in order. A keyed list's order merges three
+    ways too: a side that moved entries keeps its move, and two different moves conflict."""
     if ours == theirs:
         return ours, ours, ours
     if ours == base:
@@ -485,21 +554,29 @@ def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str],
                     view[k] = value
         return views
     if field in _KEYED and all(isinstance(v, list) for v in (base, ours, theirs)):
-        key = _KEYED[field]
-        b, o, t = ({k: e for k, e in zip(_keys(side, key), side, strict=True)} for side in (base, ours, theirs))
-        order = list(o)
-        for i, k in enumerate(t):  # an entry only theirs has goes after its predecessor there
-            if k not in order:
-                before = next((p for p in reversed(list(t)[:i]) if p in order), None)
-                order.insert(order.index(before) + 1 if before is not None else 0, k)
-        order += [k for k in b if k not in order]
+        keys = _paired((base, ours, theirs), _KEYED[field])
+        b, o, t = ({k: e for k, e in zip(ks, side, strict=True)} for ks, side in zip(keys, (base, ours, theirs),
+                                                                                       strict=True))
+        kb, ko, kt = keys
+        shared = [k for k in kb if k in o and k in t]
+        moved_o, moved_t = ([k for k in ks if k in shared] for ks in (ko, kt))
+        if moved_o == shared or moved_t == shared or moved_o == moved_t:  # at most one side moved entries
+            merged_order = _order(moved_t if moved_o == shared else moved_o, ko, kt)
+            orders = (merged_order, merged_order, merged_order)
+        else:
+            conflicts.append(f"{where} order")
+            orders = (_order(moved_o, ko, kt), _order(shared, ko, kt), _order(moved_t, ko, kt))
+        orders = tuple([*order, *(k for k in kb if k not in order)] for order in orders)
+        merged_by_key = {}
+        for k in orders[0]:
+            name = k[0] if len(k) == 1 else f"{k[0]} ({k[-1] + 1}{', added' if k[1] == 'added' else ''})"
+            merged_by_key[k] = _merge3(b.get(k, _ABSENT), o.get(k, _ABSENT), t.get(k, _ABSENT), f"{where} {name}",
+                                       conflicts)
         views_l: tuple[list[Any], ...] = ([], [], [])
-        for k in order:
-            name = k[0] if not k[1] else f"{k[0]} ({k[1] + 1})"
-            merged = _merge3(b.get(k, _ABSENT), o.get(k, _ABSENT), t.get(k, _ABSENT), f"{where} {name}", conflicts)
-            for view, value in zip(views_l, merged, strict=True):
-                if value is not _ABSENT:
-                    view.append(value)
+        for i, (view, order) in enumerate(zip(views_l, orders, strict=True)):
+            for k in order:
+                if merged_by_key[k][i] is not _ABSENT:
+                    view.append(merged_by_key[k][i])
         return views_l
     conflicts.append(where or "the whole file")
     return ours, base, theirs
@@ -524,8 +601,9 @@ def resolve(root: Path = ROOT) -> int:
     sides (the merge base, ours and theirs) by key (``_merge3``): rows and items added, changed or closed on one side
     apply, cell by cell, wherever they land, so the conflicts git reports for two insertions at one place (two rows
     closed into the same gap of §Closed, say) and for layout or order go away. Then both pages are rendered. Only a
-    real conflict, the same cell or field changed differently on both sides, stays: marked in the YAML, with nothing
-    else marked, to fix by hand before ``render``. The pages are never merged: they are rendered.
+    real conflict stays (the same cell or field changed differently on both sides, a row changed on one side and closed
+    on the other, a section reordered differently on both): marked in the YAML, with nothing else marked, to fix by
+    hand before ``render``. The pages are never merged: they are rendered.
 
     It refuses outside a merge (or a cherry-pick, revert or rebase), and it never overwrites a resolution: a conflicted
     YAML file with no conflict markers left was resolved by hand, and is kept."""

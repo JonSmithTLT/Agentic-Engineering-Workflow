@@ -178,7 +178,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **S10, the deliverable, export and review:** not built.
 
-**S11, the analysis:** not built (it needs no other slice).
+**S11, the analysis:** built (PR #188): `eval/aew_eval/analysis.py`, its schemas and the draft plan and frozen vectors in `eval/experiments/m4h-dogfood/`, as the register row F19 records; `tests/unit/test_eval_analysis.py`.
 
 **S12, the seals:** not built.
 

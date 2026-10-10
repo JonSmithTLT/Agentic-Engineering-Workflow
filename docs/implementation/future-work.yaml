@@ -1421,8 +1421,12 @@ sections:
       self-test''s and the harness adapter''s own launch bounds plus 60 s (620 s for OpenCode at its defaults; `AEW_RUN_START_S`
       overrides it), so a wedged start reads `lost` within the deadline plus 10 s and never becomes `running` (ADR-0009
       amendment 2026-10-09, a run''s start has a deadline). A failed harness test now reports and keeps its runs'' record
-      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. Raise test-side
-      timeouts, never the product''s.'
+      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. `test_a_waiter_parses_no_control_state_between_commits`
+      (OBX-38) failed on a loaded Windows host, alone at `main` and once under 8 workers in PR #149''s review (2026-10-09):
+      its 4 s wait closed before the Ticket''s commits landed, so only the initial read was counted. Fixed test-side: the
+      commits land after the waiter''s initial read, the test waits until the waiter has parsed the last of them, then ends
+      the wait through a run''s record; it counts parses against the commits'' revisions, with no time window. Raise or
+      restructure test-side timing, never the product''s.'
 
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule

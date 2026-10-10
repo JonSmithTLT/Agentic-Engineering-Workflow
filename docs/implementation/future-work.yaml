@@ -216,7 +216,9 @@ sections:
       timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send
       --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with
       messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation
-      arm (F19''s arm B, F9-D) only after F9-A''s MS5b has merged'
+      arm (F19''s arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged. **F9-B note (G3, amendment 2, decided):**
+      F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message
+      withdraw` is F9-B''s'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -881,7 +883,10 @@ sections:
       must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
       never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
       package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
-      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in)'
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **F9-A messaging
+      arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm (arm B, F9-D) only after U1 S11 and
+      F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while messaging is on (HS1, register E55),
+      so such an arm would silently lose the Lead''s nudge'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1879,7 +1884,8 @@ sections:
       (`TURN_END_NEEDS_MESSAGING`): M4-H has `next-step` only (G1, 2026-10-10). While messaging is on, every `harness send`
       is recorded through the store, fails closed and still wakes a held session (G4); until F9-A''s MS5b builds that path,
       it is refused (`HARNESS_SEND_NEEDS_STORE`), and a run whose launch snapshot of the switch disagrees with the project''s
-      is refused `MESSAGING_SNAPSHOT_MISMATCH` (relaunch it). The row also covers the help text and `harness_send`''s docstring'
+      is refused `MESSAGING_SNAPSHOT_MISMATCH` (once MS4 records launch snapshots the Lead relaunches it; until then sending
+      needs messaging switched off). The row also covers the help text and `harness_send`''s docstring'
     Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34, [record](../design/decisions-2026-10-10-f9-steer-vs-queue.md),
       ledger SVQ); the G1 and G2 decisions ([record](../design/decisions-2026-10-10-f9-a-g1-g2.md), ledger MGT) and the
       G4 and rename decisions ([record](../design/decisions-2026-10-10-f9-a-g4-rename.md), ledger MGR); F9-A plan v4 amendment

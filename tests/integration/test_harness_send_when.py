@@ -195,9 +195,32 @@ def test_harness_send_refuses_when_the_project_switch_and_the_runs_snapshot_disa
     for when in ("next-step", "turn-end"):
         res = send(lab, run, "--text", "Check the shutdown path.", "--when", when)
         assert res.returncode != 0 and res.error["code"] == "MESSAGING_SNAPSHOT_MISMATCH", (when, res.stderr)
-        assert "Relaunch the run" in res.error["message"]
+        assert "relaunch" not in res.error["message"].lower() and "needs messaging switched off" in res.error["message"]
         assert res.error["details"] == {"project": "enabled", "snapshot": "disabled", "when": when}
         assert written(lab, run) == before
+    release(tmp_path)
+    assert "send" not in stop_and_requests(lab, run)
+    assert lead_posts(lab, run) == []
+
+
+def test_before_ms4_a_run_launched_after_messaging_was_switched_on_is_refused_alike_and_no_relaunch_is_advised(
+        lab, tmp_path):
+    """Review of PR #176, finding 1: until MS4 writes the run's snapshot, every run reads as launched off, so a run
+    launched after the operator switched messaging on is refused `MESSAGING_SNAPSHOT_MISMATCH` exactly like one
+    launched before. The refusal must not send the Lead to relaunch (it costs a working run and never helps): it says
+    that sending needs messaging switched off. MS4 replaces this test when it deletes `SNAPSHOT_RECORDED`."""
+    assert harness_ops.SNAPSHOT_RECORDED is False
+    enable_messaging(lab)  # the operator adopts messaging BEFORE the run is launched
+    run = launch_held_open(lab, tmp_path)
+    before = written(lab, run)
+    res = send(lab, run, "--text", "Check the shutdown path.")
+    assert res.returncode != 0 and res.error["code"] == "MESSAGING_SNAPSHOT_MISMATCH", res.stderr
+    assert res.error["details"] == {"project": "enabled", "snapshot": "disabled", "when": "next-step"}
+    message = res.error["message"]
+    assert "relaunch" not in message.lower() and "aew harness launch" not in message
+    assert "cannot yet launch a run with coordination messaging on" in message
+    assert "needs messaging switched off" in message
+    assert written(lab, run) == before
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)
     assert lead_posts(lab, run) == []

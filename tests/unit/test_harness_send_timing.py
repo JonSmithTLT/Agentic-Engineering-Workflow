@@ -84,7 +84,8 @@ def test_send_route_decides_every_cell_and_refuses_all_but_the_request_file(when
     for project, snapshot in ((ON, OFF), (OFF, ON)):
         with pytest.raises(MessagingSnapshotMismatch) as refused:
             send_route(project, snapshot, when)
-        assert "relaunch the run" in refused.value.message.lower()
+        assert "relaunch" not in refused.value.message.lower()  # before MS4 a relaunch never clears it
+        assert "needs messaging switched off" in refused.value.message
         assert refused.value.details == {"project": project, "snapshot": snapshot, "when": when}
 
 

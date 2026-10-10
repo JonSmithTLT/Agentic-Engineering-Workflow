@@ -1,6 +1,6 @@
 # F9-A1 — First-Class Lead–Worker Messaging and Adaptive Supervision Amendment v0.1
 
-**Status:** PROPOSED AMENDMENT  
+**Status:** **Adopted** as governing by the operator and the designer, 2026-10-09 ([decision record](decisions-2026-10-09-f9-a1-adoption.md)); it moved from `design/proposals/` that day. F9-A is built first, behind a switch; F9 messaging stays off in M4-H's frozen treatment (record §2). Until then this line read "PROPOSED AMENDMENT". The text below is unchanged  
 **Amends:** `AEW Live Coordination and Assumption-Propagation Design v0.1`  
 **Register:** F9  
 **Scope:** Lead↔worker communication, targeted supervision, spot-checking, and coordination visibility  

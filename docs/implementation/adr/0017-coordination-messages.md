@@ -1,9 +1,12 @@
 # ADR-0017 — Coordination messages: first-class Lead-worker messaging (F9-A)
 
 - **Status:** **Accepted** (lead developer, 2026-10-10), with the F9-A plan v4 that it records, after four independent
-  plan reviews (v4 CLEAR, 2026-10-09). Built in slices MS0 to MS7. **MS1 built** (the coordination store: D1 to D5
-  and the switch of D6). The transport section (D8) waits for MS0's live-delivery probe; each later slice adds a dated
-  amendment section when it lands. Number: the next free one at MS1 (ADR-0016 is held by F4).
+  plan reviews (v4 CLEAR, 2026-10-09). Built in slices MS0 to MS7. **MS1 built** (the coordination store): D1 to D4;
+  D5's derived facts (`RECORDED`, `ACKNOWLEDGED`, `REPLIED_TO`) and the reader of fact lines, but no fact writer; and
+  D6's switch read from adopted bytes, its off state, the marker and the defaults, but not its snapshots. Everything
+  else is stated here as decided and lands with the slice the build-status table names. The transport section (D8)
+  waits for MS0's live-delivery probe; each later slice adds a dated amendment section when it lands. Number: the next
+  free one at MS1 (ADR-0016 is held by F4).
 - **Resolves:** the implementation choices F9-A1 leaves open for F9-A: where messages live and how they are identified,
   how a retry is recognized, what a reply and a ref may name, the bounds, the switch and its off state, when a thread is
   sealed, and what the rollback, delivery and independence rules are.
@@ -67,10 +70,16 @@ optional; for a worker it is required and names a Lead message (D-10): F9-A's wo
 unsolicited updates are F9-B's. Kinds are F9-A1 §9's eight (D-11); the defaults are `instruction` for the Lead and
 `status` for a worker. Kinds change presentation only, and no engine module branches on one.
 
-Refs are `kind:value` strings (D-12): `evidence`, `ticket` (`T-n` or `T-n@rN`), `finding` (of the thread's unit),
-`message`, `run`, `decision`, and `source` (a workspace-relative path with an optional `#Ln` or `#Ln-Lm`). AEW ids must
-exist (`REF_UNKNOWN`); a `source` is checked for its syntax only. A worker cites only its own unit, thread, Ticket and
-runs (`REF_OUT_OF_SCOPE`). A ref is a string: it grants no access and is never resolved for the recipient.
+Refs are `kind:value` strings (D-12): `evidence`, `ticket` (`T-n` or `T-n@rN`), `finding`, `message`, `run`,
+`decision`, and `source` (a workspace-relative path with an optional `#Ln` or `#Ln-Lm`). AEW ids must exist
+(`REF_UNKNOWN`); a `source` is checked for its syntax only. A worker cites only its own unit, thread, Ticket and runs
+(`REF_OUT_OF_SCOPE`). A ref is a string: it grants no access and is never resolved for the recipient.
+
+A unit stores a review's finding as `<evidence id>#<finding id>`, so a finding ref has two forms. The qualified
+`finding:<evidence id>#<finding id>` names one finding of the unit holding that evidence: the Lead may cite any unit's,
+a worker only its own unit's. The short `finding:<finding id>` (F9-A1 §10's `finding:F-22`) resolves within the
+thread's own unit only, and only when exactly one of its findings has that id; when two reviews used the same id it is
+refused (`REF_UNKNOWN`, reason `ambiguous`), naming the qualified ids to cite instead.
 
 `ticket_revision` is the revision the invocation records on an F4-enabled project, read at record time, and `null` on a
 dormant project or a non-Ticket unit (D-9). Until F4 binds revisions, a `T-n@rN` ref cannot be shown to exist and is
@@ -86,8 +95,10 @@ Every refusal is `COORDINATION_LIMIT` (or its subtype `LEAD_INBOX_FULL`) with `d
 
 ### D5. Delivery facts
 
-Communication facts only (D-13; LWM-09): `RECORDED` and the reply facts (`ACKNOWLEDGED`, `REPLIED_TO`) are derived
-from the thread; `POSTED {run, generation, checked_rev}` is recorded under the lock immediately before a transport call;
+Communication facts only (D-13; LWM-09). `RECORDED` and the reply facts (`ACKNOWLEDGED`, `REPLIED_TO`) are derived
+from the thread (built with MS1, as is the reader of fact lines). The written facts are planned for their slices
+(`POSTED` and `DELIVERED` with MS4 to MS6, `UNDELIVERABLE` with MS2's seal); MS1 writes none: `POSTED {run,
+generation, checked_rev}` is to be recorded under the lock immediately before a transport call;
 `DELIVERED {via, at, transport_ref}` when the harness admitted the input (`live`), for exactly the ids a relaunch's
 continuation carried (`continuation`), when `message.wait` returned it (`wait`), or when a Lead result first carried a
 worker message (`lead_result`); `UNDELIVERABLE {reason}` at the seal, for never-posted messages only. A message posted but
@@ -102,7 +113,8 @@ not a boolean (a YAML boolean is refused at adoption with its cause); classified
 legality and grants nothing. It is read from the adopted bytes only: the control state's pins must hold the manifest
 and the execution policy, and an edit nobody adopted, an unreadable policy or a project without pins all read as off
 (`MESSAGING_DISABLED`, `details.reason`: `switched_off`, `not_adopted`, `unreadable`). Only the operator's
-`manifest adopt` turns it on. The broker snapshots it at session start and each run at launch.
+`manifest adopt` turns it on. Planned with the slices that read it (not built in MS1): the broker snapshots it at
+session start (MS3) and each run at launch (MS4).
 
 Off means absent: no catalog row, CLI command, bridge operation, environment variable, prompt line, policy key,
 control-state key or output field. New records, live delivery, `message.wait` and the surface additions are gated by
@@ -110,13 +122,15 @@ the switch (D-31); the seal, `UNDELIVERABLE`, pinning and evidence inputs always
 exists, so turning the switch off never orphans a thread. The read projections key on "the switch is on, or any thread
 exists", which is one stat of the project marker `.aew/coordination/marker.yaml` (`aew/coordination-marker/v1`):
 written once, create-exclusive and synced with `.aew/coordination/` and `.aew/`, under the control lock before the
-project's first thread file, and never removed. No write-side decision trusts it. No default writes the key (D-32):
+project's first thread file, and never removed by AEW. A writer that finds it removed while a thread exists
+writes it again with `recreated: true` and the time, so the deletion stays visible. No write-side decision trusts
+it. No default writes the key (D-32):
 `aew init`, the shipped default execution policy and `migrate` never do, so the policy bytes and both policy digests
 stay as they were.
 
 `surface.presentation: standard | compact` (operational, absent means standard) selects the typed surface's compact
 presentation without messaging, so an evaluation arm without messaging can present the same text as one with it
-(D-33).
+(D-33, D13). MS1 adds the key; it changes nothing until MS3 builds the compact text.
 
 ### D7. Sealing at every invocation-ending commit
 
@@ -171,6 +185,24 @@ that slice on, recording also needs the key (`MESSAGING_DISABLED`, reason `not_r
 thread merges before then: the Lead's tool waits for the sealing slice, and a worker's reply needs a Lead message
 first.
 
+### D13. The typed surface's budget with messaging on
+
+The typed Lead surface must meet TLS-21 (at most 12,000 bytes and 16 tools) with messaging on as well as off (D-33).
+D9's recovery-only rule for a switch-registered row does not fit here, because F19's arm B needs `message_send` on the
+normal surface. So:
+- with messaging on, every normal row is served in a **compact presentation**: shorter tool and argument
+  descriptions, with every name, type, enum, pattern, bound, `required` set and annotation unchanged; semantics are
+  unchanged;
+- it is a switch variant, so the off configuration (the shipped default and M4-H's treatment) stays byte-identical;
+- the on configuration, measured over every catalogued normal row, is held to **at most 11,900 bytes and exactly 16
+  tools** (M4-E's 15 normal rows after E6, plus `message_send`), with **no tool headroom**: a later normal row makes the
+  on configuration 17 tools and fails its own slice's CI, and that slice's plan makes its own budget decision;
+- an E-slice whose catalog change pushes the on configuration past 11,900 bytes adds the matching compact text in the
+  same pull request;
+- `surface.presentation: compact` gives an arm without messaging the same text.
+
+Built with MS3.
+
 ## Crash and damage rules
 
 - A crash between the marker and the first thread file leaves a marker with no thread: the reads show an empty
@@ -185,10 +217,10 @@ first.
 | Slice | What | Status |
 |---|---|---|
 | MS0 | The OpenCode 2.0.18 live-delivery probe; D8's transport | Not built |
-| MS1 | The coordination store: D1 to D5's records, D6's switch, marker and defaults; the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
+| MS1 | The coordination store: D1 to D4; D5's derived facts and the fact reader (no fact writer); D6's switch read from adopted bytes, off state, marker and defaults (no snapshots); the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
 | MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | Not built |
-| MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation | Not built (after M4-E's E4 and MS2) |
-| MS4 | The worker's reply as `aew-run` bridge operations | Not built (after MS0) |
+| MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | Not built (after M4-E's E4 and MS2) |
+| MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | Not built (after MS0) |
 | MS5 | Live delivery and the continuation | Not built |
 | MS6 | Lead attention: the wait, `resume`, untrusted rendering | Not built |
 | MS7 | F19 hooks, acceptance, live qualification | Not built |

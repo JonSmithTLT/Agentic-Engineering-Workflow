@@ -513,10 +513,35 @@ class Coordination:
                              reason="no_ticket_revisions")
 
     def _ref_finding(self, state: dict[str, Any], thread: Thread, ref: str, value: str, worker: str | None) -> None:
-        """A finding id names a finding of the thread's own unit, as the Lead and reviewers name them."""
-        unit = self._unit(state, thread.work_unit) if _FINDING_ID.match(value) else None
-        if unit is None or value not in {f.get("id") for f in unit.get("findings") or []}:
-            raise RefUnknown(f"ref {ref!r}: {thread.work_unit} has no finding {value}", ref=ref, reason="unknown")
+        """A unit stores a review's finding as ``<evidence id>#<finding id>`` (review ingest), so the qualified form
+        ``finding:<evidence id>#<finding id>`` names one finding of the unit that holds that evidence: the Lead may cite
+        any unit's, a worker only its own unit's (D-12). The short form ``finding:<finding id>`` (F9-A1 §10's
+        ``finding:F-22``) resolves within the thread's own unit only, and only when exactly one of its findings has that
+        id; otherwise it is refused, naming the qualified ids to use (PR #160 review, m3)."""
+        if not _FINDING_ID.match(value):
+            raise RefUnknown(f"ref {ref!r} is not a finding id", ref=ref, reason="malformed")
+        evidence, sep, _ = value.partition("#")
+        if sep:
+            owners = [p.parent.name for p in (self.k.aew_root / "evidence").glob(f"*/{evidence}.md")] \
+                if _EVIDENCE_ID.match(evidence) else []
+            owner = next((w for w in owners
+                          if value in {f.get("id") for f in (self._unit(state, w) or {}).get("findings") or []}), None)
+            if owner is None:
+                raise RefUnknown(f"ref {ref!r}: no finding {value}", ref=ref, reason="unknown")
+            if worker is not None and owner != thread.work_unit:
+                raise RefOutOfScope(f"ref {ref!r} is a finding of {owner}: cite your own unit's ({thread.work_unit})",
+                                    ref=ref)
+            return
+        unit = self._unit(state, thread.work_unit) or {}
+        matches = sorted(f["id"] for f in unit.get("findings") or []
+                         if isinstance(f.get("id"), str) and (f["id"] == value or f["id"].endswith(f"#{value}")))
+        if len(matches) > 1:
+            raise RefUnknown(f"ref {ref!r} names {len(matches)} findings of {thread.work_unit}; cite one by its "
+                             f"qualified id, finding:<evidence id>#<finding id> ({', '.join(matches)})", ref=ref,
+                             reason="ambiguous", candidates=matches)
+        if not matches:
+            raise RefUnknown(f"ref {ref!r}: {thread.work_unit} has no finding {value}; a finding of another unit is "
+                             "cited as finding:<evidence id>#<finding id>", ref=ref, reason="unknown")
 
     def _ref_message(self, state: dict[str, Any], thread: Thread, ref: str, value: str, worker: str | None) -> None:
         m = L.MESSAGE_ID_RE.match(value)
@@ -602,36 +627,59 @@ class Coordination:
 
     def _write(self, thread: Thread, record: dict[str, Any]) -> None:
         """Append ``record`` to its thread under the control lock the caller holds: the project marker first if there
-        is none (D-31), a torn tail repaired, the line synced, a new thread's directory synced (F13c), then the advisory
-        wake (D-5). Nothing is committed."""
+        is none (D-31), a torn tail repaired, the line synced, then the advisory wake (D-5). Nothing is committed.
+
+        Each write first checks that the held lock is still intact (``ControlStore.require_lock_intact``, the check the
+        commit makes): with ``local/`` deleted under this process another writer could hold a new lock at the same
+        path, and two unexcluded appends would fork the chain (PR #160 review, m1).
+
+        A thread's first complete line makes every directory entry it depends on durable, whoever created them: a
+        writer retrying after a crashed first attempt finds the directory, an empty file or the marker already there,
+        and must still sync them (F13c, D-31; PR #160 review, m2). ``.aew/coordination/`` and ``.aew/`` are synced
+        before the append, so the marker is durable before the thread is; the thread's directory and its unit's
+        directory after it, before the message is reported recorded."""
         validate("coordination-message", record, source=thread.rel)
         envelope = {"type": L.MESSAGE_LINE, "message": record}
         line = canonical_json({**envelope, "h": chained(thread.head, canonical_json(envelope))}) + b"\n"
         root = self.k.aew_root
         path = root / thread.rel
-        self._ensure_marker(thread.invocation)
+        first = thread.lines == 0
+        self.k.store.require_lock_intact()
+        published = self._ensure_marker(thread.invocation)
+        if first and not published:  # a marker this writer just published is synced already
+            util.fsync_dir(root / L.COORDINATION_DIR)
+            util.fsync_dir(root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.k.store.require_lock_intact()  # immediately before the repair and the append, the thread's two writes
         if thread.torn:
             _truncate(path, thread.complete)
-        if not path.parent.is_dir():
-            path.parent.mkdir(parents=True)
-            util.fsync_dir(path.parent.parent)
         _append_line(path, line)
-        if not thread.exists:
+        if first:
             util.fsync_dir(path.parent)
+            util.fsync_dir(path.parent.parent)
         thread.messages.append(record)
+        thread.lines += 1
         outbox.bump_wake(root)
 
-    def _ensure_marker(self, invocation: str) -> None:
+    def _ensure_marker(self, invocation: str) -> bool:
         """D-31: the project-scoped "a thread exists" marker, written create-exclusive and synced, with its directory
         and ``.aew/``, before the thread file is created. A crash between the two leaves a marker with no thread, which
-        only makes the reads show an empty section. Written again only if something removed it."""
+        only makes the reads show an empty section. True when this call published it.
+
+        A marker is never removed. If a writer finds it gone while a thread already exists (removed outside AEW), it
+        writes it again marked ``recreated: true`` with the time, so ``doctor`` and the audit still see that the
+        original was deleted; ``first_thread`` then names the thread whose writer recreated it."""
         path = self.k.aew_root / L.MARKER_REL
         if path.is_file():
-            return
-        marker = {"schema": L.MARKER_SCHEMA, "created_at": utc_now(), "first_thread": invocation}
+            return False
+        now = utc_now()
+        marker: dict[str, Any] = {"schema": L.MARKER_SCHEMA, "created_at": now, "first_thread": invocation}
+        if any((self.k.aew_root / "work").glob(f"*/{L.COORDINATION_DIR}/*.jsonl")):  # only while the marker is absent
+            marker |= {"recreated": True, "recreated_at": now}
         validate("coordination-marker", marker, source=L.MARKER_REL)
         util.create_exclusive(path, util.dump_yaml(marker))  # syncs the file, then .aew/coordination/
         util.fsync_dir(self.k.aew_root)  # .aew/ gained the coordination directory
+        return True
 
     @staticmethod
     def _result(thread: Thread, record: dict[str, Any], *, duplicate: bool) -> dict[str, Any]:

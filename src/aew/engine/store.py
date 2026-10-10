@@ -245,6 +245,16 @@ class ControlStore:
                 self._lock = outer
                 self.held -= 1
 
+    def require_lock_intact(self) -> None:
+        """Refuse to write when the control lock this process holds was removed or replaced while held (``local/``
+        deleted under a running process): another process can then lock a new file at the same path, so this lock no
+        longer excludes it. Every writer under the lock checks this just before it writes: the commit, and the append
+        to a coordination thread (F9-A, ADR-0017 D1), whose chain two unexcluded writers would fork."""
+        if self._lock is not None and not self._lock.intact():
+            raise IntegrityError(f"the control lock {LOCK_REL} was removed or replaced while this process held it, so "
+                                 "another process may hold it too; nothing was written. Retry the command (and do "
+                                 "not delete .aew/local while AEW is running)", path=LOCK_REL, reason="lock_lost")
+
     def read(self) -> dict[str, Any]:
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
             self.held += 1
@@ -393,10 +403,7 @@ class ControlStore:
         validate("control", after, source=f"control state revision {revision}")
         control_bytes = serialize_control(after)
 
-        if self._lock is not None and not self._lock.intact():
-            raise IntegrityError(f"the control lock {LOCK_REL} was removed or replaced while this process held it, so "
-                                 "another process may hold it too; nothing was written. Retry the command (and do "
-                                 "not delete .aew/local while AEW is running)", path=LOCK_REL)
+        self.require_lock_intact()
         faults.hit("txn.before_stage")
         if txn_ref:
             atomic_write(self._abs(txn_ref["path"]), txn_bytes)

@@ -9,6 +9,9 @@
   "properties": {
     "schema": {"const": "aew/coordination-marker/v1"},
     "created_at": {"type": "string"},
-    "first_thread": {"type": "string", "pattern": "^INV-[0-9]+$"}
-  }
+    "first_thread": {"description": "The thread whose writer published the marker (on a recreated marker, the one that recreated it).", "type": "string", "pattern": "^INV-[0-9]+$"},
+    "recreated": {"description": "Present and true when a writer found the marker removed while a thread existed, and wrote it again: the original was deleted outside AEW.", "const": true},
+    "recreated_at": {"type": "string"}
+  },
+  "dependentRequired": {"recreated": ["recreated_at"], "recreated_at": ["recreated"]}
 }

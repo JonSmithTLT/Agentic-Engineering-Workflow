@@ -16,6 +16,9 @@ skipped:
       Covered on Linux.
     tests/unit/test_store.py::test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file: >-
       the lock file is replaced while open, which Windows refuses (area 5 P2 is POSIX-only). Covered on Linux.
+    tests/integration/test_coordination_store.py::test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_stays_readable: >-
+      the lock file is removed while held, which Windows refuses for an open file (PR #160 review, m1: POSIX-only).
+      Covered on Linux; on Windows test_a_writer_whose_control_lock_is_not_intact_writes_nothing runs the same check.
     tests/integration/test_validation_checks.py::test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused: >-
       checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
       mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.

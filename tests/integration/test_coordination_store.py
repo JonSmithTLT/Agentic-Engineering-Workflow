@@ -357,10 +357,24 @@ def test_the_first_thread_writes_the_project_marker_first_and_fsyncs_it(w, monke
     assert events[:3] == [("create", L.MARKER_REL, False), ("sync", L.COORDINATION_DIR, False), ("sync", ".", False)]
     record = util.load_yaml(marker.read_text(encoding="utf-8"))
     assert record["schema"] == L.MARKER_SCHEMA and record["first_thread"] == w.inv and record["created_at"]
+    assert "recreated" not in record
     before = marker.read_bytes()
     events.clear()
     w.send("a second message")
     assert marker.read_bytes() == before and events == []
+
+
+def test_a_removed_marker_is_recreated_and_says_so(w):
+    """D-31: the marker is never removed by AEW. A writer that finds it gone while a thread exists writes it again,
+    marked as a recreation with its time, so `doctor` and the audit can still see that the original was deleted."""
+    w.send()
+    marker = w.root / ".aew" / L.MARKER_REL
+    original = util.load_yaml(marker.read_text(encoding="utf-8"))
+    marker.unlink()
+    w.send("after the marker was removed")
+    again = util.load_yaml(marker.read_text(encoding="utf-8"))
+    assert again["recreated"] is True and again["recreated_at"] and again["first_thread"] == w.inv
+    assert "recreated" not in original
 
 
 def test_creating_a_thread_fsyncs_its_directory(w, monkeypatch):
@@ -373,6 +387,70 @@ def test_creating_a_thread_fsyncs_its_directory(w, monkeypatch):
     synced.clear()
     w.send("another")
     assert synced == []
+
+
+@pytest.mark.parametrize("leftover", ["directory", "empty_file", "torn_line"])
+def test_a_retry_after_a_crashed_first_attempt_still_syncs_every_directory_entry(tmp_path, monkeypatch, leftover):
+    """F13c, D-31 (PR #160 review, m2): a first attempt that died after publishing the marker and making the
+    thread's directory (or its empty file, or a torn first line) left those entries on disk but not durable. The
+    retry's first complete line syncs them all: `.aew/coordination/` and `.aew/` before the append (the marker is
+    durable before the thread), the thread's directory and its unit's directory after it."""
+    w = world(tmp_path)
+    aew = w.root / ".aew"
+    util.create_exclusive(aew / L.MARKER_REL, util.dump_yaml({"schema": L.MARKER_SCHEMA, "created_at": "then",
+                                                              "first_thread": w.inv}))
+    w.thread_path().parent.mkdir(parents=True)
+    if leftover != "directory":
+        w.thread_path().write_bytes(b"" if leftover == "empty_file" else b'{"h":"00","mess')
+    calls: list[str] = []
+    real = util.fsync_dir
+    monkeypatch.setattr(util, "fsync_dir", lambda p: (
+        calls.append(Path(p).resolve().relative_to(aew.resolve()).as_posix() or "."), real(p)))
+    w.send("after a crashed first attempt")
+    assert calls == [L.COORDINATION_DIR, ".", f"work/{w.wid}/coordination", f"work/{w.wid}"]
+    assert [m["id"] for m in w.e.message_thread(w.inv)["messages"]] == [f"MSG-{w.inv}-1"]
+    calls.clear()
+    w.send("a later message")
+    assert calls == []
+
+
+def test_a_writer_whose_control_lock_is_not_intact_writes_nothing(w, monkeypatch):
+    """D-4 (PR #160 review, m1): the thread writer makes the commit's check (`require_lock_intact`) before it writes,
+    so a writer that may no longer exclude others writes no marker, no repair and no line. (The lock is reported lost
+    here; the POSIX test below removes it for real.)"""
+    from aew.engine.lock import FileLock
+
+    monkeypatch.setattr(FileLock, "intact", lambda self: False)
+    with pytest.raises(IntegrityError) as exc:
+        w.send()
+    assert exc.value.details["reason"] == "lock_lost" and w.coordination_files() == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows refuses to remove an open file")
+def test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_stays_readable(w, monkeypatch):
+    """D-4 (PR #160 review, m1; `repro/r2_lock_split_append.py`): `.aew/local/` deleted under a running writer lets a
+    second writer lock a new file and append. The first writer then finds its lock not intact and appends nothing, so
+    the chain never forks: the thread stays readable and writable."""
+    first = w.send("first")["message"]["id"]
+    w.reply(first, "ack")
+    real = C.Coordination._ensure_marker
+    raced = {"done": False}
+
+    def racing(self, invocation):  # runs between the writer's lock checks: another writer gets in here
+        if not raced["done"]:
+            raced["done"] = True
+            (w.root / ".aew/local/control.lock").unlink()
+            other = Engine.discover(w.root).message_record_lead(token=w.token, expect_rev=w.rev(), to=w.inv,
+                                                                body="from writer B")
+            raced["other"] = other["message"]["id"]
+        return real(self, invocation)
+
+    monkeypatch.setattr(C.Coordination, "_ensure_marker", racing)
+    with pytest.raises(IntegrityError, match="removed or replaced"):
+        w.send("from writer A")
+    assert raced["other"] == f"MSG-{w.inv}-3"
+    assert [m["body"] for m in w.e.message_thread(w.inv)["messages"]] == ["first", "ack", "from writer B"]
+    assert w.send("a later message")["message"]["id"] == f"MSG-{w.inv}-4"
 
 
 def test_a_torn_tail_is_repaired_only_by_a_writer_and_ignored_by_readers(w):
@@ -531,6 +609,75 @@ def test_refs_are_bounded_resolved_and_scoped(w):
     mine = [f"ticket:{w.wid}", f"message:{lead['id']}", "source:calc/core.py"]
     assert w.reply(lead["id"], refs=mine)["message"]["refs"] == mine
     assert len(w.e.message_thread(w.inv)["messages"]) == 3
+
+
+def _review(w: World, *, disposition: str, findings: list[dict[str, Any]], resolved: list[str]) -> str:
+    """A reviewer of the Ticket submits a review; the Lead ingests it. Returns the review's evidence id."""
+    token = w.lead("invoke_create", work_id=w.wid, role="reviewer")["invocation_token"]
+    meta = {**CP.REVIEW, "review": {**CP.REVIEW["review"], "disposition": disposition, "findings": findings,
+                                    "resolved_findings": resolved}}
+    evidence = w.e.submit(invocation_token=token, kind="review", text=CP.submission(meta))["evidence"]
+    w.lead("review_ingest", work_id=w.wid, evidence_id=evidence)
+    return evidence
+
+
+def test_finding_refs_resolve_qualified_or_unique_and_are_scoped(tmp_path):
+    """D-12 (PR #160 review, m3): a unit stores a review's finding as `<evidence id>#<finding id>`.
+    - The qualified ref `finding:<evidence id>#<finding id>` resolves to the unit that holds it: the Lead may cite any
+      unit's finding, a worker only its own unit's (REF_OUT_OF_SCOPE otherwise).
+    - The short ref `finding:<finding id>` resolves within the thread's own unit only, when exactly one finding has
+      that id; when two reviews used it, it is refused as ambiguous, naming the qualified ids."""
+    w = world(tmp_path, checks=True)
+    other = w.lead("work_create", kind="ticket", title="Investigate calc.core", risk_class=1, mutating=False,
+                   scope_paths=["calc/**"], goal_backwards=["current behaviour of calc.core is documented"],
+                   contract=["read only"])["id"]
+    w.lead("plan_propose", no_assurance=True, work_id=other, body="Read calc/core.py; record facts.\n")
+    w.lead("plan_accept", work_id=other, revision=1)
+    investigator = w.lead("work_dispatch", work_id=other)
+    w.lead("work_transition", work_id=other, to="RUNNING")
+
+    def implement(token: str, extra: str = "") -> None:
+        for rel, text in CP.PATCH.items():
+            (w.workspace / rel).write_text(text + extra, encoding="utf-8", newline="\n")
+        w.e.check_run(invocation_token=token, check_id="unit")
+        w.e.submit(invocation_token=token, kind="implementation_report", text=CP.submission(CP.REPORT))
+        w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")
+
+    implement(w.worker)
+    first = _review(w, disposition="changes_required", resolved=[], findings=[
+        {"id": "F-1", "severity": "major", "summary": "missing negative test", "required": True}])
+    w.lead("work_transition", work_id=w.wid, to="RUNNING")
+    implement(w.lead("invoke_create", work_id=w.wid, role="implementer")["invocation_token"], "\n# rework\n")
+    second = _review(w, disposition="pass", resolved=[f"{first}#F-1"], findings=[
+        {"id": "F-1", "severity": "minor", "summary": "name the case", "required": False},
+        {"id": "G-2", "severity": "minor", "summary": "a docstring", "required": False}])
+    w.lead("work_transition", work_id=w.wid, to="VERIFY_PENDING")
+    verifier = w.lead("invoke_create", work_id=w.wid, role="verifier")
+    to = verifier["invocation"]
+
+    qualified = [f"finding:{first}#F-1", f"finding:{second}#F-1", f"finding:{second}#G-2", "finding:G-2"]
+    lead = w.send("see these findings", to=to, refs=qualified)["message"]
+    assert lead["refs"] == qualified  # both forms resolve on the unit's own thread
+    with pytest.raises(RefUnknown) as exc:
+        w.send("which one?", to=to, refs=["finding:F-1"])
+    assert exc.value.details["reason"] == "ambiguous"
+    assert exc.value.details["candidates"] == sorted([f"{first}#F-1", f"{second}#F-1"])
+    assert "finding:<evidence id>#<finding id>" in exc.value.message
+    for ref in ("finding:H-9", f"finding:{second}#H-9", "finding:INV-0099-review-1#F-1"):
+        with pytest.raises(RefUnknown) as exc:
+            w.send("no such finding", to=to, refs=[ref])
+        assert exc.value.details["reason"] == "unknown"
+
+    # The Lead cites the Ticket's finding to another unit's worker; that worker may not cite it back.
+    cross = w.send("context from the Ticket's review", to=investigator["invocation"],
+                   refs=[f"finding:{second}#G-2"])["message"]
+    assert cross["refs"] == [f"finding:{second}#G-2"]
+    with pytest.raises(RefUnknown):
+        w.send("short form, other unit", to=investigator["invocation"], refs=["finding:G-2"])
+    mine = [f"finding:{second}#G-2"]
+    with pytest.raises(RefOutOfScope):
+        w.reply(cross["id"], "noted", invocation_token=investigator["invocation_token"], refs=mine)
+    assert w.reply(lead["id"], "checked", invocation_token=verifier["invocation_token"], refs=mine)["ok"]
 
 
 def test_a_message_ref_never_satisfies_a_gate(w):

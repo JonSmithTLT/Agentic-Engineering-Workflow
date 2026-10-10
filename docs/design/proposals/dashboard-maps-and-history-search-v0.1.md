@@ -135,8 +135,11 @@ that run is green whatever W1 amends in the additions:
   `tests/fixtures/dashboard/contract-0.1.2.yaml`, whose SHA-256 must be the accepted review's. A fast-lane test pins
   its git blob id to the blob at the review's commit (`322301d`), and skips only where a shallow clone lacks that
   commit. Only CI's `core` job (the fast and serial lanes) checks out the full history; the `lanes` job, which runs
-  the integration tests, checks out at depth 1. So no test outside the core lanes reads the repository's git history,
-  and `tests/unit/test_ci_tools.py` guards that.
+  the integration tests, checks out at depth 1. So no test outside the core lanes may read the repository's git
+  history. `tests/unit/test_ci_tools.py` lints the usual spellings of one (git's `-C`, `--git-dir` or `cwd=` pointed
+  at `ROOT`, a `*_ROOT` constant, `root` or a path derived from `__file__`, or a git wrapper called with one), with
+  an allowlist of reasoned exceptions for temporary repositories. A spelling the lint misses still fails loudly: the
+  integration shards stop at collection.
 - **The packaged build: a rule, not a list.** The build is accepted when its contract digest is the accepted one or
   that of an accepted predecessor (a `previous_reviews` entry with `"disposition": "ACCEPT"`), and the contract at its
   source commit passes §3.1's check against the accepted contract, covering every path of the build's contract that

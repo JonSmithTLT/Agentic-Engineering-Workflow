@@ -70,7 +70,8 @@ def _check_steering(arguments: dict[str, Any]) -> None:
 
 def _check_explain(arguments: dict[str, Any]) -> None:
     """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
-    `expect_rev` aside (M4-E E4; kept out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
+    `expect_rev` aside, and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
+    out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
     if not {"work_id", "invocation", "stage"} & set(arguments):
         raise AdapterInputError("INVALID_ARGUMENTS", "explain: name a work_id, an invocation or a stage",
                                 violations=["<arguments>: one of work_id, invocation or stage is required"])
@@ -79,6 +80,14 @@ def _check_explain(arguments: dict[str, Any]) -> None:
             raise AdapterInputError("INVALID_ARGUMENTS", "explain: arguments are a stage's, and need its stage",
                                     violations=["arguments: given without stage"])
         return
+    dispatch_only = sorted(set(arguments) & {"entrypoint", "role", "card", "scope", "invocation"})
+    if dispatch_only:  # they ask about a dispatch; a stage's steps ask nothing of them (PR #170 review, finding 5)
+        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: a stage takes no {', '.join(dispatch_only)}",
+                                violations=[f"{a}: not taken with stage" for a in dispatch_only])
+    inner = (arguments.get("arguments") or {}).get("work_id")
+    if "work_id" in arguments and inner is not None and inner != arguments["work_id"]:
+        raise AdapterInputError("INVALID_ARGUMENTS", "explain: work_id and arguments.work_id name different units",
+                                violations=["arguments/work_id: differs from work_id"])
     t = contract.tool(arguments["stage"])
     if t is None or t.kind not in (contract.STAGE, contract.DECISION) or not t.progression:
         raise AdapterInputError("INVALID_ARGUMENTS", f"explain: {arguments['stage']!r} is not a stage",

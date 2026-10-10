@@ -192,3 +192,60 @@ def test_a_query_that_raises_a_defect_answers_unknown_and_is_logged(caplog):
         answer = queries.answer({"revision": 1}, "work.create", None, {})
     assert answer["availability"] == UNKNOWN and answer["reason_codes"] == ["GUARD_QUERY_DEFECT"]
     assert "KeyError" in answer["unanswered"]["message"] and "work.create" in caplog.text
+
+
+# ---------------------------------------------------------------------------------------------- one question asked
+# PR #170 review, finding 3: `explain` and the projection ask a step's guard with `availability.STAGES`' arguments;
+# `resume`'s recheck and R5-1 ask it with the stage planner's (`aew.surface.stage.STAGES`). The two must agree, so
+# both paths ask the same question. Vacuous until E5a registers the first Ticket stage planner, then binding: E5a's
+# obligation is to keep this green (recorded in the register's F15.2 row).
+
+CALLS = {
+    "ticket_draft": [{"title": "t", "risk_class": 1, "scope": ["calc/**"], "goal": ["g"], "contract": ["c"]},
+                     {"title": "t", "risk_class": 0, "non_mutating": True, "parent": "S-0001", "card": "investigator",
+                      "plan": {"body": "1. x", "affected": ["calc/core.py"], "assurance": "none", "reason": "r"}},
+                     {"title": "t", "risk_class": 2, "plan": {"body": "b", "assurance": {"review": ["default"]}}}],
+    "ticket_start": [{"work_id": "T-0001"}, {"work_id": "T-0002", "execution": {"model": "p/m"}}],
+    "ticket_request_review": [{"work_id": "T-0001"}],
+    "ticket_request_verification": [{"work_id": "T-0001", "review_evidence": "EV-0003"}],
+}
+
+
+def disagreements(stage_planners: dict[str, Any]) -> list[str]:
+    """Where a planner's step arguments differ from the arguments the step's guard is asked with: every argument the
+    availability builder gives must be the planner's too, the same value, or an earlier step's output (`$from`) where
+    `produced_by` says that step produces it."""
+    out = []
+    for name in sorted(set(SA.STAGES) & set(stage_planners)):
+        t = contract.tool(name)
+        for call in CALLS[name]:
+            plan = stage_planners[name](dict(call, expect_rev=1))
+            if [p["primitive"] for p in plan] != list(t.expands_to):
+                out.append(f"{name}: planned {[p['primitive'] for p in plan]}")
+                continue
+            for n, (build, step) in enumerate(zip(SA.STAGES[name], plan, strict=True), start=1):
+                asked, given = build(call), step.get("args") or {}
+                for key, value in (asked or {}).items():
+                    got = given.get(key)
+                    produced = isinstance(got, dict) and set(got) == {"$from"} and any(
+                        m == got["$from"][0] for _input, m in t.produced_by[n - 1])
+                    if got != value and not produced and not (value is None and key not in given):
+                        out.append(f"{name} step {n} {key}: guard asked {value!r}, planner gives {got!r}")
+    return out
+
+
+def test_the_stage_planners_ask_the_guards_what_availability_asks():
+    from aew.surface import stage
+
+    assert set(CALLS) == set(SA.STAGES)
+    assert disagreements(stage.STAGES) == []
+
+
+def test_the_agreement_check_binds_a_planner_that_differs():
+    def start(a: dict[str, Any]) -> list[dict[str, Any]]:  # forgets the launch, and names the target state wrongly
+        return [{"primitive": "work.assign", "args": {"work_id": a["work_id"]}},
+                {"primitive": "dispatch.launch", "args": {"work_id": a["work_id"]}},
+                {"primitive": "work.transition", "args": {"work_id": a["work_id"], "to": "ASSIGNED"}}]
+
+    found = disagreements({"ticket_start": start})
+    assert any("step 1 launch" in d for d in found) and any("step 3 to" in d for d in found)

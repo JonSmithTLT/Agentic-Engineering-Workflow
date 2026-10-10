@@ -245,6 +245,16 @@ considered:
       boundary, the per-run ceremony relay and the sealed disposition table, the revised verification half of
       requires_disposition, F9's wait --any lane for the Lead, and the Claude Code adapter's bare runs, writable shell
       and fail-closed project settings; replaces no WC/KC text
+  - path: docs/design/cross-feature-integration-design-v0.5.md
+    reason: >-
+      design frozen by the designer (F41, 2026-10-10), activation gated: it needs a WC/F14 amendment (the Class-0
+      parent path, F41.1) and a WC §8 amendment (the interface_dependency edge, F41.5), neither yet written; until
+      they are adopted it replaces no WC/KC text, and they will be their own overlays
+  - path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
+    reason: >-
+      decision record (F41, 2026-10-10); the freeze of the cross-feature integration design v0.5, V-1(b), freeze
+      versus activation, the 26 acceptance checks and the nit-rule divergence pending the operator (Q15); replaces
+      no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

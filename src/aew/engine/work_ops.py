@@ -10,6 +10,7 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
+from aew.engine.guards import NotQueryable, checked, refusal, require
 from aew.engine.seams import GuardRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
@@ -128,17 +129,61 @@ class WorkUnits:
             return
         self.guards.resolve(name, unit)(ctx, work_id, unit, to)
 
+    # ---- `work.transition`'s guard as a query (M4-E E4; aew.engine.guards): the table part, then the rule's guard
+
+    def transition_rule_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """The transition table's part of a Lead transition to ``args["to"]``: the unit (hot, a Ticket), the rule that
+        permits the edge through ``work transition``, and its reason. It records the rule as ``found["rule"]``."""
+        to, reason = args.get("to"), args.get("reason")
+
+        def check() -> None:
+            unit = self.unit(state, work_id)
+            if unit["kind"] != "ticket":
+                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
+                                        "with `aew work close` and cancels one with `aew work cancel`")
+            rule = transitions.check(unit["state"], str(to), "transition")
+            if rule.reason_required and not (reason and reason.strip()):
+                raise UsageError(f"{unit['state']} -> {to} requires --reason")
+            require(self.state_change_query(unit, {"from": unit["state"], "to": str(to)}))  # the state hooks' refusal
+            args.setdefault("found", {})["rule"] = rule
+
+        return checked(check)
+
+    def state_change_query(self, unit: dict[str, Any], change: dict[str, str]) -> Any:
+        """Whether ``set_state`` would refuse ``change`` to ``unit`` (a ``before`` hook's blocker), or None."""
+        return self.hooks.query_before(unit, change)
+
+    def transition_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``work.transition``'s whole guard: the table part, then the rule's named guard for the unit's kind, which is
+        ``NotQueryable`` (UNKNOWN) where that guard has no query form."""
+        found = self.transition_rule_query(state, work_id, args)
+        if found is not None:
+            return found
+        rule = args["found"]["rule"]
+        if not rule.guard:
+            return None
+        query = self.guards.query_for(rule.guard, state["work"][work_id])
+        return NotQueryable(rule.guard) if query is None else query(state, work_id, args)
+
     def guard_registrations(self) -> list[GuardRegistration]:
         """The Lead-transition guards that do not depend on evidence gates, for every unit kind."""
-        return [GuardRegistration("implementer_active", self._guard_implementer_active),
+        return [GuardRegistration("implementer_active", self._guard_implementer_active,
+                                  query=self._query_implementer_active),
                 GuardRegistration("findings_recorded", self._guard_findings_recorded),
                 GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation),
                 GuardRegistration("not_beyond_interrupted_phase", self._guard_not_beyond_interrupted_phase)]
 
-    def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
-        inv = ctx.state["invocations"].get(unit.get("implementer_invocation") or "")
+    @staticmethod
+    def _query_implementer_active(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """ASSIGNED -> RUNNING: the Ticket's implementer invocation is active (M4-E E4: its query form)."""
+        unit = state["work"][work_id]
+        inv = state["invocations"].get(unit.get("implementer_invocation") or "")
         if not inv or inv["status"] != "active":
-            raise GateUnsatisfied(f"{work_id} has no active implementer invocation")
+            return refusal(GateUnsatisfied(f"{work_id} has no active implementer invocation"))
+        return None
+
+    def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
+        require(self._query_implementer_active(ctx.state, work_id, {"to": to}))
 
     def _guard_findings_recorded(self, ctx, work_id, unit, to) -> None:
         # WC §8: REVIEW_FAILED -> RUNNING requires recorded findings (new ones, or earlier ones still open).
@@ -207,24 +252,34 @@ class WorkUnits:
                 author: dict[str, Any] | None = None,
                 source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
         """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
-        revision = len(unit["plans"]) + 1
-        supersedes = (unit.get("plan") or {}).get("accepted")
-        if supersedes and not reason:
-            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
-        record = plan_record(
-            work_unit=work_id, revision=revision, created_at=utc_now(),
+        revision, supersedes, text, path = self.plan_draft(
+            work_id, unit, body=body, reason=reason, affected_paths=affected_paths, assurance=assurance,
             author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
                               "generation": ctx.actor["generation"]},
-            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            source_evidence=source_evidence, assurance=assurance,
-        )
-        text = record.render()
-        path = f"work/{work_id}/plan-v{revision}.md"
+            source_evidence=source_evidence)
         ctx.session.write(path, text)
         ctx.refs.append(path)
         unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
                               "supersedes": supersedes, "status": "proposed", "assurance": assurance})
         return path, revision
+
+    @staticmethod
+    def plan_draft(work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
+                   affected_paths: list[str] | None, assurance: dict[str, list[str]], author: dict[str, Any],
+                   source_evidence: dict[str, Any] | None = None) -> tuple[int, int | None, str, str]:
+        """Plan revision N+1 of ``unit`` as it would be written, changing nothing: (revision, the accepted revision it
+        supersedes, its record text, its path). A revision that supersedes an accepted plan states its reason, and
+        the record matches the plan schema."""
+        revision = len(unit["plans"]) + 1
+        supersedes = (unit.get("plan") or {}).get("accepted")
+        if supersedes and not reason:
+            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
+        record = plan_record(
+            work_unit=work_id, revision=revision, created_at=utc_now(), author=author,
+            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
+            source_evidence=source_evidence, assurance=assurance,
+        )
+        return revision, supersedes, record.render(), f"work/{work_id}/plan-v{revision}.md"
 
     @staticmethod
     def rollup(state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -311,21 +366,70 @@ class WorkCommands:
         acceptance_inputs: list[str] | None = None,
         class0_assertions: list[str] | None = None,
     ) -> dict[str, Any]:
+        args: dict[str, Any] = {
+            "kind": kind, "title": title, "risk_class": risk_class, "mutating": mutating, "parent": parent,
+            "depends_on": depends_on, "scope_paths": scope_paths, "goal_backwards": goal_backwards,
+            "contract": contract, "mandatory_gates": mandatory_gates, "min_descendant_class": min_descendant_class,
+            "rationale": rationale, "external_refs": external_refs, "body": body, "card": card,
+            "promoted_from": promoted_from, "acceptance_checks": acceptance_checks,
+            "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions}
+        self._check_create_arguments(args)  # before the transaction, as always: a malformed request needs no state
+        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
+            # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
+            require(self.create_query(ctx.state, None, args))
+            work_id, unit, text = self._draft_unit(ctx.state, args, ctx.actor)
+            path = unit["record"]
+            ctx.session.write(path, text)
+            ctx.refs.append(path)
+            ctx.summary = f"created {kind} {work_id}: {title}"
+            self.units.before_commit(ctx)
+        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
+        if unmatched:
+            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                               "otherwise a change there needs a scope that names it" for g in unmatched]
+        return out
+
+    # ---- `work.create`'s guard as a query (M4-E E4; aew.engine.guards)
+
+    def create_query(self, state: dict[str, Any], work_id: str | None, args: dict[str, Any]) -> Any:
+        """``work.create`` with ``args`` (the request's fields): the request is well formed (the argument checks and
+        the scope lint, M3-D9), and drafting the unit on a copy of ``state`` succeeds (its parent takes children, its
+        dependencies exist, no cycle, its record matches the work-unit schema, its card fills the execute slot). It
+        records the unit it would create as ``found["work_id"]`` and ``found["unit"]``; ``work_id`` is unused."""
+        def check() -> None:
+            self._check_create_arguments(args)
+            lead = state.get("lead") or {}
+            actor = {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead.get("generation")}
+            scratch = {**state, "work": dict(state["work"]), "counters": dict(state.get("counters") or {}),
+                       "archived_refs": dict(state.get("archived_refs") or {})}
+            wid, unit, _text = self._draft_unit(scratch, args, actor)
+            args.setdefault("found", {}).update(work_id=wid, unit=unit)
+
+        return checked(check)
+
+    @staticmethod
+    def _check_create_arguments(a: dict[str, Any]) -> None:
+        kind, risk_class, scope_paths = a.get("kind"), a.get("risk_class"), a.get("scope_paths")
+        acceptance_checks, acceptance_inputs = a.get("acceptance_checks"), a.get("acceptance_inputs")
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
-        if not 0 <= risk_class <= 4:
+        title = a.get("title")
+        if not isinstance(title, str) or not title.strip():  # the query is a public answer (PR #170 review, 2)
+            raise UsageError("a unit needs a title that is not blank")
+        if not isinstance(risk_class, int) or not 0 <= risk_class <= 4:
             raise UsageError("risk class must be 0..4")
-        if min_descendant_class is not None and not rationale:
+        if a.get("min_descendant_class") is not None and not a.get("rationale"):
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
         if (acceptance_checks or acceptance_inputs) and kind != "ticket":
             raise UsageError("acceptance checks and inputs belong to a Ticket; a Story's or Epic's acceptance is its "
                              "children and its own gates")
-        if acceptance_checks and kind == "ticket" and mutating is False:
+        if acceptance_checks and kind == "ticket" and a.get("mutating") is False:
             raise UsageError(
                 "--acceptance-check gates a mutating Ticket's change (Class 0 amendment, section 9 item 4); a "
                 "non-mutating Ticket changes no source, so the check would be recorded and never run. State what its "
                 "evidence must show in --goal or --contract instead", acceptance_checks=acceptance_checks)
-        if class0_assertions and risk_class != 0:
+        if a.get("class0_assertions") and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")
         joined = [s for s in scope_paths or [] if "," in s]
@@ -334,60 +438,55 @@ class WorkCommands:
             raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
                              "globs: give one glob per --scope and repeat --scope for each",
                              scope=joined)
-        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
-            state = ctx.state
-            if parent is not None:
-                self.units.check_parent(state, kind, parent)
-            edges = self.units.parse_edges(state, depends_on or [])
-            counter = kind
-            state["counters"][counter] = state["counters"].get(counter, 0) + 1
-            work_id = format_id(KIND_PREFIX[kind], state["counters"][counter])
-            is_mutating = (kind == "ticket") if mutating is None else (mutating and kind == "ticket")
-            policy = None
-            if kind != "ticket" and (mandatory_gates or min_descendant_class is not None):
-                policy = {"mandatory_gates": list(mandatory_gates or []),
-                          "min_descendant_class": min_descendant_class, "rationale": rationale}
-            record = work_unit_record(
-                unit_id=work_id, kind=kind, title=title, created_at=utc_now(),
-                created_by={k: ctx.actor[k] for k in ("kind", "session_label", "generation")},
-                risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=scope_paths,
-                goal_backwards=goal_backwards, contract=contract, policy=policy,
-                external_refs=external_refs, body=body, promoted_from=promoted_from,
-                acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
-                class0_assertions=class0_assertions,
-            )
-            text = record.render()
-            path = f"work/{work_id}/{RECORD_NAME[kind]}"
-            ctx.session.write(path, text)
-            ctx.refs.append(path)
-            unit: dict[str, Any] = {
-                "kind": kind, "title": title, "record": path, "record_sha256": sha256_text(text),
-                "parent": parent, "state": "PLANNING" if kind != "ticket" else "BLOCKED", "state_reason": "created",
-                "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
-                "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
-            }
-            if kind == "ticket":
-                unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
-                            implementer_invocation=None, evidence=[], classifications=[], waivers=[],
-                            integration=None)
-            if promoted_from:
-                unit["promoted_from"] = promoted_from
-            state["work"][work_id] = unit
-            self.units.refuse_cycles(state)
-            if card:
-                chosen = self.roles.role_catalog().get(card)
-                self.roles.slot_ok(unit, "execute", chosen)
-                unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
-                                                  "selected_by": "lead", "pinned": False}],
-                                     "review": [], "verify": [], "forbidden": []}
-            ctx.summary = f"created {kind} {work_id}: {title}"
-            self.units.before_commit(ctx)
-        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
-        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and is_mutating else []
-        if unmatched:
-            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
-                               "otherwise a change there needs a scope that names it" for g in unmatched]
-        return out
+
+    def _draft_unit(self, state: dict[str, Any], a: dict[str, Any],
+                    actor: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+        """Create the unit in ``state`` (the transaction's, or the query's copy): its id from the counter, its record
+        text and its control entry, checked against the graph. Returns (id, unit, record text)."""
+        kind, title, risk_class, parent = a["kind"], a["title"], a["risk_class"], a.get("parent")
+        mutating, min_descendant_class = a.get("mutating"), a.get("min_descendant_class")
+        if parent is not None:
+            self.units.check_parent(state, kind, parent)
+        edges = self.units.parse_edges(state, a.get("depends_on") or [])
+        state["counters"][kind] = state["counters"].get(kind, 0) + 1
+        work_id = format_id(KIND_PREFIX[kind], state["counters"][kind])
+        is_mutating = (kind == "ticket") if mutating is None else (mutating and kind == "ticket")
+        policy = None
+        if kind != "ticket" and (a.get("mandatory_gates") or min_descendant_class is not None):
+            policy = {"mandatory_gates": list(a.get("mandatory_gates") or []),
+                      "min_descendant_class": min_descendant_class, "rationale": a.get("rationale")}
+        record = work_unit_record(
+            unit_id=work_id, kind=kind, title=title, created_at=utc_now(),
+            created_by={k: actor[k] for k in ("kind", "session_label", "generation")},
+            risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=a.get("scope_paths"),
+            goal_backwards=a.get("goal_backwards"), contract=a.get("contract"), policy=policy,
+            external_refs=a.get("external_refs"), body=a.get("body") or "", promoted_from=a.get("promoted_from"),
+            acceptance_checks=a.get("acceptance_checks"), acceptance_inputs=a.get("acceptance_inputs"),
+            class0_assertions=a.get("class0_assertions"),
+        )
+        text = record.render()
+        path = f"work/{work_id}/{RECORD_NAME[kind]}"
+        unit: dict[str, Any] = {
+            "kind": kind, "title": title, "record": path, "record_sha256": sha256_text(text),
+            "parent": parent, "state": "PLANNING" if kind != "ticket" else "BLOCKED", "state_reason": "created",
+            "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
+            "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
+        }
+        if kind == "ticket":
+            unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
+                        implementer_invocation=None, evidence=[], classifications=[], waivers=[],
+                        integration=None)
+        if a.get("promoted_from"):
+            unit["promoted_from"] = a["promoted_from"]
+        state["work"][work_id] = unit
+        self.units.refuse_cycles(state)
+        if a.get("card"):
+            chosen = self.roles.role_catalog().get(a["card"])
+            self.roles.slot_ok(unit, "execute", chosen)
+            unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
+                                              "selected_by": "lead", "pinned": False}],
+                                 "review": [], "verify": [], "forbidden": []}
+        return work_id, unit, text
 
     def _unmatched_scope(self, scope_paths: list[str]) -> list[str]:
         """The scope globs that match no file at the authoritative commit (M3 dogfood report §6.6, E10: a Lead that
@@ -449,18 +548,41 @@ class WorkCommands:
                      no_assurance: bool = False) -> dict[str, Any]:
         if not body.strip():
             raise UsageError("plan body is empty")
+        args: dict[str, Any] = {"body": body, "reason": reason, "affected_paths": affected_paths, "review": review,
+                                "verify": verify, "no_assurance": no_assurance}
         with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
-            unit = self.units.unit(ctx.state, work_id)
-            if unit["state"] in transitions.TERMINAL:
-                raise IllegalTransition(f"{work_id} is {unit['state']}")
-            assurance = self.roles.resolve_plan_assurance(
-                unit, review=review, verify=verify, none=no_assurance)
+            require(self.propose_query(ctx.state, work_id, args))  # the guard (M4-E E4), then the write
+            unit = ctx.state["work"][work_id]
+            assurance = args["found"]["assurance"]
             path, revision = self.units.propose(ctx, work_id, unit, body=body, reason=reason,
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
+
+    def propose_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``plan.propose`` (M4-E E4: its guard as a query): a non-empty body, for a hot unit that is not finished,
+        with its assurance declared (cards that fill their slots and are not forbidden, or ``none``), and a revision
+        whose record is valid (one that supersedes an accepted plan states its reason). It records the resolved
+        assurance as ``found["assurance"]``."""
+        def check() -> None:
+            body = args.get("body") or ""
+            if not body.strip():
+                raise UsageError("plan body is empty")
+            unit = self.units.unit(state, work_id)
+            if unit["state"] in transitions.TERMINAL:
+                raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.roles.resolve_plan_assurance(unit, review=args.get("review"), verify=args.get("verify"),
+                                                          none=bool(args.get("no_assurance")))
+            lead = state.get("lead") or {}
+            self.units.plan_draft(work_id, unit, body=body, reason=args.get("reason"),
+                                  affected_paths=args.get("affected_paths"), assurance=assurance,
+                                  author={"role": "lead", "session_label": lead.get("session_label"),
+                                          "generation": lead.get("generation")})
+            args.setdefault("found", {})["assurance"] = assurance
+
+        return checked(check)
 
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:
@@ -515,14 +637,12 @@ class WorkCommands:
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
                         reason: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
-            unit = self.units.unit(ctx.state, work_id)
-            if unit["kind"] != "ticket":
-                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
-                                        "with `aew work close` and cancels one with `aew work cancel`")
+            # The guard's query, then the rule's guard (its own query first, then its effects): M4-E E4.
+            args: dict[str, Any] = {"to": to, "reason": reason}
+            require(self.units.transition_rule_query(ctx.state, work_id, args))
+            unit = ctx.state["work"][work_id]
             frm = unit["state"]
-            rule = transitions.check(frm, to, "transition")
-            if rule.reason_required and not (reason and reason.strip()):
-                raise UsageError(f"{frm} -> {to} requires --reason")
+            rule = args["found"]["rule"]
             self.units.check_guard(rule.guard, ctx, work_id, unit, to)
             if to == "ESCALATED":
                 unit["escalated_from"] = frm

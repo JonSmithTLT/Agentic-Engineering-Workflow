@@ -10,6 +10,7 @@ transaction finalizers) are filled in one documented order.
 from __future__ import annotations
 
 import ast
+import copy
 import inspect
 from pathlib import Path
 
@@ -106,6 +107,26 @@ def test_state_hooks_run_in_their_documented_order(engine):
     assert [named(h) for h in hooks.before] == ["Integration.before_state_change"]
     # A terminal unit's invocations end first; then a Ticket leaving COMMIT_READY retires its candidate.
     assert [named(h) for h in hooks.after] == ["Invocations.on_state_change", "Integration.on_state_change"]
+
+
+def test_every_before_hook_is_a_query_the_guard_queries_ask(engine):
+    """PR #170 review, finding 1: a `before` hook is a pure refusal that answers (a blocker or None) and never raises,
+    so the guard queries can ask it (`WorkUnits.state_change_query`) and a new hook cannot bypass them."""
+    from aew.engine.dispatch import Blocker
+
+    units = [{"kind": "ticket", "mutating": True, "state": s, "integration": i}
+             for s in ("RUNNING", "COMMIT_READY") for i in (None, {"status": "prepared"}, {"status": "publishing"})]
+    for hook in engine._units.hooks.before:
+        for unit in units:
+            for to in ("RUNNING", "CANCELLED", "DONE"):
+                given, change = copy.deepcopy(unit), {"from": unit["state"], "to": to}
+                found = hook(given, change)
+                assert found is None or (isinstance(found, Blocker) and found.error is not None), named(hook)
+                # pure: nothing it was given changed, nested state included (PR #170 re-review, finding 3)
+                assert given == unit and change == {"from": unit["state"], "to": to}, named(hook)
+    publishing = {"kind": "ticket", "mutating": True, "state": "COMMIT_READY", "integration": {"status": "publishing"}}
+    found = engine._units.state_change_query(publishing, {"from": "COMMIT_READY", "to": "RUNNING"})
+    assert found is not None and found.code == "ILLEGAL_TRANSITION"
 
 
 GENERAL = {"implementer_active": "WorkUnits", "findings_recorded": "WorkUnits",

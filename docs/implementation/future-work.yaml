@@ -388,7 +388,15 @@ sections:
       (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):** the coordination seal is a Lead-transaction finalizer
       placed immediately before archival, so a finalizer an E-slice adds that can end an invocation goes before it; a new
       commit path that ends invocations is added to the seal walk (`test_no_known_ending_path_needs_the_seal_fallback`),
-      where a missed `seal_ending` call shows as a `coordination.seal_fallback` event
+      where a missed `seal_ending` call shows as a `coordination.seal_fallback` event. **E4a (2026-10-10)** makes the guards
+      of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition` with `implementer_active`, `ready_for_review`
+      and `review_current`, `review.ingest`, `work.create` and `plan.propose`, each a pure query its execute path calls
+      first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`); `explain` answers
+      a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`. **E5a obligation (PR 170
+      review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked with
+      by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck and
+      R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks` binds
+      it from the first planner on
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

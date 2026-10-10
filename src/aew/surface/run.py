@@ -34,7 +34,8 @@ from aew.engine import outbox
 from aew.engine.primitives import spec_for
 from aew.harness.contract import redact
 from aew.schemas import validate
-from aew.surface import SURFACE, stage
+from aew.surface import SURFACE, contract, stage
+from aew.surface.availability import stage_availability
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project
@@ -99,6 +100,12 @@ def _work_show(c: Call) -> Any:
 
 def _explain(c: Call) -> Any:
     c.subject = c.a.get("work_id")
+    if "stage" in c.a:  # the stage's guards per step (M4-E E4): its arguments were checked by the adapter
+        arguments = {**(c.a.get("arguments") or {})}
+        if c.subject:
+            arguments.setdefault("work_id", c.subject)
+        c.subject = arguments.get("work_id")
+        return {"ok": True, **stage_availability(c.engine, c.a["stage"], arguments)}
     return c.engine.dispatch_explain(c.a.get("work_id") or "", entrypoint=c.a.get("entrypoint"),
                                      role=c.a.get("role"), card=c.a.get("card"),
                                      scope=c.a.get("scope") or "ticket", invocation=c.a.get("invocation"))
@@ -231,6 +238,15 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
     ``serial`` and ``cancelled`` are the broker's hooks for a cooperative wait (module docstring); ``run_cli`` runs
     the recovery escape's command with the broker's refusals."""
     t = check_call(name, arguments, ctx.profile)
+    # A query is one read-only answer: its runner and its projection share their gate contexts (Engine.gate_memo). A
+    # wait or a stage never does (a wait's world changes as it waits; a stage commits).
+    with engine.gate_memo() if t.kind == contract.QUERY else contextlib.nullcontext():
+        return _run_tool(engine, ctx, t, arguments, token=token, serial=serial, cancelled=cancelled, run_cli=run_cli)
+
+
+def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any, *, token: str | None,
+              serial: Serial | None, cancelled: Callable[[], str | None] | None,
+              run_cli: RunCli | None) -> dict[str, Any]:
     call = Call(engine, ctx, copy.deepcopy(arguments), token, serial=serial, cancelled=cancelled, run_cli=run_cli)
     payload: Any = None
     stopped: dict[str, Any] | None = None

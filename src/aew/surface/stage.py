@@ -11,8 +11,8 @@ does not land.
   POLICY_RESOLVED, the stage's effective class is not judgment-bearing (rule 5: a judgment is never replayed, nor any
   step of a stage that carries one), the bound legality digest is unchanged, the caller's authority still holds (its
   generation, and the intent's), and the action is AVAILABLE at the current revision with the same arguments. An
-  availability the surface cannot query yet (a guard that is not a dispatch decision: E4 migrates them) is UNKNOWN,
-  and UNKNOWN never retries. The retried step carries ``retried_after_stale_revision`` on the intent and in
+  availability the surface cannot query (a guard not migrated to a query, E4) is UNKNOWN, and UNKNOWN never
+  retries. The retried step carries ``retried_after_stale_revision`` on the intent and in
   ``completed_steps``.
 - **Policy drift** stops as STALE_POLICY (rule 6), and **a launch that fails after its dispatch committed** stops as
   ``launch_failed`` (rule 7): the committed run identity stands. A dispatch made with ``launch`` records run 1 in its
@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew import errors
 from aew.engine import stage_intents as SI
+from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import JUDGMENT_BEARING, spec_for
 from aew.harness.contract import redact
 from aew.surface import contract
@@ -182,23 +183,26 @@ def _resolve_args(engine: Any, intent: str, args: dict[str, Any]) -> dict[str, A
 
 
 def availability(c: Call, primitive: str, args: dict[str, Any]) -> str:
-    """Whether ``primitive`` with ``args`` is legal now, asked of the predicate its own commit evaluates. Only dispatch
-    decisions are queryable yet; every other guard is UNKNOWN (E4 migrates them)."""
+    """Whether ``primitive`` with ``args`` is legal now, asked of the guard its own commit evaluates: a dispatch
+    decision, or a migrated transition or ingest guard (E4). Any other guard is UNKNOWN."""
     return guard_status(c.engine, primitive, args)[0]
 
 
 def guard_status(engine: Any, primitive: str, args: dict[str, Any]) -> tuple[str, list[str]]:
-    """:func:`availability`, with the reason codes of a dispatch decision that refuses."""
-    guard = spec_for(primitive).guard_id
-    if guard is None or guard not in contract.EXPLAINABLE or not args.get("work_id"):
-        return UNKNOWN, []
-    try:
-        decision = engine.dispatch_explain(args["work_id"], entrypoint=guard)
-    except errors.AEWError:
-        return UNKNOWN, []
-    if decision.get("allowed"):
-        return AVAILABLE, []
-    return BLOCKED, [str(r) for r in decision.get("reason_codes") or []]
+    """:func:`availability`, with the reason codes of a guard that refuses, or of one that could not answer (M4-E E4:
+    ``Engine.guard_query``; ``GUARD_NOT_QUERYABLE``, ``GUARD_QUERY_DEFECT``, ``INTEGRITY_ERROR``, ...)."""
+    answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
+    return answer["availability"], [] if answer["availability"] == AVAILABLE else list(answer["reason_codes"])
+
+
+def _unknown_guard(reasons: list[str]) -> dict[str, Any]:
+    """The ``guard`` recheck when the guard could not answer: why, by its code (PR #170 re-review, finding 1)."""
+    if reasons == [GUARD_NOT_QUERYABLE]:
+        message = "its guard has no query form: its own commit decides"
+    else:
+        message = (f"its guard could not be asked now ({', '.join(reasons) or 'no reason given'}): its own commit "
+                   "decides")
+    return {"status": UNKNOWN_STATUS, "reason_codes": reasons, "message": message}
 
 
 def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
@@ -278,7 +282,7 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
 # ---------------------------------------------------------------------------------------------- resume and resolve
 # (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
 
-PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard (E4)
+PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard
 UNKNOWN_STATUS = "not_queryable"
 
 
@@ -305,8 +309,9 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
     """One unfinished intent as ``resume`` lists it, all result payload (nothing here is advertised in `tools/list`).
 
     - ``safe_to_continue``: every recheck a continue makes passes now, **counting a check that cannot be answered yet
-      as passing**; such checks are listed in ``unknown_checks`` (today only ``guard`` when the next step's guard is
-      not a queryable dispatch decision: the step's own commit then decides, and a refusal stops the stage, rule 3).
+      as passing**; such checks are listed in ``unknown_checks`` (only ``guard``, when the next step's guard is
+      neither a dispatch decision nor migrated to a query, E4: the step's own commit then decides, and a refusal stops
+      the stage, rule 3).
     - each recheck (the policy, the stage contract and plan, the step runners, the subject, a launching step's run, the
       continue count, the next step's guard), the next planned step and the boundary a continue would stop at;
     - the call a continue endorses: its bound ``arguments``, ``judgment_inputs`` and classes (#166 review, finding 4);
@@ -325,11 +330,10 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
             checks["guard"] = {"status": "unresolved", "message": exc.message}
         else:
             found, reasons = guard_status(engine, nxt["primitive"], args)
-            checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its dispatch decision allows it now"},
-                               UNKNOWN: {"status": UNKNOWN_STATUS, "message": "its guard is not queryable yet: "
-                                                                               "its own commit decides (E4)"},
+            checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
+                               UNKNOWN: _unknown_guard(reasons),
                                BLOCKED: {"status": "blocked", "reason_codes": reasons,
-                                         "message": "its dispatch decision refuses it now"}}[found]
+                                         "message": "its guard refuses it now"}}[found]
             checks["guard"]["availability"] = found
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
     boundary = check["boundary"] or ("refused" if failing else None)
@@ -379,7 +383,7 @@ def resolve_stage(c: Call) -> dict[str, Any]:
         if guard["status"] == "blocked":
             raise errors.IllegalTransition(
                 f"{sid} cannot be continued: its next step is refused now "
-                f"({', '.join(guard['reason_codes']) or 'by its dispatch decision'}). Abandon it (committed steps "
+                f"({', '.join(guard['reason_codes']) or 'by its guard'}). Abandon it (committed steps "
                 "stand) and decide anew from the projection", reason="next_step_blocked", intent=sid,
                 reason_codes=guard["reason_codes"])
     out = c.engine.stage_continue(token=c.token(), expect_rev=a["expect_rev"], intent=sid,

@@ -19,6 +19,7 @@ from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
+from aew.engine.guards import refusal
 from aew.errors import (
     GateUnsatisfied,
     GitError,
@@ -82,12 +83,14 @@ class Integration:
     def _ref(self) -> str:
         return f"refs/heads/{self.k.authoritative_branch}"
 
-    def before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
-        """State hook: no state change while a publish of the Ticket's candidate is in progress."""
+    def before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> Any:
+        """State hook, a pure refusal (its blocker, or None): no state change while a publish of the Ticket's candidate
+        is in progress. The guard queries ask it too (PR #170 review, finding 1)."""
         if (unit.get("integration") or {}).get("status") == "publishing" and change["to"] != "DONE":
-            raise IllegalTransition(
+            return refusal(IllegalTransition(
                 "a publish of this Ticket's integration candidate is in progress; run `aew integrate reconcile` "
-                "before changing its state", from_state=change["from"], to_state=change["to"])
+                "before changing its state", from_state=change["from"], to_state=change["to"]))
+        return None
 
     def on_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
                         reason: str | None) -> None:

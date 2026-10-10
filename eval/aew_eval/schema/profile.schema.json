@@ -74,8 +74,9 @@
       "type": "object", "required": ["state"], "additionalProperties": false,
       "description": "Lower-bound class only: the model still shows the weak-worker behaviours on the seeded lane.",
       "properties": {
-        "state": {"enum": ["not_run", "not_applicable", "behaviours_shown", "none_shown", "inconclusive"],
-                  "description": "inconclusive: none of the observed behaviours was shown, and some behaviour could not be observed (listed in unobserved); none_shown requires every behaviour observed."},
+        "state": {"enum": ["not_run", "not_applicable", "behaviours_shown", "none_shown", "inconclusive",
+                           "pending_session_behaviours"],
+                  "description": "inconclusive: none of the observed behaviours was shown, and some behaviour could not be observed (listed in unobserved); none_shown requires every behaviour observed. pending_session_behaviours: the ceiling ran and its tree-observable behaviours were scored with none shown; the session-observable ones are not scored yet, so there is no ceiling verdict (not_run: the ceiling has not run)."},
         "experiment": {"type": ["string", "null"]},
         "behaviours": {"type": "array", "items": {"type": "string"}},
         "unobserved": {"type": "array", "items": {"type": "string"},

@@ -105,8 +105,8 @@
     state: passed
     trials: 1
     evidence: [results/lbq-v2-deepseek-v4-1-flash/floor.json]
-  ceiling:  # the tree-observable half shows none of its behaviours; the session-observable half waits for D2's reader
-    state: not_run
+  ceiling:  # it ran: the tree-observable half shows none of its behaviours; the session-observable half waits for D2
+    state: pending_session_behaviours
     experiment: lbq-v2-deepseek-v4-1-flash
     evidence: [results/lbq-v2-deepseek-v4-1-flash/score.json]
   qualification_state: floor_passed

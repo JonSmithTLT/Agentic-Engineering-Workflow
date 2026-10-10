@@ -590,6 +590,25 @@ def test_a_ceiling_with_unobserved_behaviours_is_inconclusive_never_a_negative()
         profiles.check(profile(ceiling={"state": "not_run", "unobserved": UNOBSERVED}))
 
 
+def test_a_ceiling_run_with_its_session_half_unscored_is_pending_not_not_run():
+    """Review N4 of 314d79f: a ceiling that ran and showed no tree-observable behaviour, its session-observable ones
+    not yet scored, says so (pending_session_behaviours); it has no verdict, so the profile is floor_passed, and it
+    needs a passed floor like any ceiling that ran."""
+    pending = profile(floor={"state": "passed"}, qualification_state="floor_passed",
+                      ceiling={"state": "pending_session_behaviours", "experiment": "lbq-demo",
+                               "evidence": ["results/lbq-demo/score.json"]})
+    profiles.check(pending)
+    assert profiles.derive_state(pending) == "floor_passed"
+    with pytest.raises(Invalid, match="needs a passed floor"):
+        profiles.check(profile(ceiling={"state": "pending_session_behaviours"}, qualification_state="unqualified"))
+    with pytest.raises(Invalid, match="only a lower-bound profile"):
+        profiles.check(profile(**{"class": "mid"}, floor={"state": "passed"},
+                               ceiling={"state": "pending_session_behaviours"}, qualification_state="floor_passed"))
+    with pytest.raises(Invalid, match="listed only when the ceiling shows them"):
+        profiles.check(profile(floor={"state": "passed"}, qualification_state="floor_passed",
+                               ceiling={"state": "pending_session_behaviours", "behaviours": ["x"]}))
+
+
 def test_a_profiles_file_has_unique_ids_and_known_twins(tmp_path):
     path = tmp_path / "profiles.yaml"
     twin = profile(id="lb-demo-paid", ref="opencode/demo", model="demo", plan_role="paid-twin", twin_of="lb-demo",

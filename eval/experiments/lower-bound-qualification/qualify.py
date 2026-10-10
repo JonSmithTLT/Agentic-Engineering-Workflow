@@ -76,7 +76,19 @@ EXPERIMENTS = {
     "lbq-v2-deepseek-v4-1-flash": HERE / "prereg-v2-deepseek-v4-1-flash.yaml",  # the replacement primary, again
     "lbq-v1-gpt-5-nano": HERE / "prereg-gpt-5-nano.yaml",                    # the next-cheaper profile
 }
+# Experiments that may no longer be frozen or run (review N4 of 314d79f: an explicit mark, not a side effect of a
+# profile record moving on). Their files stay as the record; check, score and purge still work on their lanes.
+RETIRED = {
+    "lbq-v1-deepseek-v4-1-flash": "superseded by lbq-v2-deepseek-v4-1-flash (2026-10-10): every ceiling attempt was "
+                                  "refused by a containment defect, and its lane is kept untouched as the record",
+}
 LANE_MARK = "experiment.txt"  # in a lane directory: the experiment whose runs it holds
+
+
+def not_retired(experiment: str) -> None:
+    """Refuse to freeze or run a retired experiment, saying why."""
+    if experiment in RETIRED:
+        raise SystemExit(f"refused: {experiment} is retired, {RETIRED[experiment]}: it is never frozen or run again")
 
 
 def frozen_path(plan: Path) -> Path:
@@ -398,26 +410,45 @@ def upstream_baseline(report: dict[str, Any]) -> None:
 
 
 # The upstream suite's failure on the seeded start, by design: the planted distractor (behaviours.yaml
-# distractor_paths: tests/test_syntax/extensions/test_wikilinks_spaces.py), a test that fails before any model works.
-SEEDED_SUITE_FAILURES = frozenset({"test_spaces_in_a_label_become_hyphens"})
+# distractor_paths: tests/test_syntax/extensions/test_wikilinks_spaces.py), a test that fails before any model works,
+# by its qualified id.
+SEEDED_SUITE_FAILURES = frozenset({"tests.test_syntax.extensions.test_wikilinks_spaces.TestWikiLinkSpaces."
+                                   "test_spaces_in_a_label_become_hyphens"})
+FAILED_TEST = re.compile(r"^(?:FAIL|ERROR): (\S+) \(([^()\s]+)\)")
+
+
+def failed_test_ids(stderr: str) -> set[str]:
+    """The qualified ids (module.Class.method) of the tests unittest reports failing or erroring. Its line is
+    ``FAIL: method (module.Class.method)`` (Python 3.11+) or ``FAIL: method (module.Class)`` (earlier)."""
+    out = set()
+    for line in stderr.splitlines():
+        m = FAILED_TEST.match(line)
+        if m:
+            name, where = m[1], m[2]
+            out.add(where if where.endswith("." + name) else f"{where}.{name}")
+    return out
 
 
 def suite_verdict(exit_code: int, stderr: str) -> dict[str, Any]:
     """The upstream suite's result on the seeded start, judged against what the seed plants: ``as_seeded`` when
-    exactly the seeded distractor test fails, else ``unexpected``, naming what else fails
-    (``unexpected_failures``: the environment's) or which seeded failure is missing (``missing_seeded_failures``: the
-    seed did not take). A non-zero exit is expected: the seeded test fails. The unittest output stays under ``raw``."""
-    failing = sorted({line.split(" ")[1] for line in stderr.splitlines()
-                      if line.startswith(("FAIL: ", "ERROR: ")) and len(line.split(" ")) > 1})
-    unexpected = sorted(set(failing) - SEEDED_SUITE_FAILURES)
-    missing = sorted(SEEDED_SUITE_FAILURES - set(failing))
-    errored = exit_code != 0 and not failing  # it failed without naming a test: it did not run as a suite
-    out: dict[str, Any] = {"state": "as_seeded" if not (unexpected or missing or errored) else "unexpected",
-                           "seeded_failures": sorted(SEEDED_SUITE_FAILURES)}
-    if unexpected:
-        out["unexpected_failures"] = unexpected
-    if missing:
-        out["missing_seeded_failures"] = missing
+    exactly the seeded distractor test fails, else ``unexpected``, saying why: ``unexpected_failures`` (what else
+    fails: the environment's), ``missing_seeded_failures`` (the seeded test passed: the seed did not take), or
+    ``suite_error`` (a non-zero exit naming no failing test: the suite never ran, so nothing is known of the seed).
+    Tests are matched by their qualified id (module.Class.method), never by method name alone. A non-zero exit is
+    expected: the seeded test fails. The unittest output stays under ``raw``."""
+    failing = sorted(failed_test_ids(stderr))
+    out: dict[str, Any] = {"seeded_failures": sorted(SEEDED_SUITE_FAILURES)}
+    if exit_code != 0 and not failing:
+        out["suite_error"] = (f"the suite exited {exit_code} without naming a failing test: it did not run, so the "
+                              "seed is not judged")
+    else:
+        unexpected = sorted(set(failing) - SEEDED_SUITE_FAILURES)
+        missing = sorted(SEEDED_SUITE_FAILURES - set(failing))
+        if unexpected:
+            out["unexpected_failures"] = unexpected
+        if missing:
+            out["missing_seeded_failures"] = missing
+    out = {"state": "unexpected" if set(out) - {"seeded_failures"} else "as_seeded", **out}
     out["raw"] = {"exit": exit_code, "summary": stderr.strip().splitlines()[-1:] if stderr.strip() else [],
                   "failing": failing}
     return out
@@ -584,6 +615,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 def cmd_freeze(args: argparse.Namespace) -> int:
     """Freeze the plan: the oracles must have been validated (oracle-validation.json) against exactly these case
     hashes and oracle commitments, so a host that never holds the oracles can freeze."""
+    not_retired(load_yaml(PLAN)["experiment"])
     if FROZEN.exists():
         say(frozen=False, reason=f"{FROZEN.name} exists: a frozen preregistration is never refrozen",
             canonical_sha256=prereg.verify(load_yaml(FROZEN)))
@@ -844,6 +876,7 @@ def floor_trial(where: Path, record: dict[str, Any], names: list[str], *, cap: f
 def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     arm_host_clean(out, hidden_root)
     frozen = frozen_record()
+    not_retired(frozen["experiment"])
     claim_lane(out, frozen["experiment"])
     record = worker_profile(frozen)
     cap = float(frozen["thresholds"]["budget"]["floor_cap_usd"])
@@ -941,6 +974,7 @@ def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
 def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     arm_host_clean(out, hidden_root)
     frozen = frozen_record()
+    not_retired(frozen["experiment"])
     claim_lane(out, frozen["experiment"])
     if not any(t.get("verdict") == "passed" for t in floor_state(out, frozen)["trials"]):
         raise SystemExit("refused: the profile has not passed the floor (rubric.md §2): run `qualify.py floor`")
@@ -1138,6 +1172,7 @@ def cmd_run(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> in
     arm_host_clean(out, hidden_root)
     # Before fetch, check or freeze write anything (review N1 of b924e47): a lane without a mark needs --experiment
     # named (the legacy first-experiment lane excepted), and a marked lane only its own experiment.
+    not_retired(load_yaml(PLAN)["experiment"])
     claim_lane(out, load_yaml(PLAN)["experiment"])
     if not base_present():
         cmd_fetch(args)

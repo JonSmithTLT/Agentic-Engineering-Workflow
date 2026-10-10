@@ -9,7 +9,9 @@ whose stated state disagrees.
 * ``unavailable``: the pinned harness's served catalog did not offer the model when it was checked.
 * ``unqualified``: not checked yet, or the floor has not been run.
 * ``floor_failed``: it did not complete the bridge handshake and the typed submit path.
-* ``floor_passed``: it did; for a lower-bound profile the ceiling has not been run (or the class has none).
+* ``floor_passed``: it did; for a lower-bound profile the ceiling has no verdict yet: not run (``not_run``), or run
+  with no tree-observable behaviour shown and the session-observable ones not yet scored
+  (``pending_session_behaviours``), or the class has none.
 * ``not_a_lower_bound``: floor passed, and on the seeded lane it showed none of the eight weak-worker behaviours, so
   it cannot tell whether AEW's scaffolding helps; the next-cheaper profile is tried (synthesis §13.4).
 * ``ceiling_inconclusive``: floor passed, none of the observable behaviours was shown, and some behaviour could not be
@@ -46,7 +48,7 @@ def derive_state(record: dict[str, Any]) -> str:
     if floor == "failed":
         return "floor_failed"
     ceiling = record["ceiling"]["state"]
-    if record["class"] != "lower-bound" or ceiling in ("not_run", "not_applicable"):
+    if record["class"] != "lower-bound" or ceiling in ("not_run", "not_applicable", "pending_session_behaviours"):
         return "floor_passed"
     if ceiling == "inconclusive":
         return "ceiling_inconclusive"
@@ -73,9 +75,10 @@ def check(record: dict[str, Any]) -> None:
     if ceiling["state"] == "none_shown" and unobserved:
         raise Invalid(f"profile {record['id']}: none_shown means every behaviour was observed and none shown, but "
                       f"{sorted(unobserved)} could not be observed: the ceiling is inconclusive")
-    if unobserved and ceiling["state"] not in ("inconclusive", "behaviours_shown"):
+    if unobserved and ceiling["state"] not in ("inconclusive", "behaviours_shown", "pending_session_behaviours"):
         raise Invalid(f"profile {record['id']}: unobserved behaviours are listed only for a ceiling that was run")
-    if ceiling["state"] in ("behaviours_shown", "none_shown", "inconclusive") and record["floor"]["state"] != "passed":
+    ran = ("behaviours_shown", "none_shown", "inconclusive", "pending_session_behaviours")
+    if ceiling["state"] in ran and record["floor"]["state"] != "passed":
         raise Invalid(f"profile {record['id']}: a ceiling result needs a passed floor (a model that cannot submit "
                       "through the bridge is not measured on the lane)")
     derived = derive_state(record)

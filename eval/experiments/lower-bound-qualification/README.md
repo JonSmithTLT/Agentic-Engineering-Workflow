@@ -131,7 +131,8 @@ profile pins differ, plus V4.1's overshoot margin and its expected outcome (see 
     reclassifying them.
   - `lbq-v2-deepseek-v4-1-flash` is v1's preregistration with a new id and an amendment record saying why. Its own
     floor runs again.
-  - v1's lane is kept untouched, as the record of the failure.
+  - v1's lane is kept untouched, as the record of the failure. `qualify.py` marks v1 retired (`RETIRED`): `freeze`
+    and every model step refuse it, saying it is superseded by v2.
 - **Nano stays `lbq-v1-gpt-5-nano`.** The amendment policy asks for a new id only for a change after an experiment's
   first run is registered. Nano's experiment has not been frozen and has registered nothing, and the containment fix
   changes the arm's code, not its preregistration, so its first run is its first measurement.
@@ -167,7 +168,7 @@ on the arm host are rewritten as `<lane>/...`.
 | Task-correct | 6 of 6 | 4 of 6 (not LBQ-3-raw-2, LBQ-1-raw-1) |
 | Tree-observable behaviours shown | none (behaviours 4 and 5 observed, not shown) | **5, requirement loss on longer tasks** (LBQ-3-raw-2) |
 | Ceiling state | `not_run (pending: the session-observable behaviours)` | `behaviours_shown` |
-| Profile (`profiles.yaml`) | `floor_passed` | **`qualified`** |
+| Profile (`profiles.yaml`) | `floor_passed` (ceiling `pending_session_behaviours`) | **`qualified`** (ceiling `behaviours_shown`) |
 | Charged in all | $0.2199 | $0.066 |
 
 - **Nano is the lane's lower bound.** It completes AEW's bridge handshake and typed submit, and still shows a

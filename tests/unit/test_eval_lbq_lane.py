@@ -596,19 +596,44 @@ SEEDED_RUN = ("....F..\n======\nFAIL: test_spaces_in_a_label_become_hyphens (tes
               "FAILED (failures=1, skipped=110)\n")
 
 
+SEEDED_ID = ("tests.test_syntax.extensions.test_wikilinks_spaces.TestWikiLinkSpaces."
+             "test_spaces_in_a_label_become_hyphens")
+
+
 def test_check_reports_the_seeded_distractors_failure_as_seeded_not_as_a_failure(qualify):
     """The upstream suite fails on the seeded start by design (the planted distractor test): `check` says so,
     against the expectation, and names a failure only when something else fails or the seed did not take."""
     got = qualify.suite_verdict(1, SEEDED_RUN)
-    assert got["state"] == "as_seeded" and "unexpected_failures" not in got and "missing_seeded_failures" not in got
+    assert got["state"] == "as_seeded" and set(got) == {"state", "seeded_failures", "raw"}
     assert got["raw"] == {"exit": 1, "summary": ["FAILED (failures=1, skipped=110)"],
-                          "failing": ["test_spaces_in_a_label_become_hyphens"]}  # the unittest output, secondary
+                          "failing": [SEEDED_ID]}  # the unittest output, secondary
     other = SEEDED_RUN + "ERROR: test_markdown_in_html (tests.test_syntax.extensions.test_md_in_html.Test)\n"
     got = qualify.suite_verdict(1, other)
-    assert (got["state"], got["unexpected_failures"]) == ("unexpected", ["test_markdown_in_html"])
+    assert (got["state"], got["unexpected_failures"]) == (
+        "unexpected", ["tests.test_syntax.extensions.test_md_in_html.Test.test_markdown_in_html"])
     got = qualify.suite_verdict(0, "OK (skipped=110)\n")  # the seeded test passed: the seed did not take
-    assert (got["state"], got["missing_seeded_failures"]) == ("unexpected", ["test_spaces_in_a_label_become_hyphens"])
-    assert qualify.suite_verdict(1, "Traceback: ImportError\n")["state"] == "unexpected"  # no suite ran at all
+    assert (got["state"], got["missing_seeded_failures"]) == ("unexpected", [SEEDED_ID])
+
+
+def test_a_same_named_failure_elsewhere_is_never_taken_for_the_seed(qualify):
+    """Review N2 of 314d79f: a failing test is matched by its qualified id, so a test of the same name in another
+    class failing while the seeded one passes is unexpected, not as seeded (old and new unittest formats alike)."""
+    for where in ("tests.test_other.TestOther.test_spaces_in_a_label_become_hyphens", "tests.test_other.TestOther"):
+        got = qualify.suite_verdict(1, f"FAIL: test_spaces_in_a_label_become_hyphens ({where})\nFAILED (failures=1)\n")
+        assert got["state"] == "unexpected"
+        assert got["unexpected_failures"] == ["tests.test_other.TestOther.test_spaces_in_a_label_become_hyphens"]
+        assert got["missing_seeded_failures"] == [SEEDED_ID]
+    old_format = ("FAIL: test_spaces_in_a_label_become_hyphens "
+                  "(tests.test_syntax.extensions.test_wikilinks_spaces.TestWikiLinkSpaces)\n")
+    assert qualify.suite_verdict(1, old_format)["state"] == "as_seeded"
+
+
+def test_a_suite_that_never_ran_is_reported_as_a_suite_error_not_as_a_seed_that_did_not_take(qualify):
+    """Review N1 of 314d79f: a non-zero exit naming no failing test (a bad start directory, a collection crash) is
+    named as such, and the seed is not judged."""
+    got = qualify.suite_verdict(1, "Traceback (most recent call last):\nImportError: no module named markdown\n")
+    assert got["state"] == "unexpected" and "did not run" in got["suite_error"]
+    assert "missing_seeded_failures" not in got and "unexpected_failures" not in got
 
 
 @pytest.mark.parametrize("experiment, state", [(V4, "unqualified"), (V41V2, "floor_passed"), (NANO, "qualified")])
@@ -621,13 +646,28 @@ def test_every_experiment_pins_its_profile_as_the_record_states(qualify, selecte
     assert report["profiles"][PINS.get(experiment, (None, "lb-deepseek-v4-flash"))[1]] == state
 
 
-def test_the_retired_first_v4_1_experiment_can_no_longer_be_frozen(qualify, selected):
-    """lbq-v1-deepseek-v4-1-flash was never frozen in the repository (its seal stays on the arm host, its lane kept
-    as the record of the containment failure); its plan pins the profile as unqualified, which the record no longer
-    states, so freezing it now is refused."""
+def test_a_retired_experiment_is_never_frozen_or_run_again(qualify, selected, monkeypatch, tmp_path):
+    """Review N4 of 314d79f: lbq-v1-deepseek-v4-1-flash is retired by an explicit mark (superseded by
+    lbq-v2-deepseek-v4-1-flash), not by its profile record moving on: freeze and every model step refuse it, saying
+    why, before writing anything; the others are not retired."""
+    assert set(qualify.RETIRED) == {V41} and V41V2 in qualify.RETIRED[V41]
     selected(V41)
-    with pytest.raises(qualify.Invalid, match="qualification_state"):
-        qualify.check_profiles({}, plan_of(qualify, V41))
+    for step in ("cmd_fetch", "cmd_check"):
+        monkeypatch.setattr(qualify, step, lambda *a, step=step, **k: pytest.fail(f"{step} ran"))
+    monkeypatch.setattr(qualify, "EXPLICIT", True)
+    out = tmp_path / "lane" / "out"
+    with pytest.raises(SystemExit, match="lbq-v1-deepseek-v4-1-flash is retired, superseded by"):
+        qualify.cmd_freeze(SimpleNamespace(by="operator"))
+    with pytest.raises(SystemExit, match="is retired"):
+        qualify.cmd_run(SimpleNamespace(by="operator"), out, None)
+    assert not out.exists()
+    sealed = {"experiment": V41, "canonical_sha256": "b" * 64}
+    monkeypatch.setattr(qualify, "frozen_record", lambda: sealed)  # its seal, as on the arm host
+    for step in (qualify.cmd_floor, qualify.cmd_ceiling):
+        with pytest.raises(SystemExit, match="is retired"):
+            step(SimpleNamespace(deadline_s=60), out, None)
+    for experiment in (V4, V41V2, NANO):
+        qualify.not_retired(experiment)
 
 
 @pytest.mark.parametrize("experiment", [V41V2, NANO])

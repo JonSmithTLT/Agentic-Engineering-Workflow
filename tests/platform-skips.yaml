@@ -8,6 +8,10 @@ skipped:
       the scoring sandbox is Linux bubblewrap only (F19 slice 3); what it masks for a worktree root is
       computed and tested on every platform (test_a_worktree_root_masks_its_object_store_and_every_checkout).
       Covered on Linux.
+    tests/integration/test_eval_raw_arm_opencode.py::test_on_linux_a_contained_raw_run_sees_only_its_own_state: >-
+      a raw run is contained only under Linux bubblewrap (the lower-bound lane, D3); Windows refuses a contained
+      raw arm before anything is counted (test_a_contained_raw_arm_is_refused_where_it_cannot_be_contained).
+      Covered on Linux.
     tests/unit/test_eval_hidden.py::test_on_linux_the_models_programs_are_scored_in_a_sandbox: >-
       the model's programs are contained while scored only under Linux bubblewrap (F19 slice 3); Windows refuses
       held-out scoring instead (tested). Covered on Linux.

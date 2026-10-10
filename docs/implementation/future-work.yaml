@@ -751,15 +751,20 @@ sections:
       files); its runs are marked `purpose: qualification`, are qualification and instrumentation evidence only, never M4-H
       or treatment-effect claims, and Q7''s sealed tasks stay unexposed. After the gate: `r8-pack-arms`, `r9-intent-surface`,
       `r2b-coherence`, `e1-completeness-nudge` and `e2-delta-first`; their aggressive modes become defaults only after measurement.
-      Nothing here changes M4-H''s frozen treatment (Revision B). Delta items D2, D3 and D14. **D3''s lane prepared (2026-10-10),
-      the run is the operator''s:** the `raw` arm (`arms.py`: OpenCode''s own agent through the M3 headless session, the
-      case''s new `task` its only message; its session database kept with the run, under the preregistered retention window
-      and reader fields; a run on a model its role does not pin, a provider value in retained state, or no model step is
-      counted and not valid), the preregistration''s `purpose`, and the `aew/eval-profile/v1` record (`profiles.py`: capability
-      class, availability through the pinned harness, floor, ceiling, a derived qualification state); `eval/experiments/lower-bound-qualification/`
-      holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files), the
-      rubric mapping floor and ceiling to the eight behaviours, and the driver. The session-observable metrics wait for
-      D2''s reader; the aew arm and the evaluator/arm-host split are still next'
+      Nothing here changes M4-H''s frozen treatment (Revision B). Delta items D2, D3 and D14. **D3''s lane prepared (2026-10-10,
+      PR #153), the run is the operator''s:** the `raw` arm (`raw.py`: OpenCode''s own agent through the M3 headless session,
+      the case''s new `task` its only message; the harness binary, the model and effort, and the profile pinned in its frozen
+      configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden paths probed before OpenCode
+      starts; its session database kept under the preregistered retention window and structured field allowlist; a run on
+      another model or harness, a provider value in retained state (deleted at once), a provider error instead of a model
+      step or ending the turn, or a failure after the session started is counted and not valid, its cost charged at the
+      cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host split exists,
+      and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed export afterwards,
+      once); `retention.py` enforces the window (a database past it is refused and purged, the purge recorded); the preregistration''s
+      `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/` holds the
+      preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with their oracles
+      validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. The session-observable
+      metrics wait for D2''s reader; the aew arm and the evaluator/arm-host split are still next'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
       History) is accepted and frozen; the main line still has to: merge the frontend and its contract into `main`; serve
@@ -1119,8 +1124,8 @@ sections:
       a Laguna substitute), each pinned at preregistration; if Laguna becomes available, the same profile-neutral suite
       runs on it. **Lower-bound availability (2026-10-10, OpenCode 2.0.18''s served catalog):** the chosen free models (`opencode/deepseek-v4-flash-free`,
       the backup `opencode/minimax-m2.5-free`, and `opencode/laguna-s-2.1-free`) are deprecated in the catalog and not offered;
-      their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash`
-      (`eval/experiments/lower-bound-qualification/profiles.yaml`)'
+      their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash#high`,
+      with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`)'
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local
       result, the operator approves pushing that exact commit to an explicit remote and ref, never forced; AEW records an

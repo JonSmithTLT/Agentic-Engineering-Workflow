@@ -24,8 +24,7 @@ task: >-
   4. The extension's documentation describes `report()` and how it behaves across `md.reset()`.
 
 
-  Keep your changes to the extension, its tests and its documentation, and make sure the existing test suite still
-  passes.
+  Keep your changes to the extension, its tests and its documentation, and do not break any test that passes now.
 
 
   Nobody will answer questions during this session: make reasonable decisions and finish the task.

@@ -1,16 +1,21 @@
-"""The raw arm's configuration, the profile check and the profile records (register F19; agent-effectiveness adoption,
-delta D3: the lower-bound qualification lane).
+"""The raw arm's configuration and validity rules, retention of kept session databases, and the profile records
+(register F19; agent-effectiveness adoption, delta D3: the lower-bound qualification lane).
 
-A raw cell is refused before anything is counted when its case has no task, its configuration is incomplete (a
-session database kept with no retention window or no field list is refused: Revision C has no default), its
-provider variable is missing, or it would run a model other than its role's pinned one. A model the run did not pin
-makes the measurement invalid. A profile record's qualification state is derived, never asserted.
+A raw cell is refused before anything is counted when its case has no task or is held out, its configuration is
+incomplete (a session database kept with no retention window or no structured field allowlist; an unpinned or
+different harness binary; no pinned profile), its provider variable is missing, or it would run a model other than
+its role's pin. A run counts and is not valid when it cannot measure the model: a provider error instead of a model
+step, a turn ended by a provider error, a retained secret, a different harness. A kept database is purged past its
+window and never read after it. A profile record's qualification state is derived, never asserted.
 """
 
 from __future__ import annotations
 
 import copy
+import json
+import sqlite3
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -19,11 +24,27 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 
-from aew_eval import arms, fixture, prereg, profiles, runner  # noqa: E402
+from aew_eval import arms, fixture, prereg, profiles, raw, retention, runner  # noqa: E402
+from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid, validate  # noqa: E402
 
-RAW = {"role": "worker", "model": "fakeprov/fake-model", "steps": 5, "cap_usd": 0.5, "provider_env": [],
-       "session_db": {"retain": True, "retention_days": 30, "fields": ["tool.name", "tool.input.path"]}}
+FIELDS = [{"field": "tool.name", "transform": "none"}, {"field": "tool.state.input.command", "transform": "prefix_300"}]
+
+
+@pytest.fixture
+def pinned(tmp_path, monkeypatch):
+    """A harness binary on this host and the raw configuration that pins it."""
+    binary = tmp_path / "bin" / "opencode-cli.py"
+    binary.parent.mkdir()
+    binary.write_text("# a stand-in harness binary\n", encoding="utf-8")
+    monkeypatch.setenv("AEW_OPENCODE_BIN", str(binary))
+    return {"role": "worker", "model": "fakeprov/fake-model#high", "steps": 5, "cap_usd": 0.5, "provider_env": [],
+            "contain": False,
+            "profile": {"id": "lb-demo", "effective_profile": {"context.orientation": None, "tools.presentation": None},
+                        "qualification_state": "unqualified"},
+            "harness": {"name": "opencode", "version": "2.0.18",
+                        "artifact_sha256": {raw.host_platform(): raw._sha256_file(binary)}},  # noqa: SLF001
+            "session_db": {"retain": True, "retention_days": 30, "fields": FIELDS}}
 
 
 def make_case(root: Path, *, task: str | None = "Fix add() in calc.py.") -> Path:
@@ -44,7 +65,7 @@ def plan_for(case_path: Path, config: dict, *, roles: dict | None = None, **over
         "arms": [{"id": "raw", "kind": "raw", "description": "harness alone", "config": config}],
         "cases": [{"id": case.id, "family": "demo", "sha256": fixture.case_sha256(case), "hidden_sha256": None,
                    "control_of": None}],
-        "profiles": {"roles": roles or {"worker": "fakeprov/fake-model"}, "budget_usd": 1.0},
+        "profiles": {"roles": roles or {"worker": "fakeprov/fake-model#high"}, "budget_usd": 1.0},
         "runs_per_cell": 1, "assignment": {"method": "fixed", "seed": 1},
         "primary_measure": "behaviours shown", "metrics": [{"name": "behaviours", "version": "1"}],
         "validity_rules": {"infrastructure_invalid": [], "counted_failures": [],
@@ -59,37 +80,43 @@ def plan_for(case_path: Path, config: dict, *, roles: dict | None = None, **over
     return prereg.freeze(record, by="tester")
 
 
+def run(tmp_path: Path, case_path: Path, f: dict, name: str = "r1", **kw) -> dict:
+    return runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
+                           cases={"C1": case_path}, work=tmp_path / "work", run_name=name, **kw)
+
+
 def refused(tmp_path: Path, case_path: Path, f: dict, match: str) -> None:
     with pytest.raises(runner.Refused, match=match):
-        runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
-                        cases={"C1": case_path}, work=tmp_path / "work", run_name="r1")
+        run(tmp_path, case_path, f)
     assert not (tmp_path / "ledger" / "attempts.jsonl").exists()  # nothing counted
 
 
-def without(config: dict, *path: str) -> dict:
+def edit(config: dict, value, *path: str) -> dict:
+    """A copy of ``config`` with ``path`` set to ``value`` (or removed, for ``...``)."""
     out = copy.deepcopy(config)
     node = out
     for key in path[:-1]:
         node = node[key]
-    node.pop(path[-1])
+    if value is ...:
+        node.pop(path[-1])
+    else:
+        node[path[-1]] = value
     return out
 
 
-def with_(config: dict, value, *path: str) -> dict:
-    out = copy.deepcopy(config)
-    node = out
-    for key in path[:-1]:
-        node = node[key]
-    node[path[-1]] = value
-    return out
+# ---------------------------------------------------------------------------------------------- schemas
 
 
-def test_a_case_task_and_a_qualification_purpose_are_schema_fields():
+def test_a_case_task_and_a_qualification_purpose_are_schema_fields(tmp_path, pinned):
     validate("aew/eval-case/v1", {"schema": "aew/eval-case/v1", "id": "C1", "family": "f", "task": "do it",
                                   "fixture": {"base": "base"}, "hidden_sha256": None, "control_of": None})
     with pytest.raises(Invalid):
         validate("aew/eval-case/v1", {"schema": "aew/eval-case/v1", "id": "C1", "family": "f", "task": "",
                                       "fixture": {"base": "base"}, "hidden_sha256": None, "control_of": None})
+    case_path = make_case(tmp_path / "case")
+    assert plan_for(case_path, pinned)["purpose"] == "qualification"
+    with pytest.raises(Invalid, match="purpose"):
+        plan_for(case_path, pinned, purpose="exploration")
 
 
 def test_a_task_is_hashed_with_the_case_so_a_changed_prompt_is_a_changed_case(tmp_path):
@@ -98,45 +125,72 @@ def test_a_task_is_hashed_with_the_case_so_a_changed_prompt_is_a_changed_case(tm
     assert a != b
 
 
-def test_a_preregistration_purpose_is_qualification_or_treatment_effect_only(tmp_path):
-    case_path = make_case(tmp_path / "case")
-    assert plan_for(case_path, RAW)["purpose"] == "qualification"
-    with pytest.raises(Invalid, match="purpose"):
-        plan_for(case_path, RAW, purpose="exploration")
+# ---------------------------------------------------------------------------------------------- refusals
 
 
-@pytest.mark.parametrize("config, match", [
-    (with_(RAW, "fakeprov", "model"), "provider/model"),
-    (with_(RAW, 2.5, "steps"), "whole number"),
-    (with_(RAW, 0, "cap_usd"), "positive number"),
-    (with_(RAW, "OPENAI_API_KEY", "provider_env"), "list of environment variable names"),
-    (with_(RAW, ["AEW_LEAD_TOKEN"], "provider_env"), "never reach a harness"),
-    (without(RAW, "role"), "names the role"),
-    (with_(RAW, False, "session_db", "retain"), "keeps its harness session database"),
-    (without(RAW, "session_db", "retention_days"), "retention window has no default"),
-    (with_(RAW, [], "session_db", "fields"), "non-empty list"),
+@pytest.mark.parametrize("path, value, match", [
+    (("model",), "fakeprov", "provider/model"),
+    (("steps",), 2.5, "whole number"),
+    (("cap_usd",), 0, "positive number"),
+    (("provider_env",), "OPENAI_API_KEY", "list of environment variable names"),
+    (("provider_env",), ["AEW_LEAD_TOKEN"], "never reach a harness"),
+    (("role",), ..., "names the role"),
+    (("contain",), ..., "contain: true"),
+    (("profile",), ..., "pins its profile record"),
+    (("profile", "effective_profile"), {"context.orientation": None}, "effective_profile names exactly"),
+    (("harness",), ..., "pins its harness"),
+    (("harness", "artifact_sha256"), {"other-os": "0" * 64}, "no pinned harness binary for this host"),
+    (("session_db", "retain"), False, "keeps its harness session database"),
+    (("session_db", "retention_days"), ..., "retention window has no default"),
+    (("session_db", "fields"), [], "non-empty"),
+    (("session_db", "fields"), ["tool.state.input.command (first 300 characters)"], "is {field, transform}"),
+    (("session_db", "fields"), [{"field": "tool.name", "transform": "truncate"}], "is {field, transform}"),
 ])
-def test_an_incomplete_raw_configuration_is_refused_before_anything_is_counted(tmp_path, config, match):
+def test_an_incomplete_raw_configuration_is_refused_before_anything_is_counted(tmp_path, pinned, path, value, match):
     case_path = make_case(tmp_path / "case")
-    refused(tmp_path, case_path, plan_for(case_path, config), match)
+    refused(tmp_path, case_path, plan_for(case_path, edit(pinned, value, *path)), match)
 
 
-def test_a_raw_cell_whose_case_has_no_task_is_refused(tmp_path):
+def test_a_harness_binary_other_than_the_pinned_one_is_refused(tmp_path, pinned):
+    case_path = make_case(tmp_path / "case")
+    pins = {raw.host_platform(): "0" * 64}
+    refused(tmp_path, case_path, plan_for(case_path, edit(pinned, pins, "harness", "artifact_sha256")),
+            "is not the pinned one")
+
+
+def test_a_contained_raw_arm_is_refused_where_it_cannot_be_contained(tmp_path, pinned, monkeypatch):
+    monkeypatch.setattr(raw.sys, "platform", "win32")
+    case_path = make_case(tmp_path / "case")
+    refused(tmp_path, case_path, plan_for(case_path, edit(pinned, True, "contain")), "runs only on Linux")
+
+
+def test_a_raw_cell_whose_case_has_no_task_is_refused(tmp_path, pinned):
     case_path = make_case(tmp_path / "case", task=None)
-    refused(tmp_path, case_path, plan_for(case_path, RAW), "has no task")
+    refused(tmp_path, case_path, plan_for(case_path, pinned), "has no task")
 
 
-def test_a_missing_provider_variable_is_refused_and_its_value_is_never_needed_to_say_so(tmp_path, monkeypatch):
+def test_a_held_out_case_never_runs_on_a_model_arm_before_the_arm_host_split(tmp_path, pinned):
+    """Decision of 2026-10-06 on held-out isolation: a model-controlled process never runs on the host that holds
+    unreleased held-out material, so the shared runner refuses every held-out cell of a model arm."""
+    case_path = make_case(tmp_path / "case")
+    refused(tmp_path, case_path, plan_for(case_path, pinned, held_out=["C1"]), "held out, and a model-controlled arm")
+
+
+def test_a_missing_provider_variable_is_refused_and_its_value_is_never_needed_to_say_so(tmp_path, pinned,
+                                                                                         monkeypatch):
     monkeypatch.delenv("FAKEPROV_TEST_KEY", raising=False)
     case_path = make_case(tmp_path / "case")
-    refused(tmp_path, case_path, plan_for(case_path, with_(RAW, ["FAKEPROV_TEST_KEY"], "provider_env")),
+    refused(tmp_path, case_path, plan_for(case_path, edit(pinned, ["FAKEPROV_TEST_KEY"], "provider_env")),
             "FAKEPROV_TEST_KEY is not set")
 
 
-def test_a_raw_arm_never_runs_a_model_other_than_its_roles_pinned_one(tmp_path):
+def test_a_raw_arm_never_runs_a_model_other_than_its_roles_pinned_one(tmp_path, pinned):
     case_path = make_case(tmp_path / "case")
-    refused(tmp_path, case_path, plan_for(case_path, RAW, roles={"worker": "fakeprov/other-model"}),
+    refused(tmp_path, case_path, plan_for(case_path, pinned, roles={"worker": "fakeprov/other-model"}),
             "pins worker to 'fakeprov/other-model'")
+
+
+# ---------------------------------------------------------------------------------------------- validity
 
 
 @pytest.mark.parametrize("observed, expected", [
@@ -157,13 +211,13 @@ def test_an_unreported_effort_never_matches_a_pinned_effort():
                                              "effort_unreported": True}]) is True
 
 
-def test_a_mismatched_or_self_invalidated_raw_run_is_counted_but_not_valid(tmp_path, monkeypatch):
+def test_a_mismatched_or_self_invalidated_raw_run_is_counted_but_not_valid(tmp_path, pinned, monkeypatch):
     case_path = make_case(tmp_path / "case")
-    f = plan_for(case_path, RAW)
+    f = plan_for(case_path, pinned)
     outcomes = iter([arms.ArmResult(observed_profiles=[{"role": "worker", "provider": "fakeprov",
-                                                        "model": "cheaper-model", "effort": None}]),
+                                                        "model": "cheaper-model", "effort": "high"}]),
                      arms.ArmResult(observed_profiles=[{"role": "worker", "provider": "fakeprov",
-                                                        "model": "fake-model", "effort": None}],
+                                                        "model": "fake-model", "effort": "high"}],
                                     invalid="PROVIDER_KEY_RETAINED")])
     seen_tasks = []
 
@@ -171,30 +225,161 @@ def test_a_mismatched_or_self_invalidated_raw_run_is_counted_but_not_valid(tmp_p
         seen_tasks.append(task)
         return next(outcomes)
 
-    monkeypatch.setattr(arms.RawArm, "run", fake_run)
-    first = runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
-                            cases={"C1": case_path}, work=tmp_path / "work", run_name="r1")
+    monkeypatch.setattr(raw.RawArm, "run", fake_run)
+    first = run(tmp_path, case_path, f)
     assert first["validity"] == {"status": "invalid_measurement", "reason_code": "PROFILE_MISMATCH"}
     assert first["profile"]["mismatch"] is True
-    second = runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
-                             cases={"C1": case_path}, work=tmp_path / "work", run_name="r1b", retry_of="lbq-demo/r1")
+    second = run(tmp_path, case_path, f, name="r1b", retry_of="lbq-demo/r1")
     assert second["validity"] == {"status": "invalid_measurement", "reason_code": "PROVIDER_KEY_RETAINED"}
     assert second["profile"]["mismatch"] is False
     assert seen_tasks == ["Fix add() in calc.py."] * 2  # the case's task, verbatim
 
 
-@pytest.mark.parametrize("leaked, steps, reason", [
-    ([], 12, None), (["harness/x.log"], 12, "PROVIDER_KEY_RETAINED"), ([], 0, "NO_MODEL_STEP"),
-    ([], None, "NO_MODEL_STEP"), (["harness/x.log"], 0, "PROVIDER_KEY_RETAINED")])
-def test_a_raw_run_with_a_retained_secret_or_no_model_step_is_not_a_measurement(leaked, steps, reason):
-    assert arms.raw_invalid(leaked=leaked, steps=steps) == reason
+ERRORED = {"model": {"providerID": "opencode", "id": "m"}, "error": {"type": "APIError", "message": "401"}}
+STEP = {"model": {"providerID": "opencode", "id": "m"}, "error": None}
 
 
-def test_retained_state_is_scanned_for_a_provider_value(tmp_path):
+@pytest.mark.parametrize("assistant, reason", [
+    ([STEP, STEP], None),
+    ([ERRORED], "NO_MODEL_STEP"),                    # a rejected key, a rate limit: the model never acted
+    ([], "NO_MODEL_STEP"),
+    ([STEP, STEP, ERRORED], "PROVIDER_ERROR_ENDED_TURN"),
+    ([STEP, ERRORED, STEP], None),                   # a transient error the session recovered from
+])
+def test_a_provider_error_is_not_a_model_step(assistant, reason):
+    assert raw.raw_invalid(leaked=[], facts=raw.step_facts(assistant)) == reason
+
+
+def test_the_reasons_a_raw_run_cannot_count_take_precedence_in_order():
+    facts = raw.step_facts([STEP])
+    assert raw.raw_invalid(leaked=["x"], facts=facts, arm_error="boom", harness_mismatch=True) == \
+        "PROVIDER_KEY_RETAINED"
+    assert raw.raw_invalid(leaked=[], facts=facts, harness_mismatch=True) == "HARNESS_MISMATCH"
+    assert raw.raw_invalid(leaked=[], facts=facts, containment_failed=True) == "CONTAINMENT_FAILED"
+    assert raw.raw_invalid(leaked=[], facts=raw.step_facts([]), arm_error="ConnectionError") == "ARM_ERROR"
+
+
+def test_an_errored_assistant_message_as_the_adapter_records_it_is_not_a_step():
+    """Review finding 3, reproduced through the adapter's own snapshot: OpenCode stores an assistant message that
+    carries only a provider error, and the adapter records it."""
+    from aew.harness.opencode import adapter as oc
+
+    class Client:
+        def get(self, path, params=None, timeout=None):
+            if path.endswith("/message"):
+                return {"data": [
+                    {"type": "user", "content": [{"type": "text", "text": "the task"}]},
+                    {"type": "assistant", "model": {"providerID": "opencode", "id": "m"}, "tokens": {},
+                     "cost": 0, "content": [], "error": {"type": "APIError", "message": "401 invalid api key"}}],
+                    "cursor": {}}
+            return {"data": {"cost": 0, "tokens": {}}} if path.startswith("/api/session/s1") else {"data": []}
+
+    a = oc.OpenCodeAdapter.__new__(oc.OpenCodeAdapter)
+    a.client, a.session, a.directory, a.foreign_sessions = Client(), "s1", ".", []
+    a._take_snapshot()
+    facts = raw.step_facts(a.snapshot["assistant"])
+    assert facts["model_steps"] == 0 and facts["errored_steps"] == 1
+    assert raw.raw_invalid(leaked=[], facts=facts) == "NO_MODEL_STEP"
+
+
+@pytest.mark.parametrize("ended, assistant, why", [
+    ("ended", [STEP] * 3, []),
+    ("ended", [STEP] * 5, ["step_limit"]),
+    ("cost_cap", [STEP] * 2, ["turn:cost_cap"]),
+    ("deadline", [STEP] * 2, ["turn:deadline"]),
+    ("ended", [STEP, ERRORED], ["provider_error"]),
+])
+def test_a_run_cut_short_says_why(ended, assistant, why):
+    assert raw.truncation(ended=ended, facts=raw.step_facts(assistant), steps_limit=5) == why
+
+
+def test_an_unknown_cost_is_charged_at_the_cap():
+    assert raw.charged(0.12, 0.75) == 0.12
+    assert raw.charged(None, 0.75) == 0.75
+    assert raw.charged("n/a", 0.75) == 0.75
+
+
+def test_retained_state_is_scanned_for_a_provider_value_and_holding_files_are_purged(tmp_path):
     (tmp_path / "harness" / "x").mkdir(parents=True)
     (tmp_path / "harness" / "x" / "log.txt").write_bytes(b"value=provider-value-under-test end")
     (tmp_path / "clean.txt").write_text("nothing here", encoding="utf-8")
-    assert arms.files_holding(tmp_path, [b"provider-value-under-test"]) == ["harness/x/log.txt"]
+    hits = raw.files_holding(tmp_path, [b"provider-value-under-test"])
+    assert hits == ["harness/x/log.txt"]
+    assert raw.purge_files(tmp_path, hits) == hits
+    assert not (tmp_path / "harness" / "x" / "log.txt").exists() and (tmp_path / "clean.txt").exists()
+
+
+def test_a_contained_run_hides_everything_beside_what_it_keeps(tmp_path):
+    home = tmp_path / "home"
+    for d in ("lane/out/work/run-1", "lane/out/work/run-2", "lane/out/ledger", "lane/hidden/cases",
+              "lane/venv/bin", "private/eval", ".ssh"):
+        (home / d).mkdir(parents=True)
+    (home / "notes.txt").write_text("x", encoding="utf-8")
+    keep = [home / "lane/out/work/run-1", home / "lane/venv", home]  # keeping home itself would hide nothing
+    dirs, files = raw.hidden_around(home, keep)
+    hidden = {Path(p).relative_to(home.resolve()).as_posix() for p in dirs + files}
+    assert hidden == {"lane/out/work/run-2", "lane/out/ledger", "lane/hidden", "private", ".ssh", "notes.txt"}
+
+
+# ---------------------------------------------------------------------------------------------- retention
+
+
+def kept_run(tmp_path: Path, pinned: dict, retain_until: str) -> tuple[dict, Path, Path]:
+    """A finalized raw run that kept a session database, retained until ``retain_until``."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path, pinned)
+    state = tmp_path / "work" / "r1" / "harness"
+    db = state / "harness" / "xdg-data" / "opencode" / "opencode.db"
+
+    def fake_run(self, repo, config, *, deadline_s, task=None):
+        db.parent.mkdir(parents=True)
+        con = sqlite3.connect(db)
+        con.execute("create table session_message (seq integer, type text, data text)")
+        con.commit()
+        con.close()
+        return arms.ArmResult(
+            outcome={"session_db": {"state_dir": str(state.resolve()), "path": "harness/harness/xdg-data/opencode/"
+                                    "opencode.db", "retain_until": retain_until, "fields": FIELDS}},
+            observed_profiles=[{"role": "worker", "provider": "fakeprov", "model": "fake-model", "effort": "high"}])
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(raw.RawArm, "run", fake_run)
+        run(tmp_path, case_path, f)
+    return f, state, db
+
+
+def test_a_session_database_inside_its_window_is_kept_and_opened_read_only(tmp_path, pinned):
+    until = (datetime.now(UTC) + timedelta(days=30)).strftime("%Y-%m-%d")
+    f, state, db = kept_run(tmp_path, pinned, until)
+    assert retention.purge(tmp_path / "ledger", f) == [] and db.exists()
+    con = retention.open_session_db(tmp_path / "ledger", f, "lbq-demo/r1")
+    try:
+        assert con.execute("select count(*) from session_message").fetchone() == (0,)
+        with pytest.raises(sqlite3.OperationalError):
+            con.execute("insert into session_message values (1, 'x', '{}')")
+    finally:
+        con.close()
+
+
+def test_a_session_database_past_its_window_is_refused_purged_and_the_purge_recorded(tmp_path, pinned):
+    f, state, db = kept_run(tmp_path, pinned, "2026-01-01")
+    with pytest.raises(Invalid, match="past its retention window"):
+        retention.open_session_db(tmp_path / "ledger", f, "lbq-demo/r1")
+    entries = retention.purge(tmp_path / "ledger", f)
+    assert [(e["run_id"], e["deleted"]) for e in entries] == [("lbq-demo/r1", True)] and not state.exists()
+    logged = [json.loads(line) for line in (tmp_path / "ledger" / "retention.jsonl").read_text().splitlines()]
+    assert logged == entries
+    assert retention.purge(tmp_path / "ledger", f) == []  # never purged twice
+    with pytest.raises(Invalid, match="was purged"):
+        retention.open_session_db(tmp_path / "ledger", f, "lbq-demo/r1")
+    assert AttemptLedger(tmp_path / "ledger", f).status() == {"lbq-demo/r1": "valid"}  # the run record is unchanged
+
+
+def test_nothing_under_src_aew_imports_the_evaluation_instrument():
+    """Revision C: AEW's runtime never consumes a session database or the instrument that keeps them."""
+    offenders = [p.relative_to(ROOT).as_posix() for p in (ROOT / "src" / "aew").rglob("*.py")
+                 if "aew_eval" in p.read_text(encoding="utf-8")]
+    assert offenders == []
 
 
 # ---------------------------------------------------------------------------------------------- profile records

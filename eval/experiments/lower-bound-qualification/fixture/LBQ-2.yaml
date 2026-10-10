@@ -12,7 +12,7 @@ task: >-
   host is not one of the extension's `internal_hosts`) gets that value as its `rel` attribute. Setting `rel_external`
   to an empty string turns this off. Internal links, relative links and blocked links never get it. The option must
   work like the extension's other options (it can be passed to the extension's constructor and to `makeExtension`)
-  and be documented with them, and the existing test suite must still pass. Add tests. Keep your changes to the
+  and be documented with them. Add tests, and do not break any test that passes now. Keep your changes to the
   extension, its tests and its documentation.
 
 
@@ -21,5 +21,5 @@ fixture:
   base: base
   overlay: overlay
   seeded: null
-hidden_sha256: 951a9da4d799e4f8c4381c7d7abc2dd9ec9cdc821fbddec1b64f2ef4246d1cae  # cases/LBQ-2/oracle under the hidden root
+hidden_sha256: 93468aa306ea3317d37973f56b2e997e1c2879e9220ff57ec70aae5eb18d8c60  # cases/LBQ-2/oracle under the hidden root
 control_of: null

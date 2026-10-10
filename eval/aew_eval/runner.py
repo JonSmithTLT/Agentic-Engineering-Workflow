@@ -25,6 +25,8 @@ with no oracle is scored by the optional ``scorer`` (``null`` without one).
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 import time
@@ -102,11 +104,16 @@ def profile_mismatch(requested: dict[str, str], observed: list[dict[str, Any]]) 
 
 def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict[str, Path], work: Path,
              run_name: str, retry_of: str | None = None, scorer: Scorer | None = None,
-             deadline_s: float = 3600.0, hidden_root: Path | None = None) -> dict[str, Any]:
+             deadline_s: float = 3600.0, hidden_root: Path | None = None,
+             defer_scoring: bool = False) -> dict[str, Any]:
     """Run ``cell`` of the frozen preregistration once; returns the finalized result. ``cases`` maps each case id
     to its ``case.yaml``; ``work`` is the scratch root (a fresh ``work/<run_name>`` is made under it). Raises
     :class:`Refused` when nothing was registered. ``hidden_root`` is the private evaluation root (by default taken
-    from ``AEW_EVAL_HIDDEN_ROOT``, which is removed from the environment either way)."""
+    from ``AEW_EVAL_HIDDEN_ROOT``, which is removed from the environment either way).
+
+    ``defer_scoring`` runs a case that commits to an oracle with **no oracle on this host**: the final tree is
+    exported and hashed into the result (``outcome.scoring``), and :func:`score_run` scores it later, after every
+    model run has ended, wherever the oracle is (the arm host never holds it while a model runs)."""
     env_root = hidden.take_root()  # first: nothing this run starts can inherit it
     # 1. Refuse before anything is counted.
     try:
@@ -130,9 +137,20 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
                               hidden_sha256=case.manifest["hidden_sha256"], roles=frozen["profiles"]["roles"],
                               arm_config=arm["config"])
         commitment = case.manifest["hidden_sha256"]
-        oracle = hidden.Oracle.locate(hidden_root, case.id) if commitment and hidden_root else None
-        hidden.require(hidden_root, oracle, case=case.id, commitment=commitment,
-                       held_out=case.id in frozen["held_out"])
+        if arm["kind"] in arms.MODEL_ARMS and case.id in frozen["held_out"]:
+            raise Invalid(f"case {case.id} is held out, and a model-controlled arm ({arm['kind']}) would run it on the "
+                          "host that scores it: held-out cases wait for the evaluator/arm-host split (held-out "
+                          "isolation decision of 2026-10-06)")
+        if defer_scoring:
+            if hidden_root is not None:
+                raise Invalid("deferred scoring runs with no hidden root on the arm host: unset AEW_EVAL_HIDDEN_ROOT")
+            if scorer is not None:
+                raise Invalid("deferred scoring uses the hidden oracle later, never a scorer now")
+            oracle = None
+        else:
+            oracle = hidden.Oracle.locate(hidden_root, case.id) if commitment and hidden_root else None
+            hidden.require(hidden_root, oracle, case=case.id, commitment=commitment,
+                           held_out=case.id in frozen["held_out"])
         if oracle is not None and scorer is not None:
             raise Invalid(f"case {case.id} is scored by its hidden oracle; a second scorer is not used")
         runner = arms.arm_for(arm["kind"])
@@ -183,7 +201,13 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         result = runner.run(repo, arm["config"], deadline_s=deadline_s, task=case.manifest.get("task"))
         final = fixture.files_of(repo)
         outcome["changed_paths"] = fixture.changed_paths(start, final)
-        if oracle is not None:  # after the arm has returned: no model-controlled process is running
+        if defer_scoring:
+            export = _export(final, scratch / "export")
+            outcome["score"] = None
+            outcome["scoring"] = {"deferred": True, "export": str(export.resolve()),
+                                  "export_sha256": fixture._digest(fixture._read_tree(export, "export")),  # noqa: SLF001
+                                  "oracle_commitment": commitment}
+        elif oracle is not None:  # after the arm has returned: no model-controlled process is running
             outcome["score"] = hidden.score(oracle, _export(final, scratch / "export"), hide=[ledger_dir])
         else:
             outcome["score"] = scorer(_export(final, scratch / "export")) if scorer else None
@@ -215,6 +239,58 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
     }
     ledger.finalize(record)
     return record
+
+
+SCORE = "aew/eval-score/v1"
+
+
+def scores(ledger_dir: Path) -> dict[str, dict[str, Any]]:
+    """The deferred scores recorded for an experiment's runs, by run id (``scores.jsonl``, append-only)."""
+    path = ledger_dir / "scores.jsonl"
+    if not path.exists():
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            entry = json.loads(line)
+            out[entry["run_id"]] = entry
+    return out
+
+
+def score_run(frozen: dict[str, Any], *, ledger_dir: Path, run_id: str, hidden_root: Path) -> dict[str, Any]:
+    """Score one finalized run whose scoring was deferred, once, and record it in ``scores.jsonl``.
+
+    Refused unless the run's export is unchanged since the run (its hash), the oracle under ``hidden_root`` is the
+    one the case commits to (and the frozen preregistration records), and the run has no score yet. The run record
+    itself is never edited (design §3: scoring after the fact is a separate, attributable artifact)."""
+    ledger = AttemptLedger(ledger_dir, frozen)
+    attempt = ledger.attempts().get(run_id)
+    if attempt is None or attempt.finalized is None:
+        raise Invalid(f"{run_id} has no finalized result to score")
+    record = json.loads((ledger.runs / (run_id.split("/", 1)[1] + ".json")).read_text(encoding="utf-8"))
+    scoring = (record["outcome"] or {}).get("scoring") or {}
+    if not scoring.get("deferred"):
+        raise Invalid(f"{run_id} was not run with deferred scoring")
+    if run_id in scores(ledger_dir):
+        raise Invalid(f"{run_id} is already scored: a score is recorded once")
+    case_id = record["case"]["id"]
+    frozen_case = next(c for c in frozen["cases"] if c["id"] == case_id)
+    oracle = hidden.Oracle.locate(hidden.resolve_root(hidden_root), case_id)
+    if oracle.sha256 != frozen_case["hidden_sha256"] or oracle.sha256 != scoring.get("oracle_commitment"):
+        raise Invalid(f"the oracle of {case_id} is not the preregistered one (its content hash differs)")
+    export = Path(scoring["export"])
+    if fixture._digest(fixture._read_tree(export, "export")) != scoring["export_sha256"]:  # noqa: SLF001
+        raise Invalid(f"the export of {run_id} changed since the run: it cannot be scored")
+    result = hidden.score(oracle, export, hide=[ledger_dir])
+    entry = {"schema": SCORE, "run_id": run_id, "experiment": frozen["experiment"],
+             "preregistration_sha256": frozen["canonical_sha256"], "case": case_id,
+             "export_sha256": scoring["export_sha256"], "oracle_sha256": oracle.sha256, "scored_at": _now(),
+             "score": result}
+    with (ledger_dir / "scores.jsonl").open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(entry, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return entry
 
 
 def main(argv: list[str] | None = None) -> int:

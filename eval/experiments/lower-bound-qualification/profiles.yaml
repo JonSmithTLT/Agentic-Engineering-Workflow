@@ -4,7 +4,8 @@
 #
 # Chosen by the lead developer on 2026-10-09 (operator: "no preference, pick the best, keep it consistent for future
 # research"): lower bound deepseek-v4-flash-free, with its stable paid twin so results stay reproducible if the free
-# tier goes; backup minimax-m2.5-free; middle profile gpt-6-luna through the OpenAI API. Laguna is recorded as a note.
+# tier goes; backup minimax-m2.5-free; middle profile gpt-6-luna through the OpenAI API. The free models are no longer
+# offered (2026-10-10): the lane pins the primary's paid twin, with the next-cheaper stable model as its fallback. Laguna is recorded as a note.
 # Availability is what OpenCode 2.0.18's served catalog offered on 2026-10-10 (qualify.py check, "harness_launch").
 
 - schema: aew/eval-profile/v1
@@ -41,10 +42,10 @@
 - schema: aew/eval-profile/v1
   id: lb-deepseek-v4-flash
   class: lower-bound
-  ref: opencode/deepseek-v4-flash
+  ref: opencode/deepseek-v4-flash#high
   provider: opencode
   model: deepseek-v4-flash
-  effort: null
+  effort: high
   plan_role: paid-twin
   twin_of: lb-deepseek-v4-flash-free
   harness: *harness
@@ -57,11 +58,14 @@
     offered_by_pinned_harness: true
     catalog_status: null
     checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
-    note: "Variants offered: low, high, max. The preregistration pins no effort, so the run uses OpenCode's default variant."
+    note: >-
+      Variants offered: low, high, max. Pinned to high: the floor (AEW's bridge protocol) is a hard prerequisite and
+      flash-class models follow multi-step tool protocols poorly at low effort; at high it is still a flash-class model.
   floor: {state: not_run}
   ceiling: {state: not_run}
   qualification_state: unqualified
   notes: The profile the lane's preregistration pins (prereg.yaml), because the free tier is no longer offered.
+    The operator approved paying for it (2026-10-10, within the lane's budget_usd).
 
 - schema: aew/eval-profile/v1
   id: lb-minimax-m2.5-free
@@ -81,44 +85,49 @@
     offered_by_pinned_harness: false
     catalog_status: deprecated
     checked_with: null
-    note: The catalog marks it deprecated and OpenCode 2.0.18 does not offer it.
+    note: >-
+      The catalog marks it deprecated and OpenCode 2.0.18 does not offer it. Its paid twin (opencode/minimax-m2.5,
+      $0.30 / $1.20 per million tokens) costs more than the primary, so it is not the lane's fallback (lb-gpt-5-nano is).
   floor: {state: not_run}
   ceiling: {state: not_run}
   qualification_state: unavailable
   notes: null
 
 - schema: aew/eval-profile/v1
-  id: lb-minimax-m2.5
+  id: lb-gpt-5-nano
   class: lower-bound
-  ref: opencode/minimax-m2.5
+  ref: opencode/gpt-5-nano
   provider: opencode
-  model: minimax-m2.5
+  model: gpt-5-nano
   effort: null
-  plan_role: paid-twin
-  twin_of: lb-minimax-m2.5-free
+  plan_role: backup
+  twin_of: null
   harness: *harness
   effective_profile: *raw
   credential_env: [OPENCODE_API_KEY]
-  cost_per_mtok_usd: {input: 0.3, output: 1.2, cache_read: 0.06,
+  cost_per_mtok_usd: {input: 0.05, output: 0.40, cache_read: null,
                       source: "models.dev catalog served to OpenCode, 2026-10-10"}
   availability:
-    checked_at: "2026-10-10"
-    offered_by_pinned_harness: true
+    checked_at: null
+    offered_by_pinned_harness: null
     catalog_status: null
-    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
-    note: "Variants offered: none. The preregistration pins no effort, so the run uses OpenCode's default variant."
+    checked_with: null
+    note: null
   floor: {state: not_run}
   ceiling: {state: not_run}
   qualification_state: unqualified
-  notes: The backup's paid twin; the next profile tried if the primary is not a lower bound.
+  notes: >-
+    The fallback if the primary shows none of the behaviours (synthesis 13.4: the next-cheaper profile): the cheapest
+    paid model the pinned harness offers with a stable, versioned identity (released 2025-08; input $0.05 per million
+    tokens against the primary's $0.14), and an older, smaller model. A new experiment id when it runs.
 
 - schema: aew/eval-profile/v1
   id: mid-gpt-6-luna
   class: mid
-  ref: openai/gpt-6-luna
+  ref: openai/gpt-6-luna#medium
   provider: openai
   model: gpt-6-luna
-  effort: null
+  effort: medium
   plan_role: primary
   twin_of: null
   harness: *harness
@@ -131,7 +140,7 @@
     offered_by_pinned_harness: true
     catalog_status: null
     checked_with: a placeholder value for OPENAI_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
-    note: "Variants offered: none, low, medium, high, xhigh, max. The preregistration pins no effort, so the run uses OpenCode's default variant."
+    note: "Variants offered: none, low, medium, high, xhigh, max. Pinned to medium, the middle of its range."
   floor: {state: not_run}
   ceiling: {state: not_applicable}
   qualification_state: unqualified

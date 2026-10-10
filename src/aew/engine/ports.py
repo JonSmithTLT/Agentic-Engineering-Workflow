@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from aew import roles
     from aew.engine.base import TxnContext
     from aew.engine.dispatch import DispatchDecision
+    from aew.engine.store import Session
     from aew.history.index import HistoryIndex
     from aew.knowledge import context as ctxmod
 
@@ -262,3 +263,16 @@ class HistoryCommandsPort(Protocol):
 
     def audit_backlog(self, state: dict[str, Any]) -> int | None: ...
     def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None: ...
+
+
+class CoordinationPort(Protocol):
+    """What other collaborators use of ``Coordination`` (F9-A MS2): the seal on the direct paths that end an
+    invocation, the registration hook adoption runs, doctor's backstop, the reads ``work show`` and ``history show``
+    overlay, and the evidence inputs ``submit`` records. None of it is read by a gate, transition or dispatch."""
+
+    def seal_ending(self, session: Session, refs: list[str]) -> list[str]: ...
+    @staticmethod
+    def on_adopt(ctx: TxnContext, policy: dict[str, Any] | None, decision: str) -> None: ...
+    def doctor_check(self, state: dict[str, Any]) -> tuple[str, str] | None: ...
+    def unit_threads(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> dict[str, Any] | None: ...
+    def evidence_inputs(self, work_id: str, inv_id: str) -> list[dict[str, Any]]: ...

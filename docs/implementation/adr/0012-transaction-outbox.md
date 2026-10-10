@@ -276,9 +276,12 @@ A Lead-worker coordination message ([ADR-0017](0017-coordination-messages.md), F
 invocation's thread under the control lock and **commits nothing**: no transition record, no typed event, no revision.
 The outbox stays complete in D1's sense, because a message changes no control state for a transition to record; the
 thread is its own hash-chained record. The writer touches `local/wake` after each append (D4: advisory), so a waiter on
-the wake file re-checks without a parse of `control.yaml`. F9-A's sealing slice (MS2) adds control-state keys (the unit's
-seal pointer, `coordination_unseen`, `coordination_store`) that derive no event, and one event type,
-`coordination.seal_fallback`; it extends this note when it lands.
+the wake file re-checks without a parse of `control.yaml`. F9-A's sealing slice (MS2, built 2026-10-10) added the
+control-state keys the seal and the registration need (the unit's seal pointer `coordination`, the top-level
+`coordination_unseen` and `coordination_store`); none of them derives an event. It added one operation-declared kind,
+`coordination.seal_fallback {invocation, op}`, which the store appends on the operation's behalf when the commit check
+sealed an ending the operation's path missed (an engine defect, recorded so CI's walk finds it), and every sealing commit
+names its seal records in the transition's `refs`, so the log names every seal (ADR-0017's recovery read walks them).
 
 ## Checks before relying on this ADR
 

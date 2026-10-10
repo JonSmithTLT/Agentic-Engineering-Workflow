@@ -56,7 +56,10 @@ SEGMENT_SCHEMA = "aew/transition-segment/v1"
 # Event kinds (ADR-0012 D2). Derived kinds come from the committed states; declared kinds only from the operation.
 DERIVED_KINDS = ("lead.generation", "work.state", "invocation.status", "run.added", "credential.revoked",
                  "history.appended", "unit.archived", "queue.entry", "queue.lease")
-DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded")
+# `coordination.seal_fallback` is declared by the store on the operation's behalf: the commit sealed a thread the
+# operation's path missed (F9-A plan D-16, R3; ADR-0017 D7).
+DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded",
+                  "coordination.seal_fallback")
 
 
 # ---------------------------------------------------------------------------------------------- derivation (D2)

@@ -48,7 +48,7 @@ from aew.util import dump_yaml, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
-    from aew.engine.ports import ArchivePort, WorkUnitsPort
+    from aew.engine.ports import ArchivePort, CoordinationPort, WorkUnitsPort
 
 V2 = "aew/control/v2"
 AUDIT_SCHEMA = "aew/audit/v1"
@@ -84,10 +84,12 @@ class _RootMoved(Exception):
 class HistoryCommands:
     """The history surface and the integrity audit (ADR-0011)."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.units = units
         self.archive = archive
+        self.coordination = coordination
         self.cold = History(k.aew_root)
 
     # ------------------------------------------------------------------ reading
@@ -135,6 +137,11 @@ class HistoryCommands:
             if entry["kind"] == "unit":
                 unit = self.archive.archived_unit(state, record_id) or {}
                 out["current_parent"] = unit.get("parent")
+                # F9-A (plan D-24): its coordination threads, read through the seal pointers in the bundle, each
+                # checked against its pinned hash; absent where none was ever recorded.
+                threads = self.coordination.unit_threads(state, record_id, doc["unit"])
+                if threads:
+                    out["coordination"] = threads
             index = self.archive.index(state)
             out["annotations"] = [{"entry": _public(a), "record": self.archive.record(a)}
                                   for a in index.annotations(record_id)]

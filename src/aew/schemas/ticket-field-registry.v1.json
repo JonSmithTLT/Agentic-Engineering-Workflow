@@ -67,6 +67,7 @@
     "commit_ready_snapshot",
     "completion_record",
     "completion_sha256",
+    "coordination",
     "coverage_obligations",
     "created_at",
     "environment_blocker",

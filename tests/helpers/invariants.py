@@ -252,6 +252,8 @@ def control_violations(root: Path) -> list[str]:
     problems += stage_intent_violations(root, hot, state)
     # 50. F4 S1: every unit key and record field is classified by the Ticket field registry.
     problems += ticket_field_violations(root, state)
+    # 51-57. F9-A: coordination threads, their seals and the coordination keys (plan v4 §7, C1 to C7).
+    problems += coordination_violations(root, hot, state)
     return problems
 
 
@@ -910,4 +912,159 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
             if dispatched_with != deps:
                 problems.append(f"{wid} closed on {gate} report {ev_id}, dispatched under dependencies "
                                 f"{dispatched_with} rather than {deps}")
+    return problems
+
+
+# ------------------------------------------------------------------ F9-A: coordination messages (rules 51-57, C1-C7)
+
+THREAD_GENESIS = "aew/coordination-thread/v1"
+
+
+def _thread_lines(raw: bytes, invocation: str) -> tuple[list[dict[str, Any]], int, str | None]:
+    """An independent reading of a thread: each complete line's entry while the chain holds, the verified length, and
+    the first problem (None when every complete line verifies). An incomplete final line is not read (C1)."""
+    head = hashlib.sha256(f"{THREAD_GENESIS}:{invocation}".encode()).hexdigest()
+    entries, verified = [], 0
+    end = raw.rfind(b"\n") + 1
+    for n, line in enumerate(raw[:end].split(b"\n")[:-1], 1):
+        try:
+            entry = json.loads(line)
+            h = entry.pop("h")
+            body = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        except (ValueError, KeyError, AttributeError, TypeError):
+            return entries, verified, f"line {n} is not a chained JSON line"
+        if hashlib.sha256(bytes.fromhex(head) + body).hexdigest() != h:
+            return entries, verified, f"line {n} breaks the chain"
+        head = h
+        entries.append(entry)
+        verified += len(line) + 1
+    return entries, verified, None
+
+
+def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any], *,
+                            fallback_allowed: bool = False) -> list[str]:
+    """51-57 (F9-A plan v4 §7, C1 to C7), over every thread on disk and the full state (hot and archived units):
+
+    51 (C1) chains and identity; 52 (C2) authority at the time; 53 (C3) replies; 54 (C4) idempotency keys; 55 (C5)
+    facts and the seen log; 56 (C6) seals, the marker and the registration key, and no seal by the commit check's
+    fallback (a path that missed its call; ``fallback_allowed`` only for the test that provokes one); 57 (C7) no state
+    moved, and only the coordination keys the plan names, within their bounds."""
+    aew = Path(root) / ".aew"
+    threads = sorted(aew.glob("work/*/coordination/INV-*.jsonl"))
+    problems: list[str] = []
+    store, unseen = hot.get("coordination_store"), hot.get("coordination_unseen")
+    if not threads:
+        if unseen is not None:
+            problems.append("57: coordination_unseen without any thread")
+        if any(u.get("coordination") for u in full["work"].values()):
+            problems.append("57: a unit names a seal but no thread exists")
+        return problems
+    if not (aew / "coordination/marker.yaml").is_file():
+        problems.append("56: a thread exists but the project marker does not")
+    if store is None:
+        problems.append("56: a thread exists but control state has no coordination_store")
+    # The Lead generations and the revision each began at, the ops, and the declared events, from the transition log.
+    began: dict[int, int] = {}
+    fallbacks: list[str] = []
+    ops: dict[int, Any] = {}
+    marker = hot.get("outbox") or {}
+    start = marker["since"] - 1 if marker.get("since") else -1
+    try:
+        for record in outbox.read_transitions(aew, start, hot["revision"], outbox=marker or None):
+            ops[record["revision"]] = record.get("op")
+            for e in record.get("events") or []:
+                if e["kind"] == "lead.generation" and e.get("to") is not None:
+                    began.setdefault(e["to"], record["revision"])
+                if e["kind"] == "coordination.seal_fallback":
+                    fallbacks.append(f"{e['invocation']} ({e['op']}, revision {record['revision']})")
+    except Exception as exc:  # noqa: BLE001 (the oracle reports, it does not crash)
+        problems.append(f"52: the transition log cannot be read: {exc}")
+    if fallbacks and not fallback_allowed:
+        problems.append(f"56: sealed by the commit check's fallback (a path missed its seal call): {fallbacks}")
+    if any(str(op).startswith("message.") for op in ops.values()):
+        problems.append("57: a transition records a message operation")
+    if store is not None and ops.get(store["since_rev"], "manifest.adopt") != "manifest.adopt":
+        problems.append(f"57: coordination_store was written by {ops[store['since_rev']]}, not an adoption")
+    seen_lines: list[dict[str, Any]] = []
+    seen_path = aew / "coordination/lead-seen.jsonl"
+    if seen_path.is_file():
+        raw = seen_path.read_bytes()
+        seen_lines = [json.loads(x) for x in raw[:raw.rfind(b"\n") + 1].split(b"\n")[:-1]]
+    seals: dict[str, dict[str, Any]] = {}
+    for path in threads:
+        work_id, inv_id = path.parent.parent.name, path.stem
+        where = f"{inv_id}'s thread"
+        raw = path.read_bytes()
+        inv = full["invocations"].get(inv_id) or {}
+        unit = full["work"].get(work_id) or {}
+        pointer = next((p for p in unit.get("coordination") or [] if p["invocation"] == inv_id), None)
+        seal = None
+        if pointer is not None:
+            seal_path = aew / pointer["seal"]
+            if sha256_file(seal_path) != pointer["sha256"]:
+                problems.append(f"56: {inv_id}'s seal {pointer['seal']} does not hold its pointer's hash")
+            else:
+                seal = load_yaml(seal_path.read_text(encoding="utf-8"))
+                seals[inv_id] = seal
+                if hashlib.sha256(raw).hexdigest() != seal["thread"]["sha256"] or len(raw) != seal["thread"]["size"]:
+                    problems.append(f"56: {where} is not the bytes its seal pins (a line follows the sealed head?)")
+                if pointer["closed_rev"] != seal["closed_rev"] or pointer["messages"] != seal["messages"]:
+                    problems.append(f"56: {inv_id}'s pointer disagrees with its seal")
+        if inv.get("status") != "active" and pointer is None:
+            problems.append(f"56: {inv_id} is {inv.get('status')} but its thread has no seal")
+        if inv.get("status") == "active" and pointer is not None:
+            problems.append(f"56: {inv_id} is active but its thread is sealed")
+        entries, verified, problem = _thread_lines(raw, inv_id)
+        if problem and not (seal and seal["damaged"] and verified >= seal.get("verified_bytes", 0)):
+            problems.append(f"51: {where}: {problem}")
+        if seal is not None and not seal["damaged"] and verified != len(raw):
+            problems.append(f"51: {where} is sealed whole but does not verify to its end")
+        messages = [e["message"] for e in entries if e.get("type") == "message"]
+        by_id = {m["id"]: m for m in messages}
+        if len(messages) > 200:
+            problems.append(f"57: {where} holds {len(messages)} messages, beyond its bound")
+        for n, m in enumerate(messages, 1):
+            if (m["seq"], m["id"], m["thread"], m["work_unit"]) != (n, f"MSG-{inv_id}-{n}", inv_id, work_id):
+                problems.append(f"51: {where}: message {n} is misnumbered or names another thread or unit")
+            lead = m["sender"].startswith("lead:")
+            if lead:
+                g = int(m["sender"].split(":")[1])
+                if not began.get(g, 10 ** 9) <= m["checked_rev"] < began.get(g + 1, 10 ** 9):
+                    problems.append(f"52: {m['id']}'s generation {g} was not current at revision {m['checked_rev']}")
+                if inv.get("scope") == "revision":
+                    problems.append(f"57: {m['id']} is Lead text to a confirmer")
+            elif m["sender"] != f"invocation:{inv_id}":
+                problems.append(f"52: {m['id']} was sent by {m['sender']}, not the thread's invocation")
+            target = by_id.get(m["in_reply_to"] or "")
+            if m["in_reply_to"] is not None and (target is None or target["seq"] >= m["seq"]):
+                problems.append(f"53: {m['id']} replies to {m['in_reply_to']}, not an earlier message of its thread")
+            if not lead and (target is None or not target["sender"].startswith("lead:")):
+                problems.append(f"53: worker message {m['id']} does not reply to a Lead message")
+        keys = [(m["sender"], m["idempotency_id"]) for m in messages]
+        if len(keys) != len(set(keys)):
+            problems.append(f"54: {where} holds two messages with one (sender, idempotency id)")
+        recorded: set[str] = set()
+        for e in entries:
+            if e.get("type") == "message":
+                recorded.add(e["message"]["id"])
+            elif e["fact"]["message"] not in recorded:
+                problems.append(f"55: {where}: a {e['fact']['kind']} fact precedes the message it names")
+        posted = {e["fact"]["message"] for e in entries if e.get("type") == "fact" and e["fact"]["kind"] == "POSTED"}
+        for u in (seal or {}).get("undeliverable") or []:
+            if u["message"] in posted or not by_id.get(u["message"], {}).get("sender", "").startswith("lead:"):
+                problems.append(f"55: {u['message']} is undeliverable but was posted, or is not a Lead message")
+    listed = {m: inv for inv, seal in seals.items() for m in seal["unseen_by_lead"]}
+    for line in seen_lines:
+        if "message" in line and line["message"] not in listed:
+            problems.append(f"55: the seen log names {line['message']}, which no seal lists as unseen")
+        if line.get("generation") not in began:
+            problems.append(f"55: the seen log names generation {line.get('generation')}, which never existed")
+    if unseen is not None:
+        if len(unseen["entries"]) > 20:
+            problems.append(f"57: coordination_unseen holds {len(unseen['entries'])} entries, beyond its cap")
+        if not unseen["entries"] and not unseen["omitted"]:
+            problems.append("57: an empty coordination_unseen stays in control state")
+        for e in unseen["entries"]:
+            if listed.get(e["message"]) != e["invocation"]:
+                problems.append(f"57: coordination_unseen lists {e['message']}, which its seal does not")
     return problems

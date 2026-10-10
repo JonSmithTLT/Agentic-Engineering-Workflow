@@ -530,46 +530,6 @@
       "type": "object",
       "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
       "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
-    },
-    "coordination_store": {
-      "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Written once, by the operator's `manifest adopt` that leaves `coordination.messaging: enabled`, and never removed: threads may exist after the switch is turned off. An engine built before thread sealing refuses a control state holding it, so it cannot end a messaged invocation without a seal.",
-      "type": "object",
-      "required": ["since_rev", "decision"],
-      "additionalProperties": false,
-      "properties": {
-        "since_rev": {"description": "The revision of the adoption that registered the project.", "type": "integer", "minimum": 1},
-        "decision": {"description": "The adoption's decision record.", "type": "string", "pattern": "^D-[0-9]+$"}
-      }
-    },
-    "coordination_unseen": {
-      "description": "F9-A (ADR-0017 D11; plan v4 D-38): worker messages of sealed threads that no Lead generation has been shown. Entries are added only by the commit that seals their thread and removed once `.aew/coordination/lead-seen.jsonl` records them; at most 20, with the further ones counted in `omitted` and the range of their sealing revisions in `omitted_revs` (each omitted message stays listed in its seal record). Absent while there is none.",
-      "type": "object",
-      "required": ["entries", "omitted", "omitted_revs"],
-      "additionalProperties": false,
-      "properties": {
-        "entries": {
-          "type": "array",
-          "maxItems": 20,
-          "items": {
-            "type": "object",
-            "required": ["message", "invocation", "work_unit", "seal"],
-            "additionalProperties": false,
-            "properties": {
-              "message": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
-              "invocation": {"type": "string", "pattern": "^INV-[0-9]+$"},
-              "work_unit": {"type": "string", "minLength": 1},
-              "seal": {"$ref": "#/$defs/coordination_seal_path"}
-            }
-          }
-        },
-        "omitted": {"type": "integer", "minimum": 0},
-        "omitted_revs": {
-          "oneOf": [
-            {"type": "null"},
-            {"type": "array", "prefixItems": [{"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}], "minItems": 2, "maxItems": 2}
-          ]
-        }
-      }
     }
   },
   "allOf": [
@@ -588,8 +548,7 @@
             {"required": ["retained_workspaces"]},
             {"required": ["retired_observations"]},
             {"required": ["queue"]},
-            {"required": ["steering"]}, {"required": ["stage_intents"]},
-            {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]}
+            {"required": ["steering"]}, {"required": ["stage_intents"]}
           ]
         }
       }
@@ -696,11 +655,6 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]*$"
     },
-    "coordination_seal_path": {
-      "description": "A coordination seal record's path under .aew (F9-A D-16): beside its thread, named by its content's hash.",
-      "type": "string",
-      "pattern": "^work/[^/]+/coordination/INV-[0-9]+\\.seal-[0-9a-f]{12}\\.yaml$"
-    },
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
@@ -736,20 +690,6 @@
               "status": {"enum": ["COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]},
               "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
               "sha256": {"$ref": "#/$defs/sha256"},
-              "closed_rev": {"type": "integer", "minimum": 1}
-            }
-          }
-        },
-        "coordination": {
-          "description": "F9-A (ADR-0017 D7; plan v4 D-16): one pointer per ended invocation of this unit that had a coordination thread, to its immutable seal record, written by the commit that ended the invocation. Archival carries the list into the unit's bundle, which pins each seal; each seal pins its thread.",
-          "type": "array",
-          "items": {
-            "type": "object", "required": ["invocation", "seal", "sha256", "messages", "closed_rev"], "additionalProperties": false,
-            "properties": {
-              "invocation": {"type": "string", "pattern": "^INV-[0-9]+$"},
-              "seal": {"$ref": "#/$defs/coordination_seal_path"},
-              "sha256": {"$ref": "#/$defs/sha256"},
-              "messages": {"type": "integer", "minimum": 0},
               "closed_rev": {"type": "integer", "minimum": 1}
             }
           }

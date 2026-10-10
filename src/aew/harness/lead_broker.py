@@ -102,6 +102,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "invoke cancel", "invoke create", "lead handoff cancel",
     "lead mode lower",  # a restriction the Lead makes for its own generation (A1 §1.2)
     "map generate", "map select-architecture",  # derived map state under .aew/local/maps/ only (ADR-0015)
+    "message unseen",  # a read; with the Lead's credential it records what it showed (F9-A plan D-38, R1)
     "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
@@ -299,12 +300,13 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     """Run one Lead-authenticated ``aew`` command with ``token``, with every refusal a Lead session has: the relay of
     a shell command (``lead.cli``) and the typed surface's ``cli`` escape both come here. The caller serializes:
     the process-wide cwd and stdin swap below needs it."""
-    from aew.cli.main import build_parser, recall_search_for
+    from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
 
     # Built as the `aew` client builds it, with the same switch read for this broker's project (register F21, Arm B).
     project = getattr(engine, "aew_root", None) or Path(cwd)
-    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project))
+    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project),
+                          coordination_reads=coordination_reads_for(argv, aew_root=project))
     stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
     argv = _expand_fields(argv, parser, stdin_stream, cwd)
     noise = io.StringIO()

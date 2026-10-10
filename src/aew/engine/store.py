@@ -60,9 +60,10 @@ from pathlib import Path
 from typing import Any
 
 from aew import profile
+from aew.coordination import layout as coordination
 from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
-from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision
+from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision, ThreadUnsealed
 from aew.schemas import validate
 from aew.util import (
     atomic_write,
@@ -86,6 +87,10 @@ READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
 AfterApply = Callable[[dict[str, Any]], None]
+# Seals the coordination threads of the invocations a session ends (F9-A plan D-16): the kernel's
+# ``Coordination.seal_ending``, injected by the composition root. The store calls it only as the commit check's
+# fallback, for an ending whose path missed its explicit call.
+Seal = Callable[["Session", list[str]], list[str]]
 
 
 @dataclass
@@ -199,18 +204,80 @@ class Session:
             )
         after = self.state if state is None else state
         _require_dispatched(self._committed_state, after)
+        self._require_sealed(transition, after)
         self.committed_revision = self._store._commit(self._committed_state, after, self._writes, transition,
                                                       self._prewritten, working=self.state)
         return self.committed_revision
 
 
+    # ------------------------------------------------------------------ the seal check (F9-A plan D-16, R3)
+
+    def _unsealed_endings(self) -> list[tuple[str, str]]:
+        """``(invocation, work unit)`` for each invocation this session ends (``active`` in the committed state, not in
+        the working state) whose coordination thread exists, and whose unit in the working state carries no pointer to
+        a seal prewritten in this session with the pointer's hash. The working state, not the projection: archival
+        changes only what is serialized (ADR-0011 R6). One stat per ending invocation; nothing when none ends."""
+        working = self.state.get("invocations") or {}
+        out = []
+        for inv_id, inv in (self._committed_state.get("invocations") or {}).items():
+            if inv.get("status") != "active" or (working.get(inv_id) or {}).get("status") == "active":
+                continue
+            work_id = inv.get("work_unit")
+            if not work_id or not (self._store.root / coordination.thread_rel(work_id, inv_id)).is_file():
+                continue
+            unit = (self.state.get("work") or {}).get(work_id) or {}
+            if not any(p.get("invocation") == inv_id and self._prewritten.get(p.get("seal")) == p.get("sha256")
+                       for p in unit.get(coordination.UNIT_KEY) or []):
+                out.append((inv_id, work_id))
+        return out
+
+    def _require_sealed(self, transition: Transition, after: dict[str, Any]) -> None:
+        """No commit ends an invocation and leaves its thread unsealed (F9-A plan D-16): the structural half of the
+        seal, as ``_require_dispatched`` is of dispatch. The work is ``Coordination.seal_ending``, run as a Lead
+        transaction finalizer before archival and called explicitly on the direct paths. An ending that missed its call
+        is a defect: on a unit that stays in the serialized state the check seals it here, through the injected
+        function, and records a ``coordination.seal_fallback`` event naming the operation (R3), so a missed call site
+        never wedges an authority path; on a unit this commit archives it refuses (``ThreadUnsealed``), because the
+        unit's bundle is already written. A store without the injected function refuses rather than seal."""
+        missed = self._unsealed_endings()
+        if not missed:
+            return
+        archived = sorted(inv for inv, work in missed if work not in (after.get("work") or {}))
+        if archived:
+            raise ThreadUnsealed(f"this commit ends {', '.join(archived)} and archives its unit without sealing its "
+                                 "coordination thread; nothing was committed", invocations=archived, op=transition.op,
+                                 reason="archived_unsealed")
+        if self._store.seal is None:
+            raise ThreadUnsealed(f"this commit ends {', '.join(inv for inv, _ in missed)} without sealing its "
+                                 "coordination thread, and this store cannot seal; nothing was committed",
+                                 invocations=[inv for inv, _ in missed], op=transition.op, reason="no_seal_function")
+        self._store.seal(self, transition.refs)
+        if after is not self.state:  # a projection is a shallow copy: its top-level keys are its own
+            if coordination.UNSEEN_KEY in self.state:
+                after[coordination.UNSEEN_KEY] = self.state[coordination.UNSEEN_KEY]
+            else:
+                after.pop(coordination.UNSEEN_KEY, None)
+            for _, work_id in missed:
+                unit = after["work"][work_id]
+                if unit is not self.state["work"][work_id]:
+                    unit[coordination.UNIT_KEY] = self.state["work"][work_id][coordination.UNIT_KEY]
+        left = self._unsealed_endings()
+        if left:
+            raise ThreadUnsealed(f"the commit check could not seal {', '.join(inv for inv, _ in left)}; nothing was "
+                                 "committed", invocations=[inv for inv, _ in left], op=transition.op,
+                                 reason="seal_failed")
+        transition.events.extend({"kind": coordination.SEAL_FALLBACK, "invocation": inv, "op": transition.op}
+                                 for inv, _ in missed)
+
+
 class ControlStore:
     def __init__(self, aew_root: Path, *, renderer: Renderer | None = None, lock_timeout: float = 60.0,
-                 after_apply: AfterApply | None = None) -> None:
+                 after_apply: AfterApply | None = None, seal: Seal | None = None) -> None:
         self.root = aew_root
         self.renderer = renderer
         self.lock_timeout = lock_timeout
         self.after_apply = after_apply
+        self.seal = seal  # F9-A plan D-16: the commit check's fallback; the composition root sets it
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
         self._lock: FileLock | None = None  # the control lock this process holds for the open session

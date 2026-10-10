@@ -58,7 +58,8 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 # ---------------------------------------------------------------------- registration
 
 
-def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:
+def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
+             coordination_reads: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.set_defaults(handler=_doctor)
@@ -117,6 +118,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
     dashboard_commands.register(sub)
     map_commands.register(sub)
     operator_commands.register(sub)
+    if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
+        from aew.cli import message_commands
+
+        message_commands.register(sub)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:

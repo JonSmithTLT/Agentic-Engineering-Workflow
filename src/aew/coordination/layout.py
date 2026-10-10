@@ -65,7 +65,26 @@ CHANNELS = ("lead_mcp", "lead_broker", "cli", "run_bridge")
 # Refs are `kind:value` strings (D-12). They grant no access and are never resolved for the recipient.
 REF_KINDS = ("evidence", "ticket", "finding", "message", "run", "decision", "source")
 
-# Line types of a thread (D-3). MS1 writes messages only; facts (POSTED, DELIVERED, UNDELIVERABLE) arrive with the
-# slices that observe them, and readers already chain-verify and count them.
+# Line types of a thread (D-3). Facts (D-13) arrive with the slices that observe them: MS2 writes `DELIVERED via:
+# lead_result` (a Lead-credentialed result carried a worker message); POSTED and the other DELIVERED ways are MS4 to
+# MS6's. Readers chain-verify and count them all.
 MESSAGE_LINE, FACT_LINE = "message", "fact"
-DELIVERED = "DELIVERED"
+DELIVERED, POSTED = "DELIVERED", "POSTED"
+LEAD_RESULT = "lead_result"  # DELIVERED's `via` when a Lead-credentialed result carried a worker message (D-25)
+
+# Sealing (MS2; D-16, D-38, D-39). A seal record is immutable and content-addressed, beside its thread.
+SEAL_SCHEMA = "aew/coordination-seal/v1"
+SEAL_RE = re.compile(r"^work/([^/]+)/" + COORDINATION_DIR + r"/(INV-[0-9]+)\.seal-([0-9a-f]{12})\.yaml$")
+SEEN_REL = f"{COORDINATION_DIR}/lead-seen.jsonl"  # a worker message shown to a Lead after its thread was sealed (D-38)
+UNIT_KEY = "coordination"  # the unit's seal pointers: [{invocation, seal, sha256, messages, closed_rev}]
+UNSEEN_KEY = "coordination_unseen"  # top-level: sealed worker messages no Lead generation has seen yet (D-38)
+STORE_KEY = "coordination_store"  # top-level: the project is registered for messaging (D-39)
+UNSEEN_CAP = 20  # entries in `coordination_unseen`, the `awaiting_lead` bound; further ones are counted as omitted
+SEAL_FALLBACK = "coordination.seal_fallback"  # the event a commit records when it sealed a missed ending (R3)
+# Lead messages that never reached the worker, as the seal records them (D-13, D-14).
+INVOCATION_ENDED, SENDER_SUPERSEDED = "invocation_ended", "sender_superseded"
+
+
+def seal_rel(work_id: str, invocation: str, sha256: str) -> str:
+    """The seal record's path: beside its thread, named by its content's hash (D-16)."""
+    return f"work/{work_id}/{COORDINATION_DIR}/{invocation}.seal-{sha256[:12]}.yaml"

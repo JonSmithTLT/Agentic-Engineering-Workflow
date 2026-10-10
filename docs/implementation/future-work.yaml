@@ -1884,8 +1884,9 @@ sections:
       (`TURN_END_NEEDS_MESSAGING`): M4-H has `next-step` only (G1, 2026-10-10). While messaging is on, every `harness send`
       is recorded through the store, fails closed and still wakes a held session (G4); until F9-A''s MS5b builds that path,
       it is refused (`HARNESS_SEND_NEEDS_STORE`), and a run whose launch snapshot of the switch disagrees with the project''s
-      is refused `MESSAGING_SNAPSHOT_MISMATCH` (once MS4 records launch snapshots the Lead relaunches it; until then sending
-      needs messaging switched off). The row also covers the help text and `harness_send`''s docstring'
+      is refused `MESSAGING_SNAPSHOT_MISMATCH` (the Lead relaunches it; with the project switched on, only once MS4 records
+      launch snapshots, and until then sending needs messaging switched off). The row also covers the help text and `harness_send`''s
+      docstring'
     Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34, [record](../design/decisions-2026-10-10-f9-steer-vs-queue.md),
       ledger SVQ); the G1 and G2 decisions ([record](../design/decisions-2026-10-10-f9-a-g1-g2.md), ledger MGT) and the
       G4 and rename decisions ([record](../design/decisions-2026-10-10-f9-a-g4-rename.md), ledger MGR); F9-A plan v4 amendment

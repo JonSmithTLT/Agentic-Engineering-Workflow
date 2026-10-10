@@ -539,8 +539,9 @@ class Harness:
           before; ``turn-end`` is refused ``TURN_END_NEEDS_MESSAGING``;
         * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
           (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
-        * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal; once MS4 records
-          snapshots the Lead relaunches the run, and until then messaging must be switched off to send.
+        * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal. The Lead relaunches
+          the run, except with the project switched on before MS4 records snapshots: then sending needs messaging
+          switched off.
 
         A refusal writes nothing: no request file, no control-state entry, nothing posted. Work and invocation state
         do not change."""
@@ -762,12 +763,14 @@ def send_route(project: str, snapshot: str, when: str) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
-    and says what to do (relaunch), so it wins over a timing's own refusal."""
+    and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
+    switched off always allows; with the project switched on, a relaunch helps only once MS4 records snapshots, and
+    until then sending needs messaging switched off (``SNAPSHOT_RECORDED``)."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
-        if SNAPSHOT_RECORDED:
+        if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
             remedy = "Relaunch the run (`aew harness launch`) and send to the new run"
-        else:  # before MS4 every run reads as launched off, so a relaunch would be refused the same way
+        else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
             remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
                       "until then `harness send` needs messaging switched off: ask the operator")
         raise MessagingSnapshotMismatch(

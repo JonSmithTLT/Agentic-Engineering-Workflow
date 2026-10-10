@@ -229,7 +229,9 @@ def test_before_ms4_a_run_launched_after_messaging_was_switched_on_is_refused_al
 def test_snapshot_mismatch_takes_precedence_over_turn_end_needs_messaging(lab, tmp_path, monkeypatch):
     """§3.1: the mismatch is checked before any timing's own refusal. In the `off_on` cell (project off, run launched
     on) a `turn-end` send is `MESSAGING_SNAPSHOT_MISMATCH`, not `TURN_END_NEEDS_MESSAGING`, because it says what to do:
-    relaunch. Until MS4 writes the snapshot no run can be launched on, so the snapshot read stands in for it here."""
+    relaunch (with the project switched off, a relaunched run agrees with it; with it switched on, a relaunch helps
+    once MS4 records snapshots). Until MS4 writes the snapshot no run can be launched on, so the snapshot read stands
+    in for it here."""
     run = launch_held_open(lab, tmp_path)
     monkeypatch.setattr(harness_ops, "run_messaging_snapshot", lambda entry: X.MESSAGING_ENABLED)
     engine = Engine.discover(lab.root)
@@ -237,6 +239,7 @@ def test_snapshot_mismatch_takes_precedence_over_turn_end_needs_messaging(lab, t
     with pytest.raises(AEWError) as refused:
         engine.harness_send(token=lab.project.token, run=run, text="After you finish.", when="turn-end")
     assert refused.value.code == "MESSAGING_SNAPSHOT_MISMATCH"
+    assert "Relaunch the run" in refused.value.message  # the project is off: a relaunch clears it
     assert written(lab, run) == before
     monkeypatch.undo()  # without the disagreement, the same send is the timing's own refusal
     with pytest.raises(AEWError) as refused:

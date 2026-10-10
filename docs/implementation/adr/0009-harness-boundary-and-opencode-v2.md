@@ -697,9 +697,10 @@ replace this ADR's "queued prompt" with two explicit timings. Built by slice HS1
     `TURN_END_NEEDS_MESSAGING`, so no Lead path posts `queue`;
   - both on: every send is refused `HARNESS_SEND_NEEDS_STORE` until F9-A's MS5b records it in the store, from which it
     still wakes a held session;
-  - they disagree: refused `MESSAGING_SNAPSHOT_MISMATCH`, before any timing's own refusal. Until F9-A's MS4 writes the
-    run's snapshot, every run reads as launched with messaging off, so the refusal says that sending needs messaging
-    switched off rather than advising a relaunch that could not help.
+  - they disagree: refused `MESSAGING_SNAPSHOT_MISMATCH`, before any timing's own refusal; the remedy is a relaunch.
+    With the project switched on, until F9-A's MS4 writes the run's snapshot, every run reads as launched with messaging
+    off, so that refusal says that sending needs messaging switched off rather than advising a relaunch that could not
+    help.
   - Every refusal writes nothing: no request file, no control-state entry, no post.
 - **The held session** after `harness interrupt` is still woken by a `harness send`: `steer` with the default `resume`
   wakes it, as `queue` did.

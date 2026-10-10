@@ -233,10 +233,12 @@ def registry_from_doc(doc: Mapping[str, Any], *, source: str = "ticket field reg
         problems.append("record fields and provenance must be disjoint")
     if (doc["version"] == 1) != (doc["predecessor"] is None) or (doc["version"] == 1 and doc["moves"]):
         problems.append("version 1 alone has no predecessor and no moves")
-    refs = {f.ref for f in fields}
+    placed = {f.ref: {f.group, *f.also} for f in fields}
     for m in doc["moves"]:
-        if m["to"] not in groups or m["field"] not in refs:
+        if m["to"] not in groups or m["field"] not in placed:
             problems.append(f"move of {m['field']} to {m['to']!r} names a field or group this version lacks")
+        elif m["to"] not in placed[m["field"]]:
+            problems.append(f"move of {m['field']} to {m['to']!r}: this version does not hash it there")
     if problems:
         raise ValidationFailed(f"{source}: " + "; ".join(problems), problems=problems)
     digest = hashlib.sha256(canonical_json(_jsonable(dict(doc), source))).hexdigest()

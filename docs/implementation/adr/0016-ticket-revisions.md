@@ -13,7 +13,7 @@ A Ticket's inputs live in two stores: its record (`work/<T>/ticket.md`: title, b
 
 ### 1.1 The registry and its identity
 
-The registry is a package JSON document, `src/aew/schemas/ticket-field-registry.v1.json`, validated by `ticket-field-registry.schema.json` and by the loader's own rules (each field in exactly one primary group per store; every group declared; the `unassigned` group declared and material; every derived value the engine computes classified; no key both an input and bookkeeping; version 1 with no predecessor and no moves). It lists:
+The registry is a package JSON document, `src/aew/schemas/ticket-field-registry.v1.json`, validated by `ticket-field-registry.schema.json` and by the loader's own rules (each field in exactly one primary group per store; every group declared; the `unassigned` group declared and material; every derived value the engine computes classified; no key both an input and bookkeeping; version 1 with no predecessor and no moves; a later version's move names a group that version hashes the field in). It lists:
 
 - the groups, each with its materiality: `acceptance`, `check_definition`, `scope`, `gate_set`, `dependencies` and `kind` are material (E19-B §4.3's list); `parent`, `card` and `staffing` are not;
 - the record fields, the control-state keys and the derived values in each group, each with its canonicalization rule (§1.2);
@@ -53,7 +53,7 @@ From S2b.1 both derived functions read through the inherited-obligations accesso
 - the old and new `unassigned` groups when the unassigned group, the provenance or the bookkeeping list changed, since those decide which keys fall into it;
 - the step's declared moves.
 
-A later version names its `predecessor` and lists `moves: [{field, from, to}]`, and every step between the two versions is compared. When neither registry descends from the other among the packaged versions, every group counts as changed. S3 adds the other half: a moved group stays changed until its evidence is regenerated or the engine records a mechanical revalidation.
+A later version names its `predecessor` and lists `moves: [{field, from, to}]` (the loader refuses a move to a group the version does not hash the field in, so a declared move is always visible in the comparison), and every step between the two versions is compared. When neither registry descends from the other among the packaged versions, every group counts as changed. S3 adds the other half: a moved group stays changed until its evidence is regenerated or the engine records a mechanical revalidation.
 
 `material(groups)` returns the material ones (E19-B §4.3). A group the registry does not declare counts as material. `card` counts as material while the Ticket's `card_acceptance_bearing` override is set (plan §3.3, the title; the override itself is S7's).
 

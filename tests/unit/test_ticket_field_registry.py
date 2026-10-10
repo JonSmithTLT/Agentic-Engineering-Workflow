@@ -123,7 +123,7 @@ def test_the_registry_identity_is_its_canonical_json_whatever_the_file_bytes():
 
 @pytest.mark.parametrize("breakage", ["classified_twice", "undeclared_group", "unassigned_not_material",
                                       "derived_value_missing", "input_and_bookkeeping", "v1_with_moves",
-                                      "via_unknown_derived"])
+                                      "via_unknown_derived", "move_to_where_the_field_is_not"])
 def test_a_registry_that_could_leave_an_input_unbound_is_refused(breakage: str):
     doc = registry_doc()
     if breakage == "classified_twice":
@@ -138,8 +138,11 @@ def test_a_registry_that_could_leave_an_input_unbound_is_refused(breakage: str):
         doc["bookkeeping"].append("risk_class")
     elif breakage == "v1_with_moves":
         doc["moves"] = [{"field": "record:title", "from": "card", "to": "acceptance"}]
-    else:
+    elif breakage == "via_unknown_derived":
         doc["control"][2]["via"] = ["effective_scope"]
+    else:  # a version 2 whose declared move disagrees with where it hashes the field
+        doc.update(version=2, predecessor=TF.load_registry().identity,
+                   moves=[{"field": "record:external_refs", "from": "acceptance", "to": "card"}])
     with pytest.raises(ValidationFailed):
         TF.registry_from_doc(doc)
 

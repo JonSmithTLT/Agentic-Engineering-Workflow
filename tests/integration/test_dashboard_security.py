@@ -701,6 +701,22 @@ def test_a_body_announced_by_any_framing_header_is_never_read_as_a_second_reques
         assert error_code(raw) == "INVALID_REQUEST"
 
 
+@pytest.mark.parametrize("form", ["space-before-colon", "tab-before-colon", "folded-line"])
+def test_a_header_block_outside_strict_field_syntax_is_refused_and_ends_its_connection(live, form):
+    """RFC 9112 §5.1 and §5.2: whitespace between a field name and its colon, or a line folded onto the one before
+    it, is refused with ``400`` before any header is acted on, with one answer, ``Connection: close`` and the end
+    of the connection."""
+    inner = _inner_read(live)
+    field = {
+        "space-before-colon": f"Content-Length : {len(inner)}\r\n",
+        "tab-before-colon": f"Content-Length\t: {len(inner)}\r\n",
+        "folded-line": f"X-A: a\r\n Content-Length: {len(inner)}\r\n",
+    }[form]
+    outer = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n{field}\r\n"
+    status, _, raw = _one_answer_then_the_end(live, outer.encode("latin-1") + inner)
+    assert status == 400 and error_code(raw) == "INVALID_REQUEST", (form, status)
+
+
 def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second_request(live):
     """The in-flight ``503`` is answered before the admission checks see the request: a body there is unread too,
     so the ``503`` says ``Connection: close``, is drained, and the body is never answered as the next request."""

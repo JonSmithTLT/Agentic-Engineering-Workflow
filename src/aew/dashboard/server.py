@@ -209,6 +209,22 @@ def has_body(headers: Any) -> bool:
     return headers.get_all("Transfer-Encoding") is not None or any(v.strip() != "0" for v in lengths)
 
 
+def bad_field_syntax(block: bytes) -> bool:
+    """Whether a header block breaks the field syntax RFC 9112 makes a server refuse with ``400``: a line folded
+    onto the one before it (obs-fold, §5.2), or whitespace in a field name, before its colon (§5.1). The parsed
+    headers are trusted only for a block in strict syntax."""
+    for line in block.split(b"\n"):
+        line = line.rstrip(b"\r")
+        if not line:  # the blank line that ends the block
+            continue
+        if line[:1] in (b" ", b"\t"):
+            return True
+        name, colon, _ = line.partition(b":")
+        if colon and re.search(rb"\s", name):
+            return True
+    return False
+
+
 class _ClientGone(Exception):
     """The client's input ended before its request head did: there is nobody to answer."""
 
@@ -429,6 +445,7 @@ class DashboardServer:
                 # 2): two words as well as three, since stdlib reads the headers of a two-word line before it is
                 # refused as HTTP/0.9 below (re-review R1).
                 words = str(self.raw_requestline, "iso-8859-1").rstrip("\r\n").split()
+                block: bytes | None = None
                 if len(words) >= 2:
                     block = self._read_header_block()  # bounded while reading, before stdlib parses it
                     if block is None:
@@ -449,6 +466,9 @@ class DashboardServer:
                     return False
                 if len(self.raw_requestline) > MAX_REQUEST_LINE:
                     self.send_error(HTTPStatus.REQUEST_URI_TOO_LONG)
+                    return False
+                if block is not None and bad_field_syntax(block):  # strict field syntax (RFC 9112 §5.1, §5.2)
+                    self.send_error(HTTPStatus.BAD_REQUEST)
                     return False
                 lines = self.headers.items()
                 if len(lines) > MAX_HEADER_LINES or sum(len(k) + len(v) + 4 for k, v in lines) > MAX_HEADER_BYTES:

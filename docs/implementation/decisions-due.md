@@ -117,6 +117,22 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** -
 
+### F41.1
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
+
+**Blocks:** F41, F41.2
+
+### F41.5
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
+
+**Blocks:** F41, F41.6
+
 ### Q4
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
@@ -138,6 +154,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
 
 **What:** Deferred by the operator's F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement: the remote (pull-request) integration target's scope, whether `DONE` needs a second verification on a provider's merge commit, the first provider
+
+**Blocks:** -
+
+### Q15
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** When the product's nit/observation fast path ships (F41.11): align AGENTS.md's nit rule (PR #181, no re-review) to the product's one bounded delta review, or keep the difference as an explicit, documented project-policy exception (cross-feature integration v0.5 §21; CFI-97, CFI-98). Recorded as a deliberate divergence until then
 
 **Blocks:** -
 
@@ -168,5 +192,11 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 - **F39** waits for F38 (adoption, operator, by M6)
 
 - **F40** waits for F38 (adoption, operator, by M6)
+
+- **F41** waits for F41.1 (design, designer, by Unscheduled); F41.5 (design, designer, by Unscheduled)
+
+- **F41.2** waits for F41.1 (design, designer, by Unscheduled)
+
+- **F41.6** waits for F41.5 (design, designer, by Unscheduled)
 
 - **U9** waits for F26 (design, designer, by M6)

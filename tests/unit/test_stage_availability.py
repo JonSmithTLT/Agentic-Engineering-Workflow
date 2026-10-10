@@ -341,3 +341,20 @@ def test_ticket_prepare_plans_the_integration_verifier_in_verifier_mode_only(mod
     else:
         assert seen["invoke.create.mutating"]["work"]["T-0001"]["integration"] == {"status": "prepared"}
         assert out["steps"][4]["covered_by"] == 4
+
+
+@pytest.mark.parametrize(("disposition", "says"), [("rebuild", "plan v3 §2.3"), ("requeue", "requeue"),
+                                                   (None, "refuses it now")])
+def test_resume_names_a_blocked_steps_disposition(disposition, says):
+    """PR #171 review, finding 1: BLOCKED commits nothing, except a blocker carrying a disposition, whose call commits
+    only that. `resume` names it (a moved head's rebuild is the designed path, plan v3 §2.3), and its status is not
+    `blocked`, which is the only one `resolve continue` refuses."""
+    from aew.surface import stage
+
+    answer = {"availability": BLOCKED, "reason_codes": ["STALE_CANDIDATE"], "blocking_conditions": [],
+              **({"disposition": disposition} if disposition else {})}
+    engine = SimpleNamespace(guard_query=lambda primitive, work_id, args: answer)
+    check = stage.guard_check(engine, "integrate.publish", {"work_id": "T-0001"})
+    assert says in check["message"] and check["availability"] == BLOCKED
+    assert check["status"] == ("blocked" if disposition is None else stage.BLOCKED_WITH_DISPOSITION)
+    assert check.get("disposition") == disposition

@@ -400,7 +400,12 @@ sections:
       (Ticket scope), `all_gates_current`, `integrate.prepare` (the queue synced and the decision required, on a copy),
       `verify.ingest.integration` and `integrate.publish` (lease, binding, head, obligations, validation), and composes
       `ticket_prepare` (with the integration verifier in verifier mode, asked on the candidate `integrate.prepare` produces)
-      and `integration_publish`; `GUARD_READS` is checked against the keys each query reads
+      and `integration_publish`; `GUARD_READS` is checked against the keys each query reads. **The disposition rule (PR
+      171 review, finding 1):** BLOCKED commits nothing, except a blocker carrying a `disposition` (`integrate.publish`'s
+      `requeue` and `rebuild`), whose call commits only that disposition and never the guarded effect. **E6a obligation:**
+      the StageIntent journal records such a call's commit (`integrate.superseded`, or the moved head's `integrate.stale`
+      or `integrate.rebuild`) as the step's disposition, not its completion (extending `COMMIT_OPS` and the `step_primitive_mismatch`
+      rule for `integrate.publish`), and stops the stage at that boundary
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

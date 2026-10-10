@@ -735,6 +735,36 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
     answer = engine.guard_query("integrate.publish", wid, args)
     assert answer["availability"] == BLOCKED and answer["reason_codes"] == ["STALE_CANDIDATE"]
     assert args["found"]["outcome"] == "moved_head"
+    # BLOCKED with a disposition: the answer says what the call commits instead (PR #171 review, finding 1), and so do
+    # `explain`, the projection's blockers beside the PUBLISH decision, and `resume`'s recheck.
+    assert answer["disposition"] == "rebuild"
+    assert answer["blocking_conditions"][0]["details"]["disposition"] == "rebuild"
+    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+    assert explained["availability"] == BLOCKED and explained["steps"][0]["disposition"] == "rebuild"
+    projected = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]
+    assert any((b.get("details") or {}).get("disposition") == "rebuild" for b in projected["blockers"])
+    from aew.surface import stage
+
+    check = stage.guard_check(engine, "integrate.publish", {"work_id": wid})
+    assert check["status"] == stage.BLOCKED_WITH_DISPOSITION and "rebuild" in check["message"]
     out = engine.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid)
     assert out["ok"] is False and out["rebuilt"] is True
     assert engine.store.read()["work"][wid]["state"] == "COMMIT_READY"  # nothing published
+
+
+def test_a_superseded_candidate_is_blocked_with_its_requeue(tmp_path):
+    """A candidate built for an earlier acceptance: BLOCKED, `STALE_CANDIDATE`, carrying `disposition: requeue`, with
+    the details the publish raises after committing the retirement and requeue (the same error, by construction)."""
+    from aewflow import prepare_and_validate, to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    engine = Engine.discover(p.root)
+    state = engine.store.read()
+    state["work"][wid]["commit_ready_seq"] += 1  # as a later acceptance would leave it (asked on a copy)
+    answer = engine.guard_query("integrate.publish", wid, {}, state=state)
+    assert answer["availability"] == BLOCKED and answer["disposition"] == "requeue"
+    details = answer["blocking_conditions"][0]["details"]
+    assert details["disposition"] == "requeue" and details["reason"].startswith("candidate built from an earlier")

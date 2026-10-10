@@ -624,11 +624,12 @@ class Integration:
         the candidate is bound to the current acceptance; the authoritative head is the candidate's base; every
         obligation is met at the accepted snapshot; post-integration validation passed for this candidate; and the
         authoritative worktree holds the base on the paths the candidate changes. It records ``found["outcome"]``:
-        ``publish``, or, for the two refusals the publish answers by committing a disposition first (PR #170 E4b),
+        ``publish``, or, for the two refusals the publish answers by committing a disposition first,
         ``superseded`` (it retires the candidate and requeues the entry, then raises this blocker's error) and
         ``moved_head`` (it rebuilds the candidate once under the same lease, or leaves the entry for disposition, and
-        publishes nothing). An authoritative worktree with local changes is an integrity failure, as it always was
-        (UNKNOWN to a query, raised by the publish)."""
+        publishes nothing). Those two blockers carry ``disposition`` (``requeue``, ``rebuild``): BLOCKED, and what the
+        call commits instead (``aew.engine.guards``; PR #171 review, finding 1). An authoritative worktree with local
+        changes is an integrity failure, as it always was (UNKNOWN to a query, raised by the publish)."""
         found = args.setdefault("found", {})
 
         def check() -> None:
@@ -647,13 +648,14 @@ class Integration:
                 found["outcome"] = self.SUPERSEDED
                 raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; run "
                                      "`aew integrate prepare` again",
-                                     reason="candidate built from an earlier COMMIT_READY or plan", **superseded)
+                                     reason="candidate built from an earlier COMMIT_READY or plan", **superseded,
+                                     disposition="requeue")
             if current != integ["base"]:
                 found["outcome"] = self.MOVED_HEAD
                 raise StaleCandidate("the authoritative ref moved since the candidate was built: publishing now "
                                      "publishes nothing; it rebuilds the candidate on the new head once under the same "
                                      "lease, or leaves the entry for the Lead's disposition",
-                                     expected=integ["base"], current=current)
+                                     expected=integ["base"], current=current, disposition="rebuild")
             synced = scratch["work"][work_id]
             self._require_obligations_at_acceptance(scratch, work_id, synced)
             self._post_integration_ok(scratch, work_id, synced)
@@ -681,7 +683,8 @@ class Integration:
             if outcome == self.SUPERSEDED and superseded:
                 self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
                 self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
-                stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
+                stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded,
+                         "disposition": "requeue"}
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
             elif outcome == self.MOVED_HEAD:

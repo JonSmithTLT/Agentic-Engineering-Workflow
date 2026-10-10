@@ -210,7 +210,7 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
             continue
         answer = engine.guard_query(primitive, work_id, args, state=scratch)
         steps.append({**entry, **{k: answer[k] for k in ("availability", "reason_codes", "blocking_conditions")},
-                      **{k: answer[k] for k in ("not_queryable", "unanswered") if k in answer}})
+                      **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition") if k in answer}})
         done[n] = (primitive, args)
     answers = [s["availability"] for s in steps if s.get("planned", True)]
     overall = BLOCKED if BLOCKED in answers else UNKNOWN if UNKNOWN in answers else AVAILABLE

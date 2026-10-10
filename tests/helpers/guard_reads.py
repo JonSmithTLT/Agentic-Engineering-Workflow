@@ -17,6 +17,7 @@ GUARD_READS: dict[str, frozenset[str]] = {
     "work.assign": DISPATCH_READS, "invoke.create.mutating": DISPATCH_READS, "dispatch.launch": frozenset(),
     "work.transition": frozenset({"work_id", "to", "reason"}),
     "review.ingest": frozenset({"work_id", "evidence"}),
+    "verify.ingest": frozenset({"work_id", "evidence"}),
     "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
                               "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
                               "external_refs", "body", "card", "promoted_from", "acceptance_checks",

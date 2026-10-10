@@ -476,3 +476,56 @@ def test_one_read_only_answer_computes_a_gate_context_once_per_state(implemented
     calls.clear()
     R.run_tool(engine, CTX, "status", {"work_id": wid})  # RUNNING: the current state, and step 2's overlay
     assert len(calls) == 2
+
+
+# ------------------------------------------------------------------------------------------ verify.ingest (M4-E E4b)
+
+
+def _verify_ingest(engine: Engine, p: Any, wid: str, evidence: str) -> Callable[[int], Any]:
+    return lambda rev: engine.verify_ingest(token=p.token, expect_rev=rev, work_id=wid, evidence_id=evidence)
+
+
+@pytest.fixture
+def reviewed(implemented):
+    """A REVIEW_PASSED Ticket, ready for verification."""
+    from aewflow import review
+
+    p, wid, engine, impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    return p, wid, engine, impl
+
+
+def test_guard_query_matches_execute_verify_ingest(reviewed):
+    """`verify.ingest` (Ticket scope): the Ticket is VERIFY_PENDING, the report is a known verification of it, of the
+    workspace's current snapshot; then it is accepted, in the state the query predicted."""
+    from aewflow import SUBTRACT_PATCH, verify
+
+    p, wid, engine, impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    review_report = [r["id"] for r in engine.store.read()["work"][wid]["evidence"] if r["kind"] == "review"][-1]
+    for evidence, code in (("EV-9999", "NOT_FOUND"), (review_report, "ILLEGAL_TRANSITION")):
+        assert equivalent(engine, "verify.ingest", wid, {"evidence": evidence},
+                          _verify_ingest(engine, p, wid, evidence))["reason_codes"] == [code]
+    report = verify(p, wid)
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "# an unverified edit\n"})
+    answer = equivalent(engine, "verify.ingest", wid, {"evidence": report}, _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "stale" in answer["blocking_conditions"][0]["message"]
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"]})
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest", wid, args, _verify_ingest(engine, p, wid, report))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "VERIFIED"
+    answer = equivalent(engine, "verify.ingest", wid, {"evidence": report}, _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "not VERIFY_PENDING" in (
+        answer["blocking_conditions"][0]["message"])
+
+
+def test_a_failing_verifications_predicted_state_is_the_ingests(reviewed):
+    from aewflow import verify
+
+    p, wid, engine, _impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    report = verify(p, wid, goal_result="fail")
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest", wid, args, _verify_ingest(engine, p, wid, report))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "VERIFICATION_FAILED"

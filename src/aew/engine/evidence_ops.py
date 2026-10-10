@@ -24,7 +24,7 @@ from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.guards import NotQueryable, require
+from aew.engine.guards import NotQueryable, refusal, require
 from aew.engine.guards import checked as guard_checked
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
@@ -990,13 +990,48 @@ class EvidenceCommands:
                 "open_required_findings": [f["id"] for f in open_required],
                 "revision": ctx.session.committed_revision}
 
-    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str,
-                                    evidence_id: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
-            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
-                               "ids": [evidence_id]})
-            state = ctx.state
-            unit = self.units.unit(state, work_id)
+    # ---- `verify.ingest`'s guard as a query (M4-E E4b; aew.engine.guards). One query for both scopes: the report's own
+    # scope selects the checks, as the ingest's does; the primitives `verify.ingest` (Ticket scope) and
+    # `verify.ingest.integration` each also refuse a report of the other scope.
+
+    def verify_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``verify.ingest`` of report ``args["evidence"]`` (either scope): the guard of the ingest the
+        ``KindRegistry`` selects for the unit, where it has a query form (a mutating Ticket's)."""
+        found = guard_checked(lambda: self.units.unit(state, work_id))
+        if found is not None:
+            return found
+        if self.kinds.resolve(INGEST, state["work"][work_id]) != self._ingest_ticket_report:
+            return NotQueryable("verify.ingest")
+        return self._query_ticket_verification(state, work_id, args)
+
+    def scoped_verify_query(self, scope: str) -> Any:
+        """The query of the primitive that ingests a report of ``scope`` (``ticket``: `verify.ingest`;
+        ``integration``: `verify.ingest.integration`): the ingest's guard, and the report is of that scope."""
+        def query(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+            found = self.verify_ingest_query(state, work_id, args)
+            if found is not None:
+                return found
+            got = args["found"]["evidence"]["verification"]["scope"]
+            if got != scope:
+                return refusal(IllegalTransition(
+                    f"{args['found']['evidence']['id']} is a {got}-scope verification, not a {scope}-scope one",
+                    scope=got, expected=scope))
+            return None
+
+        return query
+
+    def _query_ticket_verification(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """Accepting a verification report for a mutating Ticket: a sealed verification of it by a verifier; for the
+        Ticket's scope, the Ticket is VERIFY_PENDING and the report evaluated the workspace's current snapshot; for the
+        integration's, the Ticket is COMMIT_READY with a prepared candidate bound to its current acceptance, the
+        Ticket's entry holds a live lease, and the report evaluated that candidate's current snapshot; the report is
+        bound to the current plan and attempt or candidate; and the state change its outcome implies is one the
+        transition table and the state hooks allow. It records the report, its pinned reference and the outcome
+        (:meth:`_verification_outcome`, the ingest's own)."""
+        evidence_id = str(args.get("evidence"))
+
+        def check() -> None:
+            unit = state["work"][work_id]
             ev = self.gates.find_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             if ev["kind"] != "verification" or inv["role"] != "verifier" or inv["work_unit"] != work_id:
@@ -1019,31 +1054,75 @@ class EvidenceCommands:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",
                                       verified=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
             self.gates.require_bound_report(state, unit, ev, scope=scope)
+            to, status, _pending = self._verification_outcome(state, work_id, ev)
+            if to is not None:  # the change the ingest makes: the table's edge and the state hooks
+                transitions.check(unit["state"], to, "verify.ingest")
+                require(self.units.state_change_query(unit, {"from": unit["state"], "to": to}))
+            args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev), to=to or unit["state"],
+                                                integration_status=status)
+
+        return guard_checked(check)
+
+    def _verification_outcome(self, state: dict[str, Any], work_id: str,
+                              ev: dict[str, Any]) -> tuple[str | None, str | None, dict[str, str]]:
+        """The outcome of ingesting verification ``ev``, computed on a copy (one function for the query's prediction and
+        the ingest itself): the report pinned and its verifier's invocation completed, then the state the Ticket moves
+        to (None: it stays), the integration's new status (integration scope; None for the Ticket's), and the
+        verification gates still unmet. Ticket scope: VERIFIED (None while another planned verifier card is
+        outstanding), VERIFICATION_FAILED or VERIFICATION_INCONCLUSIVE, mechanically from the result (ambiguity report
+        B1, B2). Integration scope: a pass validates the candidate, a fail is VERIFICATION_FAILED, anything else is
+        inconclusive (the ingest then releases the lease to AWAITING_DISPOSITION, M4-D4)."""
+        result = ev["result"]
+        if ev["verification"]["scope"] != "ticket":
+            if result == "pass":
+                return None, "validated", {}
+            if result == "fail":
+                return "VERIFICATION_FAILED", "validation_failed", {}
+            return None, "validation_inconclusive", {}
+        to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(result, "VERIFICATION_INCONCLUSIVE")
+        if to != "VERIFIED":
+            return to, None, {}
+        unit = copy.deepcopy(state["work"][work_id])
+        self.gates.ingest_ref(unit, ev)
+        verifier = ev["producer"]["invocation"]
+        invocations = dict(state["invocations"])
+        if (invocations.get(verifier) or {}).get("status") == "active":
+            invocations[verifier] = {**invocations[verifier], "status": "completed"}
+        scratch = {**state, "work": {**state["work"], work_id: unit}, "invocations": invocations}
+        gc = self.gates.gate_context(scratch, work_id)
+        pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
+        return (None if pending else "VERIFIED"), None, pending  # None: other planned verifier cards outstanding
+
+    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str,
+                                    evidence_id: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
+                               "ids": [evidence_id]})
+            state = ctx.state
+            args: dict[str, Any] = {"evidence": evidence_id}
+            require(self.verify_ingest_query(state, work_id, args))  # the guard, as `explain` and a stage ask it
+            unit = state["work"][work_id]
+            ev = args["found"]["evidence"]
+            scope = ev["verification"]["scope"]
             self.gates.ingest_ref(unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]
             unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope}
             change = None
-            pending: dict[str, str] = {}
+            # The outcome, by the function the query predicted it with (the report is pinned already: a no-op there).
+            to, status, pending = self._verification_outcome(state, work_id, ev)
             if scope == "ticket":
-                # The Verifier's result determines the state mechanically (ambiguity report B1, B2).
-                to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(result, "VERIFICATION_INCONCLUSIVE")
-                if to == "VERIFIED":
-                    gc = self.gates.gate_context(state, work_id)
-                    pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
-                    if pending:
-                        to = None  # other planned verifier cards are still outstanding
                 if to:
                     transitions.check(unit["state"], to, "verify.ingest")
                     change = self.units.set_state(unit, to, f"verification {evidence_id}: {result}", state=state)
-            elif result == "pass":
-                unit["integration"]["status"] = "validated"
+            elif status == "validated":
+                unit["integration"]["status"] = status
                 unit["integration"]["post_integration_evidence"] = evidence_id
-            elif result == "fail":
-                unit["integration"]["status"] = "validation_failed"
-                transitions.check(unit["state"], "VERIFICATION_FAILED", "verify.ingest")
-                change = self.units.set_state(unit, "VERIFICATION_FAILED",
-                                         f"post-integration verification {evidence_id} failed", state=state)
+            elif status == "validation_failed" and to:
+                unit["integration"]["status"] = status
+                transitions.check(unit["state"], to, "verify.ingest")
+                change = self.units.set_state(unit, to, f"post-integration verification {evidence_id} failed",
+                                              state=state)
             else:
                 unit["integration"]["status"] = "validation_inconclusive"
                 # M4-D4: an inconclusive integration validation must not hold the one lease while the Lead decides:

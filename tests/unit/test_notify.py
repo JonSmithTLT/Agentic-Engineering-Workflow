@@ -581,3 +581,47 @@ def test_generation_ended_names_each_control_state_reason(project, tmp_path, mon
     [ended] = events_of(out, "generation_ended")
     assert (ended["reason"], ended["subject"], ended["source"]) == (reason, f"lead generation {generation}",
                                                                    "control_state")
+
+
+def test_reoffered_spool_events_are_validated_like_fresh_ones(project, tmp_path):
+    """Spool events outstanding at a restart come back from `state.json`, a local file: only their lines are kept,
+    and each is parsed and checked exactly as a fresh spool line (its writer's closed enum, a run speaking only of
+    itself, an existing run directory, cleaned strings), its key and payload rebuilt from it. A saved event body is
+    never taken as an event."""
+    command, out = recorder(tmp_path)
+    adopt(project, command=command)
+    root = project.root / ".aew"
+    first = notify.Watcher(project.root, root)
+    first.pass_once()
+    first.close()
+    real = "R-INV-0001-1"
+    runlog.run_dir(root, real).mkdir(parents=True)
+    path = notify.notify_dir(root) / notify.STATE
+    state = json.loads(path.read_text(encoding="utf-8"))
+    forged_body = {"schema": "aew/notify-event/v1", "event": "generation_ended", "project_id": "repo",
+                   "subject": "lead generation 1", "reason": "takeover", "ref": "lead.takeover", "revision": 1,
+                   "at": "2026-10-10T00:00:00Z", "source": "control_state", "authenticated": True}
+    state["outstanding"] = [
+        {"key": f"generation_ended:spool:run-{real}:forged", "writer": f"run-{real}", "body": forged_body},
+        {"writer": f"run-{real}", "line": _line(real, event="generation_ended")},  # not a run's event
+        {"writer": f"run-{real}", "line": _line("R-INV-0002-1")},  # about another run
+        {"writer": "run-R-NOSUCH-1", "line": _line("R-NOSUCH-1")},  # no such run
+        {"writer": f"run-{real}", "line": _line(real, reason="late \x1b]0;evil\x07\x1b[2J")},  # valid, uncleaned
+    ]
+    path.write_text(json.dumps(state), encoding="utf-8")
+    again = notify.Watcher(project.root, root)
+    again.start()
+    try:
+        again.pass_once()
+        assert again.drain()
+    finally:
+        again.close()
+    [got] = received(out)
+    assert (got["event"], got["subject"], got["authenticated"], got["source"]) == (
+        "hard_deadline", real, False, f"spool:run-{real}")
+    assert "\x1b" not in got["reason"] and "\x07" not in got["reason"]
+    [line] = notify.deliveries(root)
+    expected = event_spool.parse_line(f"run-{real}", _line(real, reason="late \x1b]0;evil\x07\x1b[2J").encode())
+    assert expected is not None and line["key"] == f"hard_deadline:{expected.key}"  # rebuilt, never chosen
+    dropped = notify.summary(root)["dropped"]
+    assert dropped["invalid"] == 2 and dropped["unknown_run"] == 1

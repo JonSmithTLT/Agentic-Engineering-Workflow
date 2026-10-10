@@ -165,6 +165,7 @@ class Line:
     ref: str | None
     at: str | None
     key: str
+    raw: str  # the line as written (at most MAX_LINE bytes): what is saved while its event is outstanding
 
 
 @dataclass
@@ -283,25 +284,11 @@ class Reader:
                     continue
                 if not body.strip():
                     continue
-                line = self._parse(writer, body)
+                line = parse_line(writer, body)
                 if line is None:
                     _drop(out, "invalid")
                 else:
                     out.lines.append(line)
-
-    def _parse(self, writer: str, body: bytes) -> Line | None:
-        from aew import schemas
-
-        try:
-            data = json.loads(body.decode("utf-8"))
-            schemas.validate_def("spool-event", writer_kind(writer), data, source=f"spool {writer}")
-        except (ValueError, UnicodeDecodeError, RecursionError, errors.ValidationFailed):
-            return None
-        if writer_kind(writer) == "run" and data.get("subject") != writer[len(RUN_PREFIX):]:
-            return None  # a run's supervisor speaks only of its own run
-        return Line(writer=writer, event=data["event"], subject=clean(data.get("subject")),
-                    reason=clean(data.get("reason")), ref=clean(data.get("ref")), at=clean(data.get("at"), 40),
-                    key=f"spool:{writer}:{sha256_bytes(body)[:32]}")
 
     def retire(self, writer: str) -> None:
         """Delete a writer's files and forget its cursor (a terminal run whose every line is delivered or dropped)."""
@@ -312,6 +299,27 @@ class Reader:
             except OSError:
                 pass
         self.cursors.pop(writer, None)
+
+
+def parse_line(writer: str, body: bytes) -> Line | None:
+    """One spool line's validation, the only one there is: a line read from a spool file, and one saved while its
+    event was outstanding and offered again after a restart, both pass here (review of PR #184). ``None`` for a line
+    that is not valid for ``writer``: its size, its kind's closed event enum, a run speaking only of itself; the
+    strings it yields are cleaned and capped, and its key is the digest of its bytes, so it cannot be chosen."""
+    from aew import schemas
+
+    if not WRITER_RE.match(writer) or len(body) > MAX_LINE:
+        return None
+    try:
+        data = json.loads(body.decode("utf-8"))
+        schemas.validate_def("spool-event", writer_kind(writer), data, source=f"spool {writer}")
+    except (ValueError, UnicodeDecodeError, RecursionError, errors.ValidationFailed):
+        return None
+    if writer_kind(writer) == "run" and data.get("subject") != writer[len(RUN_PREFIX):]:
+        return None  # a run's supervisor speaks only of its own run
+    return Line(writer=writer, event=data["event"], subject=clean(data.get("subject")),
+                reason=clean(data.get("reason")), ref=clean(data.get("ref")), at=clean(data.get("at"), 40),
+                key=f"spool:{writer}:{sha256_bytes(body)[:32]}", raw=body.decode("utf-8"))
 
 
 def _open_read(path: Path) -> int:

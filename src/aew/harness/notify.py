@@ -48,7 +48,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aew import errors
 from aew.harness import broker_liveness, event_spool, procs, runlog
 from aew.harness import contract as K
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
@@ -324,9 +323,9 @@ class Watcher:
 
     **Nothing is lost at a restart.** An event leaves the outstanding set only once the delivery log records it. The
     persisted transition cursor never passes an unrecorded transition event (a restart derives it again from the
-    hash-chained log); outstanding spool events are persisted and offered again, always as unauthenticated; liveness
-    and the open conditions are derived again while they hold. A delivery that ``close()`` kills is not recorded, so
-    it is not a failure: it stays outstanding."""
+    hash-chained log); the lines of outstanding spool events are persisted, then parsed and checked again exactly as
+    fresh lines; liveness and the open conditions are derived again while they hold. A delivery that ``close()``
+    kills is not recorded, so it is not a failure: it stays outstanding."""
 
     def __init__(self, repo_root: Path, aew_root: Path) -> None:
         from aew.engine.api import Engine
@@ -365,7 +364,7 @@ class Watcher:
             "consecutive_pass_failures": _count(saved.get("consecutive_pass_failures")),
             "last_pass_error": _dict(saved.get("last_pass_error")) or None,
             "dropped": {str(k)[:32]: _count(v) for k, v in dropped.items()}}
-        self._reoffer = _saved_spool_events(saved.get("outstanding"))
+        self._reoffer = _saved_spool_lines(saved.get("outstanding"))
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -427,14 +426,18 @@ class Watcher:
     def _pass(self) -> None:
         failed: list[str] = []
         error = ""
-        reoffer, self._reoffer = self._reoffer, []
-        for key, body, writer in reoffer:  # spool events outstanding at the last close: never lost at a restart
-            self._offer(key, body, writer=writer, lane="spool")
         try:
             state: dict[str, Any] | None = self.engine.store.read_committed()
         except Exception as exc:  # noqa: BLE001  the control file unreadable now: the spool still delivers
             state, error = None, f"control_state: {type(exc).__name__}: {exc}"
             failed.append("control_state")
+        reoffer, self._reoffer = self._reoffer, []
+        for writer, raw in reoffer:  # spool lines outstanding at the last save: never lost at a restart, and
+            line = event_spool.parse_line(writer, raw.encode("utf-8"))  # checked exactly as a fresh line is
+            if line is None:
+                self._dropped("invalid")
+            else:
+                self._offer_spool_line(state, line)
         sources = [("spool", self._spool_source)]
         if state is not None:
             sources = [("transitions", self._transition_source), ("conditions", self._condition_source),
@@ -558,18 +561,19 @@ class Watcher:
         found = reader.scan()
         for why, n in found.dropped.items():
             self._dropped(why, n)
-        known: dict[str, bool] = {}
         for line in found.lines:
-            if line.writer.startswith(event_spool.RUN_PREFIX):
-                run = line.writer[len(event_spool.RUN_PREFIX):]
-                if run not in known:
-                    known[run] = runlog.run_dir(self.aew_root, run).is_dir()
-                if not known[run]:  # a supervisor writes only for a run whose directory its launcher made
-                    self._dropped("unknown_run")
-                    continue
-            self._offer(f"{line.event}:{line.key}", self._payload(
-                state, line.event, subject=line.subject, reason=line.reason, ref=line.ref,
-                source=f"spool:{line.writer}", authenticated=False), writer=line.writer, lane="spool")
+            self._offer_spool_line(state, line)
+
+    def _offer_spool_line(self, state: dict[str, Any] | None, line: event_spool.Line) -> None:
+        """Offer one validated spool line (fresh, or saved and parsed again): a run's line only while the run's
+        directory exists, always unauthenticated, its payload built from the line."""
+        if line.writer.startswith(event_spool.RUN_PREFIX):
+            if not runlog.run_dir(self.aew_root, line.writer[len(event_spool.RUN_PREFIX):]).is_dir():
+                self._dropped("unknown_run")  # a supervisor writes only for a run whose directory its launcher made
+                return
+        self._offer(f"{line.event}:{line.key}", self._payload(
+            state, line.event, subject=line.subject, reason=line.reason, ref=line.ref,
+            source=f"spool:{line.writer}", authenticated=False), writer=line.writer, lane="spool", line=line.raw)
 
     def _retire_spool(self) -> None:
         """Delete a run's spool file once the run is terminal and every line in it is delivered or dropped. The
@@ -591,7 +595,7 @@ class Watcher:
     # ------------------------------------------------------------------ queueing and delivery
 
     def _offer(self, key: str, body: dict[str, Any], *, lane: str, writer: str | None = None,
-               rev: int | None = None) -> None:
+               rev: int | None = None, line: str | None = None) -> None:
         with self._mu:
             if key in self._outstanding or self.log.seen(key):
                 return
@@ -608,7 +612,7 @@ class Watcher:
                 full = True
             else:
                 full = False
-                self._outstanding[key] = {"body": body, "writer": writer, "lane": lane, "rev": rev}
+                self._outstanding[key] = {"body": body, "writer": writer, "lane": lane, "rev": rev, "line": line}
                 (self._urgent if lane == "urgent" else self._spool).append(key)
                 self._cv.notify_all()
         if full:  # only an untrusted spool event is ever dropped for room, and then for good, recorded and counted
@@ -706,8 +710,8 @@ class Watcher:
             with self._mu:
                 held = [o["rev"] for o in self._outstanding.values() if o["rev"] is not None]
                 control_rev = min(held) - 1 if held else self.control_rev
-                spool = [{"key": k, "body": o["body"], "writer": o["writer"]}
-                         for k, o in self._outstanding.items() if o["lane"] == "spool"]
+                spool = [{"writer": o["writer"], "line": o["line"]}  # the line itself, parsed again when offered
+                         for o in self._outstanding.values() if o["lane"] == "spool" and o["line"] is not None]
                 text = json.dumps({"schema": STATE_SCHEMA, "updated_at": utc_now(), "control_rev": control_rev,
                                    "cursors": self._cursor_snapshot, "outstanding": spool, **self.stats},
                                   sort_keys=True, default=str)
@@ -728,25 +732,14 @@ class Watcher:
                 pass
 
 
-def _saved_spool_events(value: Any) -> list[tuple[str, dict[str, Any], str]]:
-    """Spool events outstanding at the last save, to offer again. ``state.json`` is a local file: each is checked
-    again (a spool key, a spool writer, a valid payload) and is always unauthenticated, whatever the file says."""
-    from aew import schemas
-
-    out: list[tuple[str, dict[str, Any], str]] = []
+def _saved_spool_lines(value: Any) -> list[tuple[str, str]]:
+    """The spool lines whose events were outstanding at the last save, as ``(writer, line)``. ``state.json`` is a
+    local file, so nothing in it is taken as an event: each line is parsed and checked again exactly as a fresh spool
+    line is (``event_spool.parse_line``), and its key and payload are rebuilt from it (review of PR #184)."""
+    out: list[tuple[str, str]] = []
     for item in (value if isinstance(value, list) else [])[:SPOOL_QUEUE_MAX]:
-        if not isinstance(item, dict):
-            continue
-        key, body, writer = item.get("key"), item.get("body"), item.get("writer")
-        if not (isinstance(key, str) and isinstance(writer, str) and isinstance(body, dict)
-                and event_spool.WRITER_RE.match(writer) and f":spool:{writer}:" in key):
-            continue
-        body = dict(body, authenticated=False, source=f"spool:{writer}")
-        try:
-            schemas.validate("notify-event", body, source="an outstanding notification")
-        except errors.ValidationFailed:
-            continue
-        out.append((key, body, writer))
+        if isinstance(item, dict) and isinstance(item.get("writer"), str) and isinstance(item.get("line"), str):
+            out.append((item["writer"], item["line"]))
     return out
 
 

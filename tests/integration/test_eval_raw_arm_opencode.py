@@ -192,5 +192,6 @@ def test_on_linux_a_contained_raw_run_sees_only_its_own_state(tmp_path, fake_ser
     containment = record["outcome"]["containment"]
     assert containment["contained"] and containment["ok"], containment
     assert containment["hidden_dirs"] >= 1  # the home directory's private entry, at least
+    assert containment["design_files_checked"] >= 5  # the lane's manifests, rubric and behaviours: unreadable
     assert record["outcome"]["changed_paths"] == ["calc.py"]  # the work tree stayed writable
     assert (tmp_path / "work" / "other-run" / "transcript.txt").read_text(encoding="utf-8") == "another run\n"

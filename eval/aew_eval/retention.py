@@ -6,7 +6,9 @@ Retention is enforced, not only recorded:
 
 * :func:`purge` deletes the harness state of every finalized run of an experiment whose ``retain_until`` has
   passed, and appends what it deleted to the experiment's ``retention.jsonl`` (paths and dates, never content). A
-  state already gone is recorded as such. Running it again purges nothing twice.
+  state already gone is recorded as such. Running it again purges nothing twice. An attempt that never finished (the
+  runner was killed, the host rebooted: ``runner_lost``) has no result naming its state, so its scratch directory's
+  harness state (``<work>/<run name>/harness``) is purged by the same window counted from its registration.
 * :func:`open_session_db` is the reader side's only door to a database: it refuses one past its window or already
   purged, and opens one inside its window **read-only**. D2's reader (the field allowlist, the metric functions)
   goes through it; nothing under ``src/aew`` imports this module.
@@ -22,7 +24,7 @@ import os
 import shutil
 import sqlite3
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -64,9 +66,42 @@ def _log(ledger_dir: Path, entry: dict[str, Any]) -> None:
         os.fsync(fh.fileno())
 
 
-def purge(ledger_dir: Path, frozen: dict[str, Any], *, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Delete every kept harness state past its retention window, and record each purge. Returns the new entries."""
+def _lost(ledger_dir: Path, frozen: dict[str, Any], work: Path, today: date) -> list[dict[str, Any]]:
+    """The harness state of each attempt without a result whose window, counted from registration, has passed."""
+    days_of = {a["id"]: ((a.get("config") or {}).get("session_db") or {}).get("retention_days")
+               for a in frozen["arms"]}
+    out = []
+    for attempt in AttemptLedger(ledger_dir, frozen).attempts().values():
+        days = days_of.get(attempt.registered["arm"])
+        if attempt.finalized is not None or not isinstance(days, int):
+            continue
+        registered = date.fromisoformat(attempt.registered["at"][:10])
+        if registered + timedelta(days=days) >= today:
+            continue
+        out.append({"run_id": attempt.run_id, "state_dir": work / attempt.run_id.split("/", 1)[1] / "harness",
+                    "retain_until": (registered + timedelta(days=days)).isoformat()})
+    return out
+
+
+def purge(ledger_dir: Path, frozen: dict[str, Any], *, work: Path | None = None,
+          now: datetime | None = None) -> list[dict[str, Any]]:
+    """Delete every kept harness state past its retention window, and record each purge. Returns the new entries.
+    ``work`` is the runs' scratch root (``<ledger>/../work`` by default, as the lane lays it out): where an attempt
+    without a result left its state."""
     today, done, new = _today(now), purged(ledger_dir), []
+    work = work if work is not None else ledger_dir.parent / "work"
+    for lost in _lost(ledger_dir, frozen, work, today):
+        if lost["run_id"] in done:
+            continue
+        state = lost["state_dir"]
+        existed = state.exists()
+        if existed:
+            shutil.rmtree(state)
+        entry = {"run_id": lost["run_id"], "state_dir": str(state), "retain_until": lost["retain_until"],
+                 "purged_on": today.isoformat(), "deleted": existed,
+                 "reason": "attempt without a result; retention window counted from its registration"}
+        _log(ledger_dir, entry)
+        new.append(entry)
     for record in _records(ledger_dir, frozen):
         db = (record.get("outcome") or {}).get("session_db") or {}
         if not db.get("retain_until") or record["run_id"] in done:

@@ -244,6 +244,33 @@ print(json.dumps({"visible": seen}))
 """
 
 
+EVAL_DIR = Path(__file__).resolve().parents[1]  # the instrument and every experiment: what describes the cases
+
+
+def layout_paths(scratch: Path, *, binary: Path) -> tuple[list[Path], list[str]]:
+    """What a contained raw run keeps visible, and the design it must never see.
+
+    Kept: the run's own scratch directory, the harness binary's directory and the interpreter's prefixes; nothing
+    from the import path (the driver's own directory and the instrument are on it). The agent's shell needs only the
+    standard library, and OpenCode needs only its binary. Hidden on top of everything the home scan hides: the
+    instrument's ``eval/`` directory (the lanes' case manifests, rubrics, behaviour paths and overlays), wherever the
+    checkout lives."""
+    keep = [scratch, binary.parent, Path(sys.prefix), Path(sys.base_prefix)]
+    resolved = [p.resolve() for p in keep]
+    design = [] if any(EVAL_DIR == p or EVAL_DIR in p.parents for p in resolved) else [str(EVAL_DIR)]
+    return keep, design
+
+
+def design_files() -> list[str]:
+    """The files that describe the cases, which a contained run must be unable to read (the probe opens each)."""
+    out = []
+    for lane in sorted((EVAL_DIR / "experiments").glob("*")):
+        if lane.is_dir():
+            out += [str(p) for p in sorted(lane.glob("*")) if p.is_file()]
+            out += [str(p) for p in sorted((lane / "fixture").glob("*.yaml"))]
+    return out
+
+
 def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     """The bubblewrap layout of one raw run (Linux): writable the work tree and the run's harness state, hidden
     every other run, everything beside the lane's run state and every home entry the run does not need."""
@@ -255,9 +282,9 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     state = scratch / "harness"
     state.mkdir(parents=True, exist_ok=True)
     home = Path(os.path.expanduser("~"))
-    keep = [scratch, binary.parent, Path(sys.prefix), Path(sys.base_prefix),
-            *(Path(p) for p in sys.path if p and os.path.isdir(p))]
+    keep, design = layout_paths(scratch, binary=binary)
     hide_dirs, hide_files = hidden_around(home, keep)
+    hide_dirs = [*hide_dirs, *design]
     secret_dirs, secret_files = L._masks(str(home), [])  # noqa: SLF001 (the same secret masks as every AEW run)
     mask = scratch.parent / f".{scratch.name}.aew-mask"  # outside the writable roots, and itself hidden inside
     if not mask.exists():
@@ -285,13 +312,14 @@ def outermost(paths: set[str]) -> list[str]:
 
 
 def verify_layout(layout: Any, scratch: Path) -> dict[str, Any]:
-    """AEW's launch self-test (writes stay in the writable roots) and a confidentiality probe (every hidden path is
-    empty from inside), before any harness process starts."""
+    """AEW's launch self-test (writes stay in the writable roots) and a confidentiality probe, before any harness
+    process starts: every hidden path is empty from inside, and no file that describes a case (a lane's manifests,
+    rubric, behaviour paths, overlay; the instrument itself) can be read."""
     from aew.harness.containment import bwrap_argv
     from aew.harness.containment.probe import self_test
 
     integrity = self_test(layout, sentinel_dir=scratch.parent, sibling_dir=scratch.parent)
-    spec = {"dirs": list(layout.hide_dirs), "files": list(layout.hide_files),
+    spec = {"dirs": list(layout.hide_dirs), "files": list(layout.hide_files) + design_files(),
             "runs": {r: [scratch.name] for r in layout.hide_runs}}  # only this run's own directory shows there
     try:
         done = subprocess.run(bwrap_argv(layout, [sys.executable, "-I", "-c", _CONFIDENTIALITY, json.dumps(spec)]),
@@ -304,7 +332,8 @@ def verify_layout(layout: Any, scratch: Path) -> dict[str, Any]:
     reason = integrity.get("reason") or (None if visible == [] else
                                          f"hidden paths visible from inside: {visible}" if visible else
                                          "the confidentiality probe did not run")
-    return {"ok": ok, "reason": reason, "hidden_dirs": len(layout.hide_dirs), "hidden_files": len(layout.hide_files)}
+    return {"ok": ok, "reason": reason, "hidden_dirs": len(layout.hide_dirs), "hidden_files": len(layout.hide_files),
+            "design_files_checked": len(spec["files"]) - len(layout.hide_files)}
 
 
 # ---------------------------------------------------------------------------------------------- the arm

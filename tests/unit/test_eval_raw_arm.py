@@ -323,6 +323,21 @@ def test_a_contained_run_hides_everything_beside_what_it_keeps(tmp_path):
     assert {Path(p).name for p in dirs + files} == {"lane", "private", ".ssh", "notes.txt"}
 
 
+def test_a_contained_run_keeps_nothing_from_the_import_path_and_hides_the_case_design(tmp_path, monkeypatch):
+    """Re-review finding 2: the driver's own directory and the instrument are on the import path; a contained run
+    must never see them (the case manifests name the cause, the decoy and the stale note)."""
+    lane = raw.EVAL_DIR / "experiments" / "lower-bound-qualification"
+    monkeypatch.setattr(sys, "path", [str(lane), str(raw.EVAL_DIR), str(ROOT / "src"), *sys.path])
+    scratch = tmp_path / "out" / "work" / "LBQ-1-raw-1"
+    keep, design = raw.layout_paths(scratch, binary=tmp_path / "bin" / "opencode-cli")
+    kept = {p.resolve() for p in keep}
+    assert not any(lane.resolve() == k or lane.resolve() in k.parents for k in kept)
+    assert not any(raw.EVAL_DIR.resolve() == k or raw.EVAL_DIR.resolve() in k.parents for k in kept)
+    assert design == [str(raw.EVAL_DIR)]
+    files = {Path(f).relative_to(lane).as_posix() for f in raw.design_files() if Path(f).is_relative_to(lane)}
+    assert {"fixture/LBQ-1.yaml", "behaviours.yaml", "rubric.md", "prereg.yaml"} <= files  # the probe opens each
+
+
 def test_a_mask_inside_a_hidden_directory_is_left_to_it():
     sep = "/" if "/" in str(Path("/a/b")) else "\\"
     root = sep + "h"
@@ -384,6 +399,26 @@ def test_a_session_database_past_its_window_is_refused_purged_and_the_purge_reco
     with pytest.raises(Invalid, match="was purged"):
         retention.open_session_db(tmp_path / "ledger", f, "lbq-demo/r1")
     assert AttemptLedger(tmp_path / "ledger", f).status() == {"lbq-demo/r1": "valid"}  # the run record is unchanged
+
+
+def test_a_lost_attempts_session_state_is_purged_by_the_window_from_its_registration(tmp_path, pinned):
+    """Re-review finding 1: an attempt that never finished (the runner was killed) has no result naming its state;
+    its harness state is still purged once the window, counted from its registration, has passed."""
+    case_path = make_case(tmp_path / "case")
+    f = plan_for(case_path, pinned)
+    ledger = AttemptLedger(tmp_path / "ledger", f)
+    ledger.register(run_id="lbq-demo/r1", cell=f["assignment"]["order"][0]["cell"],
+                    requested_profile=f["profiles"]["roles"])
+    state = tmp_path / "work" / "r1" / "harness"
+    (state / "xdg-data" / "opencode").mkdir(parents=True)
+    (state / "xdg-data" / "opencode" / "opencode.db").write_bytes(b"session")
+    assert retention.purge(tmp_path / "ledger", f) == [] and state.exists()  # inside its window: kept
+    later = datetime.now(UTC) + timedelta(days=31)
+    entries = retention.purge(tmp_path / "ledger", f, now=later)
+    assert [(e["run_id"], e["deleted"]) for e in entries] == [("lbq-demo/r1", True)] and not state.exists()
+    assert "without a result" in entries[0]["reason"]
+    assert retention.purge(tmp_path / "ledger", f, now=later) == []  # never purged twice
+    assert AttemptLedger(tmp_path / "ledger", f).status() == {"lbq-demo/r1": "runner_lost"}
 
 
 def test_nothing_under_src_aew_imports_the_evaluation_instrument():

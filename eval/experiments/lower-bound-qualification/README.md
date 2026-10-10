@@ -125,10 +125,13 @@ model runs.
 
 **Containment.** Each raw run's whole OpenCode process tree runs in bubblewrap:
 - **Writable:** only its work tree and its harness state.
-- **Hidden:** every other run, the ledger, everything beside the lane's run state, and every home-directory entry the
-  run does not need. A hidden directory appears as an empty tmpfs.
+- **Hidden:** every other run, the ledger, everything beside the lane's run state, every home-directory entry the
+  run does not need, and the checkout's `eval/` (this lane's manifests, rubric, behaviour paths and overlay) wherever
+  it lives. Nothing from the import path is kept: the agent's shell needs only the standard library. A hidden
+  directory appears as an empty tmpfs.
 - **Verified before OpenCode starts:** AEW's launch self-test, and a confidentiality probe (every hidden path is empty
-  from inside). A run whose layout fails either check is `CONTAINMENT_FAILED`.
+  from inside, and every file that describes the cases fails to open). A run whose layout fails either check is
+  `CONTAINMENT_FAILED`.
 
 **The floor's role runs** are contained by AEW itself on Linux.
 

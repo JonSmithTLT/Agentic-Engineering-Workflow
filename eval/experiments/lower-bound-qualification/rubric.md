@@ -147,6 +147,7 @@ databases, under the definitions frozen in the preregistration, before their ret
   allowlist is structured: each field with its transform (`none`, `prefix_300` or `sha256`).
 - **Retention is enforced, not only recorded.** A database is kept for `retention_days` (180) after its run.
   `eval/aew_eval/retention.py` refuses to open a database past its window, and `qualify.py purge` (which `score` also
-  runs) deletes it and records the purge.
+  runs) deletes it and records the purge. An attempt that never finished (the runner was killed) has no result, so
+  its harness state is purged by the same window counted from its registration.
 - **A secret is never kept.** A provider value found in retained state is deleted at once.
 - **Scope of the evidence.** No result here is reported as M4-H or treatment-effect evidence.

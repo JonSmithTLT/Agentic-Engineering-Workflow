@@ -526,6 +526,31 @@ def session_costs(root: Path) -> float | None:
     return total
 
 
+UNREADABLE_POLLS = 3  # consecutive polls whose cost cannot be read before a trial is stopped (fail closed)
+
+
+def watch_floor(alive: Any, cost: Any, *, spent_before: float, cap: float, poll_s: float = POLL_S,
+                sleep: Any = time.sleep, unreadable_limit: int = UNREADABLE_POLLS) -> str | None:
+    """Watch a running floor trial; the reason to end it, or ``None`` when it ended by itself.
+
+    It ends the trial when the floor's spend reaches its cap, and **fails closed** when the spend cannot be read
+    (a session database that cannot be opened, a cost that does not parse) for ``unreadable_limit`` polls in a
+    row: an unknown spend is never taken for zero. The trial is then charged what remains of the cap."""
+    unreadable = 0
+    while alive():
+        spent = cost()
+        if spent is None:
+            unreadable += 1
+            if unreadable >= unreadable_limit:
+                return f"floor cost unreadable for {unreadable} polls: stopped, charged at the cap"
+        else:
+            unreadable = 0
+            if spent_before + spent >= cap:
+                return f"floor cap {cap} reached at {spent_before + spent:.4f}"
+        sleep(poll_s)
+    return None
+
+
 def end_trial(tree: Any, basetemp: Path) -> list[int]:
     """End a floor trial: its test process tree, then every run supervisor it started (a supervisor outlives the
     test by design; its own process tree ends the harness when it dies)."""
@@ -587,13 +612,11 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
         stopped: list[str] = []
 
         def watch(tree: Any = tree, proc: Any = proc, where: Path = where, stopped: list[str] = stopped) -> None:
-            while proc.poll() is None:
-                spent = session_costs(where / "tmp") or 0.0
-                if state["charged_usd"] + spent >= cap:
-                    stopped.append(f"floor cap {cap} reached at {state['charged_usd'] + spent:.4f}")
-                    end_trial(tree, where / "tmp")
-                    return
-                time.sleep(POLL_S)
+            reason = watch_floor(lambda: proc.poll() is None, lambda: session_costs(where / "tmp"),
+                                 spent_before=state["charged_usd"], cap=cap)
+            if reason:
+                stopped.append(reason)
+                end_trial(tree, where / "tmp")
 
         watcher = threading.Thread(target=watch, daemon=True)
         watcher.start()
@@ -604,10 +627,12 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
         trials = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines() if line.strip()] \
             if results.exists() else []
         spent = session_costs(where / "tmp")
-        cost = spent if spent is not None else max(cap - state["charged_usd"], 0.0)  # unknown: charge what remains
+        unread = any("unreadable" in s for s in stopped)
+        # unknown, now or while it ran: charge what remains of the floor's cap
+        cost = spent if spent is not None and not unread else max(cap - state["charged_usd"], 0.0)
         verdict = floor_verdict(trials)["state"]
         if stopped:
-            verdict = "cost_cap"
+            verdict = "cost_unreadable" if unread else "cost_cap"
         elif code != 0:  # AEW's side failed an assertion: the floor is not established either way
             verdict = "aew_side_failure" if trials else "not_run"
         state["trials"].append({"trial": n, "verdict": verdict, "pytest_exit": code, "charged_usd": round(cost, 6),
@@ -738,7 +763,7 @@ def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
     rules = load_yaml(BEHAVIOURS)
     ledger_dir = out / "ledger"
     ledger = AttemptLedger(ledger_dir, frozen)
-    purged = retention.purge(ledger_dir, frozen)
+    purged = retention.purge(ledger_dir, frozen, work=out / "work")
     newly_scored = []
     if hidden_root is not None:
         alive = harness_processes(raw.harness_binary())
@@ -780,7 +805,7 @@ def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
 
 
 def cmd_purge(args: argparse.Namespace, out: Path) -> int:
-    say(purged=retention.purge(out / "ledger", frozen_record()))
+    say(purged=retention.purge(out / "ledger", frozen_record(), work=out / "work"))
     return 0
 
 

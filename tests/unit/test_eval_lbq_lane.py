@@ -104,6 +104,24 @@ def test_every_attempt_is_charged_and_an_unknown_or_lost_one_at_its_cap(qualify,
     assert qualify.spent_so_far(out, ledger, {"raw": 0.75}) == pytest.approx(0.3 + 0.2 + 0.75 + 0.75)
 
 
+@pytest.mark.parametrize("costs, alive_polls, reason", [
+    ([0.1, 0.3, 0.6], 5, "cap"),                   # the cap is reached (0.4 before + 0.6)
+    ([None, None, None], 5, "unreadable"),         # fails closed: an unknown spend is never zero
+    ([None, 0.1, None, 0.2, 0.3], 5, None),        # a transient unreadable poll is not three in a row
+    ([0.1, 0.2], 2, None),                         # the trial ended by itself under the cap
+])
+def test_the_floor_watcher_stops_a_trial_at_the_cap_and_fails_closed_on_an_unknown_spend(qualify, costs,
+                                                                                         alive_polls, reason):
+    polls = iter(costs)
+    alive = iter([True] * min(alive_polls, len(costs)) + [False])
+    got = qualify.watch_floor(lambda: next(alive), lambda: next(polls), spent_before=0.4, cap=1.0,
+                              sleep=lambda s: None)
+    if reason is None:
+        assert got is None
+    else:
+        assert got and reason in got
+
+
 def test_no_model_runs_while_an_oracle_is_on_the_host(qualify, tmp_path):
     out = tmp_path / "lane" / "out"
     out.mkdir(parents=True)

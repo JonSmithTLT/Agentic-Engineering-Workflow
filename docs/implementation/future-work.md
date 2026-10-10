@@ -714,7 +714,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **Unscheduled.** Concept frozen 2026-10-10; activation gated (§19, §22): nothing in F41.1 to F41.13 is activatable until its governing amendment exists and this gate verifies it
 
-**Notes:** The umbrella row: each §19 owner or amendment has its own row, F41.1 to F41.13, and the nit-rule divergence (§21) is Q15. The designer's ruling (§19, last paragraph; CFI-70): the design may freeze before the WC/F14 and WC §8 amendments are merged, but the affected behaviour is not activatable until the amendment exists and the activation gate verifies it; this supersedes the v0.3 review's suggestion that the amendment exist before conceptual freeze. The Lead wake (§11) stays with its existing owner, F9. Acceptance checks 1 to 26 (CFI-71 to CFI-96) are tracked on the row that owns each
+**Notes:** The umbrella row: each §19 owner or amendment has its own row, F41.1 to F41.13; the §18 dispositions owned outside them are F41.14; and the nit-rule divergence (§21) is Q15. The designer's ruling (§19, last paragraph; CFI-70): the design may freeze before the WC/F14 and WC §8 amendments are merged, but the affected behaviour is not activatable until the amendment exists and the activation gate verifies it; this supersedes the v0.3 review's suggestion that the amendment exist before conceptual freeze. The Lead wake (§11) stays with its existing owner, F9. Acceptance checks 1 to 26 (CFI-71 to CFI-96) are tracked on the row that owns each
 
 ### F41.1
 
@@ -768,9 +768,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 ### F41.6
 
-**Work:** The interface-dependency edge, built (E19-B with F9): the edge's fields; dispatch of a consumer while its provider is active when the accepted contract is current and the consumer is bound to its digest; engine-computed interface digests, never author-supplied, rename or removal counting as a change; the `INTERFACE_CONTRACT_DRIFT` integration and publish refusal; the E19-B `revision_impact_hold` on direct named consumers (dispatch, forward gates, publish; no recursive fan-out); hold clearing only by the Lead's F9 disposition (`RECONTEXTUALIZE` or `TICKET_REPLAN`) plus the engine's rebinding, never by the held worker; a new attempt against the new digest
+**Work:** The interface-dependency edge, built (E19-B with F9): the edge's fields; dispatch of a consumer while its provider is active when the accepted contract is current and the consumer is bound to its digest; engine-computed interface digests, never author-supplied, rename or removal counting as a change; the `INTERFACE_CONTRACT_DRIFT` integration and publish refusal; the E19-B `revision_impact_hold` on direct named consumers (dispatch, forward gates, publish; no recursive fan-out); hold clearing only by the Lead's F9 disposition (`RECONTEXTUALIZE` or `TICKET_REPLAN`) plus the engine's rebinding; the held worker can neither clear its own hold nor record either of those authority-bearing actions; a new attempt against the new digest
 
-**Source (governing):** [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §7.1 to §9, §11 (ledger CFI-36 to CFI-45, CFI-48); acceptance checks 9 to 13 and 15 (CFI-79 to CFI-83, CFI-85)
+**Source (governing):** [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §7.1 to §9, §11 (ledger CFI-36 to CFI-45, CFI-48, CFI-100); acceptance checks 9 to 13 and 15 (CFI-79 to CFI-83, CFI-85)
 
 **Belongs to or gated by:** **Unscheduled.** Activation-gated: after F41.5's amendment
 
@@ -845,6 +845,16 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Pending (§19); owners the launch contract and role cards with the review protocol (builder claims) and the designer-brief process (brief claims)
 
 **Notes:** Field-log entries #18, #19
+
+### F41.14
+
+**Work:** The cross-feature integration design's field-log dispositions that hand work to owners outside F41's own rows, each to be taken up by its owner: #4 test scope (the launch-contract / test-policy owner); #10 public/private review (a review-artifact policy follow-up); #12 operator waiting queue (the existing operator-attention / dashboard owner, F20); #15 disk budget (the doctor / workspace-retirement owner, F18.2); #16 CI external check (an external-check / `wait --any` integration candidate, F9); #20 PR lifetime (an evaluator / process metric candidate, F19)
+
+**Source (governing):** [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18 (ledger CFI-68, CFI-101 to CFI-106)
+
+**Belongs to or gated by:** **Unscheduled.** Not activation-gated: each item is its owner's to schedule; the candidates (#16, #20) are taken up only if their owner adopts them
+
+**Notes:** So that no §18 entry is silently dropped (§18, §22 item 10). The entries dispositioned "no new work" (#2, #9, #13, #14, W1, W3, W4, W6) need no row; the rest are carried by F41.1 to F41.13 and F9
 
 ## 3. Deferred by the M3 plan (out of M3 scope)
 

@@ -1,6 +1,6 @@
 # AEW Cross-Feature Integration Design v0.5 — FROZEN
 
-> Ingested 2026-10-10. The designer's frozen text follows unchanged. Decision record: [`decisions-2026-10-10-cross-feature-integration-freeze.md`](decisions-2026-10-10-cross-feature-integration-freeze.md); requirements ledger CFI; register F41 to F41.13 and Q15.
+> Ingested 2026-10-10. The designer's frozen text follows unchanged. Decision record: [`decisions-2026-10-10-cross-feature-integration-freeze.md`](decisions-2026-10-10-cross-feature-integration-freeze.md); requirements ledger CFI; register F41 to F41.14 and Q15.
 
 **Date:** 2026-10-10  
 **Status:** **FROZEN DESIGN** — activation remains gated by governing amendments and implementation qualification  

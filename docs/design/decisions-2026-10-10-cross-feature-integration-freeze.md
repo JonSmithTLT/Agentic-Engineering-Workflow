@@ -29,7 +29,7 @@ The designer chose V-1(b) (§7). Blocking dependency edges keep their meaning: t
 may run in parallel. The consumer may dispatch while its provider is active when the interface contract is current and
 accepted and the consumer is bound to its engine-computed digest. A provider publish that changes the governed interface
 without an accepted interface revision is refused (`INTERFACE_CONTRACT_DRIFT`). An accepted interface revision holds
-the direct named consumers through E19-B's `revision_impact_hold`, which the held worker cannot clear (§8).
+the direct named consumers through E19-B's `revision_impact_hold`. The held worker cannot clear its own hold, and cannot record either authority-bearing action that clears it: the Lead's F9 disposition or the engine's rebinding to the new digest (§8.2).
 
 The edge needs a Workflow Contract §8 amendment before activation, and that amendment also extends E19-B §7.5's
 `revision_impact_hold` trigger to accepted interface revisions on `interface_dependency` edges (register F41.5).
@@ -52,7 +52,7 @@ So the freeze is a design state, not an activation. What must exist before activ
   `non_mutating_paths` default (§3.1; register F41.3).
 
 The remaining §19 rows are pending implementation under their existing owners (register F41.2 and F41.6 to F41.13); the
-Lead wake stays with F9. Because the WC/F14 and WC §8 amendments are not yet written, neither this record nor the design
+Lead wake stays with F9. The §18 dispositions that hand work to owners outside these rows (field-log #4, #10, #12, #15, #16 and #20) are tracked together on F41.14. Because the WC/F14 and WC §8 amendments are not yet written, neither this record nor the design
 is an overlay on the Workflow Contract: `docs/spec-amendments.yaml` lists both as considered, replacing no WC/KC text.
 
 ## 4. The 26 acceptance checks
@@ -113,9 +113,9 @@ first version in it, so no earlier version is retired from the ledger.
 
 - **The design:** [`cross-feature-integration-design-v0.5.md`](cross-feature-integration-design-v0.5.md), the
   designer's frozen text unchanged, with one header line pointing here.
-- **Ledger:** CFI-01 to CFI-99, every requirement, decision and acceptance criterion of v0.5 with its section; this
+- **Ledger:** CFI-01 to CFI-106, every requirement, decision and acceptance criterion of v0.5 with its section; this
   record's sections carry CFI ids (ledger CFD).
-- **Register:** F41 (the activation gate) and F41.1 to F41.13, one per §19 owner or amendment; Q15 (the nit-rule
+- **Register:** F41 (the activation gate) and F41.1 to F41.13, one per §19 owner or amendment; F41.14, the §18 dispositions owned outside those rows; Q15 (the nit-rule
   divergence, the operator's). Activation-gating rows: F41.1 and F41.5 (amendments, the designer's, each with a
   decisions-due item), F41.4 (the prerequisite) and F41.3 (for the planning-child exemption). Cross-references on F5,
   F9, F14, F22.3, F36, F38 and U1.

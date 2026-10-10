@@ -859,20 +859,20 @@ sources:
     path: docs/design/cross-feature-integration-design-v0.5.md
     role: adopted-design
     # The cross-feature integration design v0.5, frozen by the designer on 2026-10-10 (FREEZE WITH CORRECTIONS applied);
-    # activation gated by its §19 amendments and §20 check 26 (register F41 to F41.13, Q15). Decision record: CFD.
+    # activation gated by its §19 amendments and §20 check 26 (register F41 to F41.14, Q15). Decision record: CFD.
   - prefix: CFD
     path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
     role: decision-record
     # The lead developer's record of the freeze; every decision it records is the design's, so its sections carry CFI ids.
     carried:
       "1. What was frozen": [CFI-01, CFI-02, CFI-99]
-      "2. V-1(b): a non-blocking interface_dependency edge": [CFI-34, CFI-35, CFI-36]
+      "2. V-1(b): a non-blocking interface_dependency edge": [CFI-34, CFI-35, CFI-36, CFI-42, CFI-100]
       "3. Freeze versus activation: the designer's ruling": [CFI-70, CFI-69]
       "4. The 26 acceptance checks": [CFI-71, CFI-72, CFI-73, CFI-74, CFI-75, CFI-76, CFI-77, CFI-78, CFI-79, CFI-80, CFI-81, CFI-82, CFI-83, CFI-84, CFI-85, CFI-86, CFI-87, CFI-88, CFI-89, CFI-90, CFI-91, CFI-92, CFI-93, CFI-94, CFI-95, CFI-96]
       "5. The nit-rule divergence from the repository process": [CFI-97, CFI-98]
     no_requirements:
       "6. History": the review rounds that led to the freeze; no requirement
-      "7. Filing (lead developer)": where the design is filed; carried by the ledger and the register's F41 to F41.13 and Q15
+      "7. Filing (lead developer)": where the design is filed; carried by the ledger and the register's F41 to F41.14 and Q15
 
 requirements:
   # ---- KCA: knowledge capture and admission design v0.4 (adopted 2026-10-09; F21) -----------------------------
@@ -2927,7 +2927,7 @@ requirements:
   CFI-39: {section: "7.3 Contract drift at publish", kind: invariant, tracked_by: [F41.6, F41.7], statement: "Workspace-level likely interface changes may generate advisory overlap candidates; only committed/accepted contract facts change authority"}
   CFI-40: {section: "8. Interface invalidation uses E19-B + F9", kind: invariant, tracked_by: [F41.6], statement: "No second invalidation subsystem: an accepted interface revision that changes a digest raises the E19-B revision_impact_hold on the direct named consumers, blocking dispatch, forward gates and publish, with no recursive fan-out"}
   CFI-41: {section: "8.1 Resolution vocabulary", kind: decision, tracked_by: [F41.6, F9], statement: "ADOPT_NEW_VERSION is not a new F9 category but a UI/action description resolving through RECONTEXTUALIZE (continue against the new interface without plan/goal change) or TICKET_REPLAN (the new interface changes the Ticket's plan/design assumptions)"}
-  CFI-42: {section: "8.2 Hold clearing and rebinding", kind: requirement, tracked_by: [F41.6], statement: "The hold clears when the Lead records the F9 disposition (RECONTEXTUALIZE or TICKET_REPLAN) and the engine records the consumer's binding to the new digest as the E19-B §7.5 attributable dependent update; the held worker can clear its own hold by neither action"}
+  CFI-42: {section: "8.2 Hold clearing and rebinding", kind: requirement, tracked_by: [F41.6], statement: "The held worker cannot clear its own hold; the hold clears when the Lead records the applicable F9 disposition (RECONTEXTUALIZE or TICKET_REPLAN) and the engine records the consumer's binding to the new interface digest as the E19-B §7.5 attributable dependent update"}
   CFI-43: {section: "8.2 Hold clearing and rebinding", kind: invariant, tracked_by: [F41.6], statement: "Clearing the hold makes no evidence current: results admitted under the old digest stay bound to it; progression needs a new attempt admitted against the new digest, which may carry prior workspace contents forward as input only (E19-B §5.4) and needs fresh required review/verification (E19-B §5.2)"}
   CFI-44: {section: "8.2 Hold clearing and rebinding", kind: requirement, tracked_by: [F41.6], statement: "Rebinding an edge's digest is an E19-B revision of the consumer's dependency field group, not a free edge edit; with an active attempt it follows E19-B §7.2 quiescence before the new binding is authoritative"}
   CFI-45: {section: "9. Undeclared-consumer residual", kind: invariant, tracked_by: [F41.6, F41.7], statement: "Hard interface protection applies only to declared interfaces / interface_dependency edges; an undeclared semantic consumer is a known residual that relies on integration validation and parent verification (mitigated by publish-overlap advisory, overlap projection, review and qualified dependency discovery); the hold only reduces latency where the dependency is declared"}
@@ -2953,8 +2953,8 @@ requirements:
   CFI-65: {section: "16. Plan underspecification", kind: invariant, tracked_by: [F41.12], statement: "n/a: reason is an author claim/advisory field, not authoritative proof that a dimension is irrelevant; review may challenge it"}
   CFI-66: {section: "17. Engine-behavior citation rule", kind: process, tracked_by: [F41.13], statement: "Claims about current engine behaviour used as premises for implementation fixes or designer decisions cite the current code basis; AEW verifies mechanically only that the cited path, symbol, test and revision resolve at the cited base commit; whether the code supports the claim stays a review judgment"}
   CFI-67: {section: "17. Engine-behavior citation rule", kind: process, tracked_by: [F41.13], statement: "Owners: builder/fix claims go to the launch contract / role card and the review protocol; designer-brief current-state claims go to the designer-brief process"}
-  CFI-68: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41], statement: "Every source field-log item (#1 to #20, W1 to W8) receives the explicit disposition and owner of the §18 table; no entry is silently dropped"}
-  CFI-69: {section: "19. Owner / amendment table", kind: decision, tracked_by: [F41], statement: "The owner/amendment table assigns each behaviour its authoritative owner, required change and freeze/activation status; the mandatory Class-0-inclusive plan and the WC §8 edge need amendments before activation, section binding is a prerequisite, and the rest is pending implementation under existing owners (the Lead wake stays F9/D5's)"}
+  CFI-68: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41, F41.14], statement: "Every source field-log item (#1 to #20, W1 to W8) receives the explicit disposition and owner of the §18 table; no entry is silently dropped (the dispositions handing work to owners outside F41's own rows are CFI-101 to CFI-106)"}
+  CFI-69: {section: "19. Owner / amendment table", kind: decision, tracked_by: [F41, F41.1], statement: "The owner/amendment table assigns each behaviour its authoritative owner, required change and freeze/activation status: the mandatory Class-0-inclusive plan and the WC §8 edge need amendments before activation, the reviewed-plan record contract (plan proposal, review and adoption) must be specified before activation (F41.1), section binding is a prerequisite, and the rest is pending implementation under existing owners (the Lead wake stays F9/D5's)"}
   CFI-70: {section: "19. Owner / amendment table", kind: decision, tracked_by: [F41, F41.1, F41.5], statement: "Designer ruling on freeze vs activation: the design may freeze before the WC/F14/WC §8 amendments are merged, but the affected behaviour is not activatable until the required governing amendment exists and the activation gate verifies it; this supersedes the v0.3 review's suggestion that the amendment exist before conceptual freeze"}
   CFI-71: {section: "20. Checkable acceptance criteria", kind: gate, tracked_by: [F41.2], statement: "Acceptance check 1, No duplicate lifecycle: schema test: no new parent work-state enum; plan_phase derived only"}
   CFI-72: {section: "20. Checkable acceptance criteria", kind: gate, tracked_by: [F41.2], statement: "Acceptance check 2, No planner recursion: dispatch fixture: a qualifying planning child launches with its assignment as plan"}
@@ -2985,6 +2985,13 @@ requirements:
   CFI-97: {section: "21. Repository-process divergence: nit handling", kind: decision, tracked_by: [Q15, F41.11], statement: "The product nit rule (§15, one bounded delta review) is intentionally stricter than the repository's AGENTS.md process of PR #181 (CLEAR plus nits, author fixes, \"Nits fixed at <sha>\", no new review); the divergence is deliberate for now and recorded as such"}
   CFI-98: {section: "21. Repository-process divergence: nit handling", kind: open-question, tracked_by: [Q15], statement: "When the product rule ships, the repository dogfood process either aligns AGENTS.md to the product rule or retains the difference through an explicit documented project-policy exception; it must not remain an accidental mismatch (the operator's choice)"}
   CFI-99: {section: "22. Freeze disposition", kind: decision, tracked_by: [F41], statement: "Concept FROZEN: the closure review's FREEZE WITH CORRECTIONS is incorporated; activation stays gated by §19 to §20; its ten central decisions restate CFI-03, CFI-10, CFI-25, CFI-34, CFI-40, CFI-48, CFI-42, CFI-54, CFI-57 and CFI-68"}
+  CFI-100: {section: "8.2 Hold clearing and rebinding", kind: invariant, tracked_by: [F41.6], statement: "The held worker cannot record either authority-bearing action: neither the Lead's F9 disposition nor the engine's rebinding of the consumer to the new interface digest"}
+  CFI-101: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14], statement: "Field-log #4 (test scope) is dispositioned to the launch-contract / test-policy owner"}
+  CFI-102: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14], statement: "Field-log #10 (public/private review) is dispositioned to a review-artifact policy follow-up"}
+  CFI-103: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14, F20], statement: "Field-log #12 (operator waiting queue) is dispositioned to the existing operator-attention / dashboard owner"}
+  CFI-104: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14, F18.2], statement: "Field-log #15 (disk budget) is dispositioned to the doctor / workspace-retirement owner"}
+  CFI-105: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14, F9], statement: "Field-log #16 (CI external check) is dispositioned as an external-check / wait --any integration candidate"}
+  CFI-106: {section: "18. Field-log disposition table", kind: requirement, tracked_by: [F41.14, F19], statement: "Field-log #20 (PR lifetime) is dispositioned as an evaluator / process metric candidate"}
 retired:
   CUL-16: {disposition: "superseded-by: CUL-24 (v0.2: the designer revised R8 for Q12 on 2026-10-06; usage is recorded per AEW attachment and generation, not per native Lead session committed by the broker at session end)"}
   CUL-17: {disposition: "superseded-by: CUL-25 (v0.2: the same invariants restated for the attachment record, plus that a stale generation gains no authority when its TUI later exits)"}

@@ -214,6 +214,14 @@ considered:
       decision record (F34 and its owner rows, 2026-10-09); adopts the agent-effectiveness research with three
       designer revisions and directs work onto existing owners; its §15 clarifies how WC §7 Ticket revisions meet KC
       §9.4 promotion, an editorial line for the E19 re-freeze; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-09-f9-a1-adoption.md
+    reason: >-
+      decision record (F9, F19, 2026-10-09); adopts F9-A1 as governing, stages F9-A to F9-D, keeps F9 messaging off
+      in M4-H's frozen treatment and accepts the lead developer's implementation choices; replaces no WC/KC text
+  - path: docs/design/f9-a1-lead-worker-messaging-and-adaptive-supervision-amendment-v0.1.md
+    reason: >-
+      adopted amendment (F9, 2026-10-09) of the live coordination design, itself a proposal outside the frozen set:
+      Lead-worker messaging and adaptive supervision, preserving F9 v0.1's invariants; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

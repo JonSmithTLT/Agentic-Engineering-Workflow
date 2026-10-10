@@ -90,6 +90,7 @@ def parse(raw: bytes, *, source: str) -> dict[str, Any]:
     """An execution policy from its file's bytes: parsed, schema-validated and semantically checked. Callers that pin
     the file hash these same bytes, so what is checked is what is used."""
     data = load_yaml(raw.decode("utf-8"), source=source)
+    refuse_yaml_boolean(data, source=source)
     validate("execution", data, source=source)
     check_semantics(data, source=source)
     return data
@@ -107,6 +108,29 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
         problems.append("routing.default: a configured policy needs a default route")
     if problems:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
+
+
+PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
+
+
+def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
+    """``maps.pack_slices`` is the string ``"off"`` or ``structural``. YAML 1.1 reads an unquoted ``off`` (and ``no``,
+    ``false``, ``on``, ``yes``, ``true``) as a boolean, which the schema's enum would refuse without saying why: name
+    the cause and the fix (PR #143 review, m1). Run before the schema, at parse and at adoption."""
+    maps = policy.get("maps") if isinstance(policy, dict) else None
+    value = maps.get("pack_slices") if isinstance(maps, dict) else None
+    if isinstance(value, bool):
+        raise ValidationFailed(
+            f"{source}: maps.pack_slices was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted "
+            f"off (or no, false, on, yes, true) as a boolean. Quote the value: pack_slices: \"{PACK_SLICES_OFF}\" (or "
+            f"{PACK_SLICES_STRUCTURAL})", reason="yaml_boolean", field="maps.pack_slices",
+            allowed=[PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL])
+
+
+def pack_slices(policy: dict[str, Any] | None) -> str:
+    """The project-map switch (``maps.pack_slices``, register F22.1 plan §5.1): ``off`` unless the operator set it.
+    Absent policy, absent key and an unreadable policy all mean ``off``, so a map can never change a pack by default."""
+    return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
 
 
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:

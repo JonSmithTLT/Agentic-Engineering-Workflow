@@ -34,6 +34,13 @@ from aew.errors import HarnessLaunchFailed
 START_TIMEOUT_S = 60.0
 LOOPBACK_URL = re.compile(r"http://127\.0\.0\.1:[0-9]{1,5}/?")
 REQUEST_TIMEOUT_S = 30.0
+# The run's own server is on loopback, so its calls never go through a proxy. ``urlopen``'s default opener honours
+# HTTP_PROXY/http_proxy (and, on Windows, the system proxy) unless NO_PROXY names 127.0.0.1, and behind such a proxy
+# every launch failed. An empty ProxyHandler replaces the environment's. The event stream uses http.client directly,
+# which never consults proxy settings. Provider traffic is OpenCode's own: its proxy settings come from the server's
+# environment (provider_env), which this does not change.
+LOOPBACK_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+EVENT_CONNECT_S = 10.0  # how long a launch waits for the event stream's first connection
 
 
 class OpenCodeError(Exception):
@@ -64,7 +71,7 @@ class Client:
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(url, data=data, method=method, headers=self.headers())  # noqa: S310
         try:  # self.url is the run's own server, checked to be http://127.0.0.1:<port> when it started
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            with LOOPBACK_OPENER.open(req, timeout=timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -188,7 +195,7 @@ class EventStream:
         self._sock: socket.socket | None = None
         self._thread = threading.Thread(target=self._run, name="aew-opencode-events", daemon=True)
 
-    def start(self, wait_s: float = 10.0) -> None:
+    def start(self, wait_s: float = EVENT_CONNECT_S) -> None:
         self._thread.start()
         self.connected.wait(wait_s)
 

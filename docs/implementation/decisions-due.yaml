@@ -17,6 +17,7 @@ items:
     attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
+
 - row: E19
   needs: design
   owner: operator and designer
@@ -26,6 +27,7 @@ items:
     of 2026-10-09 listed on E19, the designer's F4 ruling on re-parenting and promotion among them), and the adoption of
     the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists
     it as proposed
+
 - row: F26
   needs: design
   owner: designer
@@ -34,6 +36,7 @@ items:
     a design or probe
   blocks:
   - U9
+
 - row: Q8
   needs: decision
   owner: designer
@@ -42,6 +45,7 @@ items:
     to the invariant index, before F13 is implemented
   blocks:
   - F13
+
 - row: Q11
   needs: decision
   owner: designer
@@ -51,22 +55,26 @@ items:
   blocks:
   - F12
   - F13
+
 - row: F15.7
   needs: adoption
   owner: operator and designer
   due: Evaluation
   what: The deferred recovery rows (4 `REDISPATCH_IF_LOST`, 6 a policy-resolved Investigator, 8 `max_fix_attempts`), each
     its own adoption after M4-H's base rates; non-governing until then
+
 - row: F17
   needs: design
   owner: designer
   due: Evaluation
   what: Phase 1, the eight-case evaluation corpus from the R1 and SPT misses, with controls, before anything is built
+
 - row: O3
   needs: decision
   owner: designer
   due: Evaluation
   what: Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture)
+
 - row: U3
   needs: design
   owner: designer
@@ -74,23 +82,19 @@ items:
   what: 'The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses:
     after M4-H data (operator, 2026-10-07): F4''s premise contrast measures it (Q7 v0.3.1 §12); a strong F4 may close or
     defer it, a weak F4 may justify later F14/U3 work; not a pre-M4-H blocker'
+
 - row: E4
   needs: decision
   owner: operator
   due: Unscheduled
   what: Whether to schedule a live smoke run against the pinned OpenCode, and how often
+
 - row: E16
   needs: decision
   owner: operator
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
-- row: F9
-  needs: adoption
-  owner: operator and designer
-  due: Unscheduled
-  what: 'The F9-A1 amendment, proposed 2026-10-09: first-class Lead-worker messaging and adaptive Lead supervision (F9-A
-    to F9-D). It states that the measured need F9 waits for now exists (§1), and asks for a qualified supervision path before
-    heterogeneous lower-tier worker fanout becomes a normal production mode (§22); not governing until adopted'
+
 - row: Q4
   needs: decision
   owner: designer
@@ -98,11 +102,13 @@ items:
   what: Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment
   blocks:
   - F6
+
 - row: Q5
   needs: decision
   owner: designer
   due: Unscheduled
   what: The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16)
+
 - row: Q14
   needs: decision
   owner: designer
@@ -110,13 +116,16 @@ items:
   what: 'Deferred by the operator''s F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR
     or merge integration becomes a product requirement: the remote (pull-request) integration target''s scope, whether `DONE`
     needs a second verification on a provider''s merge commit, the first provider'
+
 - row: U10
   needs: decision
   owner: designer
   due: Unscheduled
   what: How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions)
+
 - row: V3
   needs: decision
   owner: designer
   due: Unscheduled
   what: Whether review-type work defaults to a plan-bound reviewer (relates to F14)
+

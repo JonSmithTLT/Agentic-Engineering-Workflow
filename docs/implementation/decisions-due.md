@@ -13,31 +13,140 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 ## Owed, soonest first
 
-| Due by | Owner | Needs | What | Row | Blocks |
-|---|---|---|---|---|---|
-| M4-G | designer | decision | Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7) | F25 | - |
-| Gate: before internal alpha | operator and designer | design | The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among them, neutral wording for an external example project's name, and the editorial lines of the agent-effectiveness adoption of 2026-10-09 listed on E19, the designer's F4 ruling on re-parenting and promotion among them), and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed | E19 | - |
-| M6 | designer | design | A minimal skill delivery path (a hash-pinned project catalog) that does not become a second capability system; needs a design or probe | F26 | U9 |
-| M6 | designer | decision | Reconcile the capability design's six candidate failure classes with the failure-class registry, and add its invariants to the invariant index, before F13 is implemented | Q8 | F13 |
-| M6 | designer | decision | Reconcile the provider research with M3's rules before F12 and F13 are designed further (Q12 settled hosting on 2026-10-06) | Q11 | F12, F13 |
-| Evaluation | operator and designer | adoption | The deferred recovery rows (4 `REDISPATCH_IF_LOST`, 6 a policy-resolved Investigator, 8 `max_fix_attempts`), each its own adoption after M4-H's base rates; non-governing until then | F15.7 | - |
-| Evaluation | designer | design | Phase 1, the eight-case evaluation corpus from the R1 and SPT misses, with controls, before anything is built | F17 | - |
-| Evaluation | designer | decision | Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture) | O3 | - |
-| Evaluation | designer | design | The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses: after M4-H data (operator, 2026-10-07): F4's premise contrast measures it (Q7 v0.3.1 §12); a strong F4 may close or defer it, a weak F4 may justify later F14/U3 work; not a pre-M4-H blocker | U3 | - |
-| Unscheduled | operator | decision | Whether to schedule a live smoke run against the pinned OpenCode, and how often | E4 | - |
-| Unscheduled | operator | decision | Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending") | E16 | - |
-| Unscheduled | operator and designer | adoption | The F9-A1 amendment, proposed 2026-10-09: first-class Lead-worker messaging and adaptive Lead supervision (F9-A to F9-D). It states that the measured need F9 waits for now exists (§1), and asks for a qualified supervision path before heterogeneous lower-tier worker fanout becomes a normal production mode (§22); not governing until adopted | F9 | - |
-| Unscheduled | designer | decision | Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment | Q4 | F6 |
-| Unscheduled | designer | decision | The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16) | Q5 | - |
-| Unscheduled | designer | decision | Deferred by the operator's F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement: the remote (pull-request) integration target's scope, whether `DONE` needs a second verification on a provider's merge commit, the first provider | Q14 | - |
-| Unscheduled | designer | decision | How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions) | U10 | - |
-| Unscheduled | designer | decision | Whether review-type work defaults to a plan-bound reviewer (relates to F14) | V3 | - |
+### F25
+
+**Due by:** M4-G · **Owner:** designer · **Needs:** decision
+
+**What:** Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7)
+
+**Blocks:** -
+
+### E19
+
+**Due by:** Gate: before internal alpha · **Owner:** operator and designer · **Needs:** design
+
+**What:** The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among them, neutral wording for an external example project's name, and the editorial lines of the agent-effectiveness adoption of 2026-10-09 listed on E19, the designer's F4 ruling on re-parenting and promotion among them), and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
+
+**Blocks:** -
+
+### F26
+
+**Due by:** M6 · **Owner:** designer · **Needs:** design
+
+**What:** A minimal skill delivery path (a hash-pinned project catalog) that does not become a second capability system; needs a design or probe
+
+**Blocks:** U9
+
+### Q8
+
+**Due by:** M6 · **Owner:** designer · **Needs:** decision
+
+**What:** Reconcile the capability design's six candidate failure classes with the failure-class registry, and add its invariants to the invariant index, before F13 is implemented
+
+**Blocks:** F13
+
+### Q11
+
+**Due by:** M6 · **Owner:** designer · **Needs:** decision
+
+**What:** Reconcile the provider research with M3's rules before F12 and F13 are designed further (Q12 settled hosting on 2026-10-06)
+
+**Blocks:** F12, F13
+
+### F15.7
+
+**Due by:** Evaluation · **Owner:** operator and designer · **Needs:** adoption
+
+**What:** The deferred recovery rows (4 `REDISPATCH_IF_LOST`, 6 a policy-resolved Investigator, 8 `max_fix_attempts`), each its own adoption after M4-H's base rates; non-governing until then
+
+**Blocks:** -
+
+### F17
+
+**Due by:** Evaluation · **Owner:** designer · **Needs:** design
+
+**What:** Phase 1, the eight-case evaluation corpus from the R1 and SPT misses, with controls, before anything is built
+
+**Blocks:** -
+
+### O3
+
+**Due by:** Evaluation · **Owner:** designer · **Needs:** decision
+
+**What:** Accept F14's fix for a goal met by changing its own inputs (the T4 replay is F14's phase 1 fixture)
+
+**Blocks:** -
+
+### U3
+
+**Due by:** Evaluation · **Owner:** designer · **Needs:** design
+
+**What:** The F14 addendum, so that operator-stated factual premises can be decision-sensitive, not only explicit diagnoses: after M4-H data (operator, 2026-10-07): F4's premise contrast measures it (Q7 v0.3.1 §12); a strong F4 may close or defer it, a weak F4 may justify later F14/U3 work; not a pre-M4-H blocker
+
+**Blocks:** -
+
+### E4
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** Whether to schedule a live smoke run against the pinned OpenCode, and how often
+
+**Blocks:** -
+
+### E16
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
+
+**Blocks:** -
+
+### Q4
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Fail-closed rules for `verify classify` and risk-class choice, with a Workflow Contract amendment
+
+**Blocks:** F6
+
+### Q5
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** The open questions each design lists (hierarchy §21, lead/operator §23, isolation §16)
+
+**Blocks:** -
+
+### Q14
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Deferred by the operator's F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement: the remote (pull-request) integration target's scope, whether `DONE` needs a second verification on a provider's merge commit, the first provider
+
+**Blocks:** -
+
+### U10
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** How a small correction to an accepted record avoids a full replacement record (relates to F5's EDITORIAL revisions)
+
+**Blocks:** -
+
+### V3
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Whether review-type work defaults to a plan-bound reviewer (relates to F14)
+
+**Blocks:** -
 
 ## Blocked until then
 
-| Row | Waits for |
-|---|---|
-| F6 | Q4 (decision, designer, by Unscheduled) |
-| F12 | Q11 (decision, designer, by M6) |
-| F13 | Q8 (decision, designer, by M6); Q11 (decision, designer, by M6) |
-| U9 | F26 (design, designer, by M6) |
+- **F6** waits for Q4 (decision, designer, by Unscheduled)
+
+- **F12** waits for Q11 (decision, designer, by M6)
+
+- **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
+
+- **U9** waits for F26 (design, designer, by M6)

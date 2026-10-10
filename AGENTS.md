@@ -24,20 +24,24 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
 - A review of an earlier commit does not cover later commits. After fixes, the reviewer (or a new independent one)
   checks the fixes and posts a new verdict at the new head.
-- **Exception: nits after a CLEAR** (operator, 2026-10-10). When the verdict is `Review: CLEAR` and its only open
-  points are nits, the author fixes them without a new review:
-  - The fixes are ordinary commits on top of the reviewed commit, and change only what the nits name.
-  - The author then posts a comment that cites the CLEAR it relies on, lists each nit with how it was fixed, and ends
-    with `Nits fixed at <sha>`, where `<sha>` is the new head.
-  - A nit the author disputes goes through §2. The comment lists it with a link to where the reviewer withdrew it or
-    the operator decided; until then the exception does not apply.
-  - A new review is needed for any merge of `main`, any rebase, any change beyond the nits, and any commit after the
-    `Nits fixed` comment. A blocker, major or minor finding is never a nit.
+- **Exception: a CLEAR with only nits merges now** (operator, 2026-10-10). When the verdict is `Review: CLEAR` and
+  its only open points are nits, the pull request may merge at that reviewed head as soon as its required checks are
+  green (§4). The nits do not hold it back:
+  - Before merging, the author posts a comment that cites the CLEAR, lists each nit, and says where it will be fixed.
+  - Right after the merge, the author opens one follow-up pull request from `main` that fixes exactly those nits. It
+    names the merged pull request and the review, and it is reviewed like any other pull request.
+  - Alternatively, the author may fix the nits on the branch before merging, without a new review: the fixes are
+    ordinary commits on top of the reviewed commit, change only what the nits name, and end with a comment that lists
+    each nit and its fix and ends `Nits fixed at <sha>`, where `<sha>` is the new head. A new review is then needed
+    for any merge of `main`, any rebase, any change beyond the nits, and any commit after that comment.
+  - A nit the author disputes goes through §2. Until the reviewer withdraws it or the operator decides, neither path
+    applies. A blocker, major or minor finding is never a nit.
 
 ## 2. Findings are fixed in the same pull request
 
-Every finding is fixed in the pull request it was raised on, nits included, before merge. "Merge now, fix in a
-follow-up" is not allowed; a follow-up pull request is only for genuinely new scope. An author who disagrees with a
+Every finding is fixed in the pull request it was raised on before merge. "Merge now, fix in a follow-up" is not
+allowed, except for nits after a CLEAR under §1's exception; otherwise a follow-up pull request is only for genuinely
+new scope. An author who disagrees with a
 finding answers it on the pull request, and the reviewer either withdraws it or the operator decides.
 
 ## 3. Work while waiting, but never on top of unmerged work
@@ -54,8 +58,9 @@ finding answers it on the pull request, and the reviewer either withdraws it or 
 
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
-- the latest review verdict is `Review: CLEAR` at that commit; or it is `Review: CLEAR` at an ancestor of that commit,
-  every commit since is a nit fix under §1's exception (no merge, no rebase), and the author's `Nits fixed at <sha>`
+- the latest review verdict is `Review: CLEAR` at that commit (if it lists nits, the author's comment saying where
+  they will be fixed is posted, per §1's exception); or it is `Review: CLEAR` at an ancestor of that commit, every
+  commit since is a nit fix under §1's exception (no merge, no rebase), and the author's `Nits fixed at <sha>`
   comment names this commit;
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a

@@ -48,6 +48,23 @@ REASONS: dict[str, str] = {
     "FINDING": "a finding the producing role recorded",
     "DEVIATION": "a deviation from the plan the producing role recorded",
     "NEXT_ACTION": "the engine's next action for this unit",
+    # project maps (register F20.8, S1; the change note §4.3): derived navigation context, never authority
+    "MAP_ARTIFACT_CORRUPT": "the stored map is corrupt: delete it and generate the map again with `aew map generate`",
+    "MAP_NONE": "no structural map is selected: the operator generates and selects one with `aew map generate "
+                "--select`",
+    "MAP_MISSING": "the selected structural map is not stored any more: generate and select it again",
+    "MAP_CORRUPT": "the selected structural map is corrupt: delete it and generate the map again",
+    "MAP_REGISTRY_INVALID": "the map registry is malformed: deleting it clears the selection (a map grants nothing), "
+                            "then select again",
+    "MAP_UNREADABLE": "the selected structural map could not be read",
+    "MAP_STALE_GENERATOR": "the map was made by another generator version or rule table than the installed one",
+    "MAP_STALE_PATH_LISTING": "paths were added, removed or renamed since the map's commit",
+    "MAP_STALE_METADATA": "a metadata file the map read has changed or gone since the map's commit",
+    "MAP_CURRENTNESS_UNPROVEN": "the map's currentness cannot be proven against this commit",
+    "MAP_SCAN_LIMIT": "this page reached the scan bound (256 maps or 64 MiB read); continue with the next cursor",
+    "ARCHITECTURE_STALE": "the source the architecture reference observed has changed since",
+    "ARCHITECTURE_UNKNOWN": "the architecture reference's freshness cannot be established",
+    "ARCHITECTURE_UNAVAILABLE": "the architecture reference's evidence cannot be found",
 }
 
 

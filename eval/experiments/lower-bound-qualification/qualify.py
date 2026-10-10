@@ -414,11 +414,12 @@ def upstream_baseline(report: dict[str, Any]) -> None:
 # by its qualified id.
 SEEDED_SUITE_FAILURES = frozenset({"tests.test_syntax.extensions.test_wikilinks_spaces.TestWikiLinkSpaces."
                                    "test_spaces_in_a_label_become_hyphens"})
-FAILED_TEST = re.compile(r"^(?:FAIL|ERROR): (\S+) \(([^()\s]+)\)")
+FAILED_TEST = re.compile(r"^(?:FAIL|ERROR|UNEXPECTED SUCCESS): (\S+) \(([^()\s]+)\)")
 
 
 def failed_test_ids(stderr: str) -> set[str]:
-    """The qualified ids (module.Class.method) of the tests unittest reports failing or erroring. Its line is
+    """The qualified ids (module.Class.method) of the tests unittest reports failing, erroring or unexpectedly
+    passing (an expectedFailure test that passed). Its line is
     ``FAIL: method (module.Class.method)`` (Python 3.11+) or ``FAIL: method (module.Class)`` (earlier)."""
     out = set()
     for line in stderr.splitlines():

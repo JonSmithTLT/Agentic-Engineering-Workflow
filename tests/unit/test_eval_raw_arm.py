@@ -524,6 +524,9 @@ def profile(**over) -> dict:
     return record
 
 
+RAN = {"experiment": "lbq-demo", "evidence": ["results/lbq-demo/score.json"]}  # a ceiling that ran names both
+
+
 @pytest.mark.parametrize("over, state", [
     ({}, "unqualified"),
     ({"availability": {"checked_at": None, "offered_by_pinned_harness": None}}, "unqualified"),
@@ -531,8 +534,9 @@ def profile(**over) -> dict:
                        "catalog_status": "deprecated"}}, "unavailable"),
     ({"floor": {"state": "failed"}}, "floor_failed"),
     ({"floor": {"state": "passed"}}, "floor_passed"),
-    ({"floor": {"state": "passed"}, "ceiling": {"state": "none_shown"}}, "not_a_lower_bound"),
-    ({"floor": {"state": "passed"}, "ceiling": {"state": "behaviours_shown", "behaviours": ["repeated_exploration"]}},
+    ({"floor": {"state": "passed"}, "ceiling": {"state": "none_shown", **RAN}}, "not_a_lower_bound"),
+    ({"floor": {"state": "passed"}, "ceiling": {"state": "behaviours_shown", "behaviours": ["repeated_exploration"],
+                                                **RAN}},
      "qualified"),
     ({"class": "mid", "floor": {"state": "passed"}, "ceiling": {"state": "not_applicable"}}, "floor_passed"),
 ])
@@ -565,21 +569,21 @@ def test_a_ceiling_with_unobserved_behaviours_is_inconclusive_never_a_negative()
     """A profile that showed none of the behaviours it could be observed for, with some unobserved (e.g. behaviours 4
     and 5 when the cost cap cut every run of their case short), is ceiling_inconclusive: not final, and never
     not_a_lower_bound (review F1 of b924e47)."""
-    inconclusive = profile(floor={"state": "passed"}, ceiling={"state": "inconclusive", "unobserved": UNOBSERVED},
-                           qualification_state="ceiling_inconclusive")
+    inconclusive = profile(floor={"state": "passed"}, qualification_state="ceiling_inconclusive",
+                           ceiling={"state": "inconclusive", "unobserved": UNOBSERVED, **RAN})
     profiles.check(inconclusive)
     assert profiles.derive_state(inconclusive) == "ceiling_inconclusive"
     shown = profile(floor={"state": "passed"}, qualification_state="qualified",
                     ceiling={"state": "behaviours_shown", "behaviours": ["repeated_exploration"],
-                             "unobserved": UNOBSERVED})
+                             "unobserved": UNOBSERVED, **RAN})
     profiles.check(shown)  # a behaviour shown is shown, whatever else was unobserved
     for over, match in [
         ({"ceiling": {"state": "none_shown", "unobserved": UNOBSERVED}, "qualification_state": "not_a_lower_bound"},
          "the ceiling is inconclusive"),
         ({"ceiling": {"state": "inconclusive"}, "qualification_state": "ceiling_inconclusive"},
          "lists the behaviours it could not observe"),
-        ({"ceiling": {"state": "inconclusive", "unobserved": UNOBSERVED}, "qualification_state": "not_a_lower_bound"},
-         "establish ceiling_inconclusive"),
+        ({"ceiling": {"state": "inconclusive", "unobserved": UNOBSERVED, **RAN},
+          "qualification_state": "not_a_lower_bound"}, "establish ceiling_inconclusive"),
     ]:
         with pytest.raises(Invalid, match=match):
             profiles.check(profile(floor={"state": "passed"}, **over))
@@ -607,6 +611,27 @@ def test_a_ceiling_run_with_its_session_half_unscored_is_pending_not_not_run():
     with pytest.raises(Invalid, match="listed only when the ceiling shows them"):
         profiles.check(profile(floor={"state": "passed"}, qualification_state="floor_passed",
                                ceiling={"state": "pending_session_behaviours", "behaviours": ["x"]}))
+
+
+@pytest.mark.parametrize("state, extra", [
+    ("behaviours_shown", {"behaviours": ["repeated_exploration"]}), ("none_shown", {}),
+    ("inconclusive", {"unobserved": ["incomplete_cross_file_changes"]}), ("pending_session_behaviours", {}),
+])
+def test_a_ceiling_that_ran_names_its_experiment_and_evidence(state, extra):
+    """Review N1 of 0be1630: every ceiling state that implies a run (all but not_run and not_applicable) names the
+    experiment that ran it and its evidence; without either the record is refused."""
+    derived = {"behaviours_shown": "qualified", "none_shown": "not_a_lower_bound",
+               "inconclusive": "ceiling_inconclusive", "pending_session_behaviours": "floor_passed"}[state]
+    good = profile(floor={"state": "passed"}, qualification_state=derived, ceiling={"state": state, **extra, **RAN})
+    profiles.check(good)
+    for missing in ("experiment", "evidence"):
+        ceiling = {"state": state, **extra, **{k: v for k, v in RAN.items() if k != missing}}
+        with pytest.raises(Invalid, match="names its experiment and its evidence"):
+            profiles.check(profile(floor={"state": "passed"}, qualification_state=derived, ceiling=ceiling))
+    with pytest.raises(Invalid, match="names its experiment and its evidence"):
+        profiles.check(profile(floor={"state": "passed"}, qualification_state=derived,
+                               ceiling={"state": state, **extra, "experiment": "lbq-demo", "evidence": []}))
+    profiles.check(profile())  # not_run: nothing to name
 
 
 def test_a_profiles_file_has_unique_ids_and_known_twins(tmp_path):

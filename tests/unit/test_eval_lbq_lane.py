@@ -628,6 +628,19 @@ def test_a_same_named_failure_elsewhere_is_never_taken_for_the_seed(qualify):
     assert qualify.suite_verdict(1, old_format)["state"] == "as_seeded"
 
 
+def test_an_unexpected_success_is_named_by_its_test_not_taken_for_a_suite_error(qualify):
+    """Review N2 of 0be1630: a test marked expectedFailure that passes makes the suite exit non-zero; unittest names
+    it on an UNEXPECTED SUCCESS line, which reads as unexpected with that test's qualified id, never as a suite that
+    did not run."""
+    where = "tests.test_syntax.extensions.test_other.TestOther.test_known_bug"
+    got = qualify.suite_verdict(1, f"UNEXPECTED SUCCESS: test_known_bug ({where})\nFAILED (unexpected successes=1)\n")
+    assert got["state"] == "unexpected" and "suite_error" not in got
+    assert got["unexpected_failures"] == [where]
+    got = qualify.suite_verdict(1, SEEDED_RUN + f"UNEXPECTED SUCCESS: test_known_bug ({where})\n")
+    assert (got["state"], got["unexpected_failures"]) == ("unexpected", [where])
+    assert "missing_seeded_failures" not in got
+
+
 def test_a_suite_that_never_ran_is_reported_as_a_suite_error_not_as_a_seed_that_did_not_take(qualify):
     """Review N1 of 314d79f: a non-zero exit naming no failing test (a bad start directory, a collection crash) is
     named as such, and the seed is not judged."""

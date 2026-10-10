@@ -81,6 +81,9 @@ def check(record: dict[str, Any]) -> None:
     if ceiling["state"] in ran and record["floor"]["state"] != "passed":
         raise Invalid(f"profile {record['id']}: a ceiling result needs a passed floor (a model that cannot submit "
                       "through the bridge is not measured on the lane)")
+    if ceiling["state"] in ran and not (ceiling.get("experiment") and ceiling.get("evidence")):
+        raise Invalid(f"profile {record['id']}: a ceiling that ran ({ceiling['state']}) names its experiment and its "
+                      "evidence (the run's score summary)")
     derived = derive_state(record)
     if record["qualification_state"] != derived:
         raise Invalid(f"profile {record['id']}: its qualification_state is {record['qualification_state']}, but its "

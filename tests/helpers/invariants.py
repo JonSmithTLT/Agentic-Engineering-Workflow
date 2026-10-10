@@ -248,7 +248,7 @@ def control_violations(root: Path) -> list[str]:
     problems += steering_violations(root, hot)
     # 46. Run usage (F25 R1, R5), over the hot state and every rehydrated bundle.
     problems += usage_violations(state)
-    # 47-50. M4-E E3: the StageIntent journal, hot and cold, and its resolutions (E3c).
+    # 47-49 and 51. M4-E E3: the StageIntent journal, hot and cold, and its resolutions (E3c; 50 is F4 S1's, below).
     problems += stage_intent_violations(root, hot, state)
     # 50. F4 S1: every unit key and record field is classified by the Ticket field registry.
     problems += ticket_field_violations(root, state)
@@ -289,7 +289,7 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
         note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
-    50: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
+    51: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
     from aew.engine import stage_intents as S
     from aew.schemas import validate
 
@@ -320,7 +320,7 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         resolutions(si, where)
 
     def resolutions(si: dict[str, Any], where: str) -> None:
-        """50 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held
+        """51 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held
         the seat; the owner is the last one rebound to; the latest resolution is the last continue, or the abandon
         that ended the intent; and nothing is resolved before it opened or after it closed."""
         rebound, resolution = si["rebound"], si["resolution"]

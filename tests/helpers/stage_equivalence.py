@@ -2,17 +2,23 @@
 
 A stage, the same stage continued after a crash, and its primitives run directly must end in the same state, except
 for the journal's own records. ``end_state`` is that comparison's view of a project: its control state and its
-authored files under ``.aew/``, without
+authored files under ``.aew/``. It removes, **by path only** (a key of the same name elsewhere is kept):
 
 - the journal's own records: the hot ``stage_intents``, the ``stage_intent`` counter, a unit's pointers to its ended
-  intents, and the cold intent files (``work/<T>/stage-intents/``, ``records/stage-intents/``);
-- what the journal's commits move by existing: the revision and everything derived from the transition log (the log
-  itself, the last transition, the history chain's head, the outbox mark, the transaction records, each handoff's base
-  revision, the revision a generated copy names);
-- what no two runs share: times, credentials and their identifiers, and the project's own location on disk.
+  intents (``work.<T>.stage_intents``), and the cold intent files (``work/<T>/stage-intents/``,
+  ``records/stage-intents/``);
+- what the journal's commits move by existing: the top-level ``revision``, ``last_transition`` and ``outbox``, the
+  history chain's head (``cold.root``; ``cold.archived`` and the rest stay), a handoff's ``base_revision``, the
+  revision a generated copy names, and the files derived from the transition log (the log, the transaction records,
+  ``CURRENT.md``).
+
+What no two runs share is **normalised, never dropped**: a time becomes ``"<time>"`` (a null stays null, so closed or
+revoked versus open still differs), a credential id becomes a stable ordinal in order of first appearance (so the
+token table, its revocations and every reference to a token still compare), a credential verifier becomes
+``"<verifier>"``, and the project's location ``"<project>"``.
 
 E5's ``test_stage_matches_primitives[<stage>]`` compares through this view; extend it there for what Ticket stages
-add (workspaces, invocations), never by loosening what it keeps.
+add (workspaces, invocations), by path, never by loosening what it keeps.
 """
 
 from __future__ import annotations
@@ -26,23 +32,53 @@ from invariants import load_control
 
 from aew.engine import stage_intents as SI
 
-JOURNAL_KEYS = frozenset({"stage_intents"})  # control state, and on each unit
-REVISION_BOUND = frozenset({"revision", "last_transition", "cold", "outbox", "base_revision"})
-VOLATILE = re.compile(r"(^at$|_at$|^token_id$|^tokens$|^verifier$|^h$)")
+# Control-state paths the comparison removes (module docstring); "*" is any one key.
+DROPPED = frozenset({("revision",), ("last_transition",), ("outbox",), ("stage_intents",),
+                     ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents")})
+TIME_KEY = re.compile(r"^(at|.+_at)$")
+TOKEN_ID = re.compile(r"tk_[0-9a-f]{8,}")
 # The transition log, its redo records, the control file (compared as data above) and its generated view (which
 # states the revision), and local runtime data.
 SKIPPED = ("state/log/", "state/txn/", "state/control.yaml", "state/CURRENT.md", "local/", SI.RECORDS_DIR + "/")
 
 
-def _clean(value: Any, root: str) -> Any:
-    if isinstance(value, dict):
-        return {k: _clean(v, root) for k, v in value.items()
-                if k not in JOURNAL_KEYS and k not in REVISION_BOUND and not VOLATILE.search(str(k))}
-    if isinstance(value, list):
-        return [_clean(v, root) for v in value]
-    if isinstance(value, str):
-        return value.replace(root, "<project>")
-    return value
+class _Normaliser:
+    def __init__(self, root: str) -> None:
+        self.root = root
+        self.tokens: dict[str, str] = {}
+
+    def _token(self, match: re.Match[str]) -> str:
+        return self.tokens.setdefault(match.group(0), f"<token-{len(self.tokens) + 1}>")
+
+    def text(self, value: str) -> str:
+        return TOKEN_ID.sub(self._token, value.replace(self.root, "<project>"))
+
+    def __call__(self, value: Any, path: tuple[str, ...] = (), dropped: frozenset[tuple[str, ...]] = DROPPED) -> Any:
+        if isinstance(value, dict):
+            out = {}
+            for k, v in value.items():
+                here = (*path, str(k))
+                if any(len(d) == len(here) and all(a in ("*", b) for a, b in zip(d, here, strict=True))
+                       for d in dropped):
+                    continue
+                key = self.text(k) if isinstance(k, str) else k
+                if TIME_KEY.match(str(k)) and v is not None:
+                    out[key] = "<time>"
+                elif k == "verifier" and v is not None:
+                    out[key] = "<verifier>"
+                else:
+                    out[key] = self(v, here, dropped)
+            return out
+        if isinstance(value, list):
+            return [self(v, path, dropped) for v in value]
+        if isinstance(value, str):
+            return self.text(value)
+        return value
+
+
+def _clean(state: dict[str, Any], root: str, normalise: _Normaliser | None = None) -> Any:
+    """A control state as the comparison sees it (module docstring)."""
+    return (normalise or _Normaliser(root))(state)
 
 
 def _journal_file(rel: str) -> bool:
@@ -54,8 +90,8 @@ def _journal_file(rel: str) -> bool:
 def end_state(root: Path) -> dict[str, Any]:
     """The project at ``root`` as a stage/primitive equivalence compares it (module docstring)."""
     aew = root / ".aew"
-    state = load_control(root)
-    state.setdefault("counters", {}).pop("stage_intent", None)
+    normalise = _Normaliser(str(root))
+    control = _clean(load_control(root), str(root), normalise)
     files: dict[str, Any] = {}
     for path in sorted(aew.rglob("*")):
         rel = path.relative_to(aew).as_posix()
@@ -64,12 +100,13 @@ def end_state(root: Path) -> dict[str, Any]:
         text = path.read_text(encoding="utf-8", errors="replace")
         if text.startswith("<!-- generated copy"):  # its first line names the control revision it was made at
             text = text.split("\n", 1)[1]
-        if text.startswith("---\n"):  # front matter: compared as data, so its times and revisions can be dropped
+        if text.startswith("---\n"):  # front matter: compared as data, so its times are normalised
             _, front, body = text.split("---\n", 2)
-            files[rel] = {"front": _clean(yaml.safe_load(front), str(root)), "body": body}
+            files[rel] = {"front": normalise(yaml.safe_load(front), (), frozenset({("base_revision",)})),
+                          "body": normalise.text(body)}
         else:
-            files[rel] = text.replace(str(root), "<project>")
-    return {"control": _clean(state, str(root)), "files": files}
+            files[rel] = normalise.text(text)
+    return {"control": control, "files": files}
 
 
 def differences(a: Any, b: Any, path: str = "") -> list[str]:

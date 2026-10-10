@@ -396,12 +396,18 @@ class StageIntents:
         for run in runs:
             observed, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
             if observed not in LIVE_RUN:
-                why = ("no supervisor ever recorded it" if observed == K.UNCONFIRMED
-                       else f"its supervisor's record says {observed}")
-                return {"status": "no_supervisor" if observed == K.UNCONFIRMED else "not_live", "run": run,
-                        "observed": observed,
-                        "message": f"step {last['n'] if last else '?'} recorded {run}, but {why}: the launch failed. "
-                                   "Relaunch it with `aew harness launch` (the credential rotates), or abandon"}
+                step_n = last["n"] if last else "?"
+                if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
+                    return {"status": "no_supervisor", "run": run, "observed": observed,
+                            "message": f"step {step_n} recorded {run}, but no supervisor ever recorded it: the launch "
+                                       "failed. Relaunch it with `aew harness launch` (the credential rotates), or "
+                                       "abandon"}
+                # The run started and ended (it may have finished its work): still not a stage to complete, but a
+                # relaunch could redo finished work (#166 review, finding 3).
+                return {"status": "not_live", "run": run, "observed": observed,
+                        "message": f"step {step_n} recorded {run}, and its run ended ({observed}): the stage stops "
+                                   f"here. Read `harness_status` and the run's report before deciding whether to "
+                                   "relaunch it (`aew harness launch`) or go on from its evidence"}
         return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
 
     # ------------------------------------------------------------------ the step finalizer

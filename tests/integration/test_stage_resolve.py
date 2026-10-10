@@ -105,7 +105,8 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     assert row["next_step"]["n"] == 2 and row["next_step"]["primitive"] == "checkpoint"
     assert row["policy"]["status"] == "ok" and row["checks"]["guard"]["status"] == "not_queryable"
     assert (row["owner_generation"], row["current_generation"], row["rebind"]) == (1, 1, False)
-    assert set(row["checks"]) == {"policy", "contract", "subject", "launch", "rebinds", "guard"}
+    assert set(row["checks"]) == {"policy", "contract", "runners", "subject", "launch", "rebinds", "guard"}
+    assert row["unknown_checks"] == ["guard"]  # counted as passing, and named (#166 review, finding 6)
     projection = R.run_tool(Engine.discover(p.root), CTX, "status", {})["projection"]
     [decision] = [d for d in projection["decisions_required"] if d["decision"] == "RESOLVE_STAGE"]
     assert decision["tool"] == "resolve" and decision["evidence"] == [sid] and decision["default"] == "NONE"
@@ -113,6 +114,7 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     cli = p.ok("resume", "--json")  # another process, where the test's probe stage does not exist
     assert [s["intent"] for s in cli["stage_intents"]] == [sid] and cli["stage_intents"][0]["failing"] == ["contract"]
     assert cli["stage_intents"][0]["checks"]["contract"]["status"] == "unknown_stage"
+    assert "no longer has a stage probe_notes" in cli["stage_intents"][0]["checks"]["contract"]["message"]
     assert any(sid in a and "aew stage continue|abandon" in a for a in cli["next_actions"])
     assert sid in p.aew("resume").stdout  # the rendered view names it too
     assert_control_invariants(p)
@@ -246,6 +248,42 @@ def test_continue_re_resolves_the_stage_contract(project, monkeypatch, change):
     assert p.rev() == rev and hot(p)[sid]["status"] == "ACTIVE"
 
 
+def test_resume_shows_the_bound_call_a_continue_endorses(project, tmp_path, monkeypatch):
+    """#166 review, finding 4: a judgment-bearing stage left by generation 1. Before generation 2 endorses it with a
+    continue, its `resume` row shows the call: the bound arguments, the judgment inputs and both classes."""
+    p = project
+    wid = create_planned_ticket(p, tmp_path)
+    sid = crashed_stage(p, monkeypatch, "probe_judged", "work.assign", work_id=wid)
+    p.token = take_over(p)
+    bound = hot(p)[sid]
+    row = unfinished(p)[sid]
+    assert row["arguments"] == bound["arguments"] and row["arguments"]["work_id"] == wid
+    assert row["judgment_inputs"] == ["ticket_proposition"] == bound["judgment_inputs"]
+    assert (row["base_class"], row["effective_class"]) == ("JUDGMENT_BEARING", "JUDGMENT_BEARING")
+    assert row["rebind"] and not contains_credential(str(row))
+    out = resolve(p, sid, "continue", rationale="generation 2 read the call and endorses it")
+    assert out["ok"], out["stopped"]
+    assert_control_invariants(p)
+
+
+def test_a_remaining_step_with_no_step_runner_is_named_as_such(project, monkeypatch):
+    """#166 review, finding 5: the stage still exists, but a remaining step has no step runner here. `resume` says so
+    (`runners: no_step_runner`, the contract itself unchanged), and the continue refuses with that reason, committing
+    nothing."""
+    p = project
+    sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    monkeypatch.delitem(stage.STEP_RUNNERS, "checkpoint")
+    row = unfinished(p)[sid]
+    assert row["checks"]["contract"]["status"] == "ok" and row["failing"] == ["runners"]
+    assert row["checks"]["runners"]["status"] == "no_step_runner"
+    assert row["checks"]["runners"]["primitives"] == ["checkpoint"]
+    rev = p.rev()
+    out = resolve(p, sid, "continue")
+    assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "no_step_runner"
+    assert "no step runner here for checkpoint" in out["stopped"]["error"]["message"]
+    assert p.rev() == rev and hot(p)[sid]["rebound"] == []
+
+
 # ---------------------------------------------------------------------------------------------- policy drift
 
 
@@ -363,6 +401,11 @@ def test_continue_never_completes_a_stage_over_a_run_that_never_started(project,
             assert out["stopped"]["at"] == "work.assign"
             error = out["stopped"]["error"]
             assert error["code"] == "HARNESS_LAUNCH_FAILED" and error["details"]["run"] == run
+            if when == "ended":  # it may have finished its work: no blind relaunch advice (#166 review, finding 3)
+                assert "Read `harness_status` and the run's report before deciding" in error["message"]
+                assert "the launch failed" not in error["message"]
+            else:
+                assert "the launch failed. Relaunch it with `aew harness launch`" in error["message"]
             assert error["details"]["committed"] is True
             assert si["status"] == "STOPPED_AT_BOUNDARY" and si["stopped"]["boundary"] == "launch_failed"
             assert si["stopped"]["n"] == 2 and si["resolution"]["choice"] == "continue"
@@ -462,7 +505,7 @@ def test_a_continued_stage_ends_where_an_uninterrupted_one_and_its_primitives_do
 
 
 def test_the_resolution_invariant_catches_a_broken_record(project, monkeypatch):
-    """Invariant 50 can fail: a continue with no resolution, a rebind that skips its owner, and an abandon recorded on
+    """Invariant 51 can fail: a continue with no resolution, a rebind that skips its owner, and an abandon recorded on
     an intent that is still ACTIVE are each reported."""
     from invariants import stage_intent_violations
 
@@ -479,3 +522,30 @@ def test_the_resolution_invariant_catches_a_broken_record(project, monkeypatch):
     si["rebound"] = []
     si["resolution"] = {"choice": "abandon", "rationale": "r", "generation": 1, "rev": rev, "at": "t"}
     assert any("ACTIVE with resolution abandon" in v for v in stage_intent_violations(p.root, state, state))
+
+
+def test_the_equivalence_view_keeps_real_differences():
+    """#166 review, finding 1 (the reviewer's states): the view removes only the journal's records and what its commits
+    move, by path. A unit's plan revision, the archive's counts, a token's revocation and an invocation's closing
+    still compare unequal; a time stays null or not."""
+    from stage_equivalence import _clean
+
+    a = {"work": {"T-1": {"plans": [{"revision": 1, "sha256": "x"}], "state": "DONE"}},
+         "cold": {"root": "r1", "archived": {"done": 1}},
+         "tokens": {"t1": {"revoked_at": "2026-10-10", "revoke_reason": "rotated"}},
+         "invocations": {"I-1": {"closed_at": "2026-10-10"}}}
+    b = {"work": {"T-1": {"plans": [{"revision": 2, "sha256": "x"}], "state": "DONE"}},
+         "cold": {"root": "r2", "archived": {"done": 0}},
+         "tokens": {"t1": {"revoked_at": None, "revoke_reason": None}},
+         "invocations": {"I-1": {"closed_at": None}}}
+    found = differences(_clean(a, "/p"), _clean(b, "/p"))
+    assert sorted(d.split(":")[0] for d in found) == [
+        "/cold/archived/done", "/invocations/I-1/closed_at", "/tokens/t1/revoke_reason", "/tokens/t1/revoked_at",
+        "/work/T-1/plans"]
+    # What it does drop: the top-level revision, the history head, the journal's records; times only by value.
+    c = {**b, "revision": 9, "cold": {"root": "r9", "archived": {"done": 0}}, "stage_intents": {"SI-0001": {}},
+         "invocations": {"I-1": {"closed_at": None}}, "counters": {"stage_intent": 3}}
+    assert differences(_clean(b, "/p"), _clean(c, "/p")) == ["/counters: only in the second"]
+    t1, t2 = ({"tokens": {"tk_" + "a" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "a" * 16}},
+              {"tokens": {"tk_" + "b" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "b" * 16}})
+    assert differences(_clean(t1, "/p"), _clean(t2, "/p")) == []  # ids are ordinals, references kept

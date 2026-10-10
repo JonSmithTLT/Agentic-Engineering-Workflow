@@ -279,30 +279,44 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
 # (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
 
 PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard (E4)
+UNKNOWN_STATUS = "not_queryable"
 
 
-def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] | None]:
+def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] | None, list[str]]:
     """The stage contract and plan ``si``'s tool resolves to now: its catalog row's digest and its planner's plan for
-    the recorded arguments. ``(None, None)`` when this surface has no such stage any more, or a remaining step has no
-    step runner."""
+    the recorded arguments (``(None, None)`` when this surface has no such stage any more), and the remaining steps'
+    primitives that have no step runner here (a continue could not run them)."""
     t, planner = contract.tool(si["tool"]), STAGES.get(si["tool"])
     if t is None or not t.built or planner is None:
-        return None, None
+        return None, None, []
     plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planner(dict(si["arguments"]))]
-    if any(p["primitive"] not in STEP_RUNNERS for p in plan[len(si["steps"]):]):
-        return None, None
-    return contract_digest(t), plan
+    missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
+    return contract_digest(t), plan, missing
+
+
+def _runners_check(missing: list[str]) -> dict[str, Any]:
+    if not missing:
+        return {"status": "ok", "message": "every remaining step has a step runner"}
+    return {"status": "no_step_runner", "primitives": missing,
+            "message": f"no step runner here for {', '.join(missing)}: a continue could not run the remaining steps"}
 
 
 def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
-    """One unfinished intent as ``resume`` lists it: ``safe_to_continue`` (every recheck a continue makes passes now),
-    each recheck (the policy, the stage contract and plan, the subject, a launching step's run, the next step's guard),
-    the next planned step and the boundary a continue would stop at, and the owning and current generations."""
-    digest_now, plan_now = _contract_now(si)
+    """One unfinished intent as ``resume`` lists it, all result payload (nothing here is advertised in `tools/list`).
+
+    - ``safe_to_continue``: every recheck a continue makes passes now, **counting a check that cannot be answered yet
+      as passing**; such checks are listed in ``unknown_checks`` (today only ``guard`` when the next step's guard is
+      not a queryable dispatch decision: the step's own commit then decides, and a refusal stops the stage, rule 3).
+    - each recheck (the policy, the stage contract and plan, the step runners, the subject, a launching step's run, the
+      continue count, the next step's guard), the next planned step and the boundary a continue would stop at;
+    - the call a continue endorses: its bound ``arguments``, ``judgment_inputs`` and classes (#166 review, finding 4);
+    - the owning and current generations."""
+    digest_now, plan_now, missing = _contract_now(si)
     check = engine.stage_recheck(si["id"], contract_digest=digest_now, plan=plan_now)
     checks = dict(check["checks"])
+    checks["runners"] = _runners_check(missing)
     nxt = check["next_step"]
-    if nxt is None or check["boundary"] is not None:
+    if nxt is None or check["boundary"] is not None or missing:
         checks["guard"] = {"status": "not_applicable", "message": "no step would run"}
     else:
         try:
@@ -312,7 +326,7 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
         else:
             found, reasons = guard_status(engine, nxt["primitive"], args)
             checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its dispatch decision allows it now"},
-                               UNKNOWN: {"status": "not_queryable", "message": "its guard is not queryable yet: "
+                               UNKNOWN: {"status": UNKNOWN_STATUS, "message": "its guard is not queryable yet: "
                                                                                "its own commit decides (E4)"},
                                BLOCKED: {"status": "blocked", "reason_codes": reasons,
                                          "message": "its dispatch decision refuses it now"}}[found]
@@ -320,8 +334,12 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
     boundary = check["boundary"] or ("refused" if failing else None)
     return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
+            "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
+            "base_class": si["base_class"], "effective_class": si["effective_class"],
             "steps_committed": len(si["steps"]), "steps_planned": len(si["plan"]),
-            "safe_to_continue": not failing, "failing": failing, "checks": checks,
+            "safe_to_continue": not failing, "failing": failing,
+            "unknown_checks": [name for name, v in checks.items() if v["status"] == UNKNOWN_STATUS],
+            "checks": checks,
             "policy": {"legality_digest": si["binding"]["legality_digest"], "status": checks["policy"]["status"]},
             "next_step": nxt, "boundary": boundary, "owner_generation": check["owner_generation"],
             "current_generation": check["current_generation"], "rebind": check["rebind"],
@@ -352,7 +370,10 @@ def resolve_stage(c: Call) -> dict[str, Any]:
     if a["choice"] == "abandon":
         c.engine.stage_abandon(token=c.token(), expect_rev=a["expect_rev"], intent=sid, rationale=a["rationale"])
         return _payload(c, sid, [])
-    digest_now, plan_now = _contract_now(si)
+    digest_now, plan_now, missing = _contract_now(si)
+    if si["status"] == SI.ACTIVE and missing:
+        raise errors.IllegalTransition(f"{sid} cannot be continued: {_runners_check(missing)['message']}",
+                                       reason="no_step_runner", intent=sid, primitives=missing)
     if si["status"] == SI.ACTIVE and plan_now is not None:
         guard = assess(c.engine, si)["checks"]["guard"]
         if guard["status"] == "blocked":

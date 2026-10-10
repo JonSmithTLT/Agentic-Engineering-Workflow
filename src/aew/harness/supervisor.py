@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
+from aew.coordination.layout import NEXT_STEP, WHEN_DELIVERY
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
@@ -296,8 +297,8 @@ class Supervisor:
                 if kind == "stop":
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
                 try:
-                    if kind == "send":
-                        self.adapter.send(str(req.get("text") or ""))
+                    if kind == "send":  # only `next-step` is ever a request file (F9-A amendment 2 §3.3; E55)
+                        self.adapter.send(str(req.get("text") or ""), WHEN_DELIVERY[NEXT_STEP])
                     elif kind == "interrupt":
                         self.adapter.interrupt()
                 except errors.AEWError as exc:

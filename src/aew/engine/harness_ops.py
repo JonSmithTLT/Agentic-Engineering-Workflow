@@ -28,17 +28,30 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aew.coordination import layout as L
 from aew.engine import faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
+from aew.engine.coordination_ops import messaging_switch
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.store import Transition
-from aew.errors import AEWError, HarnessLaunchFailed, IllegalTransition, NotFound, RunLive, UsageError
+from aew.errors import (
+    AEWError,
+    HarnessLaunchFailed,
+    HarnessSendNeedsStore,
+    IllegalTransition,
+    MessagingSnapshotMismatch,
+    NotFound,
+    RunLive,
+    TurnEndNeedsMessaging,
+    UsageError,
+)
 from aew.harness import containment, procs, runlog
 from aew.harness import contract as K
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
+from aew.policy import execution as X
 from aew.roles import archetype
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import sha256_text, utc_now
@@ -476,13 +489,20 @@ class Harness:
         return name, text
 
     def _lead_request(self, token: str, run: str, kind: str, payload: dict[str, Any], *, current: bool,
-                      reason: str | None = None) -> dict[str, Any]:
+                      reason: str | None = None,
+                      admit: Callable[[dict[str, Any], dict[str, Any]], None] | None = None) -> dict[str, Any]:
         """Record and deliver a Lead request for a run. Work and invocation state do not change. Like the Lead seat
-        operations, it needs no expected revision: it names one run and is checked against the state it commits on."""
+        operations, it needs no expected revision: it names one run and is checked against the state it commits on.
+
+        ``admit(state, run_entry)``, when given, runs under the same lock once the Lead and the run are found, before
+        any other check or write. It refuses by raising, and then nothing is written (``harness send``'s messaging
+        branch, F9-A plan v4 amendment 2 §3.1)."""
         directory = runlog.run_dir(self.k.aew_root, run)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.archive.archived_credential)
             inv_id, inv = self._find_run(s.state, run)
+            if admit is not None:
+                admit(s.state, next(r for r in inv["runs"] if r["run"] == run))
             if current:
                 if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
                     raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
@@ -506,8 +526,26 @@ class Harness:
             raise UsageError(f"a stop reason is at most {MAX_SEND_CHARS} characters; this one has {len(reason)}")
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
-    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        """Deliver a Lead message to a running agent after its current step. Work and invocation state do not change."""
+    def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN) -> dict[str, Any]:
+        """Deliver a Lead message to a running agent. ``when`` is its timing (F9-A plan v4 amendment 2 §1, §3, §4;
+        register E55): ``next-step``, the default, reaches the agent at its next step boundary without interrupting it
+        (OpenCode ``steer``); ``turn-end`` reaches it after its current turn (OpenCode ``queue``), and exists only
+        through the coordination message store.
+
+        The path a send takes is decided under the control lock from two values, the project's adopted messaging
+        switch and the named run's launch snapshot of it (``send_route``):
+
+        * both off (M4-H's treatment, G1): ``next-step`` is a supervisor request file of up to ``MAX_SEND_CHARS``, as
+          before; ``turn-end`` is refused ``TURN_END_NEEDS_MESSAGING``;
+        * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
+          (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
+        * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal; the Lead relaunches
+          the run.
+
+        A refusal writes nothing: no request file, no control-state entry, nothing posted. Work and invocation state
+        do not change."""
+        if when not in L.WHEN_DELIVERY:
+            raise UsageError(f"--when is one of {', '.join(L.WHEN_DELIVERY)}, not {when!r}")
         if not (text and text.strip()):
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
@@ -515,7 +553,13 @@ class Harness:
         if len(text) > MAX_SEND_CHARS:
             raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has {len(text)}. "
                              "Put the material in a file in the agent's workspace and send its path instead")
-        return self._lead_request(token, run, "send", {"text": text}, current=True)
+
+        def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
+            send_route(messaging_switch(self.k.aew_root, state)[0], run_messaging_snapshot(entry), when)
+
+        # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
+        # every request-file send as `steer`.
+        return self._lead_request(token, run, "send", {"text": text}, current=True, admit=admit)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         """Stop a run's current turn, keeping its session: `harness send` continues it. Work and invocation state do
@@ -695,6 +739,41 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 # A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
 # surrogate pair), so a message this long always arrives (#138 review, F1).
 MAX_SEND_CHARS = 1 << 20
+
+
+def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
+    """The messaging switch as the run snapshotted it at launch (F9-A plan v4 D-15): ``enabled`` or ``disabled``.
+
+    F9-A's MS4 writes the snapshot (a run carries ``coordination: {messaging: enabled}`` only when enabled) and is not
+    built yet, so no run can carry one, and every run reads as launched with messaging off, which is what an absent
+    snapshot means. MS4 replaces this with the real read and adds the ``off_on`` case (amendment 2 §3.1, §7: the HS1 and
+    MS4 coupling)."""
+    del run_entry  # read from MS4 on
+    return X.MESSAGING_DISABLED
+
+
+def send_route(project: str, snapshot: str, when: str) -> str:
+    """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
+    (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
+    timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
+    and says what to do (relaunch), so it wins over a timing's own refusal."""
+    on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
+    if on != launched_on:
+        raise MessagingSnapshotMismatch(
+            f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
+            "nothing was sent. Relaunch the run (`aew harness launch`) and send to the new run",
+            project=project, snapshot=snapshot, when=when)
+    if on:
+        raise HarnessSendNeedsStore(
+            "coordination messaging is on, and this AEW version cannot yet record `harness send` in the message store; "
+            "nothing was sent. With messaging on, every send is recorded and fails closed: not yet available (F9-A "
+            "MS5b adds it)", when=when)
+    if when == L.TURN_END:
+        raise TurnEndNeedsMessaging(
+            "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
+            "Use `--when next-step`, or ask the operator to enable messaging", when=when)
+    return "request"
+
 
 def _reason_code(record: dict[str, Any] | None) -> str | None:
     """The record's ``reason_code`` (register V1), if it is one: the record is written in the run's own directory."""

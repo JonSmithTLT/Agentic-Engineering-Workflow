@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
+from aew.coordination.layout import DEFAULT_WHEN, WHEN_DELIVERY
 from aew.errors import UsageError
 from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
@@ -416,14 +417,29 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--reason", required=True)
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
     q.set_defaults(handler=lambda a: _engine(a).harness_stop(token=_lead_token(a), run=a.run, reason=a.reason))
-    q = hsub.add_parser("send", help="deliver a message to a running agent after its current step (Lead)")
+    # The timings and their help (F9-A plan v4 amendment 2 §1.4, §4; register E55). The text is static: it reads the
+    # same whether messaging is on or off, so it is what M4-H's frozen treatment shows.
+    q = hsub.add_parser(
+        "send", help="deliver a message to a running agent: `next-step` (default) at its next step boundary, without "
+                     "interrupting it; `turn-end` after its current turn (Lead)",
+        description="Deliver a message to a running agent: `next-step` (default) at its next step boundary, without "
+                    "interrupting it; `turn-end` after its current turn. `turn-end` is unavailable unless the project "
+                    "has enabled coordination messaging, because it needs the F9 message store; while messaging is "
+                    "off it is refused. Order: `next-step` messages arrive in the order they were sent, and so do "
+                    "`turn-end` messages, one at each end of the agent's turn; a `next-step` message sent after a "
+                    "`turn-end` one arrives first. A message is up to 1 MiB (4,000 characters when coordination "
+                    "messaging is on). With messaging on, every send is recorded as a coordination message, and still "
+                    "wakes a held session; a report the worker submitted before receiving a message of either timing "
+                    "is not final until it submits again.")
     q.add_argument("run")
     src = q.add_mutually_exclusive_group(required=True)
     src.add_argument("--text")
     src.add_argument("--file", help="message file, or - for stdin")
+    q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
+                   help="when the agent receives it: next-step (the default) or turn-end")
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
     q.set_defaults(handler=lambda a: _engine(a).harness_send(
-        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file)))
+        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when))
     q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
     q.add_argument("run")
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")

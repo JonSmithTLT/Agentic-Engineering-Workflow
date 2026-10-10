@@ -75,6 +75,7 @@ class Session:
         self.env: dict[str, str] | None = None
         self.messages: list[dict[str, Any]] = []
         self.inbox: list[dict[str, Any]] = []
+        self.prompts: list[dict[str, Any]] = []  # every prompt POST as it arrived: its id and `delivery`, for tests
         self.running = False
         self.interrupted = threading.Event()
         self.contract_done = False
@@ -122,7 +123,7 @@ class FakeOpenCode:
 
     def persist(self) -> None:
         with self.lock:
-            db = json.loads(json.dumps({sid: {"info": s.info, "messages": s.messages}
+            db = json.loads(json.dumps({sid: {"info": s.info, "messages": s.messages, "prompts": s.prompts}
                                         for sid, s in self.sessions.items()}))
         target = self.data_home / "opencode" / "fake-db.json"
         with self.persist_lock:  # a server killed mid-write leaves the previous database, never half of one
@@ -309,8 +310,10 @@ class FakeOpenCode:
                 "type": "user", "payload": {"text": body["text"]}, "delivery": body.get("delivery") or "steer"}
         with self.lock:
             s.inbox.append(item)
+            s.prompts.append({"id": item["id"], "delivery": body.get("delivery")})  # as posted: None when absent
             start = not s.running
             s.running = True
+        self.persist()  # a test reads what was posted even when the server is stopped before the turn ends
         self.emit("session.inbox.enqueued", {"sessionID": s.info["id"], "inboxID": item["id"]})
         if start:
             threading.Thread(target=self.execute, args=(s,), daemon=True).start()

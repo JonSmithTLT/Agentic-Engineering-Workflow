@@ -230,9 +230,12 @@ def test_losing_the_event_stream_changes_nothing(lab, tmp_path):
     assert {e["kind"] for e in evidence_of(lab, wid, run)} >= {"implementation_report"}
 
 
-def test_a_message_queued_at_the_turn_boundary_is_answered_before_the_run_ends(lab, tmp_path):
+def test_a_queue_input_at_the_turn_boundary_is_answered_before_the_run_ends(lab, tmp_path):
     """The server goes idle while a prompt AEW queued during the turn is still undelivered, then starts it: the run
-    must not be declared over in between."""
+    must not be declared over in between. Since `harness send` posts `steer` (register E55), the `queue` input is
+    reached at the adapter level, through `adapter.send(text, "queue")` (F9-A plan v4 amendment 2 §4)."""
+    helper = Path(fake_opencode.__file__).resolve().parent / "opencode_queue_send.py"
+    lab.env["AEW_HARNESS_ADAPTERS"] += f";opencode={helper}:QueueSendOpenCodeAdapter"
     sync = sync_dir(tmp_path)
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "wait_file", "path": str(sync / "go")}],
            idle_before_queue_s=3)
@@ -262,6 +265,9 @@ def test_a_lead_interrupt_holds_the_session_until_send(lab, tmp_path):
     assert lab.wait(run)["status"] == "ended_without_evidence"
     kinds = [t.get("kind") for t in lab.record(run)["timeline"] if t["event"] == "request"]
     assert kinds == ["interrupt", "send"]
+    # `steer` with the default resume still wakes the held session (F9-A plan v4 amendment 2 §4)
+    [session] = fake_db(lab).values()
+    assert session["prompts"][-1]["delivery"] == "steer"
 
 
 # ---------------------------------------------------------------------------------------------- the unexpected

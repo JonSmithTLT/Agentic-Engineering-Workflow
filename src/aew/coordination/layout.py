@@ -65,6 +65,14 @@ CHANNELS = ("lead_mcp", "lead_broker", "cli", "run_bridge")
 # Refs are `kind:value` strings (D-12). They grant no access and are never resolved for the recipient.
 REF_KINDS = ("evidence", "ticket", "finding", "message", "run", "decision", "source")
 
+# The two delivery timings (F9-A plan v4, amendment 2 §1.1; the designer's decision of 2026-10-10) and the OpenCode
+# mode each is posted with, for `aew harness send` now and the Lead's message send from MS5b: `next-step`, the
+# default, is `steer` (admitted at the next step boundary), and `turn-end` is `queue` (admitted only when the worker's
+# turn would end; the MS0 probe's P1 and P2). One constant, so the two senders can never disagree.
+WHEN_DELIVERY = {"next-step": "steer", "turn-end": "queue"}
+NEXT_STEP, TURN_END = "next-step", "turn-end"
+DEFAULT_WHEN = NEXT_STEP
+
 # Line types of a thread (D-3). Facts (D-13) arrive with the slices that observe them: MS2 writes `DELIVERED via:
 # lead_result` (a Lead-credentialed result carried a worker message); POSTED and the other DELIVERED ways are MS4 to
 # MS6's. Readers chain-verify and count them all.

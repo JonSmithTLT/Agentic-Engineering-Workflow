@@ -100,7 +100,7 @@ def test_a_lead_message_sent_while_a_turn_is_being_closed_keeps_the_run_going(tm
     adapter, fake, threading = _adapter_at_turn_end(tmp_path)
 
     def snapshot_while_the_lead_sends():
-        lead = threading.Thread(target=adapter.send, args=("Also note the changed files.",))
+        lead = threading.Thread(target=adapter.send, args=("Also note the changed files.", "steer"))
         lead.start()
         lead.join(10)
 
@@ -124,7 +124,7 @@ def test_a_lead_message_sent_after_the_turn_ended_is_refused_never_revives_it(tm
     adapter._poll()
     assert adapter.turn == "ended"
     with pytest.raises(HarnessError):
-        adapter.send("Too late.")
+        adapter.send("Too late.", "steer")
     assert fake.posts == [] and adapter.turn == "ended" and not adapter.inspect()["alive"]
 
 

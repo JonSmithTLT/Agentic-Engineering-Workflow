@@ -173,7 +173,10 @@ each is built with the slice named.
   `metadata`. The capability probe will require `steer`, `resume` and `metadata` on the prompt operation and refuse a
   release that drops one (MS5).
 - **Until E55 lands, `harness send` stays `queue` (D-30), so its inputs and F9 messages are not ordered with respect
-  to each other:** steer overtakes queue (the probe's `p4-mixed`). Until F9-A's amendment 2 is built, F9 messages are always
+  to each other:** steer overtakes queue (the probe's `p4-mixed`). *E55 landed 2026-10-10 (slice HS1 of the F9-A
+  plan's amendment 2): `harness send --when next-step|turn-end`, the default `next-step` posting `steer`; with
+  messaging off `turn-end` is refused (`TURN_END_NEEDS_MESSAGING`), and with messaging on every `harness send` is
+  refused (`HARNESS_SEND_NEEDS_STORE`) until MS5b records it in the store.* Until F9-A's amendment 2 is built, F9 messages are always
   `steer`. **The designer decided on 2026-10-10 (steer vs queue, option B)** that both `aew message send` and
   `aew harness send` take `--when next-step|turn-end`: `next-step`, the default, is `steer`, and `turn-end` is `queue`.
   While a `turn-end` input is pending, the run's final result ingest is refused (`PENDING_TURN_END_MESSAGE`), atomically

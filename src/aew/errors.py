@@ -169,6 +169,28 @@ class MessagingDisabled(IllegalTransition):
     code = "MESSAGING_DISABLED"
 
 
+class TurnEndNeedsMessaging(IllegalTransition):
+    """``aew harness send --when turn-end`` while coordination messaging is off (F9-A plan v4 amendment 2 §3.3, G1):
+    the `turn-end` timing goes only through the message store, so it is unavailable, and nothing is written."""
+
+    code = "TURN_END_NEEDS_MESSAGING"
+
+
+class HarnessSendNeedsStore(IllegalTransition):
+    """``aew harness send`` while coordination messaging is on, before this AEW can record it in the message store
+    (amendment 2 §3.1, G4: with messaging on every send is recorded, and it fails closed). Nothing is written."""
+
+    code = "HARNESS_SEND_NEEDS_STORE"
+
+
+class MessagingSnapshotMismatch(IllegalTransition):
+    """``aew harness send`` to a run whose launch snapshot of the messaging switch disagrees with the project's switch
+    (amendment 2 §3.1): neither the request-file path nor the store path is safe, so it is refused, nothing is written,
+    and the Lead relaunches the run."""
+
+    code = "MESSAGING_SNAPSHOT_MISMATCH"
+
+
 class CoordinationLimit(IllegalTransition):
     """A coordination message beyond one of its bounds (F9-A plan D-7). ``details.bound`` names the bound."""
 

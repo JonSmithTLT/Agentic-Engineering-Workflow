@@ -886,9 +886,20 @@ class EvidenceCommands:
         return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
                                               evidence_id=evidence_id, kind="review")
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
-                                              evidence_id=evidence_id, kind="verification")
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """Ingest a verification report. With ``scope`` (``ticket``: the `verify.ingest` primitive; ``integration``:
+        `verify.ingest.integration`), the report must be of that scope: the primitive's own query is required, so its
+        refusal holds on execution too (PR #171 review, finding 2). Without it (the `aew verify ingest` command), the
+        report's own scope selects the checks, as before."""
+        handler = self._handler(INGEST, work_id)
+        if scope is None:
+            return handler(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id,
+                           kind="verification")
+        if handler != self._ingest_ticket_report:
+            raise UsageError("a scoped verification ingest is a mutating Ticket's; ingest this report without a scope")
+        return self._ingest_ticket_verification(token=token, expect_rev=expect_rev, work_id=work_id,
+                                                evidence_id=evidence_id, scope=scope)
 
     def _ingest_ticket_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                               kind: str) -> dict[str, Any]:
@@ -1115,14 +1126,16 @@ class EvidenceCommands:
         pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
         return (None if pending else "VERIFIED"), None, pending  # None: other planned verifier cards outstanding
 
-    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str,
-                                    evidence_id: str) -> dict[str, Any]:
+    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                                    scope: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
             ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
                                "ids": [evidence_id]})
             state = ctx.state
             args: dict[str, Any] = {"evidence": evidence_id}
-            require(self.verify_ingest_query(state, work_id, args))  # the guard, as `explain` and a stage ask it
+            # The guard, as `explain` and a stage ask it: the scoped primitive's, or the report's own scope's.
+            query = self.verify_ingest_query if scope is None else self.scoped_verify_query(scope)
+            require(query(state, work_id, args))
             unit = state["work"][work_id]
             ev = args["found"]["evidence"]
             scope = ev["verification"]["scope"]

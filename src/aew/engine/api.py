@@ -1124,9 +1124,12 @@ class Engine:
         return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
                                               classification=classification, reason=reason)
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """``scope``: the primitive's (``ticket``: `verify.ingest`, ``integration``: `verify.ingest.integration`), whose
+        query must pass; None (the CLI): the report's own scope decides."""
         return self._evidence.verify_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
-                                            evidence_id=evidence_id)
+                                            evidence_id=evidence_id, scope=scope)
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None) -> dict[str, Any]:

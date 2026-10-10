@@ -53,9 +53,11 @@ def run(plan: dict, cell: str, arm: str, i: int, accepted: bool, **over) -> dict
 
 
 def recon(plan: dict, rows: list[dict], *, layer: str | None = None, mismatched: dict | None = None,
-          estimated: dict | None = None, partitions: dict | None = None) -> dict:
+          estimated: dict | None = None, partitions: dict | None = None, mismatched_ids: set | None = None,
+          estimated_ids: dict | None = None) -> dict:
     """A synthetic aew/m4h-reconciliation/v1 record for the valid A and R ``rows``: the first ``mismatched[arm]`` runs
-    of an arm mismatched; under (c), each run's proxy spend its cost, ``estimated[arm]`` of it estimated."""
+    of an arm mismatched (the primary runs come first), and every run in ``mismatched_ids``; under (c), each run's proxy
+    spend its cost, ``estimated[arm]`` of it estimated, or ``estimated_ids[run_id]`` of it."""
     layer = layer or plan["cost"]["spend_layer"]
     mismatched, estimated, partitions = mismatched or {}, estimated or {}, partitions or {}
     entries, seen = [], {"A": 0, "R": 0}
@@ -63,11 +65,13 @@ def recon(plan: dict, rows: list[dict], *, layer: str | None = None, mismatched:
         for r in rows:
             if r["arm"] not in ("A", "R") or r["validity"] != "valid":
                 continue
-            e = {"run_id": r["run_id"], "arm": r["arm"], "mismatched": seen[r["arm"]] < mismatched.get(r["arm"], 0)}
+            e = {"run_id": r["run_id"], "arm": r["arm"],
+                 "mismatched": seen[r["arm"]] < mismatched.get(r["arm"], 0) or r["run_id"] in (mismatched_ids or ())}
             seen[r["arm"]] += 1
             if layer == "c":
                 e["proxy_usd"] = r["cost_usd"]
-                e["usage_estimated_usd"] = r["cost_usd"] * estimated.get(r["arm"], 0.0)
+                e["usage_estimated_usd"] = r["cost_usd"] * (estimated_ids or {}).get(
+                    r["run_id"], estimated.get(r["arm"], 0.0))
             entries.append(e)
     return {"schema": "aew/m4h-reconciliation/v1", "plan_sha256": analysis.plan_sha256(plan), "layer": layer,
             "runs": entries, "partitions": {arm: {"mismatch": partitions.get(arm, False)} for arm in ("A", "R")}}
@@ -393,11 +397,12 @@ def test_cost_is_unresolved_only_by_the_sealed_reconciliation_rule():
         return analysis.reconcile(record, p, valid)[0]
 
     assert reasons(recon(plan, rows)) == []
-    assert reasons(recon(plan, rows, mismatched={"A": 4})) == []                  # 4/82 is within 0.05
-    assert reasons(recon(plan, rows, mismatched={"A": 5})) == ["MISMATCH_FRACTION_EXCEEDED:A"]   # 5/82 is not
+    assert reasons(recon(plan, rows, mismatched={"A": 3})) == []                  # 3/72 primary is within 0.05
+    assert reasons(recon(plan, rows, mismatched={"A": 4})) == ["MISMATCH_FRACTION_EXCEEDED:A"]   # 4/72 is not
     assert reasons(recon(plan, rows, mismatched={"R": 82})) == ["MISMATCH_FRACTION_EXCEEDED:R"]
-    figures = analysis.reconcile(recon(plan, rows, mismatched={"A": 5}), plan, valid)[1]["arms"]["A"]
-    assert figures["runs"] == 82 and figures["mismatched"] == 5
+    figures = analysis.reconcile(recon(plan, rows, mismatched={"A": 4}), plan, valid)[1]["arms"]["A"]
+    assert figures["primary"]["runs"] == 72 and figures["primary"]["mismatched"] == 4
+    assert figures["f4"]["runs"] == 10 and figures["f4"]["mismatched"] == 0
     # Under (c), the usage_estimated share of an arm's proxy spend is the second input (plan v5 §2.6.4).
     assert reasons(recon(plan, rows, estimated={"A": 0.04})) == []
     assert reasons(recon(plan, rows, estimated={"A": 0.4})) == ["USAGE_ESTIMATED_SHARE_EXCEEDED:A"]
@@ -423,6 +428,25 @@ def test_cost_is_unresolved_only_by_the_sealed_reconciliation_rule():
                        "--out", "o"])
 
 
+def test_f4_runs_neither_dilute_nor_inflate_the_rates_that_decide_the_cost_verdict():
+    # Round 3, m8: the verdict's rates are over the primary runs, the estimator's own data; F4's are reported only.
+    plan = draft_plan()
+    rows = campaign(plan, [6] * 6, [6] * 6)
+    valid = [r for r in rows if r["validity"] == "valid"]
+    f4_a = [r["run_id"] for r in valid if r["arm"] == "A" and r["cell"] in plan["cells"]["f4"].values()]
+    # Dilution: 4 of 72 primary runs mismatched is past 0.05, though 4 of all 82 would not be.
+    reasons, figures = analysis.reconcile(recon(plan, rows, mismatched={"A": 4}), plan, valid)
+    assert reasons == ["MISMATCH_FRACTION_EXCEEDED:A"]
+    assert 4 / 82 <= plan["cost"]["reconciliation_mismatch_fraction"] < 4 / 72
+    # Inflation: mismatches and estimated spend on F4 runs alone leave the primary cost resolved, and are reported.
+    reasons, figures = analysis.reconcile(
+        recon(plan, rows, mismatched_ids=set(f4_a), estimated_ids={i: 1.0 for i in f4_a}), plan, valid)
+    assert reasons == []
+    assert figures["arms"]["A"]["f4"]["mismatched"] == 10 and figures["arms"]["A"]["f4"]["usage_estimated_share"] == 1
+    assert figures["arms"]["A"]["primary"]["mismatched"] == 0
+    assert figures["arms"]["A"]["primary"]["usage_estimated_share"] == 0
+
+
 def test_the_reconciliation_record_never_certifies_its_own_layer_or_runs():
     # The re-review's repro (PR #188, M3): a record cannot choose its layer, nor claim counts for runs it does not list.
     plan = draft_plan()
@@ -439,13 +463,13 @@ def test_the_reconciliation_record_never_certifies_its_own_layer_or_runs():
         analysis.reconcile(one, plan, valid)
     assert exc.value.code == "RECONCILIATION_RUNS_MISMATCH"
     # 3. Dilution: padding the record with runs that were not analysed is refused, so the denominator is the real one.
-    padded = recon(plan, rows, mismatched={"A": 6})
+    padded = recon(plan, rows, mismatched={"A": 4})
     padded["runs"] += [{"run_id": f"ghost-{i}", "arm": "A", "mismatched": False, "proxy_usd": 1.0,
                         "usage_estimated_usd": 0.0} for i in range(10_000)]
     with pytest.raises(Refused) as exc:
         analysis.reconcile(padded, plan, valid)
     assert exc.value.code == "RECONCILIATION_RUNS_MISMATCH"
-    assert analysis.reconcile(recon(plan, rows, mismatched={"A": 6}), plan, valid)[0] == [
+    assert analysis.reconcile(recon(plan, rows, mismatched={"A": 4}), plan, valid)[0] == [
         "MISMATCH_FRACTION_EXCEEDED:A"]
     # A run listed twice, in the wrong arm, or without its layer's figures is refused too.
     twice = recon(plan, rows)
@@ -483,7 +507,7 @@ def test_a_reason_string_never_turns_a_resolved_cost_unresolved():
     exceeded = analysis.analyze(plan, rows, [], recon(plan, rows, mismatched={"A": 10}))
     assert exceeded["cost"]["verdict"] == analysis.UNRESOLVED
     assert exceeded["cost"]["unresolved_reasons"] == ["MISMATCH_FRACTION_EXCEEDED:A"]
-    assert exceeded["cost"]["reconciliation"]["arms"]["A"]["mismatched"] == 10
+    assert exceeded["cost"]["reconciliation"]["arms"]["A"]["primary"]["mismatched"] == 10
     assert "cost_unresolved" not in inspect.signature(analysis.analyze).parameters
 
 

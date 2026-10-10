@@ -424,17 +424,23 @@ def reconcile(record: Mapping[str, Any], plan: Mapping[str, Any],
     * the layer is the plan's ``cost.spend_layer``; a record made under another is refused;
     * under (c) and (b) the record has one entry per counted run, and its run ids must be exactly the valid A and R
       runs analysed (the primary and the F4 cells, all counted: §2.6.4 reconciles every counted run). The analysis
-      counts the mismatches itself; an arm whose mismatched runs exceed the sealed ``reconciliation_mismatch_fraction``
-      is ``MISMATCH_FRACTION_EXCEEDED``;
+      counts the mismatches itself; an arm whose mismatched primary runs exceed the sealed
+      ``reconciliation_mismatch_fraction`` of its primary runs is ``MISMATCH_FRACTION_EXCEEDED``;
     * under (c) each entry also carries the run's proxy spend and its ``usage_estimated`` part; an arm whose estimated
-      spend exceeds the sealed ``usage_estimated_share`` of its proxy spend is ``USAGE_ESTIMATED_SHARE_EXCEEDED``
-      (re-review, m7: §5 seals the share before calibration, S18 produces the flag, S15 produces the figures);
+      primary spend exceeds the sealed ``usage_estimated_share`` of its primary proxy spend is
+      ``USAGE_ESTIMATED_SHARE_EXCEEDED`` (re-review, m7: §5 seals the share before calibration, S18 produces the flag,
+      S15 produces the figures);
+    * the rates that decide are over the primary runs only, the cost estimator's own data (Q7 §13.6), so F4 runs can
+      neither dilute nor inflate them (round 3, m8); F4's rates are reported beside them and decide nothing;
     * under (a), which has no per-run reconciliation, the record has no run entries, and an arm whose partition did
       not reconcile is ``PARTITION_MISMATCH``. Under (c) and (b) a partition mismatch is an instrument fault that S15
       reports, not a cost verdict.
 
     ``aew/m4h-reconciliation/v1`` is defined here, minimally, because slice S15, which produces it, is not built yet;
-    S15 adds fields (both figures per run, §2.6.4), and a change to these fields' meaning is a new version."""
+    S15 adds fields (both figures per run, §2.6.4), and a change to these fields' meaning is a new version. **For S15:**
+    once both figures and the run's tolerance exist per run, this function recomputes ``mismatched`` from them and the
+    sealed margin and refuses a record whose flag disagrees; and ``campaign verify`` checks the analysis record's
+    ``reconciliation_sha256`` against the reconciliation record it names."""
     validate(RECONCILIATION_SCHEMA, record, what="the reconciliation record")
     if record["plan_sha256"] != plan_sha256(plan):
         raise Refused("RECONCILIATION_PLAN_MISMATCH", "the reconciliation record was made under another analysis plan "
@@ -466,25 +472,34 @@ def reconcile(record: Mapping[str, Any], plan: Mapping[str, Any],
                               f"{'needs' if layer == 'c' else 'has no'} proxy_usd and usage_estimated_usd")
             if has_usage and e["usage_estimated_usd"] > e["proxy_usd"]:
                 raise Invalid(f"run {e['run_id']!r}: its estimated spend exceeds its proxy spend")
+    primary_cells = set(plan["cells"]["primary"])
+    cell_of = {r["run_id"]: r["cell"] for r in runs}
+
+    def rates(subset: list[Mapping[str, Any]]) -> dict[str, Any]:
+        mismatched = sum(1 for e in subset if e["mismatched"])
+        fig: dict[str, Any] = {"runs": len(subset), "mismatched": mismatched,
+                               "mismatch_fraction": mismatched / len(subset) if subset else None}
+        if layer == "c":
+            proxy = math.fsum(e["proxy_usd"] for e in subset)
+            estimated = math.fsum(e["usage_estimated_usd"] for e in subset)
+            fig["usage_estimated_share"] = estimated / proxy if proxy > 0 else 0.0
+        return fig
+
     reasons, figures = [], {}
     for arm in (TREATMENT, BASELINE):
         mine = [e for e in entries if e["arm"] == arm]
-        mismatched = sum(1 for e in mine if e["mismatched"])
-        fig: dict[str, Any] = {"runs": len(mine), "mismatched": mismatched,
-                               "mismatch_fraction": mismatched / len(mine) if mine else None,
-                               "partition_mismatch": record["partitions"][arm]["mismatch"]}
+        primary = rates([e for e in mine if cell_of[e["run_id"]] in primary_cells])
+        f4 = rates([e for e in mine if cell_of[e["run_id"]] not in primary_cells])
+        partition = record["partitions"][arm]["mismatch"]
         if layer == "a":
-            if fig["partition_mismatch"]:
+            if partition:
                 reasons.append(f"PARTITION_MISMATCH:{arm}")
-        elif mine and mismatched / len(mine) > cost["reconciliation_mismatch_fraction"]:
-            reasons.append(f"MISMATCH_FRACTION_EXCEEDED:{arm}")
-        if layer == "c":
-            proxy = math.fsum(e["proxy_usd"] for e in mine)
-            estimated = math.fsum(e["usage_estimated_usd"] for e in mine)
-            fig["usage_estimated_share"] = estimated / proxy if proxy > 0 else 0.0
-            if fig["usage_estimated_share"] > cost["usage_estimated_share"]:
+        else:
+            if primary["runs"] and primary["mismatch_fraction"] > cost["reconciliation_mismatch_fraction"]:
+                reasons.append(f"MISMATCH_FRACTION_EXCEEDED:{arm}")
+            if layer == "c" and primary["usage_estimated_share"] > cost["usage_estimated_share"]:
                 reasons.append(f"USAGE_ESTIMATED_SHARE_EXCEEDED:{arm}")
-        figures[arm] = fig
+        figures[arm] = {"primary": primary, "f4": f4, "partition_mismatch": partition}
     return reasons, {"layer": layer, "arms": figures}
 
 

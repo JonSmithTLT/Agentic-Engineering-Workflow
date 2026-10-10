@@ -952,9 +952,11 @@ sections:
       the `aew/m4h-analysis-plan/v1`, `aew/eval-analysis/v1` and `aew/m4h-simulation/v1` schemas, and a minimal `aew/m4h-reconciliation/v1`
       (per run, bound to the analysed runs and to the plan''s sealed spend layer; `COST_UNRESOLVED` comes only from it,
       the sealed mismatch fraction and, under layer (c), the sealed `usage_estimated` share; S15 produces it and extends
-      it with both figures per run, and S18 produces the `usage_estimated` flag); a draft plan and frozen test vectors,
-      exact and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no
-      other module imports. Proved in `tests/unit/test_eval_analysis.py`'
+      it with both figures per run, then the analysis recomputes each run''s mismatch from them and refuses a disagreeing
+      flag, and `campaign verify` checks the analysis''s `reconciliation_sha256`; S18 produces the `usage_estimated` flag;
+      the deciding rates are over the primary runs, F4''s reported beside them); a draft plan and frozen test vectors, exact
+      and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
+      module imports. Proved in `tests/unit/test_eval_analysis.py`'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

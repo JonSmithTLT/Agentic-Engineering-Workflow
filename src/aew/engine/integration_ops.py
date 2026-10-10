@@ -12,6 +12,7 @@ reconciled by inspecting git — success is never inferred.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +20,7 @@ from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
+from aew.engine.guards import checked as guard_checked
 from aew.engine.guards import refusal
 from aew.errors import (
     GateUnsatisfied,
@@ -135,6 +137,27 @@ class Integration:
 
     def _g_gates(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         return checked(lambda: self._require_gated(state, work_id))
+
+    # ---- `integrate.prepare`'s guard as a query (M4-E E4b; aew.engine.guards)
+
+    def prepare_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``integrate.prepare`` now: what its own transaction does before anything else (bring the queue in line
+        with the state, then decide the ``integrate.prepare`` entrypoint and require it), on a deep copy, so asking
+        grants no lease, starts no custodian and enqueues nothing. Its blocker is the decision's own refusal (its
+        first migrated check's error, or ``DISPATCH_REFUSED`` naming every condition). The candidate's build is not
+        a guard: a conflict or an admission refusal is the prepare's outcome."""
+        def check() -> None:
+            scratch = copy.deepcopy(state)
+            self.queue.sync(scratch)
+            self.dispatch.decide(scratch, "integrate.prepare", work_id).require()
+
+        return guard_checked(check)
+
+    def validation_mode(self, state: dict[str, Any], work_id: str) -> str | None:
+        """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None for no unit."""
+        if work_id not in state.get("work", {}):
+            return None
+        return V.obligation(state, work_id, self.k.policy("gates"))["mode"]
 
     def require_legal(self, state: dict[str, Any], work_id: str) -> None:
         """Whether ``work_id``'s integration could be prepared now, apart from the queue (raises when not)."""

@@ -35,6 +35,14 @@ class FakeEngine:
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
 
     gate_memo = staticmethod(contextlib.nullcontext)
+    mode = "verifier"
+
+    def validation_mode(self, work_id, *, state=None):
+        return self.mode
+
+    def candidate_overlay(self, state, work_id):
+        return {**state, "work": {**state["work"], work_id: {**state["work"][work_id],
+                                                             "integration": {"status": "prepared"}}}}
 
     def guard_query(self, primitive, work_id, args, *, state=None):
         self.seen.append((primitive, work_id, state))
@@ -55,8 +63,9 @@ def test_the_migrated_stage_table_matches_the_catalog():
     for name, steps in SA.STAGES.items():
         t = contract.tool(name)
         assert t is not None and len(steps) == len(t.expands_to) == len(t.produced_by), name
-    # E4a migrates the four Ticket stages E5 builds; E4b adds the integration stages.
-    assert set(SA.STAGES) == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification"}
+    # E4a migrated the four Ticket stages E5 builds; E4b adds the integration stages E6a builds.
+    assert set(SA.STAGES) == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+                              "ticket_prepare"}
     for t in contract.TOOLS.values():
         for n, step in enumerate(t.produced_by, start=1):
             assert all(name in contract.STEP_INPUTS and 1 <= m < n for name, m in step), t.name
@@ -212,6 +221,7 @@ CALLS = {
     "ticket_start": [{"work_id": "T-0001"}, {"work_id": "T-0002", "execution": {"model": "p/m"}}],
     "ticket_request_review": [{"work_id": "T-0001"}],
     "ticket_request_verification": [{"work_id": "T-0001", "review_evidence": "EV-0003"}],
+    "ticket_prepare": [{"work_id": "T-0001", "verification_evidence": "EV-0004"}],
 }
 
 
@@ -304,3 +314,28 @@ def test_recording_args_see_every_key_a_query_reads():
     assert args.get("reason") is None and args["to"] == "RUNNING" and "card" not in args
     args.setdefault("found", {})["rule"] = 1
     assert args.inputs_read() == {"reason", "to", "card"}
+
+
+
+@pytest.mark.parametrize("mode", ["checks", "verifier"])
+def test_ticket_prepare_plans_the_integration_verifier_in_verifier_mode_only(mode):
+    """Plan v3 §2.3: in checks mode the custodian validates, outside the stage, so steps 4 and 5 are not planned; in
+    verifier mode the verifier's decision is asked on the candidate and lease step 3 produces, after the acceptance
+    and COMMIT_READY state step 2 produces."""
+    ref = {"id": "EV-0004", "kind": "verification", "sha256": "ab"}
+    engine = FakeEngine(_state("VERIFY_PENDING"), found={
+        "verify.ingest": {"to": "VERIFIED", "ref": ref},
+        "work.transition": {"gate_context": {"snapshot": {"relevant_inputs_fingerprint": "f"}, "gates": {}}}})
+    engine.mode = mode
+    out = SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001", "verification_evidence": "EV-0004"})
+    assert out["availability"] == AVAILABLE
+    seen = {p: s for p, _w, s in engine.seen}
+    prepared_on = seen["integrate.prepare"]["work"]["T-0001"]
+    assert prepared_on["state"] == "COMMIT_READY" and prepared_on["commit_ready_seq"] == 1
+    assert prepared_on["commit_ready_snapshot"] == {"relevant_inputs_fingerprint": "f"}
+    if mode == "checks":
+        assert [s.get("planned", True) for s in out["steps"]] == [True, True, True, False, False]
+        assert "invoke.create.mutating" not in seen
+    else:
+        assert seen["invoke.create.mutating"]["work"]["T-0001"]["integration"] == {"status": "prepared"}
+        assert out["steps"][4]["covered_by"] == 4

@@ -550,3 +550,72 @@ def test_guard_query_matches_execute_all_gates_current(reviewed):
     unit = engine.store.read()["work"][wid]
     assert unit["state"] == "COMMIT_READY" and unit["commit_ready_seq"] == 1
     assert unit["commit_ready_snapshot"] == args["found"]["gate_context"]["snapshot"]
+
+
+# ------------------------------------------------------------------------------------- integrate.prepare (M4-E E4b)
+
+
+def _prepare(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
+    return lambda rev: engine.integrate_prepare(token=p.token, expect_rev=rev, work_id=wid)
+
+
+def untouched(p: Any) -> Callable[[], None]:
+    """A check that asking changed nothing a query must not touch: the control file, the refs, the real index and the
+    worktrees (a fingerprint writes only a throwaway index and content-addressed objects, as `status` always has)."""
+    from pathlib import Path
+
+    from aew.workspace import git
+
+    root = Path(p.root)
+
+    def snapshot() -> tuple[Any, ...]:
+        index = root / ".git" / "index"
+        return ((root / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=root),
+                git.out("worktree", "list", "--porcelain", cwd=root), index.read_bytes() if index.exists() else b"")
+
+    before = snapshot()
+
+    def check() -> None:
+        assert snapshot() == before, "a query changed the control state, a ref, the index or a worktree"
+
+    return check
+
+
+def test_guard_query_matches_execute_integrate_prepare(tmp_path):
+    """`integrate.prepare`: the queue brought in line and the decision required, on a copy: no lease is granted, no
+    custodian started and nothing enqueued by asking. Refused for an unknown Ticket, for one behind an earlier entry
+    (FIFO) and for one behind another entry's lease; then the prepare runs."""
+    from test_queue import tickets
+
+    p = sample_project(tmp_path)
+    first, second = tickets(p, tmp_path, 2)
+    engine = Engine.discover(p.root)
+    check = untouched(p)
+    assert equivalent(engine, "integrate.prepare", "T-0099", {},
+                      _prepare(engine, p, "T-0099"))["reason_codes"] == ["NOT_FOUND"]
+    assert equivalent(engine, "integrate.prepare", second, {},
+                      _prepare(engine, p, second))["reason_codes"] == ["QUEUE_ORDER"]
+    check()
+    equivalent(engine, "integrate.prepare", first, {}, _prepare(engine, p, first))  # takes the lease
+    check = untouched(p)
+    assert equivalent(engine, "integrate.prepare", second, {},
+                      _prepare(engine, p, second))["reason_codes"] == ["LEASE_HELD"]
+    check()
+
+
+def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepare(reviewed):
+    """Accepting a passing verification: step 2 sees the VERIFIED state and pinned report step 1 produces, step 3 the
+    COMMIT_READY state and acceptance step 2 produces (the queue entry its commit would make included). The stage is
+    judgment-bearing, so never auto-runnable."""
+    from aewflow import verify
+
+    p, wid, engine, _impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    report = verify(p, wid)
+    check = untouched(p)
+    found = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+                                                "arguments": {"verification_evidence": report}})["result"]
+    check()
+    assert engine.validation_mode(wid) == "verifier"  # the default policy
+    assert [s["availability"] for s in found["steps"][:3]] == [AVAILABLE] * 3, found
+    assert found["steps"][2]["produced_by"] == {"evidence": 1, "state": 2, "acceptance": 2}

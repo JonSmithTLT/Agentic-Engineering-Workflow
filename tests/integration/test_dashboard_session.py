@@ -181,7 +181,9 @@ def test_the_endpoint_files_locate_the_server_and_never_hold_a_secret(dash: Dash
 
 
 def test_a_request_without_a_cookie_is_401_session_required(dash: Dash):
-    for path in ("/project", "/work", "/overview", "/history/integrity"):
+    maps = ("/maps", "/maps/structural", f"/maps/structural/{'0' * 64}", f"/maps/structural/{'0' * 64}/inputs",
+            f"/maps/diff?a={'0' * 64}&b={'1' * 64}")  # contract 0.1.3 (register F20.8): authenticated first
+    for path in ("/project", "/work", "/overview", "/history/integrity", *maps):
         status, headers, body = dash.api(path, None)
         assert status == 401 and body["code"] == "SESSION_REQUIRED", (path, body)
         assert CONTRACT.violations(CT.ERROR_SCHEMA, body) == []

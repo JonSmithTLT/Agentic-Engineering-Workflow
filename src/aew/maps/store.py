@@ -25,6 +25,7 @@ import json
 import os
 import re
 import secrets
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,6 +94,101 @@ def read_artifact(aew_root: Path, sha: str) -> dict[str, Any]:
         raw = (aew_root / rel).read_bytes()
     except FileNotFoundError:
         raise NotFound(f"no structural map {sha} in {MAPS_REL}", root=sha) from None
+    return parse_artifact(sha, raw)
+
+
+# The dashboard's bound on one artifact (register F20.8; the change note §4.2): a legitimate map is far below it, and a
+# larger one is refused by the dashboard only (``MAP_ARTIFACT_CORRUPT``, ``too_large``); the CLI reads it as before.
+MAP_FILE_MAX = 16 << 20
+
+Identity = tuple[int, int, int, int, int]
+
+
+def file_identity(st: os.stat_result) -> Identity:
+    """What says a file is the same file: device, inode (Windows: the file index), size, modification time and
+    change time. A freed inode is reused at once, and ``mtime`` has the kernel clock's coarse tick (about 1 ms), so a
+    file rewritten at the same size within one tick keeps the other four; ``ctime`` also moves on an ``os.utime``
+    restore of ``mtime`` (review of #178, finding A). POSIX only: on Windows ``st_ctime`` is the creation time from
+    ``lstat`` but the change time from ``fstat`` (Python 3.13), so it would never match itself, and an NTFS file id
+    carries a sequence number, so a freed one is not reused at once."""
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns if os.name != "nt" else 0)
+
+
+class NotARegularFile(OSError):
+    """The bounded read's refusal of a path that is not a regular file of at most its cap (``reason``)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason  # not_a_file | too_large
+
+
+def lstat_regular(path: Path, cap: int) -> os.stat_result:
+    """``lstat`` of a regular file of at most ``cap`` bytes, before any ``open``: a symlink, a FIFO, a device or a
+    directory is refused without being opened (``NotARegularFile``); a missing file is ``FileNotFoundError``."""
+    st = os.lstat(path)
+    if not stat.S_ISREG(st.st_mode):
+        raise NotARegularFile("not_a_file")
+    if st.st_size > cap:
+        raise NotARegularFile("too_large")
+    return st
+
+
+def read_bounded(path: Path, cap: int, st: os.stat_result | None = None) -> tuple[bytes, Identity]:
+    """A regular file's bytes, at most ``cap``, read lock-free and never blocking (the change note §4.1 and §4.2):
+
+    * ``lstat`` first (``lstat_regular``, unless the caller already did and passes ``st``);
+    * the open follows no symlink and never waits for a writer (``O_NOFOLLOW``, ``O_NONBLOCK`` where the platform has
+      them): a FIFO swapped in after the ``lstat`` opens at once, instead of blocking until a writer appears;
+    * ``fstat`` must show a regular file with the ``lstat``'s identity, so what is read is what was checked;
+    * at most ``cap + 1`` bytes are read, and more than ``cap`` is refused.
+
+    On Windows, where there are no FIFOs and no such flags, the ``fstat`` check alone applies. Returns the bytes and
+    the file's identity, which keys a reader's caches."""
+    if st is None:
+        st = lstat_regular(path, cap)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags)
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or file_identity(opened) != file_identity(st):
+            raise NotARegularFile("not_a_file")
+        chunks: list[bytes] = []
+        size = 0
+        while size <= cap:  # a regular file's read never blocks, so O_NONBLOCK needs no clearing
+            chunk = os.read(fd, min(1 << 20, cap + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+    finally:
+        os.close(fd)
+    if size > cap:
+        raise NotARegularFile("too_large")
+    return b"".join(chunks), file_identity(opened)
+
+
+def read_artifact_bounded(aew_root: Path, sha: str, *, cap: int = MAP_FILE_MAX,
+                          st: os.stat_result | None = None) -> tuple[dict[str, Any], Identity]:
+    """The dashboard's strict reader: ``read_bounded`` then ``parse_artifact``. ``NOT_FOUND`` when there is no
+    artifact; ``MAP_ARTIFACT_CORRUPT`` with ``reason`` ``not_a_file`` or ``too_large`` for what the bounded read
+    refuses, or the strict reader's own reason. Any other ``OSError`` is a failed read, raised as it is."""
+    _check_sha(sha)
+    rel = artifact_rel(sha)
+    try:
+        raw, identity = read_bounded(aew_root / rel, cap, st)
+    except FileNotFoundError:
+        raise NotFound(f"no structural map {sha} in {MAPS_REL}", root=sha) from None
+    except NotARegularFile as exc:
+        raise MapArtifactCorrupt(f"{rel} is corrupt ({exc.reason}); delete it and generate the map again", root=sha,
+                                 reason=exc.reason) from None
+    return parse_artifact(sha, raw), identity
+
+
+def parse_artifact(sha: str, raw: bytes) -> dict[str, Any]:
+    """The strict reader's checks on an artifact's bytes: canonical JSON of a valid record whose identity is ``sha``,
+    or ``MAP_ARTIFACT_CORRUPT`` with the reason (``not_json``, ``not_a_record``, ``not_canonical``, ``hash_mismatch``,
+    ``schema``)."""
+    rel = artifact_rel(sha)
 
     def corrupt(why: str) -> MapArtifactCorrupt:
         return MapArtifactCorrupt(f"{rel} is corrupt ({why}); delete it and generate the map again", root=sha,

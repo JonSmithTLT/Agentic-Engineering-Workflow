@@ -357,17 +357,17 @@ def object_git(*args: str, cwd: Path, check: bool = True, input: bytes | None = 
     return proc
 
 
-def version(cwd: Path) -> tuple[int, ...]:
+def version(cwd: Path, *, timeout: float = OBJECT_TIMEOUT_S) -> tuple[int, ...]:
     """The installed git's version as numbers (``git version 2.46.0.windows.1`` -> (2, 46, 0))."""
-    raw = object_git("version", cwd=cwd).stdout.decode("ascii", "replace").split()
+    raw = object_git("version", cwd=cwd, timeout=timeout).stdout.decode("ascii", "replace").split()
     numbers = re.findall(r"\d+", raw[2] if len(raw) > 2 else "")
     return tuple(int(n) for n in numbers[:3])
 
 
-def is_partial_clone(cwd: Path) -> bool:
+def is_partial_clone(cwd: Path, *, timeout: float = OBJECT_TIMEOUT_S) -> bool:
     """Whether the repository is a partial clone: ``extensions.partialClone`` set, or a remote marked promisor."""
     proc = object_git("config", "-z", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor)$",
-                      cwd=cwd, check=False)
+                      cwd=cwd, check=False, timeout=timeout)
     for item in proc.stdout.split(b"\0"):
         key, _, value = item.partition(b"\n")
         if key == b"extensions.partialclone" and value.strip():

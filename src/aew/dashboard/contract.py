@@ -60,6 +60,7 @@ RESPONSE_SCHEMAS: dict[str, str] = {
     "/maps/structural/{root}": "StructuralDetailResponse",
     "/maps/structural/{root}/inputs": "StructuralInputsResponse",
     "/maps/diff": "MapDiffResponse",
+    "/history/search": "HistorySearchResponse",  # conditional (register F20.8, S2)
 }
 ERROR_SCHEMA = "Error"
 METHODS = ("get", "head")

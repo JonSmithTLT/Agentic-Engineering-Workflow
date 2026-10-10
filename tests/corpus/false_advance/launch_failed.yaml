@@ -1,0 +1,13 @@
+case: launch_failed
+slice: E5a
+description: >-
+  the assignment and its run 1 commit, but the run's supervisor cannot start: the Ticket stays ASSIGNED and is never
+  moved to RUNNING over a run that never started (rule 7)
+seed: unlaunchable
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: AVAILABLE
+  boundary: launch_failed
+  steps: [work.assign, dispatch.launch]
+  unit_state: ASSIGNED

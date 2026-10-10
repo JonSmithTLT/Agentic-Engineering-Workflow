@@ -1,0 +1,14 @@
+case: pending_policy_adoption
+slice: E5a
+description: >-
+  a policy edit nobody adopted makes every guard unanswerable (UNKNOWN, INTEGRITY_ERROR), never AVAILABLE, and the call
+  opens no intent
+seed: unadopted_policy_edit
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: UNKNOWN
+  reason_codes: [INTEGRITY_ERROR]
+  boundary: error
+  steps: []
+  unit_state: READY

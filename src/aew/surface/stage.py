@@ -29,6 +29,12 @@ The plan comes from the stage's planner (``STAGES``), and each planned primitive
 field]}``: the single unit, invocation or run that step ``m`` recorded in the journal, so a continued stage (E3c)
 resolves it from durable state, never from this call's memory. The journal refuses a reference to a step that is not
 an earlier one, or to a field no step records, when the intent opens (#142 review, finding 4).
+
+The plan is the contract's steps for the call, in order: a step is left out only where availability leaves it
+unplanned (``ticket_draft`` without a plan). A launch planned right after its dispatch is recorded by the dispatch's
+commit (``covers``) and never runs on its own (M4-E E5a). The Ticket stages' planners (E5a: ``ticket_draft``,
+``ticket_start``) take each step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck and R5-1 ask
+each guard what ``explain`` and the projection ask (PR #170 review, finding 3).
 """
 
 from __future__ import annotations
@@ -40,8 +46,9 @@ from typing import TYPE_CHECKING, Any
 from aew import errors
 from aew.engine import stage_intents as SI
 from aew.engine.guards import GUARD_NOT_QUERYABLE
-from aew.engine.primitives import JUDGMENT_BEARING, spec_for
+from aew.engine.primitives import COVERED_BY_PREVIOUS, JUDGMENT_BEARING, spec_for
 from aew.harness.contract import redact
+from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, effective_class
 from aew.util import sha256_bytes
@@ -72,11 +79,59 @@ def _assign(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return c.engine.launch_dispatched(out)
 
 
-STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign": _assign}
+def _create(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    out = c.engine.work_create(token=c.token(), expect_rev=rev, **a)
+    c.subject = out["id"]  # the stage's subject from now on: its projection and later steps are the new unit's
+    return out
 
-# The built stage tools and their planners. None is built yet: E4 and E5 build the Ticket stages over this executor
-# once their guards are queryable and their primitives declared. Tests register probe stages here.
-STAGES: dict[str, Planner] = {}
+
+def _propose(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    return c.engine.plan_propose(token=c.token(), expect_rev=rev, **a)
+
+
+def _transition(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    return c.engine.work_transition(token=c.token(), expect_rev=rev, work_id=a["work_id"], to=a["to"],
+                                    reason=a.get("reason"))
+
+
+def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """A launch never runs as a step of its own: its dispatch's commit records it (``covers``), and its dispatch's step
+    runner hands its run to the supervisor. Reaching this is a plan the journal would refuse at its opening."""
+    raise errors.IllegalTransition("dispatch.launch is run 1 of the dispatch planned before it, recorded in that "
+                                   "dispatch's commit: it never runs on its own", reason="not_covered")
+
+
+STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign": _assign, "work.create": _create,
+                                       "plan.propose": _propose, "work.transition": _transition,
+                                       "dispatch.launch": _covered}
+
+
+# ---------------------------------------------------------------------------------------------- the Ticket stages
+# (M4-E E5a; plan v3 E5.) Each step's guard arguments are availability's (`availability.STAGES`), so `resume`'s
+# recheck and R5-1 ask each guard what `explain` and the projection ask (PR #170 review, finding 3); the planner adds
+# only what no guard reads (`launch`, `execution`) and the ids earlier steps record (`$from`).
+
+def _plan_draft(a: dict[str, Any]) -> list[dict[str, Any]]:
+    """``ticket_draft``: create the Ticket, then propose its plan when one is given (no plan, no step)."""
+    create, propose = (build(a) for build in SA.STAGES["ticket_draft"])
+    plan: list[dict[str, Any]] = [{"primitive": "work.create", "args": create}]
+    if propose is not None:
+        plan.append({"primitive": "plan.propose", "args": {**propose, "work_id": {"$from": [1, "units"]}}})
+    return plan
+
+
+def _plan_start(a: dict[str, Any]) -> list[dict[str, Any]]:
+    """``ticket_start``: the assignment made with ``launch`` (run 1 is ``dispatch.launch``, recorded in its commit),
+    then ASSIGNED -> RUNNING."""
+    assign, launch, transition = (build(a) for build in SA.STAGES["ticket_start"])
+    execution = {"execution": a["execution"]} if "execution" in a else {}
+    return [{"primitive": "work.assign", "args": {**(assign or {}), **execution}},
+            {"primitive": "dispatch.launch", "args": launch},
+            {"primitive": "work.transition", "args": transition}]
+
+
+# The built stage tools and their planners (E5a builds the first two; tests register probe stages here too).
+STAGES: dict[str, Planner] = {"ticket_draft": _plan_draft, "ticket_start": _plan_start}
 
 
 def contract_digest(t: contract.Tool) -> str:
@@ -98,9 +153,10 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     """Run stage ``t`` with ``plan``. Engine refusals before the intent opens propagate (nothing committed); after it
     opens, they stop the stage and are reported on ``c.stopped``."""
     planned = [p["primitive"] for p in plan]
-    if planned != list(t.expands_to):
-        raise errors.UsageError(f"stage {t.name} planned {planned}, but its contract expands to "
-                                f"{list(t.expands_to)}")
+    expected = _contract_steps(t, c.a)
+    if planned != expected:
+        raise errors.UsageError(f"stage {t.name} planned {planned}, but its contract expands to {expected} for this "
+                                "call")
     missing = [p for p in planned if p not in STEP_RUNNERS]
     if missing:
         raise errors.UsageError(f"stage {t.name} plans {missing}, which have no step runner")
@@ -117,23 +173,41 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     return _run_steps(c, intent, plan, 1, rev)
 
 
+def _contract_steps(t: contract.Tool, a: dict[str, Any]) -> list[str]:
+    """The primitives stage ``t`` expands to for the call ``a``: its contract's, less a step the call does not ask for,
+    exactly as availability leaves it unplanned (its guard arguments are None: `ticket_draft` without a plan). Never
+    reordered, and never a step the contract does not name (M4-E E5a)."""
+    builders = SA.STAGES.get(t.name)
+    if builders is None:
+        return list(t.expands_to)
+    return [p for p, build in zip(t.expands_to, builders, strict=True) if build(a) is not None]
+
+
+def _covers(plan: list[dict[str, Any]], n: int, args: dict[str, Any]) -> bool:
+    """Whether step ``n``'s commit also records step ``n + 1``: its dispatch's launch (M4-E E5a; plan v3 §1, N4)."""
+    return launches(args) and n < len(plan) and plan[n]["primitive"] in COVERED_BY_PREVIOUS
+
+
 def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev: int) -> dict[str, Any]:
     """Run ``plan`` from step ``first`` (1 for a new stage; the first uncommitted step for a continued one) from
-    revision ``rev``, stopping at the first refusal, and complete the intent when the last step launched."""
+    revision ``rev``, stopping at the first refusal, and complete the intent when the last step launched. A launch
+    planned after its dispatch is recorded by that dispatch's commit, so it is never run on its own (``_covers``)."""
     outputs: list[dict[str, Any]] = []
     final = False
+    covered = 0
     for n, step in enumerate(plan, start=1):
-        if n < first:  # committed before this call: a continued stage never repeats a step (its key is recorded)
+        if n < first or n == covered:  # committed already: a stage never repeats a step (its key is recorded)
             continue
         try:
             args = _resolve(c, intent, step.get("args") or {})
         except errors.AEWError as refusal:
             return _stop(c, intent, n, step["primitive"], refusal, outputs)
+        covers = _covers(plan, n, args)
         final = n == len(plan) and not launches(args)
         retried = False
         while True:
             try:
-                with SI.step(intent, n, retried=retried, final=final):
+                with SI.step(intent, n, retried=retried, final=final, covers=covers):
                     out = STEP_RUNNERS[step["primitive"]](c, args, rev)
                 break
             except errors.StaleRevision as refusal:
@@ -157,6 +231,8 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                 return _stop(c, intent, n, step["primitive"], refusal, outputs)
         outputs.append(out)
         rev = out["revision"]
+        if covers:
+            covered = n + 1
     if not final:  # the last step launched: its commit could not also complete the stage
         _end(c, lambda r: c.engine.stage_close(token=c.token(), expect_rev=r, intent=intent))
     return _payload(c, intent, outputs)
@@ -193,6 +269,34 @@ def guard_status(engine: Any, primitive: str, args: dict[str, Any]) -> tuple[str
     ``Engine.guard_query``; ``GUARD_NOT_QUERYABLE``, ``GUARD_QUERY_DEFECT``, ``INTEGRITY_ERROR``, ...)."""
     answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
     return answer["availability"], [] if answer["availability"] == AVAILABLE else list(answer["reason_codes"])
+
+
+# What a step blocked with a disposition commits if run (``aew.engine.guards``; PR #171 review, finding 1).
+DISPOSITION_MESSAGES = {
+    "rebuild": "its guard refuses publishing now: the authoritative head moved, so running it publishes nothing and "
+               "commits the one rebuild of the candidate on the new head under the same lease (plan v3 §2.3), or "
+               "leaves the entry for your disposition. Continue to take that path, then revalidate and publish",
+    "requeue": "its guard refuses publishing now: the candidate was built from an earlier acceptance, so running it "
+               "publishes nothing and commits the candidate's retirement and the entry's requeue",
+}
+BLOCKED_WITH_DISPOSITION = "blocked_with_disposition"
+
+
+def guard_check(engine: Any, primitive: str, args: dict[str, Any]) -> dict[str, Any]:
+    """``resume``'s ``guard`` recheck of a next step, from one guard answer (PR #171 re-review, finding 2): ok, blocked,
+    not queryable, or blocked with a disposition that a continue commits by running the step. That last one passes
+    with a stated consequence (``resolve continue`` runs it: the designed path; the boundary names the disposition)."""
+    answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
+    found = answer["availability"]
+    reasons = [] if found == AVAILABLE else list(answer["reason_codes"])
+    check = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
+             UNKNOWN: _unknown_guard(reasons),
+             BLOCKED: {"status": "blocked", "reason_codes": reasons, "message": "its guard refuses it now"}}[found]
+    disposition = answer.get("disposition") if found == BLOCKED else None
+    if disposition is not None:
+        check = {"status": BLOCKED_WITH_DISPOSITION, "reason_codes": reasons, "disposition": disposition,
+                 "message": DISPOSITION_MESSAGES.get(disposition, f"running it commits {disposition}")}
+    return {**check, "availability": found}
 
 
 def _unknown_guard(reasons: list[str]) -> dict[str, Any]:
@@ -282,7 +386,9 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
 # ---------------------------------------------------------------------------------------------- resume and resolve
 # (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
 
-PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard
+# not_queryable: the step's own commit decides its guard; blocked_with_disposition: a continue runs the step, which
+# commits only its disposition (the boundary names it; PR #171 re-review, finding 1).
+PASSING = ("ok", "not_applicable", "not_queryable", "blocked_with_disposition")
 UNKNOWN_STATUS = "not_queryable"
 
 
@@ -329,14 +435,10 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
         except errors.AEWError as exc:
             checks["guard"] = {"status": "unresolved", "message": exc.message}
         else:
-            found, reasons = guard_status(engine, nxt["primitive"], args)
-            checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
-                               UNKNOWN: _unknown_guard(reasons),
-                               BLOCKED: {"status": "blocked", "reason_codes": reasons,
-                                         "message": "its guard refuses it now"}}[found]
-            checks["guard"]["availability"] = found
+            checks["guard"] = guard_check(engine, nxt["primitive"], args)
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
-    boundary = check["boundary"] or ("refused" if failing else None)
+    disposition = checks["guard"].get("disposition")
+    boundary = check["boundary"] or ("refused" if failing else (f"disposition:{disposition}" if disposition else None))
     return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
             "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
             "base_class": si["base_class"], "effective_class": si["effective_class"],
@@ -360,11 +462,13 @@ def resolve_stage(c: Call) -> dict[str, Any]:
 
     - **abandon** ends the intent ABANDONED; its committed steps stand.
     - **continue** re-resolves the stage contract and plan from this surface's catalog, refuses a next step whose
-      guard refuses it now (nothing commits), and has the engine recheck the rest and rebind the intent to the current
-      generation in one commit (F18 §14). It then runs the remaining steps from the first uncommitted one, under the
-      same rules as a new stage (§3.4 rules 3 to 7). With every step committed, that commit ends the stage itself:
-      completed, or stopped as ``launch_failed`` when a launching step's run never started or has ended. A continue
-      never relaunches a run: that is `aew harness launch`, which rotates the credential (#142 review)."""
+      guard refuses it now (nothing commits) unless the refusal carries a ``disposition`` (the step then runs and
+      commits only that, the designed path: a moved head's one rebuild, plan v3 §2.3; PR #171 review), and has the
+      engine recheck the rest and rebind the intent to the current generation in one commit (F18 §14). It then runs
+      the remaining steps from the first uncommitted one, under the same rules as a new stage (§3.4 rules 3 to 7).
+      With every step committed, that commit ends the stage itself: completed, or stopped as ``launch_failed`` when
+      a launching step's run never started or has ended. A continue never relaunches a run: that is `aew harness
+      launch`, which rotates the credential (#142 review)."""
     from aew.surface.run import _error
 
     a = c.a

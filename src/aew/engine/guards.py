@@ -14,6 +14,13 @@ transition and ingest guards the Ticket stages use on the same substrate, its :c
 * a primitive whose guard is not migrated answers ``UNKNOWN``, never ``BLOCKED`` (frozen decision 3), and so does a
   migrated primitive whose answer depends on a guard that is not (a transition rule's named guard, per unit kind).
 
+**BLOCKED commits nothing, except a blocker carrying a ``disposition``, whose call commits only that disposition and
+never the guarded effect** (PR #171 review, finding 1). Today only ``integrate.publish`` has one: a candidate
+superseded by a later acceptance (``requeue``: the call retires it and requeues the entry, then raises the same
+refusal) and a moved authoritative head (``rebuild``: the call rebuilds the candidate once under the same lease, plan
+v3 §2.3, or leaves the entry for the Lead's disposition, and publishes nothing). The answer names it
+(``disposition``), so ``explain``, the projection and ``resume`` can say what calling it would do.
+
 A query never raises a refusal: every refusal is its blocker. It raises only what is not a guard's answer, such as an
 integrity failure (a policy edit awaiting adoption), and the caller reports that as ``UNKNOWN`` with its code. Anything
 else a query raises is an engine defect: it too is ``UNKNOWN`` (``GUARD_QUERY_DEFECT``), logged, and never crashes the
@@ -36,6 +43,8 @@ if TYPE_CHECKING:
 AVAILABLE, BLOCKED, UNKNOWN = "AVAILABLE", "BLOCKED", "UNKNOWN"
 GUARD_NOT_QUERYABLE = "GUARD_NOT_QUERYABLE"  # the guard has no query form yet: its own commit decides it
 GUARD_QUERY_DEFECT = "GUARD_QUERY_DEFECT"  # a query raised something that is not a refusal: an engine defect
+DISPOSITION = "disposition"  # a blocker's detail: what its call commits instead of the guarded effect (module doc)
+DISPOSITIONS = ("requeue", "rebuild")
 
 log = logging.getLogger(__name__)
 
@@ -126,7 +135,8 @@ class GuardQueries:
             return {**out, "availability": UNKNOWN, "blocking_conditions": [], "reason_codes": [GUARD_NOT_QUERYABLE],
                     "not_queryable": found.guard}
         if found is not None:
+            disposition = found.details.get(DISPOSITION)
             return {**out, "availability": BLOCKED, "blocking_conditions": [found.to_dict()],
-                    "reason_codes": [found.code]}
+                    "reason_codes": [found.code], **({DISPOSITION: disposition} if disposition else {})}
         return {**out, "availability": AVAILABLE, "blocking_conditions": [], "reason_codes": []}
 

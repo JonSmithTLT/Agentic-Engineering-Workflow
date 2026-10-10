@@ -11,6 +11,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -408,7 +409,7 @@ class Engine:
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
-                                          dispatch=dispatch)
+                                          dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
@@ -436,6 +437,10 @@ class Engine:
         queries.register("review.ingest", evidence.review_ingest_query)
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
+        queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
+        queries.register("integrate.prepare", integration.prepare_query)
+        queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
+        queries.register("integrate.publish", integration.publish_query)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
@@ -612,6 +617,15 @@ class Engine:
         """Within this block, a gate context asked again of the same control state is reused (a read-only answer)."""
         return self._gates.memo()
 
+    def validation_mode(self, work_id: str | None, *, state: dict[str, Any] | None = None) -> str | None:
+        """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None."""
+        return self._integration.validation_mode(self._k.store.read() if state is None else state, work_id or "")
+
+    def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
+        stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
+        return self._integration.candidate_overlay(state, work_id)
+
     def guard_queries(self) -> list[str]:
         """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
         return self._guard_queries.migrated()
@@ -685,8 +699,8 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text)
+    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         return self._harness.harness_status(invocation)
@@ -1077,6 +1091,19 @@ class Engine:
         (``aew.engine.recall``)."""
         return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
 
+    def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
+                                 since: str | None = None, until: str | None = None, limit: int = 10,
+                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
+                                 enabled: bool, fts5: bool,
+                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+        """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
+        resets, discards or deletes the substrate, and answers within ``deadline``. ``enabled`` and ``fts5`` are the
+        caller's snapshot's answers, never re-read here."""
+        return self._history.history_search_committed(state, terms, kinds=kinds, since=since, until=until,
+                                                      limit=limit, deadline=deadline, budget_s=budget_s,
+                                                      budget_docs=budget_docs, candidates=candidates,
+                                                      enabled=enabled, fts5=fts5, fence_token=fence_token)
+
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)
 
@@ -1111,9 +1138,12 @@ class Engine:
         return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
                                               classification=classification, reason=reason)
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """``scope``: the primitive's (``ticket``: `verify.ingest`, ``integration``: `verify.ingest.integration`), whose
+        query must pass; None (the CLI): the report's own scope decides."""
         return self._evidence.verify_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
-                                            evidence_id=evidence_id)
+                                            evidence_id=evidence_id, scope=scope)
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None) -> dict[str, Any]:

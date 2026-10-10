@@ -13,6 +13,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import re
 import socket
 import sys
 import threading
@@ -593,3 +594,227 @@ def test_the_logged_method_never_carries_control_bytes(live, caplog):
     text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
     assert "\x1b" not in text and "\x07" not in text and "<bad method>" in text, text
     assert "GET /api/v1/project 200" in text
+
+
+# ------------------------------------------------------------------------------------------- refusals that close
+
+def _read_to_end(s: socket.socket) -> tuple[int, dict[str, str], bytes]:
+    """Everything the server sends until its end of output, parsed (status, headers, the body Content-Length
+    names): a reset on the way raises, so a lost answer can never pass for a complete one."""
+    data = b""
+    while got := s.recv(65536):
+        data += got
+    head, _, rest = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
+    body = rest[:int(headers.get("content-length", "0"))]
+    assert len(body) == int(headers.get("content-length", "0")), (lines[0], len(rest))
+    return int(lines[0].split()[1]), headers, body
+
+
+@pytest.mark.parametrize("kind", ["line", "headers", "body", "method"])
+def test_a_refused_request_always_delivers_its_complete_error_body(live, monkeypatch, kind):
+    """A refusal that ends the connection leaves the client's input unread (the rest of a 70 KB request line, a
+    header block past its bound, a body). Closing over unread input resets the connection, and on Windows the reset
+    discards the answer in flight (a once-seen flake of the oversized-line test under load): the server half-closes
+    and reads what the client sends before the close, so the client always reads the whole ``Error``. The client
+    here sends more after the answer has begun, which a close without that drain turns into a reset every time."""
+    monkeypatch.setattr(SV, "REFUSAL_DRAIN_S", 10.0)  # the late bytes below arrive within it however loaded the host
+    host = f"Host: {live.host}\r\n"
+    request, status, code = {
+        "line": (b"GET /" + b"w" * 70000, 414, "REQUEST_TOO_LARGE"),
+        "headers": (f"GET / HTTP/1.1\r\n{host}X-Big: {'b' * 70000}".encode("latin-1"), 431, "REQUEST_TOO_LARGE"),
+        "body": (f"GET / HTTP/1.1\r\n{host}Content-Length: 140000\r\n\r\n{'b' * 70000}".encode("latin-1"), 400,
+                 "INVALID_REQUEST"),
+        "method": (f"POST / HTTP/1.1\r\n{host}Content-Length: 140000\r\n\r\n{'b' * 70000}".encode("latin-1"), 405,
+                   "METHOD_NOT_ALLOWED"),
+    }[kind]
+    for _ in range(3):
+        with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+            s.sendall(request)
+            first = s.recv(1)  # the answer has begun: the server has refused, and is ending the connection
+            time.sleep(0.05)
+            s.sendall(b"b" * 70000)  # input the server never asked for, after its answer
+            got, headers, body = _read_to_end(s)
+            assert first == b"H" and got == status and error_code(body) == code, (kind, got)
+            assert headers.get("connection") == "close"
+            assert_headers(headers)
+
+
+def _inner_read(live: Live) -> bytes:
+    """An authenticated read, sent as a body: answered on its own only if the server parsed the body as a request."""
+    return f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n\r\n".encode("latin-1")
+
+
+def _one_answer_then_the_end(live: Live, request: bytes) -> tuple[int, dict[str, str], bytes]:
+    """Send ``request`` and read until the server's end of output: exactly one answer, complete, saying
+    ``Connection: close``. A body read as the next request would show as a second status line."""
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        s.sendall(request)
+        data = b""
+        while got := s.recv(65536):  # the end of output: the server ended the connection after one answer
+            data += got
+    assert data.count(b"HTTP/1.1 ") == 1, data
+    head, _, body = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
+    assert len(body) == int(headers["content-length"]), lines[0]
+    assert headers.get("connection") == "close"
+    assert_headers(headers)
+    return int(lines[0].split()[1]), headers, body
+
+
+@pytest.mark.parametrize("refusal", [421, 403, 414])
+def test_a_refused_request_with_a_body_never_has_its_body_read_as_a_second_request(live, refusal):
+    """A body is never read, so a request carrying one ends its connection whichever check refuses it. The refusals
+    checked before the body (a foreign ``Host``, a foreign ``Origin``, an over-long path) used to keep the
+    connection, so the body was parsed as the next request: here a body that is itself an authenticated read gets
+    no answer of its own, only the refusal, with ``Connection: close`` and the end of the connection."""
+    inner = _inner_read(live)
+    host, extra, path = {
+        421: ("evil.example", "", "/"),
+        403: (live.host, "Origin: http://evil.example\r\n", "/"),
+        414: (live.host, "", "/" + "p" * (SV.MAX_PATH + 1)),
+    }[refusal]
+    outer = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+    assert _one_answer_then_the_end(live, outer + inner)[0] == refusal
+
+
+@pytest.mark.parametrize("framing", ["content-length-0-then-n", "empty-then-chunked-transfer-encoding"])
+@pytest.mark.parametrize("host", ["foreign", "exact"])
+def test_a_body_announced_by_any_framing_header_is_never_read_as_a_second_request(live, framing, host):
+    """Every framing header counts, not only the first of its name: ``Content-Length: 0`` followed by
+    ``Content-Length: N``, or an empty ``Transfer-Encoding`` followed by ``chunked``, still announces a body. With a
+    foreign ``Host`` the answer is the ``421``; with the exact one, a read that would otherwise be served is the
+    ``400`` "a read carries no body". Either way one answer, and the body is never answered as a request."""
+    inner = _inner_read(live)
+    framing_headers, body = {
+        "content-length-0-then-n": (f"Content-Length: 0\r\nContent-Length: {len(inner)}\r\n", inner),
+        "empty-then-chunked-transfer-encoding": ("Transfer-Encoding: \r\nTransfer-Encoding: chunked\r\n",
+                                                 f"{len(inner):x}\r\n".encode() + inner + b"\r\n0\r\n\r\n"),
+    }[framing]
+    host_line = "evil.example" if host == "foreign" else live.host
+    outer = (f"GET /api/v1/project HTTP/1.1\r\nHost: {host_line}\r\nCookie: {live.cookie}\r\n{framing_headers}\r\n"
+             .encode("latin-1"))
+    status, _, raw = _one_answer_then_the_end(live, outer + body)
+    assert status == (421 if host == "foreign" else 400), (framing, host, status)
+    if host == "exact":
+        assert error_code(raw) == "INVALID_REQUEST"
+
+
+@pytest.mark.parametrize("form", ["space-before-colon", "tab-before-colon", "folded-line", "bare-cr-in-line",
+                                  "nul-in-name", "line-without-colon", "non-ascii-in-name"])
+def test_a_header_block_outside_strict_field_syntax_is_refused_and_ends_its_connection(live, form):
+    """RFC 9112 §5 (and §2.2 for a bare CR): every header line is a token name, a colon and a value without control
+    bytes. A line outside that grammar is refused with ``400`` before any header is acted on, with one answer,
+    ``Connection: close`` and the end of the connection."""
+    inner = _inner_read(live)
+    n = str(len(inner)).encode()
+    field = {
+        "space-before-colon": b"Content-Length : " + n + b"\r\n",
+        "tab-before-colon": b"Content-Length\t: " + n + b"\r\n",
+        "folded-line": b"X-A: a\r\n Content-Length: " + n + b"\r\n",
+        "bare-cr-in-line": b"X-A: a\r Content-Length: " + n + b"\r\n",
+        "nul-in-name": b"Content-Length\x00: " + n + b"\r\n",
+        "line-without-colon": b"Garbage\r\nContent-Length: " + n + b"\r\n",
+        "non-ascii-in-name": b"Content-Length\xa0: " + n + b"\r\n",
+    }[form]
+    outer = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n".encode("latin-1")
+    status, _, raw = _one_answer_then_the_end(live, outer + field + b"\r\n" + inner)
+    assert status == 400 and error_code(raw) == "INVALID_REQUEST", (form, status)
+
+
+def test_a_long_header_line_outside_the_field_grammar_is_refused_promptly(live):
+    """The field-grammar check is linear in the line's length: a colon-less line of repeated token characters, as
+    long as the header bound admits, is refused ``400`` at once, never after a long regex backtrack. The time bound
+    is generous: a polynomial check takes minutes on this line, a linear one milliseconds."""
+    line = b"!" * (SV.MAX_HEADER_BYTES - 512)
+    request = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\n".encode("latin-1") + line + b"\r\n\r\n"
+    started = time.monotonic()
+    status, _, raw = _one_answer_then_the_end(live, request)
+    assert status == 400 and error_code(raw) == "INVALID_REQUEST"
+    assert time.monotonic() - started < 10.0
+
+
+def test_header_lines_in_the_field_grammar_are_served_on_a_kept_alive_connection(live):
+    """The field grammar refuses nothing a client may send: browser-like headers, an empty value, a tab-led value,
+    a value with colons and runs of spaces, and LF-only line endings are all served, twice on one connection,
+    without ``Connection: close``."""
+    base = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n"
+    browser = ("User-Agent: Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/130.0\r\n"
+               "Accept: application/json, text/plain, */*\r\nAccept-Language: en-US,en;q=0.5\r\n"
+               "Accept-Encoding: gzip, deflate, br\r\nSec-Fetch-Site: same-origin\r\nSec-Fetch-Mode: cors\r\n"
+               "Sec-Fetch-Dest: empty\r\nConnection: keep-alive\r\nX-Empty:\r\nX-Tab:\tv\r\nX-Note: a: b  c \r\n")
+    for request in ((base + browser + "\r\n").encode("latin-1"), (base + "\r\n").replace("\r\n", "\n").encode()):
+        with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+            s.sendall(request + request)
+            data, heads = b"", []
+            while len(heads) < 2:  # two complete responses, each framed by its Content-Length
+                while b"\r\n\r\n" not in data:
+                    got = s.recv(65536)
+                    assert got, (heads, data)  # the server ended the connection: it refused, or closed
+                    data += got
+                head, _, data = data.partition(b"\r\n\r\n")
+                length = int(re.search(rb"(?im)^content-length:\s*(\d+)", head).group(1))  # type: ignore[union-attr]
+                while len(data) < length:
+                    got = s.recv(65536)
+                    assert got, head
+                    data += got
+                data = data[length:]
+                heads.append(head)
+        for head in heads:
+            assert head.startswith(b"HTTP/1.1 200 ") and b"connection: close" not in head.lower(), head
+
+
+def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second_request(live):
+    """The in-flight ``503`` is answered before the admission checks see the request: a body there is unread too,
+    so the ``503`` says ``Connection: close``, is drained, and the body is never answered as the next request."""
+    inner = _inner_read(live)
+    outer = f"GET / HTTP/1.1\r\nHost: {live.host}\r\nContent-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+    slots = live.server._slots  # noqa: SLF001 (the in-flight bound, filled in-process)
+    held = 0
+    while slots.acquire(blocking=False):
+        held += 1
+    try:
+        assert held == SV.MAX_IN_FLIGHT
+        status, headers, raw = _one_answer_then_the_end(live, outer + inner)
+    finally:
+        for _ in range(held):
+            slots.release()
+    assert status == 503 and error_code(raw) == "SERVER_BUSY" and headers.get("retry-after") == "1"
+
+
+def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):
+    """R23 bounds the drain too: with its deadline out of reach, a refused client sending without end is still cut
+    off once ``DRAIN_MAX_BYTES`` are read, never read for as long as it cares to send."""
+    monkeypatch.setattr(SV, "REFUSAL_DRAIN_S", 60.0)
+    chunk = b"w" * 65536
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=10) as s:
+        started = time.monotonic()
+        cut = False
+        s.sendall(b"GET /" + chunk)
+        while time.monotonic() - started < 8.0:
+            try:
+                s.sendall(chunk)
+            except OSError:  # the server closed over the unread rest: a reset
+                cut = True
+                break
+        assert cut, "the server read a refused client's input without bound"
+        assert time.monotonic() - started < 6.0
+
+
+def test_a_refused_client_that_neither_sends_nor_closes_is_let_go_at_the_drain_deadline(live):
+    """R23's short deadline: a refused client that reads its answer and then holds the connection open, sending
+    nothing, holds its handler (and a connection slot) for ``REFUSAL_DRAIN_S`` at most, and is not let go before
+    it: the drain's deadline starts after the request was sent, so the slot cannot come back sooner than that."""
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        sent = time.monotonic()
+        s.sendall(b"GET /" + b"w" * 5000 + b" HTTP/1.1\r\n\r\n")
+        got, _, body = _read_to_end(s)  # the end of output is the half-close; the connection itself stays open
+        assert got == 414 and error_code(body) == "REQUEST_TOO_LARGE"
+        started = time.monotonic()
+        _wait_for_connections(live, SV.MAX_CONNECTIONS)
+        released = time.monotonic()
+        assert released - started < SV.REFUSAL_DRAIN_S + 2.0
+        assert released - sent >= SV.REFUSAL_DRAIN_S / 2  # held by the drain, not closed at once (half: timer slack)

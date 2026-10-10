@@ -1,0 +1,11 @@
+case: non_mutating_ticket
+slice: E5a
+description: ticket_start assigns a mutating Ticket only; a READY non-mutating one is refused by the assignment's decision
+seed: non_mutating_ready
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: BLOCKED
+  boundary: refused
+  steps: []
+  unit_state: READY

@@ -1,0 +1,11 @@
+case: concurrency_cap
+slice: E5a
+description: with mutating concurrency 1 held by another assigned Ticket, a second start is refused at its assignment
+seed: cap_held
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: BLOCKED
+  boundary: refused
+  steps: []
+  unit_state: READY

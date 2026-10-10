@@ -21,8 +21,8 @@ from aew.dashboard.contract import Contract
 from aew.dashboard.contract import compile_problems as compiles
 
 MAPS = {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs", "/maps/diff"}
-# The note's whole status bullet: its first line and its continuation lines, up to the next bullet.
-STATUS = re.compile(r"^- \*\*Status:\*\*.*?(?=^- \*\*)", re.M | re.S)
+# The status bullet: its first line and its indented continuation lines.
+STATUS_BULLET = re.compile(r"^- \*\*Status:\*\*.*\n(?:  .*\n)*", re.M)
 
 
 def test_the_note_agrees_with_the_accepted_contract():
@@ -64,20 +64,16 @@ def test_every_count_the_appendix_types_is_within_javascripts_exact_integers():
         assert schema.get("maximum", 2**53) <= 2**53 - 1 and schema.get("minimum", -1) >= 0, schema
 
 
-def test_the_note_records_its_adoption_and_the_routes_served_at_it():
-    """S1 wrote the adopted line (W1 adopted the appendix unchanged): contract 0.1.3, with the five maps routes served
-    at adoption, so the check is strict at 0.1.3, and ``/history/search`` stays pending until S2 appends it."""
+def test_the_note_records_the_adoption_and_every_route_served_since():
+    """The adopted line names the adopted version and every added route this server serves (S1 the five maps routes,
+    S2 the search), so a later minor version must keep each of them equal."""
     from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES
 
     line = adopted(note_text())
-    assert line is not None and line[0] == "0.1.3" and set(line[2]) == MAPS
-    assert set(line[2]) <= set(ROUTES) | CONDITIONAL_ROUTES
-    assert "/history/search" not in set(ROUTES) | CONDITIONAL_ROUTES
-
-
-def unadopted(text: str) -> str:
-    """A scratch note as it stood before adoption: its status bullet records none."""
-    return STATUS.sub("- **Status:** Proposed; the additions are not yet adopted in a contract.\n", text, count=1)
+    assert line is not None and line[0] == "0.1.3"
+    added = set(proposed(note_text(), base_contract())["paths"]) - set(base_contract()["paths"])
+    assert set(line[2]) == added & (set(ROUTES) | CONDITIONAL_ROUTES)
+    assert set(line[2]) == MAPS | {"/history/search"}
 
 
 # ---------------------------------------------------------------------------------------------- the modes
@@ -93,10 +89,15 @@ def v013(base) -> dict[str, Any]:
 
 
 def adopt(text: str, version: str = "0.1.3", routes: set[str] = MAPS) -> str:
-    """A scratch note whose status line records an adoption, as S1 wrote it."""
+    """A scratch note whose status bullet records an adoption, as the first slice to serve a route writes it."""
     served = ", ".join(f"`{r}`" for r in sorted(routes))
     line = f"- **Status:** as adopted in contract `{version}` at `0123456789ab`; served at adoption: {served}.\n"
-    return STATUS.sub(line, text, count=1)
+    return STATUS_BULLET.sub(lambda _: line, text, count=1)
+
+
+def unadopted(text: str) -> str:
+    """A scratch note as it stood before adoption: its whole status bullet without an adopted line."""
+    return STATUS_BULLET.sub(lambda _: "- **Status:** proposed; Appendix A is not adopted yet.\n", text, count=1)
 
 
 def amended(base: dict[str, Any], mutate) -> dict[str, Any]:
@@ -218,6 +219,6 @@ def test_a_contract_older_than_the_adopted_version_fails(base, v013):
 
 def test_prose_that_describes_the_adopted_line_is_not_an_adoption():
     """Only the status bullet counts: §3.3 quotes the line's form without adopting anything."""
-    text = unadopted(note_text())
-    assert "as adopted in contract `<V>` at `<sha>`" in text
-    assert adopted(text) is None
+    before = unadopted(note_text())
+    assert "as adopted in contract `<V>` at `<sha>`" in before
+    assert adopted(before) is None

@@ -50,6 +50,27 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
                   "expected_revision", "invoke.create.parent"),
     PrimitiveSpec("harness.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
                   "expected_revision", "harness.launch"),
+    # Run 1 of a dispatch made with `launch` (M4-E E5a; plan v3 §1, E4, E5, N4): recorded in that dispatch's own commit
+    # and covered by its decision (the registered internal entrypoint, `covered_by`), then handed with the dispatch's
+    # credential to the run's supervisor. A stage records it as the step after its dispatch, in the same commit
+    # (`stage_intents.StepBinding.covers`); the provenance it stamps on the run is unchanged.
+    PrimitiveSpec("dispatch.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
+                  "expected_revision", "dispatch.launch"),
+    # The Ticket stages' own primitives (M4-E E5a: declared with the first stage that runs them, plan v3 E5). Each
+    # guard is the queryable one its execute path requires (E4: `Engine.guard_query`).
+    # A unit created from the Lead's proposition: its title, class, scope, criteria and dependencies are the Lead's.
+    PrimitiveSpec("work.create", JUDGMENT_BEARING, ("ticket_proposition",), ("gates", "guardrails", "roles"), (),
+                  "control_state", "expected_revision", "work.create"),
+    # A plan proposed, never accepted: its body and declared assurance are the Lead's.
+    PrimitiveSpec("plan.propose", JUDGMENT_BEARING, ("plan_proposal",), ("gates", "roles"), (), "control_state",
+                  "expected_revision", "plan.propose"),
+    # A Lead transition: legal only by the transition table, the state hooks and the rule's named guard, all read from
+    # durable state. A cancellation ends the Ticket's attempt: it revokes its invocations' credentials (`credential`);
+    # its ended observations' worktrees are removed when they are archived after its commit (`workspace`; the
+    # implementer's worktree is kept); and a live run's supervisor ends its harness once the run's credential is revoked
+    # (`harness_process`). Each is observed (test_a_cancellations_effects_are_declared; PR #177 review, finding 1).
+    PrimitiveSpec("work.transition", MECHANICAL, (), ("gates",), (),
+                  "control_state+workspace+credential+harness_process", "expected_revision", "work.transition"),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
@@ -122,6 +143,15 @@ BY_DECISION = frozenset({"invoke.create.mutating", "invoke.create.non_mutating",
 
 def commit_ops(primitive_id: str) -> frozenset[str]:
     return COMMIT_OPS.get(primitive_id, frozenset({primitive_id}))
+
+
+# Primitives whose commit is another step's: a launch is run 1 of the dispatch planned just before it, committed by
+# that dispatch's transaction and admitted by its decision (M4-E E5a; plan v3 §1). The stage journal records it in the
+# dispatch's commit, as the next step (`stage_intents.StepBinding.covers`), and it never runs as a step of its own.
+COVERED_BY_PREVIOUS: dict[str, frozenset[str]] = {
+    "dispatch.launch": frozenset({"work.assign", "work.dispatch", "invoke.create.mutating",
+                                  "invoke.create.non_mutating", "invoke.create.parent"}),
+}
 
 
 CLASS_RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}

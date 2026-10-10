@@ -92,7 +92,7 @@ The Lead dispatches with `--launch` on `work assign`, `work dispatch`, `work red
 ```bash
 aew harness wait R-INV-0001-1 --timeout 110     # until the run stops; its evidence, each item's result, and the next action
 aew harness status [INV]                        # runs, their local status, and whether they still hold authority
-aew harness send R-INV-0001-1 --file nudge.md   # a message to a running agent, delivered after its current step
+aew harness send R-INV-0001-1 --file nudge.md   # a message to a running agent, at its next step boundary
 aew harness interrupt R-INV-0001-1              # stop the current turn and keep the session
 aew harness stop R-INV-0001-1 --reason "..."    # stop the harness; the invocation is unchanged
 aew harness launch INV-0001 --expect-rev N      # a new run of the same invocation (rotates its credential)

@@ -1,0 +1,11 @@
+case: plan_not_accepted
+slice: E5a
+description: a Ticket whose plan is proposed but not accepted is BLOCKED; starting it commits nothing
+seed: proposed_plan
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: BLOCKED
+  boundary: refused
+  steps: []
+  unit_state: BLOCKED

@@ -188,7 +188,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - A session created by anyone else is recorded as `foreign_sessions`.
   - The server dying is a crash, with the server's exit code.
 - **Lead requests:**
-  - `aew harness send` is a queued prompt, delivered inside the current turn, never lost at its boundary. It refuses text containing a credential.
+  - `aew harness send` is a queued prompt, delivered inside the current turn, never lost at its boundary. It refuses text containing a credential. *(Amended 2026-10-10, below: it takes `--when`, and posts `steer` by default.)*
   - `aew harness interrupt` holds the session after the turn is interrupted, until a `send`, a stop or the deadline.
 - **Collected, all non-authoritative:**
   - the effective models from assistant messages (compared with the pin: `model_check`);
@@ -676,3 +676,33 @@ organization gateway the relay speaks TLS to; here the Provider Gateway always c
   request it attested and the request it credentialed and forwarded. A single composed service is preferred.
 - **What governs what.** The amendment of 2026-10-05 keeps governing network containment and fixed-upstream credential
   routing (F28); the hosting design governs attachment-aware attestation and broker binding (F18.8).
+
+## Amendment 2026-10-10 — `harness send` takes `--when`, and posts `steer` by default (register E55)
+
+The F9-A MS0 probe of OpenCode 2.0.18 ([ADR-0017](0017-coordination-messages.md) D8, its
+[evidence](evidence/f9a-delivery-probe-2026-10-10/probe-results.md)) found that a `queue` input is admitted only when
+the agent's loop would end, after its turn, while `steer` is admitted at the next step boundary. The designer's
+decision of 2026-10-10 ([record](../../design/decisions-2026-10-10-f9-steer-vs-queue.md)) and its refinements
+([G1 and G2](../../design/decisions-2026-10-10-f9-a-g1-g2.md), [G4](../../design/decisions-2026-10-10-f9-a-g4-rename.md))
+replace this ADR's "queued prompt" with two explicit timings. Built by slice HS1 of the F9-A plan's amendment 2:
+
+- **`aew harness send --when next-step|turn-end`.** `next-step`, the default, posts `delivery: steer`: the message
+  reaches the agent at its next step boundary, inside the turn, without interrupting a running tool or model call.
+  `turn-end` maps to `delivery: queue`, after the agent's turn, and exists only through the F9 message store. The
+  mapping is one constant (`aew.harness.delivery.WHEN_DELIVERY`, re-exported by `aew.coordination.layout`), and the adapter interface is
+  `send(text, delivery)` (`harness-conformance.md`).
+- **The route** is decided under the control lock, before any write, from the project's adopted messaging switch and the
+  run's launch snapshot of it:
+  - both off (M4-H's treatment): `next-step` is the recorded request file, as before (1 MiB); `turn-end` is refused
+    `TURN_END_NEEDS_MESSAGING`, so no Lead path posts `queue`;
+  - both on: every send is refused `HARNESS_SEND_NEEDS_STORE` until F9-A's MS5b records it in the store, from which it
+    still wakes a held session;
+  - they disagree: refused `MESSAGING_SNAPSHOT_MISMATCH`, before any timing's own refusal; the remedy is a relaunch.
+    With the project switched on, until F9-A's MS4 writes the run's snapshot, every run reads as launched with messaging
+    off, so that refusal says that sending needs messaging switched off rather than advising a relaunch that could not
+    help.
+  - Every refusal writes nothing: no request file, no control-state entry, no post.
+- **The held session** after `harness interrupt` is still woken by a `harness send`: `steer` with the default `resume`
+  wakes it, as `queue` did.
+- **The completion-boundary rule** (a turn is over only when none of AEW's prompts is still queued) is unchanged and
+  stays tested with a `queue` input at the adapter level.

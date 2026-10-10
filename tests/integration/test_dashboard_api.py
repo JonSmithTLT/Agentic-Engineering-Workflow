@@ -42,10 +42,12 @@ from aew.engine.store import LOCK_REL  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = CT.Contract(ROOT / CT.CONTRACT_REL)
-# The sweeps cover the routes this server serves; whatever else the accepted contract holds is pending, derived and
-# never listed (register F20.8, the change note's §3.3), and so are the routes the change note proposes, so the
-# pending answers are tested before the web developer adopts them and after.
-SERVED = sorted(r for r in CONTRACT.paths if r in ROUTES or r in CONDITIONAL_ROUTES)
+# The sweeps cover the routes this server always serves; whatever else the accepted contract holds is pending, derived
+# and never listed (register F20.8, the change note's §3.3), and so are the routes the change note proposes, so the
+# pending answers are tested before the web developer adopts them and after. A conditional route is off in this
+# world (its switch is not adopted), so it is swept where it is on: tests/integration/test_dashboard_history_search.py.
+SERVED = sorted(r for r in CONTRACT.paths if r in ROUTES)
+assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
 PENDING = sorted(pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"])))
 
 

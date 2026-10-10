@@ -286,12 +286,23 @@ def _reports(engine: Any, subject: str, runs: list[dict[str, Any]], d: dict[str,
     return sorted(out)
 
 
-def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[str, Any]],
+               blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The decisions required, each with its stage's availability where the stage is migrated. A decision's stage
+    that is blocked adds its blockers (with any ``disposition`` its call would commit instead, PR #171 review) to
+    ``blockers``."""
     out = []
     for d in part["decisions"]:
         if "role" not in d:
-            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=d.get("arguments"),
-                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence")))
+            arguments = d.get("arguments")
+            found = UNKNOWN
+            if arguments is not None and d["tool"] and SA.migrated(d["tool"]):  # PUBLISH: its stage's (M4-E E4b)
+                composed = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
+                                                                     if k != "expect_rev"})
+                found = composed["availability"]
+                blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in composed["blockers"])
+            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=arguments,
+                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e}
@@ -333,5 +344,6 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
     for a in actions:
         a["callable"] = contract.callable_on(contract.tool(a["action"]), ctx.profile)
     return {"revision": part["revision"], "generation": part["generation"], "subject": subject,
-            "state": part["state"], "actions": actions, "decisions_required": _decisions(engine, part, subject, runs),
-            "blockers": blockers, "anomalies": [], "hints": hints, "runs": runs}
+            "state": part["state"], "actions": actions,
+            "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
+            "anomalies": [], "hints": hints, "runs": runs}

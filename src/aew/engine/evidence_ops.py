@@ -24,7 +24,7 @@ from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.guards import NotQueryable, require
+from aew.engine.guards import NotQueryable, refusal, require
 from aew.engine.guards import checked as guard_checked
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
@@ -326,7 +326,8 @@ class Gates:
                                   self._guard_commit_ready_without_review_or_verification),
                 GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current),
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification),
-                GuardRegistration("all_gates_current", self._guard_all_gates_current)]
+                GuardRegistration("all_gates_current", self._guard_all_gates_current,
+                                  query=self._query_all_gates_current)]
 
     def _query_ready_for_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """RUNNING -> REVIEW_PENDING (M4-E E4: its query form): a review gate applies, and the pre-review gates are
@@ -379,15 +380,36 @@ class Gates:
             raise GateUnsatisfied("verification gates apply to this Ticket", required=self.verification_gates(gc))
         self._commit_ready(ctx, work_id, unit, gc)
 
-    def _guard_all_gates_current(self, ctx, work_id, unit, to) -> None:
-        self._commit_ready(ctx, work_id, unit, self.gate_context(ctx.state, work_id))
+    def _query_all_gates_current(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """VERIFIED -> COMMIT_READY (M4-E E4b: its query form): every effective gate is current for the workspace's
+        snapshot and no required finding is open. It records the gate context it evaluated
+        (``found["gate_context"]``): the acceptance the transition records is that context's snapshot."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            self._require_commit_ready(gc)
+            args.setdefault("found", {})["gate_context"] = gc
 
-    def _commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        return guard_checked(check)
+
+    def _guard_all_gates_current(self, ctx, work_id, unit, to) -> None:
+        args: dict[str, Any] = {"to": to}
+        require(self._query_all_gates_current(ctx.state, work_id, args))
+        self._accept_commit_ready(ctx, work_id, unit, args["found"]["gate_context"])
+
+    def _require_commit_ready(self, gc: dict[str, Any]) -> None:
         """WC §8: VERIFIED -> COMMIT_READY needs every effective gate current and required findings resolved/waived."""
         self.require_gates(gc, gc["obligations"]["gates"], what="-> COMMIT_READY")
         if gc["open_required_findings"]:
             raise GateUnsatisfied("mandatory review findings are unresolved and not waived",
                                   findings=[f["id"] for f in gc["open_required_findings"]])
+
+    def _commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        self._require_commit_ready(gc)
+        self._accept_commit_ready(ctx, work_id, unit, gc)
+
+    def _accept_commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        """The COMMIT_READY acceptance: the evidence relied on is pinned, the gated snapshot recorded, and the
+        acceptance's identity (``commit_ready_seq``) moves on."""
         self.record_relied_on(ctx, unit, gc, list(gc["gates"]))
         unit["commit_ready_snapshot"] = gc["snapshot"]
         unit["commit_ready_gates"] = {g: v["status"] for g, v in gc["gates"].items()}
@@ -864,9 +886,20 @@ class EvidenceCommands:
         return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
                                               evidence_id=evidence_id, kind="review")
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
-                                              evidence_id=evidence_id, kind="verification")
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """Ingest a verification report. With ``scope`` (``ticket``: the `verify.ingest` primitive; ``integration``:
+        `verify.ingest.integration`), the report must be of that scope: the primitive's own query is required, so its
+        refusal holds on execution too (PR #171 review, finding 2). Without it (the `aew verify ingest` command), the
+        report's own scope selects the checks, as before."""
+        handler = self._handler(INGEST, work_id)
+        if scope is None:
+            return handler(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id,
+                           kind="verification")
+        if handler != self._ingest_ticket_report:
+            raise UsageError("a scoped verification ingest is a mutating Ticket's; ingest this report without a scope")
+        return self._ingest_ticket_verification(token=token, expect_rev=expect_rev, work_id=work_id,
+                                                evidence_id=evidence_id, scope=scope)
 
     def _ingest_ticket_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                               kind: str) -> dict[str, Any]:
@@ -990,13 +1023,48 @@ class EvidenceCommands:
                 "open_required_findings": [f["id"] for f in open_required],
                 "revision": ctx.session.committed_revision}
 
-    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str,
-                                    evidence_id: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
-            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
-                               "ids": [evidence_id]})
-            state = ctx.state
-            unit = self.units.unit(state, work_id)
+    # ---- `verify.ingest`'s guard as a query (M4-E E4b; aew.engine.guards). One query for both scopes: the report's own
+    # scope selects the checks, as the ingest's does; the primitives `verify.ingest` (Ticket scope) and
+    # `verify.ingest.integration` each also refuse a report of the other scope.
+
+    def verify_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``verify.ingest`` of report ``args["evidence"]`` (either scope): the guard of the ingest the
+        ``KindRegistry`` selects for the unit, where it has a query form (a mutating Ticket's)."""
+        found = guard_checked(lambda: self.units.unit(state, work_id))
+        if found is not None:
+            return found
+        if self.kinds.resolve(INGEST, state["work"][work_id]) != self._ingest_ticket_report:
+            return NotQueryable("verify.ingest")
+        return self._query_ticket_verification(state, work_id, args)
+
+    def scoped_verify_query(self, scope: str) -> Any:
+        """The query of the primitive that ingests a report of ``scope`` (``ticket``: `verify.ingest`;
+        ``integration``: `verify.ingest.integration`): the ingest's guard, and the report is of that scope."""
+        def query(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+            found = self.verify_ingest_query(state, work_id, args)
+            if found is not None:
+                return found
+            got = args["found"]["evidence"]["verification"]["scope"]
+            if got != scope:
+                return refusal(IllegalTransition(
+                    f"{args['found']['evidence']['id']} is a {got}-scope verification, not a {scope}-scope one",
+                    scope=got, expected=scope))
+            return None
+
+        return query
+
+    def _query_ticket_verification(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """Accepting a verification report for a mutating Ticket: a sealed verification of it by a verifier; for the
+        Ticket's scope, the Ticket is VERIFY_PENDING and the report evaluated the workspace's current snapshot; for the
+        integration's, the Ticket is COMMIT_READY with a prepared candidate bound to its current acceptance, the
+        Ticket's entry holds a live lease, and the report evaluated that candidate's current snapshot; the report is
+        bound to the current plan and attempt or candidate; and the state change its outcome implies is one the
+        transition table and the state hooks allow. It records the report, its pinned reference and the outcome
+        (:meth:`_verification_outcome`, the ingest's own)."""
+        evidence_id = str(args.get("evidence"))
+
+        def check() -> None:
+            unit = state["work"][work_id]
             ev = self.gates.find_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             if ev["kind"] != "verification" or inv["role"] != "verifier" or inv["work_unit"] != work_id:
@@ -1019,31 +1087,77 @@ class EvidenceCommands:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",
                                       verified=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
             self.gates.require_bound_report(state, unit, ev, scope=scope)
+            to, status, _pending = self._verification_outcome(state, work_id, ev)
+            if to is not None:  # the change the ingest makes: the table's edge and the state hooks
+                transitions.check(unit["state"], to, "verify.ingest")
+                require(self.units.state_change_query(unit, {"from": unit["state"], "to": to}))
+            args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev), to=to or unit["state"],
+                                                integration_status=status)
+
+        return guard_checked(check)
+
+    def _verification_outcome(self, state: dict[str, Any], work_id: str,
+                              ev: dict[str, Any]) -> tuple[str | None, str | None, dict[str, str]]:
+        """The outcome of ingesting verification ``ev``, computed on a copy (one function for the query's prediction and
+        the ingest itself): the report pinned and its verifier's invocation completed, then the state the Ticket moves
+        to (None: it stays), the integration's new status (integration scope; None for the Ticket's), and the
+        verification gates still unmet. Ticket scope: VERIFIED (None while another planned verifier card is
+        outstanding), VERIFICATION_FAILED or VERIFICATION_INCONCLUSIVE, mechanically from the result (ambiguity report
+        B1, B2). Integration scope: a pass validates the candidate, a fail is VERIFICATION_FAILED, anything else is
+        inconclusive (the ingest then releases the lease to AWAITING_DISPOSITION, M4-D4)."""
+        result = ev["result"]
+        if ev["verification"]["scope"] != "ticket":
+            if result == "pass":
+                return None, "validated", {}
+            if result == "fail":
+                return "VERIFICATION_FAILED", "validation_failed", {}
+            return None, "validation_inconclusive", {}
+        to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(result, "VERIFICATION_INCONCLUSIVE")
+        if to != "VERIFIED":
+            return to, None, {}
+        unit = copy.deepcopy(state["work"][work_id])
+        self.gates.ingest_ref(unit, ev)
+        verifier = ev["producer"]["invocation"]
+        invocations = dict(state["invocations"])
+        if (invocations.get(verifier) or {}).get("status") == "active":
+            invocations[verifier] = {**invocations[verifier], "status": "completed"}
+        scratch = {**state, "work": {**state["work"], work_id: unit}, "invocations": invocations}
+        gc = self.gates.gate_context(scratch, work_id)
+        pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
+        return (None if pending else "VERIFIED"), None, pending  # None: other planned verifier cards outstanding
+
+    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                                    scope: str | None = None) -> dict[str, Any]:
+        with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
+            ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
+                               "ids": [evidence_id]})
+            state = ctx.state
+            args: dict[str, Any] = {"evidence": evidence_id}
+            # The guard, as `explain` and a stage ask it: the scoped primitive's, or the report's own scope's.
+            query = self.verify_ingest_query if scope is None else self.scoped_verify_query(scope)
+            require(query(state, work_id, args))
+            unit = state["work"][work_id]
+            ev = args["found"]["evidence"]
+            scope = ev["verification"]["scope"]
             self.gates.ingest_ref(unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]
             unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope}
             change = None
-            pending: dict[str, str] = {}
+            # The outcome, by the function the query predicted it with (the report is pinned already: a no-op there).
+            to, status, pending = self._verification_outcome(state, work_id, ev)
             if scope == "ticket":
-                # The Verifier's result determines the state mechanically (ambiguity report B1, B2).
-                to = {"pass": "VERIFIED", "fail": "VERIFICATION_FAILED"}.get(result, "VERIFICATION_INCONCLUSIVE")
-                if to == "VERIFIED":
-                    gc = self.gates.gate_context(state, work_id)
-                    pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
-                    if pending:
-                        to = None  # other planned verifier cards are still outstanding
                 if to:
                     transitions.check(unit["state"], to, "verify.ingest")
                     change = self.units.set_state(unit, to, f"verification {evidence_id}: {result}", state=state)
-            elif result == "pass":
-                unit["integration"]["status"] = "validated"
+            elif status == "validated":
+                unit["integration"]["status"] = status
                 unit["integration"]["post_integration_evidence"] = evidence_id
-            elif result == "fail":
-                unit["integration"]["status"] = "validation_failed"
-                transitions.check(unit["state"], "VERIFICATION_FAILED", "verify.ingest")
-                change = self.units.set_state(unit, "VERIFICATION_FAILED",
-                                         f"post-integration verification {evidence_id} failed", state=state)
+            elif status == "validation_failed" and to:
+                unit["integration"]["status"] = status
+                transitions.check(unit["state"], to, "verify.ingest")
+                change = self.units.set_state(unit, to, f"post-integration verification {evidence_id} failed",
+                                              state=state)
             else:
                 unit["integration"]["status"] = "validation_inconclusive"
                 # M4-D4: an inconclusive integration validation must not hold the one lease while the Lead decides:

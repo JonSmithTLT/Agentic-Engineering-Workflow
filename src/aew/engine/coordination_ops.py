@@ -657,6 +657,12 @@ class Coordination:
                 and messaging_switch(self.k.aew_root, state)[0] == X.MESSAGING_ENABLED):
             state[L.STORE_KEY] = {"since_rev": since_rev, "decision": None, "via": "migrate"}
 
+    def project_switch(self, state: dict[str, Any]) -> str:
+        """The project's adopted messaging switch, ``enabled`` or ``disabled`` (D-15), for ``harness send``'s route
+        (F9-A plan v4 amendment 2 §3.1): the harness operations read it through the port, never importing
+        coordination."""
+        return messaging_switch(self.k.aew_root, state)[0]
+
     # ------------------------------------------------------------------ reads (D-24, D-31)
 
     def seal_pointer(self, state: dict[str, Any], work_id: str, inv_id: str) -> dict[str, Any] | None:

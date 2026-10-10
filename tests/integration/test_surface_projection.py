@@ -30,7 +30,7 @@ def test_publication_is_offered_once_the_candidate_is_validated_and_never_before
     validated = projection.project(engine, CTX, wid)
     [publish] = [d for d in validated["decisions_required"] if d["decision"] == "PUBLISH"]
     assert publish["tool"] == "integration_publish" and publish["default"] == "NONE"
-    assert publish["availability"] == "UNKNOWN"
+    assert publish["availability"] == "AVAILABLE"  # its guard is queryable (M4-E E4b)
     assert publish["cli_fallback"][:3] == ["integrate", "publish", wid]
     assert p.lead(*publish["cli_fallback"][:3])["state"] == "DONE"  # the advertised command is the engine's own
     done = projection.project(engine, CTX, wid)

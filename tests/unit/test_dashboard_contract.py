@@ -58,17 +58,41 @@ def test_every_served_route_is_in_the_contract_and_the_rest_are_pending():
 MAPS = {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs", "/maps/diff"}
 
 
-def test_s1_serves_the_maps_routes_and_the_search_is_still_pending():
-    """S1 serves the five maps routes, which are no longer pending; ``/history/search`` stays pending until S2, and
-    answers as this server answers without it: it matches the ``/history/{id}`` template."""
+def test_s1_serves_the_maps_routes_and_s2_the_search_conditionally_so_none_is_pending():
+    """S1 serves the five maps routes and S2 serves ``/history/search`` as a conditional route: none of 0.1.3's added
+    routes is pending. Off, the search is still answered by today's routing: it matches the ``/history/{id}``
+    template."""
     added = set(proposed(note_text(), base_contract())["paths"]) - set(base_contract()["paths"])
     assert added == MAPS | {"/history/search"}
-    assert MAPS <= set(ROUTES) and not pending_routes(set(CONTRACT.paths) | added) & MAPS
-    assert pending_routes(set(CONTRACT.paths) | added) >= {"/history/search"}
+    assert MAPS <= set(ROUTES) and not pending_routes(set(CONTRACT.paths) | added) & added
+    assert "/history/search" in CONDITIONAL_ROUTES and "/history/search" not in ROUTES
+    assert P.ENVELOPE_VERSION["/history/search"] == "0.1.3"
+    assert match_route("/history/search") == ("/history/{id}", {"id": "search"})
     for route in MAPS:
         assert P.ENVELOPE_VERSION[route] == "0.1.3" == CONTRACT.envelope_version(CT.RESPONSE_SCHEMAS[route])
         assert match_route(route.replace("{root}", "0" * 64)) == (route, {"root": "0" * 64} if "{" in route else {})
     assert match_route("/history/search") == ("/history/{id}", {"id": "search"})
+
+
+def test_only_the_search_takes_a_parameter_more_than_once():
+    from aew.dashboard.server import REPEATABLE_PARAMETERS
+
+    assert REPEATABLE_PARAMETERS == {"/history/search": frozenset({"term", "kind"})}
+    for route, names in REPEATABLE_PARAMETERS.items():
+        for name in names:
+            schema = CONTRACT.query_parameters(route)[name]
+            assert schema["schema"]["type"] == "array" and schema.get("explode", True), (route, name)
+
+
+def test_every_search_coverage_literal_maps_to_a_registered_code():
+    """``recall.COVERAGE_REASONS`` is every literal a search can report; each maps to a registered reason code
+    (register F20.8, S2), so a search never answers with an unregistered code or fails on an unknown literal."""
+    from aew.engine import recall
+
+    assert set(P.SEARCH_REASONS) == set(recall.COVERAGE_REASONS)
+    assert len(set(P.SEARCH_REASONS.values())) == len(P.SEARCH_REASONS)
+    for code in [*P.SEARCH_REASONS.values(), "SEARCH_UNVERIFIED", "FTS5_UNAVAILABLE", "RECALL_NOT_IN_INVOCATIONS"]:
+        assert code in R.REASONS, code
 
 
 def test_every_response_schema_compiles_and_rejects_an_empty_body():

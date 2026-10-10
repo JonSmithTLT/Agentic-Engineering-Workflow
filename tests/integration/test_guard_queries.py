@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from aewflow import create_planned_ticket, sample_project
+from guard_reads import GUARD_READS, RecordingArgs
 
 from aew.engine.api import Engine
 from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
@@ -34,8 +35,12 @@ def _fresh_cache():
 
 def equivalent(engine: Engine, primitive: str, work_id: str | None, args: dict[str, Any],
                execute: Callable[[int], Any]) -> dict[str, Any]:
-    """Ask ``primitive``'s guard on the committed state, then execute it there: the same answer (§13)."""
-    answer = engine.guard_query(primitive, work_id, args)  # keeps what the query found
+    """Ask ``primitive``'s guard on the committed state, then execute it there: the same answer (§13). The query reads
+    only the arguments ``GUARD_READS`` lists for it (the planner agreement check relies on that list)."""
+    recorded = RecordingArgs(args)
+    answer = engine.guard_query(primitive, work_id, recorded)
+    assert recorded.inputs_read() <= GUARD_READS[primitive], (primitive, recorded.inputs_read())
+    args.update(recorded.data())  # keeps what the query found
     rev = engine.store.read()["revision"]
     try:
         execute(rev)
@@ -68,9 +73,9 @@ def test_explain_answers_a_stage_per_step_from_its_guards(ready):
     assert result["steps"][0]["availability"] == AVAILABLE  # the assignment's dispatch decision
     assert result["steps"][1]["covered_by"] == 1  # the launch is the assignment's
     assert result["steps"][2]["produced_by"] == {"state": 1, "implementer": 1}
-    unmigrated = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
-                                                     "arguments": {"verification_evidence": "EV-0001"}})["result"]
-    assert unmigrated["availability"] == UNKNOWN and unmigrated["steps"] == []  # E4b migrates it
+    prepare = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+                                                  "arguments": {"verification_evidence": "EV-0001"}})["result"]
+    assert prepare["availability"] == BLOCKED and prepare["steps"][0]["reason_codes"] == ["NOT_FOUND"]  # E4b
 
 
 # ---------------------------------------------------------------------------------------------- work.transition
@@ -127,7 +132,7 @@ def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_prod
     p, wid, engine = ready
     out = R.run_tool(engine, CTX, "status", {"work_id": wid})
     [start] = [a for a in out["projection"]["actions"] if a["action"] == "ticket_start"]
-    assert start["availability"] == AVAILABLE and not start["auto_runnable"]  # not built until E5a
+    assert start["availability"] == AVAILABLE and start["auto_runnable"]  # built (E5a) and policy-resolved
     explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})["result"]
     assert [s["availability"] for s in explained["steps"]] == [AVAILABLE] * 3
     assert engine.store.read()["work"][wid]["state"] == "READY"  # asking changed nothing
@@ -471,3 +476,360 @@ def test_one_read_only_answer_computes_a_gate_context_once_per_state(implemented
     calls.clear()
     R.run_tool(engine, CTX, "status", {"work_id": wid})  # RUNNING: the current state, and step 2's overlay
     assert len(calls) == 2
+
+
+# ------------------------------------------------------------------------------------------ verify.ingest (M4-E E4b)
+
+
+def _verify_ingest(engine: Engine, p: Any, wid: str, evidence: str, scope: str = "ticket") -> Callable[[int], Any]:
+    """The primitive's own execute entry: `verify.ingest` (``ticket``) or `verify.ingest.integration`."""
+    return lambda rev: engine.verify_ingest(token=p.token, expect_rev=rev, work_id=wid, evidence_id=evidence,
+                                            scope=scope)
+
+
+@pytest.fixture
+def reviewed(implemented):
+    """A REVIEW_PASSED Ticket, ready for verification."""
+    from aewflow import review
+
+    p, wid, engine, impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    return p, wid, engine, impl
+
+
+def test_guard_query_matches_execute_verify_ingest(reviewed):
+    """`verify.ingest` (Ticket scope): the Ticket is VERIFY_PENDING, the report is a known verification of it, of the
+    workspace's current snapshot; then it is accepted, in the state the query predicted."""
+    from aewflow import SUBTRACT_PATCH, verify
+
+    p, wid, engine, impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    review_report = [r["id"] for r in engine.store.read()["work"][wid]["evidence"] if r["kind"] == "review"][-1]
+    for evidence, code in (("EV-9999", "NOT_FOUND"), (review_report, "ILLEGAL_TRANSITION")):
+        assert equivalent(engine, "verify.ingest", wid, {"evidence": evidence},
+                          _verify_ingest(engine, p, wid, evidence))["reason_codes"] == [code]
+    report = verify(p, wid)
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "# an unverified edit\n"})
+    answer = equivalent(engine, "verify.ingest", wid, {"evidence": report}, _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "stale" in answer["blocking_conditions"][0]["message"]
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"]})
+    # The integration-scope primitive refuses a Ticket-scope report, on execution as in the query (finding 2).
+    wrong = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
+                       _verify_ingest(engine, p, wid, report, "integration"))
+    assert wrong["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    assert "ticket-scope" in wrong["blocking_conditions"][0]["message"]
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest", wid, args, _verify_ingest(engine, p, wid, report))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "VERIFIED"
+    answer = equivalent(engine, "verify.ingest", wid, {"evidence": report}, _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "not VERIFY_PENDING" in (
+        answer["blocking_conditions"][0]["message"])
+
+
+def test_a_failing_verifications_predicted_state_is_the_ingests(reviewed):
+    from aewflow import verify
+
+    p, wid, engine, _impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    report = verify(p, wid, goal_result="fail")
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest", wid, args, _verify_ingest(engine, p, wid, report))
+    assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "VERIFICATION_FAILED"
+
+
+def test_guard_query_matches_execute_all_gates_current(reviewed):
+    """VERIFIED -> COMMIT_READY (`all_gates_current`): refused while the workspace differs from what the gates were
+    met on, allowed again once it holds it; the acceptance recorded is the snapshot the query evaluated."""
+    from aewflow import SUBTRACT_PATCH, verify
+
+    p, wid, engine, impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "# after verification\n"})
+    answer = equivalent(engine, "work.transition", wid, {"to": "COMMIT_READY"},
+                        _transition(engine, p, wid, "COMMIT_READY"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "-> COMMIT_READY" in (
+        answer["blocking_conditions"][0]["message"])
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"]})
+    args: dict[str, Any] = {"to": "COMMIT_READY"}
+    equivalent(engine, "work.transition", wid, args, _transition(engine, p, wid, "COMMIT_READY"))
+    unit = engine.store.read()["work"][wid]
+    assert unit["state"] == "COMMIT_READY" and unit["commit_ready_seq"] == 1
+    assert unit["commit_ready_snapshot"] == args["found"]["gate_context"]["snapshot"]
+
+
+# ------------------------------------------------------------------------------------- integrate.prepare (M4-E E4b)
+
+
+def _prepare(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
+    return lambda rev: engine.integrate_prepare(token=p.token, expect_rev=rev, work_id=wid)
+
+
+def untouched(p: Any) -> Callable[[], None]:
+    """A check that asking changed nothing a query must not touch: the control file, the refs, the worktree list, and
+    every worktree's (the main one's and each linked one's) own index bytes and files (``git status``, run so that it
+    writes no index refresh). A fingerprint writes only a throwaway index in a temporary directory and
+    content-addressed objects, as `status` always has (PR #171 review, finding 6)."""
+    from pathlib import Path
+
+    from aew.workspace import git
+
+    project = Path(p.root)  # the test's own project repository, never this checkout
+    quiet = {"GIT_OPTIONAL_LOCKS": "0"}  # `git status` must not refresh the index it is checking
+
+    def worktree(path: Path) -> tuple[Any, ...]:
+        index = Path(git.out("rev-parse", "--path-format=absolute", "--git-path", "index", cwd=path))
+        return (str(path), index.read_bytes() if index.exists() else b"",
+                git.out("status", "--porcelain=v2", "--untracked-files=all", cwd=path, env=quiet))
+
+    def snapshot() -> tuple[Any, ...]:
+        listed = git.out("worktree", "list", "--porcelain", cwd=project)
+        paths = [Path(line.split(" ", 1)[1]) for line in listed.splitlines() if line.startswith("worktree ")]
+        return ((project / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=project), listed,
+                tuple(worktree(path) for path in paths))
+
+    before = snapshot()
+
+    def check() -> None:
+        assert snapshot() == before, "a query changed the control state, a ref, a worktree's index or its files"
+
+    return check
+
+
+def test_guard_query_matches_execute_integrate_prepare(tmp_path):
+    """`integrate.prepare`: the queue brought in line and the decision required, on a copy: no lease is granted, no
+    custodian started and nothing enqueued by asking. Refused for an unknown Ticket, for one behind an earlier entry
+    (FIFO) and for one behind another entry's lease; then the prepare runs."""
+    from test_queue import tickets
+
+    p = sample_project(tmp_path)
+    first, second = tickets(p, tmp_path, 2)
+    engine = Engine.discover(p.root)
+    check = untouched(p)
+    assert equivalent(engine, "integrate.prepare", "T-0099", {},
+                      _prepare(engine, p, "T-0099"))["reason_codes"] == ["NOT_FOUND"]
+    assert equivalent(engine, "integrate.prepare", second, {},
+                      _prepare(engine, p, second))["reason_codes"] == ["QUEUE_ORDER"]
+    # The candidate a later step takes as produced: on a deep copy, the lease granted and the candidate bound to the
+    # acceptance, nothing merged; the state given is unchanged (M4-E E4b).
+    import copy
+
+    state = engine.store.read()
+    given = copy.deepcopy(state)
+    overlaid = engine.candidate_overlay(state, first)
+    assert state == given and overlaid is not None
+    assert overlaid["queue"]["lease"]["entry"] == next(q for q, e in overlaid["queue"]["entries"].items()
+                                                       if e["work"] == first)
+    assert overlaid["work"][first]["integration"]["status"] == "prepared"
+    assert engine.candidate_overlay(overlaid, second) is None  # another entry holds the lease
+    check()
+    equivalent(engine, "integrate.prepare", first, {}, _prepare(engine, p, first))  # takes the lease
+    check = untouched(p)
+    assert equivalent(engine, "integrate.prepare", second, {},
+                      _prepare(engine, p, second))["reason_codes"] == ["LEASE_HELD"]
+    check()
+
+
+def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepare(reviewed):
+    """Accepting a passing verification: step 2 sees the VERIFIED state and pinned report step 1 produces, step 3 the
+    COMMIT_READY state and acceptance step 2 produces (the queue entry its commit would make included), and in
+    verifier mode step 4 the candidate and lease step 3 produces. The stage is judgment-bearing, so never
+    auto-runnable."""
+    from aewflow import verify
+
+    p, wid, engine, _impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    report = verify(p, wid)
+    check = untouched(p)
+    found = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+                                                "arguments": {"verification_evidence": report}})["result"]
+    check()
+    assert engine.validation_mode(wid) == "verifier"  # the default policy
+    assert [s["availability"] for s in found["steps"]] == [AVAILABLE] * 5, found
+    assert found["availability"] == AVAILABLE
+    assert found["steps"][2]["produced_by"] == {"evidence": 1, "state": 2, "acceptance": 2}
+    # Step 4, the integration verifier's decision, is asked on the candidate and lease step 3 produces (a copy).
+    assert found["steps"][3]["produced_by"]["candidate"] == 3 and found["steps"][4]["covered_by"] == 4
+    # The primitives the stage would run, run directly, agree with each step's answer.
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    p.lead("integrate", "prepare", wid)
+    assert p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")["scope"] == "integration"
+
+
+# ----------------------------------------------------------------------------- verify.ingest.integration (M4-E E4b)
+
+
+def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
+    """`verify.ingest.integration`: a prepared candidate bound to the acceptance, the entry's live lease, a report of
+    the candidate's current snapshot; then the candidate is validated, as the query predicted. The Ticket-scope
+    primitive refuses the same report, executed as asked (the `aew verify ingest` command, unscoped, takes either)."""
+    from pathlib import Path
+
+    from aewflow import to_commit_ready, verify
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    engine = Engine.discover(p.root)
+    report = verify(p, wid, scope="integration")
+    # The Ticket-scope primitive refuses it, on execution as in the query (PR #171 review, finding 2).
+    wrong = equivalent(engine, "verify.ingest", wid, {"evidence": report}, _verify_ingest(engine, p, wid, report))
+    assert wrong["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    assert "integration-scope" in wrong["blocking_conditions"][0]["message"]
+    candidate = Path(engine.store.read()["work"][wid]["integration"]["workspace"]) / "calc" / "core.py"
+    original = candidate.read_text(encoding="utf-8")
+    candidate.write_text(original + "# an edit after verification\n", encoding="utf-8", newline="\n")
+    check = untouched(p)
+    answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
+                        _verify_ingest(engine, p, wid, report, "integration"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"]
+    check()
+    candidate.write_text(original, encoding="utf-8", newline="\n")
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest.integration", wid, args, _verify_ingest(engine, p, wid, report, "integration"))
+    integ = engine.store.read()["work"][wid]["integration"]
+    assert args["found"]["integration_status"] == integ["status"] == "validated"
+    answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
+                        _verify_ingest(engine, p, wid, report, "integration"))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "no prepared integration candidate" in (
+        answer["blocking_conditions"][0]["message"])
+
+
+# ------------------------------------------------------------------------------------- integrate.publish (M4-E E4b)
+
+
+def _publish(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
+    return lambda rev: engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+
+
+def test_guard_query_matches_execute_integrate_publish(tmp_path):
+    """`integrate.publish`: no candidate; a candidate not yet validated after integration (verifier mode); then the
+    publication, AVAILABLE and DONE. The projection's PUBLISH decision carries the same answer."""
+    from aewflow import to_commit_ready, verify
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    engine = Engine.discover(p.root)
+    check = untouched(p)
+    answer = equivalent(engine, "integrate.publish", wid, {}, _publish(engine, p, wid))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    check()
+    p.lead("integrate", "prepare", wid)
+    check = untouched(p)
+    answer = equivalent(engine, "integrate.publish", wid, {}, _publish(engine, p, wid))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "post-integration verification" in (
+        answer["blocking_conditions"][0]["message"])
+    check()
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+    assert explained["availability"] == AVAILABLE
+    args: dict[str, Any] = {}
+    equivalent(engine, "integrate.publish", wid, args, _publish(engine, p, wid))
+    assert args["found"]["outcome"] == "publish"
+    assert engine.status(wid)["work_unit"]["state"] == "DONE"  # hot, or archived as it stands now
+
+
+def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
+    """The authoritative head moved under a validated candidate: the query answers BLOCKED (STALE_CANDIDATE,
+    outcome `moved_head`); the publish, as before, commits the one rebuild under the same lease and publishes
+    nothing."""
+    from pathlib import Path
+
+    from aewflow import prepare_and_validate, to_commit_ready
+
+    from aew.workspace import git
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    project = Path(p.root)  # the test's own project repository, never this checkout
+    (project / "README.md").write_text("# calc\n\nMoved on.\n", encoding="utf-8", newline="\n")
+    git.out("commit", "-q", "-am", "moves the authoritative head", cwd=project)
+    engine = Engine.discover(p.root)
+    args: dict[str, Any] = {}
+    answer = engine.guard_query("integrate.publish", wid, args)
+    assert answer["availability"] == BLOCKED and answer["reason_codes"] == ["STALE_CANDIDATE"]
+    assert args["found"]["outcome"] == "moved_head"
+    # BLOCKED with a disposition: the answer says what the call commits instead (PR #171 review, finding 1), and so do
+    # `explain`, the projection's blockers beside the PUBLISH decision, and `resume`'s recheck.
+    assert answer["disposition"] == "rebuild"
+    assert answer["blocking_conditions"][0]["details"]["disposition"] == "rebuild"
+    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+    assert explained["availability"] == BLOCKED and explained["steps"][0]["disposition"] == "rebuild"
+    projected = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]
+    assert any((b.get("details") or {}).get("disposition") == "rebuild" for b in projected["blockers"])
+    from aew.surface import stage
+
+    check = stage.guard_check(engine, "integrate.publish", {"work_id": wid})
+    assert check["status"] == stage.BLOCKED_WITH_DISPOSITION and "rebuild" in check["message"]
+    out = engine.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid)
+    assert out["ok"] is False and out["rebuilt"] is True
+    assert engine.store.read()["work"][wid]["state"] == "COMMIT_READY"  # nothing published
+
+
+def test_a_superseded_candidate_is_blocked_with_its_requeue(tmp_path):
+    """A candidate built for an earlier acceptance: BLOCKED, `STALE_CANDIDATE`, carrying `disposition: requeue`, with
+    the details the publish raises after committing the retirement and requeue (the same error, by construction)."""
+    from aewflow import prepare_and_validate, to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    engine = Engine.discover(p.root)
+    state = engine.store.read()
+    state["work"][wid]["commit_ready_seq"] += 1  # as a later acceptance would leave it (asked on a copy)
+    answer = engine.guard_query("integrate.publish", wid, {}, state=state)
+    assert answer["availability"] == BLOCKED and answer["disposition"] == "requeue"
+    details = answer["blocking_conditions"][0]["details"]
+    assert details["disposition"] == "requeue" and details["reason"].startswith("candidate built from an earlier")
+
+
+def test_the_prepare_and_publish_queries_never_sync_the_state_they_are_given(tmp_path):
+    """PR #171 review, finding 4 (its r4): on states where the queue's sync would act (a COMMIT_READY Ticket not yet
+    enqueued, as an overlay sees it; a lease whose custodian ended), asking changes nothing of the state passed in, so
+    a query that synced in place would fail here."""
+    import copy
+
+    from aewflow import to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    engine = Engine.discover(p.root)
+    fresh = engine.store.read()
+    fresh["queue"]["entries"].clear()  # not enqueued yet: sync would enqueue it
+    before = copy.deepcopy(fresh)
+    assert engine.guard_query("integrate.prepare", wid, {}, state=fresh)["availability"] == AVAILABLE
+    assert fresh == before, "integrate.prepare's query synced the state it was given"
+    engine.guard_query("integrate.publish", wid, {}, state=fresh)
+    assert fresh == before, "integrate.publish's query synced the state it was given"
+    p.lead("integrate", "prepare", wid)
+    leased = engine.store.read()
+    custodian = leased["queue"]["lease"]["custodian"]
+    leased["invocations"][custodian]["status"] = "cancelled"  # sync would mark the lease for reconciliation
+    before = copy.deepcopy(leased)
+    answer = engine.guard_query("integrate.publish", wid, {}, state=leased)
+    assert answer["reason_codes"] == ["LEASE_RECONCILE_REQUIRED"]  # what the synced copy says
+    assert leased == before, "integrate.publish's query synced the state it was given"
+    engine.guard_query("integrate.prepare", wid, {}, state=leased)
+    assert leased == before, "integrate.prepare's query synced the state it was given"
+
+
+def test_the_publish_branches_on_the_querys_outcome_alone(tmp_path, monkeypatch):
+    """PR #171 review, finding 7: a publish whose query passed without naming an outcome publishes nothing; it is an
+    engine defect, refused, with nothing committed (no fall-through to publishing)."""
+    from aewflow import to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    engine = Engine.discover(p.root)
+    monkeypatch.setattr(engine._integration, "publish_query", lambda state, work_id, args: None)
+    rev = p.rev()
+    with pytest.raises(AEWError) as refused:
+        engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+    assert refused.value.code == "INTEGRITY_ERROR" and p.rev() == rev
+    assert engine.store.read()["work"][wid]["integration"]["status"] == "prepared"

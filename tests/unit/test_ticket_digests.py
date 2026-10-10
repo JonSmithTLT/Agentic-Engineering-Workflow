@@ -298,10 +298,12 @@ def control_field(doc: dict[str, Any], name: str) -> dict[str, Any]:
 @pytest.mark.parametrize("change,expected", [
     pytest.param("card_material", {"card"}, id="materiality_only"),
     pytest.param("staffing_material", {"staffing"}, id="materiality_of_another_group"),
-    pytest.param("carried_obligations_regrouped", {"gate_set", "dependencies", "staffing"},
-                 id="carried_obligations_regrouped"),
-    pytest.param("depends_on_regrouped", {"dependencies", "parent"}, id="depends_on_regrouped"),
-    pytest.param("depends_on_via_changed", {"dependencies"}, id="depends_on_hashed_through_other_values"),
+    pytest.param("carried_obligations_regrouped", {"gate_set", "dependencies"}, id="carried_obligations_regrouped"),
+    # carried_obligations, also hashed through the edges, follows them, so its gate_set counts too.
+    pytest.param("depends_on_regrouped", {"dependencies", "parent", "gate_set"}, id="depends_on_regrouped"),
+    pytest.param("depends_on_via_changed", {"dependencies", "gate_set"}, id="depends_on_hashed_through_other_values"),
+    pytest.param("provenance_changed", {"acceptance"}, id="provenance_changed"),
+    pytest.param("unassigned_changed", {"acceptance", "scope"}, id="unassigned_changed"),
     pytest.param("checks_rule_changed", {"check_definition"}, id="rule_changed"),
     pytest.param("key_leaves_bookkeeping", {"acceptance"}, id="bookkeeping_changed"),
 ])
@@ -316,12 +318,19 @@ def test_a_registry_change_counts_as_changed_without_a_declared_move(change: str
         v2_doc["groups"]["card"]["material"] = True
     elif change == "staffing_material":
         v2_doc["groups"]["staffing"]["material"] = True
-    elif change == "carried_obligations_regrouped":
-        control_field(v2_doc, "carried_obligations").update(group="staffing", also=[])
-    elif change == "depends_on_regrouped":
+    elif change == "carried_obligations_regrouped":  # no longer hashed through the edges, so out of dependencies
+        control_field(v2_doc, "carried_obligations").update(
+            also=[], via=["effective_class", "class_floor", "inherited_mandatory_gates"])
+    elif change == "depends_on_regrouped":  # with the derived value it is hashed through (review R1)
         control_field(v2_doc, "depends_on")["group"] = "parent"
-    elif change == "depends_on_via_changed":
-        control_field(v2_doc, "depends_on")["via"] = ["effective_edges", "effective_class"]
+        next(f for f in v2_doc["derived"] if f["field"] == "effective_edges")["group"] = "parent"
+        control_field(v2_doc, "carried_obligations")["also"] = ["parent"]
+    elif change == "depends_on_via_changed":  # it now feeds gate_set too, so it must also sit there (review R1)
+        control_field(v2_doc, "depends_on").update(via=["effective_edges", "effective_class"], also=["gate_set"])
+    elif change == "provenance_changed":  # a record key leaves the unassigned group
+        v2_doc["provenance"].append("source")
+    elif change == "unassigned_changed":
+        v2_doc["unassigned"] = "scope"
     elif change == "checks_rule_changed":
         next(f for f in v2_doc["record"] if f["field"] == "acceptance.checks")["rule"] = "text_list"
     else:

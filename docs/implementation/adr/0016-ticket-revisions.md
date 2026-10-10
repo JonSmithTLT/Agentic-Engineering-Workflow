@@ -13,7 +13,7 @@ A Ticket's inputs live in two stores: its record (`work/<T>/ticket.md`: title, b
 
 ### 1.1 The registry and its identity
 
-The registry is a package JSON document, `src/aew/schemas/ticket-field-registry.v1.json`, validated by `ticket-field-registry.schema.json` and by the loader's own rules (each field in exactly one primary group per store; every group declared; the `unassigned` group declared and material; every derived value the engine computes classified; no key both an input and bookkeeping; version 1 with no predecessor and no moves; a later version's move names a group that version hashes the field in). It lists:
+The registry is a package JSON document, `src/aew/schemas/ticket-field-registry.v1.json`, validated by `ticket-field-registry.schema.json` and by the loader's own rules (each field in exactly one primary group per store; every group declared; the `unassigned` group declared and material; every derived value the engine computes classified; a field hashed only through derived values in exactly those values' groups, so a change to what it feeds is a change to its groups; no key both an input and bookkeeping; version 1 with no predecessor and no moves; a later version's move names a group that version hashes the field in). It lists:
 
 - the groups, each with its materiality: `acceptance`, `check_definition`, `scope`, `gate_set`, `dependencies` and `kind` are material (E19-B §4.3's list); `parent`, `card` and `staffing` are not;
 - the record fields, the control-state keys and the derived values in each group, each with its canonicalization rule (§1.2);

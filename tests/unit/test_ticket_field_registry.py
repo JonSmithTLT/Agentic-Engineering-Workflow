@@ -96,6 +96,10 @@ def test_an_unknown_record_field_hashes_into_acceptance():
                                                      "edge_cases": ["negatives"]}},
         "a field inside scope": {"scope": {"paths": ["src/calc/*.py"], "except": ["src/calc/legacy.py"]}},
         "a frontmatter key named like the body": {"body": "also handle negatives"},
+        # Provenance is top-level only: an id nested in a container is an unclassified input (review R2).
+        "a provenance name inside acceptance": {"acceptance": {"goal_backwards": ["subtract(a, b) returns a - b"],
+                                                               "contract": ["subtract is exported from calc"],
+                                                               "id": "T-0002"}},
     }
     for name, extra in cases.items():
         state, text = ticket(extra)
@@ -123,7 +127,8 @@ def test_the_registry_identity_is_its_canonical_json_whatever_the_file_bytes():
 
 @pytest.mark.parametrize("breakage", ["classified_twice", "undeclared_group", "unassigned_not_material",
                                       "derived_value_missing", "input_and_bookkeeping", "v1_with_moves",
-                                      "via_unknown_derived", "move_to_where_the_field_is_not"])
+                                      "via_unknown_derived", "move_to_where_the_field_is_not",
+                                      "via_groups_differ_from_the_derived_values", "via_field_regrouped_alone"])
 def test_a_registry_that_could_leave_an_input_unbound_is_refused(breakage: str):
     doc = registry_doc()
     if breakage == "classified_twice":
@@ -140,11 +145,21 @@ def test_a_registry_that_could_leave_an_input_unbound_is_refused(breakage: str):
         doc["moves"] = [{"field": "record:title", "from": "card", "to": "acceptance"}]
     elif breakage == "via_unknown_derived":
         doc["control"][2]["via"] = ["effective_scope"]
+    elif breakage == "via_field_regrouped_alone":  # its derived values still hash it in gate_set and dependencies
+        next(f for f in doc["control"] if f["field"] == "carried_obligations").update(group="staffing", also=[])
+    elif breakage == "via_groups_differ_from_the_derived_values":  # review R1: it would feed gate_set unseen
+        next(f for f in doc["control"] if f["field"] == "depends_on")["via"] = ["effective_edges", "effective_class"]
     else:  # a version 2 whose declared move disagrees with where it hashes the field
         doc.update(version=2, predecessor=TF.load_registry().identity,
                    moves=[{"field": "record:external_refs", "from": "acceptance", "to": "card"}])
-    with pytest.raises(ValidationFailed):
+    with pytest.raises(ValidationFailed) as err:
         TF.registry_from_doc(doc)
+    if breakage == "via_groups_differ_from_the_derived_values":
+        assert ("control:depends_on is hashed through ['effective_edges', 'effective_class'], so its groups must be "
+                "exactly ['dependencies', 'gate_set'], not ['dependencies']") in str(err.value)
+    # Version 1 meets every rule, the via groups included (depends_on; carried_obligations in gate_set and
+    # dependencies).
+    TF.registry_from_doc(registry_doc())
 
 
 def test_a_dotted_frontmatter_key_is_never_the_nested_field(tmp_path: Path):

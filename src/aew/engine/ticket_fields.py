@@ -222,9 +222,16 @@ def registry_from_doc(doc: Mapping[str, Any], *, source: str = "ticket field reg
             if f["rule"] == "via" and (store != "control" or not set(f["via"]) <= DERIVED):
                 problems.append(f"{store}:{name} may be hashed only through derived values {sorted(DERIVED)}")
             fields.append(Field(store, name, f["group"], f["rule"], tuple(f.get("via", ())), tuple(f.get("also", ()))))
-    derived = {f.name for f in fields if f.store == "derived"}
-    if derived != DERIVED:
+    derived = {f.name: f.group for f in fields if f.store == "derived"}
+    if set(derived) != DERIVED:
         problems.append(f"derived values must be exactly {sorted(DERIVED)}, not {sorted(derived)}")
+    # A field hashed through derived values sits in exactly their groups: otherwise a registry change that makes it
+    # feed another group would not count as a change there (E19-B §2.3, review R1).
+    for f in fields:
+        through = {derived[v] for v in f.via if v in derived}
+        if f.rule == "via" and {f.group, *f.also} != through:
+            problems.append(f"{f.ref} is hashed through {list(f.via)}, so its groups must be exactly "
+                            f"{sorted(through)}, not {sorted({f.group, *f.also})}")
     control = {f.name for f in fields if f.store == "control"}
     if control & set(doc["bookkeeping"]):
         problems.append(f"control keys both inputs and bookkeeping: {sorted(control & set(doc['bookkeeping']))}")

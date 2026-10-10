@@ -24,6 +24,7 @@ from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
 from aew.engine.dispatch import Dispatch
 from aew.engine.evidence_ops import EvidenceCommands, Gates
+from aew.engine.guards import GuardQueries
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.history_ops import HistoryCommands
@@ -416,6 +417,8 @@ class Engine:
         for owner in (assignment, nm, evidence, hierarchy, harness, assurance, integration, queue):
             dispatch.register_all(owner.dispatch_guards())
         dispatch.require_complete()
+        # M4-E E4: the migrated transition and ingest guards, each the query its own execute path calls first.
+        self._guard_queries = GuardQueries(dispatch.decide)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
@@ -573,6 +576,18 @@ class Engine:
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
+
+    def guard_query(self, primitive: str, work_id: str | None, args: dict[str, Any] | None = None, *,
+                    state: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Whether ``primitive`` with ``args`` is legal now (AVAILABLE, BLOCKED or UNKNOWN), asked of the guard its own
+        commit evaluates (M4-E E4; ``aew.engine.guards``). ``state`` defaults to the committed state; a stage's
+        availability passes the state a later step would see. The query records what it found in ``args``."""
+        state = self._k.store.read() if state is None else state
+        return self._guard_queries.answer(state, primitive, work_id, {} if args is None else args)
+
+    def guard_queries(self) -> list[str]:
+        """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
+        return self._guard_queries.migrated()
 
     def dispatch_explain(self, work_id: str, *, entrypoint: str | None = None, role: str | None = None,
                          card: str | None = None, scope: str = "ticket",

@@ -151,6 +151,15 @@ def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
         primitives.MECHANICAL, primitives.POLICY_RESOLVED, primitives.JUDGMENT_BEARING)
 
 
+def test_explain_takes_a_stage_with_that_stages_own_arguments():
+    """M4-E E4: a stage's arguments are checked against its own schema, `expect_rev` aside; `work_id` may be given
+    once, beside the stage."""
+    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001"}, NORMAL).name == "explain"
+    assert check_call("explain", {"stage": "ticket_draft", "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
+    assert check_call("explain", {"stage": "integration_publish",
+                                  "arguments": {"work_id": "T-0001", "prepared_candidate": "c"}}, NORMAL)
+
+
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
     offered = contract.TOOLS["explain"].input_schema["properties"]["entrypoint"]["enum"]
     assert set(offered) == {n for n, e in ENTRYPOINTS.items() if e.covered_by is None}
@@ -228,7 +237,12 @@ def test_a_decision_never_carries_a_default():
     ("integration_publish", {}, RECOVERY, "TOOL_NOT_BUILT"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit nor an invocation
+    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
+    ("explain", {"role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
+    ("explain", {"stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_draft", "arguments": {"title": "t"}}, NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("explain", {"work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),  # arguments need a stage
     ("harness_wait", {"runs": ["R-1", "R-1"]}, NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1"], "timeout_s": 601}, NORMAL, "INVALID_ARGUMENTS"),
 ])

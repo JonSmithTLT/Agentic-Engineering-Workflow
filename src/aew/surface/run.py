@@ -35,6 +35,7 @@ from aew.engine.primitives import spec_for
 from aew.harness.contract import redact
 from aew.schemas import validate
 from aew.surface import SURFACE, stage
+from aew.surface.availability import stage_availability
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project
@@ -99,6 +100,12 @@ def _work_show(c: Call) -> Any:
 
 def _explain(c: Call) -> Any:
     c.subject = c.a.get("work_id")
+    if "stage" in c.a:  # the stage's guards per step (M4-E E4): its arguments were checked by the adapter
+        arguments = {**(c.a.get("arguments") or {})}
+        if c.subject:
+            arguments.setdefault("work_id", c.subject)
+        c.subject = arguments.get("work_id")
+        return {"ok": True, **stage_availability(c.engine, c.a["stage"], arguments)}
     return c.engine.dispatch_explain(c.a.get("work_id") or "", entrypoint=c.a.get("entrypoint"),
                                      role=c.a.get("role"), card=c.a.get("card"),
                                      scope=c.a.get("scope") or "ticket", invocation=c.a.get("invocation"))

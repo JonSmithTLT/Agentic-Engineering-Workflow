@@ -4,7 +4,8 @@ What the Engine's mixins once did by overriding each other through the class hie
 and the composition root (``api.Engine``) fills each seam in a fixed, tested order:
 
 * ``StateHooks``: the effects of a work unit's state change, run by ``WorkUnits.set_state`` in order.
-* ``GuardTable``: the Lead-transition guard for a guard name and a unit kind.
+* ``GuardTable``: the Lead-transition guard for a guard name and a unit kind, and its query form where it has one
+  (M4-E E4: ``aew.engine.guards``).
 * ``KindRegistry``: the handler of each kind-dependent operation (gate context, invocation, ingest, verification
   classification, next actions) for each unit kind.
 * ``TxnFinalizers``: steps run inside every Lead transaction just before it commits (ADR-0011 attaches here).
@@ -35,6 +36,8 @@ def kind_of(unit: dict[str, Any]) -> str:
 BeforeHook = Callable[[dict[str, Any], dict[str, str]], None]
 AfterHook = Callable[[dict[str, Any], dict[str, Any], dict[str, str], "str | None"], None]
 Guard = Callable[["TxnContext", str, dict[str, Any], str], None]
+# A migrated guard's pure form (M4-E E4): (state, work_id, args) -> a blocker or None; ``args`` carries ``to``.
+GuardQuery = Callable[[dict[str, Any], str, dict[str, Any]], Any]
 
 
 class StateHooks:
@@ -59,26 +62,42 @@ class GuardRegistration(NamedTuple):
     guard: Guard
     kinds: tuple[str, ...] = KINDS
     replace: bool = False
+    query: GuardQuery | None = None  # the guard's pure form, which ``guard`` itself calls first (M4-E E4)
 
 
 class GuardTable:
     """The guard for each (guard name, unit kind). A kind-specific entry replaces the general one only when it is
-    registered with ``replace=True``, so an accidental double registration is refused."""
+    registered with ``replace=True``, so an accidental double registration is refused. A migrated guard also has its
+    query (M4-E E4); an entry that replaces it without one leaves that kind unqueryable (``UNKNOWN``), never answered
+    by another kind's query."""
 
     def __init__(self) -> None:
         self._table: dict[tuple[str, str], Guard] = {}
+        self._queries: dict[tuple[str, str], GuardQuery] = {}
 
-    def register(self, name: str, guard: Guard, kinds: tuple[str, ...] = KINDS, *, replace: bool = False) -> None:
+    def register(self, name: str, guard: Guard, kinds: tuple[str, ...] = KINDS, *, replace: bool = False,
+                 query: GuardQuery | None = None) -> None:
         for kind in kinds:
             if kind not in KINDS:
                 raise ValueError(f"unknown unit kind {kind}")
             if (name, kind) in self._table and not replace:
                 raise ValueError(f"guard {name} is already registered for {kind}")
             self._table[(name, kind)] = guard
+            if query is None:
+                self._queries.pop((name, kind), None)
+            else:
+                self._queries[(name, kind)] = query
 
     def register_all(self, registrations: list[GuardRegistration]) -> None:
         for r in registrations:
-            self.register(r.name, r.guard, r.kinds, replace=r.replace)
+            self.register(r.name, r.guard, r.kinds, replace=r.replace, query=r.query)
+
+    def query_for(self, name: str, unit: dict[str, Any]) -> GuardQuery | None:
+        """The query form of the guard ``name`` for ``unit``'s kind, or None when it has none (not migrated)."""
+        return self._queries.get((name, kind_of(unit)))
+
+    def queries(self) -> dict[tuple[str, str], GuardQuery]:
+        return dict(self._queries)
 
     def resolve(self, name: str, unit: dict[str, Any]) -> Guard:
         guard = self._table.get((name, kind_of(unit)))

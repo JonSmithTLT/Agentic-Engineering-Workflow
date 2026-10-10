@@ -45,6 +45,8 @@ def check_call(name: Any, arguments: Any, profile: str) -> Tool:
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
     if t.name == "steering":
         _check_steering(arguments)
+    if t.name == "explain":
+        _check_explain(arguments)
     if t.name == "resolve" and not arguments["rationale"].strip():
         # Kept out of the schema to keep the advertised bytes (plan v3 §2.6); an input error all the same.
         raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the rationale says why, and is never blank",
@@ -64,3 +66,30 @@ def _check_steering(arguments: dict[str, Any]) -> None:
             "INVALID_ARGUMENTS", f"steering: action {arguments['action']} takes {', '.join(allowed)}",
             violations=[*(f"{a}: required for {arguments['action']}" for a in missing),
                         *(f"{a}: not taken by {arguments['action']}" for a in extra)])
+
+
+def _check_explain(arguments: dict[str, Any]) -> None:
+    """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
+    `expect_rev` aside (M4-E E4; kept out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
+    if not {"work_id", "invocation", "stage"} & set(arguments):
+        raise AdapterInputError("INVALID_ARGUMENTS", "explain: name a work_id, an invocation or a stage",
+                                violations=["<arguments>: one of work_id, invocation or stage is required"])
+    if "stage" not in arguments:
+        if "arguments" in arguments:
+            raise AdapterInputError("INVALID_ARGUMENTS", "explain: arguments are a stage's, and need its stage",
+                                    violations=["arguments: given without stage"])
+        return
+    t = contract.tool(arguments["stage"])
+    if t is None or t.kind not in (contract.STAGE, contract.DECISION) or not t.progression:
+        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: {arguments['stage']!r} is not a stage",
+                                violations=["stage: not a stage of the catalog"],
+                                stages=[x.name for x in contract.TOOLS.values() if x.progression])
+    given = {**(arguments.get("arguments") or {}), "expect_rev": 0}
+    if "work_id" in arguments:
+        given.setdefault("work_id", arguments["work_id"])
+    errors = sorted(_validator(t.name).iter_errors(given), key=lambda e: list(e.absolute_path))
+    if errors:
+        raise AdapterInputError(
+            "INVALID_ARGUMENTS", f"explain: the arguments do not match {t.name}'s schema",
+            violations=[f"arguments/{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}"
+                        for e in errors[:20]])

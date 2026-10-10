@@ -10,7 +10,9 @@ against the hash its manifest entry pins:
   carry it as a labelled ``history:<id>@<sha>`` source, pinned per invocation, and never as current evidence;
 - ``history audit``: incremental or full verification. Advisory without a credential; with the Lead's credential it
   records an audit record and advances the verified root (R2: verified outside the lock, recorded only if the root
-  it verified is still current, so the record never leaves a one-entry backlog).
+  it verified is still current, so the record never leaves a one-entry backlog);
+- ``history search``: register F21's Arm B prototype, explicit raw-history search, only while the adopted execution
+  policy switches it on (``aew.engine.recall``; off, it does not exist and its substrate is never touched).
 
 Audit status (``status``) is reported as backlog against the gates policy's optional ``history_audit`` thresholds,
 never as a permanent alarm (invariant 11).
@@ -25,10 +27,19 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
 
-from aew.engine import faults
+from aew.engine import faults, recall
 from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
 from aew.engine.authority import require_lead
-from aew.errors import AEWError, IntegrityError, LockTimeout, NotFound, StaleRevision, UsageError
+from aew.errors import (
+    AEWError,
+    CapabilityUnavailable,
+    IntegrityError,
+    LockTimeout,
+    NotFound,
+    StaleRevision,
+    Unavailable,
+    UsageError,
+)
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History
@@ -211,7 +222,60 @@ class HistoryCommands:
         except (OSError, sqlite3.Error) as exc:  # another process has the index open (Windows refuses the unlink)
             raise LockTimeout("the history index is in use by another AEW process; run `aew history reindex` again "
                               f"once it is free ({exc})") from None
-        return {"ok": True, "mode": out["mode"], "entries": out["added"]}
+        result = {"ok": True, "mode": out["mode"], "entries": out["added"]}
+        if self._recall_on():  # the raw-history search's substrate is rebuilt with it, only while switched on
+            root, tail = self._root_and_tail()
+            result["recall_index"] = self._substrate().reindex(root, tail)
+        return result
+
+    # ------------------------------------------------------------------ raw-history search (register F21, Arm B)
+
+    def _recall_on(self) -> bool:
+        return recall.recall_search_enabled(self.k.aew_root) and recall.fts5_available()
+
+    def _substrate(self) -> recall.Substrate:
+        return recall.Substrate(self.k.aew_root, self.archive.record)
+
+    def _root_and_tail(self) -> tuple[dict[str, Any], bytes | None]:
+        """The cold root and the tail's bytes, copied together under the control lock (as the audit does, R2), so the
+        substrate is built outside the lock from a consistent snapshot. No substrate code runs while the lock is
+        held."""
+        with self.k.store.session() as s:
+            state = copy.deepcopy(s.state)
+            tail = self.cold.tail_bytes()
+        self._require_v2(state)
+        return state["cold"]["root"], tail
+
+    def history_search(self, terms: list[str], *, kinds: list[str] | None = None, since: str | None = None,
+                       until: str | None = None, limit: int = recall.LIMIT_DEFAULT) -> dict[str, Any]:
+        """Explicit raw-history search (the plan v6 §3): ``terms`` are phrases, ANDed; each hit is an archived record
+        or an evidence record it holds, authenticated before it is shown and expandable with ``history show``. Raw
+        history, not admitted Knowledge. Refused unless the adopted execution policy switches it on, and inside an
+        invocation's environment."""
+        if not recall.recall_search_enabled(self.k.aew_root):
+            raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
+                                        "recall.raw_history_search: explicit", reason="switched_off")
+        recall.refuse_in_invocations()
+        query = recall.check_query(list(terms))
+        kinds = sorted(set(kinds)) if kinds else None
+        if kinds and set(kinds) - set(recall.KINDS):
+            raise UsageError(f"--kind must be one of {', '.join(recall.KINDS)}")
+        if not 1 <= limit <= recall.LIMIT_MAX:
+            raise UsageError(f"--limit must be between 1 and {recall.LIMIT_MAX}")
+        for name, stamp in (("--since", since), ("--until", until)):
+            if stamp is not None:
+                try:
+                    _epoch(stamp)
+                except ValueError:
+                    raise UsageError(f"{name} must be a UTC timestamp like 2026-10-02T00:00:00Z") from None
+        if not recall.fts5_available():
+            raise Unavailable("this Python's SQLite has no usable FTS5, which raw-history search needs; nothing "
+                              "else is affected", reason="fts5_unavailable")
+        root, tail = self._root_and_tail()
+        out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
+                                       limit=limit)
+        return {"query": {"terms": list(terms), "kinds": kinds, "since": since, "until": until, "limit": limit},
+                **out}
 
     # ------------------------------------------------------------------ loading as reference (invariant 14)
 
@@ -285,6 +349,8 @@ class HistoryCommands:
                   "ok": not problems, "problems": problems}
         if full and not problems:
             result["index"] = self._check_index(target)
+            if self._recall_on():  # the raw-history search's substrate, only while switched on (register F21)
+                result["recall_index"] = self._substrate().audit(target, tail)
         faults.pause("history.audit_after_verify")  # tests hold here to land a commit in the R2 window
         if token is None:
             if problems:

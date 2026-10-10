@@ -487,10 +487,14 @@ sections:
       need an explicit amendment and re-freeze of the preregistration (Revision B), which nobody has proposed. Operation
       names are implementation-local except where frozen: the adoption''s `map.find` takes T5 §7''s frozen name `map.search`,
       and a search hit stays a candidate (T5 §7.4). A worker never has to construct a repository root to search its own
-      workspace (Revision A, WCR-08), and a path outside the authorized workspace is refused. Evaluation: `r9-intent-surface`
-      after M4-H; presentation defaults are earned by measurement. `knowledge.search` and `knowledge.get` join after M6b
-      Arm B (F21). F13 later decides which roles see which operation; they become registry entries then, never a second
-      registry. Delta item D7 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+      workspace (Revision A, WCR-08), and a path outside the authorized workspace is refused. Rejected (synthesis §10, AES-20,
+      subject to Revision A, AEA-10): a broad public free-text semantic facade, a free-text `repo.related`, a `repo.search`
+      operation and a worker-side `work.inspect`. Not rejected: ordinary bounded lexical search beneath the intent layer
+      stays required, as the workspace-rooted fallback (`rg` or an equivalent qualified provider) under `map.find` (here
+      `map.search`) when the maps and indexes cannot resolve a request, and authorized raw `rg` and the other raw tools
+      stay available. Evaluation: `r9-intent-surface` after M4-H; presentation defaults are earned by measurement. `knowledge.search`
+      and `knowledge.get` join after M6b Arm B (F21). F13 later decides which roles see which operation; they become registry
+      entries then, never a second registry. Delta item D7 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
   - '#': F15.9
     Work: 'Delta-first Lead attention (E2): one typed read query on the Lead surface, changes since a cursor (`changes {since_revision,
@@ -506,12 +510,13 @@ sections:
       --list` and from both profiles'' `tools/list` and a call is refused as an unknown tool (tested); never listable, callable
       or advertised in M4-H''s treatment, and not in the normal advertised Lead surface until its probe reports'
     Notes: The cursor is the revision the Lead already holds; the second cursor is U1/H1's telemetry watermark (`observed_through`).
-      One outbox reader and one cursor with F20.7's `/events` and `harness wait`. The catalog addition is the adoption record's
-      §8 direction (designer and operator, 2026-10-09). Measured as `e2-delta-first` (full, delta available, delta-first)
-      inside F9-D's harness; default-on only after measurement, which must show it saves frontier Lead turns and tokens
-      without hiding material developments. F9-C's supervision candidates ride it when they exist; impact anomalies and
-      scheduler recommendations wait for the anomaly record (M4-E) and F11. Delta item D9, done-when including that byte-identity
-      test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
+      A crash-surviving attention cursor waits until takeover semantics need it (AES-19). No second event log or state store
+      for attention, and no stored past projections (AES-20). One outbox reader and one cursor with F20.7's `/events` and
+      `harness wait`. The catalog addition is the adoption record's §8 direction (designer and operator, 2026-10-09). Measured
+      as `e2-delta-first` (full, delta available, delta-first) inside F9-D's harness; default-on only after measurement,
+      which must show it saves frontier Lead turns and tokens without hiding material developments. F9-C's supervision candidates
+      ride it when they exist; impact anomalies and scheduler recommendations wait for the anomaly record (M4-E) and F11.
+      Delta item D9, done-when including that byte-identity test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
 
   - '#': F16
     Work: 'Explain AEW to the model Lead instead of leaving it to trial and error (operator, 2026-09-30). What each risk
@@ -815,16 +820,22 @@ sections:
       stays off in M4-H''s frozen treatment, which is not amended; messaging is evaluated separately here using the F9 A/B/C/D
       supervision arms (F9-A1 §16 and §20: A no proactive supervision, B messaging available only, C AEW-recommended adaptive
       supervision, D mandatory periodic supervision), with F9-A built behind a switch with disabled-state identity tests.
-      **D3''s lane prepared (2026-10-10, PR #153), the run is the operator''s:** the `raw` arm (`raw.py`: OpenCode''s own
-      agent through the M3 headless session, the case''s new `task` its only message; the harness binary, the model and
-      effort, and the profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested
-      and its hidden paths probed before OpenCode starts; its session database kept under the preregistered retention window
-      and structured field allowlist; a run on another model or harness, a provider value in retained state (deleted at
-      once), a provider error instead of a model step or ending the turn, or a failure after the session started is counted
-      and not valid, its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until
-      the evaluator/arm-host split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run`
-      scores the hashed export afterwards, once); `retention.py` enforces the window (a database past it is refused and
-      purged, the purge recorded); the preregistration''s `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/`
+      **F21''s Arm B prototype and M4-H (2026-10-09):** the sealed M4-H configuration has `recall.raw_history_search: "off"`,
+      so `aew history search` is absent from both arms whether or not the prototype has merged; the M4-H cold-start attestation
+      must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
+      never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
+      package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **D3''s lane
+      prepared (2026-10-10, PR #153), the run is the operator''s:** the `raw` arm (`raw.py`: OpenCode''s own agent through
+      the M3 headless session, the case''s new `task` its only message; the harness binary, the model and effort, and the
+      profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden
+      paths probed before OpenCode starts; its session database kept under the preregistered retention window and structured
+      field allowlist; a run on another model or harness, a provider value in retained state (deleted at once), a provider
+      error instead of a model step or ending the turn, or a failure after the session started is counted and not valid,
+      its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host
+      split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed
+      export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge
+      recorded); the preregistration''s `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/`
       holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with
       their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. The
       session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host split are still next'
@@ -895,11 +906,12 @@ sections:
       delivery and reviewer independence ([decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md),
       ledger KDR); research basis [v0.1](../research/aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md)'
     Belongs to or gated by: '**M6** (M6b), after F19''s fixtures. **Arm B first** (explicit guarded raw-history search over
-      FTS5 in the history SQLite) and its A/B result is the first stop/go gate; the K1 source-class replay is a pre-build
-      gate for Cases; K2 only after held-out gates. Storage and the service identity are placed by [ADR-0013](adr/0013-knowledge-storage-placement.md)
-      (accepted 2026-10-04; ledger KST): knowledge records are history-manifest entries, a closed `knowledge_service` principal
-      commits policy-resolved work, and the capture watermark is the contiguous prefix of terminal receipts. It authorizes
-      no K1 or K2 build ahead of the Arm B sequence. **D9 is proven:** the [service-identity spike](../research/knowledge-service-identity-spike-2026-10-04.md)
+      a separate FTS5 substrate beside the history SQLite, ADR-0013 D8''s note of 2026-10-07) and its A/B result is the
+      first stop/go gate; the K1 source-class replay is a pre-build gate for Cases; K2 only after held-out gates. Storage
+      and the service identity are placed by [ADR-0013](adr/0013-knowledge-storage-placement.md) (accepted 2026-10-04; ledger
+      KST): knowledge records are history-manifest entries, a closed `knowledge_service` principal commits policy-resolved
+      work, and the capture watermark is the contiguous prefix of terminal receipts. It authorizes no K1 or K2 build ahead
+      of the Arm B sequence. **D9 is proven:** the [service-identity spike](../research/knowledge-service-identity-spike-2026-10-04.md)
       (ledger KSI) built the `service` credential kind, `service_txn` and store-enforced closure on a review branch and
       passed the designer''s seven properties on Windows and Rocky 8 (takeover through a real pty); what remains is the
       ADR-0005/ADR-0009/ADR-0013 amendment text (E37) and, later, the capture service itself. The review''s prototype proved
@@ -917,10 +929,10 @@ sections:
       role actually requires; broader historical prose from that Ticket can require an explicit investigation mode, which
       the matrix settles; KDR-03 to KDR-05); compact and expanded result shapes; the F19-compatible A/B corpus and rubric;
       K1 template replay only after Arm B is measurable; ranking, vectors, rerankers, discovery thresholds and K2 policy
-      left to evidence. **Arm B stays first** (record §7): its prototype is being built separately on `impl/f21-arm-b-prototype`.
-      Worker delivery of knowledge tools is F15.3''s `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the
-      70 invariants to merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`)
-      (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition`
+      left to evidence. **Arm B stays first** (record §7): its prototype is built separately (PR #148, below). Worker delivery
+      of knowledge tools is F15.3''s `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the 70 invariants to
+      merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA,
+      KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition`
       names; source class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm
       B prototype (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible
       and absent from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
@@ -933,7 +945,19 @@ sections:
       AEA-36):** Knowledge stays on-demand and tool-driven, never injected into worker context before Arm B''s evaluation
       earns it; after Arm B, `knowledge.search` and `knowledge.get` are exposed through the same `aew-run` read surface
       (F15.8). The record''s §14 repeats the reviewer-independence rule (AEA-40, consistent with KDR-03 to KDR-05) and places
-      its enforcement in engine and context request binding; the pack half of the filter is F35.'
+      its enforcement in engine and context request binding; the pack half of the filter is F35. **Prototype built (2026-10-09,
+      the lead developer''s plan v6, independently reviewed CLEAR):** behind `recall.raw_history_search` in the execution
+      policy (`"off"` by default, quoted since YAML reads a bare off as a boolean, which is refused with its cause and fix;
+      read from the adopted bytes only; operational class), `aew history search` exists only when the switch is `explicit`
+      and is otherwise absent from help, usage and the parser; it refuses inside an invocation''s environment (a discoverability
+      guard, not a security boundary). The substrate `local/recall/history-fts.sqlite` (`aew.engine.recall`) indexes each
+      archived entry''s record and the evidence it holds, never plans, unit or completion records, check logs or credential
+      bundles; it is built only by a search (bounded: 2 s or 500 documents per call, then `coverage_incomplete`), `history
+      reindex` and the full audit, and never on a commit path. Every hit is authenticated and re-matched against the authenticated
+      text; a disagreeing row drops its candidate and marks the substrate stale. Not model-visible, not evaluated: no pack,
+      resume, role guide, surface row, MCP tool or dashboard route, and absent from the Q7/M4-H treatment (the M4-H cold-start
+      attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory; F19). The A/B evaluation
+      is F19''s, after the readiness package (adoption record §8)'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1120,10 +1144,11 @@ sections:
       naming a changed symbol or path, schema and constraint locators, compiler-known callers where a semantic extension
       exists), uncertainty and coverage shown; the worker dispositions each in `self_review.related_surfaces` as addressed,
       unaffected or unsure; one computed surface (`surface_sha256`) serves the worker, the reviewer''s pack and later supervision.
-      Advisory, never a gate because something is related. The command is absent while its switch is off (registered only
-      when on, as `history search` is in the F21 Arm B prototype; a test shows help and usage unchanged); on demand and
-      off by default until `e1-completeness-nudge` measures false positives and dismissals after M4-H; the request-stage
-      hook waits for M4-E''s E5b. The generated and co-change relations need only F22.1; tests and constraints need F22.3'
+      Advisory, never a gate because something is related: no completeness gate and no relation-derived required test (AES-20).
+      The command is absent while its switch is off (registered only when on, as `history search` is in the F21 Arm B prototype;
+      a test shows help and usage unchanged); on demand and off by default until `e1-completeness-nudge` measures false
+      positives and dismissals after M4-H; the request-stage hook waits for M4-E''s E5b. The generated and co-change relations
+      need only F22.1; tests and constraints need F22.3'
 
   - '#': F31
     Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches,
@@ -1204,8 +1229,16 @@ sections:
       ledger AEA; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md),
       ledger AES):** accepted with three designer revisions and no new subsystem; its applications are F35 (packs), F15.8
       (the worker read surface), F36 (weak-worker continuity), F30 (the completion-impact slice), F15.9 (the Lead delta),
-      F22.3 and F19, ordered in the [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md); the
-      record''s §13 non-goals answer this row''s design review question for it.'
+      F22.3 and F19, ordered in the [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md); its
+      rejections answer this row''s design review question for it (record §13, AEA-39; synthesis §10, AES-20): no named
+      context compiler or router component and no second capability registry; no automatic Knowledge injection before M6b
+      Arm B; no broad free-text semantic facade, free-text `repo.related`, `repo.search` operation or worker-side `work.inspect`,
+      while the workspace-bounded lexical fallback and the raw tools stay (Revision A, F15.8); no forced typed-tool-only
+      operation for Astra-class models; no model-maintained working state, mandatory self-refresh, working-state store or
+      record kind, or Lead access to raw scratch or harness sessions (F36); no completeness gate and no relation-derived
+      required test (F30); no second event log or state store for attention and no stored past projections (F15.9); no peer-worker
+      inspection outside existing coordination and supervision policy; no model-name semantics anywhere in policy (profiles
+      are capability classes, AEA-27).'
 
   - '#': F35
     Work: 'Context-pack serving (R8), in the existing `ContextPacks` and `knowledge/context.py`, with no new component:
@@ -1223,19 +1256,19 @@ sections:
     Belongs to or gated by: '**M4 candidate**, a parallel lane, off by default (packs byte-identical while unset) and never
       part of M4-H''s treatment (Revision B; the operator''s M4-H decision of 2026-10-07 that role packs are not broadened
       stands); the reviewer''s layout row after F22.1 PR B'
-    Notes: 'Knowledge stays a tool, never injected into packs before M6b Arm B is measured (F21). Stale or partial derived
-      sections are visibly qualified. Independence: reviewer and verifier packs keep the canonical same-Ticket material
-      the role needs (objective and requirements, accepted plan, diff, check results, unresolved findings, verification
-      failures and evidence, governing decisions) and exclude the current implementer''s reasoning and private working state
-      by default; the knowledge request-binding half of the filter is F21''s role matrix (KDR-03 to KDR-05). A disclosed
-      departure: the record calls `context.*` and `tools.presentation` operational knobs (§4, §5; AEA-15, AEA-21) and the
-      synthesis classes them `operational`; the delta reads that as a non-semantic tuning knob, not the A3 class, and classes
-      a field that changes what a dispatched role receives `legality_affecting`, because a pack is regenerated at launch
-      under the `launch.pack` guard, so an operational change between dispatch and launch would refuse the launch, and because
-      A3 never silently defaults a field to operational (PBD-09); F22.1 PR B classes `maps.pack_slices` the same way (lead
-      developer, 2026-10-09; delta §4 item 3; reversible). Evaluation: `r8-pack-arms` after M4-H (A today, B the structural
-      switch, C with locators, D with the Knowledge tool, E explicit orientation); no default changes before it reports.
-      Delta item D5 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+    Notes: 'Knowledge stays a tool, never injected into packs before M6b Arm B is measured (F21). L1 symbol rows in packs
+      wait until T5-B covers the repository''s language (AES-19). Stale or partial derived sections are visibly qualified.
+      Independence: reviewer and verifier packs keep the canonical same-Ticket material the role needs (objective and requirements,
+      accepted plan, diff, check results, unresolved findings, verification failures and evidence, governing decisions)
+      and exclude the current implementer''s reasoning and private working state by default; the knowledge request-binding
+      half of the filter is F21''s role matrix (KDR-03 to KDR-05). A disclosed departure: the record calls `context.*` and
+      `tools.presentation` operational knobs (§4, §5; AEA-15, AEA-21) and the synthesis classes them `operational`; the
+      delta reads that as a non-semantic tuning knob, not the A3 class, and classes a field that changes what a dispatched
+      role receives `legality_affecting`, because a pack is regenerated at launch under the `launch.pack` guard, so an operational
+      change between dispatch and launch would refuse the launch, and because A3 never silently defaults a field to operational
+      (PBD-09); F22.1 PR B classes `maps.pack_slices` the same way (lead developer, 2026-10-09; delta §4 item 3; reversible).
+      Evaluation: `r8-pack-arms` after M4-H (A today, B the structural switch, C with locators, D with the Knowledge tool,
+      E explicit orientation); no default changes before it reports. Delta item D5 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
   - '#': F36
     Work: 'Weak-worker continuity (R2-B), platform-owned: the bounded handoff note (R2: an optional, worker-authored note
@@ -1249,15 +1282,18 @@ sections:
       §6, §11 (ledger AEA-06, AEA-22 to AEA-24); [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md)
       §4, §7 (ledger AES-05, AES-06, AES-12); the R2 recommendation of the external-workflow research of 2026-10-05, which
       is not in this repository'
-    Belongs to or gated by: '**M4 candidate** for the handoff note, a parallel lane, off by default and outside M4-H''s
-      treatment (Revision B); the recitation after U1/H1 (its trigger reads health) and M4-E''s E3 and E4'
+    Belongs to or gated by: '**M4 candidate**, a parallel lane, off by default and outside M4-H''s treatment (Revision B):
+      the handoff note, then the recitation, which waits for neither U1/H1 nor M4-E''s E3 and E4 (operator, 2026-10-10);
+      only a trigger on H1''s `repetition` field waits for U1/H1 (AES-19)'
     Notes: 'No model-maintained working-state store, mandatory self-refresh, scratch-state record type, or Lead access to
       raw scratch or harness sessions (record §6, §13). The recitation thresholds (`recitation.calls`, `recitation.elapsed_s`,
-      `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. Under F9-A the
-      recitation becomes a durable instruction message; the worker-published `working_note` stays F9-B''s. The note''s conformance
-      tests: no gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as
-      its predecessor''s claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead''s
-      progress view). Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+      `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. The run''s supervisor
+      already sees the tool calls and the elapsed time those thresholds count, delivers the recitation through the adapter''s
+      queue prompt (the path `harness send` takes) and records it in the run''s log. Under F9-A the recitation becomes a
+      durable instruction message; the worker-published `working_note` stays F9-B''s. The note''s conformance tests: no
+      gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as its predecessor''s
+      claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead''s progress view).
+      Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
@@ -1420,8 +1456,12 @@ sections:
       self-test''s and the harness adapter''s own launch bounds plus 60 s (620 s for OpenCode at its defaults; `AEW_RUN_START_S`
       overrides it), so a wedged start reads `lost` within the deadline plus 10 s and never becomes `running` (ADR-0009
       amendment 2026-10-09, a run''s start has a deadline). A failed harness test now reports and keeps its runs'' record
-      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. Raise test-side
-      timeouts, never the product''s.'
+      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. `test_a_waiter_parses_no_control_state_between_commits`
+      (OBX-38) failed on a loaded Windows host, alone at `main` and once under 8 workers in PR #149''s review (2026-10-09):
+      its 4 s wait closed before the Ticket''s commits landed, so only the initial read was counted. Fixed test-side: the
+      commits land after the waiter''s initial read, the test waits until the waiter has parsed the last of them, then ends
+      the wait through a run''s record; it counts parses against the commits'' revisions, with no time window. Raise or
+      restructure test-side timing, never the product''s.'
 
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule
@@ -1750,10 +1790,11 @@ sections:
       carry the same object (RHP-07), which is a dashboard contract change (F20). **Agent-effectiveness adoption (2026-10-09;
       [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md) §7, AES-08):**
       H1''s implementation gains a `repetition` field (drift read from trajectory shape) and returns the telemetry watermark
-      as `observed_through`, the second cursor of the Lead''s `changes` query (F15.9); the recitation trigger (F36) reads
-      health. Both fields ship off and absent by default behind one execution-policy switch, with a byte-identity test of
-      `harness_status`, `resume` and `harness wait` while off, and are activated only after M4-H (Revision B; U1 itself
-      is planned before the Q7 hard dogfood). Implementation-note additions, not new scope'
+      as `observed_through`, the second cursor of the Lead''s `changes` query (F15.9); a recitation trigger on `repetition`
+      (F36) waits for that field; the recitation''s call and time triggers do not. Both fields ship off and absent by default
+      behind one execution-policy switch, with a byte-identity test of `harness_status`, `resume` and `harness wait` while
+      off, and are activated only after M4-H (Revision B; U1 itself is planned before the Q7 hard dogfood). Implementation-note
+      additions, not new scope'
 
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'

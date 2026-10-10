@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from aew import SPEC_SET, __version__, profile
@@ -28,17 +29,54 @@ def emit(result: Any, *, as_json: bool) -> None:
         sys.stdout.write(result if result.endswith("\n") else result + "\n")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(recall_search: bool = False) -> argparse.ArgumentParser:
+    """The ``aew`` parser. ``recall_search`` registers `history search` (register F21, Arm B), which exists only while
+    the project's adopted execution policy switches it on (``recall_search_for``); every walk of the command set that
+    classifies commands builds it with the flag on, so the command is classified even though it is usually absent."""
     from aew.cli import commands
 
     parser = argparse.ArgumentParser(prog="aew", description="Agent Engineering Workflow")
     parser.add_argument("--version", action="version", version=f"aew {__version__} (spec set {SPEC_SET})")
     parser.add_argument("-C", dest="cwd", default=None, help="run as if started in this directory")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
-    commands.register(sub)
+    commands.register(sub, recall_search=recall_search)
     fields.register(parser)
     credentials.register(parser)
     return parser
+
+
+class _PreScan(argparse.ArgumentParser):
+    def error(self, message: str):  # never print or exit: the real parser reports every error
+        raise ValueError(message)
+
+
+def recall_search_for(argv: list[str], *, aew_root: Path | None = None) -> bool:
+    """Whether the parser for ``argv`` registers `history search`: only for a `history` command (others pay nothing),
+    and only when the project it runs in (``-C`` applied as the parser applies it, else the working directory; or
+    ``aew_root`` when the caller already knows the project) has the switch on in its adopted execution policy. No
+    project found, or anything else unreadable, is off."""
+    pre = _PreScan(add_help=False)
+    pre.add_argument("-C", dest="cwd", default=None)
+    pre.add_argument("--print-credential", action="store_true")
+    pre.add_argument("--version", action="store_true")
+    pre.add_argument("command", nargs="?")
+    pre.add_argument("rest", nargs=argparse.REMAINDER)
+    try:
+        ns, _ = pre.parse_known_args(argv)
+    except ValueError:
+        return False
+    if ns.command != "history":
+        return False
+    from aew.engine import recall
+
+    if aew_root is None:
+        from aew.engine.base import Kernel
+
+        try:
+            _, aew_root = Kernel.locate(Path(ns.cwd) if ns.cwd else Path.cwd())
+        except Exception:  # no project here (or not an authoritative one): the command does not exist
+            return False
+    return recall.recall_search_enabled(aew_root)
 
 
 def _utf8_streams() -> None:
@@ -89,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _main(argv: list[str]) -> int:
     _utf8_streams()
-    parser = build_parser()
+    parser = build_parser(recall_search=recall_search_for(argv))
     try:
         argv = fields.expand(argv, parser)  # authored values arrive as data, never as shell text (B1)
     except AEWError as exc:

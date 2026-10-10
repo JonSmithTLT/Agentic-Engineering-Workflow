@@ -62,6 +62,10 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   `python -m pytest --lane <lane> -n auto -q` runs one CI lane; `-m acceptance` selects the acceptance scenarios.
 - **CI is the matrix** (Linux and Windows, sharded, with a coverage ratchet). Locally, run the tests you touched and
   their neighbours, then push. A full local run is for risky engine changes only.
+- **A pull request's CI tier follows what it changes** (strategy §3): one that changes only docs, or only docs and
+  fast-lane test modules or `tests/durations.json` (the `fast` tier; shadow for now, so its run stays full), runs
+  `core` and no heavy lane. Force a full run with a `CI-Full: yes` trailer on the head commit or the `full-ci` label,
+  then **Re-run all jobs**.
 - **Run long suites from a separate worktree** at the commit under test, so the checkout you edit stays free. Do not
   edit a checkout while its test run is in progress.
 - **A worktree's tests need an absolute `PYTHONPATH`** to that worktree's `src` when the venv's `aew` is an editable

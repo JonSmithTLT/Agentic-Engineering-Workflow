@@ -1020,6 +1020,16 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The nightly is sharded around it (Windows `reference` 8 shards, `matrix-extra` 4), which absorbs the time but does not explain it. Lead: the resolved `rpds-py` went from 2026.6.3 to 2026.9.1 between those nights, but the PR lanes took the same upgrade without the slowdown. An A/B with it pinned on a Windows runner settles that first
 
+### E53
+
+**Work:** PR test selection (operator, 2026-10-09): pull requests run less only fail-closed, `main`'s push run and the nightly stay full. Phase 1a, the `fast` tier (docs plus fast-lane test modules and `tests/durations.json`: `core`, `static`, `web`'s gate, `fastbase` and `assurance`, no heavy lane), is **built in shadow**: the tier, the runtime lane check and the same-run coverage premise are computed and reported on every eligible run, which stays full. Still to do: enforce it (PR 1b, `tier.MODE = "enforce"`)
+
+**Source:** [Testing and CI strategy](testing-and-ci-strategy.md) §3 (CI plan v7, reviewed CLEAR 2026-10-10)
+
+**When:** **M4 candidate**: PR 1b once at least 5 eligible shadow runs decided correctly, the premise check ran in each with no unexplained loss, and the unit-isolation audit (`unit-isolation-audit.yml`, dispatched once) is clean
+
+**Notes:** Deferred behind their gates (plan v7 §9): Phase 1b, heavy-closure selection (Phase 1a enforced for four weeks with no confirmed miss, and PR runs whose only non-`fast` changes are heavy test modules or helpers saving at least 3 % of PR runner-minutes; then the v2 review's entry conditions V2-1, V2-2, V2-3, V2-5, V2-7 and V2-10), and Phase 2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes, a refreshed marginal estimate of at least 8 %; entry condition V2-8). Expected saving of Phase 1a: about 12.5 % of PR runner-minutes on the 27-PR sample (#117, #119, #120 and #145)
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

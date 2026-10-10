@@ -3,14 +3,19 @@ name: ci
 # Implements docs/implementation/testing-and-ci-strategy.md. A change to lanes, shards, platforms or the
 # merge gate updates that document in the same pull request.
 #
-#   changes              the change's tier (tools/ci/tier.py, CI redesign P1): docs, web or full; fail closed to full
+#   changes              the change's tier (tools/ci/tier.py, CI redesign P1, CI plan v7): docs, fast, web or full,
+#                        from the merge commit's diff against its first parent; fail closed to full. `decision` is
+#                        the tier the paths give; `tier` the one the run takes (in shadow mode, full for fast)
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only)
+#   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
 #   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
 #   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, and web
 #                        and static passed (the merge gate). It recomputes the tier, and refuses a reduced tier on
-#                        any event but a pull request: a push to main and a merge group always run in full.
+#                        any event but a pull request: a push to main and a merge group always run in full. With a
+#                        changed fast-lane test module in a reduced tier it also requires the runtime lane check and
+#                        the coverage premise; in shadow mode it reports both without gating.
 
 on:
   pull_request:
@@ -32,25 +37,45 @@ env:
 jobs:
   changes:
     # Reduced tiers are for pull requests only, and are backed by main's always-full push run: a personal-account
-    # repository has no merge queue (strategy §3, "Tiers"). Anything not provably docs or web is full.
+    # repository has no merge queue (strategy §3, "Tiers"). Anything not provably docs, fast or web is full; a
+    # `full-ci` label or a `CI-Full: yes` trailer on the head commit forces full (plan v7 §1.2).
     name: tier
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # the `full-ci` label, read live
     outputs:
+      decision: ${{ steps.tier.outputs.decision }}
       tier: ${{ steps.tier.outputs.tier }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: pytest, for the lanes of changed test modules (tests/helpers/lanes.py; without it the tier is full)
+        continue-on-error: true
+        run: python -m pip install "pytest>=8"
       - id: tier
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: >-
-          python3 tools/ci/tier.py --event "$EVENT" --base-ref "$BASE_REF" --base "$BASE" --head "$HEAD"
+          python tools/ci/tier.py --event "$EVENT" --base-ref "$BASE_REF" --merge-ref "$GITHUB_SHA"
+          --repo "$REPO" --pr "$PR" --record "$RUNNER_TEMP/tier-decision/tier-decision.json"
           --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tier-decision
+          path: ${{ runner.temp }}/tier-decision/
+          if-no-files-found: ignore
+          retention-days: 30
 
   core:
     name: core (${{ matrix.os }})
@@ -169,6 +194,45 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  fastbase:
+    # The coverage premise's base (CI plan v7 §5, V5-1): the whole fast lane at the base tip (GITHUB_SHA^1), under
+    # coverage, in the same run, with exactly the fast step's flags, so `assurance` can prove that a fast-tier change
+    # did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow run (which stays
+    # full) runs it too (V6-1). Not a required check: `assurance` is, and requires its success in the fast tier only.
+    name: fastbase
+    needs: changes
+    if: needs.changes.outputs.decision == 'fast'
+    runs-on: ubuntu-latest
+    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes); core's own
+    # 20-minute timeout is unchanged.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0     # the base tip, and the spec-pin test verifies the frozen tag
+      - run: git fetch --tags --force
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: "3.11"
+      - name: The base tip in its own worktree
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"
+          mkdir -p "$RUNNER_TEMP/fastbase"
+      - name: fast lane at the base tip, under coverage
+        working-directory: ${{ runner.temp }}/base
+        env:
+          PYTHONPATH: ${{ runner.temp }}/base/src
+          COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
+        run: python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fastbase-coverage  # outside the `coverage-*` pattern the ratchet combines
+          path: ${{ runner.temp }}/fastbase/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   web:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
     uses: ./.github/workflows/web.yml
@@ -208,38 +272,37 @@ jobs:
 
   assurance:
     # The merge gate: mark this check as required on `main`.
-    needs: [changes, core, lanes, web, static]
+    needs: [changes, core, lanes, web, static, fastbase]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       actions: read  # the run's jobs, for the cost record's queue and runner times
+      pull-requests: read  # the recompute reads the `full-ci` label live
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "PyYAML>=6.0" "coverage[toml]>=7.10" "pytest>=8"
       - id: tier
-        name: The tier, recomputed from the same diff, is the one the jobs ran under
+        name: The tier, recomputed from the same merge commit with the label read live, is not narrower than the one the jobs ran under
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
           RAN: ${{ needs.changes.outputs.tier }}
           CHANGES_RESULT: ${{ needs.changes.result }}
         run: |
           test "$CHANGES_RESULT" = success
-          python3 tools/ci/tier.py --event "$EVENT" --base-ref "$BASE_REF" --base "$BASE" --head "$HEAD" \
-            --github-output "$RUNNER_TEMP/tier"
-          tier=$(sed -n 's/^tier=//p' "$RUNNER_TEMP/tier")
-          echo "tier: recomputed $tier, ran $RAN"
-          test "$tier" = "$RAN"
-          echo "tier=$tier" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - run: python -m pip install "PyYAML>=6.0" "coverage[toml]>=7.10"
+          python tools/ci/tier.py --event "$EVENT" --base-ref "$BASE_REF" --merge-ref "$GITHUB_SHA" \
+            --repo "$REPO" --pr "$PR" --ran "$RAN" --modules-out "$RUNNER_TEMP/changed-modules.txt" \
+            --github-output "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
         with:
           pattern: lane-report-*
@@ -248,13 +311,67 @@ jobs:
         with:
           pattern: coverage-*
           path: coverage-data
-      - name: Every collected test of the tier's lanes ran exactly once and passed (pinned platform skips excepted)
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fastbase-coverage
+          path: fastbase-data
+      - id: assure
+        name: Every collected test of the tier's lanes ran exactly once and passed (pinned platform skips excepted); in a reduced tier, every test of a changed test module is fast or serial
         env:
           TIER: ${{ steps.tier.outputs.tier }}
           EVENT: ${{ github.event_name }}
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
-          --require linux,win32 --tier "$TIER" --event "$EVENT" --summary "$GITHUB_STEP_SUMMARY"
+          --require linux,win32 --tier "$TIER" --event "$EVENT"
+          --changed-modules "$RUNNER_TEMP/changed-modules.txt" --summary "$GITHUB_STEP_SUMMARY"
+      - id: premise
+        name: The coverage premise (a changed fast-lane test module in a reduced tier; plan v7 §5)
+        if: (success() || failure()) && steps.tier.outputs.tier != 'full' && steps.tier.outputs.modules == 'true'
+        env:
+          BASE_RESULT: ${{ needs.fastbase.result }}
+        run: >-
+          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux
+          --base-result "$BASE_RESULT" --summary "$GITHUB_STEP_SUMMARY"
+      - id: shadow
+        name: "Shadow: the fast tier's checks, computed and reported, never gating (plan v7 §7; PR 1b enforces)"
+        if: always() && steps.tier.outputs.decision == 'fast' && steps.tier.outputs.tier != 'fast'
+        continue-on-error: true
+        timeout-minutes: 5  # continue-on-error does not cover the job's timeout: a hang must not cancel the gate
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_RESULT: ${{ needs.fastbase.result }}
+        run: |
+          set +e
+          mkdir -p tier-shadow
+          python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml \
+            --require linux,win32 --tier fast --event "$EVENT" \
+            --changed-modules "$RUNNER_TEMP/changed-modules.txt" > tier-shadow/lane-check.txt
+          lanecheck=$?
+          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux \
+            --base-result "$BASE_RESULT" --out tier-shadow/premise.json > tier-shadow/premise.txt
+          premise=$?
+          cp "$RUNNER_TEMP/changed-modules.txt" tier-shadow/
+          printf '{"schema": "aew/tier-shadow/v1", "fastbase": "%s", "lanecheck_exit": %d, "premise_exit": %d}\n' \
+            "$BASE_RESULT" "$lanecheck" "$premise" > tier-shadow/shadow.json
+          {
+            echo "## Shadow: the fast tier (reported, never gating; plan v7 §7)"
+            echo ""
+            echo "This run would have taken the fast tier. fastbase: $BASE_RESULT; runtime lane check: exit" \
+              "$lanecheck; coverage premise: exit $premise (0 means it passed)."
+            echo ""
+            cat tier-shadow/premise.txt
+            grep -E "lane: a changed module|no lane reports" tier-shadow/lane-check.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.tier.outputs.decision == 'fast' && steps.tier.outputs.tier != 'fast'
+        continue-on-error: true
+        timeout-minutes: 3
+        with:
+          name: tier-shadow
+          path: tier-shadow/
+          if-no-files-found: ignore
+          retention-days: 90
       - name: The cost record (reported, never gated; CI redesign P4, register E43 and E45)
         if: always()
         continue-on-error: true
@@ -301,6 +418,11 @@ jobs:
           LANES: ${{ needs.lanes.result }}
           WEB: ${{ needs.web.result }}
           STATIC: ${{ needs.static.result }}
+          FASTBASE: ${{ needs.fastbase.result }}
+          MODULES: ${{ steps.tier.outputs.modules }}
+          LANECHECK: ${{ steps.assure.outcome }}
+          PREMISE: ${{ steps.premise.outcome }}
         run: >-
           python3 tools/ci/tier.py --jobs-for "$TIER"
-          --jobs "changes=$CHANGES,core=$CORE,lanes=$LANES,web=$WEB,static=$STATIC"
+          --jobs "changes=$CHANGES,core=$CORE,lanes=$LANES,web=$WEB,static=$STATIC,fastbase=$FASTBASE"
+          --modules-changed "$MODULES" --checks "lanecheck=$LANECHECK,premise=$PREMISE"

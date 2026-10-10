@@ -15,6 +15,9 @@ the oracles reach that host only to score, after every model run has ended (``RE
     python qualify.py score            # with AEW_EVAL_HIDDEN_ROOT, after every model run: scores, behaviours
     python qualify.py purge            # the retention step: deletes kept session databases past their window
 
+Every step works on one experiment (``--experiment``, before the step; default ``lbq-v1-deepseek-v4-flash``): its own
+preregistration, frozen record and lane directory (``--out``). ``EXPERIMENTS`` lists them.
+
 ``check`` validates the profiles (and that the frozen arm pins them), the cases, the overlay and, with the hidden
 root and the fetched fixture, runs every oracle against the seeded start (exactly its criteria fail) and the
 reference solution (every check passes), recording the result in ``oracle-validation.json`` (committed: ``freeze``
@@ -62,8 +65,52 @@ from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid, validate  # noqa: E402
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-PLAN = HERE / "prereg.yaml"
-FROZEN = HERE / "prereg.frozen.yaml"
+# The lane's experiments: one preregistration each, sealed by `freeze` into its own frozen record, run into its own
+# lane directory (`--out`). Same cases, oracles, rubric and budget rules; each pins its own profile (README.md,
+# "Experiments"). `--experiment` selects one; the default is the lane's first, whose files keep their names.
+DEFAULT_EXPERIMENT = "lbq-v1-deepseek-v4-flash"
+EXPERIMENTS = {
+    "lbq-v1-deepseek-v4-flash": HERE / "prereg.yaml",                        # the paid twin; unavailable on Zen
+    "lbq-v1-deepseek-v4-1-flash": HERE / "prereg-deepseek-v4-1-flash.yaml",  # the replacement primary (4.1)
+    "lbq-v1-gpt-5-nano": HERE / "prereg-gpt-5-nano.yaml",                    # the next-cheaper profile
+}
+LANE_MARK = "experiment.txt"  # in a lane directory: the experiment whose runs it holds
+
+
+def frozen_path(plan: Path) -> Path:
+    """Where ``freeze`` seals a preregistration: ``prereg.yaml`` -> ``prereg.frozen.yaml``."""
+    return plan.with_name(plan.name[: -len(".yaml")] + ".frozen.yaml")
+
+
+PLAN = EXPERIMENTS[DEFAULT_EXPERIMENT]
+FROZEN = frozen_path(PLAN)
+
+
+def select(experiment: str) -> str:
+    """Make ``experiment`` the one every command works on (its preregistration and frozen record); its id as the
+    preregistration states it, which must be the one selected."""
+    global PLAN, FROZEN
+    if experiment not in EXPERIMENTS:
+        raise Invalid(f"unknown experiment {experiment!r}; the lane has {sorted(EXPERIMENTS)}")
+    PLAN, FROZEN = EXPERIMENTS[experiment], frozen_path(EXPERIMENTS[experiment])
+    stated = load_yaml(PLAN)["experiment"]
+    if stated != experiment:
+        raise Invalid(f"{PLAN.name} preregisters {stated!r}, not {experiment!r}")
+    return stated
+
+
+def claim_lane(out: Path, experiment: str) -> None:
+    """A lane directory holds one experiment's runs: its floor, ledger and kept databases are never mixed with
+    another's. A directory with runs but no mark predates the mark, and holds the lane's first experiment."""
+    mark = out / LANE_MARK
+    held = mark.read_text(encoding="utf-8").strip() if mark.exists() else \
+        (DEFAULT_EXPERIMENT if any((out / d).exists() for d in ("floor", "ledger")) else None)
+    if held is not None and held != experiment:
+        raise SystemExit(f"refused: {out} holds the runs of {held}, not {experiment}: give each experiment its own "
+                         "--out lane directory")
+    out.mkdir(parents=True, exist_ok=True)
+    if not mark.exists():
+        mark.write_text(experiment + "\n", encoding="utf-8")
 PROFILES = HERE / "profiles.yaml"
 RUBRIC = HERE / "rubric.md"
 UPSTREAM = HERE / "upstream.yaml"
@@ -176,6 +223,9 @@ def frozen_record() -> dict[str, Any]:
         raise SystemExit(f"refused: {FROZEN.name} does not exist: freeze the preregistration first")
     frozen = load_yaml(FROZEN)
     prereg.verify(frozen)
+    planned = load_yaml(PLAN)["experiment"]
+    if frozen["experiment"] != planned:
+        raise SystemExit(f"refused: {FROZEN.name} seals {frozen['experiment']!r}, not {planned!r}")
     return frozen
 
 
@@ -716,6 +766,7 @@ def floor_trial(where: Path, record: dict[str, Any], names: list[str], *, cap: f
 def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     arm_host_clean(out, hidden_root)
     frozen = frozen_record()
+    claim_lane(out, frozen["experiment"])
     record = worker_profile(frozen)
     cap = float(frozen["thresholds"]["budget"]["floor_cap_usd"])
     trials_max = int(frozen["thresholds"]["floor"]["trials"])
@@ -801,6 +852,7 @@ def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
 def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     arm_host_clean(out, hidden_root)
     frozen = frozen_record()
+    claim_lane(out, frozen["experiment"])
     if not any(t.get("verdict") == "passed" for t in floor_state(out)["trials"]):
         raise SystemExit("refused: the profile has not passed the floor (rubric.md §2): run `qualify.py floor`")
     ledger_dir, work = out / "ledger", out / "work"
@@ -900,6 +952,7 @@ def harness_processes(binary: Path) -> list[int]:
 
 def cmd_score(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     frozen = frozen_record()
+    claim_lane(out, frozen["experiment"])
     rules = load_yaml(BEHAVIOURS)
     ledger_dir = out / "ledger"
     ledger = AttemptLedger(ledger_dir, frozen)
@@ -980,6 +1033,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     ap = argparse.ArgumentParser(prog="python qualify.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, help="run state, outside every repository (default: per-user data dir)")
+    ap.add_argument("--experiment", choices=sorted(EXPERIMENTS), default=DEFAULT_EXPERIMENT,
+                    help=f"which preregistration every step works on (default: {DEFAULT_EXPERIMENT})")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="the dry run: no provider call")
     c.add_argument("--no-launch", action="store_true", help="skip starting the pinned OpenCode and containment")
@@ -998,7 +1053,11 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-launch", action="store_true")
     r.add_argument("--again", action="store_true")
     args = ap.parse_args(argv)
-    experiment = load_yaml(PLAN)["experiment"]
+    try:
+        experiment = select(args.experiment)
+    except Invalid as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
     out = (args.out or default_out(experiment)).expanduser().resolve()
     try:
         if args.cmd == "check":

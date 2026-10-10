@@ -176,7 +176,8 @@ def write_results(path: Path, run: dict) -> Path:
 def lane(qualify, tmp_path, monkeypatch):
     """``cmd_floor`` with the frozen record, the profile and the live trial faked: ``runs`` lists the implementer
     run each successive trial records (a placeholder key; no provider is called)."""
-    frozen = {"thresholds": {"budget": {"floor_cap_usd": 1.0}, "floor": {"trials": 2}}}
+    frozen = {"experiment": "lbq-v1-deepseek-v4-flash",
+              "thresholds": {"budget": {"floor_cap_usd": 1.0}, "floor": {"trials": 2}}}
     monkeypatch.setattr(qualify, "frozen_record", lambda: frozen)
     monkeypatch.setattr(qualify, "worker_profile", lambda f: {"id": "lb-fake", "ref": "opencode/fake",
                                                               "credential_env": ["OPENCODE_API_KEY"]})
@@ -312,7 +313,8 @@ def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypa
     (out / "floor").mkdir(parents=True)
     (out / "floor" / "floor.json").write_text(json.dumps({"trials": [{"trial": 1, "verdict": "passed"}],
                                                           "charged_usd": 0.1}), encoding="utf-8")
-    frozen = {"profiles": {"budget_usd": 5.0}, "thresholds": {"budget": {"overshoot_margin_usd": 0.05}},
+    frozen = {"experiment": "lbq-v1-deepseek-v4-flash", "profiles": {"budget_usd": 5.0},
+              "thresholds": {"budget": {"overshoot_margin_usd": 0.05}},
               "arms": [{"id": "raw", "config": {"cap_usd": 0.75, "provider_env": ["OPENCODE_API_KEY"]}}],
               "validity_rules": {"retry_policy": {"max_retries": 2, "allowed_for": ["invalid_measurement"]}},
               "assignment": {"order": [{"cell": "LBQ-1/raw/1", "arm": "raw"}, {"cell": "LBQ-2/raw/1", "arm": "raw"}]}}
@@ -346,3 +348,133 @@ def test_a_ceiling_stop_without_a_provider_error_blames_no_provider(qualify):
     message = qualify.lane_error_message(stop, ["OPENCODE_API_KEY"], where="x", again="qualify.py ceiling")
     assert message.startswith("refused: no model step was recorded (UnknownError: boom)")
     assert "the provider" not in message
+
+
+# ---------------------------------------------------------------------------------------------- the experiments
+
+V4, V41, NANO = "lbq-v1-deepseek-v4-flash", "lbq-v1-deepseek-v4-1-flash", "lbq-v1-gpt-5-nano"
+# prereg.yaml as the operator's lbq-v1-deepseek-v4-flash lane froze it (its first floor ran at a6e4784): never edited
+V4_PREREG_SHA256 = "2c1f76f7e3feaeb2fd6cd86f5acc11722260f8fe38485effd98825f2cfb9eaa6"
+PINS = {V41: ("opencode/deepseek-v4.1-flash#high", "lb-deepseek-v4.1-flash"),
+        NANO: ("opencode/gpt-5-nano#high", "lb-gpt-5-nano")}
+
+
+def plan_of(qualify, experiment: str) -> dict:
+    return yaml.safe_load(qualify.EXPERIMENTS[experiment].read_text(encoding="utf-8"))
+
+
+def profile_of(pid: str) -> dict:
+    return next(r for r in yaml.safe_load((LANE / "profiles.yaml").read_text(encoding="utf-8")) if r["id"] == pid)
+
+
+@pytest.fixture
+def selected(qualify, monkeypatch):
+    """``select`` for one test: the module's selection is restored afterwards."""
+    monkeypatch.setattr(qualify, "PLAN", qualify.PLAN)
+    monkeypatch.setattr(qualify, "FROZEN", qualify.FROZEN)
+    return qualify.select
+
+
+def test_the_first_experiment_is_unchanged(qualify):
+    """lbq-v1-deepseek-v4-flash keeps its preregistration byte for byte, and its file names (its frozen record on
+    the arm host is prereg.frozen.yaml), and stays the default."""
+    import hashlib
+
+    data = (LANE / "prereg.yaml").read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(data).hexdigest() == V4_PREREG_SHA256
+    assert qualify.DEFAULT_EXPERIMENT == V4
+    assert qualify.EXPERIMENTS[V4] == LANE / "prereg.yaml"
+    assert qualify.frozen_path(qualify.EXPERIMENTS[V4]) == LANE / "prereg.frozen.yaml"
+    assert (qualify.PLAN, qualify.FROZEN) == (LANE / "prereg.yaml", LANE / "prereg.frozen.yaml")
+
+
+def test_each_experiment_has_its_own_preregistration_frozen_record_and_lane(qualify, selected):
+    frozen = {e: qualify.frozen_path(p) for e, p in qualify.EXPERIMENTS.items()}
+    assert sorted(qualify.EXPERIMENTS) == sorted([V4, V41, NANO])
+    assert len(set(frozen.values())) == len(frozen) == len(set(qualify.EXPERIMENTS.values()))
+    for experiment in qualify.EXPERIMENTS:
+        plan = plan_of(qualify, experiment)  # with the hashes freeze fills from the fetched fixture: placeholders
+        for case in plan["cases"]:
+            case.update(sha256="0" * 64, hidden_sha256="0" * 64)
+        plan["scoring"]["rubric_sha256"] = "0" * 64
+        qualify.validate("aew/eval-prereg/v1", plan, what=experiment)  # e.g. an experiment id has no dots
+        assert selected(experiment) == experiment == plan_of(qualify, experiment)["experiment"]
+        assert qualify.FROZEN == frozen[experiment]
+        assert qualify.default_out(experiment).name == experiment  # its own lane directory by default
+    with pytest.raises(qualify.Invalid, match="unknown experiment"):
+        selected("lbq-v1-elsewhere")
+
+
+@pytest.mark.parametrize("experiment", [V41, NANO])
+def test_a_new_experiment_pins_its_profile_and_changes_nothing_else(qualify, experiment):
+    """Same cases, oracles, rubric, schedule seed, limits and budget as the first experiment: only the experiment id,
+    its question, its amendment record and the profile pins differ."""
+    model, pid = PINS[experiment]
+    plan, first = plan_of(qualify, experiment), plan_of(qualify, V4)
+    config = plan["arms"][0]["config"]
+    assert (config["model"], config["profile"]["id"], plan["profiles"]["roles"]["worker"]) == (model, pid, model)
+    for p in (plan, first):
+        for key in ("experiment", "question", "amendment_policy"):
+            p.pop(key)
+        p["arms"][0]["config"]["model"] = p["arms"][0]["config"]["profile"]["id"] = None
+        p["profiles"]["roles"]["worker"] = None
+    assert plan == first
+
+
+@pytest.mark.parametrize("experiment", [V4, V41, NANO])
+def test_every_experiment_keeps_the_lanes_budget(qualify, experiment):
+    plan = plan_of(qualify, experiment)
+    budget = plan["thresholds"]["budget"]
+    assert plan["profiles"]["budget_usd"] == budget["total_usd"] == 5.0
+    assert budget["floor_cap_usd"] == 1.0
+    assert budget["per_run_cap_usd"] == plan["arms"][0]["config"]["cap_usd"] == 0.75
+    assert budget["overshoot_margin_usd"] == 0.05
+    assert plan["thresholds"]["floor"]["trials"] == 2
+
+
+@pytest.mark.parametrize("experiment", [V4, V41, NANO])
+def test_every_experiment_pins_its_profile_as_the_record_states(qualify, selected, experiment):
+    selected(experiment)
+    report: dict = {}
+    qualify.check_profiles(report, plan_of(qualify, experiment))
+    assert report["profiles"][PINS.get(experiment, (None, "lb-deepseek-v4-flash"))[1]] == "unqualified"
+
+
+def test_the_replacement_primary_has_a_stable_identity(qualify):
+    """V4.1 is a versioned, released model the pinned harness offers (not an experimental or free id), pinned at the
+    same effort as the profile it replaces; Nano is driven through the Responses API package."""
+    v41, v4, nano = (profile_of(p) for p in ("lb-deepseek-v4.1-flash", "lb-deepseek-v4-flash", "lb-gpt-5-nano"))
+    assert v41["plan_role"] == "replacement-primary" and v41["effort"] == v4["effort"] == "high"
+    assert not any(tag in v41["model"] for tag in ("-exp", "free", "preview"))
+    assert v41["availability"] | {"note": None} == {
+        "checked_at": "2026-10-10", "offered_by_pinned_harness": True, "catalog_status": "active",
+        "checked_with": v4["availability"]["checked_with"], "note": None}
+    assert (v41["cost_per_mtok_usd"]["input"], v41["cost_per_mtok_usd"]["output"],
+            v41["cost_per_mtok_usd"]["cache_read"]) == (0.30, 1.20, 0.006)
+    assert nano["effort"] == "high" and nano["availability"]["offered_by_pinned_harness"] is True
+    assert "Responses API" in nano["availability"]["note"]
+    assert v4["qualification_state"] == "unqualified" and "Unavailable on OpenCode Zen" in v4["notes"]
+
+
+def test_a_lane_directory_holds_one_experiment(qualify, tmp_path):
+    fresh = tmp_path / "lbq-v1-deepseek-v4-1-flash" / "out"
+    qualify.claim_lane(fresh, V41)
+    qualify.claim_lane(fresh, V41)  # its own again: fine
+    assert (fresh / qualify.LANE_MARK).read_text(encoding="utf-8").strip() == V41
+    with pytest.raises(SystemExit, match="holds the runs of lbq-v1-deepseek-v4-1-flash"):
+        qualify.claim_lane(fresh, NANO)
+    first = tmp_path / "lbq-v1" / "out"  # the first experiment's lane, from before the mark existed
+    (first / "floor").mkdir(parents=True)
+    with pytest.raises(SystemExit, match="holds the runs of lbq-v1-deepseek-v4-flash"):
+        qualify.claim_lane(first, V41)
+    qualify.claim_lane(first, V4)
+
+
+def test_a_frozen_record_of_another_experiment_is_refused(qualify, selected, monkeypatch, tmp_path):
+    selected(V41)
+    sealed = tmp_path / "prereg-deepseek-v4-1-flash.frozen.yaml"
+    sealed.write_text(yaml.safe_dump({"experiment": V4}), encoding="utf-8")
+    monkeypatch.setattr(qualify, "FROZEN", sealed)
+    monkeypatch.setattr(qualify.prereg, "verify", lambda frozen: "sealed")
+    with pytest.raises(SystemExit, match="seals 'lbq-v1-deepseek-v4-flash', not 'lbq-v1-deepseek-v4-1-flash'"):
+        qualify.frozen_record()

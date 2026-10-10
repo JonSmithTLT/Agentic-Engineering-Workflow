@@ -837,8 +837,12 @@ sections:
       export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge
       recorded); the preregistration''s `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/`
       holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with
-      their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. The
-      session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host split are still next'
+      their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. Three
+      experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and
+      lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash`
+      (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage
+      and a second model family). The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
+      split are still next'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1197,7 +1201,10 @@ sections:
       runs on it. **Lower-bound availability (2026-10-10, OpenCode 2.0.18''s served catalog):** the chosen free models (`opencode/deepseek-v4-flash-free`,
       the backup `opencode/minimax-m2.5-free`, and `opencode/laguna-s-2.1-free`) are deprecated in the catalog and not offered;
       their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash#high`,
-      with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`)'
+      with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`).
+      Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still
+      lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary,
+      and to run `opencode/gpt-5-nano#high` after it, each as its own experiment'
 
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local

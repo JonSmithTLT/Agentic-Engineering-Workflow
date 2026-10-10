@@ -15,8 +15,8 @@
     "provider": {"type": "string", "minLength": 1},
     "model": {"type": "string", "minLength": 1},
     "effort": {"type": ["string", "null"]},
-    "plan_role": {"enum": ["primary", "backup", "paid-twin", "reference-note"],
-                  "description": "Where the lane's plan uses it: the profile under qualification, its fallback, the stable paid twin of a free model, or a model recorded only as a note."},
+    "plan_role": {"enum": ["primary", "replacement-primary", "backup", "paid-twin", "reference-note"],
+                  "description": "Where the lane's plan uses it: the profile under qualification, the profile that replaces it when it becomes unavailable (a new experiment id), its fallback, the stable paid twin of a free model, or a model recorded only as a note."},
     "twin_of": {"type": ["string", "null"], "description": "The id of the free profile this one is the paid twin of."},
     "harness": {
       "type": "object", "required": ["name", "version"], "additionalProperties": false,

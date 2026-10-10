@@ -1,7 +1,9 @@
 # Lower-bound qualification lane (`lbq-v1`)
 
-**Status:** prepared and dry-run; **the run is the operator's**. It needs a provider credential and spends money (see
-"Operator steps"). Experiment id `lbq-v1-deepseek-v4-flash`, `purpose: qualification`.
+**Status:** prepared and dry-run; **the runs are the operator's**. They need a provider credential and spend money
+(see "Operator steps"). Three experiments, each `purpose: qualification` ("Experiments"): `lbq-v1-deepseek-v4-flash`
+(its profile became unavailable on OpenCode Zen), `lbq-v1-deepseek-v4-1-flash` (the replacement primary) and
+`lbq-v1-gpt-5-nano` (the next-cheaper profile).
 
 **Governed by:**
 - the agent-effectiveness adoption record
@@ -59,12 +61,31 @@ Chosen by the lead developer on 2026-10-09:
   cheapest paid model the pinned harness offers with a stable identity. `minimax-m2.5`'s paid twin costs more than the
   primary ($0.30 / $1.20), so it is not the fallback.
 
+**Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen.** Its chat completions return an upstream 404
+("Endpoint is unavailable"), although OpenCode 2.0.18's served catalog still lists it as `active`; Zen logged the
+operator's request, and the key and billing were fine. Its floor never reached a model step (lane errors, never
+counted as trials).
+- **The operator chose `opencode/deepseek-v4.1-flash` as the replacement primary** (2026-10-10). It is the same
+  family's successor (`deepseek-flash`, released 2026-09-10), offered by the pinned harness with variants low, high and
+  max, at $0.30 / $1.20 per million tokens ($0.006 cached). The trigger is unavailability, which the next-cheaper rule
+  does not cover; the move mirrors the earlier one from the deprecated free tier to its paid twin. It is pinned at
+  high effort for the same reason as its predecessor.
+- **`opencode/gpt-5-nano` stays the next-cheaper profile**, as defined above. V4.1 costs more than V4, so it is not a
+  next-cheaper profile. The operator chose to run Nano too, after V4.1 ("Experiments").
+- **Nano's effort is high**, by the rule that pinned the DeepSeek profiles: the floor is a hard prerequisite, so a
+  lower-bound worker runs at the highest effort below its provider's maximum tier. Nano's variants are minimal, low,
+  medium and high: it has no tier above high. At high it is still the smallest, oldest model the lane considers.
+- **Protocols.** The pinned OpenCode drives V4.1 through its openai-compatible package (chat completions), and Nano
+  through its own OpenAI package (`@opencode/ai/providers/openai`, the Responses API), as its served catalog states.
+  Zen refuses Nano on chat completions (`ModelProtocolUnsupported`) and answers it on Responses.
+
 | Profile | Class | Offered by 2.0.18 | Effort pinned | Credential variable | State |
 |---|---|---|---|---|---|
 | `lb-deepseek-v4-flash-free` | lower-bound | no (deprecated) | – | none | `unavailable` |
-| `lb-deepseek-v4-flash` (pinned) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `unqualified` |
+| `lb-deepseek-v4-flash` (paid twin; unavailable on Zen) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `unqualified` |
+| `lb-deepseek-v4.1-flash` (replacement primary) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `unqualified` |
 | `lb-minimax-m2.5-free` | lower-bound | no (deprecated) | – | none | `unavailable` |
-| `lb-gpt-5-nano` (fallback) | lower-bound | yes (minimal, low, medium, high) | at its run | `OPENCODE_API_KEY` | `unqualified` |
+| `lb-gpt-5-nano` (next-cheaper) | lower-bound | yes (minimal, low, medium, high) | high | `OPENCODE_API_KEY` | `unqualified` |
 | `mid-gpt-6-luna` | mid | yes (none to max) | medium | `OPENAI_API_KEY` | `unqualified` |
 | `note-laguna-s-2.1-free` | lower-bound (note) | no (deprecated) | – | none | `unavailable` |
 
@@ -74,6 +95,33 @@ effective profile and its state at preregistration, and the harness.
   `67d82756…`.
 - **Wrong binary:** a different binary is refused before an attempt is counted.
 - **Wrong version:** a server that reports another version makes the run invalid (`HARNESS_MISMATCH`).
+
+## Experiments
+
+Each profile the lane qualifies is its own experiment (the preregistration's `amendment_policy`: a new experiment id
+per profile). Each has its own preregistration, sealed by `freeze` into its own frozen record, and its own lane
+directory (`--out`), and is selected with `qualify.py --experiment <id>`. The cases, oracles, rubric, schedule seed,
+limits and budget rules are the same in all three; only the experiment id, its question, its amendment record and the
+profile pins differ.
+
+| Experiment | Preregistration | Frozen record (written by `freeze`) | Profile | Lane directory on the VM |
+|---|---|---|---|---|
+| `lbq-v1-deepseek-v4-flash` (the default) | `prereg.yaml` | `prereg.frozen.yaml` | `lb-deepseek-v4-flash` | `~/aew-eval/lbq-v1` |
+| `lbq-v1-deepseek-v4-1-flash` | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
+| `lbq-v1-gpt-5-nano` | `prereg-gpt-5-nano.yaml` | `prereg-gpt-5-nano.frozen.yaml` | `lb-gpt-5-nano` | `~/aew-eval/lbq-v1-gpt-5-nano` |
+
+- **An experiment id has no dots** (`aew/eval-prereg/v1`), so V4.1's id spells it `4-1`. Its profile keeps the model's
+  own name.
+- **The first experiment is unchanged.** `prereg.yaml` is byte for byte the one its lane froze; the default
+  `--experiment` is still that experiment.
+- **A lane directory holds one experiment.** The lane marks it (`experiment.txt`) on its first model step and refuses
+  another experiment's steps there. A directory with runs but no mark is the first experiment's. A frozen record that
+  seals another experiment than the selected preregistration is refused.
+
+**Why both V4.1 and Nano run** (the operator, 2026-10-10). V4.1 runs first, as the replacement primary. Nano runs
+after it, whatever V4.1's outcome. It covers the case where V4.1 is `not_a_lower_bound`, which the rubric answers with
+the next-cheaper profile. It also gives a second lower-bound data point from another model family for M4-H's choice of
+lower bound.
 
 ## The fixture
 
@@ -154,13 +202,14 @@ there cannot be contained, so the lane does not run models there.
 |---|---|
 | `check` | the dry run (no provider call) |
 | `fetch` | the fixture download (approved) |
-| `freeze --by NAME` | fills the case, oracle and rubric hashes, materializes the schedule, writes `prereg.frozen.yaml`; it requires `oracle-validation.json` to cover exactly these hashes |
+| `freeze --by NAME` | fills the case, oracle and rubric hashes, materializes the schedule, writes the selected experiment's frozen record (`prereg.frozen.yaml` for the default); it requires `oracle-validation.json` to cover exactly these hashes |
 | `floor` | up to two live-lane trials, one at a time, cost-capped |
 | `ceiling` | the six raw cells (3 cases × 2) in schedule order, scoring deferred; each attempt is registered in the ledger before it runs, and retried only under the frozen policy |
 | `score` | after the oracles arrive: the retention purge, the deferred scores, the tree-observable behaviours, the summary |
 | `purge` | the retention step on its own |
 
-`qualify.py run --by NAME` runs everything up to the end of `ceiling` (every step that runs a model).
+`qualify.py run --by NAME` runs everything up to the end of `ceiling` (every step that runs a model). Every step works
+on the experiment `--experiment` selects (given before the step).
 
 **A provider failure is a lane error, never a floor trial.** What is detected is narrow: the implementer's turn ended on
 a named provider error (a `provider.*` type) before any model output. Every token count is known and zero, and AEW's
@@ -184,7 +233,7 @@ so the same `--out` directory runs the floor again once the key is fixed.
 session database**), and the floor's records. The lane's reader may extract only the preregistered fields. Retention
 is enforced, not only recorded: a database past its 180 days is refused, then purged, and the purge is recorded.
 
-## Cost (USD), counted against one budget
+## Cost (USD), counted against one budget per experiment
 
 | Part | Expected | Bound |
 |---|---|---|
@@ -192,27 +241,41 @@ is enforced, not only recorded: a database past its 180 days is refused, then pu
 | Ceiling: 6 raw runs of `deepseek-v4-flash#high`, ≤ 80 steps each, plus retries | ≈ 0.10–0.35 per run | `cap_usd` 0.75 per run, enforced within one 15 s poll |
 | **The lane** | **≈ 1–2.5** | **`budget_usd` 5.00** |
 
+**The other experiments** have the same bounds (each its own `budget_usd` 5.00, `floor_cap_usd` 1.00 and `cap_usd`
+0.75), and their own expected cost:
+- **`lbq-v1-deepseek-v4-1-flash`: ≈ $2–4.** V4.1 costs about 2× V4 per input token and 4.3× per output token, so a
+  step costs about $0.02–0.03. A long ceiling run can reach its $0.75 cap; it is then cut short (truncated, and left
+  out of behaviours 4 and 5), as the preregistration counts it.
+- **`lbq-v1-gpt-5-nano`: ≈ $1–2.5.** Nano's input costs about a third of V4's and its output 1.4×, with reasoning
+  tokens at high effort.
+
 **How the bound holds.**
 - Every attempt is charged its reported cost, or its cap when the cost is unknown or the run was lost.
 - An attempt starts only if `spent + its cap + 0.05 ≤ 5.00`. So the total stays within $5.00 provided each enforcement
-  poll overshoots by under $0.05; at about $0.007 per step, a poll covers a few steps.
+  poll overshoots by under $0.05. At V4's about $0.007 per step a poll covers a few steps; at V4.1's price, a poll
+  that ends on a burst of steps could overshoot by a few cents more. The provider balance is the hard stop: keep it
+  at $5 per experiment.
 - The middle profile's floor (`gpt-6-luna#medium`, `OPENAI_API_KEY`) is a separate opt-in, ≈ $0.6 at most.
 
 ## Operator steps (the Rocky 8 VM)
 
-See the pull request's description for the exact commands. In short:
+See the pull request's description for the exact commands. In short, for each experiment, in its own lane
+directory (the table in "Experiments"):
 1. clone this branch to a fresh lane directory on the VM, and run `vm/setup.sh`;
 2. set `AEW_OPENCODE_BIN` to the pinned binary, and `OPENCODE_API_KEY` in that shell (the operator provisions it;
    the agent never sees it);
-3. run `qualify.py --out <lane>/out run --by <name>`, then unset the key;
-4. copy the oracles to `<lane>/hidden`, run `qualify.py --out <lane>/out score`, and delete the copy;
-5. bring back `prereg.frozen.yaml` and the run summaries for this pull request.
+3. run `qualify.py --experiment <id> --out <lane>/out run --by <name>` (it freezes the experiment's preregistration
+   first), then unset the key;
+4. copy the oracles to `<lane>/hidden`, run `qualify.py --experiment <id> --out <lane>/out score`, and delete the
+   copy;
+5. bring back the experiment's frozen record and the run summaries for this pull request.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `prereg.yaml` | the preregistration (`aew/eval-prereg/v1`), unfrozen; it holds the structured behaviour definitions |
+| `prereg.yaml` | the preregistration of `lbq-v1-deepseek-v4-flash` (`aew/eval-prereg/v1`), unfrozen; it holds the structured behaviour definitions |
+| `prereg-deepseek-v4-1-flash.yaml`, `prereg-gpt-5-nano.yaml` | the preregistrations of `lbq-v1-deepseek-v4-1-flash` and `lbq-v1-gpt-5-nano`: `prereg.yaml` with their own id, question, amendment record and profile pins |
 | `oracle-validation.json` | the oracles validated against the real fixture (seed fails as designed, reference passes) |
 | `profiles.yaml` | the profile records (`aew/eval-profile/v1`) |
 | `rubric.md` | the floor, the ceiling (the eight behaviours, their metrics and thresholds), correctness, the verdict |

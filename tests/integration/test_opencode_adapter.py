@@ -375,11 +375,19 @@ def test_a_credential_error_loses_its_message_and_key_shaped_text_is_redacted_fr
         "type": "provider.Authentication"}
     leaky = {"type": "provider.internal", "status": 500,
              "message": "upstream said: key sk-proj-abc***wxyz bad, Bearer eyJhbGciOi.x.y, masked ab****cd, "
-                        "token 0123456789abcdef0123456789abcdef01"}
+                        "token Zx9Qk2Lm7Np4Rs8Tv1Wy6Bc3Df5Gh0Jk2Mn4Pq6R"}
     kept = error_view(leaky)["message"]
-    for fragment in ("sk-proj", "wxyz", "eyJhbGciOi", "ab****cd", "0123456789abcdef0123456789abcdef01"):
+    for fragment in ("sk-proj", "wxyz", "eyJhbGciOi", "ab****cd", "Zx9Qk2Lm7Np4Rs8Tv1Wy6Bc3Df5Gh0Jk2Mn4Pq6R"):
         assert fragment not in kept, kept
     assert kept.startswith("upstream said: key <redacted> bad, <redacted>"), kept
+    # what a non-credential error is diagnosed from stays; a mixed-case 40-character token (above) goes (re-review 1)
+    for diagnostic in ("openai/gpt-5.1-codex-max-2025-11-20-preview-extended",  # a model id
+                       "4f0a7101c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7",  # a git sha
+                       "3f2c9a1e-8b7d-4c6e-9f00-112233445566",  # a UUID
+                       "req_0123456789abcdef0123456789abcdef",  # a request id
+                       "src/aew/harness/opencode/a_really_long_module_name_for_testing.py"):  # a long path
+        message = f"failed on {diagnostic} (rate limit)"
+        assert error_view({"type": "provider.api", "status": 400, "message": message})["message"] == message
 
 
 def test_a_failed_turn_is_classified_from_the_event_when_the_messages_lack_the_error(tmp_path):

@@ -80,8 +80,21 @@ REASON_CODES = {AUTH_ERROR: PROVIDER_AUTH_FAILED}
 # message is dropped whatever the type says, so a renamed or different classification fails closed (register V1).
 CREDENTIAL_STATUSES = frozenset({401, 403, 407})
 # Key-shaped text redacted from every provider message that is kept: an `sk-` key (masked or not), a bearer token, a
-# masked run of asterisks with whatever surrounds it, and any long token-like string.
-KEY_SHAPED = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}|\S*\*{3,}\S*|[A-Za-z0-9_-]{32,}")
+# masked run of asterisks with whatever surrounds it, and a long token that mixes upper case, lower case and digits, as
+# a random key does. Model ids, git shas, UUIDs, request ids and paths are one case or carry no digit, and stay: they
+# are what an operator diagnoses a non-credential error from (PR #165 re-review, finding 1).
+KEY_SHAPED = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}|\S*\*{3,}\S*")
+LONG_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def redact_key_shaped(text: str) -> str:
+    def mixed(m: re.Match[str]) -> str:
+        t = m.group(0)
+        if any(c.isupper() for c in t) and any(c.islower() for c in t) and any(c.isdigit() for c in t):
+            return "<redacted>"
+        return t
+
+    return LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text))
 
 
 def default_binary() -> Path | None:
@@ -653,7 +666,7 @@ def error_view(error: dict[str, Any]) -> dict[str, Any]:
     if error.get("status") is not None:
         out["status"] = error.get("status")
     if not credential_related(error) and error.get("message") is not None:
-        out["message"] = KEY_SHAPED.sub("<redacted>", str(error.get("message")))
+        out["message"] = redact_key_shaped(str(error.get("message")))
     return out
 
 

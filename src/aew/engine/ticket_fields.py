@@ -188,10 +188,10 @@ class Registry:
 
     def classifies_record(self, keys: tuple[str, ...]) -> bool:
         """Whether a record frontmatter key path (``("acceptance", "checks")``) is a classified field, a container of
-        one, or provenance. Paths are matched key by key, never as joined text: a key that contains ``.`` (a literal
-        ``"scope.paths"``) is never a field (review F1). The Markdown body is the field ``body``; a frontmatter key
-        named ``body`` is not."""
-        if not keys or any(not isinstance(k, str) or "." in k for k in keys):
+        one, or provenance. Paths are matched key by key, never as joined text, so a key that contains ``.`` (a
+        literal ``"scope.paths"``) is never a field (review F1): no registry path has a key with a ``.`` in it. The
+        Markdown body is the field ``body``; a frontmatter key named ``body`` is not."""
+        if not keys:
             return False
         if len(keys) == 1 and keys[0] in self.provenance:
             return True
@@ -290,8 +290,9 @@ def _record_values(meta: Mapping[str, Any], body: str,
                    reg: Registry) -> tuple[dict[str, Any], dict[tuple[Any, ...], Any]]:
     """The classified record fields by name (absent ones None), and every unclassified frontmatter key path's value.
 
-    The walk matches key by key (review F1): a literal key ``"scope.paths"`` is not the nested field ``scope.paths``,
-    and a key that contains ``.`` or is not text is never a field, so it is unclassified wherever it appears."""
+    The walk matches key by key, never joined text (review F1): a literal key ``"scope.paths"`` is not the nested
+    field ``scope.paths``. No registry path has a key that contains ``.`` or is not text, so such a key is never a
+    field or a container of one: it is unclassified wherever it appears."""
     known = reg.record_paths()
     values: dict[str, Any] = {n: None for n in known.values()}
     values[BODY] = body
@@ -300,9 +301,7 @@ def _record_values(meta: Mapping[str, Any], body: str,
     def walk(obj: Mapping[Any, Any], prefix: tuple[Any, ...]) -> None:
         for key, value in obj.items():
             keys = (*prefix, key)
-            if not isinstance(key, str) or "." in key:
-                unclassified[keys] = value
-            elif keys in known:
+            if keys in known:
                 values[known[keys]] = value
             elif not prefix and key in reg.provenance:
                 continue

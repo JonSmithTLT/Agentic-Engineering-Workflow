@@ -164,6 +164,13 @@ def test_a_registry_move_counts_as_changed_in_both_groups():
     before, after = TF.Digests(v1.identity, same), TF.Digests(v2.identity, same)
     assert TF.changed_groups(before, after, registries=known) == {"acceptance", "card"}
     assert TF.changed_groups(after, before, registries=known) == {"acceptance", "card"}
+    # A declared move counts even where the two versions hash the field in the same groups.
+    v2_same = copy.deepcopy(doc)
+    v2_same.update(version=2, predecessor=v1.identity,
+                   moves=[{"field": "record:external_refs", "from": "card", "to": "acceptance"}])
+    declared = TF.registry_from_doc(v2_same)
+    assert TF.changed_groups(before, TF.Digests(declared.identity, same),
+                             registries={v1.identity: v1, declared.identity: declared}) == {"acceptance", "card"}
     # A registry with no known lineage to the other: every group counts as changed.
     assert TF.changed_groups(before, after, registries={v2.identity: v2}) == set(v1.groups)
     assert TF.changed_groups(before, TF.Digests(v1.identity, same)) == set()

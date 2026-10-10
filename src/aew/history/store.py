@@ -15,6 +15,7 @@ not UTF-8, a file that cannot be read) is an ``IntegrityError`` too, so verifica
 from __future__ import annotations
 
 import copy
+import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -46,6 +47,11 @@ _PROVEN: dict[tuple[str, int, str], dict[int, str]] = {}
 # Tails (by the hash of their bytes) proven to lead to a root (count, head hash).
 _TAIL_PROVEN: set[tuple[str, int, str]] = set()
 
+
+# Whether an operating-system error reading a history file may be transient (review of #178, finding H): on Windows a
+# read during a writer's replace is a sharing violation; on POSIX a replace is an atomic rename, so EACCES, EIO and the
+# like are persistent, and damage.
+TRANSIENT_READ_ERRORS = os.name == "nt"
 
 # Where history records live (relative to the AEW root): a terminal unit's bundle and annotations beside its other
 # records (investigation §3.1), the Lead's generations and audit records under history/.
@@ -186,10 +192,12 @@ class History:
           holds the root's position it must prove the root's entries (``_tail_through``), so a tail that diverges from
           the root is damage, not a later history;
         - ``"moved"``, the tail ends before the root and is byte for byte the ``before`` of the root's own pending tail
-          write (``pending_tail``: the snapshot's ``last_transition.txn.writes`` entry for the tail): the commit's
-          apply has not reached it yet, or the committer died there and no locked reader has recovered it yet;
-        - ``"busy"``, the tail cannot be read for an operating-system reason other than its absence (on Windows, a
-          read during the writer's replace is a sharing violation).
+          write (``pending_tail``: the snapshot's ``last_transition.txn.writes`` entry for the tail, given only while
+          that revision's apply has not finished, ``ControlStore.applied``): the commit's apply has not reached it
+          yet, or the committer died there and no locked reader has recovered it yet. After the apply, the same bytes
+          are a rollback made outside AEW, which recovery would not repair either (finding G);
+        - ``"busy"``, on Windows only (``TRANSIENT_READ_ERRORS``), the tail cannot be read for an operating-system
+          reason other than its absence: a read during the writer's replace is a sharing violation (finding H).
 
         Anything else (a missing or malformed tail, one that ends at the root or diverges from it) is None: damage."""
         try:
@@ -197,7 +205,7 @@ class History:
         except FileNotFoundError:
             return None
         except OSError:
-            return "busy"
+            return "busy" if TRANSIENT_READ_ERRORS else None
         try:
             doc, end, _ = self._parsed(raw, M.TAIL_REL, sealed=False)
         except (IntegrityError, ValidationFailed):

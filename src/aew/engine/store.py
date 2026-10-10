@@ -548,6 +548,11 @@ class ControlStore:
                     f.unlink()
         return state
 
+    def applied(self, revision: int) -> bool:
+        """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
+        it is absent the apply is pending, or the committer died in it and recovery will roll it forward."""
+        return self._abs(_applied_marker(revision)).exists()
+
     def _mark_applied(self, revision: int) -> None:
         atomic_write(self._abs(_applied_marker(revision)), "")
 

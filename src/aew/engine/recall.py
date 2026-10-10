@@ -112,15 +112,27 @@ def recall_search_enabled(aew_root: Path) -> bool:
         return False
 
 
-def refuse_in_invocations() -> None:
-    """An invoked agent's environment (any of ``AGENT_VARS``) never gets the search: a discoverability guard."""
+# The variables that mark an invoked agent's environment, whichever way it was invoked: a harness run's (``AGENT_VARS``:
+# its invocation, run, unit, bridge coordinates and scratch directory) and a Lead-spawned role's, which sets its
+# invocation credential for every `aew` command (the context pack's "Credential and writeback", knowledge/context.py;
+# PR #148 review, m3). The Lead's own shell sets none of them (its broker variables are the Lead's).
+INVOCATION_CREDENTIAL = "AEW_INVOCATION_TOKEN"
+
+
+def invocation_markers() -> tuple[str, ...]:
     from aew.harness.agentenv import AGENT_VARS
 
-    present = sorted(v for v in AGENT_VARS if os.environ.get(v))
+    return (*AGENT_VARS, INVOCATION_CREDENTIAL)
+
+
+def refuse_in_invocations() -> None:
+    """An invoked agent's environment (any of ``invocation_markers``) never gets the search: the designer's intent is
+    that it is not model-visible. A discoverability guard, not a security boundary."""
+    present = sorted(v for v in invocation_markers() if os.environ.get(v))
     if present:
         raise CapabilityUnavailable(
             "raw-history search is not offered inside an invocation; it is the operator's and the Lead's explicit "
-            "read (a discoverability guard, not a security boundary)", reason="not_in_invocations")
+            "read (a discoverability guard, not a security boundary)", reason="not_in_invocations", markers=present)
 
 
 _FTS5: bool | None = None
@@ -561,16 +573,21 @@ class Substrate:
             if _contended(exc):
                 raise _Busy from None
             return False
-        upto = min(self._watermark(conn)["count"], root["count"])
+        mark = self._watermark(conn)["count"]
+        upto = min(mark, root["count"])
         rows = conn.execute("SELECT d.seq, d.doc_id, d.sha256, d.kind, d.source, d.at, d.text_sha256, d.truncated, "
-                            "t.text FROM docs d LEFT JOIN doc_text t ON t.rowid = d.rowid WHERE d.seq <= ? "
-                            "ORDER BY d.seq, d.rowid", (upto,)).fetchall()
+                            "t.text FROM docs d LEFT JOIN doc_text t ON t.rowid = d.rowid").fetchall()
         orphans = conn.execute("SELECT COUNT(*) FROM doc_text WHERE rowid NOT IN (SELECT rowid FROM docs)").fetchone()
         if orphans != (0,):
             return False
+        # Every row is compared (PR #148 review, m1): one whose position is not an integer in 1..watermark is a
+        # difference; one past this root but within the watermark belongs to a later root another process indexed.
+        if any(type(r[0]) is not int or not 1 <= r[0] <= mark for r in rows):
+            return False
         # Each row with the hash of the text it really holds, against what the history holds: as multisets, so a
         # duplicated, missing or altered row (or text) differs, whatever types a tampered column holds.
-        found = Counter((tuple(r[:8]), sha256_text(r[8]) if isinstance(r[8], str) else "") for r in rows)
+        found = Counter((tuple(r[:8]), sha256_text(r[8]) if isinstance(r[8], str) else "") for r in rows
+                        if r[0] <= upto)
         expected: Counter[tuple[Any, ...]] = Counter()
         for entry in self.history.walk(root, tail_raw=tail):
             if entry["seq"] > upto:
@@ -653,9 +670,10 @@ class Substrate:
         """A hit built from the authenticated document only, ``disagrees`` (the row is not what the history holds),
         or ``unverified`` (the history itself could not be proven: damage, or the root moved under the reader)."""
         _, seq, doc_id, sha, kind, source, at, truncated = row
+        if type(seq) is not int or not 1 <= seq <= root["count"] or not isinstance(doc_id, str):
+            return "disagrees"  # a position this root cannot hold: the row's fault, not the history's (review, m2)
         try:
-            doc = self.document(root, seq, doc_id, cache) if isinstance(seq, int) and isinstance(doc_id, str) \
-                else None
+            doc = self.document(root, seq, doc_id, cache)
         except AEWError:  # the history could not be proven here (IntegrityError and its kin)
             return "unverified"
         if doc is None:

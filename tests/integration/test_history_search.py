@@ -28,7 +28,6 @@ from conftest import Project  # noqa: E402
 from aew import errors  # noqa: E402
 from aew.engine import recall  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
-from aew.harness.agentenv import AGENT_VARS  # noqa: E402
 
 TAIL = "Hiddentail" * 2 + "1234"
 SECRET = "aew1.tk_" + "0123456789abcdef." + TAIL  # credential-shaped (built in pieces, so no scanner flags a fixture)
@@ -265,18 +264,27 @@ def test_minus_c_picks_the_project_it_names(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------------------------- invocations
 
 
-@pytest.mark.parametrize("var", AGENT_VARS)
+@pytest.mark.parametrize("var", recall.invocation_markers())
 def test_inside_an_invocation_the_search_refuses_as_a_discoverability_guard(built, monkeypatch, var):
     engine = Engine.discover(built["project"].root)
     monkeypatch.setenv(var, "x")
     with pytest.raises(errors.CapabilityUnavailable) as refused:
         engine.history_search(["Quokkafacts"])
-    assert refused.value.details["reason"] == "not_in_invocations"
+    assert refused.value.details == {"reason": "not_in_invocations", "markers": [var]}
     assert "not a security boundary" in refused.value.message
 
 
-def test_an_invoked_agent_running_aew_is_refused(built):
-    res = built["project"].aew("history", "search", "Quokkafacts", env={"AEW_INVOCATION": "INV-0001"})
+def test_every_invocation_marker_is_covered():
+    """The harness's agent variables and a Lead-spawned role's credential variable (PR #148 review, m3)."""
+    from aew.harness.agentenv import AGENT_VARS
+
+    assert set(recall.invocation_markers()) == {*AGENT_VARS, "AEW_INVOCATION_TOKEN"}
+
+
+@pytest.mark.parametrize("env", [{"AEW_INVOCATION": "INV-0001"},  # a harness run
+                                 {"AEW_INVOCATION_TOKEN": "aew1.tk_" + "0" * 16 + "." + "x" * 43}])  # a spawned role
+def test_an_invoked_agent_running_aew_is_refused(built, env):
+    res = built["project"].aew("history", "search", "Quokkafacts", env=env)
     assert res.error["code"] == "CAPABILITY_UNAVAILABLE" and res.error["details"]["reason"] == "not_in_invocations"
 
 
@@ -406,6 +414,8 @@ def _stale(out: dict) -> bool:
     ("kind", "audit", ["Quokkafacts"], {"kinds": ["audit"]}),  # past a kind filter
     ("sha256", "0" * 64, ["Quokkafacts"], {}),
     ("doc_id", "E-FORGED", ["Quokkafacts"], {}),
+    ("seq", 0, ["Quokkafacts"], {}),  # a position no root holds: the row's disagreement, not damage (review, m2)
+    ("seq", -3, ["Quokkafacts"], {}),
 ])
 def test_a_forged_column_never_yields_a_hit_and_marks_the_substrate_stale(built, tmp_path, column, value, terms, kw):
     p, engine = copy_of(built, tmp_path)
@@ -505,6 +515,24 @@ def test_the_full_audit_catches_a_flipped_byte_in_a_row(built, tmp_path):
     with db(p) as conn:  # a deleted row (an omission) is caught too
         conn.execute("DELETE FROM docs WHERE rowid = (SELECT MAX(rowid) FROM docs)")
     assert engine.history_audit(full=True)["recall_index"] == "rebuilt"
+
+
+@pytest.mark.parametrize("seq", ["beyond", "not-a-position", 0])
+def test_the_full_audit_compares_every_row_wherever_it_claims_to_be(built, tmp_path, seq):
+    """A row past the watermark, or at no position at all, is a difference the full audit rebuilds away (PR #148
+    review, m1)."""
+    p, engine = copy_of(built, tmp_path)
+    complete(engine, "Quokkafacts")
+    with db(p) as conn:
+        mark = int(conn.execute("SELECT value FROM meta WHERE key = 'count'").fetchone()[0])
+        cur = conn.execute("INSERT INTO docs (seq, doc_id, sha256, kind, source, at, text_sha256, truncated) "
+                           "VALUES (?, 'E-X', ?, 'evidence', 'engine', '2026-01-01T00:00:00Z', ?, 0)",
+                           (mark + 1 if seq == "beyond" else seq, "0" * 64, "0" * 64))
+        conn.execute("INSERT INTO doc_text (rowid, text) VALUES (?, 'injectedquoll')", (cur.lastrowid,))
+    assert engine.history_audit(full=True)["recall_index"] == "rebuilt"
+    with db(p) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM docs WHERE doc_id = 'E-X'").fetchone() == (0,)
+    assert engine.history_audit(full=True)["recall_index"] == "consistent"
 
 
 def test_switch_off_new_history_switch_on_catches_up(tmp_path):

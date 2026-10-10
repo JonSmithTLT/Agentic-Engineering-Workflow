@@ -986,7 +986,10 @@ sections:
       flag, and `campaign verify` checks the analysis''s `reconciliation_sha256`; S18 produces the `usage_estimated` flag;
       the deciding rates are over the primary runs, F4''s reported beside them); a draft plan and frozen test vectors, exact
       and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
-      module imports. Proved in `tests/unit/test_eval_analysis.py`'
+      module imports. Proved in `tests/unit/test_eval_analysis.py`. **For F25''s live usage (P1, sst/opencode tag v2.0.18):**
+      session generation (`POST /api/session/{id}/generate`, and the `warming` plugin that calls it) and `POST /api/experimental/generate`
+      make model calls that record no usage, so the live figure cannot see them; the A arm''s and R''s server configurations
+      set no `warming` (L3''s preflight refuses one), and the provider reconciliation (Q7 v0.3.1 §9.1) is their backstop.'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1343,8 +1346,10 @@ sections:
       reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **M4-H live
       usage: slice L1 built** (2026-10-10): one sample shape, `aew/usage-live/v1`, and one meter for every OpenCode server,
       a run''s or an evaluator-owned one (`harness/usage_live.py`), with probe P1''s OpenCode 2.0.18 facts pinned and cited
-      in a fixture (the summary agent''s use verified afterwards in sst/opencode tag v2.0.18: never called by 2.0.18 itself,
-      and counted when a client selects it); measurement only. L2 (a supervised run publishes it), L3 (the measured total
+      in a fixture (verified afterwards in sst/opencode tag v2.0.18: the summary agent is never called by 2.0.18 itself,
+      and counted when a client or a configured command selects it; session generation, the experimental generation and
+      the `warming` plugin make model calls that record no usage, which no live figure sees, and L3''s preflight refuses
+      a configuration that sets `warming`); measurement only. L2 (a supervised run publishes it), L3 (the measured total
       and preflight) and L4 (the evaluator''s reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic
       work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09;
       ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model

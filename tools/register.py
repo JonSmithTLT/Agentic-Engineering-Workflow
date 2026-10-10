@@ -45,7 +45,8 @@ After every sync with main run ``render``, conflict or not: a clean merge can st
 unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict, run ``resolve``: it
 merges the YAML again from its three sides row by row and cell by cell (not line by line), and renders, so only a
 real conflict is left, marked in the YAML: the same cell changed on both sides, a row changed on one side and closed
-on the other, or a section reordered differently on both. The markdown is derived and is never merged by hand.
+on the other, a section reordered differently on both, or like-named rows changed on both sides that cannot be told
+apart (``_paired`` never guesses). The markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
@@ -466,7 +467,12 @@ def _paired(sides: tuple[list[Any], ...], key: Any) -> tuple[list[Any], ...]:
     named alike, the §9 ``Gate`` rows) are matched by content instead of position (review of PR #151 at 1546799, 2):
     each side's entry to the base entry it equals, else to the one it most resembles (at least half its other fields
     unchanged); what is left on a side was added there, and an entry both sides added is one entry only when they
-    added it identically. So closing one of two like-named gates and editing the other merges, as git would."""
+    added it identically. So closing one of two like-named gates and editing the other merges, as git would.
+
+    It never guesses (review of PR #151 at fdeecc6): when a changed entry resembles two base entries equally, or two
+    changed entries resemble the same one best, the whole group of like-named entries is keyed ``(first cell,
+    "unmatched")`` on every side and merges as one value, so a group both sides changed is marked as a conflict
+    instead of an edit landing on the wrong twin."""
     groups: dict[Any, tuple[list[int], ...]] = {}
     for i, side in enumerate(sides):
         for pos, entry in enumerate(side):
@@ -483,6 +489,7 @@ def _paired(sides: tuple[list[Any], ...], key: Any) -> tuple[list[Any], ...]:
         for n, pos in enumerate(in_base):
             keyed[0][pos] = (k, n)
         added: list[list[int]] = [[], [], []]
+        ambiguous = False
         for i in (1, 2):
             free = list(range(len(in_base)))
             rest = []
@@ -493,13 +500,23 @@ def _paired(sides: tuple[list[Any], ...], key: Any) -> tuple[list[Any], ...]:
                 else:
                     keyed[i][pos] = (k, n)
                     free.remove(n)
-            for pos in rest:  # the entries it changed: the base entry each most resembles
-                score, n = max(((_likeness(base[in_base[n]], sides[i][pos]), n) for n in free), default=(0.0, None))
-                if n is not None and score >= 0.5:
-                    keyed[i][pos] = (k, n)
-                    free.remove(n)
-                else:
+            best: dict[int, int] = {}
+            for pos in rest:  # the entries it changed: the base entry each most resembles, if exactly one does
+                scores = {n: _likeness(base[in_base[n]], sides[i][pos]) for n in free}
+                top = max(scores.values(), default=0.0)
+                if top < 0.5:
                     added[i].append(pos)
+                    continue
+                likeliest = [n for n, score in scores.items() if score == top]
+                ambiguous |= len(likeliest) > 1 or likeliest[0] in best.values()
+                best[pos] = likeliest[0]
+            for pos, n in best.items():
+                keyed[i][pos] = (k, n)
+        if ambiguous:
+            for i, p in enumerate(positions):
+                for pos in p:
+                    keyed[i][pos] = (k, "unmatched")
+            continue
         new = 0
         for pos in added[1]:
             twin = next((q for q in added[2] if sides[2][q] == sides[1][pos]), None)
@@ -555,9 +572,14 @@ def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str],
         return views
     if field in _KEYED and all(isinstance(v, list) for v in (base, ours, theirs)):
         keys = _paired((base, ours, theirs), _KEYED[field])
-        b, o, t = ({k: e for k, e in zip(ks, side, strict=True)} for ks, side in zip(keys, (base, ours, theirs),
-                                                                                       strict=True))
-        kb, ko, kt = keys
+        b, o, t = ({}, {}, {})
+        for found, ks, side in zip((b, o, t), keys, (base, ours, theirs), strict=True):
+            for k, entry in zip(ks, side, strict=True):
+                if k[-1] == "unmatched":  # like-named entries not matched unambiguously: one value, the group
+                    found.setdefault(k, []).append(entry)
+                else:
+                    found[k] = entry
+        kb, ko, kt = (list(dict.fromkeys(ks)) for ks in keys)
         shared = [k for k in kb if k in o and k in t]
         moved_o, moved_t = ([k for k in ks if k in shared] for ks in (ko, kt))
         if moved_o == shared or moved_t == shared or moved_o == moved_t:  # at most one side moved entries
@@ -569,13 +591,22 @@ def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str],
         orders = tuple([*order, *(k for k in kb if k not in order)] for order in orders)
         merged_by_key = {}
         for k in orders[0]:
-            name = k[0] if len(k) == 1 else f"{k[0]} ({k[-1] + 1}{', added' if k[1] == 'added' else ''})"
+            name = (k[0] if len(k) == 1 else f"{k[0]} (rows sharing that first cell, not matched unambiguously)"
+                    if k[-1] == "unmatched" else f"{k[0]} ({k[-1] + 1}{', added' if k[1] == 'added' else ''})")
             merged_by_key[k] = _merge3(b.get(k, _ABSENT), o.get(k, _ABSENT), t.get(k, _ABSENT), f"{where} {name}",
                                        conflicts)
+            if k[-1] == "unmatched" and merged_by_key[k][0] != merged_by_key[k][2]:
+                # without the base's group, each side's group is an insertion at one place, which the text merge
+                # always marks whole: a line-by-line merge of rows nobody could match would be a guess
+                merged_by_key[k] = (merged_by_key[k][0], _ABSENT, merged_by_key[k][2])
         views_l: tuple[list[Any], ...] = ([], [], [])
         for i, (view, order) in enumerate(zip(views_l, orders, strict=True)):
             for k in order:
-                if merged_by_key[k][i] is not _ABSENT:
+                if merged_by_key[k][i] is _ABSENT:
+                    continue
+                if k[-1] == "unmatched":
+                    view.extend(merged_by_key[k][i])
+                else:
                     view.append(merged_by_key[k][i])
         return views_l
     conflicts.append(where or "the whole file")
@@ -602,8 +633,9 @@ def resolve(root: Path = ROOT) -> int:
     apply, cell by cell, wherever they land, so the conflicts git reports for two insertions at one place (two rows
     closed into the same gap of §Closed, say) and for layout or order go away. Then both pages are rendered. Only a
     real conflict stays (the same cell or field changed differently on both sides, a row changed on one side and closed
-    on the other, a section reordered differently on both): marked in the YAML, with nothing else marked, to fix by
-    hand before ``render``. The pages are never merged: they are rendered.
+    on the other, a section reordered differently on both, like-named rows changed on both sides that cannot be told
+    apart): marked in the YAML, with nothing else marked, to fix by hand before ``render``. The pages are never merged:
+    they are rendered.
 
     It refuses outside a merge (or a cherry-pick, revert or rebase), and it never overwrites a resolution: a conflicted
     YAML file with no conflict markers left was resolved by hand, and is kept."""

@@ -46,7 +46,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
   the register, run `python tools/register.py resolve` (it re-merges the YAML row by row and renders), not a hand
   merge; only a real conflict is left to fix: the same cell changed on both sides, a row changed on one side and closed
-  on the other, or a section reordered differently on both.
+  on the other, a section reordered differently on both, or like-named rows (the §1 gates, the §9 `Gate` rows) changed
+  on both sides that it cannot tell apart, which it marks rather than guess.
 - **Changes to different rows merge**, so keep the layouts that make it so: the register's pages are rendered as one
   block per row, and `implementation-status.md` is one section per capability with a blank line between every two
   lines, no table and no "last updated" line (`tests/unit/test_docs_merge.py`). The exception is two insertions at one

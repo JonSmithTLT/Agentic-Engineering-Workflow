@@ -435,6 +435,44 @@ def test_like_named_gates_are_matched_by_content_so_nothing_is_lost(repo, capsys
     assert len(section(merged, 9)["rows"]) == len(section(DATA, 9)["rows"]) + 2
 
 
+def test_like_named_rows_that_cannot_be_told_apart_are_marked_never_guessed(repo, capsys):
+    """Two §9 `Gate` rows closed the same day by the same PR differ only in `Was`. When our side rewords both, each
+    resembles both base rows equally, so which is which is a guess, and a wrong guess put their side's correction of
+    one gate on the other, silently (review of PR #151 at fdeecc6). `resolve` marks the group instead, naming it, with
+    each side's rows whole; a change only one side made to such a group still merges (it needs no pairing)."""
+    def twins(data: dict[str, Any]) -> dict[str, Any]:
+        data = copy.deepcopy(data)
+        columns = section(data, 9)["columns"]
+        section(data, 9)["rows"] += [dict(zip(columns, ["Gate", was, "2026-10-08", "PR #200"], strict=True))
+                                     for was in ("Twin A was this", "Twin B was that")]
+        return register.normalize(data)
+
+    def gate(data: dict[str, Any], was: str) -> dict[str, str]:
+        return next(r for r in section(data, 9)["rows"] if r["#"] == "Gate" and r["Was"].startswith(was))
+
+    base = twins(DATA)
+    a, b = same_gap(base)
+    reworded = copy.deepcopy(base)
+    gate(reworded, "Twin A")["Was"] += ", reworded"
+    gate(reworded, "Twin B")["Was"] += ", reworded"
+    corrected = copy.deepcopy(base)
+    gate(corrected, "Twin A")["By"] = "PR #201 (corrected)"
+    stopped_merge(repo, register_files(base), register_files(closed_into(reworded, a)),
+                  register_files(closed_into(corrected, b)))
+    assert register.resolve(repo.path) == 1
+    assert "marked: sections 9 rows Gate (rows sharing that first cell, not matched unambiguously)" in \
+        capsys.readouterr().out
+    marked = (repo.path / REG_YAML).read_text(encoding="utf-8")
+    ours_side, theirs_side = marked.split("<<<<<<< ours")[1].split(">>>>>>> theirs")[0].split("=======")
+    assert "Twin A was this, reworded" in ours_side and "PR #201 (corrected)" in theirs_side
+
+    other_repo = Repo(repo.path.parent / "other")
+    stopped_merge(other_repo, register_files(base), register_files(closed_into(reworded, a)),
+                  register_files(closed_into(base, b)))
+    assert register.resolve(other_repo.path) == 0, capsys.readouterr().out
+    assert load((other_repo.path / REG_YAML).read_text(encoding="utf-8")) == closed_into(reworded, a, b)
+
+
 def test_resolve_refuses_outside_a_merge(repo, capsys):
     repo.commit(register_files())
     page = (repo.path / REG_MD).read_text(encoding="utf-8")

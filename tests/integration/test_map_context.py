@@ -207,6 +207,26 @@ def test_architecture_selection_never_touches_control_state_or_control_revision(
     assert (p.root / MAPS / "registry.json").read_bytes() == registry  # a refused selection writes nothing
 
 
+def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(tmp_path):
+    """PR #143 review, m1, at adoption: an operator turning the slices off with a bare ``off`` (a YAML boolean) is
+    refused with the cause and the fix, nothing is adopted, and the quoted ``"off"`` is adopted."""
+    import pytest
+
+    from aew.errors import ValidationFailed
+
+    p = sample_project(tmp_path)
+    policy = p.root / ".aew" / "policy" / "execution.yaml"
+    original, rev = policy.read_text(encoding="utf-8"), p.rev()
+    policy.write_text(original + "maps:\n  pack_slices: off\n", encoding="utf-8", newline="\n")
+    with pytest.raises(ValidationFailed) as refused:
+        p.adopt_policy("turn the slices off, unquoted")
+    assert refused.value.details["reason"] == "yaml_boolean" and 'pack_slices: "off"' in refused.value.message
+    assert p.rev() == rev
+    policy.write_text(original + 'maps:\n  pack_slices: "off"\n', encoding="utf-8", newline="\n")
+    p.adopt_policy("turn the slices off, quoted")
+    assert p.rev() == rev + 1
+
+
 def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
     p = sample_project(tmp_path)
     role, _ = dispatch(p, create_investigation(p, tmp_path))

@@ -37,9 +37,24 @@ def test_the_switch_is_off_unless_the_operator_sets_it():
     assert X.pack_slices({"maps": {"pack_slices": "structural"}}) == "structural"
     on = X.parse(X.TEMPLATE.encode() + b"maps: {pack_slices: structural}\n", source="t")
     assert X.pack_slices(on) == "structural" and X.pack_slices(X.parse(X.TEMPLATE.encode(), source="t")) == "off"
-    for bad in (b"maps: {pack_slices: everything}\n", b"maps: {pack_slices: off, extra: 1}\n"):
-        with pytest.raises(ValidationFailed):
+    assert X.pack_slices(X.parse(X.TEMPLATE.encode() + b'maps: {pack_slices: "off"}\n', source="t")) == "off"
+    for bad, violation in ((b"maps: {pack_slices: everything}\n", "'everything' is not one of"),
+                           (b'maps: {pack_slices: "off", extra: 1}\n', "'extra' was unexpected")):
+        with pytest.raises(ValidationFailed) as refused:
             X.parse(X.TEMPLATE.encode() + bad, source="t")
+        assert violation in str(refused.value.details), refused.value.details
+
+
+@pytest.mark.parametrize("body", [b"maps: {pack_slices: off}\n", b"maps:\n  pack_slices: off\n",
+                                  b"maps: {pack_slices: on}\n"])
+def test_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(body):
+    """PR #143 review, m1: YAML 1.1 reads an unquoted ``off`` as the boolean false. The refusal names that cause and
+    the fix (quote it), instead of the schema's bare "False is not one of ['off', 'structural']"."""
+    with pytest.raises(ValidationFailed) as refused:
+        X.parse(X.TEMPLATE.encode() + body, source="t")
+    err = refused.value
+    assert err.details["reason"] == "yaml_boolean" and err.details["field"] == "maps.pack_slices"
+    assert "YAML boolean" in err.message and 'pack_slices: "off"' in err.message
 
 
 @pytest.mark.parametrize("role", ["implementer", "reviewer", "verifier", "investigator", "researcher", "planner"])

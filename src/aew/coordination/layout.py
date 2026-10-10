@@ -8,6 +8,11 @@ from __future__ import annotations
 
 import re
 
+# The two delivery timings (F9-A plan v4, amendment 2 §1.1) and the OpenCode mode each is posted with: defined in the
+# leaf `aew.harness.delivery`, which `aew harness send` reads without importing coordination, and re-exported here for
+# the Lead's message send (MS3 or MS5b) and the delivery loop (MS5b).
+from aew.harness.delivery import DEFAULT_WHEN, NEXT_STEP, TURN_END, WHEN_DELIVERY  # noqa: F401  (re-exported)
+
 MESSAGE_SCHEMA = "aew/coordination-message/v1"
 MARKER_SCHEMA = "aew/coordination-marker/v1"
 THREAD_GENESIS = "aew/coordination-thread/v1"  # the chain's genesis is the sha256 of this, a colon, and the thread id
@@ -64,6 +69,7 @@ CHANNELS = ("lead_mcp", "lead_broker", "cli", "run_bridge")
 
 # Refs are `kind:value` strings (D-12). They grant no access and are never resolved for the recipient.
 REF_KINDS = ("evidence", "ticket", "finding", "message", "run", "decision", "source")
+
 
 # Line types of a thread (D-3). Facts (D-13) arrive with the slices that observe them: MS2 writes `DELIVERED via:
 # lead_result` (a Lead-credentialed result carried a worker message); POSTED and the other DELIVERED ways are MS4 to

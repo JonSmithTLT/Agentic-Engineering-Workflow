@@ -408,7 +408,7 @@ class Engine:
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
-                                          dispatch=dispatch)
+                                          dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
@@ -698,8 +698,8 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text)
+    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         return self._harness.harness_status(invocation)

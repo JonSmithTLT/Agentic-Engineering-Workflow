@@ -218,6 +218,18 @@ considered:
     reason: >-
       decision record (F9, F19, 2026-10-09); adopts F9-A1 as governing, stages F9-A to F9-D, keeps F9 messaging off
       in M4-H's frozen treatment and accepts the lead developer's implementation choices; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-10-f9-steer-vs-queue.md
+    reason: >-
+      decision record (F9, E55, 2026-10-10); two delivery timings, next-step (steer, the default) and turn-end (queue),
+      and a report that cannot final-ingest while an admitted turn-end message is pending; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-10-f9-a-g1-g2.md
+    reason: >-
+      decision record (F9, E55, 2026-10-10); M4-H keeps messaging off with next-step delivery only, and report
+      finality keys on a Lead message's admission before the submission, for either timing; replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-10-f9-a-g4-rename.md
+    reason: >-
+      decision record (F9, E55, 2026-10-10); every harness send goes through the message store while messaging is on,
+      failing closed, and the finality refusal is PENDING_LEAD_MESSAGE; replaces no WC/KC text
   - path: docs/design/f9-a1-lead-worker-messaging-and-adaptive-supervision-amendment-v0.1.md
     reason: >-
       adopted amendment (F9, 2026-10-09) of the live coordination design, itself a proposal outside the frozen set:

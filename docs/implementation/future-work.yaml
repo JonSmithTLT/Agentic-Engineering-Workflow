@@ -212,7 +212,13 @@ sections:
       the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
       the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
       is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
-      input) and E55 (`harness send` to `steer`). **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):** two delivery
+      timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send
+      --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with
+      messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation
+      arm (F19''s arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged. **F9-B note (G3, amendment 2, decided):**
+      F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message
+      withdraw` is F9-B''s. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
       ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging:
       enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8''s P cell
       for worker replies (MCD-06; F38); D5, on a Codex adapter, steer''s cancel-and-restart of an in-flight model call satisfies
@@ -909,7 +915,10 @@ sections:
       must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
       never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
       package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
-      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in)'
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **F9-A messaging
+      arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm (arm B, F9-D) only after U1 S11 and
+      F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while messaging is on (HS1, register E55),
+      so such an arm would silently lose the Lead''s nudge'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -2020,19 +2029,34 @@ sections:
       F9-A did not wait for the answer'
 
   - '#': E55
-    Work: '`--when next-step|turn-end` on `aew harness send`, as on `aew message send`: `next-step` (the default) is OpenCode''s
-      `steer`, delivered at the next step boundary; `turn-end` is `queue`, delivered when the worker''s turn would end.
-      While a `turn-end` input is pending, the run''s final result ingest is refused (`PENDING_TURN_END_MESSAGE`) until
-      the worker submits again. The ingest check and the pending state are atomic (CAS-bound), so a report''s acceptance
-      never races a turn-end input''s admission. `harness send` today only files a supervisor request and records nothing
-      a CAS can read, so a `turn-end` send must first record its pending state where the ingest reads it'
-    Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34), on the F9-A MS0 probe (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
+    Work: '`--when next-step|turn-end` on `aew harness send` (the designer''s decision of 2026-10-10). The default is `next-step`
+      (OpenCode `steer`, at the agent''s next step boundary, without interrupting it). `turn-end` (OpenCode `queue`, after
+      the agent''s turn) goes only through the coordination store, as an F9 message, and is refused while messaging is off
+      (`TURN_END_NEEDS_MESSAGING`): M4-H has `next-step` only (G1, 2026-10-10). While messaging is on, every `harness send`
+      is recorded through the store, fails closed and still wakes a held session (G4); until F9-A''s MS5b builds that path,
+      it is refused (`HARNESS_SEND_NEEDS_STORE`), and a run whose launch snapshot of the switch disagrees with the project''s
+      is refused `MESSAGING_SNAPSHOT_MISMATCH` (the Lead relaunches it; with the project switched on, only once MS4 records
+      launch snapshots, and until then sending needs messaging switched off). The row also covers the help text and `harness_send`''s
+      docstring'
+    Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34, [record](../design/decisions-2026-10-10-f9-steer-vs-queue.md),
+      ledger SVQ); the G1 and G2 decisions ([record](../design/decisions-2026-10-10-f9-a-g1-g2.md), ledger MGT) and the
+      G4 and rename decisions ([record](../design/decisions-2026-10-10-f9-a-g4-rename.md), ledger MGR); F9-A plan v4 amendment
+      2 (CLEAR at v10) §3 and §4; the MS0 probe (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
       [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-28, CMG-33)
-    When: '**Unscheduled**: with F9-A, whose amendment 2 assigns the slice'
-    Notes: Replaces this row's earlier proposal to move `harness send` wholesale to `steer`, which would have removed the
-      only "after you finish" delivery. The default changes `harness send` from `queue` to `steer`, a change a Lead sees,
-      so it observes Q7 v0.3.1 §7's freeze rule. The row still owns the `harness send` help text (`cli/work_commands.py`).
-      Until it lands, ADR-0017 D8 and the harness-conformance §5 row state the true behaviour
+    When: '**Unscheduled** for the store path while messaging is on, with F9-A''s MS5b. **HS1** (F9-A plan amendment 2''s
+      slice, not an F9 slice), the rest, built 2026-10-10: before M4-H''s pre-calibration freeze, or with an M4-H manifest
+      amendment'
+    Notes: 'Supersedes this row''s earlier "move to `steer`" text. A treatment change: it is the Lead''s nudge timing and
+      help text, so it observes Q7 v0.3.1 §7''s freeze rule. M4-H''s frozen treatment, as G1 decided it: messaging off;
+      worker delivery available to the Lead `next-step` only (OpenCode `steer`, through `aew harness send`); `turn-end`
+      (queued) delivery unavailable, because it requires the F9 message store and messaging treatment, refused with `TURN_END_NEEDS_MESSAGING`;
+      no hidden exception (the old `queue` default is removed, not kept for M4-H). The turn-end path, and every `harness
+      send` while messaging is on, is enabled by F9-A''s MS5b; the `off_on` mismatch case (a run launched with messaging
+      on, the project since switched off) arrives with MS4, which writes the run''s snapshot. **Built (HS1, 2026-10-10):**
+      `aew harness send --when`, the help, the docstring, `OpenCodeAdapter.send(text, delivery)` replacing the hard-coded
+      `queue`, the two-value branch (`send_route`) with the three refusals, and the harness-conformance §5 row. The finality
+      rule this row carried until amendment 2 (`PENDING_TURN_END_MESSAGE`, atomic with the message state) is F9''s, built
+      in MS5b for both timings as `PENDING_LEAD_MESSAGE` (ledger CMG-34, MGR)'
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

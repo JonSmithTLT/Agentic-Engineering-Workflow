@@ -92,8 +92,8 @@ The six classes are the record's §16. "Delta" names the item in §3 that does t
 
 ## 3. The ordered delta
 
-D1 to D8 may proceed before M4-H, each off by default and outside its treatment; D9 to D13 wait for the gates named;
-D14 runs after M4-H; D15 and D16 are independent of the rest.
+D1 to D8 and D11 may proceed before M4-H, each off by default and outside its treatment; D9, D10, D12 and D13 wait
+for the gates named; D14 runs after M4-H; D15 and D16 are independent of the rest.
 
 ### D1. F22.1 PR B lands as planned
 
@@ -306,13 +306,18 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 ### D11. F36, part 2: the recitation
 
 - **Owner:** F36. **Class:** implementation-local refinement.
-- **Depends on:** D6 (it restates the latest note); D10 (its trigger reads health); M4-E E3 and E4.
+- **Depends on:** D6 (it restates the latest note). Not on D10 or M4-E's E3 and E4 (operator, 2026-10-10; synthesis
+  §10 BUILD item 7, which this follows rather than §8 step 4): the run's supervisor already sees the tool calls and
+  the elapsed time that `recitation.calls` and `recitation.elapsed_s` count, so the trigger reads no health; the
+  recitation is a supervisor message, not a Lead stage, so it needs no StageIntent journal or guard. Only a trigger on
+  D10's `repetition` field waits for D10 (AES-19).
 - **New work:** the supervisor assembles the recitation at zero model cost from canonical and derived state (the goal
   or active criterion, the remaining criteria, plan tasks, changed files against the planned scope, checks performed,
-  open findings and blockers, the latest note) and delivers it through the run's inbox, recorded like `harness send`,
+  open findings and blockers, the latest note) and delivers it through the run's inbox (the adapter's queue prompt,
+  the path `harness send` takes), recorded in the run's log as each `harness send` delivery is,
   when `recitation.calls`, `recitation.elapsed_s` or `recitation.every` (operational) is crossed; trivial Tickets never
   cross it. Never a Lead action: it costs no Lead tokens.
-- **Sequencing change:** new; after D6 and D10.
+- **Sequencing change:** new; after D6. A `repetition` trigger, if measurement wants one, after D10.
 - **Done when:** tests show it carries only derived state, is bounded, is recorded, and never fires below the
   thresholds; off by default.
 - **Probe:** `r2b-coherence` arms "recite" and "recite plus the Lead's view", after M4-H.
@@ -460,3 +465,6 @@ pull request that builds it.
   F30, F32, F34, E19, U1. The decisions-due E19 item names the re-freeze lines.
 - **Ledger:** the adoption record is source AEA (AEA-01 to AEA-45; AEA-32, AEA-35 and AEA-44 done) and the synthesis
   source AES (AES-01 to AES-25, with what the record adopted carried by AEA ids).
+- **2026-10-10 (operator):** the synthesis's remaining DEFER (AES-19) and REJECT (AES-20) conclusions are written into
+  F15.8, F15.9, F30, F34, F35 and F36, F15.8's as Revision A bounds them; AES-19 now also names F36, and AES-20 also
+  F15.8, F15.9 and F30. The recitation (D11, F36) no longer waits for U1/H1 or M4-E's E3 and E4; U1's note says so.

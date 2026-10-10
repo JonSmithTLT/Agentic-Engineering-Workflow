@@ -1582,7 +1582,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-10-10
 
-**By:** `aew harness wait` exits 20 (documented in its help; distinct from every error's 1 to 10) when the run it returns ended `ended_without_evidence`, and its result starts with a one-line `headline`; the result is printed as before, and a timed-out wait and every other ending still exit 0. The typed surface's `harness_wait` keeps its StageResult shape and description; its result carries the same headline. `tests/regression/test_uat_2026_09_30.py`
+**By:** `aew harness wait` exits 20 (documented in its help; distinct from every error's 1 to 10) when the run it returns ended `ended_without_evidence`, and its result starts with a one-line `headline`; the result is printed as before, and a timed-out wait and every other ending still exit 0. The typed surface's `harness_wait` keeps its StageResult shape and description; its result carries the same headline (PR #165). `tests/regression/test_uat_2026_09_30.py`
 
 ### V1
 
@@ -1590,7 +1590,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-10-10
 
-**By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value, and the provider's message, which can quote part of the key, is not recorded. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first. `tests/integration/test_opencode_adapter.py`
+**By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value, and the provider's message, which can quote part of the key, is not recorded. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first (PR #165). `tests/integration/test_opencode_adapter.py`
 
 ### V2
 

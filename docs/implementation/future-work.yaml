@@ -454,13 +454,16 @@ sections:
       §3.1; ADR-0012; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md)
       §5 (ledger AES-08, AES-13)'
     Belongs to or gated by: '**M5**, with F11 and F9; may be built after M4-E''s E3 and E4 (the journal and the guards),
-      not advertised in the normal Lead surface, and so not in M4-H''s treatment, until its probe reports'
+      registered in the catalog only while an execution-policy switch is on, so while off it is absent from `aew lead tool
+      --list` and from both profiles'' `tools/list` and a call is refused as an unknown tool (tested); never listable, callable
+      or advertised in M4-H''s treatment, and not in the normal advertised Lead surface until its probe reports'
     Notes: The cursor is the revision the Lead already holds; the second cursor is U1/H1's telemetry watermark (`observed_through`).
       One outbox reader and one cursor with F20.7's `/events` and `harness wait`. The catalog addition is the adoption record's
       §8 direction (designer and operator, 2026-10-09). Measured as `e2-delta-first` (full, delta available, delta-first)
       inside F9-D's harness; default-on only after measurement, which must show it saves frontier Lead turns and tokens
       without hiding material developments. F9-C's supervision candidates ride it when they exist; impact anomalies and
-      scheduler recommendations wait for the anomaly record (M4-E) and F11. Delta item D9 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
+      scheduler recommendations wait for the anomaly record (M4-E) and F11. Delta item D9, done-when including that byte-identity
+      test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
   - '#': F16
     Work: 'Explain AEW to the model Lead instead of leaving it to trial and error (operator, 2026-09-30). What each risk
       class requires and what it still guarantees (gates, the roles that run, the evidence produced), and when it applies;

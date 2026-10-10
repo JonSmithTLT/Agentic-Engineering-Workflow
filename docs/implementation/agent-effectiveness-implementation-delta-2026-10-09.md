@@ -269,15 +269,21 @@ D14 runs after M4-H; D15 and D16 are independent of the rest.
 - **Owner:** F15.9, on the typed Lead surface's catalog. **Class:** implementation-local refinement.
 - **Depends on:** M4-E E3 (the StageIntent journal; E3a merged, E3b in #142) and E4 (the guards); ADR-0012's outbox
   reader (built); U1 for the second cursor (D10), optional at first.
-- **New work:** the catalog row (read class), `since_revision` against the outbox's committed transitions plus the
+- **New work:** the catalog row (read class), **registered only while an execution-policy switch is on**, so while
+  off it is absent from the catalog itself, not merely unadvertised: `aew lead tool --list` prints every catalog row
+  and the broker accepts either profile (normal or recovery), so an unadvertised row would still be listable and
+  callable. Then `since_revision` against the outbox's committed transitions plus the
   projection's derived deltas, the always-present section (decisions required, blockers, supervision candidates when
   F9-C exists), one line per item with an expansion reference, a size cap. `status` and `resume` are unchanged.
 - **Sequencing change:** targeted **M5** with F11 and F9; it may be built after E4.
 - **Done when:** a test replays a sequence of commits and shows every material change appears exactly once since the
-  cursor; the full view is unchanged; it is not in the normal advertised Lead surface (it is catalogued like the
-  generic `cli` action, under a non-default surface profile) until its probe reports.
+  cursor; the full view is unchanged; and, with the switch off, a test shows that `aew lead tool --list` output and the
+  MCP `tools/list` of both profiles (normal and recovery) are byte-identical to a tree without the row, and that a call
+  to `changes` is refused as an unknown tool. Once the switch is on, it stays out of the normal advertised surface
+  until its probe reports.
 - **Probe:** `e2-delta-first` inside F9-D's harness.
-- **Before M4-H:** buildable after E4, never advertised in M4-H's treatment.
+- **Before M4-H:** buildable after E4, off and absent (unregistered); never listable, callable or advertised in
+  M4-H's treatment.
 - **Operator or designer action:** none. The catalog addition is the record's §8 direction.
 
 ### D10. U1/H1: `repetition` and `observed_through`
@@ -410,8 +416,10 @@ pull request that builds it.
    capture template admits it.
 5. **The session-database reader** lives on the evaluator side only; its retention window has no default, so an
    experiment that does not set one cannot read.
-6. **`changes` visibility** follows the typed Lead surface's precedent for the generic `cli` action: catalogued, not
-   in the normal advertised surface.
+6. **`changes` visibility.** While its switch is off the row is not registered in the catalog at all (absent, as D8's
+   command is), because the catalog is listable by `aew lead tool --list` and callable under either profile. Once on,
+   it follows the typed Lead surface's precedent for the generic `cli` action: catalogued, not in the normal advertised
+   surface, until its probe reports.
 7. **The pre-review nudge** is first an on-demand command; the stage hook comes after E5b, behind a switch.
 
 ## 5. True design gaps

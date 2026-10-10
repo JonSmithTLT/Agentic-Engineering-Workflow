@@ -73,6 +73,13 @@ class PermissionDenied(AEWError):
     exit_code = 4
 
 
+class CapabilityUnavailable(PermissionDenied):
+    """A capability that is switched off for this project, or refused where it was called (``details["reason"]``).
+    Such a refusal is a discoverability guard, never a security boundary: what the capability reads stays readable."""
+
+    code = "CAPABILITY_UNAVAILABLE"
+
+
 class OperatorAuthorizationRequired(PermissionDenied):
     """An operation needs out-of-band operator authorization that was not given."""
 
@@ -281,6 +288,14 @@ class GitError(AEWError):
 class LockTimeout(AEWError):
     code = "LOCK_TIMEOUT"
     exit_code = 8
+
+
+class Unavailable(AEWError):
+    """This environment cannot provide a capability (``details["reason"]``), such as a SQLite built without FTS5 for
+    the raw-history search. Nothing else is affected."""
+
+    code = "UNAVAILABLE"
+    exit_code = 10
 
 
 class HarnessError(AEWError):

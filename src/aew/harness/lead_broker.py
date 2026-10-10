@@ -299,10 +299,12 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     """Run one Lead-authenticated ``aew`` command with ``token``, with every refusal a Lead session has: the relay of
     a shell command (``lead.cli``) and the typed surface's ``cli`` escape both come here. The caller serializes:
     the process-wide cwd and stdin swap below needs it."""
-    from aew.cli.main import build_parser
+    from aew.cli.main import build_parser, recall_search_for
     from aew.engine.api import Engine
 
-    parser = build_parser()
+    # Built as the `aew` client builds it, with the same switch read for this broker's project (register F21, Arm B).
+    project = getattr(engine, "aew_root", None) or Path(cwd)
+    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project))
     stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
     argv = _expand_fields(argv, parser, stdin_stream, cwd)
     noise = io.StringIO()

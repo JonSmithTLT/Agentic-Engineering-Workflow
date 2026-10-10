@@ -989,9 +989,23 @@ sections:
       disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the
       lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation
       is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the
-      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **Cross-feature
-      integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18;
-      ledger CFI-106):** field-log #20, PR lifetime, is an evaluator / process metric candidate (F41.14)'
+      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **M4-H''s analysis
+      bundle built (F19 plan v5, slice S11):** `eval/aew_eval/analysis.py` implements Q7 §13''s fixed-cell Jeffreys rule
+      (10^6 joint draws from numpy''s `PCG64` under the sealed seed; the verdicts, with no selectable pooled or weighted
+      estimator), its exact cross-check (a regularized incomplete beta by Lentz''s continued fraction, posteriors discretized
+      by CDF differences so all-pass and all-fail cells keep their mass, convolved in pure Python), the operating-characteristic
+      simulation as a tool (`python -m aew_eval.analysis simulate`), the §6.3 cost axis (ratio of totals, undefined at zero
+      successes, cell-stratified bootstrap), §13.7''s safety axis, §12''s U3 flag and the versioned §6.3 secondary outcomes;
+      the `aew/m4h-analysis-plan/v1`, `aew/eval-analysis/v1` and `aew/m4h-simulation/v1` schemas, and a minimal `aew/m4h-reconciliation/v1`
+      (per run, bound to the analysed runs and to the plan''s sealed spend layer; `COST_UNRESOLVED` comes only from it,
+      the sealed mismatch fraction and, under layer (c), the sealed `usage_estimated` share; S15 produces it and extends
+      it with both figures per run, then the analysis recomputes each run''s mismatch from them and refuses a disagreeing
+      flag, and `campaign verify` checks the analysis''s `reconciliation_sha256`; S18 produces the `usage_estimated` flag;
+      the deciding rates are over the primary runs, F4''s reported beside them); a draft plan and frozen test vectors, exact
+      and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
+      module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration
+      design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime,
+      is an evaluator / process metric candidate (F41.14)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

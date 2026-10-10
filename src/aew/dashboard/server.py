@@ -45,10 +45,10 @@ from aew.dashboard import projections as P
 from aew.dashboard import session as S
 from aew.dashboard.contract import Contract
 from aew.dashboard.cursors import CursorError
-from aew.dashboard.reader import StateReader
+from aew.dashboard.reader import MapsReader, StateReader
 from aew.dashboard.reasons import reason
 from aew.engine.api import Engine
-from aew.errors import AEWError, NotFound
+from aew.errors import AEWError, MapArtifactCorrupt, NotFound
 
 LOG = logging.getLogger("aew.dashboard")
 API_PREFIX = "/api/v1"
@@ -284,6 +284,17 @@ ROUTES: dict[str, Route] = {
                                                annotations_limit=P.parse_limit(_q(q, "annotations_limit"))),
     "/attention": lambda p, q, m: p.attention_list(limit=P.parse_limit(_q(q, "limit")), cursor=_q(q, "cursor")),
     "/activity": lambda p, q, m: p.activity_list(limit=P.parse_limit(_q(q, "limit")), cursor=_q(q, "cursor")),
+    # contract 0.1.3, the maps routes (register F20.8, S1)
+    "/maps": lambda p, q, m: p.maps_overview(against=_q(q, "against")),
+    "/maps/structural": lambda p, q, m: p.maps_list(
+        limit=P.parse_limit(_q(q, "limit"), P.MAP_LIST_DEFAULT, P.MAP_LIST_MAX), cursor=_q(q, "cursor"),
+        source_revision=_q(q, "source_revision")),
+    "/maps/structural/{root}": lambda p, q, m: p.map_detail(m["root"], against=_q(q, "against"),
+                                                            section=_q(q, "section")),
+    "/maps/structural/{root}/inputs": lambda p, q, m: p.map_inputs(
+        m["root"], limit=P.parse_limit(_q(q, "limit"), P.MAP_INPUTS_DEFAULT, P.MAP_INPUTS_MAX),
+        cursor=_q(q, "cursor")),
+    "/maps/diff": lambda p, q, m: p.map_diff(str(_q(q, "a")), str(_q(q, "b"))),
 }
 # The query parameters each route accepts (the contract's, plus the detail route's annotation paging).
 QUERY_PARAMETERS: dict[str, frozenset[str]] = {
@@ -295,7 +306,16 @@ QUERY_PARAMETERS: dict[str, frozenset[str]] = {
     "/history/{id}": frozenset({"annotations_cursor", "annotations_limit"}),
     "/attention": frozenset({"limit", "cursor"}),
     "/activity": frozenset({"limit", "cursor"}),
+    "/maps": frozenset({"against"}),
+    "/maps/structural": frozenset({"limit", "cursor", "source_revision"}),
+    "/maps/structural/{root}": frozenset({"against", "section"}),
+    "/maps/structural/{root}/inputs": frozenset({"limit", "cursor"}),
+    "/maps/diff": frozenset({"a", "b"}),
 }
+# A route's own checks, run before the snapshot is read: the maps routes refuse a malformed id, commit, section or
+# limit before any file or git access (the change note §4.1).
+PRECHECKS: dict[str, Callable[[str, dict[str, str], dict[str, str]], None]] = dict.fromkeys(
+    P.MAPS_ROUTES, P.check_maps_request)
 
 # Routes served only in some states of a project (register F20.8): present in the contract, answered only while the
 # project's adopted policy switches them on, and otherwise exactly as if they did not exist. ``/history/search`` (S2)
@@ -321,17 +341,34 @@ def pending_routes(contract_paths: Iterable[str]) -> set[str]:
 
 
 LIMIT_PARAMETERS = frozenset({"limit", "annotations_limit"})
+# Routes whose ``limit`` has its own bounds (the contract's): ``(default, maximum)``.
+ROUTE_LIMITS: dict[str, tuple[int, int]] = {
+    "/maps/structural": (P.MAP_LIST_DEFAULT, P.MAP_LIST_MAX),
+    "/maps/structural/{root}/inputs": (P.MAP_INPUTS_DEFAULT, P.MAP_INPUTS_MAX),
+}
+PLACEHOLDER = re.compile(r"^\{([a-z]+)\}$")
 
 
 def match_route(path: str) -> tuple[str, dict[str, str]] | None:
-    """The contract route a request path names, and its ``{id}``."""
-    if path in ROUTES and "{id}" not in path:
+    """The contract route a request path names, and its placeholder (``{id}`` or ``{root}``, one per template, at any
+    depth). An exact path wins, so ``/maps/diff`` is never read as a root and ``/history/integrity`` never as an id;
+    a placeholder never matches an empty segment."""
+    if path in ROUTES and "{" not in path:
         return path, {}
     parts = path.split("/")
-    if len(parts) == 3 and parts[0] == "" and parts[2]:
-        template = f"/{parts[1]}/{{id}}"
-        if template in ROUTES:
-            return template, {"id": parts[2]}
+    for template in ROUTES:
+        pieces = template.split("/")
+        if "{" not in template or len(pieces) != len(parts):
+            continue
+        matched: dict[str, str] = {}
+        for piece, part in zip(pieces, parts, strict=True):
+            name = PLACEHOLDER.match(piece)
+            if name is not None and part:
+                matched[name.group(1)] = part
+            elif name is not None or piece != part:
+                break
+        else:
+            return template, matched
     return None
 
 
@@ -385,6 +422,7 @@ class DashboardServer:
                  static_root: Path | None = None) -> None:
         self.engine = engine
         self.reader = StateReader(engine)
+        self.maps = MapsReader(engine.aew_root)  # the maps routes' lock-free reader and its caches (F20.8)
         self.authenticator = authenticator
         self.sessions = sessions  # serves the one-time URL exchange; without a table `/session/` is no route
         self.contract = validate_with  # when set, every 200 body is checked before it leaves (the tests)
@@ -737,12 +775,18 @@ class DashboardServer:
             if not conditional:
                 raise
             query, template_refusal = {}, r  # the template's 400, unless the snapshot switches the route on
+        check = PRECHECKS.get(route)  # never a conditional route's template: the maps routes are unconditional
+        if check is not None:
+            try:
+                check(route, query, matched)
+            except P.InvalidRequest as exc:
+                raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", exc.message)) from None
         with self._serial:
             if conditional:
                 snapshot, route, matched, query = self._conditional(url, route, matched, query, template_refusal)
             else:
                 snapshot = self.reader.snapshot()
-            projector = P.Projector(snapshot, route=route)
+            projector = P.Projector(snapshot, route=route, maps=self.maps)
             try:
                 body = (ROUTES.get(route) or CONDITIONAL_HANDLERS[route])(projector, query, matched)
             except CursorError as exc:
@@ -755,11 +799,17 @@ class DashboardServer:
                     from None
             except NotFound as exc:
                 raise Refusal(HTTPStatus.NOT_FOUND, error_body("NOT_FOUND", exc.message)) from None
+            except MapArtifactCorrupt as exc:  # a named map the strict reader refuses: not transient, so not a 500
+                why = str(exc.details.get("reason") or "unreadable")
+                root = str(exc.details.get("root") or "")
+                raise Refusal(HTTPStatus.UNPROCESSABLE_ENTITY, error_body(
+                    "MAP_ARTIFACT_CORRUPT", f"the stored map {root} is corrupt ({why}): delete it and generate the "
+                                            "map again with `aew map generate`")) from None
             except AEWError as exc:
                 LOG.error("projection %s failed: %s %s", route, exc.code, exc.message)
                 raise Refusal(HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")) from None
         body = P.scrub(body)
-        tag = E.validator(E.scope(url.path, snapshot.project_id, self._normalized(query)), body)
+        tag = E.validator(E.scope(url.path, snapshot.project_id, self._normalized(query, route)), body)
         body = E.stamp(body, snapshot.generated_at)
         if self.contract is not None:
             violations = self.contract.violations(self.contract.response_schema(route), body)
@@ -789,10 +839,12 @@ class DashboardServer:
         return snapshot, route, matched, query
 
     @staticmethod
-    def _normalized(query: dict[str, Any]) -> dict[str, Any]:
-        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``), a
-        repeated ``kind`` as its sorted set (the response lists it so), and repeated terms in their order."""
-        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS
+    def _normalized(query: dict[str, Any], route: str | None = None) -> dict[str, Any]:
+        """The query as the scope of a validator: limits as the numbers they parse to under the route's bounds
+        (``limit=050`` is ``50``), a repeated ``kind`` as its sorted set (the response lists it so), and repeated terms
+        in their order."""
+        bounds = ROUTE_LIMITS.get(route or "", (P.LIMIT_DEFAULT, P.LIMIT_MAX))
+        return {k: P.parse_limit(v, *bounds) if k in LIMIT_PARAMETERS
                 else sorted(set(v)) if k == "kind" and isinstance(v, list) else v for k, v in query.items()}
 
     @staticmethod

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-simulation/v1",
+  "title": "The operating-characteristic simulation's output (Q7 v0.3.1 §13.3, §14.1 item 11; F19 plan v5, slice S11)",
+  "description": "Verdict rates of the exact governing rule per (baseline, effect) scenario of the analysis plan, each with its Monte Carlo standard error. `full` is true only at the plan's own replicate and draw counts; the preregistration stores a full run.",
+  "type": "object",
+  "required": ["schema", "plan_sha256", "numpy_version", "seed", "runs_per_arm", "replicates", "draws", "full",
+               "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/m4h-simulation/v1"},
+    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "numpy_version": {"type": "string"},
+    "seed": {"type": "integer", "minimum": 0},
+    "runs_per_arm": {"type": "integer", "minimum": 1},
+    "replicates": {"type": "integer", "minimum": 1},
+    "draws": {"type": "integer", "minimum": 1},
+    "full": {"type": "boolean"},
+    "scenarios": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["baseline", "effect", "mean_effect", "rates"], "additionalProperties": false,
+        "properties": {
+          "baseline": {"type": "string"},
+          "effect": {"type": "string"},
+          "mean_effect": {"type": "number"},
+          "rates": {
+            "type": "object",
+            "required": ["CORRECTNESS_BETTER", "CORRECTNESS_WORSE", "CORRECTNESS_INCONCLUSIVE"],
+            "additionalProperties": false,
+            "properties": {
+              "CORRECTNESS_BETTER": {"$ref": "#/$defs/rate"},
+              "CORRECTNESS_WORSE": {"$ref": "#/$defs/rate"},
+              "CORRECTNESS_INCONCLUSIVE": {"$ref": "#/$defs/rate"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rate": {
+      "type": "object", "required": ["rate", "mc_se"], "additionalProperties": false,
+      "properties": {"rate": {"type": "number", "minimum": 0, "maximum": 1}, "mc_se": {"type": "number", "minimum": 0}}
+    }
+  }
+}

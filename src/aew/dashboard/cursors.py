@@ -1,13 +1,15 @@
 """Opaque cursors (design note §4.5 and §4.6).
 
-Two kinds, for two sequences:
+Three kinds, for three sequences:
 
 * a **pinned cursor** walks an append-only sequence downwards from the point where paging started (the history
   manifest's ``seq``, the transition log's revision): ``pin`` is the newest number the pagination session may see,
   ``before`` the lowest number already served. Later appends never enter the session and never invalidate it, so a
   pinned cursor never needs a ``409``;
 * a **hot cursor** pages a projection of hot state by id (keyset: ``after`` is the last id served) at one control
-  revision; when the revision changed the page is gone (``409 CURSOR_EXPIRED``, "restart this bounded query").
+  revision; when the revision changed the page is gone (``409 CURSOR_EXPIRED``, "restart this bounded query");
+* a **keyset cursor** pages data outside control state (the stored maps by root, a map's inputs by position) with no
+  revision at all, so a control commit never expires it (register F20.8).
 
 Cursors are base64url JSON, unsigned, and validated against the request they return to: ``route``, ``project``,
 ``filters`` and ``limit`` must match, the numbers must be in range. A forged cursor can only pick a page of a
@@ -19,6 +21,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -141,6 +144,43 @@ class Hot:
         if rev != revision:
             raise CursorError("CURSOR_EXPIRED", f"the control revision moved from {rev} to {revision}")
         return cls(route, project, rev, _normal(filters), limit, after)
+
+
+@dataclass(frozen=True)
+class Keyset:
+    """A keyset cursor over data that is not control state (register F20.8; the change note §4.2): the stored maps by
+    root (``after`` is the last root served) or a map's inputs by position (``after`` is the next position). It
+    carries no revision, so a control commit never expires it; ``filters`` bind it to its scope (an inputs cursor
+    names its root, so it is ``CURSOR_INVALID`` on another map). It never carries a path, so it stays far below
+    :data:`MAX_CURSOR_LEN` whatever the repository's names are."""
+
+    route: str
+    project: str
+    filters: dict[str, Any]
+    limit: int
+    after: str | int
+
+    def encode(self) -> str:
+        return encode({"v": VERSION, **asdict(self), "filters": _normal(self.filters)})
+
+    @classmethod
+    def parse(cls, cursor: str, *, route: str, project: str, filters: dict[str, Any], limit: int,
+              position: bool = False) -> Keyset:
+        """``position``: ``after`` is an integer position (checked against the list by the caller); otherwise a
+        64-digit lower-case hex root."""
+        payload = decode(cursor)
+        _check_scope(payload, route=route, project=project, filters=filters, limit=limit)
+        if set(payload) != {"v", "route", "project", "filters", "limit", "after"}:
+            raise CursorError("CURSOR_INVALID", "the cursor is not one this server issued")
+        after = payload.get("after")
+        if position:
+            after = _int(payload, "after")
+        elif not isinstance(after, str) or not ROOT_RE.fullmatch(after):
+            raise CursorError("CURSOR_INVALID", "the cursor's position is not a map root")
+        return cls(route, project, _normal(filters), limit, after)
+
+
+ROOT_RE = re.compile(r"[0-9a-f]{64}")
 
 
 def page_by_id(items: list[dict[str, Any]], *, after: str | None, limit: int,

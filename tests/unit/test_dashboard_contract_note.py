@@ -65,15 +65,15 @@ def test_every_count_the_appendix_types_is_within_javascripts_exact_integers():
 
 
 def test_the_note_records_the_adoption_and_every_route_served_since():
-    """The adopted line names the adopted version and every added route this server serves (S2 serves the search; S1
-    adds the maps routes when it serves them), so a later minor version must keep each of them equal."""
+    """The adopted line names the adopted version and every added route this server serves (S1 the five maps routes,
+    S2 the search), so a later minor version must keep each of them equal."""
     from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES
 
     line = adopted(note_text())
     assert line is not None and line[0] == "0.1.3"
     added = set(proposed(note_text(), base_contract())["paths"]) - set(base_contract()["paths"])
     assert set(line[2]) == added & (set(ROUTES) | CONDITIONAL_ROUTES)
-    assert "/history/search" in line[2]
+    assert set(line[2]) == MAPS | {"/history/search"}
 
 
 # ---------------------------------------------------------------------------------------------- the modes

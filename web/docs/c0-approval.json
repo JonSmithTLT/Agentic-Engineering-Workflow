@@ -1,16 +1,10 @@
 {
   "status": "ACCEPTED",
-  "contract_version": "0.1.2",
-  "sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
-  "reviewed_commit": "322301d1200dce54d31a54348dd15ba7a71c9376",
-  "reviewer": "Claude, main AEW agent",
-  "reviewed_at": "2026-10-02",
+  "contract_version": "0.1.3",
+  "sha256": "417fa77739a006d65605737794efa6b957c68b6cecd9f6a4d0fd1869272187fb",
   "findings": [],
   "disposition": "ACCEPT",
-  "engine_commit": "91c0d98",
-  "p2c_commit": "bdabff9",
-  "diff_base": "7b0177b76a919e019d2051adff8f7616ae6c2fda",
-  "document": "web/docs/c0-review-main-line-0.1.2.md",
+  "document": "web/docs/c0-review-main-line-0.1.3.md",
   "previous_reviews": [
     {
       "disposition": "AMEND",
@@ -52,6 +46,24 @@
         "R2-6"
       ],
       "condition": "0.1.2 applies exactly R2-1 to R2-6; main line verifies the diff before acceptance is recorded."
+    },
+    {
+      "status": "ACCEPTED",
+      "contract_version": "0.1.2",
+      "sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+      "reviewed_commit": "322301d1200dce54d31a54348dd15ba7a71c9376",
+      "reviewer": "Claude, main AEW agent",
+      "reviewed_at": "2026-10-02",
+      "findings": [],
+      "disposition": "ACCEPT",
+      "engine_commit": "91c0d98",
+      "p2c_commit": "bdabff9",
+      "diff_base": "7b0177b76a919e019d2051adff8f7616ae6c2fda",
+      "document": "web/docs/c0-review-main-line-0.1.2.md"
     }
-  ]
+  ],
+  "reviewer": "Fresh-context independent C0 reviewer (R1)",
+  "reviewed_at": "2026-10-10",
+  "reviewed_artifact_sha256": "417fa77739a006d65605737794efa6b957c68b6cecd9f6a4d0fd1869272187fb",
+  "source_base_commit": "60a26c398dfd37dd2e5101d4e4ab09633838db99"
 }

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/ticket-field-registry/v1",
+  "title": "The Ticket field-group registry (E19-B §2.3; ADR-0016 §1; register F4)",
+  "description": "Assigns every revision-governed Ticket input to exactly one primary field group, names each field's canonicalization rule (E19-B §2.4), and lists every other work-unit key as provenance or engine bookkeeping. Its identity is `aew/ticket-field-registry/v<version>@<sha256 of its canonical JSON>`; every digest binding cites it. A later version names its predecessor and lists the fields it moves, each counted as changed in both groups (E19-B §2.3).",
+  "type": "object",
+  "required": ["schema", "version", "predecessor", "digest_prefix", "canonicalization", "groups", "unassigned",
+               "record", "control", "derived", "provenance", "bookkeeping", "moves"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/ticket-field-registry/v1"},
+    "version": {"type": "integer", "minimum": 1},
+    "predecessor": {
+      "description": "The identity of the version this one replaces; null for version 1",
+      "type": ["string", "null"],
+      "pattern": "^aew/ticket-field-registry/v[0-9]+@[0-9a-f]{64}$"
+    },
+    "digest_prefix": {"const": "aew/tfg/v1"},
+    "canonicalization": {"const": "aew/tfg-canon/v1"},
+    "groups": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["material", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "material": {"type": "boolean", "description": "Counts as a material revision (E19-B §4.3)"},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "unassigned": {
+      "description": "The group an unclassified input fails closed into: the broadest acceptance-bearing group (E19-B §2.3)",
+      "type": "string"
+    },
+    "record": {
+      "description": "Fields of the Ticket's record, by dotted path into its frontmatter; `body` is the record's Markdown body",
+      "type": "array",
+      "items": {"$ref": "#/$defs/field"}
+    },
+    "control": {
+      "description": "Keys of the unit in control state. A key with `via` is hashed only through that derived value",
+      "type": "array",
+      "items": {"$ref": "#/$defs/field"}
+    },
+    "derived": {
+      "description": "Values the engine derives from the unit and its ancestors (the effective obligations and edges)",
+      "type": "array",
+      "items": {"$ref": "#/$defs/field"}
+    },
+    "provenance": {
+      "description": "Record fields that are not inputs: they identify and attribute the record, and are never hashed",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "bookkeeping": {
+      "description": "Control-state unit keys that are engine bookkeeping, each changed only by its own governed path; never hashed",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "moves": {
+      "description": "Fields this version moves between groups (empty for version 1); each counts as changed in both",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "field": {"type": "string", "pattern": "^(record|control|derived):.+$"},
+          "from": {"type": "string"},
+          "to": {"type": "string"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "required": ["field", "group", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"},
+        "group": {"type": "string"},
+        "also": {
+          "description": "Further groups the value feeds, for a key hashed through derived values",
+          "type": "array", "uniqueItems": true, "items": {"type": "string"}
+        },
+        "rule": {"enum": ["text", "text_list", "exact", "sorted_set", "edge_set", "via"]},
+        "via": {
+          "description": "For rule `via`: the derived values that carry this key into its groups",
+          "type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}
+        },
+        "note": {"type": "string"}
+      },
+      "allOf": [
+        {"if": {"properties": {"rule": {"const": "via"}}}, "then": {"required": ["via"]},
+         "else": {"not": {"anyOf": [{"required": ["via"]}, {"required": ["also"]}]}}}
+      ]
+    }
+  }
+}

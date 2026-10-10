@@ -72,6 +72,12 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Acceptance evidence / next action:** ADR-0007, ADR-0008; AT-8..AT-13; `tests/integration/test_hierarchy.py`, `test_non_mutating.py`; `tests/regression/test_m2_compositions.py`, `test_hierarchy_walk.py`, `test_m2_review_2026_09_27.py`; oracle rules 6–14. The parent state is derived; closeout and cancellation are Lead decisions; parent gates are evaluated against the parent snapshot; the non-mutating path (dispatch, attempts, observation workspaces, record freshness, `INPUT_STALE`, evidence-only completion); moves, promotion, dependency edits (never changing a started attempt's dependencies); fail-closed ancestor plan bindings on every risk path; attempts bound to the dependencies they were dispatched with; observation integrity rechecked at ingest
 
+### Ticket revisions (register F4)
+
+**Status:** **Partly built (S1 of [the F4 plan v8](f4-ticket-revisions-plan.md))**: the field-group registry, canonicalization and live digests; not yet called by the engine, so no behaviour changes and F4 is dormant everywhere
+
+**Acceptance evidence / next action:** Built: `src/aew/schemas/ticket-field-registry.v1.json` (identity `aew/ticket-field-registry/v1@<sha256>`), `engine/ticket_fields.py` (`canonical`, `live_digests`, `changed_groups` comparing registry versions, `material`); ADR-0016 §1. Every unit key and record field is classified (`test_every_ticket_field_is_classified`, invariant 50). Tests: `tests/unit/test_ticket_field_registry.py`, `tests/unit/test_ticket_digests.py`.<br>Next: S2a (enablement, the format raise in the store's commit path, the interim hierarchy refusals).
+
 ### Role archetypes + role-card catalog
 
 **Status:** Implemented (M2 scope)

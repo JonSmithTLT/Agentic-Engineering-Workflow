@@ -236,7 +236,9 @@ sections:
       the D5/F9 coordination lane in `wait --any` whether or not messaging is on, so M4-H may keep messaging off without
       losing them; the wake is a nudge and never authority, keyed `(dependent, subject)` and coalesced to the latest committed
       fact; interface holds resolve through F9''s `RECONTEXTUALIZE` or `TICKET_REPLAN` (F41.6); acceptance checks 14 and
-      15 (CFI-84, CFI-85)'
+      15 (CFI-84, CFI-85). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md)
+      §18; ledger CFI-105):** field-log #16, the CI external check, is an external-check / `wait --any` integration candidate
+      (F41.14)'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -721,16 +723,18 @@ sections:
       IBU-14 to IBU-16)'
     Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry). The ownership and permission
       matrix and the F18-B0 negative checks wait for F18.6 (not before M4-H)'
-    Notes: Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
-      stands between this row and its build. **The designer's amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
-      §1, ledger HRC-01 to HRC-05):** v0.3's no-daemon rule and its operator terminal as the Lead session are superseded
-      (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator's control
+    Notes: 'Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
+      stands between this row and its build. **The designer''s amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+      §1, ledger HRC-01 to HRC-05):** v0.3''s no-daemon rule and its operator terminal as the Lead session are superseded
+      (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator''s control
       surface, not the Lead session); the permissions row stops treating a `.aew/` owned by another user as an error and
-      instead validates an ownership and permission matrix (protected state's ownership or ACL, the Lead-host identity unable
-      to write it, the operator's lifecycle operations, ordinary source access, derived projections unable to pass for canonical
-      state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity;
-      the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
-      write access (lead developer's reading, record §3)
+      instead validates an ownership and permission matrix (protected state''s ownership or ACL, the Lead-host identity
+      unable to write it, the operator''s lifecycle operations, ordinary source access, derived projections unable to pass
+      for canonical state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual
+      Lead-host identity; the same matrix judges the Filesystem row''s `.aew/` not writable per principal, never by widening
+      the Lead host''s write access (lead developer''s reading, record §3). **Cross-feature integration v0.5 ([cross-feature
+      integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-104):** field-log #15,
+      the disk budget, is dispositioned to the doctor / workspace-retirement owner (F41.14)'
 
   - '#': F18.3
     Work: 'The air-gap bundle, three side-by-side artifacts: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse and
@@ -985,7 +989,9 @@ sections:
       disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the
       lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation
       is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the
-      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06)'
+      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **Cross-feature
+      integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18;
+      ledger CFI-106):** field-log #20, PR lifetime, is an evaluator / process metric candidate (F41.14)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1017,7 +1023,10 @@ sections:
       a minor version is additive: it adds paths and never changes what an existing path returns, and each envelope keeps
       the version that defined its response, so the 0.1.2 routes keep emitting 0.1.2; 0.2.0 is kept for breaking changes
       (F28''s `network` object, a projected queue, a new field on an existing response). Folding `integrated` into 0.1.3
-      is the web developer''s call (an `x-known-values` annotation, which the compatibility check ignores).'
+      is the web developer''s call (an `x-known-values` annotation, which the compatibility check ignores). **Cross-feature
+      integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18;
+      ledger CFI-103):** field-log #12, the operator waiting queue, is dispositioned to the operator-attention / dashboard
+      owner; this row owns the dashboard half, F15.5 the operator-attention half (F41.14)'
 
   - '#': F20.6
     Work: 'Integrated acceptance: the browser and security checks against authenticated live state, recorded separately
@@ -1862,9 +1871,10 @@ sections:
   - '#': F41.14
     Work: 'The cross-feature integration design''s field-log dispositions that hand work to owners outside F41''s own rows,
       each to be taken up by its owner: #4 test scope (the launch-contract / test-policy owner); #10 public/private review
-      (a review-artifact policy follow-up); #12 operator waiting queue (the existing operator-attention / dashboard owner,
-      F20); #15 disk budget (the doctor / workspace-retirement owner, F18.2); #16 CI external check (an external-check /
-      `wait --any` integration candidate, F9); #20 PR lifetime (an evaluator / process metric candidate, F19)'
+      (a review-artifact policy follow-up); #12 operator waiting queue (the existing operator-attention / dashboard owner:
+      F15.5 for the operator-attention half, F20 for the dashboard half); #15 disk budget (the doctor / workspace-retirement
+      owner, F18.2); #16 CI external check (an external-check / `wait --any` integration candidate, F9); #20 PR lifetime
+      (an evaluator / process metric candidate, F19)'
     Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18
       (ledger CFI-68, CFI-101 to CFI-106)'
     Belongs to or gated by: '**Unscheduled.** Not activation-gated: each item is its owner''s to schedule; the candidates

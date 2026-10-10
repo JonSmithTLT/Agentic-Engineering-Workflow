@@ -13,10 +13,14 @@ items:
   needs: decision
   owner: designer
   due: M4-G
-  what: 'Before F25''s Lead part is built (its run usage does not wait): the Lead usage segment''s boundary while F31''s
-    attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential, close
-    to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
-    by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
+  what: 'Two rulings. (1) Before F25''s Lead part is built (its run usage does not wait): the Lead usage segment''s boundary
+    while F31''s attachments do not exist yet (the lead developer proposes one broker''s tenure of one generation''s credential,
+    close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment
+    interrupted by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7). (2) G1, before F19''s
+    counted seal for M4-H: whether a counted run''s cost is the settled, measured and inclusive live-usage figure under
+    the sealed price snapshot (the A arm''s Lead and every child, auxiliary and foreign session included), with its measurement
+    boundary (membership, open, close, late samples); that amends EVC-14''s cost-block source for M4-H only, and the ruling
+    is recorded as a decision document with ledger rows'
 
 - row: E19
   needs: design

@@ -138,6 +138,30 @@ Where each concern is verified. "Fake V2" means `tests/integration/test_opencode
 
 **Not checked deterministically:** which tools a model sees. `/api/session/{id}/context` returns the conversation, not the tool list. The loaded rules are verified by health; the spike showed a denied tool disappears for the model (`m3-opencode-v2-rebaseline.md` §4 #5). The tools an agent actually called are recorded per run (`tools_called`).
 
+### 5.1 Live usage (register F25, for M4-H; slice L1)
+
+One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and one meter for every OpenCode server: a supervised run's private server and an evaluator-owned one (R, R+, the A arm's headless Lead) alike (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). It measures only; the M4-H evaluator (F19) terminates and charges. Probe P1 pinned the facts it rests on, from the pinned 2.0.18 release's bundled JavaScript and the pinned OpenAPI, with a searchable identifier per citation, in `tests/fixtures/opencode/live-usage-2.0.18.json`; `tests/unit/test_usage_live.py` runs the fixture's cases against the meter and checks the citations' shape.
+
+**Operations relied on, and nothing else:** `server.info` (the version, for `token_semantics` from the adapter's table); `session.list` with no filter, `order=asc`, `limit=50`, then `cursor` (2.0.18 anchors it on `time.updated`, so a session updated while the list is paged moves later and is met again); `session.active`; `session.message.list` with `type=assistant` or `type=compaction`, `limit=200`, `order=asc` on the first page and `cursor` alone after it (the pinned operation refuses a cursor with `order`, and the same `type` is passed on every page). A test checks every query parameter the meter sends against the pinned operation.
+
+**Fields relied on:** `Session.Info`: `id`, `tokens`, `cost`, `model`, `fork`, `time.created`; an assistant message: `id`, `model`, `tokens`, `cost`, `time.created`, `time.completed`, `error`, `finish`, `retry.attempt`; a compaction message: `id`, `status`, `model`, `tokens`, `cost`, `time.created`.
+
+**What P1 found (2.0.18):**
+
+| Fact | Consequence in the meter |
+|---|---|
+| A call's message gets `time.completed` and its tokens when the call ends, in the same SQLite transaction that adds them to its session's totals; nothing moves while it streams | A message counts once, when it is terminal (`time.completed`, an `error`, or a `finish` while its session is idle); counting stops at the first message still in progress, and its usage reaches the figure only when it ends |
+| An interrupted call without the provider's finish ends with `time.completed`, `finish: error` and no tokens; the totals do not move | It never stalls the cursor; what it consumed is billed and unrecorded (the plan's A1 residual) |
+| A session's totals are its own: its steps plus its title and compaction calls (`session.usage.recorded`); never its children's | The figure sums every session once: `max(high-water totals, counted messages)` per session and category, recomputed every poll |
+| Title usage is on no message; a compaction's usage reaches the totals before its message completes | The part of the totals on no counted message is priced on the pinned model only when the caller proved the server pinned to it, and only for a session on that model; otherwise it is a partition with no model, which never prices |
+| Nothing lowers a session's totals: compaction adds, a revert deletes messages but keeps the totals, a deleted session disappears | A decrease is only `Session.Info.tokens` below its high-water mark: `integrity_pending` once, `integrity` when the next poll still sees it, and the figure never drops; a vanished session keeps its figure |
+| A fork is a new session with zero totals and copies of its source's finished messages (created before the fork) | A fork's messages created before the fork are never counted (OpenCode's own statistics exclude them the same way) |
+| The title call runs on the title agent's model, else the provider's small model; a compaction on the session's model; a subagent on its explicit, own or parent's model. No call site of the summary agent was found (unverified) | AEW's projection pins title, summary and compaction to the run's model; the evaluator's preflight (slice L3) proves every server pinned |
+
+**Events:** none. The pinned OpenAPI types event payloads as an opaque string, so P1's fixture is the only pin on them, and the meter reads no event.
+
+**Bounds:** at most 256 tracked sessions and 6 pages of 50 listed (past either the source is `truncated`, which prices nothing); one page of 200 messages per type per session per poll (the rest on the next); a state of at most 512 KiB that holds cursors, counts and per-model sums, never message ids; a sample of at most 4 KiB.
+
 ## 6. Live results with real models (M3 step 8)
 
 **What ran.** `tests/live/test_opencode_model_live.py`:

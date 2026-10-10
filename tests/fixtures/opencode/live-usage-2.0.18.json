@@ -1,0 +1,2233 @@
+{
+ "harness": "opencode",
+ "version": "2.0.18",
+ "probe": "P1 (F25 for M4-H, slice L1)",
+ "source": {
+  "repository": "sst/opencode",
+  "tag": "v2.0.18",
+  "commit": "cd9a14a6b688d4021bee381dfd39d2cef9c0f862",
+  "read_from": "the bundled JavaScript of the pinned 2.0.18 release CLI (OpenCode Desktop's version-specific copy, which reports version 2.0.18 from /api/info), and the pinned OpenAPI fixture. The source tree was not fetched: the bundle is minified, so each citation is a searchable identifier, not a line, and the release's tie to the tag's commit is the tag, not a byte comparison.",
+  "binary_sha256": "78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668",
+  "evidence": [
+   {
+    "id": "E1",
+    "items": [
+     "a",
+     "c",
+     "e"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "\"session.step.ended\":(p)=>l(p.data.assistantMessageID,(k)=>{k.time.completed=i,k.finish=p.data.finish",
+    "says": "the step's assistant message gets time.completed, finish, cost and tokens in one edit, when the step ends; it was created at session.step.started with time.created, the model and no tokens"
+   },
+   {
+    "id": "E2",
+    "items": [
+     "a",
+     "c"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "\"session.step.failed\":(p)=>l(p.data.assistantMessageID,(k)=>{if(k.time.completed=i,k.finish=p.data.finish??\"error\"",
+    "says": "a failed step also gets time.completed, finish (default error) and error, and cost and tokens only when the failure carries them"
+   },
+   {
+    "id": "E3",
+    "items": [
+     "b",
+     "c",
+     "e"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "u(\"SessionProjector.publishUsage\")",
+    "says": "the session's totals live on its own row and grow by addition only (the function before it, Pc: cost = cost + usage.cost, tokens_input = tokens_input + usage.tokens.input, and so on), keyed by the event's own sessionID: no roll-up from child sessions"
+   },
+   {
+    "id": "E4",
+    "items": [
+     "b",
+     "c",
+     "e"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "yield*e.project($f.Ended,(i)=>A(function*(){yield*Ut(r,i),yield*Pc(r,i.data.sessionID,i.data)}))",
+    "says": "a step's end updates its message, then adds its usage to the session's totals; a failed step adds usage only when cost and tokens are present; session.usage.recorded adds to the totals (yield*e.project(hd,(i)=>Pc(r,i.data.sessionID,i.data)))"
+   },
+   {
+    "id": "E5",
+    "items": [
+     "e"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "for(let ut of a.get(dt(Le.definition.type,Le.definition.durable.version))??[])yield*ut(fr)",
+    "says": "the bus runs a durable event's projectors inside the publish's l.transaction(...,{behavior:\"immediate\"}), so a step's message and its session's totals commit together"
+   },
+   {
+    "id": "E6",
+    "items": [
+     "b",
+     "f"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "type:\"session.usage.recorded\",...o,schema:{...e,source:W([\"title\",\"compaction\"]),cost:os,tokens:Lp}",
+    "says": "auxiliary usage (title and compaction) is its own durable event; the message projector ignores it (\"session.usage.recorded\":()=>F), so title usage is on no message"
+   },
+   {
+    "id": "E7",
+    "items": [
+     "b",
+     "e",
+     "f"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "u(\"SessionCompaction.supplied\")",
+    "says": "a compaction publishes session.usage.recorded (source compaction) first and session.compaction.ended (model: the context's model ref, tokens, cost) after: two transactions, the totals first"
+   },
+   {
+    "id": "E8",
+    "items": [
+     "b",
+     "f"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "u(\"SessionContext.selectTitle\")",
+    "says": "the title call uses the title agent's model when configured, else the session provider's small model (i.small(providerID)) with a none, minimal or low variant; SessionTitle.attempt records its usage as session.usage.recorded source title"
+   },
+   {
+    "id": "E9",
+    "items": [
+     "b"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "pe=yield*c.create({parentID:me.id,title:I.description??Q,agent:_e.id,model:D??_e.info?.model??me.model})",
+    "says": "a subagent runs in a child session (parentID) on the explicit model, else the subagent's own model, else the parent session's model; its usage goes to the child's own totals"
+   },
+   {
+    "id": "E10",
+    "items": [
+     "c"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "Ae=me.finish?{cost:eg(p.model.cost,me.finish.tokens),tokens:me.finish.tokens}:void 0",
+    "says": "an interrupted or failed step carries usage only if the provider's finish (with usage) arrived; otherwise the message ends with time.completed, finish error and no tokens, and the totals do not move: what the call consumed is unrecorded"
+   },
+   {
+    "id": "E11",
+    "items": [
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "Revert boundary message not found:",
+    "says": "a committed revert deletes the session's messages from the boundary on (and its pending inputs) and never touches the totals"
+   },
+   {
+    "id": "E12",
+    "items": [
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "u(\"SessionProjector.projectFork\")",
+    "says": "a fork is a new root session (parent_id null, fork_session_id the source) with cost and every token column 0, holding copies (new ids, original time_created) of the source's finished messages up to the boundary"
+   },
+   {
+    "id": "E13",
+    "items": [
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "AND (session.fork_session_id IS NULL OR message.time_created >= session.time_created)",
+    "says": "OpenCode's own usage statistics exclude a fork's copies by their creation time before the fork's"
+   },
+   {
+    "id": "E14",
+    "items": [
+     "a",
+     "f"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "function Q7(e){if(e.type===\"assistant\")return e.time.completed!==void 0;",
+    "says": "OpenCode's own finished-message rule (session export, and the fork copy's SQL): an assistant message is finished when it has time.completed, a compaction or shell message when its status is not running"
+   },
+   {
+    "id": "E15",
+    "items": [
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "yield*e.project(lf.Ended,(i)=>A(function*(){yield*Ut(r,i),yield*UE(r,i.data.sessionID,i.durable.seq)}))",
+    "says": "a compaction's end completes its message and advances the instruction epoch (UE=u(\"InstructionState.advanceEpoch\")): no message is deleted and the totals are not lowered"
+   },
+   {
+    "id": "E16",
+    "items": [
+     "a"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "return e.handle(\"session.list\",u(function*(l){",
+    "says": "session.list orders and anchors its cursor on time.updated and id, and returns a next cursor whenever a page has items; session.messages refuses a cursor combined with order (\"Cursor cannot be combined with order\"), defaults to order desc, and its cursor carries the order"
+   },
+   {
+    "id": "E17",
+    "items": [
+     "a",
+     "f"
+    ],
+    "file": "tests/fixtures/opencode/openapi-2.0.18.min.json",
+    "identifier": "Session.Message.Compaction.Completed",
+    "says": "a completed compaction has id, time.created, status, reason, summary, recent and optional model, tokens, cost, providerContext; a failed one has error and optional tokens and cost but no model; a running one has no tokens; an assistant message's time has created, completed and streamed, and it may carry retry {attempt, at, error}"
+   },
+   {
+    "id": "E18",
+    "items": [
+     "d"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "yield*e.project(h8,(i)=>r.delete(Ee).where(Z(Ee.id,i.data.sessionID)).run().pipe(R))",
+    "says": "a deleted session's row goes, with its messages: the session vanishes from the list"
+   },
+   {
+    "id": "E19",
+    "items": [
+     "b"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "a.update(us.make(\"summary\"),(i)=>{i.name=Y1.make(\"Summary\"),i.mode=\"primary\",i.hidden=!0",
+    "says": "the summary agent is defined (hidden, no default model) and nothing else in the bundle names it; and the compaction call runs on the context's model (SessionContext.load resolves the session's model)"
+   },
+   {
+    "id": "E20",
+    "items": [
+     "d"
+    ],
+    "file": "src/aew/harness/opencode/projection.py",
+    "identifier": "AUXILIARY_AGENTS = (\"title\", \"summary\", \"compaction\")",
+    "says": "AEW's projection pins the title, summary and compaction agents to the run's model and sets no compaction.auto: C1's CC2 (auto off for bounded workers) is not merged, so workers, the Lead and R keep OpenCode's default (auto on)"
+   },
+   {
+    "id": "E21",
+    "items": [
+     "a"
+    ],
+    "file": "opencode-cli 2.0.18 (bundled JavaScript)",
+    "identifier": "e.handle(\"session.active\",u(function*(){let l=yield*a.active;",
+    "says": "session.active lists the sessions with an execution running"
+   }
+  ]
+ },
+ "findings": [
+  {
+   "item": "a",
+   "status": "verified",
+   "evidence": [
+    "E1",
+    "E2",
+    "E14",
+    "E16",
+    "E17",
+    "E21"
+   ],
+   "says": "An assistant message is created at step start with time.created and its model, and no tokens. It gets time.completed with finish and its tokens when the step ends, or time.completed, finish error, error (and tokens only if usage was reported) when it fails. time.completed marks every recorded call; finish and error are never set without it, so the R3-m1 rule reduces to time.completed on 2.0.18."
+  },
+  {
+   "item": "b",
+   "status": "verified",
+   "evidence": [
+    "E3",
+    "E4",
+    "E6",
+    "E7",
+    "E8",
+    "E9",
+    "E20"
+   ],
+   "says": "Session.Info.tokens and cost are that session's own: its steps, plus its title and compaction calls through session.usage.recorded. Child sessions are never included. Defaults: title on the title agent's model, else the provider's small model; compaction on the session's model; a subagent on its explicit, own or parent's model. AEW pins title, summary and compaction to the run's model."
+  },
+  {
+   "item": "b-summary",
+   "status": "unverified",
+   "evidence": [
+    "E19"
+   ],
+   "says": "No call site of the summary agent was found in the bundle, so whether 2.0.18 ever calls it, and where its usage would go, is not established. session.usage.recorded's sources are title and compaction only, so such usage would be on no message and in no total. The meter fails closed by design: any total on no counted message is priced only on the proven pinned model, and usage OpenCode never records is outside every figure (the provider reconciliation is the backstop)."
+  },
+  {
+   "item": "c",
+   "status": "verified",
+   "evidence": [
+    "E1",
+    "E2",
+    "E4",
+    "E10"
+   ],
+   "says": "Tokens move only when a call ends: the message and the totals are written at step end (or failure with usage, or session.usage.recorded), never during streaming. An interrupted call without the provider's finish is recorded with time.completed, finish error and no tokens, and the totals do not move: what it consumed is billed and unrecorded (A1)."
+  },
+  {
+   "item": "d",
+   "status": "verified",
+   "evidence": [
+    "E11",
+    "E12",
+    "E13",
+    "E15",
+    "E18",
+    "E20"
+   ],
+   "says": "Nothing lowers a session's totals. Compaction adds usage and removes no message. A committed revert deletes messages from its boundary on and keeps the totals. A fork is a new session with zero totals holding copies of the source's finished messages (created before the fork): the meter counts only a fork's messages created at or after the fork, as OpenCode's own statistics do. Deleting a session removes it from the list. C1's CC2 is not merged, so compaction stays on by default everywhere."
+  },
+  {
+   "item": "e",
+   "status": "verified",
+   "evidence": [
+    "E1",
+    "E3",
+    "E4",
+    "E5",
+    "E7"
+   ],
+   "says": "A step's message (time.completed, tokens) and its session's totals are written by one durable event's projectors in one SQLite transaction, message first: a reader never sees one without the other, but the list and a message page are separate reads, so messages can run ahead of the totals read earlier (skew, not a breach). A compaction's totals are committed before its message completes; a title's only ever reach the totals."
+  },
+  {
+   "item": "f",
+   "status": "verified",
+   "evidence": [
+    "E6",
+    "E7",
+    "E8",
+    "E14",
+    "E17"
+   ],
+   "says": "A completed compaction message carries status completed, reason, summary, recent and optional model, tokens and cost (no time.completed: its status marks it finished); a failed one has error and optional tokens and cost but no model. The auxiliary defaults are as in (b)."
+  }
+ ],
+ "event_payloads": "The pinned OpenAPI types events as an opaque string, so this fixture is the only pin on event payloads; the meter relies on none.",
+ "cases": [
+  {
+   "name": "a step's message and totals land together",
+   "evidence": [
+    "E1",
+    "E4",
+    "E5"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [
+      "ses_a"
+     ],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000
+        },
+        "content": []
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 0,
+      "partitions": {}
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1200,
+        "output": 300,
+        "reasoning": 100,
+        "cache": {
+         "read": 800,
+         "write": 40
+        }
+       },
+       "cost": 0.02,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2900
+        },
+        "content": [],
+        "tokens": {
+         "input": 1200,
+         "output": 300,
+         "reasoning": 100,
+         "cache": {
+          "read": 800,
+          "write": 40
+         }
+        },
+        "cost": 0.02,
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1200,
+       "output": 300,
+       "reasoning": 100,
+       "cache_read": 800,
+       "cache_write": 40
+      },
+      "steps": 1,
+      "d_min_s": 1.9,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1200,
+        "output": 300,
+        "reasoning": 100,
+        "cache_read": 800,
+        "cache_write": 40
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "title usage reaches the totals on no message, priced on the pinned model",
+   "evidence": [
+    "E6",
+    "E8"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1030,
+        "output": 210,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 200,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1030,
+       "output": 210,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1030,
+        "output": 210,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "without a proven pin, the title's usage prices nothing",
+   "evidence": [
+    "E6",
+    "E8"
+   ],
+   "pinned": null,
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1030,
+        "output": 210,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 200,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1030,
+       "output": 210,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1000,
+        "output": 200,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       },
+       "-": {
+        "input": 30,
+        "output": 10,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a compaction's totals lead its message, and count once",
+   "evidence": [
+    "E7",
+    "E15",
+    "E17"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1500,
+        "output": 250,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [
+      "ses_a"
+     ],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 200,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_2",
+        "type": "compaction",
+        "status": "running",
+        "reason": "auto",
+        "time": {
+         "created": 2100
+        },
+        "summary": "",
+        "recent": ""
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1500,
+       "output": 250,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "compactions": 0,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 250,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1500,
+        "output": 250,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [
+      "ses_a"
+     ],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 200,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_2",
+        "type": "compaction",
+        "status": "completed",
+        "reason": "auto",
+        "time": {
+         "created": 2100
+        },
+        "summary": "",
+        "recent": "",
+        "tokens": {
+         "input": 500,
+         "output": 50,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        }
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1500,
+       "output": 250,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "compactions": 1,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 250,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "an interrupted call ends with no usage and never stalls the cursor",
+   "evidence": [
+    "E2",
+    "E10"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [
+      "ses_a"
+     ],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000
+        },
+        "content": []
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 0,
+      "partitions": {}
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 1500
+        },
+        "content": [],
+        "finish": "error",
+        "error": {
+         "type": "aborted",
+         "message": "interrupted"
+        }
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "d_min_s": null,
+      "partitions": {}
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 700,
+        "output": 70,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 1500
+        },
+        "content": [],
+        "finish": "error",
+        "error": {
+         "type": "aborted",
+         "message": "interrupted"
+        }
+       },
+       {
+        "id": "msg_3",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 4000,
+         "completed": 6000
+        },
+        "content": [],
+        "tokens": {
+         "input": 700,
+         "output": 70,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 700,
+       "output": 70,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "d_min_s": 2.0,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 700,
+        "output": 70,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a child session's totals are its own and are never counted twice",
+   "evidence": [
+    "E3",
+    "E9"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      },
+      {
+       "id": "ses_b",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 400,
+        "output": 40,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1100,
+        "updated": 1100
+       },
+       "location": {
+        "directory": "/w"
+       },
+       "parentID": "ses_a"
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "tool-calls"
+       }
+      ],
+      "ses_b": [
+       {
+        "id": "msg_2",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1200,
+         "completed": 1900
+        },
+        "content": [],
+        "tokens": {
+         "input": 400,
+         "output": 40,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1400,
+       "output": 140,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "foreign_tokens": {
+       "input": 400,
+       "output": 40,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1400,
+        "output": 140,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a session on another model is its own partition",
+   "evidence": [
+    "E8",
+    "E9"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      },
+      {
+       "id": "ses_b",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1-mini",
+        "variant": "low"
+       },
+       "tokens": {
+        "input": 90,
+        "output": 9,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1100,
+        "updated": 1100
+       },
+       "location": {
+        "directory": "/w"
+       },
+       "parentID": "ses_a"
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ],
+      "ses_b": [
+       {
+        "id": "msg_2",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1-mini",
+         "variant": "low"
+        },
+        "time": {
+         "created": 1200,
+         "completed": 1300
+        },
+        "content": [],
+        "tokens": {
+         "input": 90,
+         "output": 9,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1090,
+       "output": 109,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       },
+       "openai/gpt-6.1-mini": {
+        "input": 90,
+        "output": 9,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a fork's copies of finished messages are never counted again",
+   "evidence": [
+    "E12",
+    "E13"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      },
+      {
+       "id": "ses_f",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 3000,
+        "updated": 3000
+       },
+       "location": {
+        "directory": "/w"
+       },
+       "fork": {
+        "sessionID": "ses_a",
+        "boundary": {
+         "type": "through",
+         "messageID": "msg_1"
+        }
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ],
+      "ses_f": [
+       {
+        "id": "msg_x_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1000,
+       "output": 100,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      },
+      {
+       "id": "ses_f",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 300,
+        "output": 30,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 3000,
+        "updated": 3000
+       },
+       "location": {
+        "directory": "/w"
+       },
+       "fork": {
+        "sessionID": "ses_a",
+        "boundary": {
+         "type": "through",
+         "messageID": "msg_1"
+        }
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ],
+      "ses_f": [
+       {
+        "id": "msg_x_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_4",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 3500,
+         "completed": 3900
+        },
+        "content": [],
+        "tokens": {
+         "input": 300,
+         "output": 30,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1300,
+       "output": 130,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1300,
+        "output": 130,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a revert removes messages but never the totals",
+   "evidence": [
+    "E11"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_2",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 3000,
+         "completed": 4000
+        },
+        "content": [],
+        "tokens": {
+         "input": 500,
+         "output": 50,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1500,
+       "output": 150,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1500,
+       "output": 150,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 2,
+      "integrity_pending": 0,
+      "integrity": 0,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1500,
+        "output": 150,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a failed compaction has no model: its usage is left to the totals",
+   "evidence": [
+    "E7",
+    "E17"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1200,
+        "output": 120,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       },
+       {
+        "id": "msg_2",
+        "type": "compaction",
+        "status": "failed",
+        "reason": "auto",
+        "time": {
+         "created": 2100
+        },
+        "tokens": {
+         "input": 200,
+         "output": 20,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "error": {
+         "type": "provider.invalid-request",
+         "message": "too long"
+        }
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1200,
+       "output": 120,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "steps": 1,
+      "compactions": 0,
+      "partitions": {
+       "openai/gpt-6.1": {
+        "input": 1200,
+        "output": 120,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "totals written lower than seen are flagged and never lower the figure",
+   "evidence": [
+    "E3"
+   ],
+   "pinned": {
+    "providerID": "openai",
+    "id": "gpt-6.1",
+    "variant": "default"
+   },
+   "main": "ses_a",
+   "polls": [
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 1000,
+        "output": 100,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": [
+       {
+        "id": "msg_1",
+        "type": "assistant",
+        "agent": "aew",
+        "model": {
+         "providerID": "openai",
+         "id": "gpt-6.1",
+         "variant": "default"
+        },
+        "time": {
+         "created": 1000,
+         "completed": 2000
+        },
+        "content": [],
+        "tokens": {
+         "input": 1000,
+         "output": 100,
+         "reasoning": 0,
+         "cache": {
+          "read": 0,
+          "write": 0
+         }
+        },
+        "finish": "stop"
+       }
+      ]
+     },
+     "expect": {
+      "tokens": {
+       "input": 1000,
+       "output": 100,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "integrity_pending": 0,
+      "integrity": 0
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 10,
+        "output": 1,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": []
+     },
+     "expect": {
+      "tokens": {
+       "input": 1000,
+       "output": 100,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "integrity_pending": 1,
+      "integrity": 0
+     }
+    },
+    {
+     "sessions": [
+      {
+       "id": "ses_a",
+       "projectID": "p",
+       "model": {
+        "providerID": "openai",
+        "id": "gpt-6.1",
+        "variant": "default"
+       },
+       "tokens": {
+        "input": 10,
+        "output": 1,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       },
+       "cost": 0.0,
+       "time": {
+        "created": 1000,
+        "updated": 1000
+       },
+       "location": {
+        "directory": "/w"
+       }
+      }
+     ],
+     "active": [],
+     "messages": {
+      "ses_a": []
+     },
+     "expect": {
+      "tokens": {
+       "input": 1000,
+       "output": 100,
+       "reasoning": 0,
+       "cache_read": 0,
+       "cache_write": 0
+      },
+      "integrity_pending": 1,
+      "integrity": 1
+     }
+    }
+   ]
+  }
+ ]
+}

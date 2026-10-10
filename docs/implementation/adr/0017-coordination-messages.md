@@ -171,9 +171,12 @@ each is built with the slice named.
   `metadata`. The capability probe will require `steer`, `resume` and `metadata` on the prompt operation and refuse a
   release that drops one (MS5).
 - **`harness send` stays `queue` (D-30 unchanged), so its inputs and F9 messages are not ordered with respect to each
-  other:** steer overtakes queue (the probe's `p4-mixed`). F9 messages never mix modes; they are always `steer`. Moving
-  `harness send` to `steer` is a separate, unscheduled register row (E55), which also owns its help text: "after its
-  current step" is true only for `steer`.
+  other:** steer overtakes queue (the probe's `p4-mixed`). Until F9-A's amendment 2 is built, F9 messages are always
+  `steer`. **The designer decided on 2026-10-10 (steer vs queue, option B)** that both `aew message send` and
+  `aew harness send` take `--when next-step|turn-end`: `next-step`, the default, is `steer`, and `turn-end` is `queue`.
+  While a `turn-end` input is pending, the run's final result ingest is refused (`PENDING_TURN_END_MESSAGE`), atomically
+  with the message state, until the worker submits again. F9-A's amendment 2 specifies it; register row E55 tracks the
+  `harness send` half and its help text, whose "after its current step" is true only for `steer`.
 - **The held case.** An F9 message to a session the Lead's interrupt holds is staged with `resume: false` and never
   wakes it; OpenCode keeps it until the next wake and delivers it first. The staged post leaves the adapter's turn and
   its watched ids alone, so the run stays `held` (MS5).
@@ -206,7 +209,8 @@ each is built with the slice named.
   still applies run-wide; OpenCode's step limit restarts at each delivered input. `harness send` has had the same
   property since M3, and F9 adds volume that D4's caps bound only weakly; the run's deadline is the real bound. F9-A
   adds no run-wide step enforcement. The gap is in an operator-adopted legality bound, so it is ADR-0010's and the
-  harness's: register row E54, put to the operator once, with "accept for now" recommended.
+  harness's: register row E54. **The operator decided on 2026-10-10: accept for now**, with no cumulative hard step cap
+  yet.
 - **A message delivered into a turn that ends before a step completes** (A7; MS5, with the second of MS5 and C1's
   CC7). `DELIVERED` keeps its meaning. D-29 selects a message whose latest `DELIVERED` fact has no completed step after
   its admission, in the run that delivered it, and that has no `REPLIED_TO` or `ACKNOWLEDGED` fact. A completed step is

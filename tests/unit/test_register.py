@@ -240,3 +240,114 @@ def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
     assert register.main(["check"]) == 1
     out = capsys.readouterr().out
     assert "due is one of" in out and "future-work.md differs" not in out, out
+
+
+# ------------------------------------------------------------------------------------------------------- later notes
+# A note on a row is a file of its own, notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md, never an edit of the row's
+# Notes cell: two changes appending to one cell conflict whatever the layout (tools/register.py, *Later notes*).
+
+NOTE = "A later note.\n"
+
+
+def _notes(*paths: str, text: str = NOTE) -> list[tuple[str, str | None]]:
+    return [(p, text) for p in paths]
+
+
+def test_every_row_with_an_id_points_to_its_notes_and_the_pointer_round_trips():
+    page = register.render_markdown(DATA)
+    ids = [r["id"] for r in register.rows(DATA, open_only=False) if r["id"] and r["id"] != "Gate"]
+    assert ids and all(register.pointer(rid) in page for rid in ids)
+    assert page.count("*Later notes: `notes.d/") == len(ids)
+    assert register.parse_markdown(page) == DATA
+
+
+def _register_copy(root: Path) -> None:
+    for path in (register.YAML, register.MD, register.DUE_YAML, register.DUE_MD):
+        target = root / path.relative_to(register.ROOT)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+
+
+def test_adding_a_note_leaves_every_rendered_and_source_file_byte_identical(tmp_path):
+    """The whole point: a note touches no shared file, so two changes noting the same row cannot conflict on one."""
+    _register_copy(tmp_path)
+    register.render(tmp_path)
+    shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
+                                                                 register.DUE_MD)]
+    before = [p.read_bytes() for p in shared]
+    note = tmp_path / register.NOTES.relative_to(register.ROOT) / "F19" / "2026-10-10-impl-x.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(NOTE, encoding="utf-8", newline="\n")
+    register.render(tmp_path)
+    assert [p.read_bytes() for p in shared] == before
+    assert register.note_files(tmp_path) == [("F19/2026-10-10-impl-x.md", NOTE)]
+
+
+def test_show_prints_the_row_its_item_and_its_notes_oldest_first():
+    files = _notes("F19/2026-10-10-b-branch.md", "F19/2026-09-30-z-branch.md", "F20/2026-10-01-other.md")
+    files[0] = (files[0][0], "Second.\n")
+    files[1] = (files[1][0], "First.\n")
+    shown = register.show(DATA, DUE, "F19", files)
+    assert shown is not None
+    assert shown.startswith("## 2. ") and "\n### F19\n" in shown and "**Work:** One evaluation program" in shown
+    assert "#### Later notes (notes.d/F19/): 2" in shown and "A later note." not in shown
+    assert shown.index("2026-09-30-z-branch.md") < shown.index("First.") < shown.index("2026-10-10-b-branch.md") < \
+        shown.index("Second.")
+    item = next(i for i in DUE["items"])
+    assert "**Decision due:**" in (register.show(DATA, DUE, item["row"], []) or "")
+    assert register.show(DATA, DUE, "F99999", files) is None
+
+
+def test_show_from_the_command_line_and_an_unknown_row(capsys):
+    assert register.main(["show", "E30"]) == 0
+    out = capsys.readouterr().out
+    assert "### E30" in out and "2026-10-10-tools-register-fragments.md" in out
+    assert register.main(["show", "Z1"]) == 1
+    assert "not in the register" in capsys.readouterr().err
+
+
+def test_the_real_notes_are_well_formed():
+    assert register.note_problems(DATA, register.note_files()) == []
+
+
+def test_a_note_for_a_row_the_register_does_not_have_is_refused():
+    problems = register.note_problems(DATA, _notes("F99999/2026-10-10-x.md", "f19/2026-10-10-y.md",
+                                                   "F19/sub/2026-10-10-x.md", "2026-10-10-x.md"))
+    assert sum("is not in the register" in p for p in problems) == 2, problems  # F99999, and f19 (ids are exact)
+    assert sum("a note is notes.d/<row id>/" in p for p in problems) == 2, problems  # nested, and no row directory
+
+
+def test_a_malformed_note_is_refused():
+    cases = {
+        "F19/2026-10-10-Upper.md": "in lower case",
+        "F19/2026-10-10-x.txt": "in lower case",
+        "F19/2026-13-40-x.md": "is not a date",
+        "F19/2026-10-10-trailing-.md": "in lower case",
+    }
+    for path, why in cases.items():
+        assert any(why in p for p in register.note_problems(DATA, _notes(path))), path
+    texts = {"": "empty", "  \n": "empty", "no newline": "does not end with a newline",
+             "<<<<<<< ours\na\n=======\nb\n>>>>>>> theirs\n": "conflict markers"}
+    for text, why in texts.items():
+        assert any(why in p for p in register.note_problems(DATA, [("F19/2026-10-10-x.md", text)])), text
+    assert any("not UTF-8" in p for p in register.note_problems(DATA, [("F19/2026-10-10-x.md", None)]))
+    assert register.note_problems(DATA, _notes("README.md", "F19/2026-10-10-x.md", "F19/2026-10-10-x-2.md",
+                                               text=NOTE)) != []  # the same text twice (below); README is skipped
+    assert register.note_problems(DATA, [("README.md", "anything"), ("F19/2026-10-10-x.md", NOTE)]) == []
+
+
+def test_duplicate_names_and_a_note_added_twice_are_refused():
+    """A name that differs from another only in case is one file on Windows and macOS but two in git on Linux; a note
+    whose text repeats another of the same row is one note added twice (a branch renamed and its note re-added)."""
+    problems = register.note_problems(DATA, [("F19/2026-10-10-x.md", "A.\n"), ("F19/2026-10-10-X.md", "B.\n")])
+    assert any("differ only in case" in p for p in problems), problems
+    problems = register.note_problems(DATA, [("F19/2026-10-10-a.md", "Same.\n"), ("F19/2026-10-11-b.md", "Same.\n")])
+    assert problems == ["notes.d/F19/2026-10-11-b.md: the same note as notes.d/F19/2026-10-10-a.md; keep one"]
+    assert register.note_problems(DATA, [("F19/2026-10-10-a.md", "Same.\n"), ("F20/2026-10-10-a.md", "Same.\n")]) == []
+
+
+def test_check_refuses_a_bad_note(monkeypatch, capsys):
+    monkeypatch.setattr(register, "note_files", lambda root=register.ROOT: _notes("F99999/2026-10-10-x.md"))
+    assert register.main(["check"]) == 1
+    out = capsys.readouterr().out
+    assert "F99999 is not in the register" in out and "future-work.md differs" not in out, out

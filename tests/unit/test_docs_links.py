@@ -41,10 +41,12 @@ def test_every_relative_link_resolves(doc):
 
 
 def test_the_docs_map_lists_every_document():
-    """docs/README.md is the map: every document under docs/ (outside skills/, which has its own README) is on it."""
+    """docs/README.md is the map: every document under docs/ is on it, except under skills/ and the register's
+    notes.d/, which have their own README (on the map): a note is a file of its own so that adding one edits no
+    shared file, this page included."""
     readme = ROOT / "docs" / "README.md"
     listed = {(readme.parent / t.split("#", 1)[0]).resolve() for t in LINK.findall(readme.read_text(encoding="utf-8"))}
     docs = [p for p in (ROOT / "docs").rglob("*") if p.is_file() and p.suffix in (".md", ".yaml")
-            and "skills" not in p.relative_to(ROOT / "docs").parts and p != readme]
+            and not {"skills", "notes.d"} & set(p.relative_to(ROOT / "docs").parent.parts) and p != readme]
     missing = sorted(p.relative_to(ROOT).as_posix() for p in docs if p.resolve() not in listed)
     assert missing == [], "add these to docs/README.md: " + ", ".join(missing)

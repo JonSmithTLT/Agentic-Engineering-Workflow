@@ -42,6 +42,11 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **Adopted amendments** are listed in `docs/spec-amendments.yaml` (as an overlay or under `considered`).
 - **The register is data.** Edit `docs/implementation/future-work.yaml`, then run `python tools/register.py render`.
   Never edit `future-work.md` by hand. Closed rows move to §9 with the date and what closed them; nothing is deleted.
+  **A note on an existing row is a file, never an edit of its Notes cell:**
+  `docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` (`notes.d/README.md`); no other change writes
+  that path, so it never conflicts, and the rendered page does not change. `python tools/register.py show <id>` prints
+  a row with its notes. The same holds for a decisions-due item's `what` and an `implementation-status.md` paragraph:
+  progress goes in a note on the row, and the text changes only when the state it states changes.
   What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
   command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
   the register, run `python tools/register.py resolve` (it re-merges the YAML row by row and renders), not a hand

@@ -16,6 +16,10 @@ conflict of 2026-10-09 is replayed from this repository's history and no longer 
 The exception, pinned here too: two insertions at one place (two rows closed into the same gap of §Closed's id order,
 two new rows appended at one place) conflict in git whatever the layout. For the register `register.py resolve`
 settles them, merging the YAML row by row and leaving only the same cell changed on both sides.
+
+The same cell changed on both sides conflicts whatever the layout, and appending to a hub row's Notes cell was the
+change almost every pull request made. So a later note is a file of its own under `notes.d/<row id>/`, which no
+other branch writes and which changes no shared file: two branches noting the same row merge.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ def load(text: str) -> Any:
     return yaml.load(text, Loader=LOADER)  # noqa: S506  (a safe loader: CSafeLoader or SafeLoader)
 REG_YAML, REG_MD = "docs/implementation/future-work.yaml", "docs/implementation/future-work.md"
 DUE_YAML, DUE_MD = "docs/implementation/decisions-due.yaml", "docs/implementation/decisions-due.md"
+NOTES = "docs/implementation/notes.d"
 STATUS = "docs/implementation/implementation-status.md"
 STATUS_TEXT = (ROOT / STATUS).read_text(encoding="utf-8")
 DATA = yaml.safe_load((ROOT / REG_YAML).read_text(encoding="utf-8"))
@@ -224,6 +229,27 @@ def test_the_same_cell_changed_on_both_sides_still_conflicts(repo):
     conflicts, _ = repo.merge(repo.commit(register_files(changed(DATA, first, last, " Ours.")), base),
                               repo.commit(register_files(changed(DATA, first, last, " Theirs.")), base))
     assert sorted(conflicts) == [REG_MD, REG_YAML]
+
+
+def test_two_branches_noting_the_same_row_merge_with_no_conflict(repo):
+    """The failure of 2026-10-10: almost every pull request appended a sentence to the Notes cell of one of a few hub
+    rows, which conflicts in both files whatever the layout (the test above). A note is a file of its own
+    (notes.d/<row id>/<date>-<branch slug>.md), and the page does not change when one is added, so two branches that
+    note the same row on the same day merge, the merge is exactly both notes, and every shared file is untouched."""
+    rid = "F19"
+    base_files = register_files()
+    base = repo.commit(base_files)
+    ours_note, theirs_note = f"{NOTES}/{rid}/2026-10-10-impl-ours.md", f"{NOTES}/{rid}/2026-10-10-impl-theirs.md"
+    ours = repo.commit({ours_note: "Ours.\n", **register_files()}, base)
+    theirs = repo.commit({theirs_note: "Theirs.\n", **register_files()}, base)
+    conflicts, files = repo.merge(ours, theirs)
+    assert conflicts == []
+    assert files[ours_note] == "Ours.\n" and files[theirs_note] == "Theirs.\n"
+    assert {p: files[p] for p in base_files} == base_files, "a note changes no shared file"
+    notes = [(p.removeprefix(f"{NOTES}/"), t) for p, t in files.items() if p.startswith(f"{NOTES}/")]
+    assert register.note_problems(load(files[REG_YAML]), notes) == []
+    shown = register.show(load(files[REG_YAML]), load(files[DUE_YAML]), rid, notes) or ""
+    assert shown.index("Ours.") < shown.index("Theirs.")
 
 
 def test_the_table_layout_conflicted_on_the_same_neighbouring_changes(repo):

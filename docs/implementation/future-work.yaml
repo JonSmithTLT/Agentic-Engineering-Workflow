@@ -1045,8 +1045,11 @@ sections:
       not yet governing; ledger CEA, GAE):** knowledge and evidence reads become `G_KNOWLEDGE_READ` and `G_EVIDENCE_READ`,
       with reviewer and verifier independence as plan selectors (CEA-54); v0.8''s role table puts `G_KNOWLEDGE_READ` at
       P* for the Reviewer and the Verifier (an operator-approved named profile with plan-visible independence selectors),
-      where this adoption makes lookup a base capability of every admitted role (KAD-03, KAD-06): to reconcile when the
-      model is adopted (F38''s item in [decisions due](decisions-due.md)); a cross-reference, not new scope.'
+      where this adoption makes lookup a default capability of every admitted role, reviewer and verifier lookup filtered
+      rather than excluded (KAD-03, KAD-06, AEA-40, KDR-03 to KDR-05); likewise `G_DERIVED_READ` (map and index reads) at
+      P for the Verifier, where KAD-06 lists project and repository navigation among every worker invocation''s normal capabilities:
+      both to reconcile when the model is adopted (F38''s item in [decisions due](decisions-due.md)); a cross-reference,
+      not new scope.'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1466,7 +1469,7 @@ sections:
       of F15.4). Scope: engineering and workbench effects only; Lead and operator workflow commands stay with the typed
       control plane (CEA-06). Where v0.9 changed a v0.8 requirement, the ledger marks the CEA id `superseded-by:` the GAE
       id (safety and liveness for "combination predicates are satisfiable", the Reviewer''s network cells, the four reserved
-      families, the selector table, the fixture lists and the freeze claim)'
+      families, the form of the selector table (v0.8''s selector rows stand, CEA-63), the fixture lists and the freeze claim)'
 
   - '#': F39
     Work: 'M6a Gate B, deployed bypass-freedom: proof, against the exact pinned deployment (harness, providers, containment),

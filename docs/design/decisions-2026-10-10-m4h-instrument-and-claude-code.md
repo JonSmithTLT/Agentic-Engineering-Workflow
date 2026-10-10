@@ -92,15 +92,17 @@ disposition without failing the gate. The brief recommended defining it narrowly
 `inconclusive` or `not_run`, and otherwise dropping it.
 
 D4 revises the plan's §2.4: the verification half is kept only for unrequired claims whose verification result is
-`inconclusive` or `not_run`, and those results are non-gating: they fail neither the report's outcome nor a gate, and
-need the Lead's disposition instead. Required claims are unchanged.
+`inconclusive` or `not_run`, and those results, when the key lists them, are non-gating: they fail neither the
+report's outcome nor a gate, and need the Lead's disposition instead. Required claims are unchanged, and the key's
+default stays empty.
 
 Today none of this can mark anything either. A claim's result is `pass`, `fail`, `inconclusive` or `blocked`, a claim
 has no required or unrequired marking, and any claim that did not pass makes its report fail the gate. So D4 needs a
 definition first: (a) a way to mark a claim unrequired, and what makes it so (a card's claim list, policy or the
 verifier); (b) a `not_run` result; (c) report-outcome and gate rules that do not fail on such a claim, for unrequired
-claims only; (d) the key's enum changed to `inconclusive` and `not_run`. Until then the verification half marks
-nothing. That design is owed to F15.2 through a decisions-due item (MIC-16).
+claims only; (d) the key's enum changed to `inconclusive` and `not_run`; (e) whether such a claim gates when the key
+does not list its result, as with the default, empty key. Until then the verification half marks nothing. That design
+is owed to F15.2 through its item in [decisions due](../implementation/decisions-due.md) (MIC-16).
 
 ### D5. The "broker's notifier" the Lead was to learn replies from (F9)
 
@@ -150,11 +152,11 @@ explicitly qualified.
 - **D4** is filed on F15.2. It revises the [M4-E plan v3](../implementation/m4-e-plan-v3.md) §2.4's
   `unrequired_verification_results`, which no ledger row carries; the plan's text is not edited, and the revision is
   recorded here, in the ledger (MIC-07, MIC-08) and on F15.2. What it needs before it can mark anything (MIC-16) is a
-  design owed through a decisions-due item on F15.2 (needs: design), filed with E5b (pull request 182), which builds
-  the verification half as plan v3 has it, marking nothing.
+  design owed through F15.2's item in decisions due (needs: design), filed with this record. E5b (pull request 182)
+  builds the verification half as plan v3 has it, marking nothing.
 - **D5** is filed on F9 and F15.5. LWA-17's "the broker's notifier" is marked `superseded-by:` MIC-09; its attention
   and resume projections stand. The lane lands in a later F9 slice.
 - **D6 to D8** are filed on F24.2, and D7 also on F40 and as a note on MCD-02, which it confirms for a harness whose
   shell can write.
 - **No decisions-due item** is answered by these decisions: none was filed for F19's G1 and G2, D4 or D5, and F25's
-  item is the Lead part. D4 opens one, its definition (MIC-16), filed with E5b rather than here.
+  item is the Lead part. D4 opens one, F15.2's design item for its definition (MIC-16), filed with this record.

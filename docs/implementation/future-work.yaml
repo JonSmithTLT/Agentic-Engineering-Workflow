@@ -451,12 +451,13 @@ sections:
       built it stays at 11,805 of 11,900. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
       ledger MIC):** D4 decided. It revises [M4-E plan v3](m4-e-plan-v3.md) §2.4's `gates.requires_disposition.unrequired_verification_results`
       (this row carries the revision; the plan's text is not edited), keeping it only for unrequired claims whose verification
-      result is `inconclusive` or `not_run`, which become non-gating, failing neither the report's outcome nor a gate and
-      needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It needs the claim-model definition
-      first, which neither the code nor the documents have (a way to mark a claim unrequired and what makes it so, a `not_run`
-      result, outcome and gate rules that do not fail on such a claim, the key's enum changed to `inconclusive` and `not_run`;
-      MIC-16), owed through this row's design item in [decisions due](decisions-due.md), filed with E5b (pull request 182).
-      Until then the verification half marks nothing yet
+      result is `inconclusive` or `not_run`, which, when the key lists them, become non-gating, failing neither the report's
+      outcome nor a gate and needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It
+      needs the claim-model definition first, which neither the code nor the documents have (a way to mark a claim unrequired
+      and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum
+      changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as
+      with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until
+      then the verification half marks nothing yet
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

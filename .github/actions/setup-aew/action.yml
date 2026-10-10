@@ -32,4 +32,5 @@ runs:
         git config --global user.email "aew-ci@invalid"
     - name: Install AEW with test extras
       shell: bash
-      run: python -m pip install -e ".[dev,parallel,coverage]"
+      # `eval` is numpy, for the M4-H analysis tests (tests/unit/test_eval_analysis.py); AEW itself never imports it.
+      run: python -m pip install -e ".[dev,parallel,coverage,eval]"

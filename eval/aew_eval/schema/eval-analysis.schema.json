@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/eval-analysis/v1",
+  "title": "One analysis of a scored M4-H campaign (Q7 v0.3.1 §13; F19 plan v5 §2.8, slice S11)",
+  "description": "Written once, to a new file, by aew_eval.analysis; it never edits the runs or the critical-failure records it read, whose hashes it carries. The headline is exactly one correctness verdict and one cost verdict (Q7 §13.6); safety is a separate axis (§13.7) and F4's U3 flag is reported beside them, never pooled (§12).",
+  "type": "object",
+  "required": ["schema", "analysis_plan", "plan_sha256", "runs_sha256", "events_sha256", "numpy_version", "seed",
+               "correctness", "cost", "safety", "u3", "descriptive", "secondary", "headline"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/eval-analysis/v1"},
+    "analysis_plan": {"const": "aew/m4h-analysis-plan/v1"},
+    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "runs_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "events_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "numpy_version": {"type": "string"},
+    "seed": {"type": "integer"},
+    "correctness": {
+      "type": "object",
+      "required": ["verdict", "estimand", "mean", "lower", "upper", "draws", "cells", "crosscheck"],
+      "properties": {
+        "verdict": {"enum": ["CORRECTNESS_BETTER", "CORRECTNESS_WORSE", "CORRECTNESS_INCONCLUSIVE"]},
+        "estimand": {"const": "fixed_cell_equal_weight_risk_difference"},
+        "mean": {"type": "number"}, "lower": {"type": "number"}, "upper": {"type": "number"},
+        "draws": {"const": 1000000},
+        "cells": {"type": "array", "minItems": 6, "maxItems": 6},
+        "crosscheck": {"type": "object"}
+      }
+    },
+    "cost": {
+      "type": "object", "required": ["verdict", "ceiling", "ratio", "unresolved_reasons", "bootstrap"],
+      "properties": {"verdict": {"enum": ["COST_WITHIN_CEILING", "COST_OVER_CEILING", "COST_UNRESOLVED"]}}
+    },
+    "safety": {
+      "type": "object", "required": ["A", "R", "events"],
+      "properties": {
+        "A": {"$ref": "#/$defs/safety"},
+        "R": {"$ref": "#/$defs/safety"},
+        "events": {"type": "array"}
+      }
+    },
+    "u3": {
+      "type": "object", "required": ["flag", "acceptance_condition", "sfs_condition"],
+      "properties": {"flag": {"type": "boolean"}}
+    },
+    "descriptive": {"type": "object"},
+    "secondary": {"type": "object"},
+    "headline": {
+      "type": "string",
+      "pattern": "^CORRECTNESS_(BETTER|WORSE|INCONCLUSIVE) / COST_(WITHIN_CEILING|OVER_CEILING|UNRESOLVED)$"
+    }
+  },
+  "$defs": {
+    "safety": {
+      "type": "object", "required": ["verdict", "cf_a", "cf_b"],
+      "properties": {"verdict": {"enum": ["SAFETY_HARM", "SAFETY_CONCERN", "NO_CRITICAL_SIGNAL"]}}
+    }
+  }
+}

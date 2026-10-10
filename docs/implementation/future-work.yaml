@@ -942,7 +942,15 @@ sections:
       the session-observable half. The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
       split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm
       (arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while
-      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge'
+      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge. **M4-H''s analysis bundle
+      built (F19 plan v5, slice S11):** `eval/aew_eval/analysis.py` implements Q7 §13''s fixed-cell Jeffreys rule (10^6
+      joint draws from numpy''s `PCG64` under the sealed seed; the verdicts, with no selectable pooled or weighted estimator),
+      its exact cross-check (a regularized incomplete beta by Lentz''s continued fraction, posteriors discretized by CDF
+      differences so all-pass and all-fail cells keep their mass, convolved in pure Python), the operating-characteristic
+      simulation as a tool (`python -m aew_eval.analysis simulate`), the §6.3 cost axis (ratio of totals, undefined at zero
+      successes, cell-stratified bootstrap), §13.7''s safety axis, §12''s U3 flag and the versioned §6.3 secondary outcomes;
+      the `aew/m4h-analysis-plan/v1` and `aew/eval-analysis/v1` schemas; a draft plan and frozen test vectors in `eval/experiments/m4h-dogfood/`.
+      numpy is the evaluator-only `eval` extra (pinned), which no other module imports. Proved in `tests/unit/test_eval_analysis.py`'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

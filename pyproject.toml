@@ -28,6 +28,11 @@ coverage = ["coverage[toml]>=7.10"]
 # Static checks (docs/implementation/testing-and-ci-strategy.md, "Static checks"). Pinned: a new release can add rules
 # or change inference, and that should arrive as its own reviewed change, not as a red merge gate.
 lint = ["ruff==0.16.10", "pyright==1.1.414", "pip-audit==2.10.1"]
+# The M4-H evaluator only (eval/aew_eval/analysis.py; F19 plan v5, slice S11): the governing analysis draws 10^6
+# posterior samples with numpy's PCG64, and its operating-characteristic simulation would take about 100 hours on the
+# standard library. Never a runtime dependency, never on an arm host. Pinned, because the sealed analysis plan names
+# the version its draws were made with; 2.4.x is the last line with wheels for Python 3.11 (the Rocky 8 target).
+eval = ["numpy==2.4.6"]
 
 [project.scripts]
 aew = "aew.cli.main:main"

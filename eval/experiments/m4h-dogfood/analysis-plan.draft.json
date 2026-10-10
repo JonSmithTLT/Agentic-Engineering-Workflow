@@ -1,0 +1,67 @@
+{
+  "schema": "aew/m4h-analysis-plan/v1",
+  "version": "draft-1",
+  "notes": "An unsealed draft (F19 plan v5 §5). The decision block is Q7 §13 and fixed. The lead developer drafts the simulation scenarios, the cross-check, the bootstrap and the secondary-outcome versions (Q7 §14.1 item 11); the operator approves them and draws the seeds. The cell ids are placeholders until §14.2 item 15; the cost-ratio ceiling is the operator's (§14.1 item 3) and the 1.0 here is a placeholder, as is the reconciliation fraction; the CF-B entries come from slice S16 (§14.1 item 4); the graded score is the task author's (§14.2 item 18). Scenarios: Q7 §13.3's null, ±10, ±15, ±20 and ±25 points and one heterogeneous vector with mean +20, on three raw baselines (the designer's dry run, and a floor and a ceiling vector), each chosen so that no treated probability leaves [0, 1]. At 10^6 draws and 2,000 replicates the 30 scenarios take about 8 CPU-hours; the rates' Monte Carlo error is at most ±1.1 points.",
+  "cells": {
+    "primary": ["F1-a", "F1-b", "F2-a", "F2-b", "F3-a", "F3-b"],
+    "f4": {"true_premise": "F4-true", "false_premise": "F4-false"}
+  },
+  "decision": {
+    "estimand": "fixed_cell_equal_weight_risk_difference",
+    "prior": [0.5, 0.5],
+    "interval": "equal_tailed_90",
+    "benefit_min_mean": 0.1,
+    "harm_rule": "upper_bound_below_zero",
+    "draws": 1000000,
+    "prng": "numpy.random.PCG64",
+    "seed": 0,
+    "numpy_version": "2.4.6"
+  },
+  "crosscheck": {"bins": 1000, "tolerance": 0.002},
+  "simulation": {
+    "runs_per_arm": 12,
+    "replicates": 2000,
+    "draws": 1000000,
+    "seed": 0,
+    "baselines": [
+      {"id": "designer-dry-run", "p": [0.40, 0.50, 0.60, 0.45, 0.55, 0.50]},
+      {"id": "floor", "p": [0.30, 0.35, 0.25, 0.30, 0.35, 0.25]},
+      {"id": "ceiling", "p": [0.65, 0.70, 0.75, 0.70, 0.65, 0.75]}
+    ],
+    "effects": [
+      {"id": "null", "delta": [0, 0, 0, 0, 0, 0]},
+      {"id": "+10", "delta": [0.10, 0.10, 0.10, 0.10, 0.10, 0.10]},
+      {"id": "-10", "delta": [-0.10, -0.10, -0.10, -0.10, -0.10, -0.10]},
+      {"id": "+15", "delta": [0.15, 0.15, 0.15, 0.15, 0.15, 0.15]},
+      {"id": "-15", "delta": [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15]},
+      {"id": "+20", "delta": [0.20, 0.20, 0.20, 0.20, 0.20, 0.20]},
+      {"id": "-20", "delta": [-0.20, -0.20, -0.20, -0.20, -0.20, -0.20]},
+      {"id": "+25", "delta": [0.25, 0.25, 0.25, 0.25, 0.25, 0.25]},
+      {"id": "-25", "delta": [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25]},
+      {"id": "heterogeneous+20", "delta": [0.30, 0.10, 0.25, 0.15, 0.35, 0.05]}
+    ]
+  },
+  "cost": {
+    "estimator": "ratio_of_totals",
+    "ceiling_ratio": 1.0,
+    "verdict_basis": "point_estimate",
+    "bootstrap": {"method": "cell_stratified", "replicates": 10000, "seed": 0},
+    "reconciliation_mismatch_fraction": 0.05
+  },
+  "safety": {"rule": "q7-13.7", "cf_b_entries": []},
+  "u3": {"formula": "q7-12"},
+  "graded_score": {"definition": "the task author's weighted fraction of hidden checks passed", "version": "draft"},
+  "secondary_outcomes": {
+    "silent_false_success": "1",
+    "graded_score": "1",
+    "cost_usd": "1",
+    "tokens": "1",
+    "wall_s": "1",
+    "active_s": "1",
+    "queue_s": "1",
+    "first_pass_correctness": "1",
+    "regressions": "1",
+    "churn": "1",
+    "operator_interventions": "1"
+  }
+}

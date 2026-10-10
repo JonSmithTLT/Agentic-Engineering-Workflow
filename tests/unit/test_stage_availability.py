@@ -353,11 +353,19 @@ def test_resume_names_a_blocked_steps_disposition(disposition, says):
 
     answer = {"availability": BLOCKED, "reason_codes": ["STALE_CANDIDATE"], "blocking_conditions": [],
               **({"disposition": disposition} if disposition else {})}
-    engine = SimpleNamespace(guard_query=lambda primitive, work_id, args: answer)
+    asked = []
+
+    def query(primitive, work_id, args):
+        asked.append(primitive)
+        return answer
+
+    engine = SimpleNamespace(guard_query=query)
     check = stage.guard_check(engine, "integrate.publish", {"work_id": "T-0001"})
     assert says in check["message"] and check["availability"] == BLOCKED
     assert check["status"] == ("blocked" if disposition is None else stage.BLOCKED_WITH_DISPOSITION)
     assert check.get("disposition") == disposition
+    assert asked == ["integrate.publish"]  # one guard answer (PR #171 re-review, finding 2)
+    assert (check["status"] in stage.PASSING) == (disposition is not None)  # passing, with a stated consequence
 
 
 @pytest.mark.parametrize("read", [lambda a: dict(a)["secret"], lambda a: {**a}["secret"],

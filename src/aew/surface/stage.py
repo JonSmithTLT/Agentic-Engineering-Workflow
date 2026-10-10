@@ -206,19 +206,17 @@ DISPOSITION_MESSAGES = {
 BLOCKED_WITH_DISPOSITION = "blocked_with_disposition"
 
 
-def guard_disposition(engine: Any, primitive: str, args: dict[str, Any]) -> str | None:
-    """The disposition a blocked step's call commits instead of its effect, or None (a plain refusal)."""
-    return engine.guard_query(primitive, args.get("work_id"), dict(args)).get("disposition")
-
-
 def guard_check(engine: Any, primitive: str, args: dict[str, Any]) -> dict[str, Any]:
-    """``resume``'s ``guard`` recheck of a next step: ok, blocked, not queryable, or blocked with a disposition that a
-    continue would commit by running the step (``resolve continue`` allows it: the designed path, PR #171 review)."""
-    found, reasons = guard_status(engine, primitive, args)
+    """``resume``'s ``guard`` recheck of a next step, from one guard answer (PR #171 re-review, finding 2): ok, blocked,
+    not queryable, or blocked with a disposition that a continue commits by running the step. That last one passes
+    with a stated consequence (``resolve continue`` runs it: the designed path; the boundary names the disposition)."""
+    answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
+    found = answer["availability"]
+    reasons = [] if found == AVAILABLE else list(answer["reason_codes"])
     check = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
              UNKNOWN: _unknown_guard(reasons),
              BLOCKED: {"status": "blocked", "reason_codes": reasons, "message": "its guard refuses it now"}}[found]
-    disposition = guard_disposition(engine, primitive, args) if found == BLOCKED else None
+    disposition = answer.get("disposition") if found == BLOCKED else None
     if disposition is not None:
         check = {"status": BLOCKED_WITH_DISPOSITION, "reason_codes": reasons, "disposition": disposition,
                  "message": DISPOSITION_MESSAGES.get(disposition, f"running it commits {disposition}")}
@@ -312,7 +310,9 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
 # ---------------------------------------------------------------------------------------------- resume and resolve
 # (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
 
-PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard
+# not_queryable: the step's own commit decides its guard; blocked_with_disposition: a continue runs the step, which
+# commits only its disposition (the boundary names it; PR #171 re-review, finding 1).
+PASSING = ("ok", "not_applicable", "not_queryable", "blocked_with_disposition")
 UNKNOWN_STATUS = "not_queryable"
 
 
@@ -361,7 +361,8 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
         else:
             checks["guard"] = guard_check(engine, nxt["primitive"], args)
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
-    boundary = check["boundary"] or ("refused" if failing else None)
+    disposition = checks["guard"].get("disposition")
+    boundary = check["boundary"] or ("refused" if failing else (f"disposition:{disposition}" if disposition else None))
     return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
             "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
             "base_class": si["base_class"], "effective_class": si["effective_class"],

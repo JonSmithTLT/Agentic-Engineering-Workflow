@@ -58,8 +58,8 @@ finding answers it on the pull request, and the reviewer either withdraws it or 
 
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
-- the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the delta review's verdict under
-  §1);
+- the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the verdict of the review §1
+  requires);
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a
   draft.

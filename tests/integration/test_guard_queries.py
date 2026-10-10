@@ -199,3 +199,68 @@ def test_a_review_that_is_not_one_is_refused_alike(implemented):
     answer = equivalent(engine, "review.ingest", wid, {"evidence": report}, _ingest(engine, p, wid, report))
     assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "is not a review" in (
         answer["blocking_conditions"][0]["message"])
+
+
+# ---------------------------------------------------------------------------------------------- review_current
+
+
+def test_guard_query_matches_execute_review_current(implemented):
+    """REVIEW_PASSED -> VERIFY_PENDING (`review_current`): refused while the workspace differs from what was reviewed,
+    allowed again once it holds the reviewed snapshot."""
+    from aewflow import SUBTRACT_PATCH, review
+
+    p, wid, engine, impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "# an unreviewed edit\n"})
+    answer = equivalent(engine, "work.transition", wid, {"to": "VERIFY_PENDING"},
+                        _transition(engine, p, wid, "VERIFY_PENDING"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "REVIEW_PASSED -> VERIFY_PENDING" in (
+        answer["blocking_conditions"][0]["message"])
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"]})  # the reviewed snapshot again
+    equivalent(engine, "work.transition", wid, {"to": "VERIFY_PENDING"}, _transition(engine, p, wid, "VERIFY_PENDING"))
+    assert engine.store.read()["work"][wid]["state"] == "VERIFY_PENDING"
+
+
+def _verification_stage(engine: Engine, wid: str, evidence: str) -> dict[str, Any]:
+    return R.run_tool(engine, CTX, "explain", {"stage": "ticket_request_verification", "work_id": wid,
+                                              "arguments": {"review_evidence": evidence}})["result"]
+
+
+def test_ticket_request_verification_is_composed_from_the_ingest_and_what_it_produces(implemented):
+    """Accepting a passing review: step 2's guard sees the REVIEW_PASSED state and the pinned report step 1 produces,
+    and step 3's verifier decision the VERIFY_PENDING state step 2 produces. The stage is AVAILABLE, and never
+    auto-runnable: it is judgment-bearing (m2)."""
+    from aewflow import review
+
+    p, wid, engine, _impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    report = review(p, wid)
+    found = _verification_stage(engine, wid, report)
+    assert found["availability"] == AVAILABLE, found
+    assert [s["availability"] for s in found["steps"]] == [AVAILABLE] * 4
+    assert found["steps"][1]["produced_by"] == {"state": 1, "evidence": 1}
+    assert engine.store.read()["work"][wid]["state"] == "REVIEW_PENDING"  # asking changed nothing
+    # The primitives the stage would run, run directly, agree with each step's answer.
+    engine.review_ingest(token=p.token, expect_rev=p.rev(), work_id=wid, evidence_id=report)
+    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+    assert p.lead("invoke", "create", wid, "--role", "verifier")["role"] == "verifier"
+
+
+def test_a_failing_review_blocks_the_verification_stage_where_it_would_stop(implemented):
+    """A review that fails: its ingest is legal (step 1), but the state it produces, REVIEW_FAILED, has no edge to
+    VERIFY_PENDING, so the stage is BLOCKED at step 2, exactly where running it would stop (rule 3)."""
+    from aewflow import review
+
+    p, wid, engine, _impl = implemented
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    report = review(p, wid, disposition="changes_required",
+                    findings=[{"id": "F1", "severity": "major", "summary": "missing test", "required": True}])
+    found = _verification_stage(engine, wid, report)
+    assert found["availability"] == BLOCKED and [s["availability"] for s in found["steps"][:2]] == [
+        AVAILABLE, BLOCKED]
+    assert found["steps"][1]["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    engine.review_ingest(token=p.token, expect_rev=p.rev(), work_id=wid, evidence_id=report)
+    with pytest.raises(AEWError) as refused:
+        engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+    assert refused.value.code == "ILLEGAL_TRANSITION"

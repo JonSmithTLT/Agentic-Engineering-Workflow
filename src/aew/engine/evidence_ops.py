@@ -291,7 +291,7 @@ class Gates:
                                   self._guard_ready_for_verification_without_review),
                 GuardRegistration("commit_ready_without_review_or_verification",
                                   self._guard_commit_ready_without_review_or_verification),
-                GuardRegistration("review_current", self._guard_review_current),
+                GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current),
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification),
                 GuardRegistration("all_gates_current", self._guard_all_gates_current)]
 
@@ -328,9 +328,17 @@ class Gates:
                                   required=self.review_gates(gc) + self.verification_gates(gc))
         self._commit_ready(ctx, work_id, unit, gc)
 
+    def _query_review_current(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """REVIEW_PASSED -> VERIFY_PENDING (M4-E E4: its query form): the pre-review and review gates are current for
+        the workspace's snapshot (the review was of what is there now)."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            self.require_gates(gc, self.PRE_REVIEW + self.review_gates(gc), what="REVIEW_PASSED -> VERIFY_PENDING")
+
+        return guard_checked(check)
+
     def _guard_review_current(self, ctx, work_id, unit, to) -> None:
-        gc = self.gate_context(ctx.state, work_id)
-        self.require_gates(gc, self.PRE_REVIEW + self.review_gates(gc), what="REVIEW_PASSED -> VERIFY_PENDING")
+        require(self._query_review_current(ctx.state, work_id, {"to": to}))
 
     def _guard_commit_ready_without_verification(self, ctx, work_id, unit, to) -> None:
         gc = self.gate_context(ctx.state, work_id)

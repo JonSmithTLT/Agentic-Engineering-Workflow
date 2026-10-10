@@ -50,6 +50,9 @@ SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".passwor
                ".config/anthropic")  # provider credential/config location
 SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
                 ".claude.json")  # provider credential/config location
+# Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
+# home directory whose name starts with one of these is masked too. Only the home directory itself is listed.
+SECRET_FILE_PREFIXES = (".claude.json.",)  # provider credential/config location
 
 PRIVATE_GIT = "git"  # <run dir>/git: the run's private index and object store
 MASK_FILE = ".aew-mask"
@@ -118,6 +121,9 @@ def _masks(home: str | None, extra: list[str]) -> tuple[tuple[str, ...], tuple[s
     candidates += [os.path.expanduser(p) for p in extra]
     dirs: list[str] = []
     files: list[str] = []
+    for path in _prefixed_files(home):
+        if path not in files:
+            files.append(path)
     for raw in candidates:
         if not os.path.lexists(raw):
             continue
@@ -126,6 +132,24 @@ def _masks(home: str | None, extra: list[str]) -> tuple[tuple[str, ...], tuple[s
         if target is not None and path not in target:
             target.append(path)
     return tuple(dirs), tuple(files)
+
+
+def _prefixed_files(home: str | None) -> list[str]:
+    """Regular files directly in ``home`` named after a :data:`SECRET_FILE_PREFIXES` entry (not recursive; a
+    directory with such a name is not a file and is left alone)."""
+    if not home:
+        return []
+    try:
+        with os.scandir(home) as it:
+            names = sorted(e.name for e in it if e.name.startswith(SECRET_FILE_PREFIXES))
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        path = _real(os.path.join(home, name))
+        if os.path.isfile(path):
+            out.append(path)
+    return out
 
 
 def private_git(run_dir: Path, workspace: Path) -> tuple[Path, dict[str, str]]:

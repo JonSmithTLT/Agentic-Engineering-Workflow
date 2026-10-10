@@ -160,11 +160,14 @@ def test_provider_config_locations_read_empty_from_inside(lab):
     (lab.home / ".claude.json").write_text('{"secret": "SECRET-CFG"}\n')
     (lab.home / ".config" / "anthropic").mkdir(parents=True)
     (lab.home / ".config" / "anthropic" / "credentials").write_text("SECRET-DIR\n")
+    (lab.home / ".claude.json.backup").write_text('{"secret": "SECRET-COPY"}\n')
     f, d = lab.home / ".claude.json", lab.home / ".config" / "anthropic"
-    done = lab.sh(lab.layout("reviewer"), f"cat {f}; test -f {f} && test ! -s {f} && echo FILE; ls -A {d}; echo END")
+    b = lab.home / ".claude.json.backup"
+    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b}; test -f {f} && test ! -s {f} && echo FILE; "
+                                          f"test -f {b} && test ! -s {b} && echo COPY; ls -A {d}; echo END")
     assert done.returncode == 0, done.stderr
     assert "SECRET" not in done.stdout and "credentials" not in done.stdout
-    assert done.stdout.split() == ["FILE", "END"]
+    assert done.stdout.split() == ["FILE", "COPY", "END"]
     assert f.read_text() == '{"secret": "SECRET-CFG"}\n'  # the host's own file is untouched
 
 

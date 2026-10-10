@@ -158,6 +158,27 @@ def test_a_provider_config_location_is_masked_by_its_type_when_present_and_skipp
         assert flags[flags.index(real) - 1] == "--tmpfs"                # an empty directory
 
 
+def test_a_suffixed_copy_of_a_provider_config_file_is_masked_as_a_file_and_only_a_regular_file(tmp_path, fake_bwrap):
+    assert ".claude.json." in L.SECRET_FILE_PREFIXES
+    home = tmp_path / "home"
+    home.mkdir()
+    absent = run_layout(tmp_path / "a", "reviewer", home=str(home))
+    assert not any(".claude.json" in os.path.basename(p) for p in (*absent.hide_dirs, *absent.hide_files))
+    (home / ".claude.json.backup").write_text('{"k": "v"}')
+    (home / ".claude.json.d").mkdir()                    # a directory with a matching name is not a file
+    (home / ".claude.json.d" / ".claude.json.inner").write_text("v")  # and the listing is not recursive
+    (home / "x.claude.json.backup").write_text("v")     # a prefix, not a substring
+    layout = run_layout(tmp_path / "b", "reviewer", home=str(home))
+    real = os.path.realpath
+    backup = real(home / ".claude.json.backup")
+    assert backup in layout.hide_files and backup not in layout.hide_dirs
+    assert real(home / ".claude.json.d") not in (*layout.hide_files, *layout.hide_dirs)
+    assert not any(p.endswith(("inner", "x.claude.json.backup")) for p in layout.hide_files)
+    flags = C.bwrap_argv(layout, ["true"])
+    i = flags.index(backup)
+    assert flags[i - 2:i] == ["--ro-bind", layout.mask_file]
+
+
 def test_operator_writable_roots_must_exist_and_are_recorded(tmp_path, fake_bwrap):
     shared = tmp_path / "cache"
     shared.mkdir()

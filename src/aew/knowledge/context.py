@@ -136,6 +136,9 @@ class PackInputs:
     aggregate_diffstat: str | None = None
     # ADR-0011: historical records the Lead loaded as reference (``aew history load``), pinned at dispatch.
     history: list[dict[str, Any]] = field(default_factory=list)
+    # Register F22.1 (plan §5.4): the structural-map slice, rendered (``aew.maps.slices``); None when the switch is off
+    # or the role's context does not name codebase_map, and then the pack is exactly what it was without maps.
+    codebase_map: list[str] | None = None
 
 
 def _bullets(items: list[str]) -> list[str]:
@@ -540,6 +543,8 @@ def sections(p: PackInputs) -> list[Section]:
             "Implementer claims (NOT evidence — establish each outcome yourself):",
             *_bullets([f"files changed: {', '.join(s.get('files_changed', [])) or 'not reported'}",
                        f"checks run: {', '.join(s.get('checks_run', [])) or 'not reported'}"])], cuttable=True))
+    if p.codebase_map is not None:  # last of the source-and-evidence tier, so the budget cuts it first (plan §5.4)
+        out.append(_lines_section("codebase-map", EVIDENCE, ["", *p.codebase_map], cuttable=True))
     return out
 
 

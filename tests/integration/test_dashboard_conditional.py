@@ -32,12 +32,20 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
+from dashboard_contract import base_contract, note_text, proposed  # noqa: E402
 from fake_harness import IMPL_REPORT, HarnessLab  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
 
 from aew.dashboard import contract as CT  # noqa: E402
 from aew.dashboard import reader as R  # noqa: E402
-from aew.dashboard.server import DashboardServer, error_body  # noqa: E402
+from aew.dashboard.server import (  # noqa: E402
+    CONDITIONAL_ROUTES,
+    ROUTES,
+    DashboardServer,
+    error_body,
+    match_route,
+    pending_routes,
+)
 from aew.engine.api import Engine  # noqa: E402
 from aew.harness import contract as K  # noqa: E402
 from aew.harness import runlog  # noqa: E402
@@ -144,7 +152,9 @@ def world(tmp_path_factory):
 
 
 def served_routes() -> list[str]:
-    return sorted(r for r in CONTRACT.paths if r != "/attention")  # /attention: 403 until F15.1
+    """The contract's routes this server serves (a pending one is no route yet; register F20.8), less /attention,
+    which is 403 until F15.1."""
+    return sorted(r for r in CONTRACT.paths if (r in ROUTES or r in CONDITIONAL_ROUTES) and r != "/attention")
 
 
 def path_of(world: World, route: str) -> str:
@@ -215,6 +225,27 @@ def test_a_conditional_request_is_authenticated_first(world):
     finally:
         world.gate.closed = False
     assert status == 401 and json.loads(raw)["code"] == "SESSION_REQUIRED" and "etag" not in headers
+
+
+def test_a_pending_route_is_refused_as_without_it_before_authentication_or_by_its_template_after(world):
+    """Without a session, a pending route that no template matches is ``404`` "no such route" (routing comes before
+    authentication), and one a template matches is that template's ``401``: exactly today's answers (change note
+    §3.3)."""
+    pending = pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"]))
+    assert pending, "the change note's routes are pending until S1 and S2 serve them"
+    world.gate.closed = True
+    try:
+        for route in sorted(pending):
+            path = route.replace("{root}", "0" * 64)
+            status, headers, raw = world.client.get(path, inm="*")
+            body = json.loads(raw)
+            if match_route(path) is None:
+                assert (status, body["code"], body["message"]) == (404, "NOT_FOUND", "no such route"), route
+            else:
+                assert (status, body["code"]) == (401, "SESSION_REQUIRED"), route
+            assert "etag" not in headers
+    finally:
+        world.gate.closed = False
 
 
 def test_errors_carry_no_validator_and_never_answer_304(world):

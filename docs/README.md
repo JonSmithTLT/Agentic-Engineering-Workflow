@@ -166,6 +166,7 @@ text is not governing.
 | [`AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`](design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md) | F9 | Frozen at v0.1; amended by the adopted F9-A1 (2026-10-09), which keeps its invariants | Its concepts are F9-A1's F9-B, which may proceed after F9-A technical qualification |
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
+| [`dashboard-maps-and-history-search-v0.1.md`](design/proposals/dashboard-maps-and-history-search-v0.1.md) | F20.8 | Approved (operator, 2026-10-10): the contract 0.1.3 change note (the maps routes and the conditional raw-history search), the compatibility rule, and its appendix of OpenAPI additions for the web developer to adopt; not yet adopted in a contract | S0 (this note and the main line's readiness), then W1 (web), S1 maps, S2 search, S3 acceptance |
 
 ## Research and investigations ([`research/`](research/))
 

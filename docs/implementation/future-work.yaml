@@ -847,7 +847,11 @@ sections:
       a note for the web developer; a contract change renews C0. **Main line (2026-10-05, F20.5 browser check):** the engine''s
       terminal integration status `integrated` is not among `Integration.status`''s `x-known-values` (prepared, publishing,
       conflict, superseded), so the Work page shows it as an unknown value with a warning, as the contract says it must;
-      adding it is a contract change (renewed C0), for the web developer to schedule.'
+      adding it is a contract change (renewed C0), for the web developer to schedule. **Contract 0.1.3 (F20.8, 2026-10-10):**
+      a minor version is additive: it adds paths and never changes what an existing path returns, and each envelope keeps
+      the version that defined its response, so the 0.1.2 routes keep emitting 0.1.2; 0.2.0 is kept for breaking changes
+      (F28''s `network` object, a projected queue, a new field on an existing response). Folding `integrated` into 0.1.3
+      is the web developer''s call (an `x-known-values` annotation, which the compatibility check ignores).'
 
   - '#': F20.6
     Work: 'Integrated acceptance: the browser and security checks against authenticated live state, recorded separately
@@ -874,7 +878,29 @@ sections:
     Notes: A contract addition (0.1.2 has no such route), so a new contract version with a renewed C0 review, and a frontend
       change; deferred from F20.2 by the M4-D triage and by the design note (2026-10-05). SSE is a later transport over
       the same cursor, not required by the ADR. One outbox reader and one cursor with the Lead's `changes` query (F15.9)
-      and `harness wait` (agent-effectiveness adoption, 2026-10-09)
+      and `harness wait` (agent-effectiveness adoption, 2026-10-09). **Contract 0.1.3 (F20.8, 2026-10-10):** map selections
+      are not outbox events (they commit to the map registry, never to control state), so this endpoint would not signal
+      them; the maps pages poll `/maps` instead (change note §7)
+
+  - '#': F20.8
+    Work: 'Dashboard maps and raw-history search: contract 0.1.3. Five maps routes (`/maps`, `/maps/structural`, `/maps/structural/{root}`,
+      `/maps/structural/{root}/inputs`, `/maps/diff`) and the conditional `/history/search`, behind the same switch as the
+      CLI, absent while it is off and never model-visible; the `maps` and `history_search` capability keys; contract 0.1.3,
+      additive, with an element-wise compatibility check that keeps every 0.1.2 response, parameter and method equal. Slices:
+      **S0** the change note and the main line''s readiness (the accepted version is any `0.1.x` at or above 0.1.2, envelope
+      versions per route, pending routes derived, the packaged build accepted by rule) → **W1** the web developer adopts
+      the contract → **S1** the maps routes and **S2** the search route, never stacked → **S3** the build re-import and
+      acceptance'
+    Source (governing): '[`dashboard-maps-and-history-search-v0.1.md`](../design/proposals/dashboard-maps-and-history-search-v0.1.md)
+      (ledger DMS), from the lead developer''s plan v6 (CLEAR after five independent reviews); the operator''s approval
+      of 2026-10-09 and sign-off of 2026-10-10, the search route included (note §1); the [dashboard design note](../design/proposals/dashboard-main-line-api-design-v0.1.md)
+      §2 and §8 (a contract change renews C0)'
+    Belongs to or gated by: '**M4 candidate** (the operator, 2026-10-09). S1 after W1; S2 after PR #148 (Arm B) and W1;
+      S3 after the web developer''s UI, with the operator''s approval of the new frontend baseline'
+    Notes: 'S0 changes nothing served: every 0.1.2 route answers byte for byte, and the six routes stay pending (answered
+      exactly as without them) until S1 and S2 serve them. The web developer may amend the additions in W1; the main line
+      stays green whatever they amend, and S1 records the amendments in the note and marks it adopted. If #148''s merged
+      result lacks something the search additions need, they are amended in 0.1.4 before S2 serves the route.'
 
   - '#': F21
     Work: 'The M6b knowledge system: capture and admission of reusable knowledge (K0 references, K1 Cases, K2 Lessons, K3
@@ -925,7 +951,13 @@ sections:
       AEA-36):** Knowledge stays on-demand and tool-driven, never injected into worker context before Arm B''s evaluation
       earns it; after Arm B, `knowledge.search` and `knowledge.get` are exposed through the same `aew-run` read surface
       (F15.8). The record''s §14 repeats the reviewer-independence rule (AEA-40, consistent with KDR-03 to KDR-05) and places
-      its enforcement in engine and context request binding; the pack half of the filter is F35.'
+      its enforcement in engine and context request binding; the pack half of the filter is F35. **Dashboard route (F20.8,
+      operator 2026-10-09 and 2026-10-10):** an operator-facing `/history/search` sits behind the same `recall.raw_history_search`
+      switch, read from the request''s snapshot and failing closed; it is absent while the switch is off, so it is absent
+      in M4-H''s sealed configuration, and it is never model-visible (operator session only). The dashboard''s lock-free
+      path never resets, discards or deletes the search substrate: a moved, stale, foreign or unusable substrate is a coverage
+      reason, and the CLI''s search or reindex repairs it. Its additive engine parameters are S2''s, after #148 merges;
+      #148 itself is not widened.'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -950,7 +982,10 @@ sections:
       project maps (T5) are the primary owner of deterministic repository orientation, locators, semantic relationships,
       test and constraint indexes and impact assistance, the requirement''s flagship (WCR-05 to WCR-10, WCR-20, WCR-28);
       its success condition is that even a frontier model prefers the map''s query surfaces to ad hoc search for supported
-      questions; a cross-reference, not new scope.'
+      questions; a cross-reference, not new scope. **Dashboard maps (F20.8, 2026-10-10):** the dashboard''s projection keeps
+      T5-INV-07 (map text is inert data: allowlisted fields, vocabulary-checked values, strings cut by bytes and rendered
+      as plain text) and T5-INV-10 (STALE, PARTIAL and UNKNOWN stay visible with their reasons) through the API, and never
+      generates a map from a request.'
 
   - '#': F22.2
     Work: 'T5-B then T5-C. T5-B, the common semantic substrate: `aew/semantic-map/v1`, the capability, fact and quality

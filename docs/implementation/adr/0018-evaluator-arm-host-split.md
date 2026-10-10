@@ -161,6 +161,9 @@ append repairs it.
   evaluator records: its outcome is `outcome.arm_outcome` (a forged `scoring` block or host name stays the guest's
   claim), and the paths it did not read `outcome.unread_paths` (with `unread_paths_omitted`). `outcome.changed_paths`
   is the evaluator's, computed from the files and links it received.
+- **`validity.reason_code` is labelled `evaluator`, with one exception.** The suffix after `ARMHOST_REFUSED:`, and
+  after `RESULT_REFUSED:` when the agent refused a collect, is the error code the agent chose: the guest's claim,
+  bounded by the protocol schema's pattern, which D8 says how to treat.
 - **Error text is split by author.** `outcome.error` holds only the evaluator's own words: a failed channel's own
   text (`TIMEOUT`, `HOST_FAILED` with the agent's exit status), the code alone of a failure about what the guest sent,
   and only the type of an unexpected exception. Everything the guest produced or that may quote it is
@@ -183,6 +186,11 @@ bundle corrupt (or answers for another bundle); `RESULT_REFUSED:<code>` for anyt
 back (a collect refusal by the agent, a reply or bundle the evaluator refuses, `TRANSFER_CORRUPT` included);
 `ARMHOST_REFUSED:<code>` for another refused verb; `TRANSPORT_ERROR:<code>` for a call that failed (`TIMEOUT`,
 `HOST_FAILED`, a malformed frame); `ARMHOST_ARM_ERROR` (the arm raised on the arm host); `EVALUATOR_ERROR:<type>`.
+**Who chose the code.** The prefix is always the evaluator's. After `ARMHOST_REFUSED:`, and after `RESULT_REFUSED:`
+when the agent refused a collect, the suffix is the error code the agent sent: the guest's claim, bounded only by the
+protocol schema's pattern (`^[A-Z][A-Z0-9_]*$`), never a fact the evaluator observed. S7's classifier must treat it
+as such a claim, and never let it alone decide a verdict, least of all a retryable one. The suffix of
+`TRANSPORT_ERROR:`, and of `RESULT_REFUSED:` for a refusal the evaluator made itself, is the evaluator's own code.
 These are the instrument's own verdicts for the scripted arm. **A released run is never retried while they are
 provisional:** `run_released_cell` refuses `retry_of` before anything is counted, so no failure an arm could cause
 becomes a retry before S7's frozen, outcome-blind classifier decides which may (plan v5 §2.5: a retryable code needs a

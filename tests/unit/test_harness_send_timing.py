@@ -35,6 +35,11 @@ def test_when_maps_to_exactly_steer_and_queue():
     literal mode."""
     assert L.WHEN_DELIVERY == {"next-step": "steer", "turn-end": "queue"}
     assert (L.NEXT_STEP, L.TURN_END, L.DEFAULT_WHEN) == ("next-step", "turn-end", "next-step")
+    # defined in a leaf outside coordination, so `harness send` never imports coordination (F9 invariant 1), and
+    # re-exported by the coordination layout for the F9 side: one object, never two copies
+    from aew.harness import delivery as D
+
+    assert L.WHEN_DELIVERY is D.WHEN_DELIVERY and L.DEFAULT_WHEN == D.DEFAULT_WHEN
     supervisor = (ROOT / "src/aew/harness/supervisor.py").read_text(encoding="utf-8")
     sends = [n for n in ast.walk(ast.parse(supervisor)) if isinstance(n, ast.Call)
              and isinstance(n.func, ast.Attribute) and n.func.attr == "send"

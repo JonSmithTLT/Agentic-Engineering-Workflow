@@ -408,7 +408,7 @@ class Engine:
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
-                                          dispatch=dispatch)
+                                          dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,

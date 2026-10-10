@@ -689,7 +689,7 @@ replace this ADR's "queued prompt" with two explicit timings. Built by slice HS1
 - **`aew harness send --when next-step|turn-end`.** `next-step`, the default, posts `delivery: steer`: the message
   reaches the agent at its next step boundary, inside the turn, without interrupting a running tool or model call.
   `turn-end` maps to `delivery: queue`, after the agent's turn, and exists only through the F9 message store. The
-  mapping is one constant (`aew.coordination.layout.WHEN_DELIVERY`), and the adapter interface is
+  mapping is one constant (`aew.harness.delivery.WHEN_DELIVERY`, re-exported by `aew.coordination.layout`), and the adapter interface is
   `send(text, delivery)` (`harness-conformance.md`).
 - **The route** is decided under the control lock, before any write, from the project's adopted messaging switch and the
   run's launch snapshot of it:

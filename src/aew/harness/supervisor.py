@@ -29,12 +29,12 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
-from aew.coordination.layout import NEXT_STEP, WHEN_DELIVERY
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter
+from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
 

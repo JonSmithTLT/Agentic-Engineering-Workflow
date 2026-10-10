@@ -28,10 +28,8 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from aew.coordination import layout as L
 from aew.engine import faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
-from aew.engine.coordination_ops import messaging_switch
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -49,6 +47,7 @@ from aew.errors import (
 )
 from aew.harness import containment, procs, runlog
 from aew.harness import contract as K
+from aew.harness import delivery as L
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
@@ -58,7 +57,14 @@ from aew.util import sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, ContextPacksPort, DispatchPort, GatesPort, InvocationsPort
+    from aew.engine.ports import (
+        ArchivePort,
+        ContextPacksPort,
+        CoordinationPort,
+        DispatchPort,
+        GatesPort,
+        InvocationsPort,
+    )
 
 # Never handed to a supervisor (and therefore never to a harness or an agent).
 SCRUBBED_ENV = K.CREDENTIAL_ENV
@@ -74,9 +80,12 @@ class Harness:
     """Harness runs of invocations (ADR-0009) and the next action each run implies."""
 
     def __init__(self, k: Kernel, *, invocations: InvocationsPort, packs: ContextPacksPort, gates: GatesPort,
-                 archive: ArchivePort, dispatch: DispatchPort) -> None:
+                 archive: ArchivePort, dispatch: DispatchPort, coordination: CoordinationPort) -> None:
         self.k = k
         self.dispatch = dispatch
+        # Only for `harness send`'s route: the project's adopted messaging switch (F9-A plan v4 amendment 2 §3.1). It
+        # comes through the port so that this module never imports coordination (F9 invariant 1).
+        self.coordination = coordination
         self.invocations = invocations
         self.packs = packs
         self.gates = gates
@@ -556,7 +565,7 @@ class Harness:
                              "Put the material in a file in the agent's workspace and send its path instead")
 
         def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
-            send_route(messaging_switch(self.k.aew_root, state)[0], run_messaging_snapshot(entry), when)
+            send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when)
 
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.

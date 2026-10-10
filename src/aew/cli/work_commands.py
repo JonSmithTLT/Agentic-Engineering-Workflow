@@ -7,10 +7,10 @@ import os
 from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
-from aew.coordination.layout import DEFAULT_WHEN, WHEN_DELIVERY
 from aew.errors import UsageError
 from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
+from aew.harness.delivery import DEFAULT_WHEN, WHEN_DELIVERY
 
 
 def _inv_token(args: argparse.Namespace) -> str:

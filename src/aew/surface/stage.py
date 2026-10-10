@@ -15,14 +15,20 @@ does not land.
   and UNKNOWN never retries. The retried step carries ``retried_after_stale_revision`` on the intent and in
   ``completed_steps``.
 - **Policy drift** stops as STALE_POLICY (rule 6), and **a launch that fails after its dispatch committed** stops as
-  ``launch_failed`` (rule 7): the committed run identity stands.
+  ``launch_failed`` (rule 7): the committed run identity stands. A dispatch made with ``launch`` records run 1 in its
+  own commit (``dispatch.launch``: plan v3 §1 and E4, inside the dispatch's transaction and covered by its decision);
+  its step runner then hands that run to its supervisor, so the stage never goes on, or completes, over a run that
+  never started (#142 review, finding 1).
 - **A stop the executor cannot record** (the seat was lost, a policy edit awaits adoption, the journal refused the
   bookkeeping itself) leaves the intent ACTIVE for ``resume`` and the Lead's ``resolve`` (E3c): the result says so.
+  A refusal met while deciding on a retry (reading the binding with a policy edit pending) stops the stage the same
+  way, with its committed steps reported (#142 review, finding 2).
 
 The plan comes from the stage's planner (``STAGES``), and each planned primitive needs a step runner
 (``STEP_RUNNERS``); both are checked before anything commits. A planned step's argument may be ``{"$from": [m,
 field]}``: the single unit, invocation or run that step ``m`` recorded in the journal, so a continued stage (E3c)
-resolves it from durable state, never from this call's memory.
+resolves it from durable state, never from this call's memory. The journal refuses a reference to a step that is not
+an earlier one, or to a field no step records, when the intent opens (#142 review, finding 4).
 """
 
 from __future__ import annotations
@@ -55,8 +61,14 @@ def _checkpoint(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 
 
 def _assign(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    return c.engine.work_assign(token=c.token(), expect_rev=rev, work_id=a["work_id"],
-                                execution_profile=a.get("execution"), launch=bool(a.get("launch")))
+    out = c.engine.work_assign(token=c.token(), expect_rev=rev, work_id=a["work_id"],
+                               execution_profile=a.get("execution"), launch=launches(a))
+    if not launches(a):
+        return out
+    # The commit recorded run 1 with the credential the dispatch issued, which exists only in ``out``: hand it to the
+    # run's supervisor now, exactly as `aew work assign --launch` does. A failure raises HarnessLaunchFailed with the
+    # recorded run (rule 7); the credential never reaches the result (#142 review, finding 1).
+    return c.engine.launch_dispatched(out)
 
 
 STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign": _assign}
@@ -102,6 +114,7 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     intent, rev = opened["intent"], opened["revision"]
     c.intent, c.binding = intent, opened["binding"]
     outputs: list[dict[str, Any]] = []
+    final = False
     for n, step in enumerate(plan, start=1):
         try:
             args = _resolve(c, intent, step.get("args") or {})
@@ -115,10 +128,17 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
                     out = STEP_RUNNERS[step["primitive"]](c, args, rev)
                 break
             except errors.StaleRevision as refusal:
-                drift = _drift(c, intent)
+                try:
+                    drift = _drift(c, intent)
+                    retry = drift is None and not retried and _retryable(c, intent, step["primitive"], args)
+                except errors.AEWError as unchecked:
+                    # Deciding on the retry was itself refused (a policy edit awaiting adoption fails every digest
+                    # read): the stage stops on that refusal like any other, never escaping with its committed steps
+                    # unreported (#142 review, finding 2).
+                    return _stop(c, intent, n, step["primitive"], unchecked, outputs)
                 if drift is not None:  # rule 6 before rule 4: the stage never runs on under a policy it did not bind
                     return _stop(c, intent, n, step["primitive"], drift, outputs)
-                if retried or not _retryable(c, intent, step["primitive"], args):
+                if not retry:
                     return _stop(c, intent, n, step["primitive"], refusal, outputs)
                 retried, rev = True, _revision(c)
             except errors.HarnessLaunchFailed as failed:
@@ -128,7 +148,7 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
                 return _stop(c, intent, n, step["primitive"], refusal, outputs)
         outputs.append(out)
         rev = out["revision"]
-    if launches(_resolve(c, intent, plan[-1].get("args") or {})):
+    if not final:  # the last step launched: its commit could not also complete the stage
         _end(c, lambda r: c.engine.stage_close(token=c.token(), expect_rev=r, intent=intent))
     return _payload(c, intent, outputs)
 
@@ -138,7 +158,7 @@ def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name, value in args.items():
         if isinstance(value, dict) and set(value) == {"$from"}:
-            m, field = value["$from"]
+            m, field = value["$from"]  # its form and order were checked when the intent opened
             steps = c.engine.stage_intent(intent)["steps"]
             ids = steps[m - 1]["outputs"][field] if 0 < m <= len(steps) else []
             if len(ids) != 1:

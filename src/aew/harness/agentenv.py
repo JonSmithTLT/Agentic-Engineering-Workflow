@@ -24,6 +24,25 @@ WINDOWS_KEEP = frozenset({
 POSIX_KEEP = frozenset({"HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "TERM", "SHELL", "TMPDIR", "TZ"})
 SCRATCH = "AEW_SCRATCH"
 AGENT_VARS = ("AEW_INVOCATION", "AEW_RUN", "AEW_WORK_UNIT", bridge.ENV_ENDPOINT, bridge.ENV_KEY, SCRATCH)
+PROXY_VARS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"})
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def bypass_proxy_for_loopback(env: dict[str, str]) -> None:
+    """A proxy variable the operator passes to a harness (``provider_env``, ``--provider-env``) is for its provider
+    traffic; its loopback traffic (the run's own server, a loopback-hosted provider, the Lead TUI's link to its server)
+    must never go through the proxy. So when one is set, the loopback hosts join ``NO_PROXY``, keeping any entries the
+    operator passed. Without a proxy variable the environment is unchanged."""
+    if not any(k.upper() in PROXY_VARS and v for k, v in env.items()):
+        return
+    names = [k for k in env if k.upper() == "NO_PROXY"]
+    current = [h.strip() for name in names for h in env[name].split(",") if h.strip()]
+    value = ",".join(dict.fromkeys([*current, *LOOPBACK_HOSTS]))
+    for name in names:
+        del env[name]
+    # Windows names are case-insensitive, so one entry; POSIX tools read either spelling (curl only the lower one).
+    for name in ("NO_PROXY",) if sys.platform == "win32" else ("NO_PROXY", "no_proxy"):
+        env[name] = value
 
 
 def build(base: Mapping[str, str], *, endpoint: str, key_hex: str, invocation: str, run: str,

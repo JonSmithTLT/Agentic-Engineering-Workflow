@@ -60,6 +60,7 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
         if CREDENTIAL_RE.search(value):
             raise UsageError(f"--provider-env {name}: it holds an AEW credential")
         env[name] = value
+    agentenv.bypass_proxy_for_loopback(env)
     env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(projection.lead_config(guide), sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
     return env

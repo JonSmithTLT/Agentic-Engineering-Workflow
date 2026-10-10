@@ -39,7 +39,7 @@ provider_env: [OPENAI_API_KEY]
 ```
 
 - **Provider and model ids** are OpenCode's, exactly as its model list shows them. **`effort`** is the model's variant; a launch refuses if the pinned model or variant is missing, and never falls back to another.
-- **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell.
+- **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell. Behind a proxy, list `HTTPS_PROXY` (or `HTTP_PROXY`, `ALL_PROXY`) here too: AEW then adds `127.0.0.1`, `localhost` and `::1` to `NO_PROXY`, keeping any entries you pass, so OpenCode's loopback traffic never goes through the proxy. AEW's own calls to the run's server ignore proxy settings in any case. `aew opencode --provider-env` does the same for the Lead's OpenCode.
 - **Routing** is most specific first: card, then risk class, then archetype, then default. The profile is pinned on each invocation at dispatch, so editing the policy never changes work already dispatched. The Lead can override one dispatch with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
 
 The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --token <credential> --expect-rev N`

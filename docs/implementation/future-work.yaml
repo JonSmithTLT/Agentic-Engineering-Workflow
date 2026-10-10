@@ -309,8 +309,8 @@ sections:
     Notes: 'Designed only, not prototyped; ends the YAML-frontmatter failure class for role reports. **Designer ruling (2026-10-09,
       [decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md), KDR-01, KDR-02):**
       worker tool delivery is this role server: typed tools in the sandbox, requests through the supervisor bridge, credentials
-      supervisor-side; knowledge, map and helper operations (the `aew-knowledge` namespace among them) extend it and never
-      add another worker credential surface'
+      supervisor-side; knowledge, map and helper operations (the `aew-knowledge` namespace among them) should extend it
+      rather than create another worker credential surface'
   - '#': F15.4
     Work: 'Policy digest separation: every execution-policy field classified `legality_affecting` or `operational` (an unclassified
       field fails schema validation); each staged action records `legality_digest`, `operational_digest`, the revision,
@@ -742,22 +742,23 @@ sections:
       KAD-14), without returning to the operator:** reconcile and freeze field names and the glossary across the set; qualify
       ADR-0013''s assumptions against the current tree; define the exact Arm B indexed corpus; the concrete request-mode/role
       matrix (with the designer''s reviewer-independence rule: by default hide the current implementer''s reasoning and
-      private working state, keep the canonical objective, plan, diff, checks, findings and failures the role needs, broader
-      same-Ticket history through explicit investigation mode; KDR-03 to KDR-05); compact and expanded result shapes; the
-      F19-compatible A/B corpus and rubric; K1 template replay only after Arm B is measurable; ranking, vectors, rerankers,
-      discovery thresholds and K2 policy left to evidence. **Arm B stays first** (record §7): its prototype is being built
-      separately on `impl/f21-arm-b-prototype`. Worker delivery of knowledge tools is F15.3''s `aew-run` bridge (KDR-01,
-      KDR-02). Every requirement, including the 70 invariants to merge into the invariant index, is tracked in the requirements
-      ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09);
-      qualified `workflow_disposition`/`knowledge_disposition` names; source class authenticates provenance, not validity;
-      runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype (designer and operator, 2026-10-07):** pulled
-      forward as a prototype in its own worktree, not model-visible and absent from the Q7/M4-H treatment; the operator
-      approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite` may hold its separate rebuildable
-      FTS substrate instead of `local/history.sqlite`, a change of physical placement only (locator-only rows, authentication
-      before use, the full audit, disposable and non-authoritative status and every D8 guarantee unchanged), and not a decision
-      about final K1/K2 physical consolidation. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
-      adopted 2026-10-09; ledger WCR, row F34):** F21 is the primary owner of avoiding rediscovery of prior project experience
-      (WCR-13, WCR-31); the adoption record §6 cites the requirement; a cross-reference, not new scope.'
+      private working state, keep the canonical objective, plan, diff, check results, findings, failures and whatever the
+      role actually requires; broader historical prose from that Ticket can require an explicit investigation mode, which
+      the matrix settles; KDR-03 to KDR-05); compact and expanded result shapes; the F19-compatible A/B corpus and rubric;
+      K1 template replay only after Arm B is measurable; ranking, vectors, rerankers, discovery thresholds and K2 policy
+      left to evidence. **Arm B stays first** (record §7): its prototype is being built separately on `impl/f21-arm-b-prototype`.
+      Worker delivery of knowledge tools is F15.3''s `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the
+      70 invariants to merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`)
+      (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition`
+      names; source class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm
+      B prototype (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible
+      and absent from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite`
+      may hold its separate rebuildable FTS substrate instead of `local/history.sqlite`, a change of physical placement
+      only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every
+      D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation. **Deterministic work conservation
+      ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR,
+      row F34):** F21 is the primary owner of avoiding rediscovery of prior project experience (WCR-13, WCR-31); the adoption
+      record §6 cites the requirement; a cross-reference, not new scope.'
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
       that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed

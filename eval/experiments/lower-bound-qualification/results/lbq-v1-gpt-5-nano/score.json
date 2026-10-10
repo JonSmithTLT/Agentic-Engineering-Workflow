@@ -1,0 +1,644 @@
+{
+ "experiment": "lbq-v1-gpt-5-nano",
+ "valid_runs": 6,
+ "newly_scored": [
+  "lbq-v1-gpt-5-nano/LBQ-2-raw-2",
+  "lbq-v1-gpt-5-nano/LBQ-3-raw-1",
+  "lbq-v1-gpt-5-nano/LBQ-3-raw-2",
+  "lbq-v1-gpt-5-nano/LBQ-1-raw-1",
+  "lbq-v1-gpt-5-nano/LBQ-1-raw-2",
+  "lbq-v1-gpt-5-nano/LBQ-2-raw-1"
+ ],
+ "unscored": [],
+ "retention_purged": [],
+ "tree_behaviours_shown": [
+  "requirement_loss_on_longer_tasks"
+ ],
+ "tree_behaviours_unobserved": [],
+ "session_behaviours": "scored later by the F19 session-database reader (delta D2) from the kept databases, under the definitions frozen in the preregistration",
+ "ceiling_state": "behaviours_shown",
+ "runs": [
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-2-raw-2",
+   "case": "LBQ-2",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "incomplete_cross_file_changes": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "546b6f330c601120fd5d33433353e4751cd54a7f3c839e606b527f923878bc58",
+    "state_dir": "<lane>/out/work/LBQ-2-raw-2/harness"
+   },
+   "charged_usd": 0.00797254
+  },
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-3-raw-1",
+   "case": "LBQ-3",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "requirement_loss_on_longer_tasks": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "9a4b3c5c5c632fc8eb8ce4b208568b18d0f07bf653c35e1e528642f9be2d6aee",
+    "state_dir": "<lane>/out/work/LBQ-3-raw-1/harness"
+   },
+   "charged_usd": 0.01141137
+  },
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-3-raw-2",
+   "case": "LBQ-3",
+   "scored": true,
+   "task_correct": false,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "requirement_loss_on_longer_tasks": true
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "6bb73bc4a604834d45f6c860c2e4d292529eb12e869c3eab819ae5d86c3b27e0",
+    "state_dir": "<lane>/out/work/LBQ-3-raw-2/harness"
+   },
+   "charged_usd": 0.007727320000000002
+  },
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-1-raw-1",
+   "case": "LBQ-1",
+   "scored": true,
+   "task_correct": false,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "0fae51f473c1560012dac99e82834d9241ad7cfba4296dabe6ec74545a46c3c3",
+    "state_dir": "<lane>/out/work/LBQ-1-raw-1/harness"
+   },
+   "charged_usd": 0.006930489999999999
+  },
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-1-raw-2",
+   "case": "LBQ-1",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "b9f202794b1221bb829c9bfe2b0b46cbe61cdbddcc6e25d5a37440d1d8f851ba",
+    "state_dir": "<lane>/out/work/LBQ-1-raw-2/harness"
+   },
+   "charged_usd": 0.015607750000000004
+  },
+  {
+   "run": "lbq-v1-gpt-5-nano/LBQ-2-raw-1",
+   "case": "LBQ-2",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "incomplete_cross_file_changes": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "bf14f6528f4991bd47d1df3385c9ed1657dfe3556111c1bd5e5d5a14f2d321aa",
+    "state_dir": "<lane>/out/work/LBQ-2-raw-1/harness"
+   },
+   "charged_usd": 0.011206480000000001
+  }
+ ]
+}

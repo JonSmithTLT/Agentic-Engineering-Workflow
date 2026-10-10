@@ -915,10 +915,34 @@ sections:
       must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
       never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
       package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
-      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **F9-A messaging
-      arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm (arm B, F9-D) only after U1 S11 and
-      F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while messaging is on (HS1, register E55),
-      so such an arm would silently lose the Lead''s nudge'
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **D3''s lane
+      prepared (2026-10-10, PR #153), the run is the operator''s:** the `raw` arm (`raw.py`: OpenCode''s own agent through
+      the M3 headless session, the case''s new `task` its only message; the harness binary, the model and effort, and the
+      profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden
+      paths probed before OpenCode starts; its session database kept under the preregistered retention window and structured
+      field allowlist; a run on another model or harness, a provider value in retained state (deleted at once), a provider
+      error instead of a model step or ending the turn, or a failure after the session started is counted and not valid,
+      its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host
+      split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed
+      export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge
+      recorded); the preregistration''s `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/`
+      holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with
+      their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. Three
+      experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and
+      lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash`
+      (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage
+      and a second model family). `lbq-v1-deepseek-v4-1-flash` ran on 2026-10-10: its floor passed, but every ceiling attempt
+      was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the
+      runs beside each run inside the runs directory''s own tmpfs; fixed, and a run refused before launch is now charged
+      nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash`
+      (the same preregistration, a new id), and kept v1''s lane as the record. **Run 2026-10-10 (at ed98424; frozen records
+      and results committed in the lane):** `lbq-v1-gpt-5-nano` passed the floor and showed behaviour 5 (requirement loss
+      on longer tasks), so `opencode/gpt-5-nano#high` is qualified as the lower bound ($0.066 in all); `lbq-v2-deepseek-v4-1-flash`
+      passed the floor and solved all 6 ceiling runs with no tree-observable behaviour ($0.22), so its ceiling waits for
+      the session-observable half. The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
+      split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm
+      (arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while
+      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1386,7 +1410,16 @@ sections:
       frontier (Astra-class, the strongest available Lead model), mid (a qualified model through the operator''s OpenAI
       API account) and lower-bound (a qualified free or inexpensive OpenCode model, a stress specimen, never reported as
       a Laguna substitute), each pinned at preregistration; if Laguna becomes available, the same profile-neutral suite
-      runs on it'
+      runs on it. **Lower-bound availability (2026-10-10, OpenCode 2.0.18''s served catalog):** the chosen free models (`opencode/deepseek-v4-flash-free`,
+      the backup `opencode/minimax-m2.5-free`, and `opencode/laguna-s-2.1-free`) are deprecated in the catalog and not offered;
+      their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash#high`,
+      with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`).
+      Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still
+      lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary,
+      and to run `opencode/gpt-5-nano#high` after it, each as its own experiment (V4.1''s is now `lbq-v2-deepseek-v4-1-flash`,
+      after a containment defect refused its first ceiling). Result (2026-10-10): `opencode/gpt-5-nano#high` is the qualified
+      lower-bound profile; `opencode/deepseek-v4.1-flash#high` passed the floor, its ceiling pending the session-observable
+      behaviours (D2)'
 
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local

@@ -12,9 +12,12 @@ A measurement instrument, never workflow authority: nothing here mutates project
 * :mod:`aew_eval.compat`: the deterministic mapping of the M3 dogfood records (``aew/dogfood-run/v1``).
 
 Slice 2 adds :mod:`aew_eval.fixture` (a case's fixture hashed and built), :mod:`aew_eval.arms` (the scripted arm)
-and :mod:`aew_eval.runner` (one preregistered cell, registered before it runs and finalized once). The aew and raw
-arms, the hidden-evaluator channel, metrics and reports come later (design §8). Hidden oracles never
-live in this repository: a preregistration holds only their content hashes.
+and :mod:`aew_eval.runner` (one preregistered cell, registered before it runs and finalized once). Slice 3 adds
+:mod:`aew_eval.hidden`, the hidden-evaluator channel. The lower-bound qualification lane (agent-effectiveness
+adoption, delta D3) adds the ``raw`` arm (OpenCode's own agent, its session database kept for the evaluator-side
+reader) and :mod:`aew_eval.profiles` (``aew/eval-profile/v1``: a model's capability class and qualification state).
+The aew arm, metrics and reports come later (design §8). Hidden oracles never live in this repository: a
+preregistration holds only their content hashes.
 """
 
 __version__ = "0.1.0"

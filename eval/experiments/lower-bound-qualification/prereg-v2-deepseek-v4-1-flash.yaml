@@ -1,0 +1,272 @@
+# The lane's preregistration for lbq-v2-deepseek-v4-1-flash, the replacement primary's second experiment
+# (aew/eval-prereg/v1; evaluation component design v0.2 §4), unfrozen. `qualify.py --experiment
+# lbq-v2-deepseek-v4-1-flash freeze` seals it as prereg-v2-deepseek-v4-1-flash.frozen.yaml. It is
+# lbq-v1-deepseek-v4-1-flash's preregistration (prereg-deepseek-v4-1-flash.yaml) with a new id and an amendment record
+# saying why. The id spells the model's 4.1 as 4-1: an experiment id has no dots (aew/eval-prereg/v1).
+#
+# `qualify.py freeze --by NAME` fills each case's `sha256` (the fixture as fetched plus the seeded overlay and the
+# case manifest), its `hidden_sha256` (the oracle commitment in each case manifest) and `scoring.rubric_sha256`,
+# materializes the schedule from the seed, and writes prereg.frozen.yaml. It refuses unless oracle-validation.json
+# shows every oracle validated against exactly those hashes. A frozen record is never edited: a change after the
+# first run is a new experiment id (lbq-v2-...), and this pre-gate experiment id is never reused for a
+# treatment-effect experiment (synthesis §13.4).
+schema: aew/eval-prereg/v1
+experiment: lbq-v2-deepseek-v4-1-flash
+purpose: qualification
+question: >-
+  Run raw through the pinned OpenCode 2.0.18 on three seeded tasks of an independent public repository, does
+  opencode/deepseek-v4.1-flash at high effort (lower-bound class) show at least one of the eight weak-worker behaviours of
+  synthesis §13.4, so that it can serve as the lower bound of the agent-effectiveness lanes?
+arms:
+  - id: raw
+    kind: raw
+    description: >-
+      The lower-bound profile raw: OpenCode's own build agent, the pinned model and effort, the case's task as its only
+      message, no AEW assistance and nobody answering, contained by bubblewrap on the arm host. Its harness session
+      database is kept for the F19 reader under the retention window and field allowlist below.
+    config:
+      role: worker
+      model: opencode/deepseek-v4.1-flash#high
+      profile:                     # profiles.yaml, as it stands at preregistration (adoption record §9)
+        id: lb-deepseek-v4.1-flash
+        effective_profile: {context.orientation: null, tools.presentation: null}   # raw: no AEW presentation
+        qualification_state: unqualified
+      harness:
+        name: opencode
+        version: 2.0.18
+        artifact_sha256:
+          win32-x64: 78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668
+          linux-x64: 67d8275630aa3dfe5409c6c2e1bb44ab0cf0d9558a6593e769342b9f1dc93f4b
+      contain: true
+      steps: 80
+      cap_usd: 0.75
+      provider_env: [OPENCODE_API_KEY]
+      session_db:
+        retain: true
+        retention_days: 180
+        fields:   # what the evaluator-side reader may extract (Revision C); never message text or tool output
+          - {field: session_message.seq, transform: none}
+          - {field: session_message.type, transform: none}
+          - {field: message.time.created, transform: none}
+          - {field: message.model, transform: none}
+          - {field: message.tokens, transform: none}
+          - {field: message.cost, transform: none}
+          - {field: message.error.type, transform: none}
+          - {field: tool.name, transform: none}
+          - {field: tool.state.status, transform: none}
+          - {field: tool.state.input.filePath, transform: none}
+          - {field: tool.state.input.path, transform: none}
+          - {field: tool.state.input.pattern, transform: none}
+          - {field: tool.state.input.include, transform: none}
+          - {field: tool.state.input.offset, transform: none}
+          - {field: tool.state.input.limit, transform: none}
+          - {field: tool.state.input.command, transform: prefix_300}
+          - {field: tool.state.input.oldString, transform: sha256}
+          - {field: tool.state.input.newString, transform: sha256}
+          - {field: tool.state.metadata.exit, transform: none}
+          - {field: tool.time, transform: none}
+cases:
+  - {id: LBQ-1, family: lbq-navigation, sha256: null, hidden_sha256: null, control_of: null}
+  - {id: LBQ-2, family: lbq-cross-file, sha256: null, hidden_sha256: null, control_of: null}
+  - {id: LBQ-3, family: lbq-long-horizon, sha256: null, hidden_sha256: null, control_of: null}
+profiles:
+  roles:
+    worker: opencode/deepseek-v4.1-flash#high   # profiles.yaml: lb-deepseek-v4.1-flash (the replacement primary)
+  budget_usd: 5.0   # the whole lane: the floor's trials and every ceiling attempt (thresholds.budget)
+runs_per_cell: 2
+assignment:
+  method: randomized_blocked
+  seed: 20261010
+primary_measure: >-
+  behaviours_shown: how many of the eight behaviours (thresholds.behaviours; rubric.md §4) meet their threshold in at
+  least one valid run. The profile is a lower bound for the lane when it is at least 1 (synthesis §13.4: a profile
+  that shows none of them is not a lower bound, and the next-cheaper profile is tried).
+secondary_measures:
+  - the per-run value of every metric of thresholds.behaviours, and which behaviours each run shows
+  - task_correct per run (rubric.md §5) and per case
+  - charged cost, steps, wall_s, harness_outcome and truncation per run
+thresholds:
+  lower_bound_min_behaviours: 1
+  expected_outcome: >-
+    This run scores the floor and the tree-observable half of the ceiling (kind T below) when its runs are scored.
+    The session-observable half (kind S) is scored later by the F19 session-database reader (delta D2) from the kept
+    databases, under the definitions frozen here, before their retention window ends. A profile with a T behaviour
+    shown is qualified now; otherwise its ceiling stays pending until D2 scores the S behaviours. For this profile the
+    $0.75 cost cap is expected to end ceiling runs before the 80-step limit (the operator's choice, for cost reasons;
+    amendment_policy): behaviours 4 and 5 are unobserved for any case with no finished run, so a result that shows
+    neither is inconclusive for them, not a negative.
+  floor:
+    trials: 2   # run one at a time; the second only if the first does not pass
+    passes_when: >-
+      rubric.md §2: in a trial, the implementer run ends ended_with_evidence, its evidence includes an
+      implementation_report, and its bridge recorded at least one request; at least one trial passes, and AEW's own
+      assertions hold in every trial
+  budget:
+    total_usd: 5.0                 # = profiles.budget_usd
+    floor_cap_usd: 1.0             # enforced by a watcher that ends the trial within one poll (10 s)
+    per_run_cap_usd: 0.75          # = arms[raw].config.cap_usd, enforced within one poll (15 s)
+    overshoot_margin_usd: 0.10     # an attempt starts only if spent + its cap + this margin <= total_usd (V4.1's
+                                   # steps cost about $0.02-0.03, so one 15 s poll can overshoot by up to ~$0.09)
+    unknown_cost: charged at the cap (a lost run, an arm that failed before its cost was known)
+  definitions:
+    read: [read tool; shell cat, type, Get-Content, head, tail, more, less, "sed -n"]
+    search: [grep, glob, list tools; shell grep, rg, findstr, find, ls, dir, Get-ChildItem, Select-String]
+    edit: [edit, write, patch tools; a shell redirection into a file]
+    unbounded_search: a search with no path, or the repository root as its path
+    finished_run: harness_outcome ended, not truncated (no deadline, cost cap, step limit or final provider error)
+  path_sets:
+    relevant_sources:
+      LBQ-1: [markdown/extensions/linkpolicy/rules.py, markdown/extensions/linkpolicy/__init__.py]
+      LBQ-2: [markdown/extensions/linkpolicy/schema.py, markdown/extensions/linkpolicy/__init__.py,
+              markdown/extensions/linkpolicy/rules.py]
+      LBQ-3: [markdown/extensions/linkpolicy/__init__.py, markdown/core.py]
+    test_surfaces:
+      LBQ-1: [tests/test_syntax/extensions/test_link_policy.py, tests/test_syntax/extensions/linkpolicy_support.py]
+      LBQ-2: [tests/test_syntax/extensions/test_link_policy.py, tests/test_syntax/extensions/linkpolicy_support.py,
+              tests/test_syntax/extensions/test_link_policy_docs.py]
+      LBQ-3: [tests/test_syntax/extensions/test_link_policy.py, tests/test_syntax/extensions/linkpolicy_support.py]
+    plausibly_useful: ["markdown/extensions/linkpolicy/*", docs/extensions/link_policy.md, docs/extensions/api.md,
+                       markdown/core.py, markdown/extensions/__init__.py, markdown/treeprocessors.py,
+                       markdown/util.py, markdown/test_tools.py]
+    decoy_root: ["tools/linkpolicy/*"]
+    distractors: [tests/test_syntax/extensions/test_wikilinks_spaces.py, markdown/extensions/wikilinks.py]
+  behaviours:   # metric names and versions as in `metrics`; shown when any condition holds in a valid run
+    poor_repository_navigation:
+      number: 1
+      kind: S
+      shown_when:
+        - {metric: tool_calls_before_first_relevant_source, op: ">=", value: 15}
+        - {metric: irrelevant_files_opened, op: ">=", value: 8}
+    bad_search_root_selection:
+      number: 2
+      kind: T+S
+      shown_when:
+        - {metric: wrong_root_or_unbounded_search_count, part: decoy_edits, kind: T, op: ">=", value: 1}
+        - {metric: wrong_root_or_unbounded_search_count, part: decoy_reads_before_real_module, kind: S, op: ">=",
+           value: 2}
+        - {metric: wrong_root_or_unbounded_search_count, part: unbounded_searches, kind: S, op: ">=", value: 6}
+    failure_to_locate_tests_or_mocks:
+      number: 3
+      kind: S
+      shown_when:
+        - {metric: tests_found_before_first_edit, op: "==", value: false, only_if: the run edits a non-test file}
+    incomplete_cross_file_changes:
+      number: 4
+      kind: T
+      cases: [LBQ-2]
+      shown_when:
+        - {metric: missed_required_sites, op: ">=", value: 1, only_if: "a finished run that changed at least one site"}
+    requirement_loss_on_longer_tasks:
+      number: 5
+      kind: T
+      cases: [LBQ-3]
+      shown_when:
+        - {metric: forgotten_criteria, op: ">=", value: 1, only_if: "a finished run that met at least one criterion"}
+    repeated_exploration:
+      number: 6
+      kind: S
+      shown_when:
+        - {metric: repeated_file_reads, op: ">=", value: 1, note: a read of the same file and range a third time}
+        - {metric: repeated_tool_ngrams, op: ">=", value: 2}
+    weak_tool_selection:
+      number: 7
+      kind: S
+      shown_when:
+        - {metric: shell_inspection_share, op: ">=", value: 0.5, only_if: at least 6 reads and searches}
+    difficulty_recovering_after_distraction:
+      number: 8
+      kind: T+S
+      shown_when:
+        - {metric: distractor_or_stale_note_actions, part: distractor_edits, kind: T, op: ">=", value: 1}
+        - {metric: distractor_or_stale_note_actions, part: stale_note_followed, kind: T, op: ">=", value: 1,
+           note: "the oracle's structure check (the link policy runs after the inline processor) fails"}
+        - {metric: contradictory_edits, kind: S, op: ">=", value: 1}
+metrics:   # rubric.md §4 and thresholds.behaviours define each; D2's metric module implements them under these names
+  - {name: tool_calls_before_first_relevant_source, version: lbq-1}
+  - {name: irrelevant_files_opened, version: lbq-1}
+  - {name: wrong_root_or_unbounded_search_count, version: lbq-1}
+  - {name: tests_found_before_first_edit, version: lbq-1}
+  - {name: missed_required_sites, version: lbq-1}
+  - {name: forgotten_criteria, version: lbq-1}
+  - {name: repeated_file_reads, version: lbq-1}
+  - {name: repeated_tool_ngrams, version: lbq-1}
+  - {name: shell_inspection_share, version: lbq-1}
+  - {name: distractor_or_stale_note_actions, version: lbq-1}
+  - {name: contradictory_edits, version: lbq-1}
+validity_rules:
+  infrastructure_invalid:
+    - "RUNNER_ERROR (the runner failed around the arm)"
+    - "ARM_ERROR (the session failed after it started; its database, leak scan and charged cost are still recorded)"
+    - "CONTAINMENT_FAILED (the layout did not pass its self-test or confidentiality probe)"
+    - "HARNESS_MISMATCH (the served harness version is not the pinned one; another binary is refused before counting)"
+    - "PROFILE_MISMATCH (a model or effort other than the pinned one answered)"
+    - "PROVIDER_KEY_RETAINED (a provider value in retained state; those files are deleted at once)"
+    - "NO_MODEL_STEP (no assistant step without a provider error: a rejected key, a rate limit, an outage)"
+    - "PROVIDER_ERROR_ENDED_TURN (a provider error ended the turn after some steps)"
+  counted_failures:
+    - "the deadline (30 minutes) or the cost cap ended the turn (truncated; excluded from behaviours 4 and 5)"
+    - "the step limit (80) ended the turn (truncated; excluded from behaviours 4 and 5)"
+    - "no change, a wrong change, or a change out of scope"
+  retry_policy:
+    max_retries: 2
+    allowed_for: [invalid_measurement, runner_lost, environment_blocked]
+  missing_result_policy: >-
+    A registered attempt with no result (runner_lost) is charged at its cap and retried under the retry policy. A
+    cell with no valid run after its retries is reported as unobserved: it neither shows nor rules out a behaviour.
+stopping_rule: >-
+  The floor runs first (thresholds.floor); a profile that does not pass it runs no cell. Then every scheduled cell runs
+  once, in schedule order, plus the retries the policy allows. The lane stops early only when the next attempt's cap
+  and the overshoot margin would take the charged spend past budget_usd. Nothing is extended or rerun after outcomes
+  are seen. Scoring happens only after every model run has ended.
+scoring:
+  hidden_channel: >-
+    aew-private/eval/lower-bound-qualification/ (AEW_EVAL_HIDDEN_ROOT); oracles at cases/<id>/oracle. Deferred: the
+    arm host holds no oracle while a model runs; each run's final tree is exported and hashed, and scored after every
+    model run has ended (eval/aew_eval/runner.py score_run), contained by bubblewrap on the scoring host
+  who_scores: mixed
+  blinding: not_possible
+  adjudication_policy: >-
+    Task correctness and the T behaviours are automated (the hidden oracles and the run record's changed paths,
+    rubric.md §4 and §5). The S behaviours are computed by the F19 reader's named, versioned metric functions from
+    each run's kept session database, over arms[raw].config.session_db.fields only, under thresholds.behaviours. A
+    metric that cannot be computed (no database, a field missing, the window passed) leaves that behaviour unobserved
+    for the run; nobody adjudicates it by reading the transcript. There is one arm, so there is nothing to blind.
+  rubric_sha256: null
+held_out: []
+exposure_policy: >-
+  No case is held out: the fixture is a public repository and the tasks are seeded for this lane. Nothing private
+  enters a case, a prompt or the scratch tree, because a provider may retain prompts; the runs are contained on an arm
+  host that holds no oracle and no private material. Q7's sealed tasks and the M4-H corpus are never used. Results are
+  qualification and instrumentation evidence only, never M4-H or treatment-effect evidence.
+amendment_policy: >-
+  A change after the first run is registered is a new experiment id (lbq-v2-...); trying the next-cheaper profile is
+  a new experiment id too (lbq-v1-<model>). A pre-gate experiment id is never reused for a treatment-effect
+  experiment. This experiment replaces lbq-v1-deepseek-v4-flash as the lane's primary: on 2026-10-10 the operator
+  chose opencode/deepseek-v4.1-flash because opencode/deepseek-v4-flash became unavailable on OpenCode Zen (an
+  upstream 404, "Endpoint is unavailable", although OpenCode 2.0.18's served catalog still lists it as active; Zen
+  logged the operator's request). V4.1 is the same family's successor (deepseek-flash, released 2026-09-10). The
+  trigger is unavailability, which the next-cheaper rule does not cover; the move mirrors the earlier one from the
+  deprecated free tier to its paid twin. The cases, oracles, rubric, schedule seed, limits and budget are
+  lbq-v1-deepseek-v4-flash's, except the overshoot margin: $0.10 instead of $0.05, because V4.1's steps cost about
+  $0.02-0.03 and the raw arm's cost watcher polls every 15 s, so one poll can overshoot by up to about $0.09 (the
+  poll is the shared harness driver's, which every experiment uses, so the margin is what changes). The operator
+  chose on 2026-10-10, for cost reasons, to keep the $0.75 per-run cap and the $5.00 budget. At V4.1's price the cost
+  cap is expected to end a ceiling run at about 25-37 steps, before the 80-step limit. A run the cap ends is truncated,
+  not finished, so it cannot show behaviours 4 (incomplete cross-file changes, LBQ-2) or 5 (requirement loss, LBQ-3):
+  for a case with no finished run, those behaviours are reported unobserved, neither shown nor ruled out
+  (missing_result_policy), and a negative result for them is inconclusive. Each run's record of where the cap ended
+  it (score.json, cost_cap_ended_at_step) shows the size of the effect. opencode/gpt-5-nano stays the next-cheaper
+  profile (lbq-v1-gpt-5-nano). This is a new experiment id under this policy, lbq-v1-deepseek-v4-1-flash's
+  preregistration otherwise unchanged: on 2026-10-10 that experiment's floor passed, but every ceiling attempt was
+  refused before any model ran (CONTAINMENT_FAILED, harness not started) by a defect in the raw arm's containment
+  layout: with the lane under the home directory, the other runs and mask files beside a run in out/work were masked
+  inside the runs directory's own tmpfs, creating entries there that the confidentiality probe refused. The defect
+  was fixed in aba5846 and a6e91d5: in aba5846, nothing in out/work is masked on its own, and a run refused before
+  launch is charged nothing and stops the ceiling at once; in a6e91d5, such a run counts as one of its cell's attempts,
+  as the ledger's retry policy counts every registered attempt. Those attempts were recorded at their caps and
+  counted against the retry policy, though no ceiling attempt reached a model: the lane's floor.json records $0.025,
+  all on the floor, and the operator read about $0.07 as the account's total Zen spend for 2026-10-10 on the Zen
+  dashboard. The operator chose on 2026-10-10 to start this new experiment rather than reclassify them, since
+  the arm's code and the way registered attempts would count changed after they were registered.
+  lbq-v1-deepseek-v4-1-flash's lane is kept untouched as the record of that failure; it carries no model data beyond
+  its floor.

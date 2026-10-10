@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: Markdown
+Version: 3.11.0
+Summary: Python implementation of John Gruber's Markdown.
+Requires-Python: >=3.11
+License: BSD-3-Clause

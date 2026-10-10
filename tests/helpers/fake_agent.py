@@ -159,6 +159,11 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "touch":
         Path(s["path"]).write_text(s.get("text", "x"), encoding="utf-8")
         return {}
+    if do == "read":  # the model tries to read a file (a contained run must not see another run's)
+        try:
+            return {"readable": True, "text": Path(s["path"]).read_text(encoding="utf-8")[:200]}
+        except OSError as exc:
+            return {"readable": False, "error": type(exc).__name__}
     if do == "sleep":
         time.sleep(s["s"])
         return {}

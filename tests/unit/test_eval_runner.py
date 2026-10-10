@@ -275,7 +275,7 @@ def test_an_arm_that_rewrites_git_metadata_at_run_time_never_reaches_the_runners
         def check(self, config, snap):
             pass
 
-        def run(self, repo, config, *, deadline_s):
+        def run(self, repo, config, *, deadline_s, task=None):
             cmd = f'{sys.executable} -c "open(r\'{marker}\', \'w\').write(\'x\')"'.replace("\\", "/")
             with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
                 fh.write(f"[core]\n\tfsmonitor = {cmd}\n[filter \"x\"]\n\tclean = {cmd}\n")
@@ -329,7 +329,7 @@ def test_an_arm_that_fails_is_counted_as_an_invalid_measurement_and_may_be_retri
         def check(self, config, snap):
             pass
 
-        def run(self, repo, config, *, deadline_s):
+        def run(self, repo, config, *, deadline_s, task=None):
             raise RuntimeError("the harness crashed")
 
     monkeypatch.setitem(arms.ARMS, "scripted", Fails())
@@ -352,7 +352,7 @@ def test_a_runner_killed_while_the_arm_runs_leaves_a_visible_attempt(tmp_path, m
         def check(self, config, snap):
             pass
 
-        def run(self, repo, config, *, deadline_s):
+        def run(self, repo, config, *, deadline_s, task=None):
             raise KeyboardInterrupt  # not an Exception: the runner itself stops here, as a kill would
 
     monkeypatch.setitem(arms.ARMS, "scripted", Dies())
@@ -400,7 +400,7 @@ def test_collection_keeps_exact_bytes_and_keeps_links_and_special_files_apart(tm
         def check(self, config, snap):
             pass
 
-        def run(self, repo, config, *, deadline_s):
+        def run(self, repo, config, *, deadline_s, task=None):
             (repo / "looks.txt").write_bytes(b"link -> not a link\n")
             (repo / "README.md").write_bytes(b"# calc\r\n")  # CRLF only
             (repo / "pipe").write_bytes(b"")

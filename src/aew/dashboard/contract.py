@@ -34,7 +34,7 @@ APPROVAL_REL = "web/docs/c0-approval.json"
 CONTRACT_SERIES = "0.1"
 BASE_VERSION = "0.1.2"
 ACCEPT = "ACCEPT"
-VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
 # Route -> the response schema its 200 body must match (the names are the contract's).
 RESPONSE_SCHEMAS: dict[str, str] = {
@@ -127,7 +127,7 @@ def load(path: str) -> Contract:
 
 def parse_version(text: str) -> tuple[int, int, int]:
     """``major.minor.patch`` as integers; anything else (``0.1.x``, ``v0.1.2``, ``0.1``) is a ``ValueError``."""
-    m = VERSION_RE.match(str(text))
+    m = VERSION_RE.fullmatch(str(text))  # `$` with match would accept a trailing newline
     if not m:
         raise ValueError(f"{text!r} is not a contract version (three non-negative integers)")
     return int(m.group(1)), int(m.group(2)), int(m.group(3))

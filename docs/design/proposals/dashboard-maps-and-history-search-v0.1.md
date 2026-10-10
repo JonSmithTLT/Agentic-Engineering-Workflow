@@ -90,9 +90,9 @@ element, over a set of **covered paths** (`aew.dashboard.contract.compatibility`
 
 Where it applies, and with which covered paths:
 
-- **the proposed and accepted contract before adoption:** old = 0.1.2 (from git, at its reviewed commit), covered =
-  every 0.1.2 path;
-- **the packaged build:** old = the build's own contract (from git, at the build's source commit), new = the accepted
+- **the proposed and accepted contract before adoption:** old = 0.1.2 (the vendored copy, below), covered = every
+  0.1.2 path;
+- **the packaged build:** old = the build's own contract (read from git at the build's source commit, in the fast lane), new = the accepted
   contract, covered = every path of the build's contract that this server serves or serves conditionally. A path
   absent from the build's contract is exempt: the build never requests it;
 - **a later minor version:** old = the adopted contract, covered = the routes served at adoption plus every 0.1.2
@@ -131,6 +131,12 @@ that run is green whatever W1 amends in the additions:
   such route" before authentication when no template matches, or the matching template's own answer
   (`/history/search` matches `/history/{id}`: `401` without a session, otherwise that route's `400`, `403` or `404`).
   `CONDITIONAL_ROUTES` is empty until S2. S1 and S2 each assert that the routes they serve are no longer pending.
+- **The 0.1.2 reference is vendored, not read from history.** Every comparison with 0.1.2 uses
+  `tests/fixtures/dashboard/contract-0.1.2.yaml`, whose SHA-256 must be the accepted review's. A fast-lane test pins
+  its git blob id to the blob at the review's commit (`322301d`), and skips only where a shallow clone lacks that
+  commit. Only CI's `core` job (the fast and serial lanes) checks out the full history; the `lanes` job, which runs
+  the integration tests, checks out at depth 1. So no test outside the core lanes reads the repository's git history,
+  and `tests/unit/test_ci_tools.py` guards that.
 - **The packaged build: a rule, not a list.** The build is accepted when its contract digest is the accepted one or
   that of an accepted predecessor (a `previous_reviews` entry with `"disposition": "ACCEPT"`), and the contract at its
   source commit passes §3.1's check against the accepted contract, covering every path of the build's contract that
@@ -146,7 +152,7 @@ that run is green whatever W1 amends in the additions:
     serves it), and with Appendix A updated to the adopted shapes;
   - **strict at the adopted version:** while the accepted contract's version equals `<V>`, its paths and components
     must equal 0.1.2 plus Appendix A once descriptions are removed;
-  - **a later version** (a 0.1.4): the check against the adopted contract (0.1.2 from git plus Appendix A), covering
+  - **a later version** (a 0.1.4): the check against the adopted contract (the vendored 0.1.2 plus Appendix A), covering
     the served-at-adoption routes and every 0.1.2 path. The web developer's 0.1.4 therefore needs no note edit first,
     including a changed `HistorySearch` while `/history/search` is still pending.
 - **Done when:** a local dry run of W1 passes the main-line suite twice, once with Appendix A as written and once with

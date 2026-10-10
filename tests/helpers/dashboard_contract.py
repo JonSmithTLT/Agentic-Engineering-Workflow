@@ -1,8 +1,10 @@
 """The dashboard contract's history and the maps and history search change note, as the tests read them (register
 F20.8; ``docs/design/proposals/dashboard-maps-and-history-search-v0.1.md``, "Readiness on the main line").
 
-* The 0.1.2 contract comes from git, at the commit its accepted review names, and its digest is checked: every later
-  minor version is compared with it, whatever the working tree's contract has become.
+* The 0.1.2 contract is a vendored fixture (``tests/fixtures/dashboard/contract-0.1.2.yaml``), its digest checked
+  against the accepted review: every later minor version is compared with it, whatever the working tree's contract
+  has become. No lane needs git history for it (review of PR #161, B1: CI's integration lanes check out at depth 1);
+  ``tests/unit/test_dashboard_static.py`` pins the fixture to the blob at the review's commit where git has it.
 * The note's appendix is its fenced YAML blocks after the appendix heading, merged in order into the 0.1.2 contract.
 * The note is checked against the accepted contract in one of three modes, decided by its status line: one-way
   before adoption, strict at the adopted version, and the compatibility check for a later minor version.
@@ -13,7 +15,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ from aew.dashboard import contract as CT
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTE_REL = "docs/design/proposals/dashboard-maps-and-history-search-v0.1.md"
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+BASE_FIXTURE_REL = "tests/fixtures/dashboard/contract-0.1.2.yaml"
 APPENDIX_HEADING = re.compile(r"^## Appendix A\b")
 YAML_FENCE = re.compile(r"^```yaml\s*$")
 STATUS_LINE = re.compile(r"^- \*\*Status:\*\*")
@@ -31,25 +32,15 @@ ADOPTED = re.compile(r"as adopted in contract `(?P<version>[0-9.]+)` at `(?P<sha
                      r"adoption: (?P<routes>(?:`/[^`]*`(?:, )?)+)")
 
 
-def git_show(commit: str, rel: str, root: Path = ROOT) -> bytes:
-    """A file as committed; a clear failure when this clone lacks the commit (CI's core job has full history)."""
-    got = subprocess.run(["git", "-C", str(root), "show", f"{commit}:{rel}"], capture_output=True,
-                         creationflags=NO_WINDOW)
-    if got.returncode != 0:
-        raise AssertionError(f"git cannot show {commit}:{rel} in this clone (a shallow clone lacks it; fetch the "
-                             f"full history): {got.stderr.decode(errors='replace').strip()}")
-    return got.stdout
-
-
 def approval(root: Path = ROOT) -> dict[str, Any]:
     return json.loads((root / CT.APPROVAL_REL).read_text(encoding="utf-8"))
 
 
 def base_contract(root: Path = ROOT) -> dict[str, Any]:
-    """The accepted 0.1.2 contract, from git at its reviewed commit, its digest checked against the approval."""
+    """The accepted 0.1.2 contract, from the vendored fixture, its digest checked against the approval record."""
     review = CT.base_review(approval(root))
-    raw = git_show(review["reviewed_commit"], CT.CONTRACT_REL, root)
-    assert hashlib.sha256(raw).hexdigest() == review["sha256"], "the 0.1.2 contract at its reviewed commit"
+    raw = (root / BASE_FIXTURE_REL).read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == review["sha256"], "the vendored 0.1.2 contract is the accepted one"
     return yaml.safe_load(raw.decode("utf-8"))
 
 

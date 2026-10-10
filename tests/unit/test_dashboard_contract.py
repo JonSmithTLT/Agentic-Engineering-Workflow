@@ -114,7 +114,7 @@ def test_a_later_minor_version_is_accepted_without_an_edit(version):
 
 
 @pytest.mark.parametrize("version", ["0.1.1", "0.1.0", "0.2.0", "1.1.2", "0.1.x", "0.1", "v0.1.2", "0.1.2 ",
-                                     "0.01.2", "0.1.02", ""])
+                                     "0.01.2", "0.1.02", "0.1.2\n", "\n0.1.2", ""])
 def test_a_version_outside_the_series_or_unparsable_is_refused(version):
     assert not CT.in_series(version)
 

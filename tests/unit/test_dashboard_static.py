@@ -14,8 +14,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from dashboard_contract import BASE_FIXTURE_REL, base_contract, note_text, proposed
 from dashboard_contract import approval as load_approval
-from dashboard_contract import base_contract, git_show, note_text, proposed
 
 from aew.dashboard import contract as CT
 from aew.dashboard import frontend as F
@@ -76,6 +76,36 @@ def test_build_json_matches_the_commit_where_git_has_it():
     assert show(f"rev-parse {AGREED_COMMIT}:web").decode().strip() == record["source"]["web_tree"]
     for rel, digest in record["inputs"].items():
         assert hashlib.sha256(show(f"show {AGREED_COMMIT}:{rel}")).hexdigest() == digest, rel
+
+
+def git_show(commit: str, rel: str) -> bytes:
+    """A file as committed. Only this fast-lane module reads historical commits: the ``core`` job checks out the full
+    history, the other lanes do not (review of PR #161, B1; guarded by tests/unit/test_ci_tools.py)."""
+    got = subprocess.run(["git", "-C", str(ROOT), "show", f"{commit}:{rel}"], capture_output=True,
+                         creationflags=NO_WINDOW)
+    if got.returncode != 0:
+        raise AssertionError(f"git cannot show {commit}:{rel} in this clone (a shallow clone lacks it; CI's core job "
+                             f"checks out the full history): {got.stderr.decode(errors='replace').strip()}")
+    return got.stdout
+
+
+def test_the_vendored_0_1_2_contract_is_the_blob_its_accepted_review_names():
+    """The fixture every compatibility check compares with is byte for byte the contract at the 0.1.2 review's commit:
+    its git blob id equals that commit's blob, so it cannot drift. Where the clone lacks the commit (a shallow one),
+    there is nothing to compare with; the core job, which has the full history, always runs it."""
+    review = CT.base_review(load_approval())
+    commit = review["reviewed_commit"]
+    have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True,
+                          creationflags=NO_WINDOW)
+    if have.returncode != 0:
+        pytest.skip(f"this clone lacks {commit} (a shallow clone)")
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True,
+                              creationflags=NO_WINDOW).stdout.strip()
+
+    assert git("hash-object", BASE_FIXTURE_REL) == git("rev-parse", f"{commit}:{CT.CONTRACT_REL}")
+    assert hashlib.sha256((ROOT / BASE_FIXTURE_REL).read_bytes()).hexdigest() == review["sha256"]
 
 
 def test_the_packaged_builds_contract_is_accepted_and_compatible_with_the_accepted_one():

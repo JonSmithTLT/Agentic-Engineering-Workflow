@@ -624,3 +624,25 @@ def test_a_rerun_attempt_counts_only_its_own_jobs():
     assert run["runner_minutes"] == {"ubuntu-latest": 1.0} and run["queue_s"]["total"] == 30.0
     assert run["assurance_s"] == 90.0 and run["wall_clock_s"] == 90.0 and rec["health"] == []
     assert "Carried over from an earlier attempt, not counted: integration 1/5" in cost_record.summary(rec)
+
+
+def test_only_the_core_lanes_read_the_repositorys_git_history():
+    """CI's ``lanes`` job checks out at depth 1; only ``core`` (the fast and serial lanes) has the full history. A
+    test or helper outside them that reads a historical commit of this repository fails at collection in every
+    integration shard (review of PR #161, B1). So: no git pointed at the repository's own checkout (``git -C ROOT``,
+    ``cwd=ROOT``) in non-core test code, and a fast-lane module that reads history carries no marker moving it to
+    another lane. Git against a test's own temporary repositories is unaffected."""
+    import re
+
+    reads_history = re.compile(r'"git",\s*"-C",\s*str\((?:ROOT|root)\)|cwd=(?:str\()?ROOT\b')
+    non_core = [ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py"),
+                *(ROOT / "tests" / "integration").rglob("*.py"), *(ROOT / "tests" / "regression").rglob("*.py"),
+                *(ROOT / "tests" / "acceptance").rglob("*.py")]
+    offenders = [f.relative_to(ROOT).as_posix() for f in non_core
+                 if reads_history.search(f.read_text(encoding="utf-8"))]
+    assert offenders == [], f"non-core test code reads this repository's git history: {offenders}"
+    moved = re.compile(r"pytest\.mark\.(acceptance|exploratory)\b")
+    for f in (ROOT / "tests" / "unit").rglob("*.py"):
+        text = f.read_text(encoding="utf-8")
+        if reads_history.search(text):
+            assert not moved.search(text), f"{f.name} reads git history but is marked into a depth-1 lane"

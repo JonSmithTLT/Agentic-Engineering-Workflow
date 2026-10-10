@@ -394,10 +394,33 @@ def upstream_baseline(report: dict[str, Any]) -> None:
                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
                              stdin=subprocess.DEVNULL, env={**os.environ, "PYTHONPATH": str(tree)},
                              creationflags=NO_WINDOW)
-    tail = res.stderr.strip().splitlines()[-1:] if res.stderr else []
-    failing = sorted({line.split(" ")[1] for line in res.stderr.splitlines()
+    report["upstream_suite"] = suite_verdict(res.returncode, res.stderr or "")
+
+
+# The upstream suite's failure on the seeded start, by design: the planted distractor (behaviours.yaml
+# distractor_paths: tests/test_syntax/extensions/test_wikilinks_spaces.py), a test that fails before any model works.
+SEEDED_SUITE_FAILURES = frozenset({"test_spaces_in_a_label_become_hyphens"})
+
+
+def suite_verdict(exit_code: int, stderr: str) -> dict[str, Any]:
+    """The upstream suite's result on the seeded start, judged against what the seed plants: ``as_seeded`` when
+    exactly the seeded distractor test fails, else ``unexpected``, naming what else fails
+    (``unexpected_failures``: the environment's) or which seeded failure is missing (``missing_seeded_failures``: the
+    seed did not take). A non-zero exit is expected: the seeded test fails. The unittest output stays under ``raw``."""
+    failing = sorted({line.split(" ")[1] for line in stderr.splitlines()
                       if line.startswith(("FAIL: ", "ERROR: ")) and len(line.split(" ")) > 1})
-    report["upstream_suite"] = {"exit": res.returncode, "summary": tail, "failing": failing}
+    unexpected = sorted(set(failing) - SEEDED_SUITE_FAILURES)
+    missing = sorted(SEEDED_SUITE_FAILURES - set(failing))
+    errored = exit_code != 0 and not failing  # it failed without naming a test: it did not run as a suite
+    out: dict[str, Any] = {"state": "as_seeded" if not (unexpected or missing or errored) else "unexpected",
+                           "seeded_failures": sorted(SEEDED_SUITE_FAILURES)}
+    if unexpected:
+        out["unexpected_failures"] = unexpected
+    if missing:
+        out["missing_seeded_failures"] = missing
+    out["raw"] = {"exit": exit_code, "summary": stderr.strip().splitlines()[-1:] if stderr.strip() else [],
+                  "failing": failing}
+    return out
 
 
 def harness_launch(report: dict[str, Any], plan: dict[str, Any], records: list[dict[str, Any]]) -> None:

@@ -1,0 +1,18 @@
+{
+ "trials": [
+  {
+   "trial": 1,
+   "verdict": "passed",
+   "pytest_exit": 0,
+   "charged_usd": 0.023365,
+   "cost_known": true,
+   "stopped": [],
+   "results": "<lane>/out/floor/trial-1/results.jsonl",
+   "session_state": "<lane>/out/floor/trial-1/tmp",
+   "judged_by": "lane-error-v1"
+  }
+ ],
+ "charged_usd": 0.023365,
+ "experiment": "lbq-v2-deepseek-v4-1-flash",
+ "preregistration_sha256": "436cb6c8e3a83b4990c20ffcba40da83a39962a5a2105f985e67ac72b498e168"
+}

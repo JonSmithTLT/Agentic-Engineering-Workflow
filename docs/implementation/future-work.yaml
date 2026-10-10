@@ -845,8 +845,12 @@ sections:
       was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the
       runs beside each run inside the runs directory''s own tmpfs; fixed, and a run refused before launch is now charged
       nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash`
-      (the same preregistration, a new id), and kept v1''s lane as the record. The session-observable metrics wait for D2''s
-      reader; the aew arm and the evaluator/arm-host split are still next'
+      (the same preregistration, a new id), and kept v1''s lane as the record. **Run 2026-10-10 (at ed98424; frozen records
+      and results committed in the lane):** `lbq-v1-gpt-5-nano` passed the floor and showed behaviour 5 (requirement loss
+      on longer tasks), so `opencode/gpt-5-nano#high` is qualified as the lower bound ($0.066 in all); `lbq-v2-deepseek-v4-1-flash`
+      passed the floor and solved all 6 ceiling runs with no tree-observable behaviour ($0.22), so its ceiling waits for
+      the session-observable half. The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
+      split are still next'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1209,7 +1213,9 @@ sections:
       Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still
       lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary,
       and to run `opencode/gpt-5-nano#high` after it, each as its own experiment (V4.1''s is now `lbq-v2-deepseek-v4-1-flash`,
-      after a containment defect refused its first ceiling)'
+      after a containment defect refused its first ceiling). Result (2026-10-10): `opencode/gpt-5-nano#high` is the qualified
+      lower-bound profile; `opencode/deepseek-v4.1-flash#high` passed the floor, its ceiling pending the session-observable
+      behaviours (D2)'
 
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local

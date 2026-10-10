@@ -1,7 +1,9 @@
 # Lower-bound qualification lane (`lbq-v1`)
 
-**Status:** prepared and dry-run; **the runs are the operator's**. They need a provider credential and spend money
-(see "Operator steps"). Four experiments, each `purpose: qualification` ("Experiments"):
+**Status:** run on 2026-10-10 (see "Results"). **`opencode/gpt-5-nano#high` is qualified as the lane's lower bound.**
+`opencode/deepseek-v4.1-flash#high` passed the floor and showed no tree-observable behaviour; its ceiling waits for the
+session-observable half (D2). The runs are the operator's: they need a provider credential and spend money (see
+"Operator steps"). Four experiments, each `purpose: qualification` ("Experiments"):
 - `lbq-v1-deepseek-v4-flash`: its profile became unavailable on OpenCode Zen;
 - `lbq-v1-deepseek-v4-1-flash`: the replacement primary. Its ceiling was refused by a containment defect, now fixed;
 - `lbq-v2-deepseek-v4-1-flash`: the replacement primary again, under a new id;
@@ -87,9 +89,9 @@ counted as trials).
 |---|---|---|---|---|---|
 | `lb-deepseek-v4-flash-free` | lower-bound | no (deprecated) | – | none | `unavailable` |
 | `lb-deepseek-v4-flash` (paid twin; unavailable on Zen) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `unqualified` |
-| `lb-deepseek-v4.1-flash` (replacement primary) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `unqualified` |
+| `lb-deepseek-v4.1-flash` (replacement primary) | lower-bound | yes (low, high, max) | high | `OPENCODE_API_KEY` | `floor_passed` (ceiling pending D2) |
 | `lb-minimax-m2.5-free` | lower-bound | no (deprecated) | – | none | `unavailable` |
-| `lb-gpt-5-nano` (next-cheaper) | lower-bound | yes (minimal, low, medium, high) | high | `OPENCODE_API_KEY` | `unqualified` |
+| `lb-gpt-5-nano` (next-cheaper) | lower-bound | yes (minimal, low, medium, high) | high | `OPENCODE_API_KEY` | **`qualified`** (the lower bound) |
 | `mid-gpt-6-luna` | mid | yes (none to max) | medium | `OPENAI_API_KEY` | `unqualified` |
 | `note-laguna-s-2.1-free` | lower-bound (note) | no (deprecated) | – | none | `unavailable` |
 
@@ -108,12 +110,12 @@ directory (`--out`), and is selected with `qualify.py --experiment <id>`. The ca
 limits and budget rules are the same in all four. Only the experiment id, its question, its amendment record and the
 profile pins differ, plus V4.1's overshoot margin and its expected outcome (see "Cost").
 
-| Experiment | Preregistration | Frozen record (written by `freeze`) | Profile | Lane directory on the VM |
-|---|---|---|---|---|
-| `lbq-v1-deepseek-v4-flash` (the default) | `prereg.yaml` | `prereg.frozen.yaml` | `lb-deepseek-v4-flash` | `~/aew-eval/lbq-v1` |
-| `lbq-v1-deepseek-v4-1-flash` (ran 2026-10-10: floor passed, every ceiling attempt refused by the containment defect; its lane is kept untouched as the record) | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
-| `lbq-v2-deepseek-v4-1-flash` (the cost cap binds before the step limit: behaviours 4 and 5 unobserved for a case with no finished run, by the operator's choice for cost) | `prereg-v2-deepseek-v4-1-flash.yaml` | `prereg-v2-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v2-deepseek-v4-1-flash` |
-| `lbq-v1-gpt-5-nano` | `prereg-gpt-5-nano.yaml` | `prereg-gpt-5-nano.frozen.yaml` | `lb-gpt-5-nano` | `~/aew-eval/lbq-v1-gpt-5-nano` |
+| Experiment | Preregistration | Frozen record (written by `freeze`) | Profile | Lane directory on the VM | Outcome (2026-10-10) |
+|---|---|---|---|---|---|
+| `lbq-v1-deepseek-v4-flash` (the default) | `prereg.yaml` | `prereg.frozen.yaml` (on the arm host) | `lb-deepseek-v4-flash` | `~/aew-eval/lbq-v1` | not measured: the profile became unavailable on Zen |
+| `lbq-v1-deepseek-v4-1-flash` | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` (on the arm host) | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` | floor passed; every ceiling attempt refused by the containment defect; the lane is kept untouched as the record |
+| `lbq-v2-deepseek-v4-1-flash` (the cost cap was expected to bind before the step limit, by the operator's choice for cost; it bound in no run) | `prereg-v2-deepseek-v4-1-flash.yaml` | `prereg-v2-deepseek-v4-1-flash.frozen.yaml` (committed) | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v2-deepseek-v4-1-flash` | floor passed; 6/6 runs valid and finished, none showed a tree behaviour: `floor_passed`, ceiling pending D2 |
+| `lbq-v1-gpt-5-nano` | `prereg-gpt-5-nano.yaml` | `prereg-gpt-5-nano.frozen.yaml` (committed) | `lb-gpt-5-nano` | `~/aew-eval/lbq-v1-gpt-5-nano` | floor passed; behaviour 5 shown: `qualified` |
 
 - **An experiment id has no dots** (`aew/eval-prereg/v1`), so V4.1's id spells it `4-1`. Its profile keeps the model's
   own name.
@@ -151,6 +153,31 @@ profile pins differ, plus V4.1's overshoot margin and its expected outcome (see 
 after it, whatever V4.1's outcome. It covers the case where V4.1 is `not_a_lower_bound`, which the rubric answers with
 the next-cheaper profile. It also gives a second lower-bound data point from another model family for M4-H's choice of
 lower bound.
+
+## Results (2026-10-10, run at ed98424 on the arm host)
+
+The frozen records are committed next to their preregistrations. The floor and score summaries are in
+`results/<experiment>/` (`floor.json`, `score.json`): byte for byte as each lane wrote them, except that absolute paths
+on the arm host are rewritten as `<lane>/...`.
+
+| | `lbq-v2-deepseek-v4-1-flash` | `lbq-v1-gpt-5-nano` |
+|---|---|---|
+| Floor | passed, trial 1 ($0.023) | passed, trial 1 ($0.005) |
+| Ceiling runs | 6 of 6 valid and finished; the cost cap ended none | 6 of 6 valid and finished |
+| Task-correct | 6 of 6 | 4 of 6 (not LBQ-3-raw-2, LBQ-1-raw-1) |
+| Tree-observable behaviours shown | none (behaviours 4 and 5 observed, not shown) | **5, requirement loss on longer tasks** (LBQ-3-raw-2) |
+| Ceiling state | `not_run (pending: the session-observable behaviours)` | `behaviours_shown` |
+| Profile (`profiles.yaml`) | `floor_passed` | **`qualified`** |
+| Charged in all | $0.2199 | $0.066 |
+
+- **Nano is the lane's lower bound.** It completes AEW's bridge handshake and typed submit, and still shows a
+  weak-worker behaviour on the seeded tasks.
+- **V4.1 is the stronger cheap model on the tree evidence.** It solved every case without a tree-observable
+  behaviour. Whether it shows a session-observable one (behaviours 1, 3, 6, 7, and the rest of 2 and 8) is for D2's
+  reader to score from the kept databases. Until then its ceiling is pending, not negative.
+- **The containment fix held.** No attempt was `CONTAINMENT_FAILED`, and Zen's charges matched the ledger's.
+- V4.1's cap concern did not materialize. Its runs cost about $0.02–0.05 each, so the expected-outcome note in its
+  preregistration (behaviours 4 and 5 `unobserved` when the cap binds) had no effect.
 
 ## The fixture
 
@@ -320,7 +347,8 @@ directory (the table in "Experiments"):
    first), then unset the key;
 4. copy the oracles to `<lane>/hidden`, run `qualify.py --experiment <id> --out <lane>/out score`, and delete the
    copy;
-5. bring back the experiment's frozen record and the run summaries for this pull request.
+5. bring back the experiment's frozen record and the run summaries for this pull request (they go next to the
+   preregistration and in `results/<experiment>/`, with arm-host paths rewritten as `<lane>/...`).
 
 ## Files
 
@@ -328,6 +356,8 @@ directory (the table in "Experiments"):
 |---|---|
 | `prereg.yaml` | the preregistration of `lbq-v1-deepseek-v4-flash` (`aew/eval-prereg/v1`), unfrozen; it holds the structured behaviour definitions |
 | `prereg-deepseek-v4-1-flash.yaml`, `prereg-v2-deepseek-v4-1-flash.yaml`, `prereg-gpt-5-nano.yaml` | the preregistrations of `lbq-v1-deepseek-v4-1-flash`, `lbq-v2-deepseek-v4-1-flash` and `lbq-v1-gpt-5-nano`: `prereg.yaml` with their own id, question, amendment record and profile pins (v2: v1's, with a new id and amendment record) |
+| `prereg-v2-deepseek-v4-1-flash.frozen.yaml`, `prereg-gpt-5-nano.frozen.yaml` | the frozen records the operator's runs sealed (2026-10-10), as written |
+| `results/<experiment>/floor.json`, `score.json` | each run's floor and score summaries (arm-host paths as `<lane>/...`) |
 | `oracle-validation.json` | the oracles validated against the real fixture (seed fails as designed, reference passes) |
 | `profiles.yaml` | the profile records (`aew/eval-profile/v1`) |
 | `rubric.md` | the floor, the ceiling (the eight behaviours, their metrics and thresholds), correctness, the verdict |

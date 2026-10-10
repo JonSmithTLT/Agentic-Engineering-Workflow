@@ -591,12 +591,84 @@ def test_the_effort_rule_is_stated_as_the_pins_follow_it(qualify):
     assert "excluding an extended max tier" in profile_of("lb-gpt-5-nano")["availability"]["note"]
 
 
-@pytest.mark.parametrize("experiment", [V4, V41, V41V2, NANO])
-def test_every_experiment_pins_its_profile_as_the_record_states(qualify, selected, experiment):
+SEEDED_RUN = ("....F..\n======\nFAIL: test_spaces_in_a_label_become_hyphens (tests.test_syntax.extensions."
+              "test_wikilinks_spaces.TestWikiLinkSpaces.test_spaces_in_a_label_become_hyphens)\n------\n"
+              "FAILED (failures=1, skipped=110)\n")
+
+
+def test_check_reports_the_seeded_distractors_failure_as_seeded_not_as_a_failure(qualify):
+    """The upstream suite fails on the seeded start by design (the planted distractor test): `check` says so,
+    against the expectation, and names a failure only when something else fails or the seed did not take."""
+    got = qualify.suite_verdict(1, SEEDED_RUN)
+    assert got["state"] == "as_seeded" and "unexpected_failures" not in got and "missing_seeded_failures" not in got
+    assert got["raw"] == {"exit": 1, "summary": ["FAILED (failures=1, skipped=110)"],
+                          "failing": ["test_spaces_in_a_label_become_hyphens"]}  # the unittest output, secondary
+    other = SEEDED_RUN + "ERROR: test_markdown_in_html (tests.test_syntax.extensions.test_md_in_html.Test)\n"
+    got = qualify.suite_verdict(1, other)
+    assert (got["state"], got["unexpected_failures"]) == ("unexpected", ["test_markdown_in_html"])
+    got = qualify.suite_verdict(0, "OK (skipped=110)\n")  # the seeded test passed: the seed did not take
+    assert (got["state"], got["missing_seeded_failures"]) == ("unexpected", ["test_spaces_in_a_label_become_hyphens"])
+    assert qualify.suite_verdict(1, "Traceback: ImportError\n")["state"] == "unexpected"  # no suite ran at all
+
+
+@pytest.mark.parametrize("experiment, state", [(V4, "unqualified"), (V41V2, "floor_passed"), (NANO, "qualified")])
+def test_every_experiment_pins_its_profile_as_the_record_states(qualify, selected, experiment, state):
+    """A frozen experiment pins its profile's state as it was at preregistration (its committed frozen record), while
+    the profile record moves on with the results; an unfrozen one must match the record as it stands."""
     selected(experiment)
     report: dict = {}
     qualify.check_profiles(report, plan_of(qualify, experiment))
-    assert report["profiles"][PINS.get(experiment, (None, "lb-deepseek-v4-flash"))[1]] == "unqualified"
+    assert report["profiles"][PINS.get(experiment, (None, "lb-deepseek-v4-flash"))[1]] == state
+
+
+def test_the_retired_first_v4_1_experiment_can_no_longer_be_frozen(qualify, selected):
+    """lbq-v1-deepseek-v4-1-flash was never frozen in the repository (its seal stays on the arm host, its lane kept
+    as the record of the containment failure); its plan pins the profile as unqualified, which the record no longer
+    states, so freezing it now is refused."""
+    selected(V41)
+    with pytest.raises(qualify.Invalid, match="qualification_state"):
+        qualify.check_profiles({}, plan_of(qualify, V41))
+
+
+@pytest.mark.parametrize("experiment", [V41V2, NANO])
+def test_each_runs_frozen_record_is_committed_and_seals_its_preregistration(qualify, selected, experiment):
+    """The operator's runs (2026-10-10, at ed98424): each frozen record verifies, is exactly its committed
+    preregistration plus what freeze adds, and is the seal its floor record was stamped with."""
+    selected(experiment)
+    frozen = qualify.frozen_record()
+    plan = plan_of(qualify, experiment)
+    by_id = {c["id"]: c for c in frozen["cases"]}
+    for case in plan["cases"]:
+        case.update(sha256=by_id[case["id"]]["sha256"], hidden_sha256=by_id[case["id"]]["hidden_sha256"])
+    plan["scoring"]["rubric_sha256"] = frozen["scoring"]["rubric_sha256"]
+    sealed = {k: v for k, v in frozen.items() if k not in ("frozen_at", "frozen_by", "canonical_sha256")}
+    sealed["assignment"] = {k: v for k, v in sealed["assignment"].items() if k != "order"}
+    assert sealed == plan
+    floor = json.loads((LANE / "results" / experiment / "floor.json").read_text(encoding="utf-8"))
+    assert (floor["experiment"], floor["preregistration_sha256"]) == (experiment, frozen["canonical_sha256"])
+
+
+@pytest.mark.parametrize("experiment, shown, ceiling_state, spent", [
+    (V41V2, [], "not_run (pending: the session-observable behaviours)", 0.2199),
+    (NANO, ["requirement_loss_on_longer_tasks"], "behaviours_shown", 0.066),
+])
+def test_the_committed_results_are_the_runs_own_and_name_no_host_path(experiment, shown, ceiling_state, spent):
+    """The results are the lane's floor and score summaries with only their absolute paths rewritten to the lane
+    (``<lane>/...``); every hash, cost and verdict is the run's."""
+    results = LANE / "results" / experiment
+    text = "".join((results / f).read_text(encoding="utf-8") for f in ("floor.json", "score.json"))
+    assert "/home/" not in text and ":\\\\" not in text
+    floor = json.loads((results / "floor.json").read_text(encoding="utf-8"))
+    score = json.loads((results / "score.json").read_text(encoding="utf-8"))
+    paths = [t[k] for t in floor["trials"] for k in ("results", "session_state")]
+    paths += [r["session_db"]["state_dir"] for r in score["runs"]]
+    assert all(p.startswith("<lane>/") for p in paths), paths
+    assert [t["verdict"] for t in floor["trials"]] == ["passed"]
+    assert (score["valid_runs"], score["unscored"], score["tree_behaviours_shown"], score["ceiling_state"]) == \
+        (6, [], shown, ceiling_state)
+    assert all(r["finished"] for r in score["runs"])
+    total = floor["charged_usd"] + sum(r["charged_usd"] for r in score["runs"])
+    assert round(total, 4) == spent
 
 
 def test_the_replacement_primary_has_a_stable_identity(qualify):

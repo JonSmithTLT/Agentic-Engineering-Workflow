@@ -101,10 +101,22 @@
       -exp model), driven through the openai-compatible package (chat completions). Pinned to high for the same
       reason as lb-deepseek-v4-flash: the floor is a hard prerequisite, and flash-class models follow multi-step tool
       protocols poorly at low effort.
-  floor: {state: not_run}
-  ceiling: {state: not_run}
-  qualification_state: unqualified
+  floor:
+    state: passed
+    trials: 1
+    evidence: [results/lbq-v2-deepseek-v4-1-flash/floor.json]
+  ceiling:  # the tree-observable half shows none of its behaviours; the session-observable half waits for D2's reader
+    state: not_run
+    experiment: lbq-v2-deepseek-v4-1-flash
+    evidence: [results/lbq-v2-deepseek-v4-1-flash/score.json]
+  qualification_state: floor_passed
   notes: >-
+    lbq-v2-deepseek-v4-1-flash (2026-10-10, run at ed98424): the floor passed in its first trial ($0.023); the ceiling's
+    6 runs were valid and finished (the cost cap ended none), every one task-correct and in scope, and none showed a
+    tree-observable behaviour (2, 4, 5, 8 in part), so the ceiling stays pending until D2's reader scores the
+    session-observable behaviours from the kept databases. On the tree evidence it is the stronger of the two cheap
+    profiles. Total charged $0.2199. Its first experiment, lbq-v1-deepseek-v4-1-flash, passed its floor but every
+    ceiling attempt was refused by a containment defect (no model data).
     The replacement primary (lbq-v1-deepseek-v4-1-flash), chosen by the operator on 2026-10-10 because
     lb-deepseek-v4-flash became unavailable on OpenCode Zen. It is the same family's successor; the trigger is
     unavailability, which the next-cheaper rule does not cover, as in the earlier move from the free tier to its paid
@@ -164,10 +176,22 @@
       provider offers, excluding an extended max tier where one exists; gpt-5-nano has none, so high. The trade-off:
       higher effort can suppress the weak-worker behaviours, leaning the result toward not_a_lower_bound (the
       conservative direction).
-  floor: {state: not_run}
-  ceiling: {state: not_run}
-  qualification_state: unqualified
+  floor:
+    state: passed
+    trials: 1
+    evidence: [results/lbq-v1-gpt-5-nano/floor.json]
+  ceiling:
+    state: behaviours_shown
+    experiment: lbq-v1-gpt-5-nano
+    behaviours: [requirement_loss_on_longer_tasks]
+    evidence: [results/lbq-v1-gpt-5-nano/score.json]
+  qualification_state: qualified
   notes: >-
+    lbq-v1-gpt-5-nano (2026-10-10, run at ed98424): the floor passed in its first trial ($0.005); the ceiling's 6 runs
+    were valid and finished, and LBQ-3-raw-2 showed behaviour 5 (requirement loss on longer tasks: a finished run that
+    met some of LBQ-3's criteria and forgot others). Task-correct in 4 of 6 runs (not LBQ-3-raw-2 or LBQ-1-raw-1).
+    Qualified as the lane's lower bound on the tree-observable evidence; D2's reader scores the session-observable
+    behaviours later from the kept databases. Total charged $0.066.
     The next-cheaper profile (synthesis 13.4): the cheapest paid model the pinned harness offers with a stable,
     versioned identity (input $0.05 per million tokens against $0.14 for lb-deepseek-v4-flash and $0.30 for
     lb-deepseek-v4.1-flash), and an older, smaller model. Its experiment is lbq-v1-gpt-5-nano. The operator chose on

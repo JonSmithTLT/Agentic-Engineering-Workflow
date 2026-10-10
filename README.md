@@ -23,6 +23,7 @@ Provider-neutral, contract-first engineering workflow for AI coding agents. AEW 
 ```bash
 python -m venv .venv && . .venv/bin/activate   # Python >= 3.11
 pip install -e ".[dev,parallel]"    # `parallel` (pytest-xdist) is optional
+pip install -e ".[eval]"            # numpy, only for the M4-H analysis tests (eval/aew_eval/analysis.py)
 python -m pytest -q                  # all tests, serially (always valid)
 python -m pytest -m acceptance -q    # acceptance scenarios only
 python -m pytest -n auto -m "not serial" -q && python -m pytest --lane serial -q   # all tests, in parallel

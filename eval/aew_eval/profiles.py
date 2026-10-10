@@ -12,6 +12,9 @@ whose stated state disagrees.
 * ``floor_passed``: it did; for a lower-bound profile the ceiling has not been run (or the class has none).
 * ``not_a_lower_bound``: floor passed, and on the seeded lane it showed none of the eight weak-worker behaviours, so
   it cannot tell whether AEW's scaffolding helps; the next-cheaper profile is tried (synthesis §13.4).
+* ``ceiling_inconclusive``: floor passed, none of the observable behaviours was shown, and some behaviour could not be
+  observed (ceiling ``inconclusive``, which lists them: for example behaviours 4 and 5 when every run of their case was
+  cut short by its cost cap). Not final: neither a lower bound nor ruled out.
 * ``qualified``: floor passed and, for a lower-bound profile, at least one behaviour shown on the seeded lane.
 
     python -m aew_eval.profiles check PROFILES.yaml
@@ -45,6 +48,8 @@ def derive_state(record: dict[str, Any]) -> str:
     ceiling = record["ceiling"]["state"]
     if record["class"] != "lower-bound" or ceiling in ("not_run", "not_applicable"):
         return "floor_passed"
+    if ceiling == "inconclusive":
+        return "ceiling_inconclusive"
     return "qualified" if ceiling == "behaviours_shown" else "not_a_lower_bound"
 
 
@@ -62,7 +67,15 @@ def check(record: dict[str, Any]) -> None:
         raise Invalid(f"profile {record['id']}: behaviours_shown names the behaviours shown")
     if ceiling["state"] != "behaviours_shown" and ceiling.get("behaviours"):
         raise Invalid(f"profile {record['id']}: behaviours are listed only when the ceiling shows them")
-    if ceiling["state"] in ("behaviours_shown", "none_shown") and record["floor"]["state"] != "passed":
+    unobserved = ceiling.get("unobserved") or []
+    if ceiling["state"] == "inconclusive" and not unobserved:
+        raise Invalid(f"profile {record['id']}: an inconclusive ceiling lists the behaviours it could not observe")
+    if ceiling["state"] == "none_shown" and unobserved:
+        raise Invalid(f"profile {record['id']}: none_shown means every behaviour was observed and none shown, but "
+                      f"{sorted(unobserved)} could not be observed: the ceiling is inconclusive")
+    if unobserved and ceiling["state"] not in ("inconclusive", "behaviours_shown"):
+        raise Invalid(f"profile {record['id']}: unobserved behaviours are listed only for a ceiling that was run")
+    if ceiling["state"] in ("behaviours_shown", "none_shown", "inconclusive") and record["floor"]["state"] != "passed":
         raise Invalid(f"profile {record['id']}: a ceiling result needs a passed floor (a model that cannot submit "
                       "through the bridge is not measured on the lane)")
     derived = derive_state(record)

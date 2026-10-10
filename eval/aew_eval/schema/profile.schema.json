@@ -74,14 +74,17 @@
       "type": "object", "required": ["state"], "additionalProperties": false,
       "description": "Lower-bound class only: the model still shows the weak-worker behaviours on the seeded lane.",
       "properties": {
-        "state": {"enum": ["not_run", "not_applicable", "behaviours_shown", "none_shown"]},
+        "state": {"enum": ["not_run", "not_applicable", "behaviours_shown", "none_shown", "inconclusive"],
+                  "description": "inconclusive: none of the observed behaviours was shown, and some behaviour could not be observed (listed in unobserved); none_shown requires every behaviour observed."},
         "experiment": {"type": ["string", "null"]},
         "behaviours": {"type": "array", "items": {"type": "string"}},
+        "unobserved": {"type": "array", "items": {"type": "string"},
+                       "description": "The behaviours no valid run could observe (for example, no finished run of their case)."},
         "evidence": {"type": "array", "items": {"type": "string"}}
       }
     },
     "qualification_state": {"enum": ["unqualified", "unavailable", "floor_failed", "floor_passed",
-                                     "not_a_lower_bound", "qualified"]},
+                                     "ceiling_inconclusive", "not_a_lower_bound", "qualified"]},
     "notes": {"type": ["string", "null"]}
   }
 }

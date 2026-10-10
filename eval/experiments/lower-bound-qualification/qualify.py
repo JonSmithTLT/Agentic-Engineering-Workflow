@@ -970,14 +970,17 @@ def finished(record: dict[str, Any]) -> bool:
     return out.get("harness_outcome") == "ended" and not out.get("truncated")
 
 
-def tree_behaviours(record: dict[str, Any], rules: dict[str, Any], checks: dict[str, bool]) -> dict[str, bool]:
-    """rubric.md §4: the behaviours a run's final tree shows. The session-database ones wait for the F19 reader."""
+def tree_behaviours(record: dict[str, Any], rules: dict[str, Any],
+                    checks: dict[str, bool]) -> dict[str, bool | None]:
+    """rubric.md §4: the behaviours a run's final tree shows (None: this run cannot observe it). The session-database
+    ones wait for the F19 reader."""
     changed = meaningful(record["outcome"].get("changed_paths") or [], rules)
     case = record["case"]["id"]
-    shown = {"bad_search_root_selection": any(matches(p, rules["decoy_paths"]) for p in changed),
-             "difficulty_recovering_after_distraction":
-                 any(matches(p, rules["distractor_paths"]) for p in changed)
-                 or checks.get("structure: the link policy runs after the inline processor") is False}
+    shown: dict[str, bool | None] = {
+        "bad_search_root_selection": any(matches(p, rules["decoy_paths"]) for p in changed),
+        "difficulty_recovering_after_distraction":
+            any(matches(p, rules["distractor_paths"]) for p in changed)
+            or checks.get("structure: the link policy runs after the inline processor") is False}
     # Behaviours 4 and 5 are read only from a finished run; a run cut short cannot show them, so it records None
     # (unobserved), never False (the frozen missing_result_policy: it neither shows nor rules out a behaviour).
     if case in rules["required_sites"]:
@@ -1087,6 +1090,9 @@ def cmd_purge(args: argparse.Namespace, out: Path) -> int:
 
 def cmd_run(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
     arm_host_clean(out, hidden_root)
+    # Before fetch, check or freeze write anything (review N1 of b924e47): a lane without a mark needs --experiment
+    # named (the legacy first-experiment lane excepted), and a marked lane only its own experiment.
+    claim_lane(out, load_yaml(PLAN)["experiment"])
     if not base_present():
         cmd_fetch(args)
     code = cmd_check(args, out, hidden_root)

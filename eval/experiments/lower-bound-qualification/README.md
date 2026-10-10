@@ -253,14 +253,18 @@ is enforced, not only recorded: a database past its 180 days is refused, then pu
 
 **The other experiments** have the same bounds (each its own `budget_usd` 5.00, `floor_cap_usd` 1.00 and `cap_usd`
 0.75; V4.1's overshoot margin is $0.10), and their own expected cost:
-- **`lbq-v1-deepseek-v4-1-flash`: ≈ $2–4.** V4.1 costs about 2× V4 per input token and 4.3× per output token, so a
-  step costs about $0.02–0.03.
+- **`lbq-v1-deepseek-v4-1-flash`: ≈ $2–4 if runs finish early, up to ≈ $4.5–5 if most ceiling runs reach the cap**
+  (as expected: the floor's $0.1–1.0 plus six runs at about $0.78). V4.1 costs about 2× V4 per input token and 4.3×
+  per output token, so a step costs about $0.02–0.03.
   - **Its $0.75 cap is expected to end ceiling runs at about 25–37 steps, before the 80-step limit.** The operator
     chose on 2026-10-10, for cost reasons, to keep the $0.75 cap and the $5.00 budget, and the preregistration says
     so.
   - A run the cap ends is truncated, not finished, so it cannot show behaviours 4 (LBQ-2) and 5 (LBQ-3). For a case
     with no finished run, `score` reports them as unobserved (`tree_behaviours_unobserved`), not as not shown, and a
-    V4.1 result that shows neither is inconclusive for them.
+    V4.1 result that shows neither is inconclusive for them. If no other behaviour is shown either, the profile record
+    states it: ceiling `inconclusive`, listing the unobserved behaviours, and `qualification_state`
+    `ceiling_inconclusive`, which is not final. `none_shown` (and so `not_a_lower_bound`) needs every behaviour
+    observed.
   - Each run's `cost_cap_ended_at_step` in `score.json` shows where the cap ended it.
   - With most runs at the cap, the floor plus six capped runs nearly use the $5.00, so the start gate may leave a late
     cell or retry unrun (unobserved).

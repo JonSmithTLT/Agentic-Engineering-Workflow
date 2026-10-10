@@ -537,6 +537,17 @@ def test_every_floor_save_is_stamped_with_its_experiment(qualify, lane):
     assert (state["experiment"], state["preregistration_sha256"]) == (V4, "a" * 64)
 
 
+def test_run_refuses_a_forgotten_experiment_before_it_writes_anything(qualify, monkeypatch, tmp_path):
+    """Review N1 of b924e47: no fetch, check or freeze (no stray seal) when the lane would be refused."""
+    for step in ("cmd_fetch", "cmd_check", "cmd_freeze", "cmd_floor", "cmd_ceiling"):
+        monkeypatch.setattr(qualify, step, lambda *a, step=step, **k: pytest.fail(f"{step} ran"))
+    monkeypatch.setattr(qualify, "EXPLICIT", False)
+    out = tmp_path / "lane" / "out"
+    with pytest.raises(SystemExit, match="name the experiment"):
+        qualify.cmd_run(SimpleNamespace(by="operator"), out, None)
+    assert not out.exists()
+
+
 def test_purge_works_only_on_its_own_experiments_lane(qualify, monkeypatch, tmp_path):
     out = tmp_path / "out"
     qualify.claim_lane(out, V41, explicit=True)

@@ -482,6 +482,38 @@ def test_a_profile_record_that_contradicts_itself_is_refused(over, match):
         profiles.check(profile(**over))
 
 
+UNOBSERVED = ["incomplete_cross_file_changes", "requirement_loss_on_longer_tasks"]
+
+
+def test_a_ceiling_with_unobserved_behaviours_is_inconclusive_never_a_negative():
+    """A profile that showed none of the behaviours it could be observed for, with some unobserved (e.g. behaviours 4
+    and 5 when the cost cap cut every run of their case short), is ceiling_inconclusive: not final, and never
+    not_a_lower_bound (review F1 of b924e47)."""
+    inconclusive = profile(floor={"state": "passed"}, ceiling={"state": "inconclusive", "unobserved": UNOBSERVED},
+                           qualification_state="ceiling_inconclusive")
+    profiles.check(inconclusive)
+    assert profiles.derive_state(inconclusive) == "ceiling_inconclusive"
+    shown = profile(floor={"state": "passed"}, qualification_state="qualified",
+                    ceiling={"state": "behaviours_shown", "behaviours": ["repeated_exploration"],
+                             "unobserved": UNOBSERVED})
+    profiles.check(shown)  # a behaviour shown is shown, whatever else was unobserved
+    for over, match in [
+        ({"ceiling": {"state": "none_shown", "unobserved": UNOBSERVED}, "qualification_state": "not_a_lower_bound"},
+         "the ceiling is inconclusive"),
+        ({"ceiling": {"state": "inconclusive"}, "qualification_state": "ceiling_inconclusive"},
+         "lists the behaviours it could not observe"),
+        ({"ceiling": {"state": "inconclusive", "unobserved": UNOBSERVED}, "qualification_state": "not_a_lower_bound"},
+         "establish ceiling_inconclusive"),
+    ]:
+        with pytest.raises(Invalid, match=match):
+            profiles.check(profile(floor={"state": "passed"}, **over))
+    with pytest.raises(Invalid, match="needs a passed floor"):
+        profiles.check(profile(ceiling={"state": "inconclusive", "unobserved": UNOBSERVED},
+                               qualification_state="unqualified"))
+    with pytest.raises(Invalid, match="listed only for a ceiling that was run"):
+        profiles.check(profile(ceiling={"state": "not_run", "unobserved": UNOBSERVED}))
+
+
 def test_a_profiles_file_has_unique_ids_and_known_twins(tmp_path):
     path = tmp_path / "profiles.yaml"
     twin = profile(id="lb-demo-paid", ref="opencode/demo", model="demo", plan_role="paid-twin", twin_of="lb-demo",

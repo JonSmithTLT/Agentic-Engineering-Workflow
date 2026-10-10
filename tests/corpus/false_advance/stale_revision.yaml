@@ -1,0 +1,11 @@
+case: stale_revision
+slice: E5a
+description: a start on a revision another commit has moved past opens no intent and commits nothing (rules 1 and 2)
+seed: ready
+stage: ticket_start
+arguments: {work_id: $work_id, expect_rev: $stale}
+expect:
+  availability: AVAILABLE
+  boundary: stale_revision
+  steps: []
+  unit_state: READY

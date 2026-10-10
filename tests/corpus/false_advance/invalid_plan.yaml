@@ -1,0 +1,17 @@
+case: invalid_plan
+slice: E5a
+description: >-
+  a draft whose plan names an unknown review card is BLOCKED at its plan step; called anyway, it creates the Ticket and
+  stops there, the Ticket BLOCKED with no plan
+seed: empty
+stage: ticket_draft
+arguments:
+  title: Add subtract()
+  risk_class: 1
+  scope: [calc/**]
+  plan: {body: "1. Add subtract.\n", affected: [calc/core.py], assurance: {review: [no_such_card]}}
+expect:
+  availability: BLOCKED
+  boundary: not_found
+  steps: [work.create]
+  unit_state: BLOCKED

@@ -573,6 +573,32 @@ def test_the_equivalence_view_keeps_real_differences():
     t1, t2 = ({"tokens": {"tk_" + "a" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "a" * 16}},
               {"tokens": {"tk_" + "b" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "b" * 16}})
     assert differences(_clean(t1, "/p"), _clean(t2, "/p")) == []  # ids are ordinals, references kept
+    # E5a: a dispatch's revision is normalised by value, never dropped; its decision digest is recomputed over the
+    # recorded decision with the revision substituted, so two decisions that differ only by revision compare equal,
+    # any other difference in them still shows, and a digest of no recorded decision compares as it is (PR #177
+    # review, finding 3). A hash names a file only when it is that file's (any other hash still compares).
+    from stage_equivalence import _Normaliser
+
+    body = {"entrypoint": "work.assign", "work_id": "T-1", "allowed": True, "revision": 4}
+    known = {"sha256:a": body, "sha256:b": {**body, "revision": 5}, "sha256:c": {**body, "work_id": "T-2"}}
+    d1 = {"invocations": {"I-1": {"dispatch": {"revision": 4, "decision": "sha256:a", "channel": "direct"}}}}
+    d2 = {"invocations": {"I-1": {"dispatch": {"revision": 5, "decision": "sha256:b", "channel": "lead_mcp"}}}}
+    assert differences(_Normaliser("/p", decisions=known)(d1), _Normaliser("/p", decisions=known)(d2)) == [
+        "/invocations/I-1/dispatch/channel: 'direct' != 'lead_mcp'"]
+    d4 = {"invocations": {"I-1": {"dispatch": {"revision": 5, "decision": "sha256:c", "channel": "direct"}}}}
+    assert [d.split(":")[0] for d in differences(_Normaliser("/p", decisions=known)(d1),
+                                                  _Normaliser("/p", decisions=known)(d4))] == [
+        "/invocations/I-1/dispatch/decision"]  # another unit's decision
+    assert [d.split(":")[0] for d in differences(_clean(d1, "/p"), _clean(d2, "/p"))] == [
+        "/invocations/I-1/dispatch/channel", "/invocations/I-1/dispatch/decision"]  # unrecorded: as it is
+    d3 = {"invocations": {"I-1": {"dispatch": {"channel": "direct"}}}}
+    assert differences(_clean(d1, "/p"), _clean(d3, "/p")) == [
+        "/invocations/I-1/dispatch/decision: only in the first",
+        "/invocations/I-1/dispatch/revision: only in the first"]
+
+    named = _Normaliser("/p", files={"a" * 64: "<sha256 of work/T-1/ticket.md>"})
+    assert named({"record_sha256": "a" * 64}) == {"record_sha256": "<sha256 of work/T-1/ticket.md>"}
+    assert named({"record_sha256": "b" * 64}) == {"record_sha256": "b" * 64}
 
 
 @pytest.mark.parametrize("disposition", ["rebuild", "requeue", None])

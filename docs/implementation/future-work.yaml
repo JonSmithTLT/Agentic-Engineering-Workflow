@@ -399,20 +399,19 @@ sections:
       the intent to the current generation and runs the remaining steps. It discharges the first obligation from the review
       of pull request 142. A launching step whose supervisor never started or has ended stops the intent as `launch_failed`,
       never completing the stage over a run that did not start, and the continue never relaunches (a relaunch is `harness.launch`,
-      which rotates the credential). The other remains. E5a reconciles the `dispatch.launch` step catalogued for `ticket_start`
-      with the launch inside the assignment step; until then it fails closed, since the primitive is undeclared. **F9-A
-      (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):** the coordination seal is a Lead-transaction finalizer
-      placed immediately before archival, so a finalizer an E-slice adds that can end an invocation goes before it; a new
-      commit path that ends invocations is added to the seal walk (`test_no_known_ending_path_needs_the_seal_fallback`),
-      where a missed `seal_ending` call shows as a `coordination.seal_fallback` event. **E4a (2026-10-10)** makes the guards
-      of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition` with `implementer_active`, `ready_for_review`
-      and `review_current`, `review.ingest`, `work.create` and `plan.propose`, each a pure query its execute path calls
-      first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`); `explain` answers
-      a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`. **E5a obligation (PR 170
-      review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked with
-      by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck and
-      R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks` binds
-      it from the first planner on. **E4b (2026-10-10)** migrates the integration stages' guards, namely `verify.ingest`
+      which rotates the credential). The other, reconciling the `dispatch.launch` step catalogued for `ticket_start` with
+      the launch inside the assignment step, E5a discharges (below). **F9-A (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):**
+      the coordination seal is a Lead-transaction finalizer placed immediately before archival, so a finalizer an E-slice
+      adds that can end an invocation goes before it; a new commit path that ends invocations is added to the seal walk
+      (`test_no_known_ending_path_needs_the_seal_fallback`), where a missed `seal_ending` call shows as a `coordination.seal_fallback`
+      event. **E4a (2026-10-10)** makes the guards of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition`
+      with `implementer_active`, `ready_for_review` and `review_current`, `review.ingest`, `work.create` and `plan.propose`,
+      each a pure query its execute path calls first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`);
+      `explain` answers a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`. **E5a obligation
+      (PR 170 review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked
+      with by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck
+      and R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks`
+      binds it from the first planner on. **E4b (2026-10-10)** migrates the integration stages' guards, namely `verify.ingest`
       (Ticket scope), `all_gates_current`, `integrate.prepare` (the queue synced and the decision required, on a copy),
       `verify.ingest.integration` and `integrate.publish` (lease, binding, head, obligations, validation), and composes
       `ticket_prepare` (with the integration verifier in verifier mode, asked on the candidate `integrate.prepare` produces)
@@ -421,7 +420,24 @@ sections:
       `requeue` and `rebuild`), whose call commits only that disposition and never the guarded effect. **E6a obligation:**
       the StageIntent journal records such a call's commit (`integrate.superseded`, or the moved head's `integrate.stale`
       or `integrate.rebuild`) as the step's disposition, not its completion (extending `COMMIT_OPS` and the `step_primitive_mismatch`
-      rule for `integrate.publish`), and stops the stage at that boundary
+      rule for `integrate.publish`), and stops the stage at that boundary. **E5a (2026-10-10)** builds `ticket_draft` and
+      `ticket_start` over the executor (their planners in `surface/stage.py`, each step's guard arguments taken from `availability.STAGES`,
+      so the PR 170 obligation's agreement test now binds), and declares `work.create`, `plan.propose`, `work.transition`
+      and `dispatch.launch` with full `PrimitiveSpec`s (`test_every_staged_primitive_is_declared`; observed side effects
+      within each declaration, `test_declared_effects_cover_observed_effects`). **The PR 142 obligation, discharged.** `dispatch.launch`
+      has no transaction of its own (run 1 of a dispatch made with `launch`, covered by its decision), so a stage plans
+      it right after that dispatch (`primitives.COVERED_BY_PREVIOUS`; opening refuses it anywhere else, `not_covered`) and
+      the dispatch's commit records both steps (the launch with the run, `covered_by`); a launch that then fails stops the
+      stage at the next step as `launch_failed`, so `ticket_start` never moves a Ticket to RUNNING over a run that never
+      started. A stage leaves out a step only where availability leaves it unplanned (`ticket_draft` without a plan). The
+      broker appends one line per typed-tool call to `.aew/local/lead/tool-calls.jsonl` (`harness/tool_calls.py`; tool,
+      arguments digest, effective class, outcome, boundary and error code, revisions before and after, stage intent, duration;
+      bounded and rotated, never control state), which M4-H reads for TLS-27 and VGX-21. Stage/primitive equivalence holds
+      for both stages on two copies of one project (`test_stage_matches_primitives`), and the seeded false-advance corpus
+      begins (`tests/corpus/false_advance/`, `test_no_false_advance`). A stage whose subject an unfinished stage holds is
+      BLOCKED with `RESOLVE_STAGE` (never auto-runnable), and `work.transition` declares the workspace and harness process
+      a cancellation ends (PR 177 review). The normal advertised surface is 7,996 bytes, 11 tools; with every M4-E tool
+      built it stays at 11,805 of 11,900
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

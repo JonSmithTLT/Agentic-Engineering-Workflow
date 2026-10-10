@@ -14,6 +14,12 @@ planned primitive's (``step_primitive_mismatch``), whose primitive commits a sec
 (``judgment_replay``: rules 4 and 5), or whose bound legality digest no longer holds (STALE_POLICY: rule 6). The
 operational digest is recorded with each step, never enforced.
 
+A launch (``dispatch.launch``: run 1 of a dispatch made with ``launch``) has no transaction of its own: its dispatch's
+commit records it and its dispatch's decision covers it (plan v3 §1, N4; ``primitives.COVERED_BY_PREVIOUS``). So a
+stage plans it right after that dispatch (opening refuses it anywhere else, ``not_covered``), and the dispatch's step,
+armed with ``covers``, records both steps in that one commit: the dispatch with the invocation it created, the launch
+with the run (``covered_by``), so a continue checks the launching step's run (M4-E E5a).
+
 An intent is hot (control state ``stage_intents``) only while ACTIVE. It ends COMPLETED (every planned step
 committed), STOPPED_AT_BOUNDARY (stopped after one or more steps), REFUSED (stopped before any) or ABANDONED (closed by
 the Lead's ``resolve``), and in that same commit it is written whole and immutable to its cold home and leaves the hot
@@ -102,6 +108,7 @@ class StepBinding:
     n: int
     retried: bool = False
     final: bool = False
+    covers: bool = False  # step n + 1 is this step's dispatch's launch, recorded in the same commit (M4-E E5a)
     used: bool = field(default=False, compare=False)
 
     @property
@@ -113,11 +120,14 @@ _STEP: ContextVar[StepBinding | None] = ContextVar("aew_stage_step", default=Non
 
 
 @contextmanager
-def step(intent: str, n: int, *, retried: bool = False, final: bool = False) -> Iterator[StepBinding]:
+def step(intent: str, n: int, *, retried: bool = False, final: bool = False,
+         covers: bool = False) -> Iterator[StepBinding]:
     """Arm step ``n`` of ``intent`` for the primitive called inside the block: its commit records the step (or is
     refused). ``final``: the step is the plan's last and has no effect after its commit, so the same commit completes
-    the intent. A primitive that commits twice inside one block is refused at its second commit."""
-    binding = StepBinding(intent, n, retried=retried, final=final)
+    the intent. ``covers``: step ``n + 1`` is the launch of this step's dispatch (``dispatch.launch``), which the same
+    commit records as that step (M4-E E5a). A primitive that commits twice inside one block is refused at its second
+    commit."""
+    binding = StepBinding(intent, n, retried=retried, final=final, covers=covers)
     token = _STEP.set(binding)
     try:
         yield binding
@@ -179,6 +189,14 @@ class StageIntents:
                     raise IllegalTransition(f"step {n}, {planned['primitive']}, is not a declared primitive: a stage "
                                             "runs declared primitives only (fail closed)",
                                             reason="undeclared_primitive", primitive=planned["primitive"])
+                coverers = P.COVERED_BY_PREVIOUS.get(spec.primitive_id)
+                previous = plan[n - 2] if n > 1 else None
+                if coverers is not None and not (previous and previous["primitive"] in coverers
+                                                 and (previous.get("args") or {}).get("launch")):
+                    # A launch has no commit of its own: it is the run its dispatch records (E5a; plan v3 §1).
+                    raise IllegalTransition(f"step {n}, {planned['primitive']}, is run 1 of the dispatch before it, "
+                                            "so it follows a dispatch made with launch",
+                                            reason="not_covered", primitive=planned["primitive"])
                 steps.append({"n": n, "primitive": spec.primitive_id, "operation_class": spec.operation_class,
                               "key": step_key(sid, n), **({"args": planned["args"]} if "args" in planned else {})})
             floor = max([P.CLASS_RANK[base_class], *(P.CLASS_RANK[s["operation_class"]] for s in steps)])
@@ -472,6 +490,8 @@ class StageIntents:
             record["retried_after_stale_revision"] = True
             si["retried_after_stale_revision"] = True
         si["steps"].append(record)
+        if binding.covers:
+            si["steps"].append(_covered_step(si, binding, record, outputs, state, before))
         binding.used = True
         if binding.final and len(si["steps"]) == len(si["plan"]):
             self._end(ctx, si, COMPLETED)
@@ -601,6 +621,36 @@ def _refuse_unless_continuable(si: dict[str, Any], check: dict[str, Any]) -> Non
             raise IllegalTransition(f"{si['id']} cannot be continued: {checks[name]['message']}. Abandon it "
                                     "(committed steps stand) and decide anew from the projection",
                                     reason=reason[name], intent=si["id"], check=checks[name]["status"])
+
+
+def _covered_step(si: dict[str, Any], binding: StepBinding, record: dict[str, Any], outputs: dict[str, list[str]],
+                  state: dict[str, Any], before: dict[str, Any]) -> dict[str, Any]:
+    """The launch step ``binding`` covers (M4-E E5a; plan v3 §1, N4): run 1 of the invocation this commit's dispatch
+    created, recorded with the launch in the dispatch's own commit, since the launch has no transaction of its own (its
+    decision is the dispatch's). The runs move from the dispatch's outputs to the launch's, so a later continue checks
+    the launching step's run (``_launch_check``). Refused, and the commit with it, unless the next planned step is a
+    launch this primitive covers and the commit recorded run 1 of a new invocation."""
+    n = binding.n + 1
+    covered = si["plan"][n - 1] if n <= len(si["plan"]) else None
+    coverers = P.COVERED_BY_PREVIOUS.get(covered["primitive"], frozenset()) if covered else frozenset()
+    if covered is None or record["primitive"] not in coverers:
+        raise IllegalTransition(f"{binding.key} cannot also record step {n}: it is not a launch its dispatch covers",
+                                reason="not_covered", step=n)
+    old = before.get("invocations") or {}
+    launched = sorted(r for r in outputs["runs"] if any(
+        inv_id not in old and any(x["run"] == r for x in inv.get("runs") or [])
+        for inv_id, inv in state["invocations"].items()))
+    if not launched:
+        raise IllegalTransition(f"{binding.key} plans the launch of its dispatch as step {n}, but this commit recorded "
+                                "no run 1 of a new invocation: the dispatch was made without `launch`",
+                                reason="launch_not_recorded", step=n)
+    outputs["runs"] = [r for r in outputs["runs"] if r not in launched]
+    return {"n": n, "key": step_key(si["id"], n), "primitive": covered["primitive"],
+            "operation_class": covered["operation_class"], "revision": record["revision"], "refs": list(record["refs"]),
+            "summary": f"run 1 ({', '.join(launched)}) of step {binding.n}'s dispatch, covered by its decision",
+            "outputs": {"units": [], "invocations": [], "runs": launched}, "subject_after": record["subject_after"],
+            "legality_digest": record["legality_digest"], "operational_digest": record["operational_digest"],
+            "covered_by": binding.n, "at": record["at"]}
 
 
 def _runs(state: dict[str, Any]) -> set[str]:

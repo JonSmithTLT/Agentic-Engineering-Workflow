@@ -132,6 +132,53 @@ def test_secrets_are_masked_by_type_and_only_when_present(tmp_path, fake_bwrap):
     assert set(layout.hide_files) == {real(home / ".netrc"), real(tmp_path / "extra-secret")}  # /dev/null, not tmpfs
 
 
+@pytest.mark.parametrize(("rel", "kind"), [(".claude.json", "file"), (".config/anthropic", "dir")])
+def test_a_provider_config_location_is_masked_by_its_type_when_present_and_skipped_when_absent(tmp_path, fake_bwrap,
+                                                                                            rel, kind):
+    assert rel in (L.SECRET_FILES if kind == "file" else L.SECRET_DIRS)
+    home = tmp_path / "home"
+    home.mkdir()
+    absent = run_layout(tmp_path / "a", "reviewer", home=str(home))
+    assert not any(p.endswith(os.path.normpath(rel)) for p in (*absent.hide_dirs, *absent.hide_files))
+    path = home / rel
+    if kind == "file":
+        path.write_text('{"k": "v"}')
+    else:
+        path.mkdir(parents=True)
+        (path / "credentials").write_text("v")
+    layout = run_layout(tmp_path / "b", "reviewer", home=str(home))
+    real = os.path.realpath(path)
+    flags = C.bwrap_argv(layout, ["true"])
+    if kind == "file":
+        assert real in layout.hide_files and real not in layout.hide_dirs
+        i = flags.index(real)
+        assert flags[i - 2:i] == ["--ro-bind", layout.mask_file]       # an empty read-only file, still a file
+    else:
+        assert real in layout.hide_dirs and real not in layout.hide_files
+        assert flags[flags.index(real) - 1] == "--tmpfs"                # an empty directory
+
+
+def test_a_suffixed_copy_of_a_provider_config_file_is_masked_as_a_file_and_only_a_regular_file(tmp_path, fake_bwrap):
+    assert ".claude.json." in L.SECRET_FILE_PREFIXES
+    home = tmp_path / "home"
+    home.mkdir()
+    absent = run_layout(tmp_path / "a", "reviewer", home=str(home))
+    assert not any(".claude.json" in os.path.basename(p) for p in (*absent.hide_dirs, *absent.hide_files))
+    (home / ".claude.json.backup").write_text('{"k": "v"}')
+    (home / ".claude.json.d").mkdir()                    # a directory with a matching name is not a file
+    (home / ".claude.json.d" / ".claude.json.inner").write_text("v")  # and the listing is not recursive
+    (home / "x.claude.json.backup").write_text("v")     # a prefix, not a substring
+    layout = run_layout(tmp_path / "b", "reviewer", home=str(home))
+    real = os.path.realpath
+    backup = real(home / ".claude.json.backup")
+    assert backup in layout.hide_files and backup not in layout.hide_dirs
+    assert real(home / ".claude.json.d") not in (*layout.hide_files, *layout.hide_dirs)
+    assert not any(p.endswith(("inner", "x.claude.json.backup")) for p in layout.hide_files)
+    flags = C.bwrap_argv(layout, ["true"])
+    i = flags.index(backup)
+    assert flags[i - 2:i] == ["--ro-bind", layout.mask_file]
+
+
 def test_operator_writable_roots_must_exist_and_are_recorded(tmp_path, fake_bwrap):
     shared = tmp_path / "cache"
     shared.mkdir()

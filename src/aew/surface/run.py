@@ -7,7 +7,8 @@ Lead broker) and ``aew lead tool``.
 Every well-formed call returns a ``StageResult``, engine refusals included: the engine's own code and message, the
 steps that committed, and a fresh ``ActionProjection``. A call that is not well formed (an unknown, designed or
 concealed tool; arguments outside the tool's schema) raises :class:`~aew.surface.validate.AdapterInputError` before
-anything runs. Only an implementation defect escapes as anything else. Nothing is retried in F15.1.
+anything runs. Only an implementation defect escapes as anything else. A stage (several primitives over the
+StageIntent journal, M4-E E3) runs in :mod:`aew.surface.stage`, which alone retries, and only under R5-1.
 
 The Lead credential is a separate argument, never part of the context, and reaches only the engine call that needs
 it. Results are scrubbed of credential-bearing keys and credential strings before they leave.
@@ -37,6 +38,7 @@ from aew.surface import SURFACE
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project
+from aew.surface.stage import STAGES, run_stage
 from aew.surface.validate import check_call
 
 SECRET_KEYS = frozenset({"token", "invocation_token", "offer", "secret", "credential"})
@@ -61,6 +63,12 @@ class Call:
         self.steps: list[dict[str, Any]] = []
         self.subject: str | None = None
         self.unsuccessful: dict[str, Any] | None = None  # a command that answered ``ok: false`` (the cli escape)
+        # A stage's (aew.surface.stage): its intent and binding once opened, where it stopped, and why a stop it
+        # could not record left the intent ACTIVE.
+        self.intent: str | None = None
+        self.binding: dict[str, Any] | None = None
+        self.stopped: dict[str, Any] | None = None
+        self.left_active: errors.AEWError | None = None
 
     def token(self) -> str:
         return self._token or ""  # without one the engine refuses the mutation (its own check, its own code)
@@ -183,6 +191,8 @@ def boundary_of(exc: errors.AEWError) -> str:
     """Where an engine refusal stops a call (design §3.3's vocabulary)."""
     if isinstance(exc, errors.StaleRevision):
         return "stale_revision"
+    if isinstance(exc, errors.StalePolicy):
+        return "stale_policy"
     if isinstance(exc, errors.StaleAuthority):
         return "stale_authority"
     if isinstance(exc, errors.PermissionDenied):
@@ -229,10 +239,13 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
         stopped = {"at": t.name, "boundary": boundary_of(stale), "error": _error(stale)}
     else:
         try:
-            payload = RUNNERS[t.name](call)
+            planner = STAGES.get(t.name)
+            payload = run_stage(call, t, planner(call.a)) if planner is not None else RUNNERS[t.name](call)
         except errors.AEWError as refusal:
             at = call.steps[-1]["primitive"] if call.steps else t.name
             stopped = {"at": at, "boundary": boundary_of(refusal), "error": _error(refusal)}
+        if stopped is None and call.stopped is not None:
+            stopped = call.stopped
         if stopped is None and call.unsuccessful is not None:
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
@@ -242,12 +255,21 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
     result = scrub({
         "ok": stopped is None, "surface": SURFACE, "tool": t.name, "base_operation_class": t.base_class,
         "effective_operation_class": effective_class(t, call.a), "revision": projection["revision"],
-        "generation": projection["generation"], "stage_intent_id": None, "policy_binding": None,
+        "generation": projection["generation"], "stage_intent_id": call.intent,
+        "policy_binding": _binding(call.binding),
         "completed_steps": call.steps, "stopped": stopped,
         "result": payload if isinstance(payload, dict) else None, "projection": projection,
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+def _binding(binding: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The digests a stage's intent bound (A3), as the result states them: bare hex."""
+    if binding is None:
+        return None
+    return {k: (binding[k].removeprefix("sha256:") if isinstance(binding[k], str) else binding[k])
+            for k in ("legality_digest", "operational_digest", "authorization_digest")}
 
 
 def _stale(engine: Any, ctx: SurfaceContext) -> errors.AEWError | None:

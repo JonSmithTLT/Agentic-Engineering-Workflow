@@ -19,7 +19,7 @@
     "judgment_inputs": {"description": "The judgments the call carries: the tool's required judgments and any promoting argument supplied.", "type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/name"}},
     "base_class": {"$ref": "#/$defs/operation_class"},
     "effective_class": {"$ref": "#/$defs/operation_class"},
-    "ingress": {"enum": ["mcp", "cli", "test"]},
+    "ingress": {"enum": ["mcp", "cli", "direct", "test"]},
     "caller": {"type": "object", "description": "The Lead actor that opened the intent."},
     "generation": {"description": "The Lead generation that owns the intent: only it may commit a step; `resolve continue` rebinds it (F18 §14).", "type": "integer", "minimum": 1},
     "opened": {

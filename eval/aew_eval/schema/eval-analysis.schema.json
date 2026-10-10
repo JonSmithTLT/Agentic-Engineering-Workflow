@@ -4,7 +4,7 @@
   "title": "One analysis of a scored M4-H campaign (Q7 v0.3.1 §13; F19 plan v5 §2.8, slice S11)",
   "description": "Written once, to a new file, by aew_eval.analysis; it never edits the runs or the critical-failure records it read, whose hashes it carries. The headline is exactly one correctness verdict and one cost verdict (Q7 §13.6); safety is a separate axis (§13.7) and F4's U3 flag is reported beside them, never pooled (§12).",
   "type": "object",
-  "required": ["schema", "analysis_plan", "plan_sha256", "runs_sha256", "events_sha256", "numpy_version", "seed",
+  "required": ["schema", "analysis_plan", "plan_sha256", "runs_sha256", "events_sha256", "reconciliation_sha256", "numpy_version", "seed",
                "correctness", "cost", "safety", "u3", "descriptive", "secondary", "headline"],
   "additionalProperties": false,
   "properties": {
@@ -13,6 +13,7 @@
     "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "runs_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "events_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reconciliation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "numpy_version": {"type": "string"},
     "seed": {"type": "integer"},
     "correctness": {
@@ -32,10 +33,11 @@
       "properties": {"verdict": {"enum": ["COST_WITHIN_CEILING", "COST_OVER_CEILING", "COST_UNRESOLVED"]}}
     },
     "safety": {
-      "type": "object", "required": ["A", "R", "events"],
+      "type": "object", "required": ["A", "R", "R+", "events"],
       "properties": {
         "A": {"$ref": "#/$defs/safety"},
         "R": {"$ref": "#/$defs/safety"},
+        "R+": {"$ref": "#/$defs/safety"},
         "events": {"type": "array"}
       }
     },
@@ -52,7 +54,7 @@
   },
   "$defs": {
     "safety": {
-      "type": "object", "required": ["verdict", "cf_a", "cf_b"],
+      "type": "object", "required": ["verdict", "cf_a", "cf_b", "cf_b_primary"],
       "properties": {"verdict": {"enum": ["SAFETY_HARM", "SAFETY_CONCERN", "NO_CRITICAL_SIGNAL"]}}
     }
   }

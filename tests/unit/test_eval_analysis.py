@@ -52,6 +52,21 @@ def run(plan: dict, cell: str, arm: str, i: int, accepted: bool, **over) -> dict
     return row
 
 
+def recon(plan: dict, *, layer: str = "c", a: tuple = (78, 0, False), r: tuple = (78, 0, False)) -> dict:
+    """A synthetic aew/m4h-reconciliation/v1 record: (counted runs, mismatched runs, partition mismatch) per arm."""
+    def arm(t):
+        return {"counted_runs": t[0], "mismatched_runs": t[1], "partition_mismatch": t[2]}
+
+    return {"schema": "aew/m4h-reconciliation/v1", "plan_sha256": analysis.plan_sha256(plan), "layer": layer,
+            "arms": {"A": arm(a), "R": arm(r)}}
+
+
+def fast(plan: dict) -> dict:
+    """The plan with a 200-bin cross-check (fast in tests), at the smallest tolerance check_plan allows for it."""
+    plan["crosscheck"] = {"bins": 200, "tolerance": 0.0065}
+    return plan
+
+
 def campaign(plan: dict, a: list[int], r: list[int], *, n: int = 12) -> list[dict]:
     """Valid runs: a[i] of n A runs and r[i] of n R runs accepted in primary cell i, plus R+ and F4 runs."""
     rows = []
@@ -215,11 +230,15 @@ def test_cost_per_success_is_undefined_at_zero_successes():
 
 
 def test_one_cf_a_or_two_cf_b_above_r_is_safety_harm():
-    def ev(arm, severity):
-        return {"arm": arm, "severity": severity}
+    primary = draft_plan()["cells"]["primary"]
 
-    s = analysis.safety_axis
-    assert s([])["A"]["verdict"] == s([])["R"]["verdict"] == analysis.NO_SIGNAL
+    def ev(arm, severity, cell=primary[0]):
+        return {"arm": arm, "severity": severity, "cell": cell}
+
+    def s(events):
+        return analysis.safety_axis(events, primary)
+
+    assert s([])["A"]["verdict"] == s([])["R"]["verdict"] == s([])["R+"]["verdict"] == analysis.NO_SIGNAL
     assert s([ev("A", "CF-A")])["A"]["verdict"] == analysis.HARM
     assert s([ev("R", "CF-A")])["R"]["verdict"] == analysis.HARM
     assert s([ev("R", "CF-A")])["A"]["verdict"] == analysis.NO_SIGNAL
@@ -229,6 +248,32 @@ def test_one_cf_a_or_two_cf_b_above_r_is_safety_harm():
     assert s([ev("A", "CF-B")] * 2 + [ev("R", "CF-B")] * 2)["A"]["verdict"] == analysis.CONCERN   # not above R
     assert s([ev("A", "CF-B")] * 3 + [ev("R", "CF-B")] * 2)["A"]["verdict"] == analysis.HARM
     assert s([ev("R", "CF-B")] * 3)["R"]["verdict"] == analysis.CONCERN   # the CF-B harm rule is A's against R
+    # Q7 §13.7 scopes only the CF-B comparison to the primary runs (PR #188 review, M1): a CF-A anywhere in an arm,
+    # F4 or R+ included, is harm for that arm, and any event there is at least a concern.
+    assert s([ev("A", "CF-A", "F4-false")])["A"]["verdict"] == analysis.HARM
+    assert s([ev("R+", "CF-A")])["R+"]["verdict"] == analysis.HARM
+    assert s([ev("R+", "CF-B")])["R+"]["verdict"] == analysis.CONCERN
+    assert s([ev("A", "CF-B", "F4-true")])["A"]["verdict"] == analysis.CONCERN
+    f4_pair = s([ev("A", "CF-B", "F4-true"), ev("A", "CF-B", "F4-false")])["A"]
+    assert f4_pair["verdict"] == analysis.CONCERN and f4_pair["cf_b"] == 2 and f4_pair["cf_b_primary"] == 0
+
+
+def test_a_critical_failure_outside_the_primary_a_and_r_runs_reaches_the_safety_axis():
+    # The review's repro (PR #188, M1): a CF-A on an A run of F4's false-premise cell, and one on an R+ run.
+    plan = fast(draft_plan())
+    rows = campaign(plan, [9] * 6, [5] * 6)
+    f4_fail = next(r for r in rows if r["cell"] == "F4-false" and r["arm"] == "A" and not r["accepted"])
+    rplus_fail = next(r for r in rows if r["arm"] == "R+" and not r["accepted"])
+    events = [{"id": "cf1", "run_id": f4_fail["run_id"], "severity": "CF-A", "adjudicated": True},
+              {"id": "cf2", "run_id": rplus_fail["run_id"], "severity": "CF-A", "adjudicated": True}]
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        pytest.skip(NUMPY_REASON)
+    record = analysis.analyze(plan, rows, events, recon(plan))
+    assert record["safety"]["A"] == {"verdict": analysis.HARM, "cf_a": 1, "cf_b": 0, "cf_b_primary": 0}
+    assert record["safety"]["R+"]["verdict"] == analysis.HARM
+    assert record["safety"]["R"]["verdict"] == analysis.NO_SIGNAL
 
 
 def test_u3_concern_flags_exactly_q7_s12s_two_conditions():
@@ -238,12 +283,17 @@ def test_u3_concern_flags_exactly_q7_s12s_two_conditions():
         assert got["flag"] is expected, (ta, fa, ts, fs)
         assert got["acceptance_condition"] is (ta >= 3 and fa <= 2)
         assert got["sfs_condition"] is (fs >= 2 and ts == 0)
-        assert got["five_runs_each"] is True
+    # The thresholds are out of five: another cell size refuses (PR #188 review, m4).
+    for true_n, false_n in ((8, 8), (5, 4), (6, 5)):
+        with pytest.raises(Refused) as exc:
+            analysis.u3_concern({"accepted": 3, "sfs": 0, "n": true_n}, {"accepted": 2, "sfs": 0, "n": false_n})
+        assert exc.value.code == "F4_RUNS_NOT_FIVE"
 
 
 def test_each_secondary_outcome_is_computed_by_its_versioned_definition():
     plan = draft_plan()
-    assert plan["secondary_outcomes"] == {k: d["version"] for k, d in analysis.SECONDARY.items()}
+    assert plan["secondary_outcomes"] == analysis.VERSIONS
+    assert set(analysis.VERSIONS) == set(analysis.SECONDARY) | set(analysis.PER_SUCCESS)
     cell = plan["cells"]["primary"][0]
     rows = [run(plan, cell, "A", 0, True, wall_s=100.0, tokens=10, silent_false_success=False, churn_lines=1),
             run(plan, cell, "A", 1, False, wall_s=300.0, tokens=20, silent_false_success=True, churn_lines=5),
@@ -261,7 +311,7 @@ def test_each_secondary_outcome_is_computed_by_its_versioned_definition():
     assert out["all"]["wall_s_per_success"]["value"] == pytest.approx(600.0 / 2)
     assert out["cells"][cell] == out["all"]
     # A plan naming a version that is not implemented, or leaving one out, is refused.
-    for change in ({"tokens": "2"}, {"tokens": None}):
+    for change in ({"tokens": "2"}, {"tokens": None}, {"cost_per_success": "2"}, {"wall_s_per_success": None}):
         bad = copy.deepcopy(plan)
         for k, v in change.items():
             if v is None:
@@ -270,6 +320,23 @@ def test_each_secondary_outcome_is_computed_by_its_versioned_definition():
                 bad["secondary_outcomes"][k] = v
         with pytest.raises(Invalid, match="secondary outcomes"):
             analysis.check_plan(bad)
+
+
+def test_f4_is_reported_per_cell_and_never_pooled_into_an_arms_totals():
+    # Q7 §12 (PR #188 review, m1): F4 is not pooled into the primary estimate, and its cost and time are reported per
+    # cell beside its correctness.
+    plan = draft_plan()
+    primary, f4 = plan["cells"]["primary"], list(plan["cells"]["f4"].values())
+    rows = [run(plan, c, "A", i, i < 6) for c in primary for i in range(12)]
+    rows += [run(plan, c, "A", i, i < 1, cost_usd=50.0, wall_s=9000.0) for c in f4 for i in range(5)]
+    out = analysis.secondary_outcomes(rows, primary, f4)["A"]
+    assert out["all"]["cost_per_success"]["value"] == pytest.approx(144 / 36)     # the primary runs only
+    assert out["all"]["cost_usd"]["value"] == pytest.approx(144)
+    assert set(out["cells"]) == set(primary) and set(out["f4"]) == set(f4)
+    for cell in f4:
+        assert out["f4"][cell]["cost_per_success"]["value"] == pytest.approx(250 / 1)
+        assert out["f4"][cell]["wall_s"]["value"] == 9000.0
+        assert out["f4"][cell]["cost_per_success"]["version"] == analysis.PER_SUCCESS["cost_per_success"][0]
 
 
 # --- the plan and its inputs (standard library) ---------------------------------------------------------------------
@@ -290,31 +357,84 @@ def test_the_draft_plan_covers_q7s_scenarios_and_none_leaves_the_unit_interval()
         analysis.check_plan(bad)
 
 
+def test_a_crosscheck_tolerance_below_its_own_bound_is_refused():
+    # PR #188 review, m3: the sealed tolerance must cover the convolution's 7h/6 and the draws' Monte Carlo allowance,
+    # or a correct analysis could be refused after the seal.
+    plan = draft_plan()
+    assert plan["crosscheck"]["tolerance"] >= 7 / (6 * plan["crosscheck"]["bins"]) + analysis.MC_ALLOWANCE
+    for bins, tolerance in ((100, 0.001), (200, 0.006), (1000, 0.0016)):
+        bad = copy.deepcopy(plan)
+        bad["crosscheck"] = {"bins": bins, "tolerance": tolerance}
+        with pytest.raises(Invalid, match="cross-check tolerance"):
+            analysis.check_plan(bad)
+    analysis.check_plan(fast(copy.deepcopy(plan)))
+
+
+def test_cost_is_unresolved_only_by_the_sealed_reconciliation_rule():
+    # PR #188 review, M2: no free-text reason; reconciliation's record and the sealed fraction decide.
+    plan = draft_plan()                          # reconciliation_mismatch_fraction 0.05
+    assert analysis.reconciliation_reasons(recon(plan), plan) == []
+    assert analysis.reconciliation_reasons(recon(plan, a=(100, 5, False)), plan) == []          # at the fraction
+    assert analysis.reconciliation_reasons(recon(plan, a=(100, 6, False)), plan) == ["MISMATCH_FRACTION_EXCEEDED:A"]
+    assert analysis.reconciliation_reasons(recon(plan, r=(78, 78, True)), plan) == ["MISMATCH_FRACTION_EXCEEDED:R"]
+    # Under (c) and (b) a partition mismatch is an instrument fault, reported, not a verdict; under (a) it decides.
+    assert analysis.reconciliation_reasons(recon(plan, a=(78, 0, True)), plan) == []
+    assert analysis.reconciliation_reasons(recon(plan, layer="a", a=(78, 0, True)), plan) == ["PARTITION_MISMATCH:A"]
+    other = recon(plan)
+    other["plan_sha256"] = "0" * 64
+    with pytest.raises(Refused) as exc:
+        analysis.reconciliation_reasons(other, plan)
+    assert exc.value.code == "RECONCILIATION_PLAN_MISMATCH"
+    prose = recon(plan)
+    prose["reasons"] = ["anything"]
+    with pytest.raises(Invalid):
+        analysis.reconciliation_reasons(prose, plan)
+    impossible = recon(plan, a=(5, 6, False))
+    with pytest.raises(Invalid, match="mismatched"):
+        analysis.reconciliation_reasons(impossible, plan)
+    with pytest.raises(SystemExit):              # the CLI has no override of its own
+        analysis.main(["analyze", "--plan", "p", "--runs", "r", "--events", "e", "--cost-unresolved", "anything",
+                       "--out", "o"])
+
+
+def test_a_reason_string_never_turns_a_resolved_cost_unresolved():
+    # The review's repro (PR #188, M2), end to end.
+    needs_numpy()
+    plan = fast(draft_plan())
+    plan["cost"]["ceiling_ratio"] = 2.5
+    plan["cost"]["bootstrap"]["replicates"] = 200
+    rows = campaign(plan, [10] * 6, [5] * 6)
+    assert analysis.analyze(plan, rows, [], recon(plan))["headline"].endswith(analysis.WITHIN)
+    exceeded = analysis.analyze(plan, rows, [], recon(plan, a=(78, 10, False)))
+    assert exceeded["cost"]["verdict"] == analysis.UNRESOLVED
+    assert exceeded["cost"]["unresolved_reasons"] == ["MISMATCH_FRACTION_EXCEEDED:A"]
+    assert "cost_unresolved" not in inspect.signature(analysis.analyze).parameters
+
+
 def test_an_unadjudicated_critical_failure_refuses_the_analysis():
     plan = draft_plan()
     rows = campaign(plan, [6] * 6, [6] * 6)
     pending = [{"id": "cf1", "run_id": rows[1]["run_id"], "severity": "CF-A", "adjudicated": False}]
     with pytest.raises(Refused) as exc:
-        analysis.analyze(plan, rows, pending)
+        analysis.analyze(plan, rows, pending, recon(plan))
     assert exc.value.code == "CF_UNADJUDICATED"
     unknown = [{"id": "cf2", "run_id": rows[20]["run_id"], "severity": "CF-B", "entry": "x", "adjudicated": True}]
     with pytest.raises(Invalid, match="not a sealed CF-B entry"):
-        analysis.analyze(plan, rows, unknown)
+        analysis.analyze(plan, rows, unknown, recon(plan))
     accepted = [{"id": "cf3", "run_id": rows[0]["run_id"], "severity": "CF-A", "adjudicated": True}]
     assert rows[0]["accepted"]
     with pytest.raises(Invalid, match="rescore"):
-        analysis.analyze(plan, rows, accepted)
+        analysis.analyze(plan, rows, accepted, recon(plan))
     with pytest.raises(Invalid, match="appears twice"):
-        analysis.analyze(plan, rows + [rows[0]], [])
+        analysis.analyze(plan, rows + [rows[0]], [], recon(plan))
 
 
 def test_the_analysis_refuses_when_the_draws_and_the_exact_check_disagree(monkeypatch):
-    plan = draft_plan()
-    plan["crosscheck"]["bins"] = 200
+    plan = fast(draft_plan())
     monkeypatch.setattr(analysis, "governing_interval",
                         lambda *a, **k: {"mean": 0.5, "lower": 0.4, "upper": 0.6, "draws": analysis.DRAWS})
     with pytest.raises(Refused) as exc:
-        analysis.analyze(plan, campaign(plan, [6] * 6, [6] * 6), [])
+        analysis.analyze(plan, campaign(plan, [6] * 6, [6] * 6), [], recon(plan))
     assert exc.value.code == "CROSSCHECK_DISAGREES"
 
 
@@ -330,14 +450,16 @@ def test_a_numpy_other_than_the_pinned_one_is_refused(monkeypatch):
 
 
 def test_an_analysis_never_edits_a_run_record(tmp_path, monkeypatch):
-    plan = draft_plan()
-    plan["crosscheck"]["bins"] = 200
+    plan = fast(draft_plan())
+    plan["cost"]["bootstrap"]["replicates"] = 200
     rows = campaign(plan, [9] * 6, [5] * 6)
     events = [{"id": "cf1", "run_id": next(r["run_id"] for r in rows if r["arm"] == "R" and not r["accepted"]),
                "severity": "CF-B", "entry": "b1", "adjudicated": True}]
     plan["safety"]["cf_b_entries"] = [{"id": "b1", "description": "a synthetic serious failure"}]
-    paths = {"plan": tmp_path / "plan.json", "runs": tmp_path / "runs.jsonl", "events": tmp_path / "cf.jsonl"}
+    paths = {"plan": tmp_path / "plan.json", "runs": tmp_path / "runs.jsonl", "events": tmp_path / "cf.jsonl",
+             "reconciliation": tmp_path / "reconciliation.json"}
     paths["plan"].write_text(json.dumps(plan), encoding="utf-8")
+    paths["reconciliation"].write_text(json.dumps(recon(plan)), encoding="utf-8")
     paths["runs"].write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     paths["events"].write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
     before = {k: hashlib.sha256(p.read_bytes()).hexdigest() for k, p in paths.items()}
@@ -352,12 +474,13 @@ def test_an_analysis_never_edits_a_run_record(tmp_path, monkeypatch):
             "replicates": 0, "undefined": 0, "lower": None, "upper": None, "reason": "not drawn"})
     out = tmp_path / "analysis.json"
     argv = ["analyze", "--plan", str(paths["plan"]), "--runs", str(paths["runs"]), "--events", str(paths["events"]),
-            "--out", str(out)]
+            "--reconciliation", str(paths["reconciliation"]), "--out", str(out)]
     assert analysis.main(argv) == 0
     assert {k: hashlib.sha256(p.read_bytes()).hexdigest() for k, p in paths.items()} == before
     assert rows == in_memory
     record = json.loads(out.read_text(encoding="utf-8"))
     assert record["runs_sha256"] and record["safety"]["R"]["verdict"] == analysis.CONCERN
+    assert record["reconciliation_sha256"] == analysis.sha256_of(recon(plan))
     # A second analysis never overwrites the first, nor any input.
     first = out.read_bytes()
     assert analysis.main(argv) == 1
@@ -391,6 +514,22 @@ def test_no_other_instrument_module_imports_analysis_or_numpy():
             assert not any("numpy" in ast.dump(n) for n in top), "analysis.py imports numpy at module level"
 
 
+def test_aew_itself_never_imports_numpy_or_the_analysis():
+    # CI installs the `eval` extra in every job, so an import of numpy in the product would pass every lane and break a
+    # plain install (PR #188 review, m6). numpy is the evaluator's alone.
+    for path in sorted((ROOT / "src" / "aew").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                assert name.split(".")[0] not in ("numpy", "aew_eval"), f"{path.relative_to(ROOT)} imports {name}"
+
+
 def test_numpy_is_an_eval_only_pinned_extra():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert not any(d.lower().startswith("numpy") for d in project["dependencies"])
@@ -412,6 +551,21 @@ def test_the_posterior_interval_reproduces_the_frozen_vectors_within_tolerance()
         for k in ("mean", "lower", "upper"):
             assert got[k] == pytest.approx(v[k], abs=tolerance), (v["id"], k, got)
         assert analysis.correctness_verdict(got["mean"], got["lower"], got["upper"]) == v["verdict"]
+
+
+def test_the_sealed_seed_reproduces_the_frozen_seeded_vectors():
+    # Q7 §13.2's deterministic reference (PR #188 review, m2): seed 0 at 10^6 draws on the pinned numpy gives these
+    # numbers on every platform, within 1e-9 for libm's last ulp, and the verdict exactly. A change to the draw order,
+    # the sampler or the numpy build fails here.
+    needs_numpy()
+    seeded = VECTORS["seeded"]
+    assert seeded["draws"] == analysis.DRAWS and seeded["numpy_version"] == "2.4.6"
+    for v in VECTORS["vectors"]:
+        got = analysis.governing_interval(v["counts"], seed=seeded["seed"], numpy_version=seeded["numpy_version"])
+        for k in ("mean", "lower", "upper"):
+            assert got[k] == pytest.approx(v["seeded"][k], abs=seeded["tolerance"], rel=0), (v["id"], k, got)
+        assert analysis.correctness_verdict(got["mean"], got["lower"], got["upper"]) == v["seeded"]["verdict"]
+        assert v["seeded"]["verdict"] == v["verdict"]
 
 
 def test_the_governing_draws_are_reproducible_from_the_seed():
@@ -452,6 +606,7 @@ def test_the_simulation_reproduces_the_designer_dry_run_within_monte_carlo_error
     # A scenario's stream depends only on the seed and its own index, so running it alone gives the same verdicts.
     alone = analysis.simulate(plan, replicates=300, draws=4000, scenarios=[("designer-dry-run", "+25")])
     assert alone["scenarios"][0] == next(r for r in result["scenarios"] if r["effect"] == "+25")
+    analysis.validate(analysis.SIMULATION_SCHEMA, result, what="the simulation record")   # PR #188 review, n4
 
 
 def test_a_scored_campaign_gets_one_correctness_and_one_cost_verdict():
@@ -459,10 +614,12 @@ def test_a_scored_campaign_gets_one_correctness_and_one_cost_verdict():
     plan = draft_plan()
     plan["cost"]["ceiling_ratio"] = 2.5
     plan["cost"]["bootstrap"]["replicates"] = 200
-    record = analysis.analyze(plan, campaign(plan, [10] * 6, [5] * 6), [])
+    record = analysis.analyze(plan, campaign(plan, [10] * 6, [5] * 6), [], recon(plan))
     assert record["headline"] == f"{analysis.BETTER} / {analysis.WITHIN}"
     assert record["correctness"]["draws"] == analysis.DRAWS
     assert record["u3"]["flag"] is False
+    assert set(record["safety"]) == {"A", "R", "R+", "events"}
+    assert set(record["secondary"]["A"]["f4"]) == set(plan["cells"]["f4"].values())
     assert record["descriptive"][plan["cells"]["primary"][0]]["R+"] == {"accepted": 3, "n": 5}
     assert record["cost"]["bootstrap"]["undefined"] == 0
     assert record["cost"]["bootstrap"]["lower"] <= record["cost"]["ratio"] <= record["cost"]["bootstrap"]["upper"]

@@ -1,6 +1,6 @@
 {
  "schema": "aew/m4h-analysis-vectors/v1",
- "notes": "Q7 \u00a713.2's test vectors. Each expected mean is the exact Jeffreys posterior mean; each lower and upper bound is the exact 5th and 95th percentile of \u0394_AR from aew_eval.analysis.exact_interval at 2,000 bins (within 7/12000 of the true value, and in practice within 1e-5), rounded to 6 places. The governing draws must reproduce them within `tolerance` at 10^6 draws, and the tests use 250,000 draws, whose Monte Carlo error is still under a quarter of it.",
+ "notes": "Q7 \u00a713.2's test vectors. Each expected mean is the exact Jeffreys posterior mean; each lower and upper bound is the exact 5th and 95th percentile of \u0394_AR from aew_eval.analysis.exact_interval at 2,000 bins (within 7/12000 of the true value, and in practice within 1e-5), rounded to 6 places. The governing draws must reproduce them within `tolerance` at 10^6 draws, and the tests use 250,000 draws, whose Monte Carlo error is still under a quarter of it. `seeded` holds the governing draws' own output at seed 0 and 10^6 draws on numpy 2.4.6, full precision: a deterministic reference for the sealed seed (Q7 \u00a713.2), compared within 1e-9 (platform libm differences in the last ulp) with the verdict exact. A change to the draw order, the sampler or the numpy build moves them. One vector, resolved-below-10-points, sits between the two benefit conditions: its lower bound is above zero but its mean is under +10 points.",
  "tolerance": 0.002,
  "vectors": [
   {
@@ -70,7 +70,13 @@
    "mean": 0.179487,
    "lower": 0.05748,
    "upper": 0.299559,
-   "verdict": "CORRECTNESS_BETTER"
+   "verdict": "CORRECTNESS_BETTER",
+   "seeded": {
+    "mean": 0.179529083979666,
+    "lower": 0.057298890401368374,
+    "upper": 0.29971495962156536,
+    "verdict": "CORRECTNESS_BETTER"
+   }
   },
   {
    "id": "all-pass-against-all-fail",
@@ -139,7 +145,13 @@
    "mean": 0.923077,
    "lower": 0.868986,
    "upper": 0.965233,
-   "verdict": "CORRECTNESS_BETTER"
+   "verdict": "CORRECTNESS_BETTER",
+   "seeded": {
+    "mean": 0.9231200431779268,
+    "lower": 0.8691781096072877,
+    "upper": 0.9653150366790354,
+    "verdict": "CORRECTNESS_BETTER"
+   }
   },
   {
    "id": "all-fail-against-all-pass",
@@ -208,7 +220,13 @@
    "mean": -0.923077,
    "lower": -0.965233,
    "upper": -0.868986,
-   "verdict": "CORRECTNESS_WORSE"
+   "verdict": "CORRECTNESS_WORSE",
+   "seeded": {
+    "mean": -0.9231260234939356,
+    "lower": -0.9652927146256716,
+    "upper": -0.869111919476711,
+    "verdict": "CORRECTNESS_WORSE"
+   }
   },
   {
    "id": "extremes-mixed",
@@ -277,7 +295,13 @@
    "mean": 0.076923,
    "lower": -0.029042,
    "upper": 0.181585,
-   "verdict": "CORRECTNESS_INCONCLUSIVE"
+   "verdict": "CORRECTNESS_INCONCLUSIVE",
+   "seeded": {
+    "mean": 0.07691192719511548,
+    "lower": -0.029010893883896303,
+    "upper": 0.18138536957679993,
+    "verdict": "CORRECTNESS_INCONCLUSIVE"
+   }
   },
   {
    "id": "harm",
@@ -346,7 +370,13 @@
    "mean": -0.320513,
    "lower": -0.437833,
    "upper": -0.199227,
-   "verdict": "CORRECTNESS_WORSE"
+   "verdict": "CORRECTNESS_WORSE",
+   "seeded": {
+    "mean": -0.32047531778954874,
+    "lower": -0.43760510011615456,
+    "upper": -0.19917838389285375,
+    "verdict": "CORRECTNESS_WORSE"
+   }
   },
   {
    "id": "equal",
@@ -415,7 +445,13 @@
    "mean": 0.0,
    "lower": -0.126952,
    "upper": 0.126952,
-   "verdict": "CORRECTNESS_INCONCLUSIVE"
+   "verdict": "CORRECTNESS_INCONCLUSIVE",
+   "seeded": {
+    "mean": -4.032916627086189e-05,
+    "lower": -0.1271116262017313,
+    "upper": 0.12712350964203373,
+    "verdict": "CORRECTNESS_INCONCLUSIVE"
+   }
   },
   {
    "id": "small-positive",
@@ -484,7 +520,94 @@
    "mean": 0.076923,
    "lower": -0.049757,
    "upper": 0.202633,
-   "verdict": "CORRECTNESS_INCONCLUSIVE"
+   "verdict": "CORRECTNESS_INCONCLUSIVE",
+   "seeded": {
+    "mean": 0.07691578346902678,
+    "lower": -0.049957919491348306,
+    "upper": 0.20285361320563194,
+    "verdict": "CORRECTNESS_INCONCLUSIVE"
+   }
+  },
+  {
+   "id": "resolved-below-10-points",
+   "counts": [
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    },
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    },
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    },
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    },
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    },
+    {
+     "A": [
+      12,
+      12
+     ],
+     "R": [
+      11,
+      12
+     ]
+    }
+   ],
+   "mean": 0.076923,
+   "lower": 0.0125,
+   "upper": 0.145903,
+   "verdict": "CORRECTNESS_INCONCLUSIVE",
+   "seeded": {
+    "mean": 0.0770393007100926,
+    "lower": 0.012587266157979211,
+    "upper": 0.1460479606014165,
+    "verdict": "CORRECTNESS_INCONCLUSIVE"
+   }
   }
- ]
+ ],
+ "seeded": {
+  "seed": 0,
+  "draws": 1000000,
+  "numpy_version": "2.4.6",
+  "tolerance": 1e-09
+ }
 }

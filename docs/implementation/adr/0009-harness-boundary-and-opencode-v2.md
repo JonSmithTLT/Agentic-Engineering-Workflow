@@ -308,11 +308,28 @@ A supervisor wedged between its custody acknowledgement and `running` kept its h
 only once its watch loop runs. A single-run `aew harness wait` on that run read `starting` until the adapter's own
 launch timeouts or the wait's `--timeout` ended it.
 
-- **The deadline.** A start has `STARTING_S` (300 s; `AEW_RUN_START_S` in the operator's launch environment) from its
-  custody record to `running`. That covers the contract, the sandbox and its self-test, and the adapter's launch: for
-  OpenCode a server start, health, the catalog and agent checks, and the first prompt, each with its own timeout.
-- **At the deadline the starting heartbeat stops,** so the run reads `lost` within `STARTING_S` + `STALE_AFTER_S`
-  (310 s) of custody, and a waiter notices within its 2 s re-check. Each phase now has a stated bound:
+- **The deadline caps the whole start,** from its custody record to `running`: the contract, the sandbox and its
+  self-test, and the adapter's launch (for OpenCode: the server start, health, the catalog and agent checks, the
+  session and the first prompt). It is not a per-step timeout; each step keeps its own.
+- **Its default is derived, never shorter than the steps it caps** (`supervisor.starting_limit_s`, review of PR #149,
+  F1). It is the sum of three parts, read from the same settings and environment overrides the steps use:
+  - the sandbox self-test's bounds (`probe.BOUND_S`, 40 s);
+  - the adapter's own launch bounds in series (`HarnessAdapter.launch_bound_s`). For OpenCode at its defaults that is
+    520 s: the server's address 60, `/api/info` 30, the schema 60, the catalog and the agent projection each 90
+    (`AEW_OPENCODE_CATALOG_S`) plus a 30 s request in flight, then four 30 s requests and the event stream's 10 s. An
+    adapter that computes nothing declares 240 s;
+  - a margin of 60 s for the contract, the bridge and the layout.
+
+  The result is 620 s for OpenCode at its defaults. Raising `AEW_OPENCODE_CATALOG_S` raises it by twice the increase.
+  `AEW_RUN_START_S`, in the operator's launch environment, replaces the derived value. The failure reason and the bridge
+  refusal name it.
+- **Measured.** A run's start (first record to running, OpenCode 2.0.18, real server and sandbox) measured 2.6–3.0 s
+  on Rocky 8 and a median of 4.4–4.5 s (7.0 s worst) on a fully loaded Windows host. The catalog fetch adds under
+  0.5 s, does not stall when the network hangs, and is bounded inside the adapter by `CATALOG_WAIT_S`/`CATALOG_SETTLE_S`.
+  The start deadline bounds a wedged start; it is not a performance budget.
+- **At the deadline the starting heartbeat stops,** so the run reads `lost` within the deadline + `STALE_AFTER_S` of
+  custody (630 s for OpenCode at its defaults), and a waiter notices within its 2 s re-check. Each phase now has a
+  stated bound:
   - running: a heartbeat that stops (supervisor killed, watch loop wedged) reads `lost` after `STALE_AFTER_S` (10 s);
   - ending: the ending heartbeat stops after `TERMINATE_S` + `ENDING_EXTRA_S` (80 s), so `lost` comes within about
     90 s of the end beginning;
@@ -336,6 +353,12 @@ launch timeouts or the wait's `--timeout` ended it.
   - no deadline check before `running`: the run never ends `launch_failed`;
   - a bridge that still serves: the agent's `whoami` succeeds;
   - an ending that beats again: the run reads `starting` again.
+
+  `test_a_run_that_outlasts_the_start_deadline_once_running_is_unaffected_by_it` (same file) guards the other side:
+  a run that is running past the deadline keeps its bridge and ends with evidence. A deadline check that ignored the
+  status fails it. `test_a_start_deadline_never_cuts_off_the_adapters_own_launch_bounds`
+  (`tests/unit/test_harness_units.py`) checks two things in a fresh process. The derived default is at least the
+  adapter's bounds plus the self-test's, and grows with `AEW_OPENCODE_CATALOG_S`. `AEW_RUN_START_S` overrides it.
 
 ## Amendment 2026-10-09 — the post-run scan reads what the run left defensively, and says when it is incomplete
 
@@ -478,9 +501,9 @@ An environment variable changes only the process that reads it. An agent control
 | `AEW_LEAD_BROKER`, `AEW_LEAD_BROKER_KEY` | the `aew` CLI inside a Lead session | route Lead commands to the broker; refuse credential-issuing commands and `--print-credential` locally | unsetting them leaves a command with no credential (refused by the engine). Credentials still go only to the terminal, the takeover prompt names the requester, and the session's processes end before an acquired seat is released |
 | `AEW_SCRATCH` | the agent | where scratch files go | no authority |
 | `AEW_HARNESS_ADAPTERS` | the launching CLI and the supervisor | extra harness adapters (code it loads) | read from the operator's launch environment; never passed to an agent |
-| `AEW_OPENCODE_BIN`, `AEW_OPENCODE_CATALOG_S`, `AEW_OPENCODE_CATALOG_SETTLE_S` | the supervisor (OpenCode adapter) | which OpenCode binary, catalog timeouts | as above |
+| `AEW_OPENCODE_BIN`, `AEW_OPENCODE_CATALOG_S`, `AEW_OPENCODE_CATALOG_SETTLE_S` | the supervisor (OpenCode adapter) | which OpenCode binary, catalog timeouts (a raised catalog wait raises the derived start deadline with it) | as above |
 | `AEW_LAUNCH_ACK_S`, `AEW_RUN_STALE_S` | the launching CLI; status readers | launch acknowledgement wait; supervisor staleness | timing only, and only in the reading process |
-| `AEW_RUN_START_S` | the supervisor | the start's deadline (amendment 2026-10-09: a run's start has a deadline) | timing only; read from the operator's launch environment, never passed to an agent |
+| `AEW_RUN_START_S` | the supervisor | replaces the derived deadline that caps a run's whole start, from custody to `running` (amendment 2026-10-09: a run's start has a deadline) | timing only; read from the operator's launch environment, never passed to an agent |
 | `AEW_FAULT`, `AEW_FAULT_MODE`, `AEW_PAUSE` | any `aew` process | fault injection and pause points (tests) | effective only in the process that reads them; a credential-less process can fail or pause only itself |
 | `AEW_PROFILE` | any `aew` process | write a timing profile to a file | as above |
 

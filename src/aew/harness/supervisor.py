@@ -33,6 +33,7 @@ from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
 from aew.harness import contract as K
+from aew.harness.base import HarnessAdapter
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
 
@@ -41,10 +42,25 @@ STATE_POLL_S = 2.0
 HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
 ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
-# From custody to running: the contract, the sandbox and its self-test, and the adapter's launch (an OpenCode server
-# start, health, catalog and agent checks, the first prompt). A start still unfinished then is abandoned: its heartbeat
-# stops, so the run reads `lost` within STARTING_S + STALE_AFTER_S of custody, and it never becomes `running`.
-STARTING_S = float(os.environ.get("AEW_RUN_START_S", "300"))
+START_ENV = "AEW_RUN_START_S"
+STARTING_MARGIN_S = 60.0  # beyond the self-test and the adapter's launch: the contract, the bridge, the layout
+
+
+def starting_limit_s(harness: str | None) -> float:
+    """A start's deadline, from custody to running (ADR-0009 amendment 2026-10-09). ``AEW_RUN_START_S`` when the
+    operator set it; otherwise the sandbox self-test's and the adapter's own launch bounds in series, plus a margin, so
+    the deadline caps the whole start without ever cutting off a step still inside its own timeout. A start still
+    unfinished then is abandoned: its heartbeat stops, so the run reads `lost` within the deadline + STALE_AFTER_S of
+    custody, and it never becomes `running`."""
+    from aew.harness.containment import probe
+
+    if os.environ.get(START_ENV):
+        return float(os.environ[START_ENV])
+    try:
+        bound = registry.load(harness).launch_bound_s() if harness else HarnessAdapter.LAUNCH_BOUND_S
+    except errors.AEWError:  # the launch loads it again and fails, well inside this deadline
+        bound = HarnessAdapter.LAUNCH_BOUND_S
+    return probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
 def log(msg: str) -> None:
@@ -78,7 +94,8 @@ class Supervisor:
         self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
         self._started_mono: float | None = None  # when the harness started: the usage record's wall time (F25 R1)
-        self._start_until: float | None = None  # the start's deadline (monotonic), set at custody
+        self._start_s = 0.0  # the start's deadline in seconds from custody, and as a monotonic time
+        self._start_until: float | None = None
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._lock = threading.Lock()
@@ -119,8 +136,8 @@ class Supervisor:
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if self._start_overdue():  # the run reads (or is about to read) `lost`: nothing it does counts any more
-            raise errors.HarnessLaunchFailed(f"run {self.run} did not start within {STARTING_S:g}s and is abandoned",
-                                             run=self.run)
+            raise errors.HarnessLaunchFailed(f"run {self.run} did not start within {self._start_s:g}s ({START_ENV}) "
+                                             "and is abandoned", run=self.run)
         problem = self.authority_problem()
         if problem:
             self.stop_reason = (K.TERMINATED, f"authority ended: {problem}")
@@ -160,7 +177,7 @@ class Supervisor:
                            execution_profile=profile)
         # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
         # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
-        self._starting_beats()
+        self._starting_beats(profile.get("harness"))
         self._save()  # status: starting — from here the run is visibly held, not merely unconfirmed
         faults.pause("harness.supervisor.after_custody_record")  # tests: a supervisor slow right after its first record
         self._send_ack({"custody": True, "run": self.run, "pid": os.getpid()})
@@ -187,7 +204,8 @@ class Supervisor:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
         if self._start_overdue():  # its heartbeat has stopped, and it may already have been read as `lost`
-            return self._launch_failed(f"the start took longer than {STARTING_S:g}s; the run was abandoned")
+            return self._launch_failed(f"the start took longer than {self._start_s:g}s ({START_ENV}); the run was "
+                                       "abandoned")
         self.record["status"] = K.RUNNING
         self.record["started_at"] = utc_now()
         self._started_mono = time.monotonic()
@@ -219,11 +237,12 @@ class Supervisor:
         if not procs.IS_WINDOWS:
             self.tree = procs.ProcessTree(layout=self.layout)
 
-    def _starting_beats(self) -> None:
+    def _starting_beats(self, harness: str | None) -> None:
         """Beat while the harness starts (a server start plus health checks can take a while); the watchdog loop
-        takes over once it runs, so a stalled watchdog shows as a stale heartbeat. Bounded by STARTING_S, so a
-        supervisor stuck while starting goes stale too (register E3)."""
-        self._start_until = time.monotonic() + STARTING_S
+        takes over once it runs, so a stalled watchdog shows as a stale heartbeat. Bounded by the start's deadline,
+        so a supervisor stuck while starting goes stale too (register E3)."""
+        self._start_s = starting_limit_s(harness)
+        self._start_until = time.monotonic() + self._start_s
         self._watching = self._background_beats("aew-starting-heartbeat", until=self._start_until)
 
     def _start_overdue(self) -> bool:

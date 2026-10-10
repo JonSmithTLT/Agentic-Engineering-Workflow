@@ -291,7 +291,7 @@ Built to the M4-D5 plan, revision 3, which the designer approved after two round
   - median 42.2 ms from the start of the commit (p90 47.6 ms), within the 50 ms budget;
   - median 13.3 ms from the commit's return.
   - The Rocky 8 measurement is still owed (OBX-37).
-- **Every phase of a run ends a wait within a stated time** (2026-10-09, ADR-0009 amendment "a run's start has a deadline", register E3). A run reads `lost` within 10 s once its heartbeat stops while running, about 90 s after an end that gets stuck, and 310 s after custody for a start that wedges. Before that amendment, a wedged start read `starting` until the wait's own `--timeout`.
+- **Every phase of a run ends a wait within a stated time** (2026-10-09, ADR-0009 amendment "a run's start has a deadline", register E3). A run reads `lost` within 10 s once its heartbeat stops while running, about 90 s after an end that gets stuck, and within its start deadline plus 10 s of custody for a start that wedges (630 s for OpenCode at its defaults; the deadline is derived from the adapter's own launch bounds, and `AEW_RUN_START_S` overrides it). Before that amendment, a wedged start read `starting` until the wait's own `--timeout`.
 - **Tests:** `tests/integration/test_harness_wait_any.py`: the first to end, a control-side end, the refusals and the timeout shape, the parse count under spurious wakes and under a commit; and, from the independent review: an invocation already ended when the wait starts (the initial snapshot is examined), a commit between the initial read and its identity (the identity is taken first), and `still_running` naming only runs live in both lanes.
 
 ### 2.10 Stage commands (M4-E; F15)

@@ -232,11 +232,28 @@ def test_a_proxy_passed_to_opencode_never_carries_its_loopback_traffic(tmp_path,
     tui = lead.tui_env(base, provider_env=[proxy, "NO_PROXY"])
     for env in (server, tui):
         assert env[proxy] == "http://proxy.example:3128"  # the provider traffic keeps the operator's proxy
-        assert no_proxy_of(env) == ["intranet.example", "127.0.0.1", "localhost", "::1"]
+        assert no_proxy_of(env) == ["intranet.example", "127.0.0.1", "localhost", "::1", "[::1]"]
     if sys.platform != "win32":
         assert server["no_proxy"] == server["NO_PROXY"]  # curl reads only the lower-case spelling
     else:
         assert [k for k in server if k.upper() == "NO_PROXY"] == ["NO_PROXY"]  # one entry: Windows ignores case
+
+
+@pytest.mark.parametrize("operator", [" a.example ,, a.example,", "b.example"])
+def test_the_operators_no_proxy_entries_are_kept_whatever_their_spelling_or_spacing(tmp_path, operator):
+    name = "NO_PROXY" if sys.platform == "win32" else "no_proxy"  # POSIX: the lower-case spelling merges too
+    base = {**base_env(), "HTTPS_PROXY": "http://proxy.example:3128", name: operator}
+    env = adapter.server_env(base, tmp_path, provider_env=["HTTPS_PROXY", name], config={}, password="p")
+    kept = list(dict.fromkeys(h.strip() for h in operator.split(",") if h.strip()))
+    assert no_proxy_of(env) == [*kept, "127.0.0.1", "localhost", "::1", "[::1]"]
+
+
+def test_an_operators_no_proxy_star_is_left_exactly_as_it_was(tmp_path):
+    base = {**base_env(), "HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "*"}
+    server = adapter.server_env(base, tmp_path, provider_env=["HTTPS_PROXY", "NO_PROXY"], config={}, password="p")
+    tui = lead.tui_env(base, provider_env=["HTTPS_PROXY", "NO_PROXY"])
+    for env in (server, tui):  # urllib reads * only as the whole value: appending would re-enable the proxy
+        assert {k: v for k, v in env.items() if k.upper() == "NO_PROXY"} == {"NO_PROXY": "*"}
 
 
 def test_without_a_proxy_the_harness_environment_gains_no_no_proxy(tmp_path):

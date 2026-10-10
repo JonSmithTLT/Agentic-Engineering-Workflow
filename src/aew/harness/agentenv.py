@@ -25,18 +25,23 @@ POSIX_KEEP = frozenset({"HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "TERM", "
 SCRATCH = "AEW_SCRATCH"
 AGENT_VARS = ("AEW_INVOCATION", "AEW_RUN", "AEW_WORK_UNIT", bridge.ENV_ENDPOINT, bridge.ENV_KEY, SCRATCH)
 PROXY_VARS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"})
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# Bun (OpenCode 2.0.18) and Python's urllib match an IPv6 host in its bracketed URL form, so both spellings
+# (PR #159 review, finding 1).
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
 
 
 def bypass_proxy_for_loopback(env: dict[str, str]) -> None:
     """A proxy variable the operator passes to a harness (``provider_env``, ``--provider-env``) is for its provider
     traffic; its loopback traffic (the run's own server, a loopback-hosted provider, the Lead TUI's link to its server)
     must never go through the proxy. So when one is set, the loopback hosts join ``NO_PROXY``, keeping any entries the
-    operator passed. Without a proxy variable the environment is unchanged."""
+    operator passed. Without a proxy variable the environment is unchanged, and so is an operator's ``NO_PROXY=*``:
+    it already bypasses everything, and urllib honours ``*`` only as the whole value (PR #159 review, finding 2)."""
     if not any(k.upper() in PROXY_VARS and v for k, v in env.items()):
         return
     names = [k for k in env if k.upper() == "NO_PROXY"]
     current = [h.strip() for name in names for h in env[name].split(",") if h.strip()]
+    if "*" in current:
+        return
     value = ",".join(dict.fromkeys([*current, *LOOPBACK_HOSTS]))
     for name in names:
         del env[name]

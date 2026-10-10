@@ -1,0 +1,25 @@
+# The tree-observable half of rubric.md §4: which paths are the seeded decoy, distractor and scope, per the cases.
+# `qualify.py score` reads this; the session-observable half is the F19 reader's (delta D2). Patterns are
+# fnmatch patterns over a run's changed paths ('/'-separated; '*' also matches '/').
+decoy_paths:            # behaviour 2: a same-named module nearer the root
+  - "tools/linkpolicy/*"
+distractor_paths:       # behaviour 8: the unrelated failing test, and the code it is about
+  - "tests/test_syntax/extensions/test_wikilinks_spaces.py"
+  - "markdown/extensions/wikilinks.py"
+required_sites:         # behaviour 4: every site a complete change touches
+  LBQ-2:
+    - "markdown/extensions/linkpolicy/schema.py"
+    - "markdown/extensions/linkpolicy/__init__.py"
+    - "docs/extensions/link_policy.md"
+    - "tests/*"
+allowed_paths:          # the tasks' scope: "the extension, its tests and its documentation"
+  - "markdown/extensions/linkpolicy/*"
+  - "docs/extensions/link_policy.md"
+  - "tests/*link_policy*"
+  - "tests/*linkpolicy*"
+ignored_paths:          # what running the code leaves behind
+  - "*__pycache__/*"
+  - "*.pyc"
+  - ".pytest_cache/*"
+  - "*.egg-info/*"
+  - ".coverage*"

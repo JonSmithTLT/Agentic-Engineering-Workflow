@@ -81,6 +81,25 @@ def _export(tree: fixture.WorkTree, dest: Path) -> Path:
     return dest
 
 
+def profile_mismatch(requested: dict[str, str], observed: list[dict[str, Any]]) -> bool | None:
+    """Whether a model ran that the preregistration did not pin for its role: ``None`` when no model was observed.
+
+    Every observed ``{role, provider, model, effort}`` must be its role's pinned ``provider/model[#effort]``. An
+    effort the harness did not report never matches a pinned effort (the adapter's ``effort_unreported``)."""
+    if not observed:
+        return None
+    for seen in observed:
+        pinned = requested.get(str(seen.get("role")))
+        if pinned is None:
+            return True
+        ref = arms.model_ref(pinned)
+        if (seen.get("provider"), seen.get("model")) != (ref["provider"], ref["model"]):
+            return True
+        if "effort" in ref and (seen.get("effort_unreported") or seen.get("effort") != ref["effort"]):
+            return True
+    return False
+
+
 def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict[str, Path], work: Path,
              run_name: str, retry_of: str | None = None, scorer: Scorer | None = None,
              deadline_s: float = 3600.0, hidden_root: Path | None = None) -> dict[str, Any]:
@@ -118,6 +137,10 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
             raise Invalid(f"case {case.id} is scored by its hidden oracle; a second scorer is not used")
         runner = arms.arm_for(arm["kind"])
         runner.check(arm["config"], snap)
+        role = arm["config"].get("role") if arm["kind"] != "scripted" else None
+        if role is not None and frozen["profiles"]["roles"].get(role) != arm["config"].get("model"):
+            raise Invalid(f"arm {arm['id']} runs {arm['config'].get('model')!r} as {role}, but the preregistration "
+                          f"pins {role} to {frozen['profiles']['roles'].get(role)!r}")
         owner = _inside_a_work_tree(work)
         if owner is not None:
             raise Invalid(f"the scratch root {work} lies inside the git work tree {owner}: a run is built outside "
@@ -157,7 +180,7 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         repo = scratch / "repo"
         start = fixture.build(snap, repo, seeded=bool(arm["config"].get("seeded")))
         base = fixture.git(repo, "rev-parse", "HEAD")  # the repository is still the runner's own here
-        result = runner.run(repo, arm["config"], deadline_s=deadline_s)
+        result = runner.run(repo, arm["config"], deadline_s=deadline_s, task=case.manifest.get("task"))
         final = fixture.files_of(repo)
         outcome["changed_paths"] = fixture.changed_paths(start, final)
         if oracle is not None:  # after the arm has returned: no model-controlled process is running
@@ -168,6 +191,11 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         validity = {"status": "invalid_measurement", "reason_code": f"RUNNER_ERROR:{type(exc).__name__}"}
         outcome["error"] = str(exc)[-600:]
     after = _checkout_state()
+    mismatch = profile_mismatch(line["requested_profile"], result.observed_profiles)
+    if validity["status"] == "valid" and result.invalid:
+        validity = {"status": "invalid_measurement", "reason_code": result.invalid}
+    elif validity["status"] == "valid" and mismatch:  # design §9: a requested/observed mismatch is a validity fact
+        validity = {"status": "invalid_measurement", "reason_code": "PROFILE_MISMATCH"}
     # 5. Finalize, once.
     record = {
         "schema": RUN, "experiment": experiment, "preregistration_sha256": frozen["canonical_sha256"],
@@ -175,7 +203,7 @@ def run_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, cases: dict
         "case": {"id": case.id, "sha256": snap.sha256, "hidden_sha256": case.manifest["hidden_sha256"]},
         "arm": {"id": arm["id"], "kind": arm["kind"], "config_sha256": sha256_of(arm["config"])},
         "profile": {"requested": line["requested_profile"], "observed": result.observed_profiles,
-                    "mismatch": None},  # not assessed: no arm built yet observes a model profile
+                    "mismatch": mismatch},  # None: the arm observed no model (scripted)
         "aew": {}, "harness": result.harness,
         "environment": {"platform": sys.platform, "python": ".".join(map(str, sys.version_info[:3]))},
         "assignment": {**line["assignment"], "randomization_seed": frozen["assignment"]["seed"]},

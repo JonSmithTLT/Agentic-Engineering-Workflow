@@ -1,0 +1,25 @@
+schema: aew/eval-case/v1
+id: LBQ-2
+family: lbq-cross-file
+description: >-
+  A feature whose plausible local change (the tree processor alone) is incomplete: the option must also enter the
+  shared option table and its validation (schema.py), the documentation's option table (which a docs test checks),
+  and the tests. The external-link rule already exists in rules.py and only has to be found and used. Seeds
+  behaviours 3, 4 and 7, with 1, 2 and 8 available from the shared fixture.
+task: >-
+  Feature request for the link policy extension (`markdown.extensions.linkpolicy`): add an option `rel_external`.
+  Its default is `"nofollow noopener"`: every external link (an `http`, `https` or protocol-relative `//` link whose
+  host is not one of the extension's `internal_hosts`) gets that value as its `rel` attribute. Setting `rel_external`
+  to an empty string turns this off. Internal links, relative links and blocked links never get it. The option must
+  work like the extension's other options (it can be passed to the extension's constructor and to `makeExtension`)
+  and be documented with them, and the existing test suite must still pass. Add tests. Keep your changes to the
+  extension, its tests and its documentation.
+
+
+  Nobody will answer questions during this session: make reasonable decisions and finish the task.
+fixture:
+  base: base
+  overlay: overlay
+  seeded: null
+hidden_sha256: 951a9da4d799e4f8c4381c7d7abc2dd9ec9cdc821fbddec1b64f2ef4246d1cae  # cases/LBQ-2/oracle under the hidden root
+control_of: null

@@ -153,9 +153,9 @@ def test_no_arm_sees_the_hidden_root(tmp_path, monkeypatch):
     seen = {}
     real = arms.ScriptedArm.run
 
-    def spy(self, repo, config, *, deadline_s):
+    def spy(self, repo, config, *, deadline_s, task=None):
         seen["root"] = os.environ.get(hidden.ENV)
-        return real(self, repo, config, deadline_s=deadline_s)
+        return real(self, repo, config, deadline_s=deadline_s, task=task)
 
     monkeypatch.setattr(arms.ScriptedArm, "run", spy)
     record = run(f, case, tmp_path)  # the root comes from the environment

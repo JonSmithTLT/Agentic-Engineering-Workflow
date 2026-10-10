@@ -11,6 +11,8 @@
     "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
     "family": {"type": "string", "minLength": 1},
     "description": {"type": "string"},
+    "task": {"type": "string", "minLength": 1,
+             "description": "What a model arm is asked to do, sent verbatim as its first message (a raw arm needs it). Hashed with the manifest, so a changed prompt is a changed case."},
     "fixture": {
       "type": "object",
       "required": ["base"],

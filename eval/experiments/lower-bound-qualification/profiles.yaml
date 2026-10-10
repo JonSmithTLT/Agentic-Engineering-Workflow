@@ -1,0 +1,164 @@
+# Profile records (aew/eval-profile/v1; eval/aew_eval/profiles.py): one provider/model through the pinned harness, its
+# capability class, and how far it is qualified. Reusable by every later lane: a preregistration pins a record's
+# `ref`, and the record's qualification_state is derived from availability, floor and ceiling (never asserted).
+#
+# Chosen by the lead developer on 2026-10-09 (operator: "no preference, pick the best, keep it consistent for future
+# research"): lower bound deepseek-v4-flash-free, with its stable paid twin so results stay reproducible if the free
+# tier goes; backup minimax-m2.5-free; middle profile gpt-6-luna through the OpenAI API. Laguna is recorded as a note.
+# Availability is what OpenCode 2.0.18's served catalog offered on 2026-10-10 (qualify.py check, "harness_launch").
+
+- schema: aew/eval-profile/v1
+  id: lb-deepseek-v4-flash-free
+  class: lower-bound
+  ref: opencode/deepseek-v4-flash-free
+  provider: opencode
+  model: deepseek-v4-flash-free
+  effort: null
+  plan_role: primary
+  twin_of: null
+  harness: &harness
+    name: opencode
+    version: 2.0.18
+    artifact_sha256:
+      win32-x64: 78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668
+      linux-x64: 67d8275630aa3dfe5409c6c2e1bb44ab0cf0d9558a6593e769342b9f1dc93f4b
+  effective_profile: &raw {context.orientation: null, tools.presentation: null}
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: >-
+      The catalog marks it deprecated and OpenCode 2.0.18 does not offer it (2.0.22 neither): the free tier went. Its
+      paid twin below is the same model.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null
+
+- schema: aew/eval-profile/v1
+  id: lb-deepseek-v4-flash
+  class: lower-bound
+  ref: opencode/deepseek-v4-flash
+  provider: opencode
+  model: deepseek-v4-flash
+  effort: null
+  plan_role: paid-twin
+  twin_of: lb-deepseek-v4-flash-free
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENCODE_API_KEY]
+  cost_per_mtok_usd: {input: 0.14, output: 0.28, cache_read: 0.028,
+                      source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: null
+    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: "Variants offered: low, high, max. The preregistration pins no effort, so the run uses OpenCode's default variant."
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unqualified
+  notes: The profile the lane's preregistration pins (prereg.yaml), because the free tier is no longer offered.
+
+- schema: aew/eval-profile/v1
+  id: lb-minimax-m2.5-free
+  class: lower-bound
+  ref: opencode/minimax-m2.5-free
+  provider: opencode
+  model: minimax-m2.5-free
+  effort: null
+  plan_role: backup
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: The catalog marks it deprecated and OpenCode 2.0.18 does not offer it.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null
+
+- schema: aew/eval-profile/v1
+  id: lb-minimax-m2.5
+  class: lower-bound
+  ref: opencode/minimax-m2.5
+  provider: opencode
+  model: minimax-m2.5
+  effort: null
+  plan_role: paid-twin
+  twin_of: lb-minimax-m2.5-free
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENCODE_API_KEY]
+  cost_per_mtok_usd: {input: 0.3, output: 1.2, cache_read: 0.06,
+                      source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: null
+    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: "Variants offered: none. The preregistration pins no effort, so the run uses OpenCode's default variant."
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unqualified
+  notes: The backup's paid twin; the next profile tried if the primary is not a lower bound.
+
+- schema: aew/eval-profile/v1
+  id: mid-gpt-6-luna
+  class: mid
+  ref: openai/gpt-6-luna
+  provider: openai
+  model: gpt-6-luna
+  effort: null
+  plan_role: primary
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENAI_API_KEY]
+  cost_per_mtok_usd: {input: 0.10, output: 0.50, cache_read: 0.01,
+                      source: "models.dev catalog served to OpenCode, 2026-10-10 (context up to 200k tokens)"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: null
+    checked_with: a placeholder value for OPENAI_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: "Variants offered: none, low, medium, high, xhigh, max. The preregistration pins no effort, so the run uses OpenCode's default variant."
+  floor: {state: not_run}
+  ceiling: {state: not_applicable}
+  qualification_state: unqualified
+  notes: The middle profile. Not in this lane's preregistration; its floor is an opt-in run (README.md, operator steps).
+
+- schema: aew/eval-profile/v1
+  id: note-laguna-s-2.1-free
+  class: lower-bound
+  ref: opencode/laguna-s-2.1-free
+  provider: opencode
+  model: laguna-s-2.1-free
+  effort: null
+  plan_role: reference-note
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: >-
+      Listed in the catalog but deprecated, and not offered by OpenCode 2.0.18: consistent with the handoff's "not
+      currently available". A future reference target only; never a substitute for a lower-bound profile.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null

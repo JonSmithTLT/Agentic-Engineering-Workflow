@@ -194,13 +194,12 @@ sections:
       The Lead learns of replies through the attention and resume projections; no polling means no model-driven polling,
       and event and wait mechanics stay implementation-local. (LWA-17 and the F9-A1 decision §6 also name "the broker''s
       notifier once M4-E''s E7 lands": no M4-E slice builds a notifier to the Lead. M4-E''s notifier, built in M4-E E7a,
-      is the operator endpoint''s and delivers to the operator ([plan v3 amendment 1](m4-e-plan-v3-amendment-1.md) §6).
-      Until the designer says otherwise the projections above are how the Lead learns; whether F9 owns that clause is the
-      designer''s question, and it blocks no slice.) Worker replies are untrusted model-authored data. Dashboard read projections
-      come after F9-A through a contract bump; the UI is the web developer''s. **Deterministic work conservation ([requirement
-      v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):**
-      F9 is the primary owner of avoiding duplicate discovery and reusing worker findings (WCR-12, WCR-30); a cross-reference,
-      not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md),
+      is the operator endpoint''s and delivers to the operator ([plan v3 amendment 1](m4-e-plan-v3-amendment-1.md) §6);
+      the designer''s D5 below settles the clause (MIC-09).) Worker replies are untrusted model-authored data. Dashboard
+      read projections come after F9-A through a contract bump; the UI is the web developer''s. **Deterministic work conservation
+      ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR,
+      row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker findings (WCR-12, WCR-30);
+      a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md),
       ledger AEA; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)):** F9-A1 was ingested
       (PR #145), which meets the record''s §11 ingestion item (AEA-35), and is now adopted. With the adoption, the recitation
       (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B''s, F9-C''s supervision candidates

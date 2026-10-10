@@ -11,6 +11,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -1089,6 +1090,19 @@ class Engine:
         """Register F21's Arm B prototype: explicit raw-history search, only while switched on
         (``aew.engine.recall``)."""
         return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
+
+    def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
+                                 since: str | None = None, until: str | None = None, limit: int = 10,
+                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
+                                 enabled: bool, fts5: bool,
+                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+        """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
+        resets, discards or deletes the substrate, and answers within ``deadline``. ``enabled`` and ``fts5`` are the
+        caller's snapshot's answers, never re-read here."""
+        return self._history.history_search_committed(state, terms, kinds=kinds, since=since, until=until,
+                                                      limit=limit, deadline=deadline, budget_s=budget_s,
+                                                      budget_docs=budget_docs, candidates=candidates,
+                                                      enabled=enabled, fts5=fts5, fence_token=fence_token)
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)

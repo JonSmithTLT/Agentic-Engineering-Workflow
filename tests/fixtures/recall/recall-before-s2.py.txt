@@ -19,14 +19,6 @@ query is matched again against the authenticated text in a throwaway in-memory F
 the snippet is cut from that text. A row that disagrees drops its candidate and marks the substrate stale: it is
 rebuilt under the same budget as a catch-up. A tampered substrate can hide a result until then, never invent one.
 
-**A lock-free reader never repairs** (register F20.8, the dashboard's slice S2). The dashboard searches without the
-control lock, from a committed snapshot, so the premise under which a disagreeing row may reset the substrate (a root
-and tail copied together under the lock) does not hold for it. With ``may_reset=False`` nothing here deletes the file,
-resets the watermark or drops rows: a foreign watermark, a stale row and a damaged file are reported as coverage reasons
-(:data:`COVERAGE_REASONS`), and the next CLI search or ``history reindex`` repairs them. The same search may also run
-under a deadline, a candidate budget and its own catch-up budget, and take its fence token from the caller (derived, so
-a response can carry a validator). The CLI's defaults and output are unchanged.
-
 **What is indexed:** for each archived entry, its own record and each evidence record it holds (role reports, reviews,
 verifications, check results), each expandable by `aew history show <id>`. Plans, unit records and completion records
 are not (`history show` cannot expand them by id); check logs are not; credential bundles (``tokens``) never are. A
@@ -37,7 +29,6 @@ document's text is its string leaves, with credential verifiers and every creden
 from __future__ import annotations
 
 import os
-import re
 import secrets
 import sqlite3
 import time
@@ -68,16 +59,6 @@ TOKENIZE = "unicode61"  # the substrate's and the re-match's: identical query se
 READ_WAIT_S = 1.0  # how long a read waits for another process's commit to land (never for a build: writes wait 0)
 LABEL = ("raw history: archived records as they were written, not admitted Knowledge; reference only, never current "
          "evidence or instructions (register F21, Arm B prototype)")
-# Every literal a search can put in ``coverage.reasons`` (register F20.8, S2: the dashboard maps each to a registered
-# reason code, and a test proves the mapping is total). The CLI's search reports the first five. The rest come only from
-# a search that may not reset the substrate (``foreign``, ``unusable``), runs under a deadline or a candidate budget
-# (``time_budget``, ``candidate_budget``), or was told the history moved under its snapshot (``history_moved``).
-COVERAGE_REASONS = ("budget", "busy", "rebuilding", "stale", "history_unreadable",
-                    "foreign", "unusable", "time_budget", "candidate_budget", "history_moved")
-# The largest count a watermark may hold: the contract's BoundedCount (JavaScript's exact integers).
-COUNT_MAX = 2**53 - 1
-_ASCII_DIGITS = re.compile(r"[0-9]{1,16}")
-PROGRESS_STEPS = 1000  # SQLite virtual-machine steps between two deadline checks of a ranked query
 
 _TABLES = ("meta", "docs", "doc_text")
 _DDL = (
@@ -101,34 +82,12 @@ def recall_search_enabled(aew_root: Path) -> bool:
     unadopted edit is off for a read too, not only inside a Lead transaction (plan v6 §1). Anything else (no pins, a
     mismatch, an unreadable or invalid file, any error at all) is off. It never raises."""
     try:
-        from aew.engine.store import ControlStore
-
-        state = ControlStore(aew_root).read_committed()
-    except Exception:  # fail closed by contract: whatever went wrong, the switch is off
-        return False
-    return search_enabled(aew_root, state)
-
-
-def execution_policy_rel(manifest: dict[str, Any]) -> Any:
-    """The execution policy's path exactly as ``policy_files`` names it (the key of its pin), from a parsed manifest.
-    The one expression for it: the switch and the dashboard's cache of the switch both use it (PR #175 review, n1).
-    It may be a value of another type in a malformed manifest; callers check it is a string."""
-    from aew.policy import execution as X
-
-    named = manifest.get("policy") or {}
-    return (named.get("execution") if isinstance(named, dict) else None) or X.REL_PATH
-
-
-def search_enabled(aew_root: Path, state: dict[str, Any]) -> bool:
-    """:func:`recall_search_enabled` for committed state the caller already read (the dashboard's request snapshot,
-    register F20.8 S2), so that the switch, the capability and the response's ``control_revision`` all come from one
-    read. The same rules: the manifest and the execution policy count only when they match the pins in ``state``, the
-    answer is ``explicit`` or off, and it never raises."""
-    try:
         from aew.engine.base import POLICY_PINS
+        from aew.engine.store import ControlStore
         from aew.knowledge.manifest import MANIFEST
         from aew.policy import execution as X
 
+        state = ControlStore(aew_root).read_committed()
         pins, manifest_pin = state.get(POLICY_PINS), state.get("manifest_sha256")
         if not isinstance(pins, dict) or not isinstance(manifest_pin, str):
             return False
@@ -138,7 +97,9 @@ def search_enabled(aew_root: Path, state: dict[str, Any]) -> bool:
         manifest = load_yaml(raw_manifest.decode("utf-8"), source=MANIFEST)
         if not isinstance(manifest, dict):
             return False
-        rel = execution_policy_rel(manifest)
+        named = manifest.get("policy") or {}
+        # The path exactly as ``policy_files`` names it, which is the key of its pin.
+        rel = (named.get("execution") if isinstance(named, dict) else None) or X.REL_PATH
         pin = pins.get(rel)
         if not isinstance(rel, str) or not isinstance(pin, str):
             return False
@@ -332,18 +293,6 @@ class _Busy(Exception):
     """Another process holds the substrate's write lock (it is building), or has just moved its watermark."""
 
 
-class _ForgedWatermark(sqlite3.DatabaseError):
-    """The watermark's count is not a bounded count of ASCII digits: the file is damaged (or forged)."""
-
-
-class _Unusable(Exception):
-    """The substrate is damaged, of another version or missing tables, and this caller may not delete it."""
-
-
-class _Absent(Exception):
-    """There is no substrate yet, and this caller may not create one (its history moved under its snapshot)."""
-
-
 def _contended(exc: sqlite3.Error) -> bool:
     name = getattr(exc, "sqlite_errorname", "") or ""
     return name.startswith(("SQLITE_BUSY", "SQLITE_LOCKED"))
@@ -361,37 +310,22 @@ class Substrate:
         self.path = aew_root / SUBSTRATE_REL
         self.history = History(aew_root)
         self.record = record
-        # The monotonic time by which a search must answer (None: no deadline, the CLI's). Every SQLite wait is then
-        # the lesser of ``READ_WAIT_S`` and the time left (register F20.8, S2).
-        self._deadline: float | None = None
 
     # ------------------------------------------------------------------ the file
 
-    def _wait(self) -> float:
-        """How long a read may wait for another process's commit: ``READ_WAIT_S``, or less when a deadline is near."""
-        if self._deadline is None:
-            return READ_WAIT_S
-        return max(0.0, min(READ_WAIT_S, self._deadline - time.monotonic()))
-
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        return sqlite3.connect(self.path, timeout=self._wait(), isolation_level=None)
+        return sqlite3.connect(self.path, timeout=READ_WAIT_S, isolation_level=None)
 
-    def _open(self, *, may_reset: bool = True, create: bool = True) -> sqlite3.Connection:
+    def _open(self) -> sqlite3.Connection:
         """A connection to the substrate with its schema. A file of another ``substrate_version``, missing a table, or
-        one SQLite reports corrupt is deleted and started over from the genesis. ``_Busy`` when it is being written.
-        With ``may_reset=False`` such a file is kept and the answer is ``_Unusable``; with ``create=False`` a missing
-        or empty file is ``_Absent`` and nothing is written."""
-        if not create and not self.path.exists():
-            raise _Absent
+        one SQLite reports corrupt is deleted and started over from the genesis. ``_Busy`` when it is being written."""
         for _ in range(2):
             conn = self._connect()
             try:
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
                 if not tables:
-                    if not create:
-                        raise _Absent
-                    self._begin(conn, self._wait())
+                    self._begin(conn)
                     for statement in _DDL:
                         conn.execute(statement)
                     conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('substrate_version', ?)",
@@ -402,7 +336,7 @@ class Substrate:
                     if "meta" in tables else None
                 if set(_TABLES) <= tables and version == (SUBSTRATE_VERSION,):
                     return conn
-            except (_Busy, _Absent):
+            except _Busy:
                 conn.close()
                 raise
             except sqlite3.Error as exc:
@@ -411,13 +345,9 @@ class Substrate:
                 conn.close()
                 if _contended(exc):
                     raise _Busy from None
-                if not may_reset:
-                    raise _Unusable from None
                 self._delete()  # damaged, or not a database: derived data, so start over
                 continue
             conn.close()
-            if not may_reset:
-                raise _Unusable
             self._delete()  # another substrate version, or tables missing
         raise _Busy
 
@@ -429,9 +359,8 @@ class Substrate:
             raise _Busy from None
 
     @staticmethod
-    def _begin(conn: sqlite3.Connection, wait_s: float = READ_WAIT_S) -> None:
-        """Take the write lock or report ``_Busy``: a build is never waited on. The connection's reads then wait
-        ``wait_s`` again (``READ_WAIT_S``, or less under a deadline)."""
+    def _begin(conn: sqlite3.Connection) -> None:
+        """Take the write lock or report ``_Busy``: a build is never waited on."""
         conn.execute("PRAGMA busy_timeout = 0")
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -440,20 +369,13 @@ class Substrate:
                 raise _Busy from None
             raise
         finally:
-            conn.execute(f"PRAGMA busy_timeout = {int(wait_s * 1000)}")
+            conn.execute(f"PRAGMA busy_timeout = {int(READ_WAIT_S * 1000)}")
 
     @staticmethod
     def _watermark(conn: sqlite3.Connection) -> dict[str, Any]:
-        """The substrate's watermark; the genesis when there is none. A count that is not ASCII digits within
-        ``COUNT_MAX`` (``"²"``, a 20-digit value, a blob) is damage, never an exception of another kind (PR #175
-        review, m1): ``_ForgedWatermark`` is a ``sqlite3.DatabaseError``, so every caller treats it as a damaged file
-        (the CLI rebuilds it; the dashboard reports it unusable)."""
         meta = dict(conn.execute("SELECT key, value FROM meta WHERE key IN ('count', 'h')").fetchall())
         count, h = meta.get("count"), meta.get("h")
-        if "count" in meta and not (isinstance(count, str) and _ASCII_DIGITS.fullmatch(count)
-                                    and int(count) <= COUNT_MAX):
-            raise _ForgedWatermark("the substrate's watermark count is not a bounded count")
-        if isinstance(count, str) and isinstance(h, str) and len(h) == 64:
+        if isinstance(count, str) and count.isdigit() and isinstance(h, str) and len(h) == 64:
             return {"count": int(count), "h": h}
         return {"count": 0, "h": M.GENESIS_H}
 
@@ -501,34 +423,20 @@ class Substrate:
 
     # ------------------------------------------------------------------ building
 
-    def catch_up(self, root: dict[str, Any], tail: bytes | None, *, may_reset: bool = True,
-                 budget_s: float | None = None, budget_docs: int | None = None,
-                 deadline: float | None = None) -> dict[str, Any]:
+    def catch_up(self, root: dict[str, Any], tail: bytes | None) -> dict[str, Any]:
         """Index the entries after the watermark through ``root`` (``tail``: the tail's bytes, copied with the root
         under the control lock), in batches, until done or the build budget is spent. ``{"complete", "reason",
-        "added", "through"}``; the next call resumes from the watermark.
-
-        ``budget_s`` and ``budget_docs`` default to ``BUILD_BUDGET_S`` and ``BUILD_BUDGET_DOCS``; ``deadline`` (a
-        ``time.monotonic()`` value) also stops it between entries (``time_budget``). With ``may_reset=False`` it never
-        deletes or resets anything: a damaged or foreign substrate is reported (``unusable``, ``foreign``) and kept."""
-        if deadline is not None:
-            self._deadline = deadline
+        "added", "through"}``; the next call resumes from the watermark."""
         try:
-            conn = self._open(may_reset=may_reset)
+            conn = self._open()
         except _Busy:
             return {"complete": False, "reason": "busy", "added": 0, "through": None}
-        except _Unusable:
-            return {"complete": False, "reason": "unusable", "added": 0, "through": None}
         try:
-            return self._catch_up(conn, root, tail, budget_s=BUILD_BUDGET_S if budget_s is None else budget_s,
-                                  budget_docs=BUILD_BUDGET_DOCS if budget_docs is None else budget_docs,
-                                  may_reset=may_reset)
+            return self._catch_up(conn, root, tail, budget_s=BUILD_BUDGET_S, budget_docs=BUILD_BUDGET_DOCS)
         except sqlite3.Error as exc:
             damaged = not _contended(exc)
         finally:
             conn.close()
-        if damaged and not may_reset:  # kept: the next CLI search or `history reindex` rebuilds it
-            return {"complete": False, "reason": "unusable", "added": 0, "through": None}
         if damaged:  # derived data damaged under the builder: start over (the next call builds it)
             self._discard()
         return {"complete": False, "reason": "rebuilding" if damaged else "busy", "added": 0, "through": None}
@@ -555,7 +463,7 @@ class Substrate:
             conn.close()
 
     def _catch_up(self, conn: sqlite3.Connection, root: dict[str, Any], tail: bytes | None, *,
-                  budget_s: float | None, budget_docs: int | None, may_reset: bool = True) -> dict[str, Any]:
+                  budget_s: float | None, budget_docs: int | None) -> dict[str, Any]:
         started = time.monotonic()
         mark = self._watermark(conn)
         target = {"count": root["count"], "h": root["head_h"]}
@@ -577,15 +485,9 @@ class Substrate:
                 if budget_s is not None and time.monotonic() - started >= budget_s:
                     reason = "budget"
                     break
-                if self._deadline is not None and time.monotonic() >= self._deadline:
-                    reason = "time_budget"
-                    break
         except IntegrityError:
             if not batch and added == 0 and mark["count"]:
-                # The watermark is not on this history's chain: the substrate describes another history. Start over,
-                # unless this caller may not reset it (a lock-free reader): then it is reported and kept.
-                if not may_reset:
-                    return {"complete": False, "reason": "foreign", "added": 0, "through": None}
+                # The watermark is not on this history's chain: the substrate describes another history. Start over.
                 try:
                     self._reset(conn)
                 except _Busy:
@@ -608,7 +510,7 @@ class Substrate:
                batch: list[tuple[dict[str, Any], list[Document]]]) -> dict[str, Any]:
         """Write one batch of entries' documents and advance the watermark to its last entry, in one transaction; only
         if the watermark is still where this build read it (another process may have built meanwhile)."""
-        self._begin(conn, self._wait())
+        self._begin(conn)
         try:
             if self._watermark(conn) != mark:
                 conn.execute("ROLLBACK")
@@ -696,62 +598,20 @@ class Substrate:
     # ------------------------------------------------------------------ searching
 
     def search(self, query: str, *, root: dict[str, Any], tail: bytes | None, kinds: list[str] | None,
-               since: str | None, until: str | None, limit: int, may_reset: bool = True,
-               budget_s: float | None = None, budget_docs: int | None = None, deadline: float | None = None,
-               candidates: int | None = None, fence_token: Callable[[list[str]], str] | None = None,
-               moved: bool = False) -> dict[str, Any]:
-        """Catch up within the budget, then answer from what is indexed, every hit authenticated (see the module).
-
-        The keyword arguments after ``limit`` are the lock-free reader's (register F20.8, S2); their defaults are the
-        CLI's behaviour. ``may_reset=False``: nothing is deleted or reset (see :meth:`catch_up`); a stale row is
-        reported, a damaged file is ``unusable`` and no hit is served from it. ``budget_s``, ``budget_docs``: the
-        catch-up's budget. ``deadline`` (``time.monotonic()``): every phase stops by it (``time_budget``), the ranked
-        query through SQLite's progress handler on this query's connection only, and the hits verified before it are
-        kept. ``candidates``: at most this many rows are verified (``candidate_budget``). ``fence_token``: the fence's
-        token from the inert snippets, instead of a random one. ``moved``: the caller's history moved under its
-        snapshot, so there is no catch-up and no file is created; the answer is what is already indexed."""
-        if deadline is not None:
-            self._deadline = deadline
-
-        def result(hits: list[dict[str, Any]], reasons: list[str], through: int | None,
-                   unverified: int) -> dict[str, Any]:
-            token = fence_token([h["snippet"] for h in hits]) if fence_token is not None else None
-            return self._result(hits, reasons=reasons, root=root, through=through, unverified=unverified, token=token)
-
-        if moved:
-            build: dict[str, Any] = {"complete": False, "reason": "history_moved", "added": 0, "through": None}
-        else:
-            build = self.catch_up(root, tail, may_reset=may_reset, budget_s=budget_s, budget_docs=budget_docs,
-                                  deadline=deadline)
+               since: str | None, until: str | None, limit: int) -> dict[str, Any]:
+        """Catch up within the budget, then answer from what is indexed, every hit authenticated (see the module)."""
+        build = self.catch_up(root, tail)
         reasons = [build["reason"]] if build["reason"] else []
-        if build["reason"] in ("foreign", "unusable"):  # only without may_reset: nothing it may answer from
-            return result([], reasons, None, 0)
         hits: list[dict[str, Any]] = []
         unverified, stale, damaged = 0, False, False
         try:
-            conn = self._open(may_reset=may_reset, create=not moved)
+            conn = self._open()
         except _Busy:
-            return result([], [*reasons, "busy"], build["through"], 0)
-        except _Unusable:
-            return result([], [*reasons, "unusable"], None, 0)
-        except _Absent:
-            return result([], reasons, None, 0)
-        interrupted = False
-        if deadline is not None:
-            def progress() -> int:  # this query's connection only, never the catch-up's (review n2)
-                nonlocal interrupted
-                if time.monotonic() >= deadline:
-                    interrupted = True
-                    return 1
-                return 0
-
-            conn.set_progress_handler(progress, PROGRESS_STEPS)
+            return self._result([], reasons=[*reasons, "busy"], root=root, through=build["through"],
+                                unverified=0)
         matcher = _Matcher()
-        examined, stop = 0, False
         try:
-            # The watermark is read inside the guarded section below, so that damage there (a forged count included)
-            # is reported, and for the CLI discarded when it can be, never raised (PR #175 re-review, m4).
-            through: int | None = None
+            through = self._watermark(conn)["count"]
             cache: dict[int, Any] = {}
             seen: set[str] = set()
             where, args = ["doc_text MATCH ?", "d.seq <= ?"], [query, root["count"]]
@@ -768,8 +628,7 @@ class Substrate:
                    "ORDER BY bm25(doc_text), d.rowid LIMIT ? OFFSET ?")
             offset, page = 0, 50
             try:
-                through = self._watermark(conn)["count"]
-                while len(hits) < limit and not stop:
+                while len(hits) < limit:
                     rows = conn.execute(sql, (*args, page, offset)).fetchall()
                     if not rows:
                         break
@@ -777,15 +636,6 @@ class Substrate:
                     for row in rows:
                         if len(hits) >= limit:
                             break
-                        if deadline is not None and time.monotonic() >= deadline:
-                            reasons.append("time_budget")
-                            stop = True
-                            break
-                        if candidates is not None and examined >= candidates:
-                            reasons.append("candidate_budget")
-                            stop = True
-                            break
-                        examined += 1
                         verdict = self._candidate(row, query, root, cache, matcher, kinds, since, until)
                         if isinstance(verdict, str):
                             stale = stale or verdict == "disagrees"
@@ -794,18 +644,11 @@ class Substrate:
                             seen.add(verdict["id"])
                             hits.append(verdict)
             except sqlite3.DatabaseError as exc:  # a substrate damaged under the reader: derived, so start over
-                if interrupted and getattr(exc, "sqlite_errorname", "") == "SQLITE_INTERRUPT":
-                    reasons.append("time_budget")  # the deadline, never damage (review n2): verified hits are kept
-                elif _contended(exc):
+                if _contended(exc):
                     reasons.append("busy")
                 else:
                     stale = damaged = True
-            if stale and not may_reset:
-                # Kept as it is: a lock-free reader never repairs; the next CLI search or `history reindex` does.
-                reasons.append("unusable" if damaged else "stale")
-                if damaged:
-                    hits = []  # no hit is served from a file SQLite reports damaged
-            elif stale:
+            if stale:
                 reasons.append("stale")
                 try:
                     self._reset(conn)
@@ -817,9 +660,9 @@ class Substrate:
         finally:
             conn.close()
             matcher.conn.close()
-        if damaged and may_reset:
+        if damaged:
             self._discard()
-        return result(hits, reasons, through, unverified)
+        return self._result(hits, reasons=reasons, root=root, through=through, unverified=unverified)
 
     def _candidate(self, row: tuple[Any, ...], query: str, root: dict[str, Any], cache: dict[int, Any],
                    matcher: _Matcher, kinds: list[str] | None, since: str | None,
@@ -849,19 +692,11 @@ class Substrate:
 
     @staticmethod
     def _result(hits: list[dict[str, Any]], *, reasons: list[str], root: dict[str, Any], through: int | None,
-                unverified: int, token: str | None = None) -> dict[str, Any]:
-        """The response: every snippet inside a fence whose token no snippet contains, so no content can close it.
-        ``token``: the caller's (a derived one, so that equal results are equal bytes; register F20.8, S2), with a
-        counter appended while any snippet contains it; otherwise a random one (the CLI's)."""
-        if token is None:
+                unverified: int) -> dict[str, Any]:
+        """The response: every snippet inside a fence whose token no snippet contains, so no content can close it."""
+        token = secrets.token_hex(8)
+        while any(token in h["snippet"] for h in hits):
             token = secrets.token_hex(8)
-            while any(token in h["snippet"] for h in hits):
-                token = secrets.token_hex(8)
-        else:
-            base, n = token, 0
-            while any(token in h["snippet"] for h in hits):
-                n += 1
-                token = f"{base}-{n}"
         fence = {"open": f"<<raw-history {token}>>", "close": f"<</raw-history {token}>>"}
         for h in hits:
             h["snippet"] = f"{fence['open']}{h['snippet']}{fence['close']}"

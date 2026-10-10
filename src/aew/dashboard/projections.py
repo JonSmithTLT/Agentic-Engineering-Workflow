@@ -10,6 +10,8 @@ Capabilities (R18, as the designer decided on 2026-10-05): ``overview``, ``work`
 syncs; ``queue`` is UNSUPPORTED (no route in 0.1.2); ``action_projection`` is UNSUPPORTED until the typed Lead
 surface's ``ActionProjection`` (F15.1) is its source, so ``/attention`` answers 403 meanwhile, while ``/overview``'s
 bounded ``attention`` list and ``Work.has_attention`` carry the engine facts the backend already provides.
+``history_search`` (contract 0.1.3, register F20.8 S2) exists only while the adopted execution policy switches
+raw-history search on; absent, it is "not offered on this project", never UNKNOWN.
 
 Each route's envelope carries the version of the contract that defined its response (:data:`ENVELOPE_VERSION`;
 register F20.8): a minor version only adds routes, so every 0.1.2 route keeps emitting ``0.1.2`` and a client built
@@ -22,19 +24,24 @@ computes the validator over that and then stamps the real time in (F20.4), so th
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from aew import errors
 from aew.dashboard import cursors
-from aew.dashboard.etag import SNAPSHOT_TIME
+from aew.dashboard.etag import SNAPSHOT_TIME, canonical_json
 from aew.dashboard.reader import Snapshot
 from aew.dashboard.reasons import reason
-from aew.engine import outbox
+from aew.engine import outbox, recall
 from aew.engine import transitions as T
 from aew.engine.archive_ops import held_evidence, is_v2, redact
+from aew.engine.history_ops import TRUST_LABEL
 from aew.engine.history_ops import _public as public_entry
 from aew.errors import AEWError, IntegrityError, LockTimeout, NotFound
 from aew.harness import contract as K
@@ -42,6 +49,7 @@ from aew.harness import runlog
 from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
+from aew.util import sha256_file
 
 # Route -> the ``schema_version`` its envelope carries: the const of the route's response schema in the accepted
 # contract (tests/unit/test_dashboard_contract.py holds every served route to it). A route a later minor version
@@ -51,7 +59,7 @@ ENVELOPE_VERSION: dict[str, str] = {
         "/project", "/capabilities", "/overview", "/history/integrity", "/work", "/work/{id}", "/runs", "/runs/{id}",
         "/evidence", "/evidence/{id}", "/knowledge", "/knowledge/{id}", "/history", "/history/{id}", "/attention",
         "/activity")
-}
+} | {"/history/search": "0.1.3"}
 BASE_ENVELOPE = "0.1.2"  # a projector built without a route (a test's) speaks the base version
 OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 LIMIT_DEFAULT, LIMIT_MAX = 100, 250
@@ -62,6 +70,19 @@ AVAILABLE, UNAVAILABLE, UNSUPPORTED = "AVAILABLE", "UNAVAILABLE", "UNSUPPORTED"
 DECISION_ID = re.compile(r"^D-[0-9]+$")
 EVIDENCE_PRODUCER = re.compile(r"^(INV-[0-9]+)-")
 RICH_PLAIN, RICH_MARKDOWN = "plain", "markdown"
+# Raw-history search (register F20.8, S2; the change note's §5): one deadline for the whole search, the catch-up's own
+# budget within it, and the candidates verified at most. Projections are built one at a time, so a search must not
+# hold the others for long.
+SEARCH_DEADLINE_S, SEARCH_BUILD_S, SEARCH_BUILD_DOCS, SEARCH_CANDIDATES = 1.25, 0.5, 100, 200
+SEARCH_KINDS_MAX = 16
+# The substrate's coverage literals (recall.COVERAGE_REASONS) as registered reason codes.
+SEARCH_REASONS = {
+    "budget": "SEARCH_BUILD_BUDGET", "candidate_budget": "SEARCH_CANDIDATE_BUDGET", "time_budget": "SEARCH_TIME_BUDGET",
+    "busy": "SEARCH_SUBSTRATE_BUSY", "rebuilding": "SEARCH_SUBSTRATE_REBUILDING", "stale": "SEARCH_SUBSTRATE_STALE",
+    "foreign": "SEARCH_SUBSTRATE_FOREIGN", "unusable": "SEARCH_SUBSTRATE_UNUSABLE",
+    "history_moved": "SEARCH_HISTORY_MOVED", "history_unreadable": "SEARCH_HISTORY_UNREADABLE",
+}
+FENCE_DOMAIN = "aew-raw-history\n"
 
 
 def _custody(inv: dict[str, Any]) -> bool:
@@ -119,6 +140,32 @@ def parse_limit(raw: str | None) -> int:
     return value
 
 
+def parse_search_limit(raw: str | None) -> int:
+    if raw is None:
+        return recall.LIMIT_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        raise InvalidRequest("limit must be an integer") from None
+    if not 1 <= value <= recall.LIMIT_MAX:
+        raise InvalidRequest(f"limit must be between 1 and {recall.LIMIT_MAX}")
+    return value
+
+
+def fence_token(query: dict[str, Any], root_h: str, snippets: list[str]) -> str:
+    """The fence's token for one search response, derived rather than random so that equal results are equal bytes
+    and a validator holds (register F20.8, S2; the change note's §5.3): the first 16 hex digits of the SHA-256 of the
+    query, the history root and the inert snippets. The content is fixed before the token, so content that names its
+    own token needs a hash fixed point; the substrate still appends a counter while any snippet contains it."""
+    material = canonical_json({"query": query, "root": root_h, "snippets": snippets})
+    return hashlib.sha256((FENCE_DOMAIN + material).encode("utf-8")).hexdigest()[:16]
+
+
+def _searchable_id(value: Any) -> bool:
+    """A hit's id as the contract's ``OpaqueId``, short enough for its argv expansion: a history id always is."""
+    return isinstance(value, str) and bool(OPAQUE_ID.match(value)) and len(value) <= 256
+
+
 def check_id(value: str) -> str:
     if not OPAQUE_ID.match(value or "") or len(value) > 256:
         raise InvalidRequest("the id is not a valid opaque identity")
@@ -162,6 +209,10 @@ class Projector:
         self.archive = snapshot.engine.archive
         self.units = snapshot.engine.units
         self._capabilities: dict[str, Any] | None = None
+        # This request's memo for a search's evidence links (PR #175 review, m3): the unit each evidence id belongs
+        # to, and the evidence ids each archived unit's bundle records (None: no bundle).
+        self._evidence_units: dict[str, str | None] = {}
+        self._archived_ids: dict[str, frozenset[str] | None] = {}
         self._attention: list[dict[str, Any]] | None = None
         self._observed: dict[str, tuple[str, dict[str, Any] | None]] = {}
 
@@ -206,7 +257,21 @@ class Projector:
                 "queue": {"state": UNSUPPORTED, "reasons": [reason("NOT_IN_CONTRACT_0_1_2")]},
                 "action_projection": {"state": UNSUPPORTED, "reasons": [reason("AWAITS_ACTION_PROJECTION")]},
             }
+            if self.s.history_search:  # absent while switched off: "not offered", never UNKNOWN (F20.8, S2)
+                self._capabilities["history_search"] = self._search_capability()
         return self._capabilities
+
+    def _search_capability(self) -> dict[str, Any]:
+        """Raw-history search while the adopted policy switches it on: AVAILABLE, or UNAVAILABLE on a v1 project
+        (no cold history), without FTS5, or when this server runs in an invocation's environment (Arm B's guard)."""
+        reasons = []
+        if not is_v2(self.state):
+            reasons.append(reason("MIGRATION_REQUIRED"))
+        if not recall.fts5_available():
+            reasons.append(reason("FTS5_UNAVAILABLE"))
+        if any(os.environ.get(v) for v in recall.invocation_markers()):
+            reasons.append(reason("RECALL_NOT_IN_INVOCATIONS"))
+        return {"state": UNAVAILABLE if reasons else AVAILABLE, "reasons": reasons}
 
     def capabilities(self) -> dict[str, Any]:
         return self.envelope(self.capabilities_data())
@@ -578,18 +643,7 @@ class Projector:
     def evidence(self, evidence_id: str) -> dict[str, Any]:
         self.require("evidence")
         check_id(evidence_id)
-        match = EVIDENCE_PRODUCER.match(evidence_id)
-        inv_id = match.group(1) if match else None
-        inv = self.state["invocations"].get(inv_id) if inv_id else None
-        wid = inv["work_unit"] if inv else None
-        if wid is None and inv_id and is_v2(self.state):
-            archived = self.archive.archived_invocation(self.state, inv_id)
-            wid = archived["work_unit"] if archived else None
-        if wid is None:  # a check result a Lead ingested by hand, or an id of another shape: the hot units' dirs
-            for candidate in sorted(self.state["work"]):
-                if (E.evidence_dir(self.s.aew_root, candidate) / f"{evidence_id}.md").is_file():
-                    wid = candidate
-                    break
+        wid = self._evidence_unit(evidence_id)
         if wid is None:
             raise NotFound(f"no evidence {evidence_id}")
         unit = self.state["work"].get(wid)
@@ -604,6 +658,58 @@ class Projector:
             if meta["id"] == evidence_id:
                 return self.envelope(self.evidence_item(meta, body, unit))
         raise NotFound(f"no evidence {evidence_id}")
+
+    def _evidence_unit(self, evidence_id: str) -> str | None:
+        """The work unit an evidence record belongs to, as ``/evidence/{id}`` locates it (memoized per request)."""
+        if evidence_id in self._evidence_units:
+            return self._evidence_units[evidence_id]
+        match = EVIDENCE_PRODUCER.match(evidence_id)
+        inv_id = match.group(1) if match else None
+        inv = self.state["invocations"].get(inv_id) if inv_id else None
+        wid = inv["work_unit"] if inv else None
+        if wid is None and inv_id and is_v2(self.state):
+            archived = self.archive.archived_invocation(self.state, inv_id)
+            wid = archived["work_unit"] if archived else None
+        if wid is None:  # a check result a Lead ingested by hand, or an id of another shape: the hot units' dirs
+            for candidate in sorted(self.state["work"]):
+                if (E.evidence_dir(self.s.aew_root, candidate) / f"{evidence_id}.md").is_file():
+                    wid = candidate
+                    break
+        self._evidence_units[evidence_id] = wid
+        return wid
+
+    def _evidence_exists(self, evidence_id: str) -> bool:
+        """Whether ``/evidence/{id}`` answers 200 for this record, checked as cheaply as that stays true (PR #175
+        re-review, m5). A hot unit's record: the one file the route reads, parsed. An archived unit's: the route
+        verifies every evidence record the unit's bundle references and fails on the first bad one, so once per unit
+        and request each reference is hashed against the hash recorded for it (no body is parsed or returned), and a
+        unit with any missing or altered record links none of its evidence."""
+        wid = self._evidence_unit(evidence_id)
+        if wid is None:
+            return False
+        if wid in self.state["work"]:
+            path = E.evidence_dir(self.s.aew_root, wid) / f"{evidence_id}.md"
+            if not path.is_file():
+                return False
+            E.read(path)  # raises as the route would: the caller nulls the link
+            return True
+        if wid not in self._archived_ids:
+            self._archived_ids[wid] = self._verified_archived_ids(wid)
+        ids = self._archived_ids[wid]
+        return ids is not None and evidence_id in ids
+
+    def _verified_archived_ids(self, wid: str) -> frozenset[str] | None:
+        """The evidence ids of an archived unit whose every referenced record is present with its recorded hash, as
+        ``_archived_evidence`` requires; None when the unit has no bundle or any record fails."""
+        bundle = self.archive.bundle(self.state, wid) if is_v2(self.state) else None
+        if bundle is None:
+            return None
+        refs = bundle["unit"].get("evidence") or []
+        for ref in refs:
+            found = sha256_file(self.s.aew_root / ref["path"])
+            if found is None or found != ref.get("sha256", found):
+                return None
+        return frozenset(str(r["id"]) for r in refs)
 
     # ---------------------------------------------------------------- knowledge (decision records)
 
@@ -719,6 +825,86 @@ class Projector:
         item["annotations"] = [self._annotation(a) for a in page]
         item["annotations_next_cursor"] = nxt.encode() if nxt else None
         return self.envelope(item)
+
+    # ---------------------------------------------------------------- raw-history search (F20.8 S2; F21 Arm B)
+
+    def history_search(self, *, terms: list[str] | None, kinds: list[str] | None, since: str | None,
+                       until: str | None, limit: str | None) -> dict[str, Any]:
+        """``/history/search``, served only while the adopted policy switches it on: Arm B's search from this
+        snapshot, lock-free and never destructive, under one deadline. Every hit is authenticated by the engine from
+        the history; the dashboard adds nothing to a hit but its typed expansion, and re-derives nothing. Raw
+        history, not admitted Knowledge: every response and every hit carries both labels."""
+        self.require("history_search")
+        if not terms:
+            raise InvalidRequest("give at least one term")
+        try:
+            recall.check_query(terms)
+        except errors.UsageError as exc:
+            raise InvalidRequest(exc.message) from None
+        kinds = kinds or []
+        if len(kinds) > SEARCH_KINDS_MAX:
+            raise InvalidRequest(f"at most {SEARCH_KINDS_MAX} kind parameters")
+        if set(kinds) - set(recall.KINDS):
+            raise InvalidRequest(f"kind must be one of {', '.join(recall.KINDS)}")
+        since = check_timestamp("since", since, lower_bound=True)
+        until = check_timestamp("until", until)
+        n = parse_search_limit(limit)
+        chosen = sorted(set(kinds))
+        query = {"terms": list(terms), "kinds": chosen, "since": since, "until": until, "limit": n}
+        root_h = str(self.state["cold"]["root"]["head_h"])
+        deadline = time.monotonic() + SEARCH_DEADLINE_S
+        try:
+            out = self.engine.history_search_committed(
+                self.state, list(terms), kinds=chosen or None, since=since, until=until, limit=n,
+                deadline=deadline, budget_s=SEARCH_BUILD_S, budget_docs=SEARCH_BUILD_DOCS,
+                candidates=SEARCH_CANDIDATES, enabled=self.s.history_search, fts5=recall.fts5_available(),
+                fence_token=lambda snippets: fence_token(query, root_h, snippets))
+        except errors.UsageError as exc:
+            raise InvalidRequest(exc.message) from None
+        except errors.CapabilityUnavailable as exc:  # the engine's own guard, behind the capability's
+            code = "RECALL_NOT_IN_INVOCATIONS" if exc.details.get("reason") == "not_in_invocations" else None
+            raise CapabilityUnavailable("history_search", [reason(code)] if code else []) from None
+        except errors.Unavailable:
+            raise CapabilityUnavailable("history_search", [reason("FTS5_UNAVAILABLE")]) from None
+        coverage = out["coverage"]
+        reasons = [reason(SEARCH_REASONS[r]) for r in coverage["reasons"]]
+        unverified = int((out.get("unverified") or {}).get("count") or 0)
+        if unverified:
+            reasons.append(reason("SEARCH_UNVERIFIED"))
+        through = coverage["indexed_through"]
+        if through is not None and not (isinstance(through, int) and 0 <= through <= recall.COUNT_MAX):
+            # never outside BoundedCount (PR #175 review, m1): the engine refuses such a watermark; this is the guard
+            through = None
+            reasons.append(reason("SEARCH_SUBSTRATE_UNUSABLE"))
+        return self.envelope({
+            "label": recall.LABEL, "trust_label": TRUST_LABEL, "query": query, "fence": out["fence"],
+            "hits": [self._search_hit(h, deadline) for h in out["hits"] if _searchable_id(h.get("id"))],
+            "coverage": {"complete": not reasons, "indexed_through": through,
+                         "history_entries": int(coverage["history_entries"]), "reasons": _bounded(reasons)},
+            "unverified": {"count": unverified} if unverified else None,
+        })
+
+    def _search_hit(self, hit: dict[str, Any], deadline: float) -> dict[str, Any]:
+        """One authenticated hit, as the engine built it, with its expansion typed: the CLI command as an argv array,
+        and a link only to a page that exists (``/evidence/{id}`` when the projector locates the record,
+        ``/history/{id}`` for a history entry's own record), so there are no dead links. An evidence link is checked
+        cheaply and memoized per request; once the search's deadline has passed it is null (PR #175 review, m3)."""
+        hid, subject = str(hit["id"]), hit.get("subject")
+        link: dict[str, Any] | None = None
+        if hit["kind"] == "evidence":
+            if time.monotonic() < deadline:
+                try:
+                    link = entity(hid, "evidence") if self._evidence_exists(hid) else None
+                except Exception:  # whatever would fail the route fails the link: never a link to a 500
+                    link = None
+        else:
+            link = entity(hid, "history")
+        return {"id": hid, "kind": str(hit["kind"]), "at": str(hit["at"]),
+                "subject": subject if isinstance(subject, str) and OPAQUE_ID.match(subject) else None,
+                "source": str(hit["source"]),
+                "trust": {"source": str(hit["trust"]["source"]), "label": str(hit["trust"]["label"])},
+                "truncated": bool(hit["truncated"]), "snippet": str(hit["snippet"]),
+                "expand": {"cli": ["aew", "history", "show", hid], "link": link}}
 
     def integrity(self) -> dict[str, Any]:
         self.require("integrity")

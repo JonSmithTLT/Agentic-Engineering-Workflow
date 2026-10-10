@@ -255,10 +255,11 @@ def _drain(sock: socket.socket, seconds: float) -> None:
         pass
 
 
-Route = Callable[[P.Projector, dict[str, str], dict[str, str]], dict[str, Any]]
+# A route's handler: the projector, the query (a repeatable parameter's value is the list of its values), the ids.
+Route = Callable[[P.Projector, dict[str, Any], dict[str, str]], dict[str, Any]]
 
 
-def _q(query: dict[str, str], name: str) -> str | None:
+def _q(query: dict[str, Any], name: str) -> str | None:
     return query.get(name)
 
 
@@ -297,9 +298,18 @@ QUERY_PARAMETERS: dict[str, frozenset[str]] = {
 }
 
 # Routes served only in some states of a project (register F20.8): present in the contract, answered only while the
-# project's adopted policy switches them on, and otherwise exactly as if they did not exist. None yet; S2 adds the
-# history search here.
-CONDITIONAL_ROUTES: frozenset[str] = frozenset()
+# project's adopted policy switches them on, and otherwise exactly as if they did not exist. ``/history/search`` (S2)
+# exists while the adopted execution policy sets ``recall.raw_history_search: explicit`` (``Snapshot.history_search``);
+# off, the ``/history/{id}`` template answers it, as it always has.
+SEARCH_ROUTE = "/history/search"
+CONDITIONAL_ROUTES: frozenset[str] = frozenset({SEARCH_ROUTE})
+CONDITIONAL_HANDLERS: dict[str, Route] = {
+    SEARCH_ROUTE: lambda p, q, m: p.history_search(terms=q.get("term"), kinds=q.get("kind"), since=_q(q, "since"),
+                                                   until=_q(q, "until"), limit=_q(q, "limit")),
+}
+QUERY_PARAMETERS[SEARCH_ROUTE] = frozenset({"term", "kind", "since", "until", "limit"})
+# The parameters a route takes more than once, each value in order (the generic rule is "each parameter once").
+REPEATABLE_PARAMETERS: dict[str, frozenset[str]] = {SEARCH_ROUTE: frozenset({"term", "kind"})}
 
 
 def pending_routes(contract_paths: Iterable[str]) -> set[str]:
@@ -719,12 +729,22 @@ class DashboardServer:
         refused = self.authenticator.authenticate(h.headers)
         if refused is not None:
             raise Refusal(HTTPStatus.UNAUTHORIZED, refused)
-        query = self._query(url.query, route)
+        conditional = url.path[len(API_PREFIX):] in CONDITIONAL_ROUTES
+        template_refusal: Refusal | None = None
+        try:
+            query = self._query(url.query, route)
+        except Refusal as r:
+            if not conditional:
+                raise
+            query, template_refusal = {}, r  # the template's 400, unless the snapshot switches the route on
         with self._serial:
-            snapshot = self.reader.snapshot()
+            if conditional:
+                snapshot, route, matched, query = self._conditional(url, route, matched, query, template_refusal)
+            else:
+                snapshot = self.reader.snapshot()
             projector = P.Projector(snapshot, route=route)
             try:
-                body = ROUTES[route](projector, query, matched)
+                body = (ROUTES.get(route) or CONDITIONAL_HANDLERS[route])(projector, query, matched)
             except CursorError as exc:
                 status = HTTPStatus.CONFLICT if exc.code == "CURSOR_EXPIRED" else HTTPStatus.BAD_REQUEST
                 raise Refusal(status, error_body(exc.code, exc.message)) from None
@@ -748,22 +768,46 @@ class DashboardServer:
                 raise Refusal(HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED"))
         return HTTPStatus.OK, body, tag
 
-    @staticmethod
-    def _normalized(query: dict[str, str]) -> dict[str, Any]:
-        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``)."""
-        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS else v for k, v in query.items()}
+    def _conditional(self, url: Any, route: str, matched: dict[str, str], query: dict[str, Any],
+                     template_refusal: Refusal | None) -> tuple[Any, str, dict[str, str], dict[str, Any]]:
+        """Inside the serialized section: whether a conditional route is on, read from this request's snapshot (the
+        change note's §5.2). On, the request becomes the route and its query is validated against the route's own
+        parameters. Off, or when the snapshot cannot be read (the switch then reads as off, failing closed), the
+        answer is exactly today's: the template's ``400`` if its validation failed, otherwise the template's own path,
+        which gives the same ``500`` on an unreadable state that it always gave."""
+        try:
+            snapshot = self.reader.snapshot()
+        except Exception:
+            if template_refusal is not None:
+                raise template_refusal from None
+            raise
+        path = url.path[len(API_PREFIX):]
+        if path == SEARCH_ROUTE and snapshot.history_search:
+            return snapshot, path, {}, self._query(url.query, path)
+        if template_refusal is not None:
+            raise template_refusal
+        return snapshot, route, matched, query
 
     @staticmethod
-    def _query(raw: str, route: str) -> dict[str, str]:
+    def _normalized(query: dict[str, Any]) -> dict[str, Any]:
+        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``), a
+        repeated ``kind`` as its sorted set (the response lists it so), and repeated terms in their order."""
+        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS
+                else sorted(set(v)) if k == "kind" and isinstance(v, list) else v for k, v in query.items()}
+
+    @staticmethod
+    def _query(raw: str, route: str) -> dict[str, Any]:
         allowed = QUERY_PARAMETERS.get(route, frozenset())
+        repeatable = REPEATABLE_PARAMETERS.get(route, frozenset())
         parsed = parse_qs(raw, keep_blank_values=True, strict_parsing=False)
-        out: dict[str, str] = {}
+        out: dict[str, Any] = {}
         for name, values in parsed.items():
             if name not in allowed:
                 raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", f"unknown parameter {name}"))
-            if len(values) != 1 or not values[0]:
+            repeated = name in repeatable
+            if not all(values) or (len(values) != 1 and not repeated):
                 raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", f"parameter {name} given badly"))
-            out[name] = values[0]
+            out[name] = list(values) if repeated else values[0]
         return out
 
     @classmethod

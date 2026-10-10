@@ -95,14 +95,6 @@ items:
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
 
-- row: F9
-  needs: adoption
-  owner: operator and designer
-  due: Unscheduled
-  what: 'The F9-A1 amendment, proposed 2026-10-09: first-class Lead-worker messaging and adaptive Lead supervision (F9-A
-    to F9-D). It states that the measured need F9 waits for now exists (§1), and asks for a qualified supervision path before
-    heterogeneous lower-tier worker fanout becomes a normal production mode (§22); not governing until adopted'
-
 - row: Q4
   needs: decision
   owner: designer

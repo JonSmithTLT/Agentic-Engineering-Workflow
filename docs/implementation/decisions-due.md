@@ -101,14 +101,6 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** -
 
-### F9
-
-**Due by:** Unscheduled · **Owner:** operator and designer · **Needs:** adoption
-
-**What:** The F9-A1 amendment, proposed 2026-10-09: first-class Lead-worker messaging and adaptive Lead supervision (F9-A to F9-D). It states that the measured need F9 waits for now exists (§1), and asks for a qualified supervision path before heterogeneous lower-tier worker fanout becomes a normal production mode (§22); not governing until adopted
-
-**Blocks:** -
-
 ### Q4
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision

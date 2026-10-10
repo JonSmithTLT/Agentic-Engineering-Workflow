@@ -640,21 +640,16 @@ def test_a_refused_request_always_delivers_its_complete_error_body(live, monkeyp
             assert_headers(headers)
 
 
-@pytest.mark.parametrize("refusal", [421, 403, 414])
-def test_a_refused_request_with_a_body_never_has_its_body_read_as_a_second_request(live, refusal):
-    """A body is never read, so a request carrying one ends its connection whichever check refuses it. The refusals
-    checked before the body (a foreign ``Host``, a foreign ``Origin``, an over-long path) used to keep the
-    connection, so the body was parsed as the next request: here a body that is itself an authenticated read gets
-    no answer of its own, only the refusal, with ``Connection: close`` and the end of the connection."""
-    inner = f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n\r\n".encode("latin-1")
-    host, extra, path = {
-        421: ("evil.example", "", "/"),
-        403: (live.host, "Origin: http://evil.example\r\n", "/"),
-        414: (live.host, "", "/" + "p" * (SV.MAX_PATH + 1)),
-    }[refusal]
-    outer = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+def _inner_read(live: Live) -> bytes:
+    """An authenticated read, sent as a body: answered on its own only if the server parsed the body as a request."""
+    return f"GET /api/v1/project HTTP/1.1\r\nHost: {live.host}\r\nCookie: {live.cookie}\r\n\r\n".encode("latin-1")
+
+
+def _one_answer_then_the_end(live: Live, request: bytes) -> tuple[int, dict[str, str], bytes]:
+    """Send ``request`` and read until the server's end of output: exactly one answer, complete, saying
+    ``Connection: close``. A body read as the next request would show as a second status line."""
     with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
-        s.sendall(outer + inner)
+        s.sendall(request)
         data = b""
         while got := s.recv(65536):  # the end of output: the server ended the connection after one answer
             data += got
@@ -662,9 +657,66 @@ def test_a_refused_request_with_a_body_never_has_its_body_read_as_a_second_reque
     head, _, body = data.partition(b"\r\n\r\n")
     lines = head.decode("latin-1").split("\r\n")
     headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
-    assert int(lines[0].split()[1]) == refusal and len(body) == int(headers["content-length"]), lines[0]
+    assert len(body) == int(headers["content-length"]), lines[0]
     assert headers.get("connection") == "close"
     assert_headers(headers)
+    return int(lines[0].split()[1]), headers, body
+
+
+@pytest.mark.parametrize("refusal", [421, 403, 414])
+def test_a_refused_request_with_a_body_never_has_its_body_read_as_a_second_request(live, refusal):
+    """A body is never read, so a request carrying one ends its connection whichever check refuses it. The refusals
+    checked before the body (a foreign ``Host``, a foreign ``Origin``, an over-long path) used to keep the
+    connection, so the body was parsed as the next request: here a body that is itself an authenticated read gets
+    no answer of its own, only the refusal, with ``Connection: close`` and the end of the connection."""
+    inner = _inner_read(live)
+    host, extra, path = {
+        421: ("evil.example", "", "/"),
+        403: (live.host, "Origin: http://evil.example\r\n", "/"),
+        414: (live.host, "", "/" + "p" * (SV.MAX_PATH + 1)),
+    }[refusal]
+    outer = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+    assert _one_answer_then_the_end(live, outer + inner)[0] == refusal
+
+
+@pytest.mark.parametrize("framing", ["content-length-0-then-n", "empty-then-chunked-transfer-encoding"])
+@pytest.mark.parametrize("host", ["foreign", "exact"])
+def test_a_body_announced_by_any_framing_header_is_never_read_as_a_second_request(live, framing, host):
+    """Every framing header counts, not only the first of its name: ``Content-Length: 0`` followed by
+    ``Content-Length: N``, or an empty ``Transfer-Encoding`` followed by ``chunked``, still announces a body. With a
+    foreign ``Host`` the answer is the ``421``; with the exact one, a read that would otherwise be served is the
+    ``400`` "a read carries no body". Either way one answer, and the body is never answered as a request."""
+    inner = _inner_read(live)
+    framing_headers, body = {
+        "content-length-0-then-n": (f"Content-Length: 0\r\nContent-Length: {len(inner)}\r\n", inner),
+        "empty-then-chunked-transfer-encoding": ("Transfer-Encoding: \r\nTransfer-Encoding: chunked\r\n",
+                                                 f"{len(inner):x}\r\n".encode() + inner + b"\r\n0\r\n\r\n"),
+    }[framing]
+    host_line = "evil.example" if host == "foreign" else live.host
+    outer = (f"GET /api/v1/project HTTP/1.1\r\nHost: {host_line}\r\nCookie: {live.cookie}\r\n{framing_headers}\r\n"
+             .encode("latin-1"))
+    status, _, raw = _one_answer_then_the_end(live, outer + body)
+    assert status == (421 if host == "foreign" else 400), (framing, host, status)
+    if host == "exact":
+        assert error_code(raw) == "INVALID_REQUEST"
+
+
+def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second_request(live):
+    """The in-flight ``503`` is answered before the admission checks see the request: a body there is unread too,
+    so the ``503`` says ``Connection: close``, is drained, and the body is never answered as the next request."""
+    inner = _inner_read(live)
+    outer = f"GET / HTTP/1.1\r\nHost: {live.host}\r\nContent-Length: {len(inner)}\r\n\r\n".encode("latin-1")
+    slots = live.server._slots  # noqa: SLF001 (the in-flight bound, filled in-process)
+    held = 0
+    while slots.acquire(blocking=False):
+        held += 1
+    try:
+        assert held == SV.MAX_IN_FLIGHT
+        status, headers, raw = _one_answer_then_the_end(live, outer + inner)
+    finally:
+        for _ in range(held):
+            slots.release()
+    assert status == 503 and error_code(raw) == "SERVER_BUSY" and headers.get("retry-after") == "1"
 
 
 def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):

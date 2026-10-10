@@ -200,6 +200,15 @@ class Refusal(Exception):
         self.body = body
 
 
+def has_body(headers: Any) -> bool:
+    """Whether a request carries a body this server will not read (R22, "a read carries no body"). Every framing
+    header counts, not only the first of its name: any ``Transfer-Encoding`` (even an empty one), or any
+    ``Content-Length`` that is not exactly ``0``. A duplicate that reads as "no body" here would leave the body to
+    be parsed as the next request."""
+    lengths = headers.get_all("Content-Length") or []
+    return headers.get_all("Transfer-Encoding") is not None or any(v.strip() != "0" for v in lengths)
+
+
 class _ClientGone(Exception):
     """The client's input ended before its request head did: there is nobody to answer."""
 
@@ -525,7 +534,10 @@ class DashboardServer:
 
     def handle(self, h: BaseHTTPRequestHandler, *, head: bool) -> None:
         if not self._slots.acquire(blocking=False):
-            self.refuse(h, HTTPStatus.SERVICE_UNAVAILABLE, "SERVER_BUSY", extra=[("Retry-After", "1")])
+            # Answered before `_admit`: a body here is unread too, so the answer ends the connection and is drained
+            # (`Connection: close`, never a bare close, which would reset and could discard the answer).
+            self.refuse(h, HTTPStatus.SERVICE_UNAVAILABLE, "SERVER_BUSY", close=has_body(h.headers),
+                        extra=[("Retry-After", "1")])
             return
         try:
             self._handle(h, head=head)
@@ -580,8 +592,8 @@ class DashboardServer:
         """The checks before any routing (R22, R23): an origin-form target, the exact origin, the request's
         size, no body. A body is never read, so a request carrying one ends its connection whichever check refuses
         it: otherwise an earlier refusal would leave the body to be parsed as the next request."""
-        has_body = h.headers.get("Content-Length") not in (None, "0") or bool(h.headers.get("Transfer-Encoding"))
-        if has_body:
+        body = has_body(h.headers)
+        if body:
             h.close_connection = True  # the body is not read
         if not is_path_target(raw_target(h) or ""):
             h.close_connection = True
@@ -593,7 +605,7 @@ class DashboardServer:
             raise Refusal(HTTPStatus.FORBIDDEN, error_body("ORIGIN_NOT_ALLOWED"))
         if len(url.path) > MAX_PATH or len(url.query) > MAX_QUERY:
             raise Refusal(HTTPStatus.REQUEST_URI_TOO_LONG, error_body("REQUEST_TOO_LARGE"))
-        if has_body:
+        if body:
             raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "a read carries no body"))
         fetch_site = h.headers.get("Sec-Fetch-Site")
         if url.path.startswith("/api/") and fetch_site is not None and fetch_site not in SAME_SITE_FETCH:

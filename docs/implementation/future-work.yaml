@@ -190,7 +190,11 @@ sections:
       F9-A1 was ingested (PR #145), which meets the record''s §11 ingestion item (AEA-35), and is now adopted. With the
       adoption, the recitation (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B''s,
       F9-C''s supervision candidates ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D''s harness;
-      no peer-worker inspection outside existing coordination and supervision policy'
+      no peer-worker inspection outside existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09)
+      and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits
+      for M4-E''s E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies,
+      bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing
+      is written'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'

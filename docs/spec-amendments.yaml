@@ -346,3 +346,6 @@ considered:
   - path: docs/implementation/adr/0016-ticket-revisions.md
     reason: ADR (accepted 2026-10-09); how the engine implements the Ticket-revision amendment (overlay
       ticket-revisions-2026-10-06, E19-B v0.4), written slice by slice; no WC/KC text replaced beyond that overlay
+  - path: docs/implementation/adr/0017-coordination-messages.md
+    reason: ADR (accepted 2026-10-10); Lead-worker coordination messages under F9-A1 v0.1 (F9, F9-A); a record kind beside
+      control state that moves knowledge, never state; no WC/KC text replaced

@@ -113,6 +113,10 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 
 
+MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
+PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
+
+
 # The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
 # an unquoted ``off`` (and ``no``, ``false``, ``on``, ``yes``, ``true``) as a boolean, which a schema enum refuses
 # without saying why; ``refuse_yaml_boolean`` names the cause and the quoted fix (the convention of PR #143's
@@ -120,6 +124,8 @@ PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("maps", "pack_slices"): (PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL),  # register F22.1 (plan §5.1)
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
+    ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
+    ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
 }
 
 
@@ -138,6 +144,20 @@ def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
                 f"{source}: {field} was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted off (or "
                 f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{allowed[0]}\" (or "
                 f"{', '.join(allowed[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
+
+
+def messaging(policy: dict[str, Any] | None) -> str:
+    """The coordination switch (``coordination.messaging``, F9-A plan D-15): ``disabled`` unless the policy says
+    ``enabled``. Absent policy and absent key are ``disabled``. Callers pass the adopted policy only (D-15: the switch
+    is read from adopted bytes, ``aew.engine.coordination_ops.messaging_switch``)."""
+    value = ((policy or {}).get("coordination") or {}).get("messaging")
+    return MESSAGING_ENABLED if value == MESSAGING_ENABLED else MESSAGING_DISABLED
+
+
+def presentation(policy: dict[str, Any] | None) -> str:
+    """The typed surface's presentation (``surface.presentation``, F9-A plan D-33): ``standard`` unless ``compact``."""
+    value = ((policy or {}).get("surface") or {}).get("presentation")
+    return PRESENTATION_COMPACT if value == PRESENTATION_COMPACT else PRESENTATION_STANDARD
 
 
 def pack_slices(policy: dict[str, Any] | None) -> str:

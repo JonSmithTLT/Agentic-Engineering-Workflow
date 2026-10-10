@@ -75,6 +75,10 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "expected_revision", None),
     # The Lead's own steering (M4-E E2): a lowering or a request, one transaction; it never raises authority.
     PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "expected_revision", None),
+    # A Lead coordination message (F9-A plan v4 D-17): recorded on its thread under the control lock, committing
+    # nothing; the switch it needs is execution policy's `coordination.messaging`. Its `expect_rev` is checked like
+    # every stage's, but a repeat is recognized by its `idempotency_id` (D-8): recording moves no revision.
+    PrimitiveSpec("message.send", MECHANICAL, (), ("execution",), (), "coordination_record", "idempotency_id", None),
 )}
 
 
@@ -102,6 +106,8 @@ NOT_STEPS: dict[str, str] = {
     "integrate.reconcile": "it can finish a publication, committing under integrate.publish",
     "verify.ingest.integration": "it commits under verify.ingest, which Ticket verification shares, so the op cannot "
                                  "say which of the two committed",
+    # F9-A plan v4 D-17 (v1 review F6): `message_send` has no stage planner and is never journaled.
+    "message.send": "it commits nothing (a coordination message is recorded on its thread, not in a transition)",
 }
 # Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
 # says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).

@@ -20,6 +20,7 @@ GUARD_READS: dict[str, frozenset[str]] = {
     "verify.ingest": frozenset({"work_id", "evidence"}),
     "verify.ingest.integration": frozenset({"work_id", "evidence"}),
     "integrate.prepare": frozenset({"work_id"}),
+    "integrate.publish": frozenset({"work_id"}),
     "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
                               "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
                               "external_refs", "body", "card", "promoted_from", "acceptance_checks",

@@ -22,7 +22,7 @@ from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
 from aew.engine.guards import checked as guard_checked
-from aew.engine.guards import refusal
+from aew.engine.guards import refusal, require
 from aew.errors import (
     AEWError,
     GateUnsatisfied,
@@ -614,33 +614,79 @@ class Integration:
                              "integrate requeue` to try again, or return the Ticket to RUNNING)",
                              queue=queue, revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        # Phase 1: record intent (publishing H -> M) after re-validating everything.
-        stale = None
-        moved: dict[str, Any] | None = None
-        with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
-            unit = self.units.unit(ctx.state, work_id)
+    # ---- `integrate.publish`'s guard as a query (M4-E E4b; aew.engine.guards)
+
+    SUPERSEDED, MOVED_HEAD, PUBLISH = "superseded", "moved_head", "publish"
+
+    def publish_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``integrate.publish`` now: the Ticket is COMMIT_READY with a prepared or validated candidate; with the queue
+        in line (on a deep copy: nothing is released, reconciled or ended by asking), its entry holds a live lease;
+        the candidate is bound to the current acceptance; the authoritative head is the candidate's base; every
+        obligation is met at the accepted snapshot; post-integration validation passed for this candidate; and the
+        authoritative worktree holds the base on the paths the candidate changes. It records ``found["outcome"]``:
+        ``publish``, or, for the two refusals the publish answers by committing a disposition first (PR #170 E4b),
+        ``superseded`` (it retires the candidate and requeues the entry, then raises this blocker's error) and
+        ``moved_head`` (it rebuilds the candidate once under the same lease, or leaves the entry for disposition, and
+        publishes nothing). An authoritative worktree with local changes is an integrity failure, as it always was
+        (UNKNOWN to a query, raised by the publish)."""
+        found = args.setdefault("found", {})
+
+        def check() -> None:
+            unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
-            self.queue.sync(ctx.state)
-            self.queue.require_live_lease(ctx.state, work_id, "publishing")
+            scratch = copy.deepcopy(state)
+            self.queue.sync(scratch)
+            self.queue.require_live_lease(scratch, work_id, "publishing")
             superseded = self.gates.binding_problem(unit)
             current = self.k.authoritative_commit()
+            found["current"] = current
             if superseded:
+                found["outcome"] = self.SUPERSEDED
+                raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; run "
+                                     "`aew integrate prepare` again",
+                                     reason="candidate built from an earlier COMMIT_READY or plan", **superseded)
+            if current != integ["base"]:
+                found["outcome"] = self.MOVED_HEAD
+                raise StaleCandidate("the authoritative ref moved since the candidate was built: publishing now "
+                                     "publishes nothing; it rebuilds the candidate on the new head once under the same "
+                                     "lease, or leaves the entry for the Lead's disposition",
+                                     expected=integ["base"], current=current)
+            synced = scratch["work"][work_id]
+            self._require_obligations_at_acceptance(scratch, work_id, synced)
+            self._post_integration_ok(scratch, work_id, synced)
+            if I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch):
+                I.precheck_sync(self.k.repo_root, integ["base"], integ["changed_paths"])
+            found["outcome"] = self.PUBLISH
+
+        return guard_checked(check)
+
+    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+        # Phase 1: record intent (publishing H -> M) after re-validating everything: the guard's query first (M4-E
+        # E4b), whose refusal is raised unchanged, except the two it answers with a committed disposition.
+        stale = None
+        moved: dict[str, Any] | None = None
+        with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
+            args: dict[str, Any] = {}
+            refused = self.publish_query(ctx.state, work_id, args)
+            outcome = args["found"].get("outcome")
+            if refused is not None and outcome not in (self.SUPERSEDED, self.MOVED_HEAD):
+                require(refused)
+            unit = ctx.state["work"][work_id]
+            integ = unit["integration"]
+            self.queue.sync(ctx.state)
+            superseded = self.gates.binding_problem(unit)
+            if outcome == self.SUPERSEDED and superseded:
                 self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
                 self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
                 stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
-            elif current != integ["base"]:
-                moved = self._moved_head(ctx, work_id, current)
+            elif outcome == self.MOVED_HEAD:
+                moved = self._moved_head(ctx, work_id, args["found"]["current"])
             else:
-                self._require_obligations_at_acceptance(ctx.state, work_id, unit)
-                self._post_integration_ok(ctx.state, work_id, unit)
-                if I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch):
-                    I.precheck_sync(self.k.repo_root, integ["base"], integ["changed_paths"])
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"

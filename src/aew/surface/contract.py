@@ -269,7 +269,7 @@ TOOLS: dict[str, Tool] = _catalog(
                "prepared_candidate": {"type": "string", "minLength": 1}},
               ("expect_rev", "work_id", "prepared_candidate")),
          expands_to=("integrate.publish",), required_judgments=("publish_candidate",),
-         mutates=True, progression=True, status=DESIGNED),
+         mutates=True, progression=True, status=DESIGNED, produced_by=((),)),
 )
 
 

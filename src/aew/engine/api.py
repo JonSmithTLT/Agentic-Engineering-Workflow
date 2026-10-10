@@ -439,6 +439,7 @@ class Engine:
         queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
         queries.register("integrate.prepare", integration.prepare_query)
         queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
+        queries.register("integrate.publish", integration.publish_query)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy

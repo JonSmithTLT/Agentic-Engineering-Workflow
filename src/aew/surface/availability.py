@@ -82,6 +82,8 @@ STAGES: dict[str, tuple[StepArgs, ...]] = {
                                     _same_unit()),
     "ticket_prepare": (_verification_ingest, _same_unit(to="COMMIT_READY"), _same_unit(),
                        _same_unit(role="verifier", scope="integration"), _same_unit()),
+    # E6a adds the acceptance of the integration verification (`verification_evidence`) as its first step.
+    "integration_publish": (_same_unit(),),
 }
 # Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step.
 APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], bool]]] = {

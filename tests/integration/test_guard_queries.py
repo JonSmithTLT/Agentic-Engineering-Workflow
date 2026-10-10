@@ -73,9 +73,9 @@ def test_explain_answers_a_stage_per_step_from_its_guards(ready):
     assert result["steps"][0]["availability"] == AVAILABLE  # the assignment's dispatch decision
     assert result["steps"][1]["covered_by"] == 1  # the launch is the assignment's
     assert result["steps"][2]["produced_by"] == {"state": 1, "implementer": 1}
-    unmigrated = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
-                                                     "arguments": {"verification_evidence": "EV-0001"}})["result"]
-    assert unmigrated["availability"] == UNKNOWN and unmigrated["steps"] == []  # E4b migrates it
+    prepare = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+                                                  "arguments": {"verification_evidence": "EV-0001"}})["result"]
+    assert prepare["availability"] == BLOCKED and prepare["steps"][0]["reason_codes"] == ["NOT_FOUND"]  # E4b
 
 
 # ---------------------------------------------------------------------------------------------- work.transition
@@ -677,3 +677,64 @@ def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
                         _verify_ingest(engine, p, wid, report))
     assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "no prepared integration candidate" in (
         answer["blocking_conditions"][0]["message"])
+
+
+# ------------------------------------------------------------------------------------- integrate.publish (M4-E E4b)
+
+
+def _publish(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
+    return lambda rev: engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+
+
+def test_guard_query_matches_execute_integrate_publish(tmp_path):
+    """`integrate.publish`: no candidate; a candidate not yet validated after integration (verifier mode); then the
+    publication, AVAILABLE and DONE. The projection's PUBLISH decision carries the same answer."""
+    from aewflow import to_commit_ready, verify
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    engine = Engine.discover(p.root)
+    check = untouched(p)
+    answer = equivalent(engine, "integrate.publish", wid, {}, _publish(engine, p, wid))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"]
+    check()
+    p.lead("integrate", "prepare", wid)
+    check = untouched(p)
+    answer = equivalent(engine, "integrate.publish", wid, {}, _publish(engine, p, wid))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "post-integration verification" in (
+        answer["blocking_conditions"][0]["message"])
+    check()
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+    assert explained["availability"] == AVAILABLE
+    args: dict[str, Any] = {}
+    equivalent(engine, "integrate.publish", wid, args, _publish(engine, p, wid))
+    assert args["found"]["outcome"] == "publish"
+    assert engine.status(wid)["work_unit"]["state"] == "DONE"  # hot, or archived as it stands now
+
+
+def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
+    """The authoritative head moved under a validated candidate: the query answers BLOCKED (STALE_CANDIDATE,
+    outcome `moved_head`); the publish, as before, commits the one rebuild under the same lease and publishes
+    nothing."""
+    from pathlib import Path
+
+    from aewflow import prepare_and_validate, to_commit_ready
+
+    from aew.workspace import git
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    prepare_and_validate(p, wid)
+    root = Path(p.root)
+    (root / "README.md").write_text("# calc\n\nMoved on.\n", encoding="utf-8", newline="\n")
+    git.out("commit", "-q", "-am", "moves the authoritative head", cwd=root)
+    engine = Engine.discover(p.root)
+    args: dict[str, Any] = {}
+    answer = engine.guard_query("integrate.publish", wid, args)
+    assert answer["availability"] == BLOCKED and answer["reason_codes"] == ["STALE_CANDIDATE"]
+    assert args["found"]["outcome"] == "moved_head"
+    out = engine.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid)
+    assert out["ok"] is False and out["rebuilt"] is True
+    assert engine.store.read()["work"][wid]["state"] == "COMMIT_READY"  # nothing published

@@ -290,8 +290,13 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     out = []
     for d in part["decisions"]:
         if "role" not in d:
-            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=d.get("arguments"),
-                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence")))
+            arguments = d.get("arguments")
+            found = UNKNOWN
+            if arguments is not None and d["tool"] and SA.migrated(d["tool"]):  # PUBLISH: its stage's (M4-E E4b)
+                found = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
+                                                                  if k != "expect_rev"})["availability"]
+            out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=arguments,
+                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e}

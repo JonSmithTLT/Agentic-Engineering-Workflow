@@ -65,7 +65,7 @@ def test_the_migrated_stage_table_matches_the_catalog():
         assert t is not None and len(steps) == len(t.expands_to) == len(t.produced_by), name
     # E4a migrated the four Ticket stages E5 builds; E4b adds the integration stages E6a builds.
     assert set(SA.STAGES) == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
-                              "ticket_prepare"}
+                              "ticket_prepare", "integration_publish"}
     for t in contract.TOOLS.values():
         for n, step in enumerate(t.produced_by, start=1):
             assert all(name in contract.STEP_INPUTS and 1 <= m < n for name, m in step), t.name
@@ -222,6 +222,7 @@ CALLS = {
     "ticket_request_review": [{"work_id": "T-0001"}],
     "ticket_request_verification": [{"work_id": "T-0001", "review_evidence": "EV-0003"}],
     "ticket_prepare": [{"work_id": "T-0001", "verification_evidence": "EV-0004"}],
+    "integration_publish": [{"work_id": "T-0001", "prepared_candidate": "c0ffee"}],
 }
 
 

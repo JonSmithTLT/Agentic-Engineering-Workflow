@@ -328,6 +328,7 @@ class Harness:
                 out.append({"run": r["run"], "invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
+                            "reason_code": _reason_code(record),
                             "containment": containment.normalize((record or {}).get("containment")),
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
@@ -428,9 +429,15 @@ class Harness:
             return {"runs": statuses, "timed_out": True}
         run, status, record, control = found
         inv = targets[run][1]
-        out: dict[str, Any] = {"run": run, "status": status, "reason": (record or {}).get("reason"),
-                               "evidence": self.run_evidence(inv["work_unit"], run),
-                               "results": self.run_results(inv["work_unit"], run), "timed_out": False}
+        out: dict[str, Any] = {}
+        headline = _headline(run, status, record)
+        if headline:  # first, so it is the first line a caller reads (register U8)
+            out["headline"] = headline
+        out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
+                    "evidence": self.run_evidence(inv["work_unit"], run),
+                    "results": self.run_results(inv["work_unit"], run), "timed_out": False})
+        if _reason_code(record):
+            out["reason_code"] = _reason_code(record)
         if control is not None:
             out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
         # The wait is over, so the control state is read once more, now: the run-record lane can return before a
@@ -559,6 +566,7 @@ class Harness:
         from aew.harness import runlog
 
         out = []
+        provider_env: list[str] | None = None
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv["status"] != "active" or not inv.get("runs"):
                 continue
@@ -572,6 +580,16 @@ class Harness:
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
+            elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
+                if provider_env is None:  # the policy's current names: a relaunch's server is given these
+                    policy, _ = self.k.execution_policy()
+                    provider_env = [str(n) for n in (policy or {}).get("provider_env") or []]
+                action = (f"{run} ended because the model provider rejected the credential: check the key in "
+                          f"{', '.join(provider_env) or 'the variables'} (the execution policy's provider_env), then "
+                          f"relaunch with `aew harness launch {inv_id} --expect-rev N`, or cancel it with "
+                          f"`aew invoke cancel {inv_id}`. A relaunch starts a new harness server with the key from "
+                          "the environment of the process that launches it; inside a Lead session that is the "
+                          "session's own, so restart `aew opencode` with the new key first")
             else:
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
                           f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
@@ -672,6 +690,24 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 # A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
 # surrogate pair), so a message this long always arrives (#138 review, F1).
 MAX_SEND_CHARS = 1 << 20
+
+def _reason_code(record: dict[str, Any] | None) -> str | None:
+    """The record's ``reason_code`` (register V1), if it is one: the record is written in the run's own directory."""
+    code = (record or {}).get("reason_code")
+    return code if isinstance(code, str) and code else None
+
+
+def _headline(run: str, status: str, record: dict[str, Any] | None) -> str | None:
+    """One line for a run that ended without its expected output in a way a caller could miss (register U8; V1)."""
+    if _reason_code(record) == K.PROVIDER_AUTH_FAILED and status != K.ENDED_WITH_EVIDENCE:
+        return (f"{run} FAILED: the model provider rejected the credential ({K.PROVIDER_AUTH_FAILED}); nothing was "
+                "recorded. See next_action")
+    if status != K.ENDED_WITHOUT_EVIDENCE:
+        return None
+    kinds = [str(k) for k in _list(_field(record, "contract").get("expected_kinds"))]
+    return (f"{run} ENDED WITHOUT EVIDENCE: it recorded no {' or '.join(kinds) or 'expected output'}, so it is not "
+            "progress and no AEW state moved. See next_action")
+
 
 def _field(record: dict[str, Any] | None, key: str) -> dict[str, Any]:
     """An object field of a run record, or ``{}``: the record is written in the run's own directory, so a field of

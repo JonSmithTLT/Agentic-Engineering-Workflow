@@ -3,11 +3,13 @@ designer's step-4 watch list, docs/implementation/harness-conformance.md §5).
 
 The fake server (tests/helpers/fake_opencode.py) serves V2's shapes and the real 2.0.18 OpenAPI; knobs make
 it behave badly in the ways a real server can: a slow catalog, a missing model or variant, a V1 or doctored
-API, a lost event stream, a queued prompt at a turn boundary, a permission request, a form, a crash.
+API, a lost event stream, a queued prompt at a turn boundary, a permission request, a form, a crash, a provider that
+rejects the key (register V1).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -305,6 +307,89 @@ def test_the_server_dying_mid_run_is_a_crash(lab, tmp_path):
     record = lab.record(run)
     assert record["exit_code"] == 9 and "server exited (9)" in record["harness_outcome"]
     assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
+
+
+def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_again(lab, tmp_path):
+    """Register V1: a daily key expired mid-run. The provider's 401 fails the turn (2.0.18: `provider.auth`, no
+    retry); the run ends `crashed` with `reason_code: provider_auth_failed`, and `harness status`, `harness wait` and
+    the next action say what to do, naming the variable, never its value. A relaunch starts a new server whose
+    environment is built from the launcher's at launch, so it runs with the key as it is now."""
+    expired, fresh = PROVIDER_SECRET, "sk-fresh-key-after-rotation-must-not-be-recorded"
+    rejected = hashlib.sha256(expired.encode()).hexdigest()
+    # one script for every run of the invocation: only the key in the launcher's environment differs
+    script(lab, IMPLEMENT, key="INV-0001",
+           provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected]})
+    wid, inv, run = launch(lab, tmp_path)
+    rev = lab.project.rev()
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and done["reason_code"] == "provider_auth_failed", done
+    assert done["headline"].startswith(f"{run} FAILED: the model provider rejected the credential"), done
+    assert done["reason"].startswith("provider_auth_failed:") and "OPENAI_API_KEY" in done["reason"], done
+    action = done["next_action"]
+    assert "rejected the credential" in action and "OPENAI_API_KEY" in action and "provider_env" in action, action
+    assert f"aew harness launch {inv}" in action and "restart `aew opencode`" in action, action
+    record = lab.record(run)
+    assert record["reason_code"] == "provider_auth_failed" and record["exit_code"] == 1
+    assert record["harness_outcome"] == "the agent's turn ended: failed (provider.auth, 401)"
+    [row] = lab.ok("harness", "status")["runs"]
+    assert row["reason_code"] == "provider_auth_failed" and row["reason"] == done["reason"]
+    assert any(action in a for a in lab.ok("status", "--json")["next_actions"])
+    failed = [e for e in events(lab) if e["event"] == "opencode.session.execution.failed"]
+    assert failed and all(e["error"] == {"type": "provider.auth", "status": 401} for e in failed), failed
+    assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
+    assert not evidence_of(lab, wid)
+
+    # The operator rotates the key; the relaunch's server is given it, and the same script now runs through.
+    lab.lead("harness", "launch", inv, env={"OPENAI_API_KEY": fresh})
+    again = lab.wait("R-INV-0001-2")
+    assert again["status"] == "ended_with_evidence" and "reason_code" not in again, again
+    assert "reason_code" not in lab.record("R-INV-0001-2")
+    # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote: only the variable's name
+    # (the harness's own private state is OpenCode's database, which holds what the provider said).
+    for directory in (runlog.run_dir(lab.aew_root, run), runlog.run_dir(lab.aew_root, "R-INV-0001-2")):
+        for path in directory.rglob("*"):
+            if path.is_file() and "harness" not in path.relative_to(directory).parts:
+                text = path.read_text(encoding="utf-8", errors="replace")
+                for secret in (expired, fresh, f"{expired[:3]}***{expired[-4:]}", "Incorrect API key"):
+                    assert secret not in text, (path, secret)
+
+
+def test_only_an_authentication_error_loses_its_message_and_has_a_reason_code():
+    """Any other provider error is recorded as before, with its status, and no reason code."""
+    from aew.harness.opencode.adapter import REASON_CODES, describe_error, error_view
+
+    bad = {"type": "provider.invalid-request", "message": "max_tokens is too large", "status": 400}
+    assert error_view(bad) == bad and bad["type"] not in REASON_CODES
+    assert describe_error(error_view(bad)) == "provider.invalid-request, 400: max_tokens is too large"
+    auth = {"type": "provider.auth", "message": "Incorrect API key provided: sk-ab***wxyz.", "status": 401}
+    assert error_view(auth) == {"type": "provider.auth", "status": 401}
+    assert describe_error(error_view(auth)) == "provider.auth, 401"
+    assert REASON_CODES == {"provider.auth": "provider_auth_failed"}
+
+
+def test_a_failed_turn_is_classified_from_the_event_when_the_messages_lack_the_error(tmp_path):
+    """The messages are the source; `session.execution.failed` is the fallback, for this execution only."""
+    from aew.harness.opencode.adapter import OpenCodeAdapter
+
+    def ended(frames: list[dict[str, Any]]) -> dict[str, Any]:
+        logged: list[dict[str, Any]] = []
+        adapter = OpenCodeAdapter(None, tmp_path, logged.append)  # type: ignore[arg-type]  # no process is started
+        adapter.session, adapter.sent, adapter.turn = "ses_1", ["msg_1"], "running"
+        adapter._take_snapshot = lambda: None  # type: ignore[method-assign]
+        adapter.snapshot = {"assistant": [{"error": None}]}
+        for frame in frames:
+            adapter._on_event({"data": {"sessionID": "ses_1", **frame.pop("data", {})}, **frame})
+        adapter._turn_over("failed", "msg_1")
+        assert all("Incorrect" not in str(e) for e in logged), logged
+        return adapter.inspect()
+
+    auth = {"type": "provider.auth", "message": "Incorrect API key provided: sk-ab***wxyz.", "status": 401}
+    out = ended([{"type": "session.execution.started"}, {"type": "session.execution.failed", "data": {"error": auth}}])
+    assert out["reason_code"] == "provider_auth_failed" and out["exit_code"] == 1
+    assert out["detail"] == "the agent's turn ended: failed (provider.auth, 401)"
+    # an earlier execution's failure is not this one's
+    out = ended([{"type": "session.execution.failed", "data": {"error": auth}}, {"type": "session.execution.started"}])
+    assert out["reason_code"] is None and out["detail"] == "the agent's turn ended: failed"
 
 
 # ---------------------------------------------------------------------------------------------- Lead requests

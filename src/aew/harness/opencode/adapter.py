@@ -40,7 +40,7 @@ from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
-from aew.harness.contract import CREDENTIAL_RE, LaunchContract
+from aew.harness.contract import CREDENTIAL_RE, PROVIDER_AUTH_FAILED, LaunchContract
 from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
@@ -68,6 +68,11 @@ LOGGED_EVENTS = frozenset({
     "session.tool.called", "session.tool.failed", "session.inbox.enqueued", "session.inbox.delivered",
     "permission.asked", "permission.replied",
 })
+# A failed turn's error type (the pinned 2.0.18 ``Session.StructuredError``) -> the run's ``reason_code``. A provider
+# that rejects the credential fails the turn at once, with no retry: ``{type: "provider.auth", status: 401}`` on the
+# failed step, on ``session.execution.failed`` and on the assistant message (OpenCode compaction probe, ctl-http401).
+AUTH_ERROR = "provider.auth"
+REASON_CODES = {AUTH_ERROR: PROVIDER_AUTH_FAILED}
 
 
 def default_binary() -> Path | None:
@@ -150,6 +155,8 @@ class OpenCodeAdapter(HarnessAdapter):
         self.turn = "starting"          # running | held (after a Lead interrupt) | ended
         self.exit_code: int | None = None
         self.detail: str | None = None
+        self.reason_code: str | None = None
+        self._failed: dict[str, Any] | None = None  # the error of the last `session.execution.failed`, as recorded
         self.health: dict[str, Any] = {}
         self.snapshot: dict[str, Any] | None = None
         self.step_models: list[dict[str, Any]] = []
@@ -394,8 +401,12 @@ class OpenCodeAdapter(HarnessAdapter):
             if isinstance(data.get("tokens"), dict):
                 summary["tokens"] = data["tokens"]
             if isinstance(data.get("error"), dict):
-                summary["error"] = {k: data["error"].get(k) for k in ("type", "message")}
+                summary["error"] = error_view(data["error"])
             self.emit(summary)
+        if kind == "session.execution.started":
+            self._failed = None  # a new execution: an earlier one's failure is not this turn's
+        elif kind == "session.execution.failed" and isinstance(data.get("error"), dict):
+            self._failed = error_view(data["error"])
         if kind.startswith("session.execution.") or kind.startswith("permission.") or kind.startswith("form."):
             self._wake.set()
 
@@ -484,18 +495,21 @@ class OpenCodeAdapter(HarnessAdapter):
                 self.turn = "held"  # the Lead interrupted: the session waits for `send`, a stop or the deadline
                 self.emit({"event": "opencode.held", "outcome": outcome})
                 return
+            # The messages say why the turn failed; the event stream is the fallback, never the only source.
             error = next((m.get("error") for m in reversed((self.snapshot or {}).get("assistant", []))
-                          if m.get("error")), None)
-            detail = f"the agent's turn ended: {outcome}" + (f" ({error.get('type')}: {error.get('message')})"
+                          if m.get("error")), None) or (self._failed if outcome == "failed" else None)
+            reason_code = REASON_CODES.get(str(error.get("type"))) if isinstance(error, dict) else None
+            detail = f"the agent's turn ended: {outcome}" + (f" ({describe_error(error)})"
                                                               if isinstance(error, dict) else "")
-            self._end(EXIT_CODES.get(outcome, 1), detail)
+            self._end(EXIT_CODES.get(outcome, 1), detail, reason_code)
 
-    def _end(self, code: int, detail: str) -> None:
+    def _end(self, code: int, detail: str, reason_code: str | None = None) -> None:
         with self._lock:
             if self.turn == "ended":
                 return
-            self.turn, self.exit_code, self.detail = "ended", code, detail
-        self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail})
+            self.turn, self.exit_code, self.detail, self.reason_code = "ended", code, detail, reason_code
+        self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail,
+                   **({"reason_code": reason_code} if reason_code else {})})
 
     def _reject_requests(self) -> None:
         """AEW's rules are allow or deny only, so a permission request or a form means something unexpected:
@@ -526,7 +540,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def inspect(self) -> dict[str, Any]:
         with self._lock:
             return {"alive": self.turn != "ended", "exit_code": self.exit_code, "session": self.session,
-                    "turn": self.turn, "detail": self.detail}
+                    "turn": self.turn, "detail": self.detail, "reason_code": self.reason_code}
 
     def _take_snapshot(self) -> None:
         """Assistant messages' model, usage and errors (never their text), while the server is still up."""
@@ -543,8 +557,8 @@ class OpenCodeAdapter(HarnessAdapter):
                                       "cost": m.get("cost"), "finish": m.get("finish"),
                                       "tools": [str(c.get("name")) for c in m.get("content") or []
                                                 if isinstance(c, dict) and c.get("type") == "tool"],
-                                      "error": {k: (m.get("error") or {}).get(k) for k in ("type", "message")}
-                                      if m.get("error") else None})
+                                      "error": error_view(m["error"]) if isinstance(m.get("error"), dict)
+                                      else None})
             nxt = (page.get("cursor") or {}).get("next")
             if not nxt:
                 truncated = False
@@ -612,6 +626,25 @@ class OpenCodeAdapter(HarnessAdapter):
         semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
         return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
                            truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
+
+
+def error_view(error: dict[str, Any]) -> dict[str, Any]:
+    """What AEW keeps of a provider error: its type and status, and its message unless the provider rejected the
+    credential. A provider's authentication message can quote part of the key (OpenAI's names it, masked), and a key
+    or any part of one is never logged or recorded (register V1): only the variable's name appears, in the next
+    action."""
+    out: dict[str, Any] = {"type": error.get("type")}
+    if error.get("status") is not None:
+        out["status"] = error.get("status")
+    if error.get("type") != AUTH_ERROR:
+        out["message"] = error.get("message")
+    return out
+
+
+def describe_error(error: dict[str, Any]) -> str:
+    status = f", {error['status']}" if error.get("status") is not None else ""
+    message = f": {error['message']}" if error.get("message") else ""
+    return f"{error.get('type')}{status}{message}"
 
 
 def _created(message: dict[str, Any]) -> float:

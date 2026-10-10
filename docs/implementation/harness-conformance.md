@@ -22,7 +22,7 @@ An adapter is one `HarnessAdapter` instance per run, inside that run's superviso
 | Method | Obligation |
 |---|---|
 | `launch(contract, agent_env)` | Start the harness through the supervisor's `ProcessTree`, so every harness process is owned. Check health against the harness actually started (version, required capabilities, the pinned model and effort present), and raise `HarnessIncompatible` on any gap (fail closed). Give every model-controlled process exactly `agent_env`. Deliver `contract.prompt` (preamble + pinned pack + continuation). Return `{session, state_dir, version, …}`. |
-| `inspect()` | Report `{alive, exit_code, session}` without side effects. A harness's "done" is only a hint: the supervisor decides the run's status from AEW evidence. |
+| `inspect()` | Report `{alive, exit_code, session}` without side effects. A harness's "done" is only a hint: the supervisor decides the run's status from AEW evidence. Once ended, an optional `reason_code` says why when the adapter can tell (`provider_auth_failed`: the provider rejected the key); the supervisor records it on the run, beside `status` and `reason`. |
 | `terminate()` | Stop the harness (idempotent). The supervisor also kills the whole tree afterwards. |
 | `send(text)` / `interrupt()` | Deliver a Lead message mid-run, or stop the current turn. Optional: raise `HarnessIncompatible` if unsupported. |
 | `collect()` | Non-authoritative facts: `effective` (every `{provider, model, effort}` actually used), `sessions`, usage and context sizes. The supervisor compares `effective` with the pin (`model_check`). |

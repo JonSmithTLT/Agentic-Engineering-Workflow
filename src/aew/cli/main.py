@@ -149,7 +149,8 @@ def _main(argv: list[str]) -> int:
         emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
-    return 0
+    exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)
+    return int(exit_status(result)) if exit_status is not None else 0
 
 
 if __name__ == "__main__":

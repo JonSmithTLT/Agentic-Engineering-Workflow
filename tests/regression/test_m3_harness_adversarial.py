@@ -870,7 +870,8 @@ def test_forged_run_records_and_harness_success_move_nothing(lab, tmp_path):
         assert lab.record(R1)["status"] == "ended_with_evidence"  # the forgery is on disk ...
     runs = lab.ok("harness", "status")["runs"]
     assert [r["run"] for r in runs] == [R1, R2]  # ... a run that never existed is not listed ...
-    assert runs[0]["evidence"] == [] and lab.ok("harness", "wait", R1)["evidence"] == []  # ... evidence: the store
+    waited = lab.aew("harness", "wait", R1)  # exit 20 when the record says ended_without_evidence (contained), else 0
+    assert runs[0]["evidence"] == [] and waited.json["evidence"] == []  # ... evidence: the store
     assert lab.lead_res("work", "transition", wid, "--to", "REVIEW_PENDING").error["code"] == "GATE_UNSATISFIED"
     assert lab.lead_res("review", "ingest", wid, "--evidence", "INV-0001-impl-1").error["code"] in {
         "NOT_FOUND", "ILLEGAL_TRANSITION"}

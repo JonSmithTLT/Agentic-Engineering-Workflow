@@ -1148,16 +1148,6 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 **Notes:** The Lead's manual recovery worked once it saw the stall. Health never authorizes recovery; any automatic nudge stays this row's separate adoption ([H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md) §8, RHN-09). The approved design keeps it deferred ([run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §2, §11).
 
-### U8
-
-**Work:** Make a run that ended without its expected output conspicuous in `aew harness wait`
-
-**Source:** the Lead's debrief
-
-**When:** **M4 candidate** (run UX)
-
-**Notes:** Today a normal result (exit 0) with status `ended_without_evidence`, the reason and a relaunch action.
-
 ### U9
 
 **Work:** Review skills unavailable: reviewer cards request `code-review`, and nothing provides it to the run
@@ -1183,16 +1173,6 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 AEW ran the independent review's own prompt as AEW work, with the same model (GPT 6 Sol), on a scratch clone of `aew-m3-freeze-2026-09-30`. It found one new defect (plan acceptance order, fixed: ADR-0006 amendment) and the R2 class. It missed R1, which the independent review found: it stated the primitive but did not trace its consequence, the pattern F17 addresses. The run also showed these operational gaps:
 
 <!-- columns: # | Work | Source | When | Notes -->
-
-### V1
-
-**Work:** A provider key that expires mid-run: relaunch should re-read the key, or report the auth failure as its own status
-
-**Source:** the run: a daily key expired; the run crashed, and a relaunch hit the same error until `aew opencode` restarted with a new key
-
-**When:** **M4 candidate** (run UX)
-
-**Notes:** The key is fixed when the server process starts.
 
 ### V3
 
@@ -1595,6 +1575,22 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-01
 
 **By:** Absorbed into F17 (designer; `8eac795`, PR #6)
+
+### U8
+
+**Was:** Make a run that ended without its expected output conspicuous in `aew harness wait`
+
+**Closed:** 2026-10-10
+
+**By:** `aew harness wait` exits 20 (documented in its help; distinct from every error's 1 to 10) when the run it returns ended `ended_without_evidence`, and its result starts with a one-line `headline`; the result is printed as before, and a timed-out wait and every other ending still exit 0. The typed surface's `harness_wait` keeps its StageResult shape and description; its result carries the same headline. `tests/regression/test_uat_2026_09_30.py`
+
+### V1
+
+**Was:** A provider key that expires mid-run: relaunch should re-read the key, or report the auth failure as its own status
+
+**Closed:** 2026-10-10
+
+**By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value, and the provider's message, which can quote part of the key, is not recorded. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first. `tests/integration/test_opencode_adapter.py`
 
 ### V2
 

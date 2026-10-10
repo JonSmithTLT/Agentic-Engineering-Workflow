@@ -13,6 +13,7 @@ reconciled by inspecting git — success is never inferred.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -44,6 +45,7 @@ from aew.workspace import integration as I
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
+    from aew.engine.dispatch import DispatchDecision
     from aew.engine.ports import DispatchPort, GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
 
 
@@ -149,12 +151,16 @@ class Integration:
         grants no lease, starts no custodian and enqueues nothing. Its blocker is the decision's own refusal (its
         first migrated check's error, or ``DISPATCH_REFUSED`` naming every condition). The candidate's build is not
         a guard: a conflict or an admission refusal is the prepare's outcome."""
-        def check() -> None:
-            scratch = copy.deepcopy(state)
-            self.queue.sync(scratch)
-            self.dispatch.decide(scratch, "integrate.prepare", work_id).require()
+        return guard_checked(lambda: self._prepare_admission(copy.deepcopy(state), work_id,
+                                                             self.dispatch.decide).require())
 
-        return guard_checked(check)
+    def _prepare_admission(self, state: dict[str, Any], work_id: str,
+                           decide: Callable[[dict[str, Any], str, str], DispatchDecision]) -> DispatchDecision:
+        """The prepare's admission, shared by its query (on a deep copy, with ``decide``) and its execution (on the
+        transaction's state, with ``decide_in``, which records and requires the decision): bring the queue in line
+        with ``state``, then decide the ``integrate.prepare`` entrypoint (PR #171 review, finding 3)."""
+        self.queue.sync(state)
+        return decide(state, "integrate.prepare", work_id)
 
     def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """A deep copy of ``state`` with ``work_id``'s integration candidate as ``integrate.prepare`` would leave it:
@@ -331,9 +337,11 @@ class Integration:
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
-            self.queue.sync(state)
-            # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian.
-            decision = self.dispatch.decide_in(ctx, "integrate.prepare", work_id)
+            # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian. The
+            # admission is the query's own (M4-E E4b): decide_in records the decision and requires it.
+            decision = self._prepare_admission(state, work_id,
+                                               lambda _state, entrypoint, wid: self.dispatch.decide_in(ctx, entrypoint,
+                                                                                                       wid))
             unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
             self.queue.grant(ctx, work_id)
             unit, conflict, refused = self._build_candidate(ctx, work_id, unleased=unleased)

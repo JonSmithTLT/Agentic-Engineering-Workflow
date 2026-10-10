@@ -28,6 +28,8 @@ from typing import Any
 from aew.harness.containment.layout import Layout, bwrap_argv
 
 TIMEOUT_S = 30.0
+VERSION_TIMEOUT_S = 10.0
+BOUND_S = TIMEOUT_S + VERSION_TIMEOUT_S  # the self-test and the mechanism check, at a run's start
 
 _PAYLOAD = r"""
 import json, os, sys
@@ -133,7 +135,7 @@ def _markers(layout: Layout, name: str) -> list[Path]:
 def mechanism(layout: Layout) -> str:
     """``bubblewrap <version>`` of the binary the layout uses."""
     try:
-        out = subprocess.run([layout.bwrap, "--version"], capture_output=True, text=True, timeout=10,
+        out = subprocess.run([layout.bwrap, "--version"], capture_output=True, text=True, timeout=VERSION_TIMEOUT_S,
                              stdin=subprocess.DEVNULL).stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         out = ""

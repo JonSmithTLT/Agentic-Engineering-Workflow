@@ -1430,9 +1430,14 @@ sections:
       too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A single-run `aew harness
       wait` that returned a run still `running` (four CI failures in three adversarial tests, 2026-10-06 to 10-08, Linux
       and Windows) was a regression from wait-any (M4-D6, PR #79): its control lane, meant for `--any`, ended a single-run
-      wait before the supervisor had written the run''s end (fixed 2026-10-09: the control lane is `--any`''s only). A failed
-      harness test now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such
-      failure names a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
+      wait before the supervisor had written the run''s end (fixed 2026-10-09: the control lane is `--any`''s only). A supervisor
+      wedged while starting kept its heartbeat fresh with no limit, so a single-run wait read `starting` until its own timeout
+      (noted by the independent review of PR #147, not seen in CI). The start now has a deadline, by default the sandbox
+      self-test''s and the harness adapter''s own launch bounds plus 60 s (620 s for OpenCode at its defaults; `AEW_RUN_START_S`
+      overrides it), so a wedged start reads `lost` within the deadline plus 10 s and never becomes `running` (ADR-0009
+      amendment 2026-10-09, a run''s start has a deadline). A failed harness test now reports and keeps its runs'' record
+      and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. Raise test-side
+      timeouts, never the product''s.'
 
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule

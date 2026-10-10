@@ -175,6 +175,20 @@ class History:
         """The tail file's bytes, for a snapshot taken under the control lock (None: no tail file yet)."""
         return self._read(M.TAIL_REL)
 
+    def moved_past(self, root: dict[str, Any]) -> bool:
+        """Whether the tail on disk is a well-formed tail that ends after ``root``: a later commit appended to it or
+        sealed it (it may still be committing). A missing, unreadable or malformed tail, or one that ends at or before
+        the root, is not: a read for ``root`` that fails then has met damage, not a race (review of #178, finding E).
+        A commit writes the tail before the control file, so this holds from the moment the history moves."""
+        try:
+            raw = self._read(M.TAIL_REL)
+            if raw is None:
+                return False
+            _, end, _ = self._parsed(raw, M.TAIL_REL, sealed=False)
+        except (IntegrityError, ValidationFailed):
+            return False
+        return bool(end["count"] > root["count"])
+
     def tail(self, root: dict[str, Any], *, tail_raw: Any = _READ) -> dict[str, Any]:
         """The tail for ``root``, checked against it: it follows the root's newest sealed segment and its entries end
         exactly at the root. An empty history may have no tail file yet."""

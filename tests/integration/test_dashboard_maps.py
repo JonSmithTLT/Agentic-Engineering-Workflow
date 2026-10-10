@@ -17,6 +17,7 @@ import http.client
 import io
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -43,10 +44,11 @@ from aew.dashboard.reasons import REASONS, codes_in  # noqa: E402
 from aew.dashboard.server import DashboardServer, error_body, pending_routes  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
-from aew.engine.store import LOCK_REL  # noqa: E402
-from aew.errors import IntegrityError, LockTimeout  # noqa: E402
+from aew.engine.store import CONTROL_REL, LOCK_REL  # noqa: E402
+from aew.errors import HistoryMoved, IntegrityError, LockTimeout  # noqa: E402
 from aew.harness.contract import CREDENTIAL_RE  # noqa: E402
 from aew.history import index as HI  # noqa: E402
+from aew.history import manifest as HM  # noqa: E402
 from aew.maps import freshness as MF  # noqa: E402
 from aew.maps import rules as MR  # noqa: E402
 from aew.maps import store as MS  # noqa: E402
@@ -768,18 +770,27 @@ def test_the_architecture_reference_stale_unavailable_none_and_a_hanging_git(lab
         assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNAVAILABLE"
 
 
-@pytest.mark.parametrize("failure", [IntegrityError("simulated: a later commit replaced the tail"),
-                                     LockTimeout("simulated: the history index is busy")],
-                         ids=["history_moved", "index_busy"])
+@pytest.mark.parametrize("failure", ["history_moved", "index_busy"])
 def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on_the_index(lab, monkeypatch,
                                                                                            failure):
     """Review of #178, finding 1: the evidence is archived (a finished investigation), nothing syncs the history index
     first, the control lock is held, and the index sync meets a moved history or a busy index. ``/maps`` neither
     re-reads state under the lock nor waits: the reference is ``UNKNOWN`` ("read again later"), never ``UNAVAILABLE``,
-    and the next read, with the index free, answers."""
+    and the next read, with the index free, answers.
+
+    The moved history is real, through the real sync (finding E: only a history that moved is "read again later"): a
+    later commit wrote its tail, and the control file the reader sees still holds the earlier root, as it does while
+    that commit is between its tail and its control-file write."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
     p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    control = p.root / ".aew" / CONTROL_REL
+    if failure == "history_moved":
+        earlier = control.read_bytes()
+        complete_investigation(p, create_investigation(p, tmp, title="Survey again"))
+        later = control.read_bytes()
+        control.write_bytes(earlier)  # the reader's root; the tail on disk is the later commit's
+        (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
     with served(p) as client:
         engine = client.server.engine
         engine.store.lock_timeout = 30.0  # a lookup that took the lock would wait this long, then fail
@@ -790,14 +801,15 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
         def failing_once(self: Any, root: Any, **kwargs: Any) -> Any:
             calls["sync"] += 1
             if calls["sync"] == 1:
-                raise failure
+                raise LockTimeout("simulated: the history index is busy")
             return real_sync(self, root, **kwargs)
 
         def counted_read(*args: Any, **kwargs: Any) -> Any:
             calls["read"] += 1
             return real_read(*args, **kwargs)
 
-        monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
+        if failure == "index_busy":
+            monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
         monkeypatch.setattr(engine.store, "read", counted_read)
         with FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
             started = time.monotonic()
@@ -810,6 +822,8 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
             assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNKNOWN"
             assert "read again later" in arch["freshness"]["reasons"][0]["message"]
+            if failure == "history_moved":
+                control.write_bytes(later)  # that commit's control-file write
             again = client.data("/maps")["architecture"]["freshness"]  # the lock still held, the index free
             assert again["status"] == "CURRENT" and calls["read"] == 0
 
@@ -862,6 +876,57 @@ def test_damaged_history_is_unavailable_not_busy(lab, monkeypatch):
         arch = client.data("/maps")["architecture"]["freshness"]
         assert arch["status"] == "UNAVAILABLE" and arch["reasons"][0]["code"] == "ARCHITECTURE_UNAVAILABLE"
         assert "read again later" not in json.dumps(arch)
+
+
+def _tamper_one_tail_entry(p: Project) -> None:
+    """Change one byte of an entry's timestamp in the history tail (its hash no longer chains), and delete the derived
+    index so the next sync walks the history again."""
+    tail = p.root / ".aew" / HM.TAIL_REL
+    text = tail.read_text(encoding="utf-8")
+    at = re.search(r"\bat: '?\d{3}(\d)", text)
+    assert at is not None, text[:400]
+    digit = at.start(1)
+    tail.write_text(text[:digit] + str((int(text[digit]) + 1) % 10) + text[digit + 1:], encoding="utf-8")
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+
+
+def test_history_damage_the_lock_free_sync_finds_is_unavailable_not_read_again_later(lab):
+    """Review of #178, finding E: damage the index sync's own walk meets (a tampered tail entry), through the real
+    sync, is the reference ``ARCHITECTURE_UNAVAILABLE``, as ``/history`` reports it, never "history moved; read again
+    later" (which a damaged history would say for good)."""
+    p, tmp = lab
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    _tamper_one_tail_entry(p)
+    with served(p) as client:
+        client.server.engine.archive._synced = None
+        arch = client.data("/maps")["architecture"]["freshness"]
+        assert arch["status"] == "UNAVAILABLE" and arch["reasons"][0]["code"] == "ARCHITECTURE_UNAVAILABLE"
+        assert "read again later" not in json.dumps(arch)
+        assert b"HISTORY_INDEX_UNAVAILABLE" in client.get("/history")[2]
+
+
+def test_a_lock_free_sync_that_meets_a_later_commit_is_history_moved_and_damage_is_not(lab):
+    """The other half of finding E, through the real sync: a reader holding a root that a later commit moved past is
+    ``HistoryMoved`` ("read again later"); the same read of a history whose tail was tampered with instead is the
+    ``IntegrityError`` itself."""
+    p, tmp = lab
+    complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    engine = Engine.discover(p.root)
+    before = engine.store.read()
+    complete_investigation(p, create_investigation(p, tmp, title="Survey again"))
+    assert engine.store.read()["cold"]["root"]["count"] > before["cold"]["root"]["count"]
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(HistoryMoved):
+        engine.archive.index(before)
+
+    _tamper_one_tail_entry(p)
+    now = engine.store.read_committed()
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
+        engine.archive.index(now)
+    assert not isinstance(raised.value, HistoryMoved)
 
 
 def test_a_lock_free_reader_bounds_the_index_wait_and_leaves_the_cli_readers_alone(lab):

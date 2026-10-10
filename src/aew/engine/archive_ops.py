@@ -692,8 +692,13 @@ class Archive:
                     self._synced = (key, self._index_stat(), index)
                 return index
             except IntegrityError as exc:
-                if lockfree is not None:  # a lock-free reader never re-reads state: the race is reported as such
-                    raise HistoryMoved(str(exc)) from exc
+                if lockfree is not None:
+                    # A lock-free reader never re-reads state: the race (the history on disk has moved past the
+                    # snapshot's root) is reported as such; anything else the sync met is damage, raised as it is
+                    # (review of #178, finding E: a tampered entry is unavailable, not "read again later").
+                    if self.cold.moved_past(root):
+                        raise HistoryMoved(str(exc)) from exc
+                    raise
                 if self.k.store.held or attempt == 2:
                     raise
                 state = self.k.store.read()

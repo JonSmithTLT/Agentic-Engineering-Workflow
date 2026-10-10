@@ -363,7 +363,12 @@ class Harness:
         ``control.yaml`` changed since the last check, so a wait parses nothing between commits (OBX-38).
 
         A run launched moments ago whose supervisor has not written its first record yet is possibly live, as
-        the launch preconditions treat it: it is waited on, not reported unconfirmed at once (found by CI)."""
+        the launch preconditions treat it: it is waited on, not reported unconfirmed at once (found by CI).
+
+        The control lane is `--any`'s (ADR-0012 D5). The single-run form waits for the run itself: its record ends, or
+        it goes stale and reads as lost. A supervisor ends its run on its own once the invocation stops being active,
+        and a caller that waits on one run acts on that run's end (nightly 2026-10-06: a retired implementer's run
+        read `running` from a wait that had returned)."""
         names = [runs] if isinstance(runs, str) else list(runs)
         if not names:
             raise UsageError("name the run(s) to wait on")
@@ -400,6 +405,8 @@ class Harness:
                 status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
                 if not runlog.possibly_live(status, launched):
                     return run, status, record, None
+            if not any_:  # the single-run form: the run's own record only
+                return None
             fresh, unexamined = unexamined, None
             if fresh is None:
                 now = self._control_identity()

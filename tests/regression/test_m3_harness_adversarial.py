@@ -673,6 +673,28 @@ def test_the_retired_implementers_run_stops_when_review_begins(lab, tmp_path, sy
     assert_control_invariants(lab.project)
 
 
+def test_a_single_run_wait_returns_the_runs_own_end_not_its_invocations(lab, tmp_path, sync):
+    """Found by CI (nightly 2026-10-06, Linux; then Windows on `main`, register E3): the test above saw the retired
+    implementer's run still `running` from a `harness wait` that had returned. The invocation was already completed in
+    control state, and the wait's control lane (ADR-0012 D5, `--any`'s) ended the single-run wait before the supervisor
+    had written the run's end. Held right there, the single-run wait keeps waiting; `--any` still ends at once."""
+    held = hold(tmp_path / "ending")
+    wid, _ = assigned(lab, tmp_path, [*IMPLEMENT, touch(sync / "reported"), wait(sync / "never", 300)],
+                      env=pause_env(("harness.supervisor.finishing", held)))
+    lab.until(lambda: (sync / "reported").exists(), what="the implementer reported")
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor ending the retired run")
+    early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
+    assert early.returncode == 0 and early.json["timed_out"] and early.json["status"] == "running", early.json
+    anyway = lab.ok("harness", "wait", R1, "--any", "--timeout", "3")  # the control lane, where it is asked for
+    assert not anyway["timed_out"] and anyway["ended_by"]["lane"] == "control", anyway
+    held.unlink()
+    done = lab.wait(R1)
+    assert done["status"] == "terminated" and "invocation completed" in done["reason"], done
+    assert "ended_by" not in done, done
+    assert_control_invariants(lab.project)
+
+
 def test_an_agent_in_the_wrong_worktree_still_acts_only_for_its_own_workspace(lab, tmp_path):
     """Attack 3: the agent works from the authoritative checkout. Its identity, checks and evidence stay bound to its
     invocation's own workspace (the bridge ignores where the agent stands); its edit of the authoritative checkout

@@ -25,7 +25,7 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Due by:** Gate: before internal alpha · **Owner:** operator and designer · **Needs:** design
 
-**What:** The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among them, and neutral wording for an external example project's name), and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
+**What:** The consolidated WC/KC re-freeze after M4-E (folding in the adopted overlays, the Ticket-revision amendment among them, neutral wording for an external example project's name, and the editorial lines of the agent-effectiveness adoption of 2026-10-09 listed on E19, the designer's F4 ruling on re-parenting and promotion among them), and the adoption of the spec amendment index design v0.2, whose index part is built (pull request 73) though `docs/README.md` still lists it as proposed
 
 **Blocks:** -
 

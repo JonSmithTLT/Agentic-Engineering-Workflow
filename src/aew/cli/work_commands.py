@@ -388,7 +388,8 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does")
     q.add_argument("run", nargs="+")
     q.add_argument("--any", dest="any_", action="store_true",
-                   help="wait on several runs and return the first to end, with its next action")
+                   help="wait on several runs and return the first to end, with its next action; a run whose "
+                        "invocation is no longer active counts as ended, though its record may still say running")
     q.add_argument("--timeout", type=float, default=600.0)
     q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run if len(a.run) > 1 else a.run[0],
                                                              timeout=a.timeout, any_=a.any_))

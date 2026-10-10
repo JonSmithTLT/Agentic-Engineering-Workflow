@@ -319,6 +319,17 @@ def test_a_contained_run_hides_everything_beside_what_it_keeps(tmp_path):
     dirs, files = raw.hidden_around(home, keep)
     hidden = {Path(p).relative_to(home.resolve()).as_posix() for p in dirs + files}
     assert hidden == {"lane/out/work/run-2", "lane/out/ledger", "lane/hidden", "private", ".ssh", "notes.txt"}
+    dirs, files = raw.hidden_around(home, [tmp_path / "elsewhere"])  # nothing kept under home: all of it is hidden
+    assert {Path(p).name for p in dirs + files} == {"lane", "private", ".ssh", "notes.txt"}
+
+
+def test_a_mask_inside_a_hidden_directory_is_left_to_it():
+    sep = "/" if "/" in str(Path("/a/b")) else "\\"
+    root = sep + "h"
+    paths = {f"{root}{sep}.config", f"{root}{sep}.config{sep}gh", f"{root}{sep}.local{sep}share{sep}opencode",
+             f"{root}{sep}.localx"}
+    assert raw.outermost(paths) == sorted({f"{root}{sep}.config", f"{root}{sep}.local{sep}share{sep}opencode",
+                                           f"{root}{sep}.localx"})
 
 
 # ---------------------------------------------------------------------------------------------- retention

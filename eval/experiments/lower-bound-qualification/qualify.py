@@ -347,18 +347,43 @@ def harness_launch(report: dict[str, Any], plan: dict[str, Any], records: list[d
     report["harness_launch"] = out
 
 
-def containment_check(report: dict[str, Any], out: Path) -> None:
+def containment_check(report: dict[str, Any], out: Path, plan: dict[str, Any]) -> None:
     """Linux: a raw run's layout, built where the runs will live and verified (launch self-test and confidentiality
-    probe), without starting OpenCode."""
+    probe), then the pinned OpenCode started inside it as far as resolving the arm's model and effort in its served
+    catalog: no session is created and no prompt is sent (the provider variable is a placeholder)."""
     if not sys.platform.startswith("linux"):
         report["containment"] = "not checked here: contained raw runs are Linux-only (the arm host is the VM)"
         return
+    from aew.harness import procs
+
+    config = plan["arms"][0]["config"]
+    profile = arms.model_ref(config["model"])
+    names = list(config["provider_env"])
     scratch = out / "work" / "containment-check"
     (scratch / "repo").mkdir(parents=True, exist_ok=True)
+    saved = {n: os.environ.get(n) for n in names}
     try:
         layout = raw.contained_layout(scratch / "repo", scratch, binary=raw.harness_binary())
         report["containment"] = raw.verify_layout(layout, scratch)
+        if report["containment"]["ok"]:
+            headless = raw._headless()  # noqa: SLF001
+            session = headless.HeadlessSession(scratch / "harness")
+            session.tree = procs.ProcessTree(layout=layout)
+            os.environ.update({n: PLACEHOLDER for n in names})
+            try:
+                session._start(directory=scratch / "repo", profile=profile,  # noqa: SLF001 (stop before a session)
+                               config=headless.raw_config(profile, 5), provider_env=names)
+                report["containment"]["contained_launch"] = {"version": session.version, "model": config["model"],
+                                                             "catalog": session.model_info}
+            finally:
+                session.terminate()
+                session.tree.kill()
     finally:
+        for n, v in saved.items():
+            if v is None:
+                os.environ.pop(n, None)
+            else:
+                os.environ[n] = v
         shutil.rmtree(scratch, ignore_errors=True)
         (scratch.parent / f".{scratch.name}.aew-mask").unlink(missing_ok=True)
     if not report["containment"]["ok"]:
@@ -390,7 +415,7 @@ def cmd_check(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
         upstream_baseline(report)
         if not args.no_launch:
             harness_launch(report, plan, records)
-            containment_check(report, out)
+            containment_check(report, out, plan)
     except Invalid as exc:
         report["refused"] = str(exc)
         say(**report)
@@ -783,7 +808,11 @@ def main(argv: list[str] | None = None) -> int:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure:
             reconfigure(encoding="utf-8")
-    hidden_root = hidden.take_root()  # first: nothing started below inherits it
+    try:
+        hidden_root = hidden.take_root()  # first: nothing started below inherits it
+    except Invalid as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
     ap = argparse.ArgumentParser(prog="python qualify.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, help="run state, outside every repository (default: per-user data dir)")
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -66,8 +66,8 @@ def frozen(case_path: Path, config: dict) -> dict:
 @pytest.fixture
 def fake_server(tmp_path, monkeypatch):
     """The fake OpenCode as the pinned harness binary, and the raw configuration that pins it."""
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
+    scripts = tmp_path / "bin" / "scripts"  # beside the launcher: a contained run sees the binary's directory only
+    scripts.mkdir(parents=True)
     launcher = fake_opencode.write_launcher(tmp_path / "bin", scripts)
     monkeypatch.setenv("AEW_OPENCODE_BIN", str(launcher))
     config = {"role": "worker", "model": "fakeprov/fake-model#high", "steps": 5, "cap_usd": 0.5, "provider_env": [],

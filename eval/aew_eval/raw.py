@@ -195,7 +195,8 @@ def hidden_around(home: Path, keep: list[Path]) -> tuple[list[str], list[str]]:
         if p == home or home in p.parents:
             chain.add(p)
             chain.update(a for a in p.parents if a == home or home in a.parents)
-    scan = sorted(a for a in chain if any(a in p.parents for p in keep) and a not in keep)
+    # the home directory itself is always scanned: with nothing kept under it, every entry of it is hidden
+    scan = sorted({home, *(a for a in chain if any(a in p.parents for p in keep) and a not in keep)})
     dirs: list[str] = []
     files: list[str] = []
     for d in scan:
@@ -261,13 +262,26 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     mask = scratch.parent / f".{scratch.name}.aew-mask"  # outside the writable roots, and itself hidden inside
     if not mask.exists():
         mask.write_bytes(b"")
-    readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix) if p and os.path.isdir(p)})
+    # the interpreter and the harness binary's directory stay visible wherever they live (even under /tmp, which the
+    # sandbox replaces with its own)
+    readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, str(binary.parent))
+                       if p and os.path.isdir(p)})
+    dirs = outermost({*hide_dirs, *secret_dirs})
+    files = [f for f in sorted({*hide_files, *secret_files}) if not any(_under(f, d) for d in dirs)]
     return L.Layout(role="eval-raw", access="write", bwrap=bwrap,
                     writable=(os.path.realpath(repo), os.path.realpath(state)), readonly=tuple(readonly),
-                    hide_runs=(os.path.realpath(scratch.parent),),
-                    hide_dirs=tuple(sorted({*hide_dirs, *secret_dirs})),
-                    hide_files=tuple(sorted({*hide_files, *secret_files})), mask_file=str(mask),
-                    env={"TMPDIR": L.SANDBOX_TMP})
+                    hide_runs=(os.path.realpath(scratch.parent),), hide_dirs=tuple(dirs), hide_files=tuple(files),
+                    mask_file=str(mask), env={"TMPDIR": L.SANDBOX_TMP})
+
+
+def _under(path: str, root: str) -> bool:
+    return path != root and path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def outermost(paths: set[str]) -> list[str]:
+    """The hidden directories without those inside another: a mask nested in a hidden directory would leave its
+    mount point behind as an (empty) entry of the hidden directory."""
+    return sorted(p for p in paths if not any(_under(p, q) for q in paths))
 
 
 def verify_layout(layout: Any, scratch: Path) -> dict[str, Any]:

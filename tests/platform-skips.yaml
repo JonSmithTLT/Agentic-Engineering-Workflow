@@ -101,6 +101,9 @@ skipped:
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_another_runs_harness_state_is_invisible: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

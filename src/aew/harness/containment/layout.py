@@ -46,8 +46,10 @@ WRITE_SCOPES = frozenset({"ticket"})
 SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".config/gh",
                ".config/gcloud",
                # agent tools' own sign-ins and session stores (AEW gives a run's harness private XDG directories)
-               ".local/share/opencode", ".config/opencode", ".codex", ".claude")
-SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc")
+               ".local/share/opencode", ".config/opencode", ".codex", ".claude",
+               ".config/anthropic")  # provider credential/config location
+SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
+                ".claude.json")  # provider credential/config location
 
 PRIVATE_GIT = "git"  # <run dir>/git: the run's private index and object store
 MASK_FILE = ".aew-mask"

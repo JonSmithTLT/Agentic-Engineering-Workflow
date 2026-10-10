@@ -27,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -40,7 +41,7 @@ from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
-from aew.harness.contract import CREDENTIAL_RE, LaunchContract
+from aew.harness.contract import CREDENTIAL_RE, PROVIDER_AUTH_FAILED, LaunchContract
 from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
@@ -68,6 +69,32 @@ LOGGED_EVENTS = frozenset({
     "session.tool.called", "session.tool.failed", "session.inbox.enqueued", "session.inbox.delivered",
     "permission.asked", "permission.replied",
 })
+# A failed turn's error type (the pinned 2.0.18 ``Session.StructuredError``: ``type``, ``message``, ``status``) -> the
+# run's ``reason_code``. Observed on 2.0.18 (2026-10-09, a local provider answering HTTP 401): a provider that rejects
+# the credential fails the turn at once, with no retry, and ``{type: "provider.auth", status: 401}`` (with the
+# provider's message) is on the failed step's assistant message (``finish: "error"``), on ``session.step.failed`` and
+# on ``session.execution.failed``; the turn's idle message has ``outcome: "failed"``.
+AUTH_ERROR = "provider.auth"
+REASON_CODES = {AUTH_ERROR: PROVIDER_AUTH_FAILED}
+# Statuses whose message may concern a credential (unauthorized, forbidden, proxy authentication required): their
+# message is dropped whatever the type says, so a renamed or different classification fails closed (register V1).
+CREDENTIAL_STATUSES = frozenset({401, 403, 407})
+# Key-shaped text redacted from every provider message that is kept: an `sk-` key (masked or not), a bearer token, a
+# masked run of asterisks with whatever surrounds it, and a long token that mixes upper case, lower case and digits, as
+# a random key does. Model ids, git shas, UUIDs, request ids and paths are one case or carry no digit, and stay: they
+# are what an operator diagnoses a non-credential error from (PR #165 re-review, finding 1).
+KEY_SHAPED = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}|\S*\*{3,}\S*")
+LONG_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def redact_key_shaped(text: str) -> str:
+    def mixed(m: re.Match[str]) -> str:
+        t = m.group(0)
+        if any(c.isupper() for c in t) and any(c.islower() for c in t) and any(c.isdigit() for c in t):
+            return "<redacted>"
+        return t
+
+    return LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text))
 
 
 def default_binary() -> Path | None:
@@ -150,6 +177,8 @@ class OpenCodeAdapter(HarnessAdapter):
         self.turn = "starting"          # running | held (after a Lead interrupt) | ended
         self.exit_code: int | None = None
         self.detail: str | None = None
+        self.reason_code: str | None = None
+        self._failed: dict[str, Any] | None = None  # the error of the last `session.execution.failed`, as recorded
         self.health: dict[str, Any] = {}
         self.snapshot: dict[str, Any] | None = None
         self.step_models: list[dict[str, Any]] = []
@@ -394,8 +423,12 @@ class OpenCodeAdapter(HarnessAdapter):
             if isinstance(data.get("tokens"), dict):
                 summary["tokens"] = data["tokens"]
             if isinstance(data.get("error"), dict):
-                summary["error"] = {k: data["error"].get(k) for k in ("type", "message")}
+                summary["error"] = error_view(data["error"])
             self.emit(summary)
+        if kind == "session.execution.started":
+            self._failed = None  # a new execution: an earlier one's failure is not this turn's
+        elif kind == "session.execution.failed" and isinstance(data.get("error"), dict):
+            self._failed = error_view(data["error"])
         if kind.startswith("session.execution.") or kind.startswith("permission.") or kind.startswith("form."):
             self._wake.set()
 
@@ -470,10 +503,11 @@ class OpenCodeAdapter(HarnessAdapter):
                 self._idle_seen = idle.get("id")  # confirm on the next poll: a queue boundary can reopen the turn
                 self._wake.set()
                 return
-        self._turn_over(str(idle.get("outcome")), last)
+        self._turn_over(str(idle.get("outcome")), last, _created(delivered))
 
-    def _turn_over(self, outcome: str, last: str) -> None:
-        """Close the turn whose last prompt was ``last``, unless a newer prompt arrived since the poll decided."""
+    def _turn_over(self, outcome: str, last: str, since: float = 0.0) -> None:
+        """Close the turn whose last prompt was ``last`` (delivered at ``since``), unless a newer prompt arrived since
+        the poll decided."""
         self._take_snapshot()
         with self._lock:  # the decision and the state change are one step for `_prompt` (independent audit I3)
             if self.turn != "running" or self.sent[-1] != last:
@@ -484,18 +518,25 @@ class OpenCodeAdapter(HarnessAdapter):
                 self.turn = "held"  # the Lead interrupted: the session waits for `send`, a stop or the deadline
                 self.emit({"event": "opencode.held", "outcome": outcome})
                 return
-            error = next((m.get("error") for m in reversed((self.snapshot or {}).get("assistant", []))
-                          if m.get("error")), None)
-            detail = f"the agent's turn ended: {outcome}" + (f" ({error.get('type')}: {error.get('message')})"
+            # The messages of this turn (created since its last prompt was delivered) say why it failed; the event
+            # stream is the fallback, never the only source. An earlier turn's error is never this one's, and only a
+            # failed turn has a reason code (PR #165 review, finding 4).
+            mine = [m for m in (self.snapshot or {}).get("assistant", []) if float(m.get("created") or 0) >= since]
+            error = (next((m["error"] for m in reversed(mine) if m.get("error")), None)
+                     or (self._failed if outcome == "failed" else None))
+            reason_code = (REASON_CODES.get(str(error.get("type"))) if isinstance(error, dict) and outcome == "failed"
+                           else None)
+            detail = f"the agent's turn ended: {outcome}" + (f" ({describe_error(error)})"
                                                               if isinstance(error, dict) else "")
-            self._end(EXIT_CODES.get(outcome, 1), detail)
+            self._end(EXIT_CODES.get(outcome, 1), detail, reason_code)
 
-    def _end(self, code: int, detail: str) -> None:
+    def _end(self, code: int, detail: str, reason_code: str | None = None) -> None:
         with self._lock:
             if self.turn == "ended":
                 return
-            self.turn, self.exit_code, self.detail = "ended", code, detail
-        self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail})
+            self.turn, self.exit_code, self.detail, self.reason_code = "ended", code, detail, reason_code
+        self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail,
+                   **({"reason_code": reason_code} if reason_code else {})})
 
     def _reject_requests(self) -> None:
         """AEW's rules are allow or deny only, so a permission request or a form means something unexpected:
@@ -526,7 +567,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def inspect(self) -> dict[str, Any]:
         with self._lock:
             return {"alive": self.turn != "ended", "exit_code": self.exit_code, "session": self.session,
-                    "turn": self.turn, "detail": self.detail}
+                    "turn": self.turn, "detail": self.detail, "reason_code": self.reason_code}
 
     def _take_snapshot(self) -> None:
         """Assistant messages' model, usage and errors (never their text), while the server is still up."""
@@ -540,11 +581,11 @@ class OpenCodeAdapter(HarnessAdapter):
             for m in page.get("data") or []:
                 if m.get("type") == "assistant":
                     assistant.append({"model": m.get("model"), "agent": m.get("agent"), "tokens": m.get("tokens"),
-                                      "cost": m.get("cost"), "finish": m.get("finish"),
+                                      "cost": m.get("cost"), "finish": m.get("finish"), "created": _created(m),
                                       "tools": [str(c.get("name")) for c in m.get("content") or []
                                                 if isinstance(c, dict) and c.get("type") == "tool"],
-                                      "error": {k: (m.get("error") or {}).get(k) for k in ("type", "message")}
-                                      if m.get("error") else None})
+                                      "error": error_view(m["error"]) if isinstance(m.get("error"), dict)
+                                      else None})
             nxt = (page.get("cursor") or {}).get("next")
             if not nxt:
                 truncated = False
@@ -612,6 +653,32 @@ class OpenCodeAdapter(HarnessAdapter):
         semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
         return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
                            truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
+
+
+def error_view(error: dict[str, Any]) -> dict[str, Any]:
+    """What AEW keeps of a provider error in its own records (the event log, the run record, the snapshot): its type
+    and status, and its message unless it may concern a credential. A provider's authentication message can quote part
+    of the key (OpenAI's names it, masked), and AEW records no key or part of one (register V1): only the variable's
+    name appears, in the next action. This fails closed: the message goes for an auth-like type or a credential status,
+    and key-shaped text is redacted from every message kept. (The harness's own private state, under the run's
+    ``harness/`` directory, keeps whatever the harness itself stores.)"""
+    out: dict[str, Any] = {"type": error.get("type")}
+    if error.get("status") is not None:
+        out["status"] = error.get("status")
+    if not credential_related(error) and error.get("message") is not None:
+        out["message"] = redact_key_shaped(str(error.get("message")))
+    return out
+
+
+def credential_related(error: dict[str, Any]) -> bool:
+    status = error.get("status")
+    return "auth" in str(error.get("type") or "").lower() or (isinstance(status, int) and status in CREDENTIAL_STATUSES)
+
+
+def describe_error(error: dict[str, Any]) -> str:
+    status = f", {error['status']}" if error.get("status") is not None else ""
+    message = f": {error['message']}" if error.get("message") else ""
+    return f"{error.get('type')}{status}{message}"
 
 
 def _created(message: dict[str, Any]) -> float:

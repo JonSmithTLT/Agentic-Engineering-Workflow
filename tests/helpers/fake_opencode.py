@@ -20,7 +20,9 @@ slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path",
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
 ``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
-before its queued prompts are taken).
+before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
+server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
+2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry).
 
 Run as ``opencode --standalone <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
 ``<scripts>/lead-tui.json`` with the TUI's own environment, which a V2 ``--standalone`` TUI sends as every
@@ -80,6 +82,7 @@ class Session:
         self.permissions: dict[str, dict[str, Any]] = {}
         self.replies: dict[str, str] = {}
         self.forms: dict[str, dict[str, Any]] = {}
+        self.error: dict[str, Any] | None = None  # why the current execution failed (`session.execution.failed`)
 
 
 class FakeOpenCode:
@@ -175,6 +178,32 @@ class FakeOpenCode:
             self.emit("session.inbox.delivered", {"sessionID": s.info["id"], "inboxID": item["id"]})
         return len(items)
 
+    def provider_rejects(self, s: Session) -> str | None:
+        """The ``provider_auth`` knob: a rejected key fails the first model call as pinned 2.0.18 was observed to do
+        (2026-10-09, a local provider answering HTTP 401; no retry): the step's assistant message ends ``error`` with
+        ``{type: provider.auth, message, status: 401}``, then ``session.step.failed`` and ``session.execution.failed``
+        carry the same error. The message quotes part of the key, as OpenAI's does."""
+        knob = self.knobs.get("provider_auth")
+        if not knob:
+            return None
+        import hashlib
+
+        key = os.environ.get(knob["variable"]) or ""
+        if hashlib.sha256(key.encode()).hexdigest() not in knob["rejected_sha256"]:
+            return None
+        error = {"type": "provider.auth", "message": f"Incorrect API key provided: {key[:3]}***{key[-4:]}.",
+                 "status": 401}
+        msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
+               "model": self.pin(s, 0), "time": {"created": now_ms(), "completed": now_ms()}, "content": [],
+               "finish": "error", "error": error}
+        with self.lock:
+            s.messages.append(msg)
+            s.error = error
+        self.emit("session.step.started", {"sessionID": s.info["id"], "model": msg["model"],
+                                           "assistantMessageID": msg["id"]})
+        self.emit("session.step.failed", {"sessionID": s.info["id"], "assistantMessageID": msg["id"], "error": error})
+        return "failed"
+
     def gate(self, s: Session) -> str | None:
         """A permission request or form before the first step, if the knobs ask for one."""
         sid = s.info["id"]
@@ -238,7 +267,7 @@ class FakeOpenCode:
             self.deliver(s)
             if not s.contract_done:
                 s.contract_done = True
-                outcome = self.gate(s) or "succeeded"
+                outcome = self.gate(s) or self.provider_rejects(s) or "succeeded"
                 for i, step in enumerate(self.steps if outcome == "succeeded" else []):
                     ended = self.run_step(s, i, step)
                     self.deliver(s, boundary=True)  # steered or queued prompts join between steps
@@ -265,7 +294,8 @@ class FakeOpenCode:
                 s.running = False
                 s.interrupted.clear()
                 pending = bool(s.inbox)
-            self.emit(f"session.execution.{outcome}", {"sessionID": sid})
+                error, s.error = s.error, None
+            self.emit(f"session.execution.{outcome}", {"sessionID": sid, **({"error": error} if error else {})})
         if pending and self.knobs.get("idle_before_queue_s") is not None:
             # The race a real server has: the turn is idle, a prompt queued during it is not yet delivered, and
             # a new execution starts a moment later. A client that saw only "idle" would call the run finished.

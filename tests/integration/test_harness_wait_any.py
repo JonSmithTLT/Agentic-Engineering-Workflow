@@ -66,8 +66,15 @@ def finish(proc: subprocess.Popen, timeout: float = 120) -> dict:
     import json
 
     out, err = proc.communicate(timeout=timeout)
-    assert proc.returncode == 0, err or out
-    return json.loads(out)
+    result = json.loads(out)
+    assert proc.returncode == wait_exit(result), err or out  # 20 for a run that ended without evidence (U8)
+    return result
+
+
+def wait_exit(result: dict) -> int:
+    from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT
+
+    return WAIT_NO_EVIDENCE_EXIT if result.get("status") == "ended_without_evidence" else 0
 
 
 def test_wait_any_returns_the_first_run_to_end_with_its_next_action(lab, tmp_path):
@@ -258,7 +265,9 @@ def test_still_running_names_only_runs_observed_live(lab, tmp_path):
         f.write_text("go", encoding="utf-8")
     lab.wait(RA)
     lab.wait(RB)
-    out = lab.ok("harness", "wait", RA, RB, "--any", "--timeout", "10")
+    res = lab.aew("harness", "wait", RA, RB, "--any", "--timeout", "10")
+    out = res.json
+    assert res.returncode == wait_exit(out), res.stderr
     assert out["run"] in (RA, RB) and not out["timed_out"] and out["still_running"] == [], out
 
 

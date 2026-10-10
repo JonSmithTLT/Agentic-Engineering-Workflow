@@ -58,6 +58,8 @@ try {
     assert.equal(reads.length, 0);
     assert.equal(await term.evaluate(element => document.activeElement === element), true);
     await term.fill('fictional');
+    await page.getByLabel('Since (UTC)', { exact: true }).fill('2026-10-02T11:59:59.000001Z');
+    await page.getByLabel('Until (UTC)', { exact: true }).fill('2026-10-02T12:00:00.999Z');
     await term.evaluate(element => { element.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true })); element.form.requestSubmit(); });
     assert.equal(reads.length, 0);
     await term.evaluate(element => element.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true })));
@@ -65,6 +67,7 @@ try {
     await page.getByRole('heading', { name: 'Submitted search results', exact: true }).waitFor();
     assert.equal(reads.length, 1);
     assert.equal(await page.locator('.search-hit').count(), 2);
+    assert((await page.locator('.search-results').innerText()).includes('Since UTC: 2026-10-02T12:00:00Z · Until UTC: 2026-10-02T12:00:00Z'));
     assert.equal(await page.locator('.search-snippet script, .search-snippet a').count(), 0);
     assert.equal(await page.evaluate(() => window.__searchHostile), undefined);
     assert(!page.url().includes('fictional'));

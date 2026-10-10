@@ -68,7 +68,7 @@ export class HistorySearchSession {
     const context = this.reader.context;
     this.change({ ...this.state, error: undefined, pending: true });
     try {
-      const [{ historySearchRoute }, { HistorySearchResponse }] = await Promise.all([
+      const [{ historySearchRoute, historySearchEcho }, { HistorySearchResponse }] = await Promise.all([
         import('../api/maps-history'), import('../api/additive-schema'),
       ]);
       if (sequence !== this.sequence || context !== this.reader.context || !this.permitted) return;
@@ -77,13 +77,13 @@ export class HistorySearchSession {
       if (!same) { this.discard(); sequence = this.sequence; }
       this.route = route;
       this.change({ ...this.state, submitted: query, result: same ? this.state.result : undefined });
-      const expectedKinds = [...new Set(query.kinds ?? [])].sort();
+      const expected = historySearchEcho(query);
       const schema = HistorySearchResponse.refine(value =>
         JSON.stringify(value.data.query.terms) === JSON.stringify(query.terms) &&
-        JSON.stringify(value.data.query.kinds) === JSON.stringify(expectedKinds) &&
-        value.data.query.since === (query.since ?? null) &&
-        value.data.query.until === (query.until ?? null) &&
-        value.data.query.limit === (query.limit ?? 10), 'Search response belongs to a different submitted query');
+        JSON.stringify(value.data.query.kinds) === JSON.stringify(expected.kinds) &&
+        value.data.query.since === expected.since &&
+        value.data.query.until === expected.until &&
+        value.data.query.limit === expected.limit, 'Search response belongs to a different submitted query');
       const result = await this.client.fetchQuery({
         queryKey: projectionKey(route, this.reader),
         meta: { automaticRevalidation: false },

@@ -132,6 +132,7 @@ export function HistorySearchPage() {
         {data && <section className="panel search-results" aria-label="Submitted search results">
           <h2>Submitted search results</h2>
           <p>Showing submitted terms: {state.submitted?.terms.map((term, index) => <code key={index}>{term}{index + 1 < state.submitted!.terms.length ? ' · ' : ''}</code>)}. Editing the form does not change these results.</p>
+          <p>Applied kinds: {data.query.kinds.join(', ') || 'All'} · Since UTC: {data.query.since ?? 'Not supplied'} · Until UTC: {data.query.until ?? 'Not supplied'} · Limit: {data.query.limit}. Supplied date bounds use whole-second history precision.</p>
           <p className="preview-note">{data.label}<br />{data.trust_label}</p>
           <div role="status"><strong>{data.coverage.complete ? 'Complete search coverage' : 'Incomplete search coverage'}</strong><p>Indexed through {data.coverage.indexed_through ?? 'Not supplied'}; historical entries {data.coverage.history_entries}.</p></div>
           <Reasons values={data.coverage.reasons} />
@@ -141,7 +142,7 @@ export function HistorySearchPage() {
             <h3><code>{hit.id}</code> · <SemanticValue value={hit.kind} known={[...historyKinds, 'evidence']} /></h3>
             <p>Recorded UTC <time>{hit.at}</time> · Subject <code>{hit.subject ?? 'Not supplied'}</code></p>
             <p>{data.label}<br />{hit.trust.label} · <SemanticValue value={hit.trust.source} known={trustSources} /></p>
-            <p>Source <SemanticValue value={hit.source} known={['history', 'evidence']} /></p>
+            <p>Source <SemanticValue value={hit.source} known={trustSources} /></p>
             <div className="search-snippet" aria-label={`Plain-text historical snippet for ${hit.id}`}><code>{data.fence.open}</code><pre>{hit.snippet}</pre><code>{data.fence.close}</code></div>
             {hit.truncated && <p>Supplied snippet is truncated.</p>}
             {hit.expand.link && ['history', 'evidence'].includes(hit.expand.link.kind) ? <EntityAnchor entity={hit.expand.link} copyCli={false} /> : <p>No supported product expansion link supplied.</p>}

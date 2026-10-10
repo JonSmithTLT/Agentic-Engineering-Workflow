@@ -6,8 +6,18 @@ import { installVisibility } from '../src/client/queries';
 import { readOnlyHistoryArgv } from '../src/api/cli';
 import f1 from '../src/api/mock/fixtures/F1.json';
 import { HistorySearchResponse } from '../src/api/additive-schema';
+import { historySearchEcho } from '../src/api/maps-history';
 
 const clients: QueryClient[] = [];
+it('accepts the served S2 fractional-bound echo without changing the submitted terms', async () => {
+  const { session } = setup();
+  await session.submit({ terms: ['fictional'], since: '2026-10-02T11:59:59.000001Z', until: '2026-10-02T12:00:00.999Z' });
+  expect(session.snapshot().error).toBeUndefined();
+  expect(session.snapshot().result?.value.data.query).toMatchObject({
+    terms: ['fictional'], since: '2026-10-02T12:00:00Z', until: '2026-10-02T12:00:00Z',
+  });
+  expect(historySearchEcho({ terms: ['fictional'], since: '2026-10-02T12:00:00.000Z' }).since).toBe('2026-10-02T12:00:00Z');
+});
 afterEach(() => clients.splice(0).forEach(client => client.clear()));
 function setup() {
   const calls: { url: string; validator: string | null }[] = [];
@@ -21,11 +31,11 @@ function setup() {
     if (typeof status === 'number' && status !== 200)
       return new Response(null, { status, headers: { ETag: '"search"' } });
     const value = structuredClone(f1.responses['/history/search']);
-    value.data.query = {
+    value.data.query = historySearchEcho({
       terms: status === 'mismatch' ? ['wrong query'] : url.searchParams.getAll('term'),
-      kinds: [...new Set(url.searchParams.getAll('kind'))].sort(),
-      since: url.searchParams.get('since'), until: url.searchParams.get('until'), limit: Number(url.searchParams.get('limit') ?? 10),
-    } as typeof value.data.query;
+      kinds: url.searchParams.getAll('kind'), since: url.searchParams.get('since') ?? undefined,
+      until: url.searchParams.get('until') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 10),
+    }) as typeof value.data.query;
     return new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"search"' } });
   });
   const reader = new ReadTransport(request);

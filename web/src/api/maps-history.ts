@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ObjectId, Sha256, Timestamp } from './additive-schema';
+import { searchEcho } from './search-echo';
 const sections = ['directories', 'languages', 'build_descriptors', 'entry_point_candidates', 'test_candidates', 'generated_and_vendor', 'semantic_prerequisites', 'limits_and_omissions'] as const;
 const page = (maximum: number) => z.number().int().min(1).max(maximum);
 const mapQuery = z.strictObject({ against: ObjectId.optional() });
@@ -15,6 +16,11 @@ const searchQuery = z.strictObject({
 }).refine(value => value.terms.reduce((sum, term) => sum + Array.from(term).length, 0) + value.terms.length - 1 <= 512, 'Terms exceed 512 characters')
   .refine(value => !value.since || !value.until || Date.parse(value.since) <= Date.parse(value.until), 'Date range is reversed');
 export type SubmittedHistorySearch = z.input<typeof searchQuery>;
+// S2's accepted projector echoes inclusive bounds in whole-second history precision.
+// A positive fractional lower bound rounds up; the upper bound rounds down.
+export function historySearchEcho(input: SubmittedHistorySearch) {
+  return searchEcho(searchQuery.parse(input));
+}
 function route(path: string, values: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) if (value !== undefined) params.set(key, String(value));

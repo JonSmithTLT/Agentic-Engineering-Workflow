@@ -1,5 +1,6 @@
 /** Demo server only. Cursor state and filtering never enter the production client. */
 import type { World } from './types';
+import { searchEcho } from '../search-echo';
 type Item = Record<string, unknown>;
 type Envelope = {
   control_revision: string;
@@ -57,12 +58,15 @@ export class DemoProjector {
       const until = url.searchParams.get('until');
       const limit = Number(url.searchParams.get('limit') ?? 10);
       if (!terms.length || terms.length > 16 || !Number.isInteger(limit) || limit < 1 || limit > 50) return { status: 400 };
+      let query;
+      try { query = searchEcho({ terms, kinds, since: since ?? undefined, until: until ?? undefined, limit }); }
+      catch { return { status: 400 }; }
       const hits = template.data.hits.filter(hit => terms.every(term =>
         String(hit.snippet).toLocaleLowerCase('en').includes(term.toLocaleLowerCase('en')))
         && (!kinds.length || kinds.includes(String(hit.kind)))
-        && (!since || String(hit.at) >= since) && (!until || String(hit.at) <= until)).slice(0, limit);
+        && (!query.since || String(hit.at) >= query.since) && (!query.until || String(hit.at) <= query.until)).slice(0, limit);
       return { status: 200, body: { ...template, data: { ...template.data, hits,
-        query: { terms, kinds, since, until, limit } } } };
+        query } } };
     }
     if (
       !['project', 'capabilities'].includes(projection) &&

@@ -65,6 +65,14 @@ class StatusViews:
                     found.append(f"{wid}: stored state {unit['state']} disagrees with its derivation {derived}")
         return found
 
+    def notifier(self) -> dict[str, Any] | None:
+        """The operator notifier's deliveries as the endpoint's watcher last summarized them (M4-E E7a; operator
+        decision 1): counts, the last failure, what was dropped, and ``attention`` while the latest delivery failed.
+        ``None`` when no endpoint has watched this project. Display only: a delivery failure has no workflow effect."""
+        from aew.harness import notify
+
+        return notify.summary(self.k.aew_root)
+
     def render_status(self, report: dict[str, Any]) -> str:
         if "work_unit" in report:
             unit = report["work_unit"]
@@ -91,6 +99,16 @@ class StatusViews:
             lines.append(f"  operator endpoint: running (pid {endpoint.get('pid')}, guarantee "
                          f"{endpoint.get('guarantee')})" if endpoint.get("running") else
                          "  operator endpoint: not running (`aew operator serve --dev`)")
+        notifier = report.get("notifier")
+        if notifier:  # M4-E E7a: delivery failures are visible here and in the dashboard's attention, and move nothing
+            dropped = ", ".join(f"{n} {why}" for why, n in sorted(notifier["dropped"].items()))
+            lines += ["", f"Notifier: {notifier['delivered']} delivered, {notifier['failed']} failed"
+                          + (f"; dropped: {dropped}" if dropped else "")]
+            last = notifier.get("last_failure") or {}
+            if notifier.get("attention"):
+                lines.append(f"  ! the latest delivery failed ({last.get('event')} at {last.get('at')}: "
+                             f"{last.get('reason')}{'; ' + last['detail'] if last.get('detail') else ''}); check the "
+                             "execution policy's `notify.command` and `.aew/local/notify/deliveries.jsonl`")
         if report.get("hierarchy"):
             lines += ["", "Hierarchy", *(f"  {h}" for h in report["hierarchy"])]
         if report["next_actions"]:

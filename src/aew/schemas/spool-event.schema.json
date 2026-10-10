@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/spool-event/v1",
+  "title": "AEW event spool line",
+  "description": "M4-E plan v3 §2.8; amendment 1, E7a (m9): one line of .aew/local/events/<writer>.jsonl, appended by the process that saw the event and read by the operator endpoint's watcher, which notifies the operator. A line is untrusted data: the reader validates it against the definition of its writer's kind, named by the file and never by the line (`run` for a run's supervisor, `broker` for the Lead broker), drops and counts what fails, caps and cleans every string, and labels the notification `authenticated: false`. Each kind's event enum is closed: a new event is a schema change.",
+  "oneOf": [{"$ref": "#/$defs/run"}, {"$ref": "#/$defs/broker"}],
+  "$defs": {
+    "run": {
+      "description": "A run's supervisor (writer `run-<run id>`): the supervisor's deadline stop, and a launch failure recorded at its three failure sites (custody refused, the start failed, and main's records made before any supervisor exists). `subject` is the run itself.",
+      "type": "object",
+      "required": ["schema", "event", "at", "subject", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "aew/spool-event/v1"},
+        "event": {"enum": ["hard_deadline", "launch_failed"]},
+        "at": {"type": "string", "maxLength": 40},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 200},
+        "reason": {"type": ["string", "null"], "maxLength": 4096},
+        "ref": {"type": ["string", "null"], "maxLength": 512}
+      }
+    },
+    "broker": {
+      "description": "The Lead broker (writer `broker`). It appends no event yet: M4-E E7b adds the loop's `loop_stopped`, and E7c `confirmation_pending`. Until then every broker line is invalid and dropped.",
+      "not": {}
+    }
+  }
+}

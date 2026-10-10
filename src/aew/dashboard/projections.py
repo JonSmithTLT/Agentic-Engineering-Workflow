@@ -469,8 +469,26 @@ class Projector:
                                   "summary": rich(f"{inv['role']} run for {inv['work_unit']} is {observed}"),
                                   "reasons": [reason(code, f"run {run['run']} of {inv_id}")],
                                   "first_seen_at": str(run.get("launched_at") or SNAPSHOT_TIME)})
+        items += self._notifier_attention()
         self._attention = items
         return items
+
+    def _notifier_attention(self) -> list[dict[str, Any]]:
+        """The operator notifier's latest delivery failed (M4-E E7a; operator decision 1): attention on the project,
+        with no workflow effect. Read from the endpoint watcher's summary, a local file shown as data."""
+        from aew.harness import notify
+
+        summary = notify.summary(self.s.aew_root)
+        if not summary or not summary["attention"]:
+            return []
+        last = summary.get("last_failure") or {}
+        text = (f"{summary['consecutive_failures']} delivery failure(s) in a row; the latest: {last.get('event')} "
+                f"({last.get('reason')}{': ' + last['detail'] if last.get('detail') else ''})")
+        return [{"id": "AT-notifier", "kind": "anomaly", "severity": "medium",
+                 "subject": entity(self.s.project_id, "project", self.s.project_name),
+                 "title": "Operator notification failed", "summary": rich(text),
+                 "reasons": [reason("NOTIFY_DELIVERY_FAILED", text)],
+                 "first_seen_at": str(last.get("at") or SNAPSHOT_TIME)}]
 
     def attention_list(self, *, limit: int, cursor: str | None) -> dict[str, Any]:
         self.require("action_projection")  # UNSUPPORTED until F15.1: never reached today

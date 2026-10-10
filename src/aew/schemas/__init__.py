@@ -39,6 +39,8 @@ SCHEMAS = {
     "coordination-message": "coordination-message.schema.json",  # a Lead-worker message (F9-A, ADR-0017)
     "coordination-marker": "coordination-marker.schema.json",  # "a thread exists" (F9-A D-31)
     "coordination-seal": "coordination-seal.schema.json",  # a sealed thread's pin (F9-A D-16)
+    "notify-event": "notify-event.schema.json",  # the notifier's stdin (M4-E E7a)
+    "spool-event": "spool-event.schema.json",  # an event spool line, per writer kind (M4-E E7a)
 }
 
 

@@ -48,9 +48,9 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
-from aew.engine import dispatch
+from aew.engine import dispatch, faults
 from aew.engine.authority import require_lead
-from aew.harness import bridge, tool_calls
+from aew.harness import bridge, broker_liveness, tool_calls
 from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -85,8 +85,8 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
                        frozenset({"authority", "accept"}): ("decided_by", "operator")}
 # The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
 # through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
-# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). E6b and E7 add the grants and
-# `confirm` here.
+# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
+# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
                      frozenset({"operator", "ping"}))
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
@@ -176,6 +176,12 @@ class LeadBroker:
         self.superseded: str | None = None
         self._stop = threading.Event()
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
+        # The liveness record the operator endpoint watches (M4-E E7a; amendment 1, M2, R2-m3): its own thread, never
+        # reading the store, with the wedge threshold of this broker's own store (R4-m1).
+        root = getattr(engine, "aew_root", None)
+        self._beat = None if root is None else broker_liveness.Beat(
+            root, generation=self.generation, poll_s=POLL_S, wedge_after_s=broker_liveness.wedge_threshold_s(
+                getattr(engine.store, "lock_timeout", 60.0), POLL_S))
 
     @property
     def env(self) -> dict[str, str]:
@@ -183,6 +189,8 @@ class LeadBroker:
 
     def start(self) -> None:
         self.server.start()
+        if self._beat is not None:
+            self._beat.start()
         self._watch.start()
 
     def close(self) -> None:
@@ -191,6 +199,8 @@ class LeadBroker:
         self.server.drain(60)
         if self._watch.is_alive():
             self._watch.join(60)  # a check in progress finishes before the credential goes (M3-D11)
+        if self._beat is not None:
+            self._beat.close()  # closed_at: a clean end, never a crash
         self._token = ""
 
     def _require_lead(self, state: dict[str, Any], token: str) -> None:
@@ -214,11 +224,16 @@ class LeadBroker:
 
     def _watchdog(self) -> None:
         while not self._stop.wait(POLL_S):
+            faults.pause("harness.lead_broker.watchdog")  # tests: a wedged watchdog (amendment 1, R3-n2)
             problem = self._authority_lost()
             if problem and not self._stop.is_set():
                 self.superseded = problem
                 self.server.close()
+                if self._beat is not None:
+                    self._beat.close()  # superseded: a clean end of this broker, never a crash
                 return
+            if self._beat is not None:
+                self._beat.tick()
 
     # ------------------------------------------------------------------ the one operation
 

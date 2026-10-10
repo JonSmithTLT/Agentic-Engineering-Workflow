@@ -62,6 +62,7 @@ REASONS: dict[str, str] = {
     "CONTRADICTION": "the engine detected an inconsistency the Lead must resolve",
     "RUN_LOST": "a harness run's supervisor stopped reporting",
     "RUN_CRASHED": "a harness run ended abnormally",
+    "NOTIFY_DELIVERY_FAILED": "the operator endpoint could not deliver a notification through the configured notifier",
     "MANIFEST_PIN_MISMATCH": "project.yaml does not match the hash control state pins",
     "POLICY_PIN_MISMATCH": "a policy file project.yaml names does not match the hash control state pins",
     "BLOCKED_BY": "a dependency or plan condition blocks this unit",

@@ -1,7 +1,7 @@
 # AEW Knowledge Capture ↔ Recall Shared Semantics v0.4
 
 **Date:** 2026-10-04  
-**Status:** Revised cross-path design proposal for joint review; not yet a governing contract or API schema  
+**Status:** **Adopted** by the operator, 2026-10-09, as part of the governing M6b knowledge-system direction, together with its two companions and ADR-0013 ([decision record](decisions-2026-10-09-knowledge-system-adoption.md)); it moved from `design/proposals/` that day. Adoption does not authorize K1/K2 production machinery ahead of the evidence-driven sequence (Arm B first; record §7). Until then this line read "Revised cross-path design proposal for joint review; not yet a governing contract or API schema". The text below is unchanged  
 **Revision:** v0.4 — incorporates developer review: provenance authentication is separated from semantic validity, disposition vocabulary is qualified, and only the engine-observable portion of the receipt ladder is initially authoritative
 **Purpose:** Prevent the M6 knowledge write path and read/delivery path from becoming two independent semantic systems  
 **Companion:** `aew-knowledge-capture-admission-design-v0.4.md`

@@ -209,6 +209,11 @@ considered:
     reason: >-
       adopted requirement (F34, 2026-10-09); a cross-cutting product requirement that preserves every existing
       authority and evidence rule (its §15); replaces no WC/KC text
+  - path: docs/design/decisions-2026-10-09-agent-effectiveness-adoption.md
+    reason: >-
+      decision record (F34 and its owner rows, 2026-10-09); adopts the agent-effectiveness research with three
+      designer revisions and directs work onto existing owners; its §15 clarifies how WC §7 Ticket revisions meet KC
+      §9.4 promotion, an editorial line for the E19 re-freeze; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

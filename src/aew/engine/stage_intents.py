@@ -8,8 +8,11 @@ So the journal never claims a step that did not commit, and a step never commits
 
 The finalizer refuses a step whose intent is no longer ACTIVE, whose owning Lead generation is not the current one
 (a takeover never continues a stage implicitly: F18 §14), whose key is already recorded (the idempotency key
-``<SI>:<n>``: a continued stage never repeats a committed step), or whose bound legality digest no longer holds
-(STALE_POLICY: rule 6). The operational digest is recorded with each step, never enforced.
+``<SI>:<n>``: a continued stage never repeats a committed step), that is out of plan order, whose commit is not its
+planned primitive's (``step_primitive_mismatch``), whose primitive commits a second time in one armed block
+(``step_commits_twice``), that retries a judgment-bearing step or any step of a judgment-bearing stage
+(``judgment_replay``: rules 4 and 5), or whose bound legality digest no longer holds (STALE_POLICY: rule 6). The
+operational digest is recorded with each step, never enforced.
 
 An intent is hot (control state ``stage_intents``) only while ACTIVE. It ends COMPLETED (every planned step
 committed), STOPPED_AT_BOUNDARY (stopped after one or more steps), REFUSED (stopped before any) or ABANDONED (closed by
@@ -52,7 +55,9 @@ COMPLETED, STOPPED, REFUSED, ABANDONED = "COMPLETED", "STOPPED_AT_BOUNDARY", "RE
 TERMINAL = (COMPLETED, STOPPED, REFUSED, ABANDONED)
 RECORDS_DIR = "records/stage-intents"
 MAX_STEPS = 16
-CHANNELS = ("mcp", "cli", "test")
+CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
+OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, and what a later step may name
+REFERENCE = "$from"  # a planned argument {"$from": [m, field]}: the one id step m recorded under field
 
 
 def cold_rel(intent_id: str, work_id: str | None) -> str:
@@ -146,6 +151,7 @@ class StageIntents:
             state["counters"]["stage_intent"] = state["counters"].get("stage_intent", 0) + 1
             sid = format_id("SI", state["counters"]["stage_intent"])
             for n, planned in enumerate(plan, start=1):
+                _check_references(n, planned.get("args") or {})
                 spec = P.spec_for(planned["primitive"])
                 if spec.primitive_id in P.NOT_STEPS:
                     raise IllegalTransition(f"step {n}, {planned['primitive']}, cannot run as one stage step: "
@@ -383,6 +389,26 @@ class StageIntents:
     @staticmethod
     def _validate(si: dict[str, Any]) -> None:
         validate("stage-intent", si, source=f"stage intent {si.get('id')}")
+
+
+def _check_references(n: int, args: dict[str, Any]) -> None:
+    """Refuse a step ``n`` whose argument names what no earlier step of the plan can record: only ``{"$from": [m,
+    field]}`` with an integer ``1 <= m < n`` and ``field`` one of :data:`OUTPUTS`. Checked when the intent opens, so a
+    bad plan commits nothing, and a continued stage (E3c) resolves only a plan this check accepted (#142 review,
+    finding 4)."""
+    for name, value in args.items():
+        if not (isinstance(value, dict) and REFERENCE in value):
+            continue
+        ref = value[REFERENCE]
+        m, field = ref if isinstance(ref, list | tuple) and len(ref) == 2 else (None, None)
+        if set(value) != {REFERENCE} or isinstance(m, bool) or not isinstance(m, int) or field not in OUTPUTS:
+            raise UsageError(f"step {n}'s argument {name} is not a step reference: a reference is "
+                             f"{{{REFERENCE!r}: [m, field]}}, with m an earlier step's number and field one of "
+                             f"{', '.join(OUTPUTS)}", reason="malformed_reference", step=n, argument=name)
+        if not 1 <= m < n:
+            raise UsageError(f"step {n}'s argument {name} comes from step {m}, which is not an earlier step: a step "
+                             "uses only what the steps before it recorded", reason="reference_not_earlier", step=n,
+                             argument=name, source=m)
 
 
 def _runs(state: dict[str, Any]) -> set[str]:

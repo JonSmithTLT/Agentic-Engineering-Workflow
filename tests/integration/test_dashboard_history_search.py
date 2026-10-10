@@ -923,14 +923,58 @@ def test_evidence_links_after_the_deadline_are_null(built, tmp_path, monkeypatch
     bundle = Archive.bundle
 
     def slow_bundle(self, state, work_id):
-        time.sleep(0.6)
+        time.sleep(1.0)  # longer than the deadline: the first unit's read outlives it
         return bundle(self, state, work_id)
 
     with served(p.root) as s:
         s.ok(q("sharedmarker", limit=50))  # warm, before the slow bundle
         monkeypatch.setattr(Archive, "bundle", slow_bundle)
-        with deadline(monkeypatch, 0.3):
+        with deadline(monkeypatch, 0.8):  # room for the engine's search on a busy machine (re-review nit)
             took, body = timed(s, q("sharedmarker", limit=50))
     links = [h["expand"]["link"] for h in body["data"]["hits"]]
     assert len(links) == 50 and links.count(None) >= 48  # at most the one unit read before the deadline passed
-    assert took < 0.3 + 0.6 + 1.5, took
+    assert took < 0.8 + 1.0 + 1.5, took
+
+
+def test_a_cli_search_of_a_forged_count_held_open_elsewhere_reports_and_never_crashes(built, tmp_path):
+    """m4 (re-review): another process holds the substrate open, so on Windows the CLI cannot delete it; the CLI's
+    own watermark read is inside the guarded section, so the forged count is damage it reports (and resets in place),
+    never a traceback. The CLI runs as its own process, as the operator runs it."""
+    p = copy_of(built, tmp_path)
+    with tamper(p) as conn:
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'count'", ("\u00b2",))
+    holder = sqlite3.connect(substrate(p))  # open, no transaction: Windows refuses the unlink
+    try:
+        holder.execute("SELECT 1 FROM meta").fetchall()
+        res = p.aew("history", "search", "Quokkafacts")
+    finally:
+        holder.close()
+    assert res.returncode == 0, res.stderr
+    reasons = set(res.json["coverage"]["reasons"])
+    assert reasons & {"rebuilding", "stale"} and res.json["hits"] == [], res.json["coverage"]
+    for _ in range(20):  # the next searches rebuild it
+        if not p.ok("history", "search", "Quokkafacts")["coverage_incomplete"]:
+            break
+    assert [h["id"] for h in p.ok("history", "search", "Quokkafacts")["hits"]] == [built["record"]]
+
+
+def test_a_tampered_sibling_record_nulls_the_link_and_no_link_leads_to_a_500(built, tmp_path):
+    """m5 (re-review): ``/evidence/{id}`` of an archived unit verifies every evidence record the unit references, so
+    a link is emitted only when the whole unit verifies; with a sibling tampered, the intact record is still found
+    but not linked, and every link a search emits answers 200."""
+    p = copy_of(built, tmp_path)
+    impl, review = built["evidence"]["implementation_report"], built["evidence"]["review"]
+    files = list((p.root / ".aew/evidence" / built["ticket"]).glob(f"{review}*.md"))
+    assert files
+    files[0].write_bytes(files[0].read_bytes() + b"\ntampered\n")
+    with served(p.root) as s:
+        assert s.get("/evidence/" + impl)[0] == 500  # the route itself is unchanged in this PR
+        body = s.ok(q("subtract implemented"))
+        hit = next(h for h in body["data"]["hits"] if h["id"] == impl)
+        assert hit["expand"]["link"] is None
+        for term in ("subtract implemented", "Reviewed the diff", "sharedmarker", "Quokkafacts"):
+            for h in s.ok(q(term, limit=50))["data"]["hits"]:
+                link = h["expand"]["link"]
+                if link is not None:
+                    route = "/evidence/" if link["kind"] == "evidence" else "/history/"
+                    assert s.get(route + link["id"])[0] == 200, (term, link)

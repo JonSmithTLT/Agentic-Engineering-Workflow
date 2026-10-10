@@ -749,9 +749,9 @@ class Substrate:
         matcher = _Matcher()
         examined, stop = 0, False
         try:
-            # A lock-free reader reads the watermark inside the guarded section below, so that damage there is
-            # reported rather than raised; the CLI reads it here, as it always has.
-            through: int | None = self._watermark(conn)["count"] if may_reset else None
+            # The watermark is read inside the guarded section below, so that damage there (a forged count included)
+            # is reported, and for the CLI discarded when it can be, never raised (PR #175 re-review, m4).
+            through: int | None = None
             cache: dict[int, Any] = {}
             seen: set[str] = set()
             where, args = ["doc_text MATCH ?", "d.seq <= ?"], [query, root["count"]]
@@ -768,8 +768,7 @@ class Substrate:
                    "ORDER BY bm25(doc_text), d.rowid LIMIT ? OFFSET ?")
             offset, page = 0, 50
             try:
-                if through is None:
-                    through = self._watermark(conn)["count"]
+                through = self._watermark(conn)["count"]
                 while len(hits) < limit and not stop:
                     rows = conn.execute(sql, (*args, page, offset)).fetchall()
                     if not rows:

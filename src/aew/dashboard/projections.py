@@ -49,6 +49,7 @@ from aew.harness import runlog
 from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
+from aew.util import sha256_file
 
 # Route -> the ``schema_version`` its envelope carries: the const of the route's response schema in the accepted
 # contract (tests/unit/test_dashboard_contract.py holds every served route to it). A route a later minor version
@@ -678,20 +679,37 @@ class Projector:
         return wid
 
     def _evidence_exists(self, evidence_id: str) -> bool:
-        """Whether ``/evidence/{id}`` finds this record, checked cheaply: a hot unit's file exists, or the archived
-        unit's bundle (read once per unit and request) records it. No body is read or hashed; the search already
-        authenticated the hit's text."""
+        """Whether ``/evidence/{id}`` answers 200 for this record, checked as cheaply as that stays true (PR #175
+        re-review, m5). A hot unit's record: the one file the route reads, parsed. An archived unit's: the route
+        verifies every evidence record the unit's bundle references and fails on the first bad one, so once per unit
+        and request each reference is hashed against the hash recorded for it (no body is parsed or returned), and a
+        unit with any missing or altered record links none of its evidence."""
         wid = self._evidence_unit(evidence_id)
         if wid is None:
             return False
         if wid in self.state["work"]:
-            return (E.evidence_dir(self.s.aew_root, wid) / f"{evidence_id}.md").is_file()
+            path = E.evidence_dir(self.s.aew_root, wid) / f"{evidence_id}.md"
+            if not path.is_file():
+                return False
+            E.read(path)  # raises as the route would: the caller nulls the link
+            return True
         if wid not in self._archived_ids:
-            bundle = self.archive.bundle(self.state, wid) if is_v2(self.state) else None
-            self._archived_ids[wid] = (None if bundle is None else
-                                       frozenset(str(r["id"]) for r in bundle["unit"].get("evidence") or []))
+            self._archived_ids[wid] = self._verified_archived_ids(wid)
         ids = self._archived_ids[wid]
         return ids is not None and evidence_id in ids
+
+    def _verified_archived_ids(self, wid: str) -> frozenset[str] | None:
+        """The evidence ids of an archived unit whose every referenced record is present with its recorded hash, as
+        ``_archived_evidence`` requires; None when the unit has no bundle or any record fails."""
+        bundle = self.archive.bundle(self.state, wid) if is_v2(self.state) else None
+        if bundle is None:
+            return None
+        refs = bundle["unit"].get("evidence") or []
+        for ref in refs:
+            found = sha256_file(self.s.aew_root / ref["path"])
+            if found is None or found != ref.get("sha256", found):
+                return None
+        return frozenset(str(r["id"]) for r in refs)
 
     # ---------------------------------------------------------------- knowledge (decision records)
 
@@ -877,7 +895,7 @@ class Projector:
             if time.monotonic() < deadline:
                 try:
                     link = entity(hid, "evidence") if self._evidence_exists(hid) else None
-                except (AEWError, OSError):
+                except Exception:  # whatever would fail the route fails the link: never a link to a 500
                     link = None
         else:
             link = entity(hid, "history")

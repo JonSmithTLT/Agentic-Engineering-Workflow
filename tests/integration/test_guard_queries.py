@@ -440,3 +440,34 @@ def test_a_failing_reviews_predicted_state_is_the_ingests(implemented):
     waived = engine.store.read()
     waived["work"][wid]["waivers"] = [{"finding": f"{report}#F1", "reason": "accepted risk"}]
     assert engine._evidence._review_outcome(waived, wid, args["found"]["evidence"])[1] == []
+
+
+def test_one_read_only_answer_computes_a_gate_context_once_per_state(implemented, monkeypatch):
+    """The review's observation: within `Engine.gate_memo` (a query's runner and projection, a stage's composition),
+    a gate context asked again of the same control state is reused, a copy each time; an overlaid state is its own
+    entry; outside it nothing is reused (an execute path computes its own)."""
+    from aew.engine import evidence_ops
+
+    p, wid, _engine, _impl = implemented
+    calls: list[str] = []
+    real = evidence_ops.Gates._ticket_gate_context
+
+    def counted(self, state, work_id):
+        calls.append(work_id)
+        return real(self, state, work_id)
+
+    monkeypatch.setattr(evidence_ops.Gates, "_ticket_gate_context", counted)
+    engine = Engine.discover(p.root)  # composed after the patch: its kind registry holds `counted`
+    state = engine.store.read()
+    with engine.gate_memo():
+        first = engine.gate_context(state, wid)
+        first["gates"].clear()  # a caller's change never reaches the next caller
+        again = engine.gate_context(engine.store.read(), wid)
+        overlaid = dict(state, work={**state["work"], wid: {**state["work"][wid], "state": "REVIEW_PENDING"}})
+        engine.gate_context(overlaid, wid)
+    assert len(calls) == 2 and again["gates"]
+    engine.gate_context(state, wid)
+    assert len(calls) == 3
+    calls.clear()
+    R.run_tool(engine, CTX, "status", {"work_id": wid})  # RUNNING: the current state, and step 2's overlay
+    assert len(calls) == 2

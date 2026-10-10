@@ -123,7 +123,13 @@ def migrated(stage: str) -> bool:
 
 def stage_availability(engine: Any, stage: str, arguments: dict[str, Any], *,
                        state: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The availability of ``stage`` called with ``arguments`` now, with each step's answer."""
+    """The availability of ``stage`` called with ``arguments`` now, with each step's answer (one read-only answer:
+    a gate context asked again of the same state is reused, ``Engine.gate_memo``)."""
+    with engine.gate_memo():
+        return _compose(engine, stage, arguments, state)
+
+
+def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str, Any] | None) -> dict[str, Any]:
     t = contract.tool(stage)
     current: dict[str, Any] = engine.store.read() if state is None else state
     if t is None or stage not in STAGES:

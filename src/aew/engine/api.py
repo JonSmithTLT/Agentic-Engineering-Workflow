@@ -608,6 +608,10 @@ class Engine:
         state = self._k.store.read() if state is None else state
         return self._guard_queries.answer(state, primitive, work_id, {} if args is None else args)
 
+    def gate_memo(self) -> AbstractContextManager[None]:
+        """Within this block, a gate context asked again of the same control state is reused (a read-only answer)."""
+        return self._gates.memo()
+
     def guard_queries(self) -> list[str]:
         """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
         return self._guard_queries.migrated()

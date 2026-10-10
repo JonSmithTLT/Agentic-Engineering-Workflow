@@ -8,6 +8,7 @@ makes a stage UNKNOWN, never BLOCKED. The guards themselves are checked against 
 
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
 from typing import Any
 
@@ -31,6 +32,8 @@ class FakeEngine:
         self.answers = answers or {}
         self.found = found or {}
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
+
+    gate_memo = staticmethod(contextlib.nullcontext)
 
     def guard_query(self, primitive, work_id, args, *, state=None):
         self.seen.append((primitive, work_id, state))

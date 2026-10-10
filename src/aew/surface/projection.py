@@ -308,7 +308,13 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
 # ---------------------------------------------------------------------------------------------- assembly
 
 def project(engine: Any, ctx: SurfaceContext, subject: str | None = None) -> dict[str, Any]:
-    """The ``ActionProjection`` for ``subject`` (a work unit id) or the project."""
+    """The ``ActionProjection`` for ``subject`` (a work unit id) or the project: one read-only answer, so a gate
+    context its parts ask of the same state is computed once (``Engine.gate_memo``)."""
+    with engine.gate_memo():
+        return _project(engine, ctx, subject)
+
+
+def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str, Any]:
     subject = subject or "project"
     part = _cached_control_part(engine, subject)
     actions = [dict(a) for a in part["actions"]]

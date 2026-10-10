@@ -9,8 +9,12 @@ Authority split (WC §6, KC §16):
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import copy
+import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -70,6 +74,11 @@ if TYPE_CHECKING:
     from aew.engine.seams import KindRegistry
 
 REVIEW_ROLES = {"reviewer"}
+# One read-only answer's gate contexts (M4-E E4 review, the observation): within `Gates.memo()`, a gate context asked
+# again of the same control state is reused. Keyed on the whole hot work graph and invocations (and the revision), so
+# an overlaid state is its own entry; the workspace and the evidence store are read once per answer, as before.
+_GATE_MEMO: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar("aew_gate_memo",
+                                                                                                default=None)
 # Read-only roles that work in a live workspace they share with the implementer, or in an integration candidate
 # (M3-B6); in observation scope the same roles are covered by ObservationMutated (ADR-0008).
 SHARED_WORKSPACE_READERS = {"reviewer", "verifier"}
@@ -134,8 +143,30 @@ class Gates:
             changed=self._paths_between(workspace, reported, current))
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
-        """The unit's effective obligations and gate status, from the handler registered for its kind."""
-        return self.kinds.resolve(GATE_CONTEXT, self.units.unit(state, work_id))(state, work_id)
+        """The unit's effective obligations and gate status, from the handler registered for its kind (reused within
+        :meth:`memo` for the same control state)."""
+        memo = _GATE_MEMO.get()
+        if memo is None:
+            return self.kinds.resolve(GATE_CONTEXT, self.units.unit(state, work_id))(state, work_id)
+        key = hashlib.sha256(json.dumps([work_id, state.get("revision"), state.get("work"), state.get("invocations")],
+                                        sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        if key not in memo:
+            memo[key] = self.kinds.resolve(GATE_CONTEXT, self.units.unit(state, work_id))(state, work_id)
+        return copy.deepcopy(memo[key])
+
+    @staticmethod
+    @contextlib.contextmanager
+    def memo() -> Iterator[None]:
+        """Reuse gate contexts within one read-only answer (a projection, an explain). Never around a transaction: an
+        execute path computes its own."""
+        if _GATE_MEMO.get() is not None:
+            yield
+            return
+        token = _GATE_MEMO.set({})
+        try:
+            yield
+        finally:
+            _GATE_MEMO.reset(token)
 
     def _ticket_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         """A mutating Ticket's obligations and gate status for the workspace's *current* evaluated snapshot."""

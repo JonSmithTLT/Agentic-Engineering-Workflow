@@ -28,6 +28,13 @@
             "generator_version": {"type": "integer", "minimum": 1},
             "ruleset_sha256": {"$ref": "#/$defs/sha256"}
           }
+        },
+        "architecture": {
+          "description": "An existing discovery-evidence id selected as the architecture navigation reference (design v0.5 §10; register F22.1 plan §5.2). Selection is navigation, not truth: it asserts nothing about the record's content.",
+          "type": "object",
+          "required": ["evidence_id"],
+          "additionalProperties": false,
+          "properties": {"evidence_id": {"type": "string", "minLength": 1, "maxLength": 64}}
         }
       }
     }

@@ -138,4 +138,4 @@ Until real containment exists (`docs/design/proposals/execution-workspace-and-is
 | launch refused, no execution profile | the invocation was dispatched while the policy was unconfigured | configure the policy, then dispatch a new invocation (a pin never changes) |
 | A fingerprint error naming `nul` | a file named `nul` in a workspace, made by a Windows-style `> nul` redirect in bash | delete the file (`future-work.md` O1) |
 
-The model catalog and agents load asynchronously when a server starts. Health waits up to 90 seconds for them (`AEW_OPENCODE_CATALOG_S`); a slow provider catalog may need more.
+The model catalog and agents load asynchronously when a server starts. Health waits up to 90 seconds for them (`AEW_OPENCODE_CATALOG_S`); a slow provider catalog may need more. A run's whole start, from custody to running, is capped by a deadline derived from these waits and the adapter's other launch timeouts: 620 seconds at the defaults, rising with `AEW_OPENCODE_CATALOG_S`. `AEW_RUN_START_S` replaces it. A start that passes it ends `launch_failed` with a reason naming the variable.

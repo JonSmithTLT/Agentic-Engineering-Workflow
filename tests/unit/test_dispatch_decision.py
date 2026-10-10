@@ -25,7 +25,7 @@ NOT_DISPATCHING = {
     "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
-    "history reindex", "history show", "init",
+    "history reindex", "history search", "history show", "init",  # search: a read, present only when switched on
     "integrate breaker reset", "integrate breaker status", "integrate defer", "integrate publish",
     "integrate reconcile", "integrate reorder", "integrate requeue", "integrate validate",  # under the lease (M4-D5)
     "invoke cancel", "invoke show", "lead acquire",
@@ -51,7 +51,7 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 
 
 def test_every_cli_command_is_a_registered_dispatch_or_classified_as_not_dispatching():
-    commands = {" ".join(p) for p in leaves(build_parser())}
+    commands = {" ".join(p) for p in leaves(build_parser(recall_search=True))}  # every command, the switched ones too
     dispatching = {" ".join(p) for p in CLI_DISPATCHES}
     assert dispatching <= commands, dispatching - commands
     assert not dispatching & NOT_DISPATCHING

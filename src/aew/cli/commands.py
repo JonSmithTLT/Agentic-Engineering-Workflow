@@ -58,7 +58,7 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 # ---------------------------------------------------------------------- registration
 
 
-def register(sub: argparse._SubParsersAction) -> None:
+def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.set_defaults(handler=_doctor)
@@ -113,7 +113,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     from aew.cli import dashboard_commands, history_commands, map_commands, operator_commands, work_commands
 
     work_commands.register(sub)
-    history_commands.register(sub)
+    history_commands.register(sub, recall_search=recall_search)
     dashboard_commands.register(sub)
     map_commands.register(sub)
     operator_commands.register(sub)

@@ -33,6 +33,7 @@ SCHEMAS = {
     "codebase-map": "codebase-map.schema.json",  # project maps (F22.1, ADR-0015)
     "map-registry": "map-registry.schema.json",
     "run-usage": "run-usage.schema.json",  # a harness run's usage (F25, cost and usage ledger v0.2 R1)
+    "usage-live": "usage-live.schema.json",  # one source's live usage sample (F25 for M4-H, slice L1)
     "pricing": "pricing.schema.json",  # the price table, the manifest's optional policy.pricing (F25 R4)
     "stage-intent": "stage-intent.schema.json",  # the StageIntent journal (M4-E E3)
     "ticket-field-registry": "ticket-field-registry.schema.json",  # Ticket field groups (F4 S1, ADR-0016 §1)

@@ -138,6 +138,37 @@ Where each concern is verified. "Fake V2" means `tests/integration/test_opencode
 
 **Not checked deterministically:** which tools a model sees. `/api/session/{id}/context` returns the conversation, not the tool list. The loaded rules are verified by health; the spike showed a denied tool disappears for the model (`m3-opencode-v2-rebaseline.md` §4 #5). The tools an agent actually called are recorded per run (`tools_called`).
 
+### 5.1 Live usage (register F25, for M4-H; slice L1)
+
+One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and one meter for every OpenCode server: a supervised run's private server and an evaluator-owned one (R, R+, the A arm's headless Lead) alike (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). It measures only; the M4-H evaluator (F19) terminates and charges. Probe P1 pinned the facts it rests on, from the pinned 2.0.18 release's bundled JavaScript and the pinned OpenAPI, with a searchable identifier per citation, in `tests/fixtures/opencode/live-usage-2.0.18.json`; `tests/unit/test_usage_live.py` runs the fixture's cases against the meter and checks the citations' shape.
+
+**Operations relied on, and nothing else:** `server.info` (the version, for `token_semantics` from the adapter's table); `session.list` with no filter, `order=asc`, `limit=50`, then `cursor` (2.0.18 anchors it on `time.updated`, so a session updated while the list is paged moves later and is met again); `session.active`; `session.message.list` with `type=assistant` or `type=compaction`, `limit=200`, `order=asc` on the first page and `cursor` alone after it (the pinned operation refuses a cursor with `order`, and the same `type` is passed on every page); `session.message.get`, only to check that a cursor's anchor message still exists. A test checks every query parameter the meter sends against the pinned operation.
+
+**Fields relied on:** `Session.Info`: `id`, `tokens`, `cost`, `model`, `fork`, `time.created`; an assistant message: `id`, `model`, `tokens`, `cost`, `time.created`, `time.completed`, `error`, `finish`, `retry.attempt`; a compaction message: `id`, `status`, `model`, `tokens`, `cost`, `time.created`.
+
+**What P1 found (2.0.18):**
+
+| Fact | Consequence in the meter |
+|---|---|
+| A call's message gets `time.completed` and its tokens when the call ends, in the same SQLite transaction that adds them to its session's totals; nothing moves while it streams | A message counts once, when it is terminal (`time.completed`, an `error`, or a `finish` while its session is idle); counting stops at the first message still in progress, and its usage reaches the figure only when it ends |
+| An interrupted call without the provider's finish ends with `time.completed`, `finish: error` and no tokens; the totals do not move | It never stalls the cursor; what it consumed is billed and unrecorded (the plan's A1 residual) |
+| A session's totals are its own: its steps plus its title and compaction calls (`session.usage.recorded`); never its children's | The figure sums every session once: `max(high-water totals, counted messages)` per session and category, recomputed every poll |
+| Title usage is on no message; a compaction's usage reaches the totals before its message completes | The part of the totals on no counted message is priced on the pinned model only when the caller proved the server pinned to it, and only for a session on that model; otherwise it is a partition with no model, which never prices |
+| A message cursor whose anchor message is gone gets an empty page, for good (`SessionStore.messages`), and a revert deletes messages from its boundary on | When a session's totals moved but its cursor's page is empty and the anchor is gone, the meter reads the session again from the start and skips what it passed already: the messages created at or before the last one it passed, which a revert keeps only before its boundary. A message created in that same millisecond and never counted is skipped too; its usage stays in the figure through the totals |
+| Nothing lowers a session's totals: compaction adds, a revert deletes messages but keeps the totals, a deleted session disappears | A decrease is only `Session.Info.tokens` below its high-water mark: `integrity_pending` once, `integrity` when the next poll still sees it, and the figure never drops; a vanished session keeps its figure |
+| A fork is a new session with zero totals and copies of its source's finished messages (created before the fork) | A fork's messages created before the fork are never counted (OpenCode's own statistics exclude them the same way) |
+| The title call runs on the title agent's model, else the provider's small model; a compaction on the session's model; a subagent on its explicit, own or parent's model. No call site of the summary agent was found (unverified) | AEW's projection pins title, summary and compaction to the run's model; the evaluator's preflight (slice L3) proves every server pinned |
+
+**Events:** none. The pinned OpenAPI types event payloads as an opaque string, so P1's fixture is the only pin on them, and the meter reads no event.
+
+**Bounds:** at most 256 tracked sessions and 6 pages of 50 listed (past either the source is `truncated`, which prices nothing); one page of 200 messages per type per session per poll (the rest on the next); a state of at most 512 KiB that holds cursors, counts and per-model sums, never message ids; a sample of at most 4 KiB.
+
+**The interface beyond the plan's signatures, and what it obliges (F19 and slice L2):**
+
+- `Meter(..., pinned_model=, main_session=)` and `OpenCodeMeter(..., pinned_model=, request_timeout_s=)`. `pinned_model` is the model preflight proved every model the server can call is pinned to. **Without it (the default), any part of a session's totals on no message, such as a title call (P1(b)), is a partition with no model, so the source never prices: F19 passes preflight's pin to every `OpenCodeMeter`, and L2's adapter passes the run's pinned model.** `main_session` names the session whose usage is not `foreign_tokens` (`OpenCodeMeter` sets it to the root session; L2 sets it to the run's session once it exists).
+- `client` may be `None` and bound later (`meter.client = ...`), so L2 creates the meter and writes its `unsent` sample before the server starts.
+- `poll()` returns the new sample, or the last published one when a request or write fails, or `None` before any sample is published: a failure never makes a sample up or spends a `seq`. `final()` raises `OSError` when its write fails and can then be called again; `set_prompt_state()` raises on a failed write and leaves the prompt state as it was.
+
 ## 6. Live results with real models (M3 step 8)
 
 **What ran.** `tests/live/test_opencode_model_live.py`:

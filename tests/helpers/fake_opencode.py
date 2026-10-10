@@ -22,7 +22,18 @@ slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path",
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
-2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry).
+2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry), ``live_usage`` (F25 L1: sessions carry the
+pinned ``TokenUsage.Info`` totals, and each model step adds its tokens to its session's totals; ``{"order":
+"message_first" | "totals_first", "gap_s": s}`` says which of the two a reader can see first, and for how long; 2.0.18
+commits a step's message and totals together, P1(e), so ``gap_s`` 0 is the pinned behaviour).
+
+Live usage (F25 L1) is served as 2.0.18 serves it, for the paths the meter uses: ``GET /api/session`` pages in
+``time.updated`` order from an opaque cursor when ``order``, ``limit`` or ``cursor`` is given, and
+``GET /api/session/{id}/message`` filters by ``type`` and pages from an opaque cursor when ``type`` or ``cursor`` is
+given (a cursor combined with ``order`` is a 400, as pinned). Without those parameters both answer as before. In
+process, :func:`local_app` and :class:`LocalClient` serve the same routes without HTTP, and ``add_session``,
+``start_call``, ``end_call``, ``record_usage``, ``fork``, ``revert`` and ``remove`` script the usage facts probe P1
+pinned (``tests/fixtures/opencode/live-usage-2.0.18.json``).
 
 Run as ``opencode --standalone <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
 ``<scripts>/lead-tui.json`` with the TUI's own environment, which a V2 ``--standalone`` TUI sends as every
@@ -69,6 +80,36 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(12)}"
 
 
+def zero_usage() -> dict[str, Any]:
+    """The pinned ``TokenUsage.Info`` shape, all zeros."""
+    return {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}
+
+
+def add_usage(info: dict[str, Any], tokens: Any, cost: Any) -> None:
+    """A session's totals grow by a call's usage (2.0.18's ``SessionProjector`` adds each category and the cost)."""
+    if not isinstance(tokens, dict):
+        return
+    total = info.get("tokens") if isinstance(info.get("tokens"), dict) else {}
+    cache, more = dict(total.get("cache") or {}), tokens.get("cache") or {}
+    info["tokens"] = {k: (total.get(k) or 0) + (tokens.get(k) or 0) for k in ("input", "output", "reasoning")}
+    info["tokens"]["cache"] = {k: (cache.get(k) or 0) + (more.get(k) or 0) for k in ("read", "write")}
+    info["cost"] = (info.get("cost") or 0) + (cost or 0)
+
+
+def encode_cursor(value: dict[str, Any]) -> str:
+    return base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
+
+
+def decode_cursor(raw: str) -> dict[str, Any]:
+    try:
+        value = json.loads(base64.urlsafe_b64decode(raw.encode()))
+    except (ValueError, TypeError) as exc:
+        raise ValueError("invalid cursor") from exc
+    if not isinstance(value, dict):
+        raise ValueError("invalid cursor")
+    return value
+
+
 class Session:
     def __init__(self, info: dict[str, Any]) -> None:
         self.info = info
@@ -105,6 +146,7 @@ class FakeOpenCode:
         os.environ.pop("OPENCODE_SERVER_PASSWORD", None)
         self.sessions: dict[str, Session] = {}
         self.lock = threading.RLock()
+        self.message_reads = 0  # message-list requests answered with a type or cursor (F25 L1)
         self.persist_lock = threading.Lock()
         self.listeners: list[queue.Queue[dict[str, Any] | None]] = []
         (self.data_home / "opencode").mkdir(parents=True, exist_ok=True)
@@ -158,12 +200,28 @@ class FakeOpenCode:
                "content": [{"type": "tool", "name": tool}] if tool else [{"type": "text", "text": "ok"}],
                "tokens": {"input": 100 + i, "output": 10, "reasoning": 0, "cache": {"read": 0, "write": 0}},
                "cost": 0, "finish": finish}
-        with self.lock:
-            s.messages.append(msg)
+        live = self.knobs.get("live_usage")
+        if live is not None:  # the step's usage reaches the session's totals too, in the configured order
+            first, then = ((self._add_totals, self._append) if live.get("order") == "totals_first"
+                           else (self._append, self._add_totals))
+            first(s, msg)
+            time.sleep(float(live.get("gap_s") or 0))
+            then(s, msg)
+        else:
+            with self.lock:
+                s.messages.append(msg)
         self.emit("session.step.started", {"sessionID": s.info["id"], "model": msg["model"],
                                            "assistantMessageID": msg["id"]})
         self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"], "finish": finish,
                                          "tokens": msg["tokens"]})
+
+    def _append(self, s: Session, msg: dict[str, Any]) -> None:
+        with self.lock:
+            s.messages.append(msg)
+
+    def _add_totals(self, s: Session, msg: dict[str, Any]) -> None:
+        with self.lock:
+            add_usage(s.info, msg.get("tokens"), msg.get("cost"))
 
     def deliver(self, s: Session, *, boundary: bool = False) -> int:
         """Move waiting prompts into the conversation (user messages), in order. At a step boundary in
@@ -387,12 +445,17 @@ class FakeOpenCode:
                     "model": {"variant": "default", **(body.get("model") or {})}, "location": body.get("location"),
                     "permissions": body.get("permissions") or [], "metadata": body.get("metadata") or {},
                     "cost": 0, "tokens": {"input": 0, "output": 0}, "time": {"created": now_ms()}}
+            if self.knobs.get("live_usage") is not None:
+                info["tokens"] = zero_usage()
+                info["time"]["updated"] = info["time"]["created"]
             with self.lock:
                 self.sessions[sid] = Session(info)
             self.persist()
             self.emit("session.created", {"sessionID": sid})
             return 200, {"data": info}
         if (method, path) == ("GET", "/api/session"):
+            if {"order", "limit", "cursor"} & set(query):
+                return self.list_sessions(query)
             with self.lock:
                 return 200, {"data": [s.info for s in self.sessions.values()]}
         if (method, path) == ("GET", "/api/session/active"):
@@ -416,6 +479,8 @@ class FakeOpenCode:
             if proc is not None:
                 proc.kill()
             return 200, {"interrupted": was}
+        if (method, rest) == ("GET", "/message") and ({"type", "cursor"} & set(query)):
+            return self.list_messages(s, query)
         if (method, rest) == ("GET", "/message"):
             with self.lock:
                 msgs = list(s.messages)
@@ -447,6 +512,177 @@ class FakeOpenCode:
                 s.forms.pop(fm.group(1), None)
             return 204, None
         return 404, {"message": f"no route {method} {rest}"}
+
+    # ------------------------------------------------------------------ live usage (F25 L1)
+
+    def list_sessions(self, query: dict[str, list[str]]) -> tuple[int, Any]:
+        """``session.list`` as 2.0.18 pages it: ordered and anchored on ``(time.updated, id)``; the cursor carries the
+        order and the anchor (not the limit, which each request gives or defaults to 50)."""
+        limit = int((query.get("limit") or ["50"])[0])
+        raw = (query.get("cursor") or [None])[0]
+        if raw is not None:
+            try:
+                cur = decode_cursor(raw)
+            except ValueError:
+                return 400, {"message": "Invalid cursor"}
+            order, anchor = cur["order"], (cur["time"], cur["id"])
+        else:
+            order, anchor = (query.get("order") or ["desc"])[0], None
+        with self.lock:
+            infos = [dict(s.info) for s in self.sessions.values()]
+
+        def key(i: dict[str, Any]) -> tuple[float, str]:
+            t = i.get("time") or {}
+            return float(t.get("updated") or t.get("created") or 0), str(i["id"])
+
+        infos.sort(key=key, reverse=order == "desc")
+        if anchor is not None:
+            infos = [i for i in infos if (key(i) > tuple(anchor) if order == "asc" else key(i) < tuple(anchor))]
+        page = [json.loads(json.dumps(i)) for i in infos[:limit]]
+        cursor: dict[str, Any] = {}
+        if page:
+            last = key(page[-1])
+            cursor["next"] = encode_cursor({"order": order, "time": last[0], "id": last[1]})
+        return 200, {"data": page, "cursor": cursor}
+
+    def list_messages(self, s: Session, query: dict[str, list[str]]) -> tuple[int, Any]:
+        """``session.message.list`` as 2.0.18 pages it (``SessionStore.messages``): in position order, filtered by
+        ``type``, with a cursor on the last item of every non-empty page (an empty page ends the list) that carries
+        only the anchor's id and the order and is never combined with ``order``. The anchor is looked up among all
+        the session's messages; **when it is gone (a revert deleted it) the page is empty, for good**
+        (``if(r.cursor&&!c)return[]``)."""
+        raw = (query.get("cursor") or [None])[0]
+        if raw is not None and "order" in query:
+            return 400, {"message": "Cursor cannot be combined with order"}
+        limit = min(int((query.get("limit") or ["100"])[0]), 200)
+        kind = (query.get("type") or [None])[0]
+        with self.lock:
+            self.message_reads += 1
+            every = list(s.messages)
+        positions = list(range(len(every)))
+        if raw is not None:
+            try:
+                cur = decode_cursor(raw)
+            except ValueError:
+                return 400, {"message": "Invalid cursor"}
+            order = cur["order"]
+            ids = [m["id"] for m in every]
+            if cur["id"] not in ids:
+                return 200, {"data": [], "cursor": {}}
+            at = ids.index(cur["id"])
+            positions = [i for i in positions if (i > at if order == "asc" else i < at)]
+        else:
+            order = (query.get("order") or ["desc"])[0]
+        if order != "asc":
+            positions.reverse()
+        ordered = [every[i] for i in positions if kind is None or every[i].get("type") == kind]
+        page = [json.loads(json.dumps(m)) for m in ordered[:limit]]
+        cursor: dict[str, Any] = {}
+        if page:
+            cursor["next"] = encode_cursor({"order": order, "id": page[-1]["id"], "direction": "next"})
+        return 200, {"data": page, "cursor": cursor}
+
+    def add_session(self, *, model: dict[str, Any] | None = None, parent: str | None = None,
+                    created: float | None = None) -> str:
+        sid = "ses_" + secrets.token_hex(12)
+        at = now_ms() if created is None else created
+        info: dict[str, Any] = {"id": sid, "projectID": "fake", "title": "scripted", "agent": "build",
+                                "model": dict(model or {"providerID": "fakeprov", "id": "fake-model",
+                                                        "variant": "default"}),
+                                "location": {"directory": str(self.state)}, "cost": 0, "tokens": zero_usage(),
+                                "time": {"created": at, "updated": at}}
+        if parent is not None:
+            info["parentID"] = parent
+        with self.lock:
+            self.sessions[sid] = Session(info)
+        return sid
+
+    def start_call(self, sid: str, *, model: dict[str, Any] | None = None, kind: str = "assistant",
+                   created: float | None = None) -> str:
+        """A model call begins: its message exists, with no tokens and (for an assistant call) no ``time.completed``;
+        a compaction is ``running`` (P1(a), (f))."""
+        s = self.sessions[sid]
+        mid = new_id("msg")
+        at = now_ms() if created is None else created
+        if kind == "assistant":
+            msg: dict[str, Any] = {"id": mid, "type": "assistant", "agent": "build",
+                                   "model": dict(model or s.info["model"]), "time": {"created": at}, "content": []}
+        else:
+            msg = {"id": mid, "type": "compaction", "status": "running", "reason": "auto", "summary": "",
+                   "recent": "", "time": {"created": at}}
+        with self.lock:
+            s.messages.append(msg)
+        return mid
+
+    def end_call(self, sid: str, mid: str, *, tokens: dict[str, Any] | None, cost: float = 0.0,
+                 error: dict[str, Any] | None = None, parts: tuple[str, ...] = ("message", "totals"),
+                 completed: float | None = None, model: dict[str, Any] | None = None) -> None:
+        """A model call ends. An assistant call's message gets ``time.completed``, ``finish`` and its tokens, and the
+        session's totals grow by them in the same transaction (P1(a), (e)); a failure with no usage carries none and
+        leaves the totals alone (P1(c)). ``parts`` applies only one of the two halves, to stage a reader's skew (a
+        compaction's totals are recorded before its message completes, P1(e))."""
+        s = self.sessions[sid]
+        with self.lock:
+            msg = next(m for m in s.messages if m["id"] == mid)
+            if "message" in parts:
+                if msg["type"] == "assistant":
+                    msg["time"]["completed"] = now_ms() if completed is None else completed
+                    msg["finish"] = "error" if error else "stop"
+                    if error:
+                        msg["error"] = error
+                else:
+                    msg["status"] = "failed" if error else "completed"
+                    if error:
+                        msg["error"] = error
+                    else:
+                        msg["model"] = dict(model or s.info["model"])
+                if tokens is not None:
+                    msg["tokens"], msg["cost"] = json.loads(json.dumps(tokens)), cost
+            if "totals" in parts and tokens is not None:
+                add_usage(s.info, tokens, cost)
+
+    def record_usage(self, sid: str, tokens: dict[str, Any], cost: float = 0.0) -> None:
+        """``session.usage.recorded``: a title (or compaction) call's usage reaches the totals, on no message."""
+        with self.lock:
+            add_usage(self.sessions[sid].info, tokens, cost)
+
+    def fork(self, sid: str, *, created: float | None = None) -> str:
+        """``session.fork``: a new root session whose totals start at zero, holding copies (new ids, the original
+        creation times) of the source's finished messages (P1(d))."""
+        src = self.sessions[sid]
+        fid = self.add_session(model=src.info["model"], created=created)
+        with self.lock:
+            f = self.sessions[fid]
+            f.info["fork"] = {"sessionID": sid, "boundary": {"type": "through", "messageID": src.messages[-1]["id"]}}
+            for m in src.messages:
+                done = ((m.get("time") or {}).get("completed") is not None if m["type"] == "assistant"
+                        else m.get("status") != "running")
+                if done:
+                    f.messages.append({**json.loads(json.dumps(m)), "id": new_id("msg")})
+        return fid
+
+    def revert(self, sid: str, mid: str) -> None:
+        """``session.revert.committed``: messages from ``mid`` on are deleted; the totals stay (P1(d))."""
+        with self.lock:
+            s = self.sessions[sid]
+            at = next(i for i, m in enumerate(s.messages) if m["id"] == mid)
+            del s.messages[at:]
+
+    def remove(self, sid: str) -> None:
+        with self.lock:
+            self.sessions.pop(sid, None)
+
+    def set_totals(self, sid: str, tokens: dict[str, Any], cost: float | None = None) -> None:
+        """Totals written directly (``session.import`` sets them, and the REST store is model-writable)."""
+        with self.lock:
+            info = self.sessions[sid].info
+            info["tokens"] = json.loads(json.dumps(tokens))
+            if cost is not None:
+                info["cost"] = cost
+
+    def set_running(self, sid: str, running: bool) -> None:
+        with self.lock:
+            self.sessions[sid].running = running
 
 
 def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
@@ -516,6 +752,50 @@ def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
             self._handle("DELETE")
 
     return Handler
+
+
+class LocalClient:
+    """The fake's routes in process, with the adapter ``Client``'s ``get`` signature and errors (F25 L1's meter
+    tests). ``requests`` records every ``(method, path, params)`` sent, for the pinned-operation check; ``down``
+    makes every request fail as an unreachable server does."""
+
+    def __init__(self, app: FakeOpenCode) -> None:
+        self.app = app
+        self.requests: list[tuple[str, str, dict[str, str]]] = []
+        self.down = False
+
+    def get(self, path: str, params: dict[str, str] | None = None, **_kw: Any) -> Any:
+        from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
+
+        self.requests.append(("GET", path, dict(params or {})))
+        if self.down:
+            raise OpenCodeUnavailable(f"GET {path}: the fake server is down")
+        status, body = self.app.route("GET", path, {k: [v] for k, v in (params or {}).items()}, None)
+        if status >= 400:
+            raise OpenCodeError("GET", path, status, body)
+        return json.loads(json.dumps(body))
+
+
+def local_app(root: Path, knobs: dict[str, Any] | None = None) -> FakeOpenCode:
+    """A fake server in process, for tests that drive its routes through :class:`LocalClient`. Its files live under
+    ``root``; the process environment is left as it was."""
+    run = root / "R-LOCAL-1"
+    data = run / "harness" / "xdg-data"
+    data.mkdir(parents=True, exist_ok=True)
+    scripts = root / "scripts"
+    scripts.mkdir(exist_ok=True)
+    (scripts / "default.json").write_text(json.dumps({"steps": [], "server": {"live_usage": {}, **(knobs or {})}}),
+                                          encoding="utf-8")
+    saved = {k: os.environ.get(k) for k in ("XDG_DATA_HOME", "OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD")}
+    os.environ["XDG_DATA_HOME"] = str(data)
+    try:
+        return FakeOpenCode(scripts)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 TUI_SCRIPT, TUI_TRANSCRIPT, TUI_ARGV = "lead-tui.json", "lead-tui.jsonl", "lead-tui-argv.json"

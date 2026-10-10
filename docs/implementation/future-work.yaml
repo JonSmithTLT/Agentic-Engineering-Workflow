@@ -139,7 +139,10 @@ sections:
       drift; admissibility as a Knowledge Contract concept'
     Source (governing): hierarchy design §4 to §7, §12 to §18
     Belongs to or gated by: '**Hierarchy revision**'
-    Notes: '"Parents preserve purpose. Tickets preserve proof." Open questions in §21.'
+    Notes: '"Parents preserve purpose. Tickets preserve proof." Open questions in §21. **Cross-feature integration v0.5
+      (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §6.1;
+      ledger CFI-29):** once F5 governs change classes, `EDITORIAL` may preserve a section binding only where the consumed
+      digest is unchanged and F5 policy permits (F41.4)'
 
   - '#': F6
     Work: 'Fail-closed classification applied to existing classifiers: the downgrade rule for `verify classify`, and risk-class
@@ -233,7 +236,15 @@ sections:
       ledger MIC):** D5, F9 owns the Lead''s wake for worker replies, as a coordination lane in the existing `aew harness
       wait --any`, with no second notifier: M4-E E7''s notifier stays the operator''s (MIC-09, MIC-10). It resolves the
       wording of LWA-17 and the F9-A1 adoption ("the broker''s notifier", now `superseded-by:` MIC-09); until the lane lands
-      in a later F9 slice, the Lead learns of replies through the attention and resume projections'
+      in a later F9 slice, the Lead learns of replies through the attention and resume projections. **Cross-feature integration
+      v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md)
+      §8.1, §11; ledger CFI-41, CFI-48 to CFI-51):** interface and publish-overlap wakes are outbox events delivered through
+      the D5/F9 coordination lane in `wait --any` whether or not messaging is on, so M4-H may keep messaging off without
+      losing them; the wake is a nudge and never authority, keyed `(dependent, subject)` and coalesced to the latest committed
+      fact; interface holds resolve through F9''s `RECONTEXTUALIZE` or `TICKET_REPLAN` (F41.6); acceptance checks 14 and
+      15 (CFI-84, CFI-85). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md)
+      §18; ledger CFI-105):** field-log #16, the CI external check, is an external-check / `wait --any` integration candidate
+      (F41.14)'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -350,7 +361,11 @@ sections:
       role, baselines, the challenge, the assurance predicate and evaluator protection. Relates to F5 (hierarchy revision:
       accepted baselines, admissibility), F6 (fail-closed classification), F8 (reconnaissance and stakeholder decisions).
       Architecture review 2026-10-04 (accepted 2026-10-05, Q13): I5, pin repository-local acceptance inputs by digest at
-      plan acceptance and re-verify, as the deterministic half now.'
+      plan acceptance and re-verify, as the deterministic half now. **Cross-feature integration v0.5 (frozen 2026-10-10,
+      [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md); ledger CFI):** F14 co-owns
+      the mandatory reviewed Story/Epic plan, Class 0 included, through a WC/F14 amendment that must exist before activation
+      (F41.1, built by F41.2), whose parent-plan guard is an input to the single `DispatchDecision`; it owns the underspecification
+      signals (F41.12) and `design_decision_required` as an attention reason (CFI-24)'
 
   - '#': F15
     Work: 'Lead workflow efficiency: stage commands named for the Lead''s judgment (`draft`, `start`, `request-review`,
@@ -740,16 +755,18 @@ sections:
       IBU-14 to IBU-16)'
     Belongs to or gated by: '**Unscheduled** (candidate for M4-G; `doctor.py` grows a row registry). The ownership and permission
       matrix and the F18-B0 negative checks wait for F18.6 (not before M4-H)'
-    Notes: Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
-      stands between this row and its build. **The designer's amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
-      §1, ledger HRC-01 to HRC-05):** v0.3's no-daemon rule and its operator terminal as the Lead session are superseded
-      (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator's control
+    Notes: 'Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level
+      stands between this row and its build. **The designer''s amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md)
+      §1, ledger HRC-01 to HRC-05):** v0.3''s no-daemon rule and its operator terminal as the Lead session are superseded
+      (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator''s control
       surface, not the Lead session); the permissions row stops treating a `.aew/` owned by another user as an error and
-      instead validates an ownership and permission matrix (protected state's ownership or ACL, the Lead-host identity unable
-      to write it, the operator's lifecycle operations, ordinary source access, derived projections unable to pass for canonical
-      state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity;
-      the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's
-      write access (lead developer's reading, record §3)
+      instead validates an ownership and permission matrix (protected state''s ownership or ACL, the Lead-host identity
+      unable to write it, the operator''s lifecycle operations, ordinary source access, derived projections unable to pass
+      for canonical state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual
+      Lead-host identity; the same matrix judges the Filesystem row''s `.aew/` not writable per principal, never by widening
+      the Lead host''s write access (lead developer''s reading, record §3). **Cross-feature integration v0.5 ([cross-feature
+      integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-104):** field-log #15,
+      the disk budget, is dispositioned to the doctor / workspace-retirement owner (F41.14)'
 
   - '#': F18.3
     Work: 'The air-gap bundle, three side-by-side artifacts: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse and
@@ -1004,7 +1021,23 @@ sections:
       disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the
       lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation
       is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the
-      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06)'
+      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **M4-H''s analysis
+      bundle built (F19 plan v5, slice S11):** `eval/aew_eval/analysis.py` implements Q7 §13''s fixed-cell Jeffreys rule
+      (10^6 joint draws from numpy''s `PCG64` under the sealed seed; the verdicts, with no selectable pooled or weighted
+      estimator), its exact cross-check (a regularized incomplete beta by Lentz''s continued fraction, posteriors discretized
+      by CDF differences so all-pass and all-fail cells keep their mass, convolved in pure Python), the operating-characteristic
+      simulation as a tool (`python -m aew_eval.analysis simulate`), the §6.3 cost axis (ratio of totals, undefined at zero
+      successes, cell-stratified bootstrap), §13.7''s safety axis, §12''s U3 flag and the versioned §6.3 secondary outcomes;
+      the `aew/m4h-analysis-plan/v1`, `aew/eval-analysis/v1` and `aew/m4h-simulation/v1` schemas, and a minimal `aew/m4h-reconciliation/v1`
+      (per run, bound to the analysed runs and to the plan''s sealed spend layer; `COST_UNRESOLVED` comes only from it,
+      the sealed mismatch fraction and, under layer (c), the sealed `usage_estimated` share; S15 produces it and extends
+      it with both figures per run, then the analysis recomputes each run''s mismatch from them and refuses a disagreeing
+      flag, and `campaign verify` checks the analysis''s `reconciliation_sha256`; S18 produces the `usage_estimated` flag;
+      the deciding rates are over the primary runs, F4''s reported beside them); a draft plan and frozen test vectors, exact
+      and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
+      module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration
+      design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime,
+      is an evaluator / process metric candidate (F41.14)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1036,7 +1069,10 @@ sections:
       a minor version is additive: it adds paths and never changes what an existing path returns, and each envelope keeps
       the version that defined its response, so the 0.1.2 routes keep emitting 0.1.2; 0.2.0 is kept for breaking changes
       (F28''s `network` object, a projected queue, a new field on an existing response). Folding `integrated` into 0.1.3
-      is the web developer''s call (an `x-known-values` annotation, which the compatibility check ignores).'
+      is the web developer''s call (an `x-known-values` annotation, which the compatibility check ignores). **Cross-feature
+      integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18;
+      ledger CFI-103):** field-log #12, the operator waiting queue, is dispositioned to the operator-attention / dashboard
+      owner; this row owns the dashboard half, F15.5 the operator-attention half (F41.14)'
 
   - '#': F20.6
     Work: 'Integrated acceptance: the browser and security checks against authenticated live state, recorded separately
@@ -1249,7 +1285,9 @@ sections:
       E1). Building the indexes changes no pack; serving their locators is F35's, behind its switch. The test relationship
       and constraint locator indexes need only F22.1; the semantic public-surface projection is derived from semantic facts
       (v0.5 §9.3) and waits for F22.2's T5-B, so this row closes only once that is built. Delta item D4 ([implementation
-      delta](agent-effectiveness-implementation-delta-2026-10-09.md))
+      delta](agent-effectiveness-implementation-delta-2026-10-09.md)). **Cross-feature integration v0.5 (frozen 2026-10-10,
+      [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §10; ledger CFI-46, CFI-47):**
+      the advisory overlap projection is owned with T5 and the work graph (F41.7); a cross-reference, not new scope
 
   - '#': F24
     Work: A second real harness adapter (Codex app-server or Claude Code headless) through the existing conformance suite
@@ -1358,18 +1396,22 @@ sections:
       later stays in `local/`. Slice 2b''s doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`).
       The snapshot check reads the hot state and the recently archived units only, never the whole archive, so a doctor
       run stays bounded; a snapshot named only by an older bundle is not checked there, and `aew usage show --all` (next)
-      reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **Deterministic
-      work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09;
-      ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model
-      dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10,
-      evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25''s
-      settlement boundary (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts
-      F25''s live, settled, inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every
-      OpenCode server started for the run id and all its sessions from server start, relaunches included), the close at
-      every source final or 60 s after shutdown begins, late samples never changing the figure, and no experiment semantics
-      in F25 (MIC-01). The plan''s slice L7 records the ruling''s content (ledger CMB), amending EVC-14''s cost-block source
-      for M4-H only; with G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this
-      row''s item in [decisions due](decisions-due.md)) is a different question and stays open.'
+      reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **M4-H live
+      usage: slice L1 built** (2026-10-10): one sample shape, `aew/usage-live/v1`, and one meter for every OpenCode server,
+      a run''s or an evaluator-owned one (`harness/usage_live.py`), with probe P1''s OpenCode 2.0.18 facts pinned and cited
+      in a fixture; measurement only. L2 (a supervised run publishes it), L3 (the measured total and preflight) and L4 (the
+      evaluator''s reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic work conservation ([requirement
+      v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):**
+      F25 is the primary measurement substrate for whether model usage, time and expensive-model dependence actually fall
+      (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening ([decision
+      record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25''s settlement boundary
+      (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts F25''s live, settled,
+      inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every OpenCode server started
+      for the run id and all its sessions from server start, relaunches included), the close at every source final or 60
+      s after shutdown begins, late samples never changing the figure, and no experiment semantics in F25 (MIC-01). The
+      plan''s slice L7 records the ruling''s content (ledger CMB), amending EVC-14''s cost-block source for M4-H only; with
+      G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this row''s item in [decisions
+      due](decisions-due.md)) is a different question and stays open.'
 
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
@@ -1592,7 +1634,10 @@ sections:
       durable instruction message; the worker-published `working_note` stays F9-B''s. The note''s conformance tests: no
       gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as its predecessor''s
       claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead''s progress view).
-      Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+      Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)). **Cross-feature
+      integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md)
+      §14; ledger CFI-57 to CFI-60):** the delta-review packet extends reviewer continuity (F41.10); a cross-reference,
+      not new scope'
 
   - '#': F37
     Work: 'Field diagnostics, so that an operator running a released AEW elsewhere can find out what went wrong in a run
@@ -1645,7 +1690,10 @@ sections:
       goes, its derived-read cells, the Verifier''s P standing for the rest until this row''s encoding says what is safe;
       F21); D3, the messaging-enabled operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`
       (MCD-06; F9), which the named profile catalog models. These do not adopt the model; its adoption is still this row''s
-      item in [decisions due](decisions-due.md).'
+      item in [decisions due](decisions-due.md). **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration
+      design v0.5](../design/cross-feature-integration-design-v0.5.md) §3.1; ledger CFI-11, CFI-12, CFI-15):** until dedicated
+      Planner/Researcher rows exist, planning children resolve against the Investigator row plus the planning-child narrowing;
+      dedicated rows, if wanted, are an input to this row (F41.2)'
 
   - '#': F39
     Work: 'M6a Gate B, deployed bypass-freedom: proof, against the exact pinned deployment (harness, providers, containment),
@@ -1693,6 +1741,196 @@ sections:
       **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
       ledger MIC):** D7 confirms that a harness whose shell can write qualifies under §7 with a read-only source and mediated
       authoritative mutation, the same rule for every harness (MIC-13; first applied to Claude Code, F24.2)
+
+  - '#': F41
+    Work: 'Cross-feature integration, the activation gate: the design that connects the adopted owners (plans as governed
+      parent work, section binding, a non-blocking interface-dependency edge, overlap, health, operator validation, delta
+      review, plan underspecification) with no second lifecycle, invalidation, review-proof, health or coordination system;
+      the activation gate that checks the required WC/F14 and WC §8 amendments are present (acceptance check 26); the field-log
+      disposition table kept complete (check 25)'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §1,
+      §18 to §20, §22 (ledger CFI-01, CFI-02, CFI-68 to CFI-70, CFI-95, CFI-96, CFI-99), frozen by the designer 2026-10-10;
+      [decision record](../design/decisions-2026-10-10-cross-feature-integration-freeze.md) (ledger CFD)'
+    Belongs to or gated by: '**Unscheduled.** Concept frozen 2026-10-10; activation gated (§19, §22): nothing in F41.1 to
+      F41.13 is activatable until its governing amendment exists and this gate verifies it'
+    Notes: 'The umbrella row: each §19 owner or amendment has its own row, F41.1 to F41.13; the §18 dispositions owned outside
+      them are F41.14; and the nit-rule divergence (§21) is Q15. The designer''s ruling (§19, last paragraph; CFI-70): the
+      design may freeze before the WC/F14 and WC §8 amendments are merged, but the affected behaviour is not activatable
+      until the amendment exists and the activation gate verifies it; this supersedes the v0.3 review''s suggestion that
+      the amendment exist before conceptual freeze. The Lead wake (§11) stays with its existing owner, F9. Acceptance checks
+      1 to 26 (CFI-71 to CFI-96) are tracked on the row that owns each'
+
+  - '#': F41.1
+    Work: 'The Workflow Contract / F14 amendment for mandatory reviewed parent plans: every ancestor Epic and Story, Class
+      0 included, has a reviewed accepted plan, which changes `parent_paths["0"]` (the Class-0 parent path); the parent-plan
+      guard as an input to F14 §17.1''s single `DispatchDecision`, not a second dispatch engine; the reviewed-plan record
+      contract (proposal, independent R1 review bound to the proposal''s sha256, adoption by someone other than the proposer);
+      the minimal Class-0 parent plan'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §2,
+      §4, §4.3, §19 (ledger CFI-03, CFI-04, CFI-17, CFI-21, CFI-70)'
+    Belongs to or gated by: '**Designer.** The amendment is to be written and adopted; **must exist before activation**
+      (§19)'
+    Notes: '**Activation-gating:** the design''s behaviour that needs it is not activatable until it exists (§19, §20 check
+      26, CFI-70). Its build is F41.2. Mandatory Class-0 parent planning is deliberate (§2): AEW avoids planning ceremony
+      at Ticket granularity, not by planless parent work. The plan proposal, review and adoption contract must be specified
+      before activation (§19)'
+
+  - '#': F41.2
+    Work: 'The reviewed-plan contract, built: a derived `plan_phase` (no new stored parent work state); the parent-plan
+      guard in `DispatchDecision`; plan proposal, review and adoption with the proposer barred from the reviewer and adopter
+      slots (operator adoption or a Lead generation with a different admitted identity when the Lead proposed); the engine-derived
+      planning/research child exemption (admitted purpose and the resolved effect envelope against the allow-list, never
+      a label); the planner''s own plan obligation met by its assignment; the migration of in-flight parents; Ticket planning
+      kept conditional; `design_decision_required` as an attention reason, never a transition'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §2
+      to §5.1 (ledger CFI-03, CFI-05 to CFI-12, CFI-14 to CFI-24, CFI-30); acceptance checks 1 to 6 and 23 (CFI-71 to CFI-76,
+      CFI-93)'
+    Belongs to or gated by: '**Unscheduled.** Activation-gated: after F41.1''s amendment; the exemption also needs F41.3''s
+      migration and, before M6a enforcement, only dedicated planner/research launch profiles with an equivalent non-mutating
+      containment guarantee (§3.1)'
+    Notes: Until dedicated Planner/Researcher role rows exist, planning children resolve against the M6a Investigator row
+      plus the planning-child narrowing; dedicated rows are an F38 input (CFI-12). `G_EXTERNAL_OBSERVE` stays reserved and
+      outside the allowance (CFI-11). It builds on the plan bindings already in the code (ADR-0007, ADR-0008)
+
+  - '#': F41.3
+    Work: 'The `non_mutating_paths` migration: the planning-child exemption changes the existing `non_mutating_paths` default,
+      so adoption migrates project policy in `policy/gates.yaml` and no existing project silently keeps the old rule'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §3.1
+      (ledger CFI-13)'
+    Belongs to or gated by: '**Unscheduled.** Activation-gating for the planning-child exemption (F41.2): with it or before
+      it'
+    Notes: A migration of project policy data, not a new authority surface
+
+  - '#': F41.4
+    Work: 'Section-digest plan binding (E19-B with F5): every mutating descendant dispatch records the ancestor plan id
+      and revision, the consumed section ids and an engine-computed normalized digest of each; the default consumed set
+      (objective, requirements and acceptance criteria, the interfaces it names, its decomposition entry), narrowed only
+      by the parent plan''s structured decomposition; a governed, versioned normalization algorithm; staleness iff a consumed
+      digest changes; the replacement-plan rules; `plan reconfirm --subtree` as an explicit recovery action that makes no
+      evidence admissible'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §6
+      to §6.3 (ledger CFI-25 to CFI-33); acceptance checks 7 and 8 (CFI-77, CFI-78)'
+    Belongs to or gated by: '**Unscheduled.** **Prerequisite** for activation (§6, §19), not "where available"'
+    Notes: Until F5 governs change classes and this binding exists, every accepted revision affecting the parent plan stales
+      the applicable binding and needs explicit reconfirmation; after F5, `EDITORIAL` preserves a binding only where the
+      consumed digest is unchanged and F5 policy permits (CFI-29). Admissibility of existing evidence is computed against
+      the new binding under E19-B §5.2 (CFI-33)
+
+  - '#': F41.5
+    Work: 'The Workflow Contract §8 amendment for the `interface_dependency` edge (V-1(b)): a new non-blocking edge kind
+      for a contract or assumption dependency between work that may run in parallel, blocking edges keeping their meaning;
+      the same amendment extends E19-B §7.5''s `revision_impact_hold` trigger to accepted interface revisions on `interface_dependency`
+      edges'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §7,
+      §19 (ledger CFI-34, CFI-35, CFI-70)'
+    Belongs to or gated by: '**Designer.** The amendment is to be written and adopted; **WC amendment required** before
+      activation (§19)'
+    Notes: '**Activation-gating:** the design''s behaviour that needs it is not activatable until it exists (§19, §20 check
+      26, CFI-70). Its build is F41.6'
+
+  - '#': F41.6
+    Work: 'The interface-dependency edge, built (E19-B with F9): the edge''s fields; dispatch of a consumer while its provider
+      is active when the accepted contract is current and the consumer is bound to its digest; engine-computed interface
+      digests, never author-supplied, rename or removal counting as a change; the `INTERFACE_CONTRACT_DRIFT` integration
+      and publish refusal; the E19-B `revision_impact_hold` on direct named consumers (dispatch, forward gates, publish;
+      no recursive fan-out); hold clearing only by the Lead''s F9 disposition (`RECONTEXTUALIZE` or `TICKET_REPLAN`) plus
+      the engine''s rebinding; the held worker can neither clear its own hold nor record either of those authority-bearing
+      actions; a new attempt against the new digest'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §7.1
+      to §9, §11 (ledger CFI-36 to CFI-45, CFI-48, CFI-100); acceptance checks 9 to 13 and 15 (CFI-79 to CFI-83, CFI-85)'
+    Belongs to or gated by: '**Unscheduled.** Activation-gated: after F41.5''s amendment'
+    Notes: 'No second invalidation subsystem: E19-B stays the sole authority-bearing invalidation mechanism (CFI-40). `ADOPT_NEW_VERSION`
+      is a UI description, not a new F9 category (CFI-41). Hard protection covers declared interfaces only; undeclared consumers
+      rely on integration validation and parent verification (CFI-45). Rebinding is an E19-B revision of the consumer''s
+      dependency field group, under E19-B §7.2 quiescence when an attempt is active (CFI-44)'
+
+  - '#': F41.7
+    Work: 'The overlap projection: read-only and advisory, coverage and unknowns first; signals from exact file overlap,
+      declared blocking and interface dependencies, accepted interface digests, allocated identifiers and namespaces (from
+      project policy data, not an AEW-global list), shared register, schema and config surfaces, build and test surfaces
+      and qualified structural and symbol relationships; mechanically mergeable paths identified separately; unsupported
+      Python import and symbol coverage reported as unknown; the advisory publish-overlap wake (§11 trigger 2)'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §10,
+      §11 (ledger CFI-39, CFI-45 to CFI-47, CFI-49); acceptance check 13 (CFI-83)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owners F22.3/T5 and the work graph'
+    Notes: 'Never authority: trigger 2 creates no hold. Builds on F22.3''s indexes and the structural map (F22.1)'
+
+  - '#': F41.8
+    Work: 'Two run-health fields (U1/H1): `current_or_longest_child_process`, sanitized (no command line, environment or
+      model-authored arguments; a safe process or tool label, pid or identity where policy permits, age and status), and
+      `age_of_last_durable_progress`'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §12
+      (ledger CFI-52); acceptance checks 16 and 17 (CFI-86, CFI-87)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); with U1/H1'
+    Notes: 'Health stays advisory, with no lifecycle authority (RHP, U1). Field-log entry #3'
+
+  - '#': F41.9
+    Work: '`operator_validation` evidence: a new evidence kind integrated with the operator queue, verification observation
+      evidence (not review evidence, never a substitute for required independent verification); a model-proposed script
+      runs only after the operator approves the target host (resolved through the operator-pinned host registry), the full
+      rendered content, the intended action and the capture schema; secrets only through secret-input channels and never
+      persisted; only capture-schema fields persisted; a requirement-to-step coverage check that never claims adequacy'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §13
+      to §13.3 (ledger CFI-53 to CFI-56); acceptance checks 18 to 20 (CFI-88 to CFI-90)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owners Evidence and the operator queue'
+    Notes: 'Approval of a digest alone is insufficient (CFI-54). Field-log entries #11, W5'
+
+  - '#': F41.10
+    Work: 'The delta-review packet: engine-derived facts (prior finding ids and status, base and reviewed revision, the
+      engine-computed diff, files changed), qualified-derived facts with provenance only where a qualified T5/F30 source
+      supports them, and claims (the implementer''s finding-to-fix map, claimed assumptions and intent) labelled as claims
+      and never promoted to evidence'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §14
+      (ledger CFI-57 to CFI-60); acceptance check 21 (CFI-91)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owners the review protocol and F36'
+    Notes: No engine-derived "assumptions touched" field unless assumptions are structured plan or interface records (CFI-59).
+      Harness-native reviewer continuation stays optional and F24-qualified (CFI-60)
+
+  - '#': F41.11
+    Work: 'The nit/observation fast path: the canonical severity vocabulary, with project `nit` presentation-only and an
+      operator-pinned mapping to canonical `observation` that never remaps blocker, major or minor downward; after a CLEAR,
+      eligible observation corrections get one cheap delta review over the full engine-computed delta; any blocker, major
+      or minor finding, an unexpected behavioural change or a further cycle returns the work to the normal review path'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §15,
+      §21 (ledger CFI-61 to CFI-63, CFI-97); acceptance check 22 (CFI-92)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owner the review protocol'
+    Notes: 'Bounded to one post-CLEAR correction cycle; no evidence carry-forward shortcut (CFI-63). The product rule is
+      deliberately stricter than this repository''s AGENTS.md process (PR #181, no re-review after nits); which way the
+      repository goes when this ships is the operator''s decision, Q15'
+
+  - '#': F41.12
+    Work: 'Plan underspecification signals (F14): no plan-length score; structured `mechanisms[]` fields filled or `n/a:
+      reason` (an advisory author claim review may challenge); review finding a material schema, registry key, reason code,
+      error class, authority owner or mechanism invented during implementation and absent from the accepted plan; a worker''s
+      `design_decision_required`'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §5.1,
+      §16 (ledger CFI-24, CFI-64, CFI-65); acceptance check 23 (CFI-93)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owner F14'
+    Notes: 'Field-log entry #17'
+
+  - '#': F41.13
+    Work: 'The engine-behavior citation rule: a claim about current engine behaviour used as a premise for a fix or a designer
+      decision cites its code basis; AEW checks mechanically only that the cited path, symbol, test and revision resolve
+      at the cited base commit; whether the code supports the claim stays a review judgment'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §17
+      (ledger CFI-66, CFI-67); acceptance check 24 (CFI-94)'
+    Belongs to or gated by: '**Unscheduled.** Pending (§19); owners the launch contract and role cards with the review protocol
+      (builder claims) and the designer-brief process (brief claims)'
+    Notes: 'Field-log entries #18, #19'
+
+  - '#': F41.14
+    Work: 'The cross-feature integration design''s field-log dispositions that hand work to owners outside F41''s own rows,
+      each to be taken up by its owner: #4 test scope (the launch-contract / test-policy owner); #10 public/private review
+      (a review-artifact policy follow-up); #12 operator waiting queue (the existing operator-attention / dashboard owner:
+      F15.5 for the operator-attention half, F20 for the dashboard half); #15 disk budget (the doctor / workspace-retirement
+      owner, F18.2); #16 CI external check (an external-check / `wait --any` integration candidate, F9); #20 PR lifetime
+      (an evaluator / process metric candidate, F19)'
+    Source (governing): '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18
+      (ledger CFI-68, CFI-101 to CFI-106)'
+    Belongs to or gated by: '**Unscheduled.** Not activation-gated: each item is its owner''s to schedule; the candidates
+      (#16, #20) are taken up only if their owner adopts them'
+    Notes: 'So that no §18 entry is silently dropped (§18, §22 item 10). The entries dispositioned "no new work" (#2, #9,
+      #13, #14, W1, W3, W4, W6) need no row; the rest are carried by F41.1 to F41.13 and F9'
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
@@ -1778,6 +2016,16 @@ sections:
       "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07,
       [F23 decision](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** not an internal-alpha gate;
       reopened when remote PR or merge integration becomes a product requirement'
+
+  - '#': Q15
+    Question: 'The nit-rule divergence (cross-feature integration v0.5 §21): AEW''s product rule (§15) needs one bounded
+      delta review after nit corrections, while this repository''s AGENTS.md process (PR #181) has the author fix nits and
+      post "Nits fixed at <sha>" with no new review. Recorded as deliberate for now; when the product rule ships (F41.11),
+      the repository either aligns AGENTS.md to the product rule or keeps the difference as an explicit, documented project-policy
+      exception. It must not remain an accidental mismatch. AGENTS.md is unchanged by the ingestion'
+    Owner: Operator
+    Source: '[cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §21 (ledger CFI-97,
+      CFI-98); [decision record](../design/decisions-2026-10-10-cross-feature-integration-freeze.md) §5'
 
 - number: 5
   title: Dogfood findings left open (small)
@@ -2265,7 +2513,9 @@ sections:
       (F36) waits for that field; the recitation''s call and time triggers do not. Both fields ship off and absent by default
       behind one execution-policy switch, with a byte-identity test of `harness_status`, `resume` and `harness wait` while
       off, and are activated only after M4-H (Revision B; U1 itself is planned before the Q7 hard dogfood). Implementation-note
-      additions, not new scope'
+      additions, not new scope. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md)
+      §12; ledger CFI-52):** two sanitized fields, `current_or_longest_child_process` and `age_of_last_durable_progress`,
+      tracked as F41.8'
 
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'

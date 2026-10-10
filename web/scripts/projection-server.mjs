@@ -1,21 +1,11 @@
 /** Test-only same-origin fixture adapter. Never included in the production build. */
 import http from 'node:http';
-import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
+import { loadProjector } from './load-projector.mjs';
 import { createHash } from 'node:crypto';
-const source = fs.readFileSync('src/api/mock/projector.ts', 'utf8');
-const compiled = ts.transpileModule(source, {
-  compilerOptions: {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ES2022,
-  },
-}).outputText;
-const { DemoProjector } = await import(
-  'data:text/javascript;base64,' + Buffer.from(compiled).toString('base64')
-);
+const { DemoProjector } = await loadProjector('src/api/mock/projector.ts');
 const world = JSON.parse(
   fs.readFileSync('src/api/mock/fixtures/F1.json', 'utf8'),
 );

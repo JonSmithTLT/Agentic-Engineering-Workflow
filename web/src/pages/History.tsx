@@ -1,6 +1,7 @@
 import { RecordInspection } from '../components/Investigation';
 import { LineageGraph } from '../components/LineageGraph';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { navigationParams } from '../api/navigation';
 import {
   CollectionView,
   DetailView,
@@ -13,6 +14,7 @@ import { JsonContent } from '../components/Content';
 import {
   CapabilityGate,
   useCapability,
+  useDashboard,
   PageSnapshot,
   ProjectionMetadata,
 } from '../client/dashboard';
@@ -164,6 +166,7 @@ export function IntegrityPanel() {
 }
 export function HistoryPage() {
   const [params, setParams] = useSearchParams();
+  const { caps } = useDashboard();
   const since = params.get('since') ?? '',
     until = params.get('until') ?? '';
   const valid =
@@ -193,6 +196,7 @@ export function HistoryPage() {
         filterUI={
           <>
             <HistoricalWarning />
+            {caps?.history_search && <Link to={'/history/search' + (navigationParams(params).size ? '?' + navigationParams(params) : '')}>Raw history search</Link>}
             <div className="filter-bar">
               <label>
                 Kind
